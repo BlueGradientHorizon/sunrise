@@ -95,7 +95,7 @@ pub fn nine_slice(
     h: f32,
     color: u32,
 ) {
-    let Some(r) = atlas.gui_rect(sprite) else {
+    let Some(r) = atlas.gui_draw_rect(sprite) else {
         return;
     };
     // Each effective draw's own scaling: what the entry the key resolves to published.
@@ -215,7 +215,7 @@ pub fn tiled_sized(
     size: [f32; 2],
     color: u32,
 ) {
-    let Some(r) = atlas.gui_rect(sprite).copied() else {
+    let Some(r) = atlas.gui_draw_rect(sprite).copied() else {
         return;
     };
     tile(

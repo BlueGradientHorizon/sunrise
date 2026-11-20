@@ -5,7 +5,7 @@
 //! (`positionRider`, `clampRotation`) and how they get out.
 //! Saving them under the boat's `Passengers` lives in `persist.rs`.
 use super::{Game, boats::Boat, collision_source::Mover, lan_mobs::guest_bounds};
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use sunrise_client::{
     camera::wrap_degrees,
     fast_hash::FxHashMap,
@@ -37,7 +37,7 @@ pub(in crate::game) struct VehicleMobs {
     grid: RefCell<MobGrid>,
     /// The last query's candidates, kept for their allocation.
     near: Cell<Vec<u32>>,
-    /// Each ridden vehicle's mobs by slot, for the mob list as it stood ([`Game::vehicle_riders`]).
+    /// Each ridden vehicle's mobs by slot, for the mob list as it stood ([`Game::resident_mob_riders`]).
     riders: RefCell<Option<(ListStamp, FxHashMap<u32, Vec<usize>>)>>,
 }
 #[derive(Default)]
@@ -132,38 +132,42 @@ impl Game<'_> {
         self.vehicle_mobs.reach.set(Some((self.mobs.len(), reach)));
         Some(reach)
     }
-    /// The slots, ascending, of the mobs whose vehicle is `id`, whatever their state. While
-    /// vehicles tick, one walk over the mobs answers for every vehicle until the mob list is
-    /// next written: each boat asks for its passengers and each cart on rails whether it is
-    /// ridden, and each one walked every mob of the level.
-    fn vehicle_riders(&self, id: u32) -> Vec<usize> {
-        let rides = |v: u32| move |&j: &usize| self.mobs[j].extra.mount == Some(v);
-        if !self.vehicle_mobs_indexed() {
-            return (0..self.mobs.len()).filter(rides(id)).collect();
-        }
-        let stamp = self.mobs.stamp();
-        let mut riders = self.vehicle_mobs.riders.borrow_mut();
-        if riders.as_ref().is_none_or(|(s, _)| *s != stamp) {
-            let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
-            for (j, m) in self.mobs.iter().enumerate() {
-                if let Some(v) = m.extra.mount {
-                    by_vehicle.entry(v).or_default().push(j);
+    /// Resident mob riders in slot order, including those whose removal is pending.
+    /// During an indexed vehicle pass, all lookups share the same slots until
+    /// the mob list is next written.
+    pub(super) fn resident_mob_riders(&self, id: u32) -> impl Iterator<Item = (usize, &Mob)> {
+        let slots = if self.vehicle_mobs_indexed() {
+            let stamp = self.mobs.stamp();
+            let cache = &self.vehicle_mobs.riders;
+            if cache.borrow().as_ref().is_none_or(|(s, _)| *s != stamp) {
+                let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
+                for (slot, mob) in self.mobs.iter().enumerate() {
+                    if let Some(vehicle) = mob.extra.mount {
+                        by_vehicle.entry(vehicle).or_default().push(slot);
+                    }
                 }
+                cache.replace(Some((stamp, by_vehicle)));
             }
-            *riders = Some((stamp, by_vehicle));
-        }
-        let of = riders
-            .as_ref()
-            .and_then(|(_, by_vehicle)| by_vehicle.get(&id));
-        of.cloned().unwrap_or_default()
-    }
-    /// Whether a mob (one not removed) rides vehicle `id`: `Entity.isVehicle` for a cart.
-    pub(in crate::game) fn mob_rides(&self, id: u32) -> bool {
-        let riders = self.vehicle_riders(id);
-        riders.iter().any(|&j| !self.mobs[j].removed)
-            || self.persist.off_level.values().any(|entity| {
-                matches!(entity, super::persist::OffLevel::Mob(m) if !m.removed && m.extra.mount == Some(id))
-            })
+            Some(Ref::map(cache.borrow(), |index| {
+                index
+                    .as_ref()
+                    .and_then(|(_, by_vehicle)| by_vehicle.get(&id))
+                    .map_or(&[][..], Vec::as_slice)
+            }))
+        } else {
+            None
+        };
+        let mut at = 0;
+        let mut scan = self.mobs.iter().enumerate();
+        std::iter::from_fn(move || {
+            if let Some(slots) = &slots {
+                let &slot = slots.get(at)?;
+                at += 1;
+                Some((slot, &self.mobs[slot]))
+            } else {
+                scan.find(|(_, mob)| mob.extra.mount == Some(id))
+            }
+        })
     }
     /// Whether what a stretch of vehicle ticks reads from the mob list may stand in for a walk
     /// over it: a stretch runs, and no native mod is loaded (a hook can move a mob unseen, as
@@ -258,24 +262,15 @@ impl Game<'_> {
     /// The mobs in boat `id`, in their seat order after the players
     /// (`Entity.addPassenger` puts a player first).
     pub(super) fn boat_mobs(&self, id: u32) -> Vec<usize> {
-        let mut riders = self.vehicle_riders(id);
-        riders.retain(|&j| !self.mobs[j].removed && self.mobs[j].alive());
-        riders
-    }
-    /// `getPassengers().size()` of boat `id`.
-    pub(super) fn boat_passengers(&self, id: u32) -> usize {
-        self.boat_players(id)
-            + self
-                .mob_objects()
-                .filter(|m| m.extra.mount == Some(id) && !m.removed)
-                .count()
-            + self.general_passengers(id).count()
+        self.resident_mob_riders(id)
+            .filter_map(|(slot, mob)| (!mob.removed && mob.alive()).then_some(slot))
+            .collect()
     }
     /// `AbstractBoat.canAddPassenger`: a seat is free and the boat is not
     /// under water.
     pub(super) fn boat_has_room(&self, i: usize) -> bool {
         let b = &self.boats[i];
-        self.boat_passengers(b.id) < b.max_passengers() && !b.under_water()
+        self.seated_passenger_count(b.id) < b.max_passengers() && !b.under_water()
     }
     /// Where the player in boat `i` sits: in the middle alone, in front of a
     /// mob.
@@ -360,7 +355,7 @@ impl Game<'_> {
             f64::from(-0.01_f32),
             f64::from(0.2_f32),
         ));
-        let mut count = self.boat_passengers(id);
+        let mut count = self.seated_passenger_count(id);
         // getControllingPassenger is a player: one rides it (players sit first).
         let pick_up = self.boat_players(id) == 0;
         // canAddPassenger, which startRiding asks after the checks below.
@@ -447,7 +442,7 @@ impl Game<'_> {
                             return;
                         };
                         i = now;
-                        count = self.boat_passengers(id);
+                        count = self.seated_passenger_count(id);
                         if count < self.boats[i].max_passengers()
                             && let Some(m) = self
                                 .mobs
@@ -502,12 +497,11 @@ impl Game<'_> {
                 self.boats
                     .update(i, |b| b.velocity = b.velocity.subtract(v));
             }
-            if self.boat_passengers(self.boats[k].id) == 0 {
+            if !self.has_seated_passengers(self.boats[k].id) {
                 self.boats
                     .update(k, |b| b.velocity = b.velocity.add_vector(v));
             }
         }
-        let guest_carts = self.guest_vehicles();
         for c in 0..self.carts.len() {
             let cb = self.carts[c].bounds();
             if !cb.intersects(area) || !boat_pushes(bb, cb, false) {
@@ -520,11 +514,7 @@ impl Game<'_> {
                 self.boats
                     .update(i, |b| b.velocity = b.velocity.subtract(v));
             }
-            let cid = self.carts[c].id;
-            let ridden = self.riding == Some(cid)
-                || guest_carts.contains(&cid)
-                || self.mobs.iter().any(|m| m.extra.mount == Some(cid));
-            if !ridden {
+            if !self.has_seated_passengers(self.carts[c].id) {
                 self.carts
                     .update(c, |c| c.velocity = c.velocity.add_vector(v));
             }
@@ -739,10 +729,10 @@ mod tests {
             }
             assert!(game.boat_mobs(71).is_empty());
             // An ordinary oak boat has two seats; rejected passengers still own both.
-            assert_eq!(game.boat_passengers(71), 2);
+            assert_eq!(game.seated_passenger_count(71), 2);
             assert!(!game.boat_has_room(0));
             game.mob_object_mut(73).unwrap().extra.mount = None;
-            assert_eq!(game.boat_passengers(71), 1);
+            assert_eq!(game.seated_passenger_count(71), 1);
             assert!(game.boat_has_room(0));
         });
     }
@@ -919,8 +909,9 @@ mod tests {
         for id in 1..=4 {
             game.mobs.push(Mob::new(id, pig.clone(), Vec3::ZERO, 0.0));
         }
-        let riders =
-            |game: &Game| [100, 101, 102].map(|id| (game.mob_rides(id), game.boat_mobs(id)));
+        let riders = |game: &Game| {
+            [100, 101, 102].map(|id| (game.has_seated_passengers(id), game.boat_mobs(id)))
+        };
         game.mobs[0].extra.mount = Some(100);
         game.vehicles_ticking(true);
         let none = (false, vec![]);

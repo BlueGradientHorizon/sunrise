@@ -16,7 +16,6 @@ use super::{Game, Hit, InteractTarget, Keys, entity::Entity};
 use std::{collections::HashMap, sync::Arc};
 use sunrise_client::actions::Action;
 use sunrise_client::entity_rules::EntityRules;
-use sunrise_client::fast_hash::FxHashSet;
 use sunrise_client::join_seq::{JoinList, ListStamp};
 use sunrise_client::mobs::{Mob, seen_grid::SeenGrid};
 use sunrise_client::{
@@ -274,8 +273,7 @@ pub(super) fn forget_unreadable_display(
 #[derive(Default)]
 pub(super) struct CartIndex {
     carts: Option<(SeenGrid, Vec<u32>)>,
-    /// The grid, and the carts a mob rides.
-    mobs: Option<(ListStamp, SeenGrid, FxHashSet<u32>)>,
+    mobs: Option<(ListStamp, SeenGrid)>,
     near: Vec<u32>,
 }
 impl CartIndex {
@@ -320,34 +318,22 @@ impl CartIndex {
         }
         true
     }
-    /// The slots of the mobs whose box may meet `area` into `out`, and
-    /// whether a mob rides cart `cart`; None: scan them all.
-    fn mobs_near(
-        &mut self,
-        mobs: &JoinList<Mob>,
-        cart: u32,
-        area: Aabb,
-        out: &mut Vec<u32>,
-    ) -> Option<bool> {
+    /// The slots of the mobs whose box may meet `area` into `out`;
+    /// false means the caller must walk them all.
+    fn mobs_near(&mut self, mobs: &JoinList<Mob>, area: Aabb, out: &mut Vec<u32>) -> bool {
         if !Self::usable() {
-            return None;
+            return false;
         }
         if !self
             .mobs
             .as_ref()
-            .is_some_and(|(stamp, ..)| *stamp == mobs.stamp())
+            .is_some_and(|(stamp, _)| *stamp == mobs.stamp())
         {
-            let mut mounted = FxHashSet::default();
-            let grid = SeenGrid::new(mobs.iter().map(|m| {
-                if let Some(v) = m.extra.mount {
-                    mounted.insert(v);
-                }
-                m.bounds()
-            }));
-            self.mobs = Some((mobs.stamp(), grid, mounted));
+            self.mobs = Some((mobs.stamp(), SeenGrid::new(mobs.iter().map(Mob::bounds))));
         }
-        let (_, grid, mounted) = self.mobs.as_ref()?;
-        grid.candidates(area, out).then(|| mounted.contains(&cart))
+        self.mobs
+            .as_ref()
+            .is_some_and(|(_, grid)| grid.candidates(area, out))
     }
 }
 /// Where the cart `id` is in `carts`: at `hint` (where it was a moment ago,
@@ -746,12 +732,6 @@ impl Game<'_> {
         }
         out
     }
-    /// `Entity.isVehicle` for a cart: the local player, a LAN guest or a mob
-    /// sits in it. `getSlowdownFactor` (0.997) and the 0.75 speed scale key on
-    /// this, not on who rides.
-    fn cart_is_vehicle(&self, id: u32) -> bool {
-        self.riding == Some(id) || self.ridden_by_guest(id) || self.mob_rides(id)
-    }
     /// `OldMinecartBehavior.moveAlongTrack`.
     fn move_along_track(
         &mut self,
@@ -762,7 +742,7 @@ impl Game<'_> {
         slot: usize,
     ) {
         c.fall_distance = 0.0;
-        let ridden = self.cart_is_vehicle(c.id);
+        let ridden = self.has_seated_passengers(c.id);
         let (x, z) = (c.position.x, c.position.z);
         let old = self.rail_pos(Some(c.id), x, c.position.y, z);
         let mut y = f64::from(pos[1]);
@@ -1111,7 +1091,7 @@ impl Game<'_> {
             if &*rail.name == "minecraft:activator_rail" {
                 self.activate_cart(c, rail.powered);
             }
-            let ridden = self.cart_is_vehicle(c.id);
+            let ridden = self.has_seated_passengers(c.id);
             let initial_h = c.velocity.horizontal_distance();
             let mut v = Vec3::new(c.velocity.x, 0.0, c.velocity.z);
             // calculateSlopeSpeed (once per tick): the slide grows with the
@@ -1824,9 +1804,8 @@ impl Game<'_> {
         let pos = self.carts[i].position;
         let hitbox = self.carts[i].bounds().inflate(Vec3::new(reach, 0.0, reach));
         let mut near = std::mem::take(&mut index.near);
-        let mounted = index.mobs_near(&self.mobs, id, hitbox, &mut near);
-        let mut occupied = self.cart_is_vehicle(id);
-        if mounted.is_none() {
+        let mut occupied = self.has_seated_passengers(id);
+        if !index.mobs_near(&self.mobs, hitbox, &mut near) {
             near.clear();
             near.extend(0..self.mobs.len() as u32);
         }
@@ -2289,9 +2268,7 @@ impl Game<'_> {
         match self.carts[i].kind {
             CartKind::Rideable => {
                 let id = self.carts[i].id;
-                // isVehicle: a mob already sits in it.
-                let has_mob = !self.seated_passengers(id).is_empty();
-                if sneaking || self.riding.is_some() || self.ridden_by_guest(id) || has_mob {
+                if sneaking || self.riding.is_some() || self.has_seated_passengers(id) {
                     return false;
                 }
                 self.start_riding_target(
@@ -3754,11 +3731,11 @@ mod rejected_passenger_tests {
                 .unwrap();
             assert!(game.persist.off_level.contains_key(&ghost));
             let candidate = game.load_mob(pig(3, vec![]), None).unwrap();
-            assert!(game.cart_is_vehicle(cart));
+            assert!(game.has_seated_passengers(cart));
             let mut copy = game.carts[0].clone();
             copy.velocity = Vec3::new(1.0, 0.0, 0.0);
             assert_eq!(
-                game.natural_slowdown(&mut copy, game.cart_is_vehicle(cart), 0.96)
+                game.natural_slowdown(&mut copy, game.has_seated_passengers(cart), 0.96)
                     .x,
                 0.997
             );

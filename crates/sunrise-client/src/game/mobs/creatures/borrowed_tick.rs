@@ -81,16 +81,6 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) round: &'a mut super::super::native_ticks::TickRound,
 }
 impl Game<'_> {
-    fn removed_mob_has_riders(&self, id: u32, lent: &[Mob]) -> bool {
-        self.riding == Some(id)
-            || self.ridden_by_guest(id)
-            || self.general_passengers(id).next().is_some()
-            || lent
-                .iter()
-                .chain(self.mob_objects())
-                .any(|m| !m.removed && m.extra.mount == Some(id))
-    }
-
     pub(super) fn tick_borrowed_creatures(
         &mut self,
         state: BorrowedMobTick<'_>,
@@ -307,7 +297,7 @@ impl Game<'_> {
                         gone_rows |= !keep[slot];
                         cursor += 1;
                         let id = m.id;
-                        if !keep[slot] && self.removed_mob_has_riders(id, &mobs) {
+                        if !keep[slot] && self.has_seated_passengers_with_lent_mobs(id, &mobs) {
                             mobs[i].removed = true;
                             removing_vehicle = Some(id);
                             break;
@@ -404,7 +394,7 @@ impl Game<'_> {
                         gone_rows |= !kept;
                         cursor += 1;
                         let id = m.id;
-                        if !kept && self.removed_mob_has_riders(id, &mobs) {
+                        if !kept && self.has_seated_passengers_with_lent_mobs(id, &mobs) {
                             removing_vehicle = Some(id);
                             break;
                         }
@@ -778,7 +768,8 @@ impl Game<'_> {
                         from,
                     );
                     cursor += 1;
-                    if !kept && !was_removed && self.removed_mob_has_riders(id, &mobs) {
+                    if !kept && !was_removed && self.has_seated_passengers_with_lent_mobs(id, &mobs)
+                    {
                         mobs[i].removed = true;
                         removing_vehicle = Some(id);
                         break;

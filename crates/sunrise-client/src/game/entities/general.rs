@@ -972,13 +972,16 @@ impl Game<'_> {
     /// handle of the source level reaches it again. A failure after the
     /// rows left — the destination level cannot open — puts every row back
     /// in the source, at its place and with the join identity it had; a
-    /// failure before leaves the tree untouched. The root lands at `at`;
-    /// a rider keeps its own position until the tree's own tick moves it.
+    /// failure before leaves the tree untouched. The root lands at `at`, and
+    /// each rider takes its own vehicle's transition on arrival.
     pub(in crate::game) fn teleport_general_tree_across(
         &mut self,
         root_id: u32,
         destination: crate::game::Dim,
         at: [f64; 3],
+        rotation: Option<[f32; 2]>,
+        turn_riders: bool,
+        motion: super::vehicle_teleport::TeleportMotion,
     ) -> Result<bool, String> {
         let source = self.dim;
         if source == destination {
@@ -1041,15 +1044,25 @@ impl Game<'_> {
         }
         // The tree joins the destination: identities unchanged, join
         // identity new (a fresh admission — no source handle reaches it).
-        for (_, mut row, transient) in extracted {
+        let (mut arrivals, transients): (Vec<_>, Vec<_>) = extracted
+            .into_iter()
+            .map(|(_, row, transient)| (row, transient))
+            .unzip();
+        super::vehicle_teleport::transfer_general_tree(
+            &mut arrivals,
+            root_id,
+            super::vehicle_teleport::Transition::to_level(
+                Vec3::new(at[0], at[1], at[2]),
+                motion,
+                rotation,
+            ),
+            turn_riders,
+        );
+        for (mut row, transient) in arrivals.into_iter().zip(transients) {
             if transient {
                 self.persist.transient.insert(row.id);
             }
             row.join = JoinSeq::UNJOINED;
-            if row.id == root_id {
-                row.position = Vec3::new(at[0], at[1], at[2]);
-                row.previous = row.position;
-            }
             self.resident_entities.general.rows.push(row);
         }
         if let Err(error) = self.enter_level(source) {

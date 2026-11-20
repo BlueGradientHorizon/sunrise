@@ -282,13 +282,17 @@ mod tests {
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Declare {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            for (name, height, pickable) in [("missile", 0.5, false), ("package", 2.0, true)] {
+            let types = [
+                ("missile", 0.5, Some([1.0, 1.25, 0.0]), false),
+                ("package", 2.0, None, true),
+            ];
+            for (name, height, passenger_attachment, pickable) in types {
                 r.declare_general_entity(
                     name,
                     mod_api::GeneralEntityCategory::Misc,
                     0.5,
                     height,
-                    None,
+                    passenger_attachment,
                     mod_api::GeneralSavePolicy::Save,
                     true,
                     pickable,
@@ -355,7 +359,7 @@ mod tests {
         use crate::game::native_player_death::tests::add_guest;
         use mod_api::{Flow, HostSide, InteractionResult};
         use std::sync::{Arc, Mutex};
-        use sunrise_client::{first_person::Hand, motion::PlayerMotion};
+        use sunrise_client::{chunk::Chunk, first_person::Hand, motion::PlayerMotion};
         use sunrise_protocol::packets::play::Serverbound as S;
 
         const PACKAGE: &str = "mymod:package";
@@ -477,11 +481,25 @@ mod tests {
                     game.guest_interact(1, 0, id, Hand::Main, [0.0, 1.65, -0.25]),
                     Ok(true)
                 );
+                // The named row is still in packet range, but a fresh ray can't see it.
+                if !game.world.chunks.contains_key(&(0, 0)) {
+                    game.world.chunks.insert((0, 0), Chunk::empty(0, 0).into());
+                }
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.world.set(0, 65, 1, stone).unwrap();
+                game.world.set(0, 66, 1, stone).unwrap();
+                game.as_guest(1, |guest| guest.attack_ticks = 20).unwrap();
                 assert_eq!(
                     game.guest_attack(1, 0, id),
                     Ok(false),
                     "an unclaimed hit cannot hurt a plain row"
                 );
+                assert_eq!(game.as_guest(1, |guest| guest.attack_ticks), Some(0));
                 assert!(game.resident_entities.general.row(id as u32).is_some());
                 game.as_guest(1, |guest| guest.player.as_mut().unwrap().position.z = -64.5)
                     .unwrap();
@@ -497,6 +515,14 @@ mod tests {
                         (Event::ServerUse, id, PACKAGE.into()),
                         (Event::Attack, id, PACKAGE.into())
                     ]
+                );
+                game.persist
+                    .removals
+                    .push(crate::game::commands::Target::General(id as u32));
+                assert_eq!(
+                    game.guest_attack(1, 0, id),
+                    Err(mod_api::ActionRefused::InvalidTarget),
+                    "the aim fallback must not recover a pending removal"
                 );
             });
         });
