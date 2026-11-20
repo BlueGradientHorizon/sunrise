@@ -1292,6 +1292,41 @@ mod native_pack_tests {
 }
 
 #[cfg(test)]
+#[test]
+#[ignore = "daily"]
+fn projectile_body_uses_its_own_shader_entity_id() {
+    use sunrise_client::projectiles::{Projectile, ProjectileKind};
+
+    super::native_entity_refs::tests::with_client_game(|game| {
+        game.pack_ids = Some(PackIds {
+            entities: [
+                ("minecraft:snowball".into(), 41),
+                ("minecraft:ominous_item_spawner".into(), 42),
+            ]
+            .into(),
+            ..Default::default()
+        });
+        game.creatures.projectiles.push(Projectile::new(
+            ProjectileKind::Snowball,
+            sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+            None,
+        ));
+        game.entity_geometry(glam::DVec3::new(0.5, 64.0, -4.5), 1.0, None, Vec::new());
+        let spans = game.entity_spans.borrow();
+        assert!(
+            spans
+                .windows(2)
+                .any(|span| span[0].id == 41 && span[0].start < span[1].start)
+        );
+        assert!(
+            !spans
+                .windows(2)
+                .any(|span| span[0].id == 42 && span[0].start < span[1].start)
+        );
+    });
+}
+
+#[cfg(test)]
 mod toggle_tests {
     use super::{TogglePlan, plan_shader_toggle};
     use sunrise_client::settings::Settings;

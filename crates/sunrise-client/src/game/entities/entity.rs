@@ -1316,18 +1316,11 @@ fn push_draw_run(runs: &mut Vec<DrawRun>, handle: EntityHandle) {
     }
 }
 
-/// The drawn entities as runs in the order they joined the level. Lists the walk refuses
-/// (see [`JoinOrderError`]) are taken list by list from `storage_order`, as the state digest
-/// takes them, with the local player last. Nothing the failed walk had built stays.
-fn draw_runs<H: Iterator<Item = EntityHandle>>(
-    lists: EntityLists<'_>,
-    storage_order: impl FnOnce() -> H,
-    local_player: Option<JoinSeq>,
-    runs: &mut Vec<DrawRun>,
-) {
+/// The drawn entities as runs in the order they joined the level.
+fn draw_runs(lists: EntityLists<'_>, local_player: Option<JoinSeq>, runs: &mut Vec<DrawRun>) {
     runs.clear();
     let mut pending = local_player.unwrap_or(JoinSeq::MAX);
-    if lists
+    lists
         .walk_in_join_order(|handle, seq| {
             // The local player has its own resident slot, outside these entity lists.
             if pending < seq {
@@ -1336,14 +1329,7 @@ fn draw_runs<H: Iterator<Item = EntityHandle>>(
             }
             push_draw_run(runs, handle);
         })
-        .is_err()
-    {
-        runs.clear();
-        for handle in storage_order() {
-            push_draw_run(runs, handle);
-        }
-        pending = local_player.unwrap_or(JoinSeq::MAX);
-    }
+        .expect("drawn level entities must be stored in join order");
     if pending != JoinSeq::MAX {
         runs.push(LOCAL_PLAYER_RUN);
     }
@@ -1363,12 +1349,7 @@ impl Game<'_> {
         let local_player = self
             .player_model_shown()
             .then(|| self.resident_entities.local_player.join());
-        draw_runs(
-            entity_lists_of!(self),
-            || self.entity_handles(),
-            local_player,
-            runs,
-        );
+        draw_runs(entity_lists_of!(self), local_player, runs);
     }
 }
 
@@ -3165,27 +3146,12 @@ mod join_order_tests {
         assert_ne!(joined[0], EntityHandle::ArmorStand(0));
     }
 
-    /// Every entity, each list in turn: what `Game::entity_handles` gives for these lists.
-    fn storage_order(lists: &Lists) -> impl Iterator<Item = EntityHandle> + use<> {
-        (0..lists.mobs.len())
-            .map(EntityHandle::Mob)
-            .chain((0..lists.boats.len()).map(EntityHandle::Boat))
-            .chain((0..lists.stands.len()).map(EntityHandle::ArmorStand))
-            .chain((0..lists.rockets.len()).map(EntityHandle::Rocket))
-            .chain((0..lists.tridents.len()).map(EntityHandle::Trident))
-    }
-
     fn runs(
         lists: &Lists,
         local_player: Option<JoinSeq>,
     ) -> Vec<(DrawFamily, std::ops::Range<usize>)> {
         let mut runs = Vec::new();
-        super::draw_runs(
-            lists.view(),
-            || storage_order(lists),
-            local_player,
-            &mut runs,
-        );
+        super::draw_runs(lists.view(), local_player, &mut runs);
         runs.into_iter().map(|r| (r.family, r.range)).collect()
     }
 

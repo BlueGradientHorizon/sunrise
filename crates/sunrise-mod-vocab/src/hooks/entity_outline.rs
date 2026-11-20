@@ -9,10 +9,13 @@ pub trait Hooks {
     /// entity glow in that colour, None to take its outline away. It changes
     /// only what this client draws: the entity's `Glowing` flag, what the
     /// server and other players see, stays. Asked each frame for every mob,
-    /// player (yourself in third person), dropped item and projectile drawn.
+    /// player (yourself in third person when you hold the camera), dropped item and projectile
+    /// drawn. In the ordered body pass, these queries for mobs, players and dropped items follow
+    /// level join order; projectile queries run in a later pass.
     /// API @API:entity_outline@.
     #[hook(
         side = "client",
+        version = 2,
         contract = "listen",
         neoforge = "none (NeoForge 26.3 has no glowing or team colour override)"
     )]

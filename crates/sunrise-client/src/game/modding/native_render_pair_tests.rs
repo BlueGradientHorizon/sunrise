@@ -165,11 +165,51 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn a_spectator_following_an_entity_submits_no_local_body() {
+    use sunrise_client::{camera::CameraType, command::args::GameMode};
+    use sunrise_protocol::packets::play::{Clientbound, SetCamera};
+
+    let heard = Arc::default();
+    with_pair(&heard, |game| {
+        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+        game.connect_local(pipe, "Steve").unwrap();
+        admit_own_player(game, true);
+        game.mode = GameMode::Spectator;
+        game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
+        game.handle_packet(Clientbound::SetCamera(SetCamera { camera_id: 91 }))
+            .unwrap();
+        assert!(!game.controls_camera());
+
+        // First test the third-person body, then the separate first-person shadow route.
+        // Native shadows can take a spectator model, so this exercises the camera guard.
+        for (camera, player_shadow) in [
+            (CameraType::ThirdPersonBack, false),
+            (CameraType::FirstPerson, true),
+        ] {
+            game.camera_type = camera;
+            game.occlusion.shadow_casters.1 = player_shadow;
+            game.entity_geometry(CAMERA, 1.0, None, Vec::new());
+            assert!(
+                !game
+                    .entity_runs
+                    .iter()
+                    .any(|run| run.family == super::entity::DrawFamily::LocalPlayer)
+            );
+            assert!(!events(&heard).iter().any(|event| matches!(
+                event.as_str(),
+                "player_pre true" | "player_post true" | "living_pre 4321" | "living_post 4321"
+            )));
+        }
+    });
+}
+
 /// Exercise the real packet and draw paths; the parity harness reads the same scene
 /// and compares these submitted body IDs with the vanilla renderer's dispatch order.
 #[test]
 #[ignore = "daily"]
-fn entity_draw_order_after_login_and_same_level_respawn() {
+fn entity_draw_order_after_client_packets() {
     use sunrise_client::camera::CameraType;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
@@ -226,6 +266,31 @@ fn entity_draw_order_after_login_and_same_level_respawn() {
                         data: 0,
                     })
                 }
+                ["remove", ids @ ..] => C::RemoveEntities(play::RemoveEntities {
+                    ids: ids.iter().map(|id| id.parse().unwrap()).collect(),
+                }),
+                ["passengers", vehicle, passengers @ ..] => {
+                    let vehicle = vehicle.parse().unwrap();
+                    let passengers: Vec<i32> =
+                        passengers.iter().map(|id| id.parse().unwrap()).collect();
+                    game.handle_packet(C::SetPassengers(play::SetPassengers {
+                        vehicle,
+                        passengers: passengers.clone(),
+                    }))
+                    .unwrap();
+                    let remote = game.remote.as_ref().unwrap();
+                    assert_eq!(
+                        remote.passenger_seats(vehicle as u32).count(),
+                        passengers.len()
+                    );
+                    for id in passengers {
+                        assert_eq!(remote.passenger_vehicle(id as u32), Some(vehicle as u32));
+                    }
+                    continue;
+                }
+                ["camera", camera_id] => C::SetCamera(play::SetCamera {
+                    camera_id: camera_id.parse().unwrap(),
+                }),
                 ["position"] => C::PlayerPosition(play::PlayerPosition {
                     teleport: 1,
                     position: [0.5, 321.0, 0.5],
@@ -261,7 +326,21 @@ fn entity_draw_order_after_login_and_same_level_respawn() {
             };
             game.handle_packet(packet).unwrap();
         }
-        assert_eq!(snapshots, [vec![4321, 91], vec![91, 40, 4321, 3]]);
+        assert_eq!(
+            snapshots,
+            [
+                vec![4321, 91],
+                vec![91, 40, 4321, 3],
+                vec![4321, 3],
+                vec![4321, 3, 40, 91],
+                vec![4321, 3, 91, 40],
+                vec![4321, 91, 40, 3],
+                vec![4321, 91, 40, 3],
+                vec![4321, 91, 40, 3],
+                vec![91, 40, 3],
+                vec![4321, 91, 40, 3],
+            ]
+        );
     });
 }
 

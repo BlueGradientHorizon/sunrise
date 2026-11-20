@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Compare the body submission order after Login and same-level Respawn.
+"""Compare body submission order after admission, removal, riding and camera changes.
 
-The vanilla side runs its lookup and submit loop with already-visible bodies;
+The vanilla side runs client level storage, camera filtering and submission;
 the Sunrise probe sends packets through the client and observes nonempty body
-submissions. This compares order, not culling, fire, pixels or GPU draw order.
+submissions. This compares order, not frustum culling, fire, pixels or GPU draw order.
 """
 import json
 import os
@@ -41,12 +41,13 @@ def main():
     )
     oracle_harness.run_logged(
         ["cargo", "test", "--locked", "-p", "sunrise-client", "--lib",
-         "entity_draw_order_after_login_and_same_level_respawn", "--", "--ignored", "--nocapture"],
+         "entity_draw_order_after_client_packets", "--", "--ignored", "--nocapture"],
         build, "rust", env=env, timeout=2400)
     expected, actual = snapshots(build / "vanilla.log"), snapshots(build / "rust.log")
-    if len(expected) != 2 or actual != expected:
+    frames = scene.read_text().splitlines().count("frame")
+    if not frames or len(expected) != frames or actual != expected:
         raise AssertionError("Body submission order differs; see the local entity-draw-order logs")
-    print("Both mixed-body submission snapshots match the pinned vanilla client")
+    print(f"{frames} mixed-body submission snapshots match the pinned vanilla client")
 
 
 if __name__ == "__main__":

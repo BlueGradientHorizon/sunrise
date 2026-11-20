@@ -750,20 +750,23 @@ impl Game<'_> {
             m.head_pitch = pitch;
         }
     }
-    /// `LevelExtractor`'s skip of the camera entity: the player's own body
-    /// is drawn unless the camera is in first person, or while it sleeps.
+    /// `LevelExtractor` submits the local player only when it holds the camera, and
+    /// skips the first-person body unless it is sleeping. Studio freecam draws it too.
     pub(super) fn own_body_in_view(&self) -> bool {
-        !self.camera_type.is_first_person() || self.sleeping.is_some() || self.studio.flying()
+        self.studio.flying()
+            || (self.controls_camera()
+                && (!self.camera_type.is_first_person() || self.sleeping.is_some()))
     }
     /// Whether the player's own model shows in the world view (its body or,
     /// while invisible, only its armour and held items).
     pub(super) fn player_model_shown(&self) -> bool {
         (self.own_body_in_view()
-            || shadow_pass_takes_own_model(
-                self.occlusion.shadow_casters.1,
-                self.pack_ids.is_some(),
-                self.spectator(),
-            ))
+            || (self.controls_camera()
+                && shadow_pass_takes_own_model(
+                    self.occlusion.shadow_casters.1,
+                    self.pack_ids.is_some(),
+                    self.spectator(),
+                )))
             && self
                 .player
                 .as_ref()

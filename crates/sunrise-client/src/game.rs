@@ -1857,7 +1857,7 @@ struct Game<'a> {
     gpu_culling_auto: sunrise_client::autotune::GpuCullingAuto,
     /// Dynamic Resolution: the scale it has the world at (`frame_autotune`).
     dynamic_resolution: sunrise_client::dynamic_resolution::DynamicResolution,
-    /// The mobs `mob_geometry` drew last frame (`lastEntityRenderStateCount`).
+    /// The mobs `mob_run_geometry` drew last frame (`lastEntityRenderStateCount`).
     rendered_mobs: std::cell::Cell<usize>,
     /// Whether a native mod requested background blur for this frame (`apply_screen_blur`).
     screen_blur_requested: std::cell::Cell<bool>,
@@ -6305,7 +6305,6 @@ impl Game<'_> {
         self.mark_entity(out.len(), "minecraft:item");
         self.pickup_item_geometry(camera, alpha, out);
         self.mark_motion(out.len(), 0);
-        self.mark_entity(out.len(), "minecraft:arrow");
         self.pickup_arrow_geometry(camera, alpha, out);
         self.mark_entity(out.len(), "minecraft:trident");
         self.pickup_trident_geometry(camera, alpha, out);
@@ -6317,7 +6316,6 @@ impl Game<'_> {
         });
         let frame = self.orb_frame();
         self.orb_geometry(camera, &frame, taken, None, out);
-        self.mark_entity(out.len(), "minecraft:elder_guardian");
         self.elder_apparition_geometry(alpha, out);
         if self.mod_clear_particles.get() {
             self.apply_mod_particle_clear();
