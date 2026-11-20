@@ -241,6 +241,8 @@ pub(super) fn guest(
         writeln!(out, "impl {} for {proxy} {{", trait_path(owner)).unwrap();
         out.push_str(match owner {
             "Host" => "fn backend(&self) -> Option<crate::BackendRef<'_>> { Some(crate::BackendRef::of(self)) }\nfn capability_providers(&self) -> &'static dyn crate::CapabilityProviders { &Guest }\n",
+            // The service over the host's own tables: its reads are the `BlockStatesBackend` imports.
+            "LevelHost" => "fn block_states(&self) -> crate::BlockStates<'_> { crate::BlockStates::of(self) }\n",
             "ServerHost" => "fn backend_mut(&mut self) -> Option<crate::BackendMutRef<'_>> { Some(crate::BackendMutRef::of(self)) }\n",
             "ClientHost" => "fn client_backend_mut(&mut self) -> Option<crate::ClientBackendMutRef<'_>> { Some(crate::ClientBackendMutRef::of(self)) }\n",
             _ => "",
@@ -292,6 +294,8 @@ pub(super) fn guest(
             trait_path(owner)
         )
         .unwrap();
+        // The proxy is the game's handler, not one the mod sends: it has nothing to mark.
+        out.push_str("fn __sunrise_marks(&self, _: crate::__private::Sealed) {}\n");
         for m in held_methods(methods)
             .into_iter()
             .filter(|m| m.owner == *owner)
@@ -660,6 +664,9 @@ fn reborrow(types: &Types<'_>, ty: &Ty, place: &str) -> Option<String> {
 /// Writes a borrowed record tree directly in ordinary Wire order, without cloning its data.
 pub(super) fn snapshot(types: &Types<'_>, ty: &Ty, place: &str) -> Option<String> {
     Some(match ty {
+        Ty::Named(d) if types.defs[*d].view.is_some() => {
+            format!("({place}).__wire_put_snapshot(w);")
+        }
         Ty::Named(d) if types.defs[*d].lifetimes != 0 => {
             let fields = types.defs[*d].borrowed.fields()?;
             fields
@@ -755,6 +762,23 @@ pub(super) fn writeback_fields(
         if let Ty::Named(d) = inner
             && frame_cases(types, *d).is_some()
         {
+            continue;
+        }
+        if let Ty::Option(optional) = &f.ty
+            && let Ty::Named(d) = &**optional
+            && let Some(view) = &types.defs[*d].view
+        {
+            if mutable && view.mutable {
+                own.push(Writeback {
+                    local,
+                    path: format!("{name}.{}", f.rust),
+                    owned: format!("Option<{}>", rust_ty(types, &view.snapshot, false)),
+                    reference: false,
+                    optional: true,
+                    view: true,
+                    append: false,
+                });
+            }
             continue;
         }
         if let Ty::Named(d) = inner
@@ -921,6 +945,21 @@ fn borrowed_prepared(
             let _ = send;
             continue;
         }
+        // An optional view owns its snapshot for the callback, then lends the view to the event.
+        if let Ty::Option(optional) = &f.ty
+            && let Ty::Named(view_def) = &**optional
+            && let Some(view) = &types.defs[*view_def].view
+        {
+            let pointee = rust_ty(types, &view.pointee, false);
+            writeln!(
+                read,
+                "let mut {local}_held: Option<{pointee}> = input.take()?; let mut {local} = {local}_held.as_mut().map({}::new);",
+                types.defs[*view_def].rust
+            )
+            .unwrap();
+            build.push(format!("{}: {local}", f.rust));
+            continue;
+        }
         // A slice of borrowed strings borrows a local list of them, read as owned strings.
         if let Ty::List(item, List::Slice) = &f.ty
             && matches!(**item, Ty::Str(Str::Borrowed))
@@ -954,6 +993,8 @@ fn borrowed_prepared(
     for leaf in writeback_fields(types, def, name, mutable)? {
         if leaf.append {
             write!(back, "out.put({name}.__wire_changes());").unwrap();
+        } else if leaf.optional && leaf.view {
+            write!(back, "out.put_opt({}.as_ref());", leaf.path).unwrap();
         } else if leaf.optional {
             write!(back, "out.put_opt({}.as_deref());", leaf.path).unwrap();
         } else if leaf.view {
@@ -1058,7 +1099,8 @@ pub(crate) fn mark_block(root: &str, name: &str) -> String {
 /// The `__sunrise_mark!` macro: one arm per export a mod can implement, each a no-op import
 /// named like the export, so a mod's import section lists exactly the hooks and Part methods it
 /// writes; `#[sunrise_mod]` and `#[sunrise_part]` call it for each method an impl overrides. A
-/// plain impl of any other handler trait calls it for nothing, so it carries no marks. The protocol module holds the three imports every guest links.
+/// plain impl of any other handler trait calls it for nothing: its trait's hidden `__sunrise_marks`
+/// method marks it (`handler_marks_module`). The protocol module holds the three imports every guest links.
 pub(super) fn mark_macro(names: &super::Names) -> String {
     let mut out = String::from(
         "/// Marks that the mod implements one export: an import of the game's table, called for nothing.\n#[doc(hidden)]\n#[cfg(not(test))]\n#[macro_export]\nmacro_rules! __sunrise_mark {\n",
@@ -1095,6 +1137,55 @@ pub(super) fn mark_macro(names: &super::Names) -> String {
     }
     // A method the API keeps off wasm crosses nowhere and has no name.
     out.push_str("($owner:literal $method:ident) => {};\n}\n");
+    out
+}
+
+/// The handler marks' module (`sunrise-mod-marks`): for each exported handler trait, one function
+/// importing every method of it as the game's table names them, which the trait's hidden
+/// `__sunrise_marks` method calls with its own `Self`. A mod that implements the trait (and so has
+/// the method in a vtable of its own module) imports them all: the game may call any method of a
+/// handler it stores, so a mod built before one of them changed is refused at load. A Part (or
+/// `Hooks`) marks only the methods a mod writes, through the subscription attribute, and has no
+/// function.
+///
+/// The function is generic so that a module exports and keeps it only for an implementor it
+/// holds: a non-generic public function is exported by every mod's module. A generic trait's
+/// function marks every instance it has, which over-marks a mod that holds one.
+pub(super) fn handler_marks_module(names: &super::Names) -> String {
+    use heck::ToSnakeCase;
+    let mut traits = std::collections::BTreeMap::<&str, Vec<String>>::new();
+    for (owner, _, name) in names.marked() {
+        if !super::SUBSCRIBED.iter().any(|(part, _)| *part == owner) {
+            let base = owner.split('<').next().unwrap();
+            let marks = traits.entry(base).or_default();
+            let mark = name.text();
+            if !marks.contains(&mark) {
+                marks.push(mark);
+            }
+        }
+    }
+    let mut out = String::new();
+    for (base, marks) in traits {
+        writeln!(
+            out,
+            "/// The imports of a mod that implements `{base}`.\npub fn {}<T: ?Sized>() {{\n#[cfg(target_arch = \"wasm32\")]\n{{\n// SAFETY: each import takes nothing and returns nothing, as the entry of that name in the game's\n// `sunrise` module does, and the loader refuses the module, naming the import, when the game's\n// table has no such entry.\n#[link(wasm_import_module = \"sunrise\")]\nunsafe extern \"C\" {{",
+            base.to_snake_case()
+        )
+        .unwrap();
+        for mark in &marks {
+            writeln!(
+                out,
+                "#[link_name = \"{mark}\"]\nsafe fn __sunrise_mark_{}();",
+                mod_call::digest(mark)
+            )
+            .unwrap();
+        }
+        out.push_str("}\n");
+        for mark in &marks {
+            writeln!(out, "__sunrise_mark_{}();", mod_call::digest(mark)).unwrap();
+        }
+        out.push_str("}\n}\n");
+    }
     out
 }
 

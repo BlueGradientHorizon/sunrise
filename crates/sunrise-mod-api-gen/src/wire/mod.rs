@@ -195,6 +195,26 @@ pub(super) const SUBSCRIBED: &[(&str, &str)] = &[
     ("EntityPart", "entity_subscribed"),
 ];
 
+/// The hidden provided method every exported handler trait declares: its body marks the trait's
+/// methods (`sunrise-mod-marks`' function for the trait), so a mod that holds a handler of the trait imports them.
+const MARKS_METHOD: &str = "__sunrise_marks";
+
+/// Refuses `owner`, an exported trait that is no Part (`handler`), when it does not declare
+/// [`MARKS_METHOD`]: a mod could then implement it with no import of its methods. A Part marks
+/// through its attribute instead.
+fn require_marks_method(owner: &str, handler: bool, item: &syn::ItemTrait) -> Result<(), String> {
+    let declared = item
+        .items
+        .iter()
+        .any(|member| matches!(member, TraitItem::Fn(f) if f.sig.ident == MARKS_METHOD));
+    if handler && !declared {
+        return Err(format!(
+            "handler trait {owner} has no `{MARKS_METHOD}` method: declare it as `EnergyHandler` does, so a mod that implements the trait imports its methods"
+        ));
+    }
+    Ok(())
+}
+
 /// One trait method as it crosses.
 #[derive(Debug)]
 pub(super) struct Method {
@@ -249,6 +269,8 @@ pub(super) struct Surface<'a> {
     pub(super) parts: Vec<(&'static str, String)>,
     /// The error types a gated method refuses a wrong-phase call with (`AccessRefusal` impls).
     pub(super) access_refusals: std::collections::BTreeSet<String>,
+    /// The areas a level view's tables also answer, as (file stem, backend trait): `#[table_backend]`.
+    pub(super) table_areas: Vec<(String, String)>,
 }
 
 /// The line on a method's doc that keeps it off wasm, and says why.
@@ -289,7 +311,8 @@ pub(super) fn surface_reading<'a>(
     included: &'a [(&'a str, &'a str)],
     mut missing: Option<&mut Vec<String>>,
 ) -> Result<Surface<'a>, String> {
-    let mut types = Types::new(crate::index::game(root, included))?;
+    let index = crate::index::game(root, included);
+    let mut types = Types::new(index)?;
     let api = types.index.module("mod_api", &[])?;
     let mut declared = trait_roles::declared(root)?;
     types
@@ -325,6 +348,9 @@ pub(super) fn surface_reading<'a>(
         let Item::Trait(item) = types.index.item(id).clone() else {
             return Err(format!("{owner} is not a trait"));
         };
+        let handler =
+            exports().contains(owner) && !SUBSCRIBED.iter().any(|(part, _)| part == owner);
+        require_marks_method(owner, handler, &item)?;
         // A generic trait's instance: its parameters as the owner's arguments.
         let mut subst = Vec::new();
         for (param, arg) in item.generics.type_params().zip(&args) {
@@ -465,6 +491,7 @@ pub(super) fn surface_reading<'a>(
         excused,
         parts,
         access_refusals: crate::host::refusal_errors(root)?,
+        table_areas: crate::host::table_areas(root)?,
     })
 }
 
@@ -861,14 +888,26 @@ fn hidden(attrs: &[syn::Attribute]) -> bool {
 pub struct Generated {
     pub wire: String,
     pub guest: String,
+    /// The handler traits' marks, the source of `sunrise-mod-marks`.
+    pub marks: String,
     /// Every source file read to derive them, for the build script to track.
     pub sources: Vec<std::path::PathBuf>,
 }
 
 pub fn generate(root: &Path, included: &[(&str, &str)]) -> Result<Generated, String> {
     let providers = crate::capability_providers::generate(root, included)?.0;
+    generate_with_providers(root, included, &providers)
+}
+
+/// [`generate`] with the provider enums a caller already generated for these `included`
+/// sources (`build.rs` does, to write them): they need no second parse of the crates.
+pub fn generate_with_providers(
+    root: &Path,
+    included: &[(&str, &str)],
+    providers: &str,
+) -> Result<Generated, String> {
     let mut with_providers = included.to_vec();
-    with_providers.push(("capability_providers_generated.rs", providers.as_str()));
+    with_providers.push(("capability_providers_generated.rs", providers));
     let mut surface = surface(root, &with_providers)?;
     coverage(&surface)?;
     let catalog = crate::Catalog::load(root)?;
@@ -895,10 +934,12 @@ pub fn generate(root: &Path, included: &[(&str, &str)]) -> Result<Generated, Str
     guest.push_str(&calls::dispatch(&surface.types, &surface.methods, &prepared, &names).0);
     guest.push_str(&calls::protocol_module());
     wire.push_str(&calls::mark_macro(&names));
+    let marks = calls::handler_marks_module(&names);
     let sources = surface.types.index.read.take();
     Ok(Generated {
         wire,
         guest,
+        marks,
         sources,
     })
 }
@@ -1538,5 +1579,27 @@ mod tests {
             .unwrap()
             .join()
             .unwrap();
+    }
+
+    /// A handler trait without the hidden marks method would let a mod implement it with no import
+    /// of its methods, so the generator refuses it.
+    #[test]
+    fn a_handler_trait_without_the_marks_method_is_refused_by_name() {
+        let with: syn::ItemTrait = syn::parse_str(
+            "trait A { fn x(&self); #[doc(hidden)] fn __sunrise_marks(&self, _: Sealed) {} }",
+        )
+        .unwrap();
+        let without: syn::ItemTrait = syn::parse_str("trait A { fn x(&self); }").unwrap();
+        assert_eq!(
+            super::require_marks_method("EnergyHandler", true, &with),
+            Ok(())
+        );
+        let refused = super::require_marks_method("EnergyHandler", true, &without).unwrap_err();
+        assert!(refused.contains("EnergyHandler"), "{refused}");
+        // A Part marks what a mod writes through its attribute, and has no such method.
+        assert_eq!(
+            super::require_marks_method("BlockPart", false, &without),
+            Ok(())
+        );
     }
 }

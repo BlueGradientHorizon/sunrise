@@ -1,9 +1,10 @@
 //! Terrain-sheet native models: solid, cutout and cutout-mipped (ordinary culling and depth
 //! writes), and the translucent moving block (`RenderPipelines.TRANSLUCENT_BLOCK`: alpha cutout
 //! 0.1, `BlendFunction.TRANSLUCENT`, `DepthStencilState.DEFAULT`).
-/// The sampler of vanilla's moving-block setup (`RenderTypes.createMovingBlockSetup`): clamped,
+/// The sampler of vanilla's moving-block setup (`RenderTypes.createMovingBlockSetup`, which
+/// `SOLID_MOVING_BLOCK`, `CUTOUT_MOVING_BLOCK` and `TRANSLUCENT_MOVING_BLOCK` all bind): clamped,
 /// linear minification, nearest magnification, mipmapped.
-pub(super) const TRANSLUCENT_SAMPLER: wgpu::SamplerDescriptor<'static> = wgpu::SamplerDescriptor {
+pub(super) const MOVING_BLOCK_SAMPLER: wgpu::SamplerDescriptor<'static> = wgpu::SamplerDescriptor {
     label: Some("Moving block (linear min, nearest mag, mipmapped)"),
     min_filter: wgpu::FilterMode::Linear,
     ..super::fluid::SAMPLER

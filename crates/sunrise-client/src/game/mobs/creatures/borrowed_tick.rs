@@ -166,6 +166,8 @@ impl Game<'_> {
         let mut resume_from = 0;
         let mut resume_credit_expiring = false;
         let mut resume_was_on_fire = false;
+        // A mob resuming after `living_breathe`: what it paused with and the answer to apply.
+        let mut resume_air = None;
         let mut resume_sampled = None;
         let mut resume_guest = None;
         // The slot of the mob whose own Pre was just told (a type a mod named): it resumes there
@@ -176,6 +178,7 @@ impl Game<'_> {
         let mut gone_rows = false;
         loop {
             let mut pause = None;
+            let mut air_answer = None;
             let mut retry_rider = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
@@ -532,16 +535,29 @@ impl Game<'_> {
                     let run_tick = || {
                         if resuming {
                             resuming = false;
-                            sunrise_client::mobs::ai::TickProgress::Complete(
-                                sunrise_client::mobs::riders::resume_after_consumption(
+                            if let Some((air, known_speed, breath)) = resume_air.take() {
+                                sunrise_client::mobs::riders::resume_after_breathing(
                                     &mut mobs,
                                     i,
                                     &w,
                                     &mut level,
-                                    resume_was_on_fire,
+                                    air,
+                                    known_speed,
+                                    breath,
                                     &mut events,
-                                ),
-                            )
+                                )
+                            } else {
+                                sunrise_client::mobs::ai::TickProgress::Complete(
+                                    sunrise_client::mobs::riders::resume_after_consumption(
+                                        &mut mobs,
+                                        i,
+                                        &w,
+                                        &mut level,
+                                        resume_was_on_fire,
+                                        &mut events,
+                                    ),
+                                )
+                            }
                         } else {
                             sunrise_client::mobs::riders::tick_until_consumption(
                                 &mut mobs,
@@ -582,10 +598,7 @@ impl Game<'_> {
                         };
                     let kept = match progress {
                         sunrise_client::mobs::ai::TickProgress::Complete(kept) => kept,
-                        sunrise_client::mobs::ai::TickProgress::Consumption {
-                            decision,
-                            was_on_fire,
-                        } => {
+                        sunrise_client::mobs::ai::TickProgress::Paused(paused) => {
                             // Return every player loan before ending the world borrow.
                             if seen_guest.is_none() {
                                 base.player = w.player;
@@ -596,10 +609,9 @@ impl Game<'_> {
                             }
                             resume_from = from;
                             resume_credit_expiring = credit_expiring;
-                            resume_was_on_fire = was_on_fire;
                             resume_sampled = sampled;
                             resume_guest = seen_guest;
-                            pause = Some(decision);
+                            pause = Some(paused);
                             sunrise_threads::work::clear_work();
                             break;
                         }
@@ -791,8 +803,15 @@ impl Game<'_> {
                 }
                 if let Some(id) = retry_rider {
                     self.dismount_mob(id);
-                } else if let Some(decision) = pause.as_ref() {
-                    self.apply_fox_consumption(decision);
+                } else if let Some(paused) = pause.as_ref() {
+                    match paused {
+                        sunrise_client::mobs::ai::Pause::Consumption { decision, .. } => {
+                            self.apply_fox_consumption(decision);
+                        }
+                        sunrise_client::mobs::ai::Pause::Breathing { air, .. } => {
+                            air_answer = self.ask_mob_breath(air);
+                        }
+                    }
                 }
                 if let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);
@@ -881,6 +900,15 @@ impl Game<'_> {
             }
             lent = sunrise_client::health::LentLevel::take(&mut self.world);
             resuming = pause.is_some();
+            match pause {
+                Some(sunrise_client::mobs::ai::Pause::Consumption { was_on_fire, .. }) => {
+                    resume_was_on_fire = was_on_fire;
+                }
+                Some(sunrise_client::mobs::ai::Pause::Breathing { air, known_speed }) => {
+                    resume_air = Some((air, known_speed, air_answer));
+                }
+                None => {}
+            }
             retried_rider = retry_rider;
         }
         laps.lap("creature_loop");
