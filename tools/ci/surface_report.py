@@ -45,6 +45,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NOTES = "crates/sunrise-mod-vocab/changes"
+SCHEMA_RESET = "tools/ci/surface-schema-3-reset.json"
 # GitHub refuses a step summary over 1 MiB; the full report stays in the step log.
 # Counted in bytes of UTF-8, frame included.
 SUMMARY_LIMIT = 200_000
@@ -175,6 +176,7 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
     if head_export.returncode != 0 and own_head_tool is None:
         return 1, f"The surface export of this tree failed: {last_line(head_export.stderr)}.\n"
     note = ""
+    base_from_own = False
     for name, tree, done, own_tool in (("head", head, head_export, own_head_tool),
                                        ("base", base, exports["base"].result(), own_base_tool)):
         if done.returncode == 0:
@@ -190,6 +192,38 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
         if own.returncode != 0:
             return 1, f"No surface report: {why}, nor can the {name}'s own ({last_line(own.stderr)}).\n"
         note += f"The {name} was exported by its own sunrise-stage: {why}.\n"
+        base_from_own |= name == "base"
+    # This is used only at the native-only schema boundary. A normal comparison does not read the audit.
+    if base_from_own and not with_internals and landed is None and (head / SCHEMA_RESET).is_file():
+        reset = json.loads((head / SCHEMA_RESET).read_text())
+        old = json.loads((work / "base.json").read_text())
+        new = json.loads((work / "head.json").read_text())
+        if (old.get("schema"), new.get("schema")) == (2, 3):
+            audit = reset["diff"]
+            if old["hash"] != audit["old"]:
+                return 1, note + f"The schema-2 base {old['hash']} is not the audited schema-reset base.\n"
+            missing = [change["id"] for change in audit["changes"]
+                       if change["class"] == "breaking" and not change.get("notes")]
+            if missing:
+                return 1, note + f"The schema-reset audit lacks change notes for {', '.join(missing)}.\n"
+            # Audit only the transition itself. The rest of the rollup still goes through the real gate.
+            checkpoint = work / "schema-reset"
+            checkpoint.mkdir()
+            try:
+                unpack(reset["checkpoint"], checkpoint)
+                done = export("base", tool, checkpoint)
+                if done.returncode != 0:
+                    done = export("base", base_tool(reset["checkpoint"], work), checkpoint)
+            except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+                return 1, note + f"Could not export the schema-reset checkpoint: {error}.\n"
+            if done.returncode != 0:
+                return 1, note + f"Could not export the schema-reset checkpoint: {last_line(done.stderr)}.\n"
+            actual = json.loads((work / "base.json").read_text())
+            if (actual["schema"], actual["hash"]) != (3, audit["new"]):
+                return 1, note + "The schema-reset checkpoint does not reproduce the audited schema-3 surface.\n"
+            note += (f"Audited schema 2 → 3 reset: {audit['old']} → {audit['new']} ({SCHEMA_RESET}).\n"
+                     "Checking all subsequent changes against that checkpoint.\n")
+            base = checkpoint
     code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals, notes=notes, landed=landed,
                          covered=covered)
     return code, note + text
