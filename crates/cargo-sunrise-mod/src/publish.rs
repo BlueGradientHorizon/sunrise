@@ -203,6 +203,7 @@ fn draft(
         },
         tags: o.tags.clone(),
         screenshots: Vec::new(),
+        library: false,
         key: o.key.clone(),
         versions: vec![version],
     }

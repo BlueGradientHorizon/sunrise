@@ -81,6 +81,10 @@ pub struct Entry {
     /// At most 8, in order: `screenshots/<id>/<name>.png|.jpg` in the registry repository.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub screenshots: Vec<String>,
+    /// An API-only or library mod with nothing to show: exempt from the screenshot a new project
+    /// or a new version needs ([`review`]). Only for `mod` and `native-mod`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub library: bool,
     /// The author's minisign public key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
@@ -243,6 +247,12 @@ impl Entry {
                 "{id}: {} screenshots, at most {}",
                 self.screenshots.len(),
                 rules::MAX_SCREENSHOTS
+            ));
+        }
+        if self.library && !matches!(self.kind, Kind::Mod | Kind::NativeMod) {
+            errors.push(format!(
+                "{id}: library = true is only for a mod or native-mod, not a {}",
+                self.kind.name()
             ));
         }
         errors
@@ -979,6 +989,16 @@ pub fn review_with_revoked(
         if let Err(error) = check_kind(&old.id, &old.kind, &new.kind) {
             r.errors.push(error);
         }
+        let adds_version = new
+            .versions
+            .iter()
+            .any(|w| old.versions.iter().all(|v| v.version != w.version));
+        if adds_version && new.screenshots.is_empty() && !new.library {
+            r.errors.push(format!(
+                "{}: a new version needs at least one screenshot: add `screenshots/{}/<name>.png|.jpg` and list it in `screenshots` (or set `library = true` for an API-only mod)",
+                old.id, old.id
+            ));
+        }
         for v in &old.versions {
             let taken_down = || {
                 revoked
@@ -1054,6 +1074,12 @@ pub fn review_with_revoked(
             ));
         }
         if !base.iter().any(|e| e.id == new.id) {
+            if new.screenshots.is_empty() && !new.library {
+                r.errors.push(format!(
+                    "{}: a new project needs at least one screenshot: add `screenshots/{}/<name>.png|.jpg` and list it in `screenshots` (or set `library = true` for an API-only mod)",
+                    new.id, new.id
+                ));
+            }
             r.notes.push(format!(
                 "{}: a new {} by {}{}",
                 new.id,
