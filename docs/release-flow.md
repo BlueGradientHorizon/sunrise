@@ -265,7 +265,10 @@ The musl archive is an optional manual download for musl-based Linux desktops; s
 standard glibc archive. Nightlies and snapshots publish without waiting for the musl build. The release notes
 say that the archive follows separately. After publication, `musl-attach` signs and verifies `SHA256SUMS-musl`
 with `SHA256SUMS-musl.sig` for the channel and `SHA256SUMS-musl.v2.sig` for its exact build. It adds those files
-and then the archive without replacing the launcher's `SHA256SUMS` or its signatures. Build, signing or upload
+and then the archive without replacing the launcher's `SHA256SUMS` or its signatures. It writes to the release
+`publish` made, addressed by its id, and only while its tag still names the build's commit. GitHub uploads each file
+on its own, so a failed upload can leave the first files attached: a rerun keeps a file already there with the same
+bytes and stops at one with other bytes, replacing nothing. Build, signing or upload
 failures file a `bug` issue without editing the published release or replacing assets. Dry runs build, sign with a
 throwaway key and verify without publishing assets or filing issues.
 

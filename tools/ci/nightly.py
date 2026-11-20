@@ -12,6 +12,11 @@
                                    newest and any a published nightly points to (Ludovic, 2026-10-27)
     nightly.py keep-source <sha> <date>  tags the nightly's commit nightly-source/<date>-<short>, for good
     nightly.py report-musl-failure <kind> <step>  files a bug for the failed manual-download job, deduped by step
+    nightly.py release-identity <tag> <sha> <sums>  the id of the release publish just made: its tag names <sha> and
+                                   its SHA256SUMS holds the bytes of <sums>
+    nightly.py attach <id> <tag> <sha> <file>...  uploads the files, in order, to release <id> while it is still <tag>
+                                   at <sha>; a rerun keeps a file already there with the same bytes and refuses one
+                                   with other bytes
     nightly.py sdk-archives        the assets the SDK's packing legs make (tools/prebuilt_game.py gather), one per line
     nightly.py sdk-assets          every asset a complete sdk-<sha> release holds: those, sdk.json and the signed sums
     nightly.py sdk-index <sha> <out>     writes sdk-<sha>'s sdk.json to <out>, checked against its SHA256SUMS
@@ -45,6 +50,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -561,6 +568,84 @@ def report_musl_failure(kind: str, step: str) -> None:
     gh("issue", "create", "--repo", repo, "--label", "bug", "--title", title, "--body", body)
 
 
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def download_asset(repo: str, asset_id: int) -> bytes:
+    return subprocess.run(["gh", "api", "-H", "Accept: application/octet-stream",
+                           f"repos/{repo}/releases/assets/{asset_id}"], check=True, capture_output=True).stdout
+
+
+def asset_sha256(repo: str, asset: dict) -> str:
+    """GitHub's own digest of an uploaded asset, or the hash of its downloaded bytes where it gives none."""
+    digest = asset.get("digest") or ""
+    if digest.startswith("sha256:"):
+        return digest.removeprefix("sha256:")
+    return hashlib.sha256(download_asset(repo, asset["id"])).hexdigest()
+
+
+def bound_release(repo: str, release_id: str, tag: str, sha: str) -> dict:
+    """Release `release_id`, refused unless it is still `tag` and that tag still names `sha`. The check holds when it
+    is made, not after: writes go to the release by id, so a tag moved later can not redirect them."""
+    release = json.loads(gh("api", f"repos/{repo}/releases/{release_id}"))
+    commit = gh("api", f"repos/{repo}/git/ref/tags/{tag}", "--jq", ".object.sha")
+    if release["tag_name"] != tag or commit != sha:
+        sys.exit(f"Release {release_id} is no longer {tag} at {sha} (it is {release['tag_name']}, "
+                 f"and {tag} names {commit or 'nothing'}); nothing was attached")
+    return release
+
+
+def release_identity(tag: str, sha: str, sums: Path) -> None:
+    repo = os.environ["GITHUB_REPOSITORY"]
+    release_id = str(json.loads(gh("api", f"repos/{repo}/releases/tags/{tag}"))["id"])
+    release = bound_release(repo, release_id, tag, sha)
+    published = [asset for asset in release["assets"] if asset["name"] == sums.name]
+    if not published or asset_sha256(repo, published[0]) != file_sha256(sums):
+        sys.exit(f"Release {release_id} ({tag}) does not hold this run's {sums.name}")
+    output(id=release_id)
+
+
+def upload_asset(upload_url: str, path: Path) -> dict:
+    """One POST to the release's own upload address, which names the release by id."""
+    request = urllib.request.Request(f"{upload_url}?name={urllib.parse.quote(path.name)}", data=path.read_bytes(),
+                                     method="POST", headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                                                             "Accept": "application/vnd.github+json",
+                                                             "Content-Type": "application/octet-stream"})
+    with urllib.request.urlopen(request, timeout=600) as response:
+        return json.load(response)
+
+
+def attach(release_id: str, tag: str, sha: str, files: list[Path]) -> None:
+    """Uploads `files` in order. GitHub has no all-or-nothing upload of several assets, so a failure can leave the
+    first ones attached: a rerun keeps each already there with the same bytes, refuses one with other bytes without
+    replacing it, and deletes only an upload GitHub never completed, which nobody can download."""
+    repo = os.environ["GITHUB_REPOSITORY"]
+    release = bound_release(repo, release_id, tag, sha)
+    upload_url = release["upload_url"].split("{", 1)[0]
+    existing = {asset["name"]: asset for asset in release["assets"]}
+    for path in files:
+        asset = existing.get(path.name)
+        if asset and asset["state"] == "uploaded":
+            if asset_sha256(repo, asset) != file_sha256(path):
+                sys.exit(f"{path.name} is already on release {release_id} with other bytes; left as it is")
+            print(f"{path.name}: already attached with these bytes")
+            continue
+        if asset:
+            print(f"{path.name}: removing an upload that never completed ({asset['state']})")
+            gh("api", "--method", "DELETE", f"repos/{repo}/releases/assets/{asset['id']}")
+        uploaded = upload_asset(upload_url, path)
+        if uploaded["state"] != "uploaded" or uploaded["size"] != path.stat().st_size:
+            sys.exit(f"{path.name}: the upload ended {uploaded['state']} with {uploaded['size']} bytes")
+        print(f"{path.name}: attached")
+    # Read the release back by id: every file is there, complete, with these bytes.
+    final = {asset["name"]: asset for asset in bound_release(repo, release_id, tag, sha)["assets"]}
+    wrong = [path.name for path in files if path.name not in final or final[path.name]["state"] != "uploaded"
+             or asset_sha256(repo, final[path.name]) != file_sha256(path)]
+    if wrong:
+        sys.exit(f"Release {release_id} does not hold these bytes for: {', '.join(wrong)}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -586,6 +671,15 @@ def main() -> None:
     musl = sub.add_parser("report-musl-failure")
     musl.add_argument("kind", choices=["nightly", "snapshot"])
     musl.add_argument("step", choices=["build", "sign", "verify", "attach", "sign or attach"])
+    identity = sub.add_parser("release-identity")
+    identity.add_argument("tag")
+    identity.add_argument("sha")
+    identity.add_argument("sums", type=Path)
+    attaching = sub.add_parser("attach")
+    attaching.add_argument("release_id")
+    attaching.add_argument("tag")
+    attaching.add_argument("sha")
+    attaching.add_argument("files", type=Path, nargs="+")
     args = ap.parse_args()
     if args.cmd == "pick":
         if args.kind == "snapshot":
@@ -614,6 +708,10 @@ def main() -> None:
         keep_source(args.sha, args.date)
     elif args.cmd == "report-musl-failure":
         report_musl_failure(args.kind, args.step)
+    elif args.cmd == "release-identity":
+        release_identity(args.tag, args.sha, args.sums)
+    elif args.cmd == "attach":
+        attach(args.release_id, args.tag, args.sha, args.files)
     else:
         prune(args.days)
 

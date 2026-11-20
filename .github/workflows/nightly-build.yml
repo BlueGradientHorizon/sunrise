@@ -454,14 +454,14 @@ jobs:
       - name: Record the release identity for the later musl attachment
         id: identity
         if: needs.pick.outputs.dry_run != 'true'
-        # A failed lookup must not fail publication. Without the id, the attach job refuses to upload.
+        # The release just made, found by its tag and kept only if it holds this run's SHA256SUMS. A failed lookup
+        # must not fail publication: without the id, the attach job refuses to upload.
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.pick.outputs.tag }}
-        run: |
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .id)
-          echo "id=$id" >> "$GITHUB_OUTPUT"
+          SHA: ${{ needs.pick.outputs.sha }}
+        run: python3 tools/ci/nightly.py release-identity "$TAG" "$SHA" dist/SHA256SUMS
       - name: Dry run, the nightly that would be published
         if: needs.pick.outputs.dry_run == 'true'
         run: |
@@ -520,15 +520,11 @@ jobs:
             ls -l "${sums[@]}" "musl/$ARCHIVE"
             exit 0
           fi
-          # A rerun of a failed job must not upload to a newer Nightly now using the same tag.
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .id)
-          commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)
-          [[ -n "$RELEASE_ID" && "$id" == "$RELEASE_ID" && "$commit" == "$SHA" ]] || {
-            echo "::error::The published release no longer matches this run ($TAG at $SHA)"; exit 1;
-          }
-          # No --clobber, and publish the archive last so a player can verify it as soon as it appears.
-          gh release upload "$TAG" "${sums[@]}"
-          gh release upload "$TAG" "musl/$ARCHIVE"
+          [[ -n "$RELEASE_ID" ]] || { echo "::error::publish recorded no release id; nothing was attached"; exit 1; }
+          # Every write goes to the release publish made, by id, never through the tag, which a newer Nightly can
+          # take over. The archive goes last, so a player can verify it as soon as it appears; a rerun keeps the
+          # files already there with the same bytes and refuses any with other bytes.
+          python3 tools/ci/nightly.py attach "$RELEASE_ID" "$TAG" "$SHA" "${sums[@]}" "musl/$ARCHIVE"
 
   musl-failure:
     needs: [pick, musl-build, musl-attach]

@@ -222,7 +222,7 @@ class MuslAttachmentTests(unittest.TestCase):
                 (root / "tools").symlink_to(script_root / "tools", target_is_directory=True)
                 env = dict(os.environ, KIND=kind, ALSO_FOR=f"{kind}-2026-11-04-0123456", TAG=tag, ARCHIVE=archive,
                            DRY_RUN="true", EPHEMERAL="yes", GITHUB_REPOSITORY="sunrise-org/sunrise",
-                           SHA="0123456789abcdef", RELEASE_ID="123", CURRENT_ID="123")
+                           SHA="0123456789abcdef", RELEASE_ID="123")
 
                 def shell(script, **overrides):
                     return subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script], cwd=root,
@@ -239,27 +239,19 @@ class MuslAttachmentTests(unittest.TestCase):
                 self.assertTrue((root / "musl/SHA256SUMS-musl.sig").stat().st_size)
                 self.assertTrue((root / "musl/SHA256SUMS-musl.v2.sig").stat().st_size)
                 self.assertFalse((root / "musl/SHA256SUMS").exists())
-                stub = '''
-gh() {
-  case "$1:$2" in
-    api:*/releases/tags/*) echo "$CURRENT_ID" ;;
-    api:*/git/ref/tags/*) echo "$SHA" ;;
-    release:upload) printf '%s\\n' "$@" >> uploaded ;;
-    *) return 9 ;;
-  esac
-}
-'''
+                # The attachment itself (nightly.attach) is tested below; here, what the step hands it.
+                stub = 'python3() { printf "%s\\n" "$@" >> uploaded; }\n'
                 dry = shell(stub + upload)
                 self.assertEqual(dry.returncode, 0, dry.stderr)
                 self.assertIn(f"Would append to {tag}", dry.stdout)
-                stale = shell(stub + upload, DRY_RUN="false", CURRENT_ID="124")
-                self.assertNotEqual(stale.returncode, 0, stale.stdout)
+                unknown = shell(stub + upload, DRY_RUN="false", RELEASE_ID="")
+                self.assertNotEqual(unknown.returncode, 0, unknown.stdout)
                 self.assertFalse((root / "uploaded").exists())
                 result = shell(stub + upload, DRY_RUN="false")
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual((root / "uploaded").read_text().splitlines(), [
-                    "release", "upload", tag, "musl/SHA256SUMS-musl", "musl/SHA256SUMS-musl.sig",
-                    "musl/SHA256SUMS-musl.v2.sig", "release", "upload", tag, f"musl/{archive}",
+                    "tools/ci/nightly.py", "attach", "123", tag, env["SHA"], "musl/SHA256SUMS-musl",
+                    "musl/SHA256SUMS-musl.sig", "musl/SHA256SUMS-musl.v2.sig", f"musl/{archive}",
                 ])
 
     def test_musl_failures_file_one_bug_per_step_without_release_writes(self):
@@ -292,6 +284,120 @@ gh() {
                 nightly.report_musl_failure("nightly", "attach")
             query.assert_not_called()
             self.assertEqual(gh.call_count, 3)
+
+
+class FakeRelease:
+    """Release 7 of the GitHub API, as `gh api` and the upload address see it."""
+
+    def __init__(self, tag="nightly", commit="c" * 40, assets=()):
+        self.tag, self.commit, self.assets, self.calls, self.fail_after = tag, commit, list(assets), [], None
+
+    def gh(self, *args, check=True):
+        self.calls.append(args)
+        if args[:2] == ("api", "repos/o/r/releases/7") or args[:2] == ("api", "repos/o/r/releases/tags/nightly"):
+            return json.dumps({"id": 7, "tag_name": self.tag, "assets": self.assets,
+                               "upload_url": "https://uploads.github.com/repos/o/r/releases/7/assets{?name,label}"})
+        if args[1].startswith("repos/o/r/git/ref/tags/"):
+            return self.commit
+        if args[:3] == ("api", "--method", "DELETE"):
+            self.assets = [a for a in self.assets if f"/assets/{a['id']}" not in args[3]]
+            return ""
+        raise AssertionError(args)
+
+    def upload(self, url, path):
+        self.upload_url = url
+        if self.fail_after is not None and len(self.uploads()) >= self.fail_after:
+            raise OSError("connection reset")
+        self.calls.append(("upload", path.name))
+        asset = {"id": 100 + len(self.assets), "name": path.name, "state": "uploaded", "size": path.stat().st_size,
+                 "digest": "sha256:" + nightly.file_sha256(path)}
+        self.assets.append(asset)
+        return asset
+
+    def uploads(self):
+        return [call[1] for call in self.calls if call[0] == "upload"]
+
+
+class AttachTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.files = []
+        for name in ("SHA256SUMS-musl", "SHA256SUMS-musl.sig", "sunrise-linux-musl-x86_64.tar.gz"):
+            (Path(folder.name) / name).write_bytes(name.encode())
+            self.files.append(Path(folder.name) / name)
+        env = mock.patch.dict(os.environ, GITHUB_REPOSITORY="o/r", GH_TOKEN="t")
+        env.start()
+        self.addCleanup(env.stop)
+
+    def attach(self, release):
+        with mock.patch.object(nightly, "gh", release.gh), mock.patch.object(nightly, "upload_asset", release.upload):
+            nightly.attach("7", "nightly", "c" * 40, self.files)
+
+    def asset(self, path, data=None, state="uploaded"):
+        data = path.read_bytes() if data is None else data
+        return {"id": 50, "name": path.name, "state": state, "size": len(data),
+                "digest": "sha256:" + nightly.hashlib.sha256(data).hexdigest()}
+
+    def test_uploads_in_order_to_the_release_by_id(self):
+        release = FakeRelease()
+        self.attach(release)
+        self.assertEqual(release.uploads(), [path.name for path in self.files])
+        self.assertEqual(release.upload_url, "https://uploads.github.com/repos/o/r/releases/7/assets")
+
+    def test_a_release_whose_tag_moved_gets_nothing(self):
+        for release in (FakeRelease(commit="d" * 40), FakeRelease(tag="nightly-2026-11-19")):
+            with self.subTest(tag=release.tag), self.assertRaises(SystemExit):
+                self.attach(release)
+            self.assertEqual(release.uploads(), [])
+
+    def test_a_rerun_after_a_failed_upload_resumes_with_the_rest(self):
+        release = FakeRelease()
+        release.fail_after = 1
+        with self.assertRaises(OSError):
+            self.attach(release)
+        self.assertEqual(release.uploads(), ["SHA256SUMS-musl"])
+        release.fail_after = None
+        self.attach(release)
+        self.assertEqual(release.uploads(), [path.name for path in self.files])
+
+    def test_a_file_already_there_with_other_bytes_stops_it_and_stays(self):
+        conflicting = self.asset(self.files[1], b"other")
+        release = FakeRelease(assets=[self.asset(self.files[0]), conflicting])
+        with self.assertRaises(SystemExit) as stopped:
+            self.attach(release)
+        self.assertIn("SHA256SUMS-musl.sig is already on release 7 with other bytes", str(stopped.exception))
+        self.assertEqual(release.uploads(), [])
+        self.assertIn(conflicting, release.assets)
+        self.assertFalse([call for call in release.calls if "DELETE" in call])
+
+    def test_an_upload_github_never_completed_is_replaced(self):
+        release = FakeRelease(assets=[self.asset(self.files[0], b"part", state="starter")])
+        self.attach(release)
+        self.assertIn(("api", "--method", "DELETE", "repos/o/r/releases/assets/50"), release.calls)
+        self.assertEqual(release.uploads(), [path.name for path in self.files])
+
+    def test_an_asset_without_a_digest_is_compared_by_its_bytes(self):
+        same = dict(self.asset(self.files[0]), digest=None)
+        release = FakeRelease(assets=[same])
+        with mock.patch.object(nightly, "download_asset", return_value=self.files[0].read_bytes()) as download:
+            self.attach(release)
+        download.assert_called_with("o/r", 50)
+        self.assertEqual(release.uploads(), [path.name for path in self.files[1:]])
+
+    def test_the_identity_is_the_release_holding_this_runs_sums(self):
+        sums = self.files[0].with_name("SHA256SUMS")
+        sums.write_bytes(b"sums")
+        for data, found in ((b"sums", True), (b"older sums", False)):
+            release = FakeRelease(assets=[self.asset(sums, data)])
+            with self.subTest(found=found), mock.patch.object(nightly, "gh", release.gh), \
+                    mock.patch.object(nightly, "output") as output:
+                if found:
+                    nightly.release_identity("nightly", "c" * 40, sums)
+                    output.assert_called_once_with(id="7")
+                else:
+                    self.assertRaises(SystemExit, nightly.release_identity, "nightly", "c" * 40, sums)
+                    output.assert_not_called()
 
 
 class FirstNightlyTests(unittest.TestCase):
