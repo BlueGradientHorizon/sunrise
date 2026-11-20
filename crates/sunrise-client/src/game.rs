@@ -662,6 +662,7 @@ mod hoglin_repeat_attack_tests;
 #[cfg(test)]
 #[path = "game/modding/hook_meddler_tests.rs"]
 mod hook_meddler_tests;
+mod host;
 #[path = "game/runtime/hot_paths/mod.rs"]
 mod hot_paths;
 #[path = "game/interface/hud_editor.rs"]
@@ -1288,6 +1289,7 @@ mod native_hit_effects;
 #[cfg(test)]
 #[path = "game/modding/native_hit_sounds_tests.rs"]
 mod native_hit_sounds_tests;
+mod native_hooks;
 #[path = "game/modding/native_hotbar_slot.rs"]
 mod native_hotbar_slot;
 #[cfg(test)]
@@ -2313,8 +2315,6 @@ mod xp_repair_ratio_tests;
 mod zombie_reinforcements;
 #[path = "game/mobs/zombie_villagers.rs"]
 mod zombie_villagers;
-mod host;
-mod native_hooks;
 use event_loop::EventLoopCtl;
 use hand::interact_location;
 pub(crate) use hit::Hit;
