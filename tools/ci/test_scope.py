@@ -95,7 +95,6 @@ READERS = {
         "packaging/executable_link.rs",
     ],
     "sunrise-shader-api": ["docs/api/shaders-reference.md", "docs/api/shaders-reference-0.2.md"],
-    "sunrise-world": ["crates/sunrise-core", "Cargo.lock"],
     # Commands (tokens, icons, package), not tests: listed so the scan finds nothing unexplained.
     "xtask": [
         "crates/sunrise-client/src", "crates/sunrise-mod-vocab/src/hooks", "crates/sunrise-perf/web",
