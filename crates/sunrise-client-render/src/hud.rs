@@ -6424,19 +6424,19 @@ texture=wide",
         );
     }
 
-    /// The scissor of a geometry's own bounds takes every device pixel they touch: bounds
-    /// reaching x = 10.75 take the pixel centred at 10.5, and the min edges round down. An
-    /// explicit clip keeps its whole pixels: one ending at x = 10.25 gains no column.
+    /// At GUI scale 2, geometry ending at GUI x = 5.375 reaches device x = 10.75 and takes
+    /// the pixel centred at 10.5. An explicit clip ending at GUI x = 5.125 reaches device
+    /// x = 10.25 and gains no column.
     #[test]
     fn a_depth_scissor_over_geometry_rounds_outward_and_an_explicit_clip_does_not() {
         let quad = |batch: &mut HudBatch| {
             let start = batch.vertices.len();
             batch.quad_3d(
                 [
-                    [1.25, 2.0, 0.0],
-                    [1.25, 6.5, 0.0],
-                    [10.75, 6.5, 1.0],
-                    [10.75, 2.0, 1.0],
+                    [0.625, 1.0, 0.0],
+                    [0.625, 3.25, 0.0],
+                    [5.375, 3.25, 1.0],
+                    [5.375, 1.0, 1.0],
                 ],
                 [[0.0; 2]; 4],
                 u32::MAX,
@@ -6444,14 +6444,14 @@ texture=wide",
             start
         };
         let mut batch = HudBatch::scratch([640, 480]);
-        batch.scale = 1.0;
+        batch.scale = 2.0;
         let start = quad(&mut batch);
-        batch.depth_over(start, [1.25, 2.0], [10.75, 6.5]);
+        batch.depth_over(start, [0.625, 1.0], [5.375, 3.25]);
         assert_eq!(batch.runs(), vec![(0..6, Blend::Depth([1, 2, 10, 5]))]);
         let mut batch = HudBatch::scratch([640, 480]);
-        batch.scale = 1.0;
+        batch.scale = 2.0;
         let start = quad(&mut batch);
-        batch.depth_since(start, [1.25, 2.0, 10.25, 6.5]);
+        batch.depth_since(start, [0.625, 1.0, 5.125, 3.25]);
         assert_eq!(batch.runs(), vec![(0..6, Blend::Depth([1, 2, 9, 4]))]);
     }
 
