@@ -40,7 +40,11 @@ id = "pose"
 target = "sunrise_client_lib::mobs::anim::setup"
 kind = "RETURN"
 helper = "src/mixins/pose.rs"
-bindings = [{ name = "value", ty = "()", value = "$value" }]
+bindings = [
+    { name = "value", ty = "()", value = "$value" },
+    { name = "m", ty = "&Mob", value = "m" },
+    { name = "p", ty = "&mut Poses", value = "&mut *p" },
+]
 
 [[native.mixin]]
 id = "body_yaw"
@@ -50,4 +54,7 @@ selector = "anim::body_rot(m,alpha)"
 require = 1
 ordinal = 0
 helper = "src/mixins/body_yaw.rs"
-bindings = [{ name = "value", ty = "f32", value = "$value" }]
+bindings = [
+    { name = "value", ty = "f32", value = "$value" },
+    { name = "m", ty = "&Mob", value = "m" },
+]
