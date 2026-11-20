@@ -312,9 +312,12 @@ pub(super) fn emit<'a>(
                 }
                 Contract::Replace => format!(" -> {}", reference.elem.to_token_stream()),
                 Contract::Collect if isolated_collect => {
-                    let answer = answered_sink(&reference.elem).ok_or_else(|| {
-                        format!("{name}: output must be &mut dyn FnMut(Answered<T>)")
-                    })?;
+                    let answer = answered_sink(&reference.elem)
+                        .filter(|(_, output)| matches!(output, syn::ReturnType::Default))
+                        .map(|(answer, _)| answer)
+                        .ok_or_else(|| {
+                            format!("{name}: output must be &mut dyn FnMut(Answered<T>)")
+                        })?;
                     format!(" -> Option<{}>", answer.to_token_stream())
                 }
                 Contract::Collect
@@ -469,6 +472,7 @@ pub(super) fn emit<'a>(
         // Surface export reads the input tree's types, including older trees.
         let declaration = match (name, output.as_ref()) {
             ("blocks" | "items", Some((_, Type::Reference(output)))) => answered_sink(&output.elem)
+                .map(|(entry, _)| entry)
                 .or_else(|| answered_batch(&output.elem))
                 .map(ToTokens::to_token_stream),
             _ => None,
@@ -2448,8 +2452,8 @@ fn answered_batch(ty: &Type) -> Option<&Type> {
     generic_of(generic_of(ty, "Vec")?, "Answered")
 }
 
-/// `T` of an engine-only `dyn FnMut(Answered<T>)` sink, if that is its type.
-fn answered_sink(ty: &Type) -> Option<&Type> {
+/// The payload and return type of an engine-only `dyn FnMut(Answered<T>)` sink.
+fn answered_sink(ty: &Type) -> Option<(&Type, &syn::ReturnType)> {
     let Type::TraitObject(object) = ty else {
         return None;
     };
@@ -2460,10 +2464,10 @@ fn answered_sink(ty: &Type) -> Option<&Type> {
     let syn::PathArguments::Parenthesized(args) = &segment.arguments else {
         return None;
     };
-    if args.inputs.len() != 1 || !matches!(args.output, syn::ReturnType::Default) {
+    if args.inputs.len() != 1 {
         return None;
     }
-    generic_of(args.inputs.first()?, "Answered")
+    Some((generic_of(args.inputs.first()?, "Answered")?, &args.output))
 }
 
 /// `T` of a `name<T>` type.
@@ -2885,12 +2889,15 @@ fn main() {{
                 Some("gather: an isolated collector cannot also write to extra")
             );
         }
-        assert_eq!(
-            emit_method("&self", "", "&mut Vec<Answered<u32>>")
-                .err()
-                .as_deref(),
-            Some("gather: output must be &mut dyn FnMut(Answered<T>)")
-        );
+        for invalid_sink in [
+            "&mut Vec<Answered<u32>>",
+            "&mut dyn FnMut(Answered<u32>) -> Result<(), DeclarationError>",
+        ] {
+            assert_eq!(
+                emit_method("&self", "", invalid_sink).err().as_deref(),
+                Some("gather: output must be &mut dyn FnMut(Answered<T>)")
+            );
+        }
         assert_eq!(
             emit_method("&mut self", "input: &u32,", sink)
                 .err()
