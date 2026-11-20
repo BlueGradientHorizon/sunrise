@@ -696,7 +696,7 @@ struct CreativeTabFile {
     items: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FluidFile {
     sprite: Option<String>,
@@ -4173,7 +4173,3 @@ mod context_shape_tests {
         assert!(check_block(&block).is_err());
     }
 }
-
-#[cfg(test)]
-#[path = "fluid_wire_tests.rs"]
-mod fluid_wire_tests;

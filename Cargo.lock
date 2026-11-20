@@ -4701,7 +4701,6 @@ dependencies = [
  "subtle",
  "sunrise-assets",
  "sunrise-core",
- "sunrise-mod-api-macros",
  "sunrise-mod-surface",
  "sunrise-mod-vocab",
  "sunrise-shader-api",

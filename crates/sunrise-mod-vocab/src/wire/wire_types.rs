@@ -341,16 +341,6 @@ impl Wire for crate::InstanceGroupRef {
         Self::from_parts(input.take()?, input.take()?).map_err(WireError::Invalid)
     }
 }
-impl Wire for crate::TicketController {
-    layout_fields!("0" => u32);
-    const MIN: usize = 4;
-    fn put(&self, out: &mut Writer) {
-        out.put(&self.slot());
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Self::from_slot(input.take()?).ok_or(WireError::Invalid("unknown ticket controller"))
-    }
-}
 
 impl Wire for crate::BlockUpdateFlags {
     layout_fields!("0" => u32);

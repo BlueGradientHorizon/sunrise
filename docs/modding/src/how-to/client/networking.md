@@ -5,6 +5,7 @@ Call `host.disconnect(reason)` through `ClientHost` to leave the joined server o
 ## Holding outgoing play packets
 
 Call `host.hold_packets()` to start an ordered hold and receive its opaque `HoldId`.
+Keep the issued ID locally to release or discard the hold; it has no `Wire` encoding.
 While a hold is active, another `hold_packets()` returns
 `HoldError::Limit { packets: 256, bytes: 1_048_576 }` and leaves the first hold intact.
 Uncancelled packets from `client_packet_send` queue in creation order;

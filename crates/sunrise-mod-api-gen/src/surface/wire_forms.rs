@@ -1,7 +1,9 @@
 //! How each API type implements `Wire`, read from the code that defines the encoding:
 //! the `Wire` derive (with `#[wire(via = T)]`), a hand-written `impl Wire` (its
 //! `layout_fields!` list, or a `layout_via!` naming its encoded form), including the impls the
-//! API's own macros write once expanded.
+//! API's own macros write once expanded. A type's presence in the API does not give it a
+//! form. The exporter can inspect arbitrary checkout revisions without compiling or loading
+//! their vocabulary; `Wire::describe` computes a fingerprint for a compiled type instead.
 use crate::index::{Found, Index, ItemId};
 pub(super) use mod_source::layouts::WireForm;
 use std::collections::HashMap;

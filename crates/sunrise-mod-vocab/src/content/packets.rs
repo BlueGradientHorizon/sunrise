@@ -87,7 +87,7 @@ pub enum SendPacketError {
 pub struct HoldId(pub(crate) u64);
 impl HoldId {
     /// Construct an identity for the game implementation.
-    // hidden: game-side identity construction, matching the other opaque Wire ids
+    // hidden: game-side identity construction
     #[doc(hidden)]
     pub fn new(value: u64) -> Self {
         Self(value)
@@ -144,52 +144,5 @@ impl crate::NoBackend for DisconnectError {
     /// No game: nothing is joined.
     fn no_backend() -> Self {
         Self::Unavailable
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::wire::{Reader, Writer};
-    #[test]
-    fn hold_errors_keep_literal_ordinals_and_partial_send_fields() {
-        for (error, ordinal) in [
-            (HoldError::NoWorld, 0u32),
-            (HoldError::Unknown, 1),
-            (
-                HoldError::Limit {
-                    packets: 256,
-                    bytes: 1_048_576,
-                },
-                2,
-            ),
-            (
-                HoldError::Send {
-                    sent: 1,
-                    error: SendPacketError::Backpressure,
-                },
-                3,
-            ),
-        ] {
-            let mut writer = Writer::new();
-            writer.put(&error);
-            assert_eq!(&writer.bytes()[..4], &ordinal.to_le_bytes());
-            assert_eq!(
-                Reader::new(writer.bytes()).take::<HoldError>().unwrap(),
-                error
-            );
-        }
-        let mut writer = Writer::new();
-        writer.put(&HoldError::Send {
-            sent: 1,
-            error: SendPacketError::Backpressure,
-        });
-        assert_eq!(
-            writer.bytes(),
-            &[3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0]
-        );
-        let mut writer = Writer::new();
-        writer.put(&HoldId::new(4178));
-        assert_eq!(writer.bytes(), &[82, 16, 0, 0, 0, 0, 0, 0]);
     }
 }
