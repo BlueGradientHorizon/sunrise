@@ -227,7 +227,7 @@ fn arc_counts_are_charged_even_for_zero_width_values() {
 }
 
 #[test]
-fn typed_static_strings_and_unmetered_documents_are_refused() {
+fn typed_forms_with_unmetered_conversions_are_refused() {
     use crate::{MeshDefinition, ModelPart, PartPose, Text};
 
     const UNSUPPORTED: WireError =
@@ -253,6 +253,12 @@ fn typed_static_strings_and_unmetered_documents_are_refused() {
     ordinary_only(&serde_json::json!({"field": []}));
     ordinary_only(&serde_json::Map::<String, serde_json::Value>::new());
     ordinary_only(&crate::LegacyRandomSource::new(42)); // a #[wire(via = ...)] conversion
+    let level = crate::LevelKey::parse("test:dimension").unwrap();
+    ordinary_only(&level);
+    ordinary_only(&crate::LevelDimension::Custom(level));
+    ordinary_only(&crate::Identifier::parse("test:item").unwrap());
+    ordinary_only(&crate::SpawnerKey::new("test:spawner").unwrap());
+    ordinary_only(&crate::CustomSpawners::vanilla());
     assert_eq!(
         decode_payload::<String>(&[1, 0, 0, 0, b'a']),
         Ok("a".to_owned())
@@ -278,6 +284,58 @@ fn sparse_maps_must_fit_their_retained_backing_storage() {
         Err(WireError::Budget)
     );
     assert_eq!(decode_payload::<Maps>(&bytes), Err(WireError::Budget));
+}
+
+#[test]
+fn a_nearly_full_bucket_array_is_charged_at_its_rounded_size() {
+    use std::collections::HashMap;
+    type Rows = Vec<HashMap<u8, Option<[u8; 2048]>>>;
+
+    // Fifteen entries require 32 buckets. Thirty would let all 128 rows fit,
+    // but 32 buckets per row exceed 8 MiB; each None occupies only one wire byte.
+    let mut row = HashMap::with_capacity(15);
+    row.extend((0..15).map(|key| (key, None)));
+    let mut rows: Rows = vec![row; 128];
+    let mut entry = vec![15, 0, 0, 0];
+    entry.extend((0..15).flat_map(|key| [key, 0]));
+    let mut bytes = vec![128, 0, 0, 0];
+    bytes.extend(entry.repeat(128));
+    assert_eq!(encode_payload(&rows, bytes.len()), Err(WireError::Budget));
+    assert_eq!(decode_payload::<Rows>(&bytes), Err(WireError::Budget));
+
+    rows.pop();
+    bytes[0] -= 1;
+    bytes.truncate(bytes.len() - entry.len());
+    assert_eq!(
+        encode_payload(&rows, bytes.len()).unwrap().len(),
+        bytes.len()
+    );
+    assert_eq!(decode_payload::<Rows>(&bytes), Ok(rows));
+}
+
+#[test]
+fn a_bare_compound_counts_toward_typed_depth_even_when_empty() {
+    use crate::Compound;
+
+    #[derive(Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+    enum Nested {
+        End(Compound),
+        Next(Box<Nested>),
+    }
+
+    let links = usize::from(PAYLOAD_MAX_DEPTH - 1);
+    let value = (0..links).fold(Nested::End(Compound::new()), |inner, _| {
+        Nested::Next(Box::new(inner))
+    });
+    let mut bytes = [1, 0, 0, 0].repeat(links);
+    bytes.extend([0; 8]); // the End case index and the compound length
+    assert_eq!(encode_payload(&value, bytes.len()), Ok(bytes.clone()));
+    assert_eq!(decode_payload::<Nested>(&bytes).as_ref(), Ok(&value));
+
+    let over = Nested::Next(Box::new(value));
+    let bytes = [&[1, 0, 0, 0], bytes.as_slice()].concat();
+    assert_eq!(encode_payload(&over, bytes.len()), Err(WireError::Depth));
+    assert_eq!(decode_payload::<Nested>(&bytes), Err(WireError::Depth));
 }
 
 #[test]

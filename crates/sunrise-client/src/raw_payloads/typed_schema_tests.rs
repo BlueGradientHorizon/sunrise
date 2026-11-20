@@ -2,9 +2,42 @@
 //! peer whose value type has another shape.
 use super::{Local, Side};
 use mod_api::{Hooks, IPayloadContext, ModEntry, PayloadId, PayloadSendError, Registrar, Wire};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use sunrise_protocol::payload_negotiation::{
     self as negotiation, Control, Flow, Manifest, Mismatch, Negotiation, Phase, RegistrationPhase,
 };
+
+#[test]
+fn required_hash_and_tree_collection_schemas_do_not_negotiate() {
+    fn required<T: mod_api::wire::Wire + 'static>() -> Manifest {
+        let mut builder = Manifest::builder();
+        builder
+            .register(
+                RegistrationPhase::Play,
+                "typed_schema:collection",
+                Flow::Bidirectional,
+                &mod_api::typed_payload_version("1", mod_api::payload_schema::<T>()),
+                false,
+            )
+            .unwrap();
+        builder.finish().unwrap()
+    }
+
+    // Even though both forms write the same entry bytes, the backing tables have
+    // different limits. Both maps and sets must refuse the required mismatched peer.
+    for (tree, hash) in [
+        (
+            required::<BTreeMap<u8, u8>>(),
+            required::<HashMap<u8, u8>>(),
+        ),
+        (required::<BTreeSet<u8>>(), required::<HashSet<u8>>()),
+    ] {
+        let refused = Negotiation::new(tree).receive(Control::Offer(hash));
+        assert!(matches!(refused, Err(negotiation::Error::Incompatible {
+            ref id, reason: Mismatch::Schema, ..
+        }) if id.as_str() == "typed_schema:collection"));
+    }
+}
 
 #[derive(Wire)]
 struct Counter {

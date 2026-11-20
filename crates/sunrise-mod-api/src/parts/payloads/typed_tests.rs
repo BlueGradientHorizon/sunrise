@@ -264,40 +264,34 @@ fn valid_and_malformed_wire_bodies_are_handled_in_both_directions() {
 
 #[test]
 fn ordinary_only_wire_forms_refuse_registration_before_a_channel_exists() {
+    fn refused<T: crate::wire::Wire + 'static>(
+        view: &mut crate::PayloadRegistrar<'_>,
+        id: &'static str,
+    ) -> &'static str {
+        let channel = view.play_to_server_typed::<T>(PayloadId(id.into()), ignore);
+        assert_eq!(channel.token().load, 0, "{id}");
+        id
+    }
+
     let mut registrar = PartRegistrar::new("test");
     let mut payloads = (&mut registrar as &mut dyn Registrar).payload_handlers();
     let mut view = payloads.registrar("1");
-    let model =
-        view.play_to_server_typed::<crate::ModelPart>(PayloadId("test:model".into()), ignore);
-    let text = view.play_to_server_typed::<crate::Text>(PayloadId("test:text".into()), ignore);
-    let interned = view
-        .play_to_server_typed::<Option<&'static str>>(PayloadId("test:interned".into()), ignore);
-    let json = view
-        .play_to_server_typed::<Option<serde_json::Value>>(PayloadId("test:json".into()), ignore);
-    let converted = view.play_to_server_typed::<crate::LegacyRandomSource>(
-        PayloadId("test:converted".into()),
-        ignore,
-    );
-    assert_eq!(
-        [
-            model.token().load,
-            text.token().load,
-            interned.token().load,
-            json.token().load,
-            converted.token().load,
-        ],
-        [0; 5]
-    );
+    let ids = [
+        refused::<crate::ModelPart>(&mut view, "test:model"),
+        refused::<crate::Text>(&mut view, "test:text"),
+        refused::<Option<&'static str>>(&mut view, "test:interned"),
+        refused::<Option<serde_json::Value>>(&mut view, "test:json"),
+        refused::<crate::LegacyRandomSource>(&mut view, "test:converted"),
+        refused::<crate::LevelKey>(&mut view, "test:level_key"),
+        refused::<crate::LevelDimension>(&mut view, "test:dimension"),
+        refused::<Option<crate::Identifier>>(&mut view, "test:identifier"),
+        refused::<crate::SpawnerKey>(&mut view, "test:spawner"),
+        refused::<crate::CustomSpawners>(&mut view, "test:spawners"),
+    ];
     drop(view);
     assert!(registrar.parts.payloads.is_none());
-    assert_eq!(registrar.refused.len(), 5);
-    for (refused, id) in registrar.refused.iter().zip([
-        "test:model",
-        "test:text",
-        "test:interned",
-        "test:json",
-        "test:converted",
-    ]) {
+    assert_eq!(registrar.refused.len(), ids.len());
+    for (refused, id) in registrar.refused.iter().zip(ids) {
         assert!(
             refused.contains(id) && refused.contains("ordinary-only Wire form"),
             "{refused}"
