@@ -12,9 +12,6 @@ struct Kind {
 }
 impl mod_api::CraftingRecipeKind for Kind {
     type Value = u32;
-    fn codec(&self) -> Option<mod_api::CraftingRecipeCodec<u32>> {
-        Some(mod_api::CraftingRecipeCodec::wire())
-    }
     fn decode(&self, json: &str) -> Result<u32, String> {
         let value: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
         value["rest"]
@@ -251,9 +248,6 @@ fn registered_kind_written_value_syncs_only_to_sunrise_clients() {
 struct EmptyKind(mod_api::ItemKey);
 impl mod_api::CraftingRecipeKind for EmptyKind {
     type Value = ();
-    fn codec(&self) -> Option<mod_api::CraftingRecipeCodec<()>> {
-        Some(mod_api::CraftingRecipeCodec::wire())
-    }
     fn decode(&self, _: &str) -> Result<(), String> {
         Ok(())
     }
