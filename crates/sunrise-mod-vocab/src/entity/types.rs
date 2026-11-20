@@ -1192,8 +1192,10 @@ impl PlayerRef {
     /// Read the player's current inventory by vanilla `Inventory.getItem` numbers: 0 to 35
     /// main (0 to 8 hotbar), 36 feet, 37 legs, 38 chest, 39 head, 40 offhand, 41 body, 42 saddle.
     /// The view is read-only and valid only in `read`. Use [`InventoryView::get`] for one slot
-    /// or [`InventoryView::iter`] for nonempty slots in ascending order. Project a stack only
-    /// to read its component patch or retain it.
+    /// or [`InventoryView::iter`] for nonempty slots in ascending order. For just the main
+    /// inventory, use `view.iter().take_while(|(slot, _)| *slot < 36)`. Read scalars in `read`;
+    /// use [`ItemStackView::project`] to get components or retain an owned stack, and handle
+    /// refusal separately from an empty slot.
     ///
     /// Returns `Some` of the callback's result even when the inventory is empty. Returns
     /// `None` without calling it if the player is stale or unavailable. On the client only

@@ -1,9 +1,0 @@
-ids = [
-    "handle:PlayerRef::inventory",
-    "handle:PlayerRef::inventory_slots",
-    "handle:PlayerRef::ender_chest",
-    "handle:PlayerRef::with_inventory",
-    "handle:PlayerRef::with_ender_chest",
-]
-why = "The player inventory and ender chest now lend numbered slots instead of building and copying an owned inventory. Reading a slot's item, count or damage no longer encodes its components or visits other slots."
-migrate = "Replace player.inventory_slots(host) with player.with_inventory(host, |view| ...), and player.ender_chest(host) with player.with_ender_chest(host, |view| ...). Both return Some(callback result) for an available inventory, even when empty, and None without running the callback when unavailable. Inside the callback use view.get(slot) for one slot, or view.iter() for ascending (slot, stack) pairs. For the former player.inventory(host) (main inventory only), use player.with_inventory(host, |view| (0..36).filter_map(|slot| view.get(slot)).map(|stack| stack.project()).collect::<Option<Vec<_>>>()).flatten() if you still need an owned list. For numbered owned copies, use view.iter().map(|(slot, stack)| Some((slot, stack.project()?))).collect::<Option<Vec<_>>>() inside the callback, then flatten the returned Option. Prefer reading item(), count() and damage() directly; use project() only to get components or retain an owned stack. Unreadable slots are skipped by iteration; a failed projection returns None for that stack. Slot numbers and setters are unchanged."

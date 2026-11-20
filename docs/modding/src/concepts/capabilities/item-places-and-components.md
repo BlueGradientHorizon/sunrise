@@ -5,19 +5,24 @@ slot, hand or cursor, a block entity's slot, an item entity, an entity's invento
 a menu slot, or a stack inside another item (`ItemPlace::Nested`). For storage you manage,
 register a `PlaceProvider` with `r.place_provider` and use `ItemPlace::Mod`.
 
-`place.with_stack(host, |stack| stack.count())` reads the count of a nonempty place. The
-callback receives an `ItemStackView` for that call only; read `item`, `count` and `damage`
-without copying a resident stack. Call `stack.project()` if you need its components or an
-owned `ItemStack` beyond the callback. For example:
+`place.with_stack(host, |stack| stack.item())` reads the item at a nonempty place. The
+callback receives an `ItemStackView` for that call only. Read `item()`, `count()` and
+`damage()` there without copying a resident stack. If you only need to know whether
+the place is occupied, use `place.amount(host) != 0`. For components or an owned
+`ItemStack` beyond the callback, project it explicitly:
 
 ```rust,ignore
-let count = place.with_stack(host, |stack| stack.count());
-let owned = place.with_stack(host, |stack| stack.project()).flatten();
+match place.with_stack(host, |stack| stack.project()) {
+    None => { /* empty or unavailable place */ }
+    Some(None) => { /* occupied, but the stack could not be projected */ }
+    Some(Some(stack)) => { /* inspect components or retain the owned stack */ }
+}
 ```
 
 Native reads use storage already present: they do not load chunks, initialize a player or
 unpack pending loot, and an item entity's place sees the current block entity tick's proposals.
-A provider-backed menu slot reads its live backing, not the menu's display copy. A dropped
+For a provider-backed or decoded place, the view lends the value produced for that read. A
+provider-backed menu slot reads its live backing, not the menu's display copy. A dropped
 item narrowed to an `ItemEntityRef` has its own
 [`with_stack`](../../how-to/world/block-entity-item-drops.md).
 

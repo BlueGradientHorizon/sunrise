@@ -220,12 +220,36 @@ For mods that inspect or edit a player's data (player-data sync, `/invsee`, `/en
 | `persistent_data(host)` / `set_persistent_data(host, data)` | The compound mods keep on a player (NeoForge's `getPersistentData`), saved with the player under `NeoForgeData`; an empty compound removes it. It is never sent to a client and a change raises no notification. On a death respawn and on the first exit from the End only its `PlayerPersisted` sub-compound is carried over, whatever its type, and every other key is lost; dimension changes, later End exits and teleports keep all of it. Refuses with `Stale`, `Client`, `Dead` and `TooDeep` (data 512 levels deep or more in the player's file). For ports; new mods use attachments. |
 | `host.item_from_snbt(snbt)` | The stack an SNBT item compound stands for, read as a saved item is: `{id:"minecraft:stone",count:3,components:{...}}` (`count` 1 when missing). Returns `None` for text that is not one compound (anything but whitespace after it included), a `count` outside 1 to 99 (refused, not clamped), air and an item the world lacks. It also refuses text over 2 MiB or nested past 512 levels: that is this API's own safety bound, the one place it differs from vanilla, whose SNBT parser has no size or depth limit (deep text overflows its stack); the figures are binary NBT's limits, taken so mod-supplied text cannot overflow the parser. |
 
-Both scoped reads return `Some` of the callback's result even when the inventory is empty, or `None` without calling it when the player or inventory is unavailable. Inside the callback, use `view.get(slot)` to read one slot or `view.iter()` to visit occupied slots in ascending order without renumbering them. Slot lookup returns `None` for an empty, unreadable or out-of-range slot. Read item, count and damage directly; use `stack.project()` to inspect the component patch or keep an owned stack for later:
+Both scoped reads return `Some` of the callback's result even when the inventory is empty,
+or `None` without calling it when the player or inventory is unavailable. Inside the callback,
+`view.get(n)` reads slot `n`, not the `n`th occupied slot. It returns `None` for an empty,
+unreadable or out-of-range slot. `view.iter()` visits readable nonempty slots in ascending
+order without renumbering them. Read item, count and damage directly inside the callback:
+
 ```rust,ignore
-let count = player.with_inventory(host, |view| view.get(0).map(|stack| stack.count()));
-let owned = player.with_ender_chest(host, |view| view.get(26)?.project()).flatten();
+let first_hotbar_count = player.with_inventory(host, |view| view.get(0).map(|stack| stack.count()));
+let main_item_count = player.with_inventory(host, |view| {
+    view.iter()
+        .take_while(|(slot, _)| *slot < 36)
+        .map(|(_, stack)| u64::from(stack.count()))
+        .sum::<u64>()
+});
 ```
-A projected stack carries its components, so mods can write it back when moving inventories. `item_from_snbt` does not apply the item's stack or damage limits, so its result can still be refused on write with `Err(Stack(StackWriteError))`.
+
+To decode components or retain an owned `ItemStack`, project just the stack you need:
+
+```rust,ignore
+match player.with_ender_chest(host, |view| view.get(26).map(|stack| stack.project())) {
+    None => { /* the chest is unavailable */ }
+    Some(None) => { /* the slot is empty or unreadable */ }
+    Some(Some(None)) => { /* the stack cannot be projected */ }
+    Some(Some(Some(stack))) => { /* keep the owned stack or read its components */ }
+}
+```
+
+A projected stack carries its components, so mods can write it back when moving inventories.
+`item_from_snbt` does not apply the item's stack or damage limits, so its result can still be
+refused on write with `Err(Stack(StackWriteError))`.
 
 Player inventory writes use vanilla numbers: 0 to 35 main (0 to 8 hotbar),
 36 to 39 armour feet to head, 40 offhand, 41 body, 42 saddle.

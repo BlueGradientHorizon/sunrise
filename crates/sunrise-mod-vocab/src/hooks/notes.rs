@@ -634,7 +634,11 @@ handle, an entity the client doesn't track and a level it doesn't show:
 - `living.with_equipment(host, slot, read)`, `with_hand_item`, `effect`, `effects`, `potion_affected` (`hasEffect`), `health` and `max_health`, for the local player.
   Another entity's equipment, effects and health stay server reads, and so does every write.
 - `player.last_death_location(host)`, for the local player: the position the login and respawn packets carried.
-- `player.with_inventory(host, read)` lends a read-only inventory view in vanilla slot order (0 to 35 main, 36 to 42 equipment). Read item, count and damage directly; use `stack.project()` only for components or to retain an owned stack. It returns `None` without calling `read` for a stale or unavailable player; on a client only the local player's inventory is available.
+- `player.with_inventory(host, read)` lends a read-only inventory view in vanilla slot order (0 to 35 main, 36 to 42 equipment).
+  Use `view.get(n)` to read slot `n`, or `view.iter().take_while(|(slot, _)| *slot < 36)` for just the main inventory.
+  Read item, count and damage inside `read`. Use `stack.project()` only for components or to retain an owned stack;
+  a failed projection does not mean the slot was empty. An unavailable player returns `None` without calling `read`;
+  on a client only the local player's inventory is available.
 - For the local player, its own state as the server sent it (`LocalPlayer`): `player.game_mode(host)`, `is_creative`,
   `is_spectator` and `may_build` (the game mode of the login, respawn and `ClientboundGameEvent` packets); `food`
   (level and saturation from `ClientboundSetHealth`; the client keeps no exhaustion, so it reads 0), `needs_food`,

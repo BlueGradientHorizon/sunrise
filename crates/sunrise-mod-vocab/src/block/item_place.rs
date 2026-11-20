@@ -509,6 +509,8 @@ impl ItemPlace {
     /// or retain an owned stack. Native reads never load chunks, initialize a player, or unpack
     /// pending loot, and see pending item-entity proposals within a block entity tick.
     /// Handler-backed and decoded places lend a view of their provider's or decoder's value.
+    /// An occupied place can still refuse projection. To check occupancy without projection,
+    /// use [`Self::amount`] and compare it with zero.
     pub fn with_stack<R>(
         &self,
         host: &mut dyn ServerHost,

@@ -28,12 +28,19 @@ switches to the axe before the read. Earlier loot listeners' hand edits are visi
 for entity deaths. For the causing entity's current hand independently of the damage
 source's weapon, resolve `damage_source.causing` with `host.entity(id)`, then
 `host.living(entity)`, and call `living.with_hand_item(host, Hand::Main, |stack| ...)`.
-Read the item, count or damage directly in the callback. Use `stack.project()` there
-if you need components or need to keep an owned stack. An empty or unavailable hand
-returns `None` without calling the callback. A shooter's current hand and its
+Read the item, count or damage directly in the callback:
+
+```rust,ignore
+let held_item = living.with_hand_item(host, Hand::Main, |stack| stack.item());
+```
+
+An empty or unavailable hand returns `None` without calling the callback. Use
+`stack.project()` inside the callback for components or an owned stack; a projection
+can refuse even when the hand is occupied. A shooter's current hand and its
 projectile's recorded weapon are separate values; only `context.weapon_item(host)`
 uses the projectile's record. `living.with_weapon_item(host, |stack| ...)` reads only
-the given living entity's weapon, including its active Riptide stack when present.
+the given living entity's weapon on the server, including its active Riptide stack
+when present.
 
 Projectile direct IDs are 0; melee direct IDs equal the causing ID.
 The recorded projectile weapon is carried separately in the call-scoped death context.
