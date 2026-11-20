@@ -4,7 +4,7 @@
 //! are made by the caller, so the game and the differential test
 //! (`tools/test_raid_parity.py`) run the same decisions and random draws.
 use crate::mobs::{
-    Species,
+    MobType,
     spawn_rules::{self, Reason, SpawnLevel},
 };
 use sunrise_core::random::RandomSource;
@@ -63,6 +63,7 @@ impl PatrolSpawner {
         &mut self,
         level: &L,
         spawn_enemies: bool,
+        pillager: &MobType,
         random: &mut R,
         spawn: &mut dyn FnMut(&L, Member, &mut R) -> bool,
     ) {
@@ -100,7 +101,7 @@ impl PatrolSpawner {
         for i in 0..group {
             pos[1] = level.motion_blocking_no_leaves(pos[0], pos[2]);
             let leader = i == 0;
-            if !spawn_member(level, pos, leader, random, spawn) && leader {
+            if !spawn_member(level, pillager, pos, leader, random, spawn) && leader {
                 break;
             }
             pos[0] += random.next_int_bound(5).unwrap_or(0) - random.next_int_bound(5).unwrap_or(0);
@@ -113,23 +114,17 @@ impl PatrolSpawner {
 /// whose `checkPatrollingMonsterSpawnRules` pass.
 fn spawn_member<L: PatrolLevel, R: RandomSource>(
     level: &L,
+    pillager: &MobType,
     pos: [i32; 3],
     leader: bool,
     random: &mut R,
     spawn: &mut dyn FnMut(&L, Member, &mut R) -> bool,
 ) -> bool {
     let [x, y, z] = pos;
-    if !spawn_rules::is_valid_empty_spawn(Species::Pillager, level, x, y, z) {
+    if !spawn_rules::is_valid_empty_spawn(pillager.species, level, x, y, z) {
         return false;
     }
-    if !spawn_rules::check_spawn_rules(
-        "minecraft:pillager",
-        Species::Pillager,
-        level,
-        Reason::Patrol,
-        random,
-        pos,
-    ) {
+    if !spawn_rules::check_spawn_rules(pillager, level, Reason::Patrol, random, pos) {
         return false;
     }
     spawn(level, Member { pos, leader }, random)

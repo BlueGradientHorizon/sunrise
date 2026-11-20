@@ -1934,15 +1934,16 @@ impl Game<'_> {
             push(&mut lines, text, gray);
         }
         details.start("minecraft:entity_data", lines.len());
-        // TypedEntityData.addToTooltip: a spawn egg of a monster in Peaceful.
+        // TypedEntityData.addToTooltip: a spawn egg of a type disallowed in Peaceful.
         if let Some(text) = sunrise_client::item_tooltip::spawn_egg_peaceful_line(
             stack,
             self.ui.difficulty == 0,
             &display,
             &|id| {
-                self.res.mob_types().get(id).is_none_or(|t| {
-                    sunrise_client::mobs::spawn_rules::allowed_in_peaceful(t.species)
-                })
+                self.res
+                    .mob_types()
+                    .get(id)
+                    .is_none_or(|t| t.allowed_in_peaceful())
             },
             &translate,
         ) {
@@ -2554,6 +2555,32 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "daily"]
+    fn spawn_egg_tooltip_warns_for_the_mod_type_in_peaceful() {
+        use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
+        use sunrise_client::hud::rgba;
+
+        peaceful_tests::with_types(ExecutionRole::Client, |game| {
+            let egg = peaceful_tests::trader_egg();
+            let message = game
+                .pack
+                .names
+                .display_get("item.spawn_egg.peaceful")
+                .unwrap_or_else(|| "item.spawn_egg.peaceful".into());
+            let warns = |game: &super::Game<'_>| {
+                game.stack_tooltip_lines(&egg, false, false)
+                    .iter()
+                    .any(|(text, color)| {
+                        text.plain() == message && *color == rgba(255, 85, 85, 255)
+                    })
+            };
+            assert!(warns(game));
+            game.set_difficulty_forced(2);
+            assert!(!warns(game));
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn anvil_subscriber_probe_and_answer_cache() {

@@ -8,6 +8,7 @@
 //! `collectImplicitComponents`) leaves its NBT; the rest goes to
 //! `minecraft:block_entity_data`, tagged with the type's id.
 use crate::block_entity_nbt::{self, canonical};
+use std::borrow::Cow;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 
 pub const BLOCK_ENTITY_DATA: &str = "minecraft:block_entity_data";
@@ -81,6 +82,24 @@ pub fn spawn_egg_op_warning(stack: &crate::items::ItemStack) -> bool {
         )
 }
 
+/// `SpawnEggItem.getType` and `TypedEntityData.addToTooltip`: the component's
+/// entity type, or the egg's own if it carries no explicit id.
+pub fn spawn_egg_type(stack: &crate::items::ItemStack) -> Option<Cow<'_, str>> {
+    let kind = match stack
+        .data()
+        .and_then(|d| d.other("minecraft:entity_data"))
+        .and_then(|d| d.get("id"))
+    {
+        Some(Tag::String(id)) => Cow::Owned(id.to_string_lossy()),
+        _ => Cow::Borrowed(stack.item.strip_suffix("_spawn_egg")?),
+    };
+    if kind.contains(':') {
+        Some(kind)
+    } else {
+        Some(Cow::Owned(format!("minecraft:{kind}")))
+    }
+}
+
 /// `SpawnEggItem.useOn` on a spawner: the type it sets (`getType`: the egg's
 /// entity data id, else the egg's own type) and, for an op
 /// (`PlayerList.isOp`), that entity data for `Spawner.setEntityData`; anyone
@@ -93,13 +112,7 @@ pub fn spawn_egg_on_spawner(
         Some(Tag::Compound(c)) => Some(c),
         _ => None,
     };
-    let id = match data.and_then(|c| c.get(&JavaString::from("id"))) {
-        Some(Tag::String(id)) => id.to_string_lossy(),
-        _ => {
-            let kind = stack.item.trim_end_matches("_spawn_egg");
-            format!("minecraft:{}", kind.trim_start_matches("minecraft:"))
-        }
-    };
+    let id = spawn_egg_type(stack).map_or_else(|| stack.item.to_string(), Cow::into_owned);
     (id, data.filter(|_| op).cloned())
 }
 

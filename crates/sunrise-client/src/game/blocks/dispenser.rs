@@ -1190,7 +1190,12 @@ impl Game<'_> {
         facing: Direction,
         stack: ItemStack,
     ) -> Result<Dispensed> {
-        let (kind, _) = sunrise_client::block_entity_item::spawn_egg_on_spawner(&stack, false);
+        let Some(kind) = sunrise_client::block_entity_item::spawn_egg_type(&stack) else {
+            return Ok((Some(stack), CLICK));
+        };
+        if !self.spawn_egg_allowed(&kind) {
+            return Ok((Some(stack), CLICK));
+        }
         let front = offset(pos, facing);
         let Some(id) = self.spawn_mob_at(&kind, front, facing != Direction::Up) else {
             return Ok((Some(stack), CLICK));
@@ -2449,6 +2454,27 @@ pub(super) fn tipped_effect(stack: &ItemStack) -> Option<(&'static str, i32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_dispenser_keeps_the_egg_if_its_type_cannot_spawn_in_peaceful() {
+        use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
+
+        peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
+            let egg = peaceful_tests::trader_egg();
+            let dispense = |game: &mut Game<'_>| {
+                game.dispense_spawn_egg((4, 64, 4), Direction::Up, egg.clone())
+                    .unwrap()
+                    .0
+            };
+            assert_eq!(dispense(game).unwrap().count, 1);
+            assert!(game.mobs.is_empty());
+            game.set_difficulty_forced(2);
+            assert!(dispense(game).is_none());
+            assert_eq!(game.mobs.len(), 1);
+            assert_eq!(game.mobs[0].kind.id, peaceful_tests::TRADER);
+        });
+    }
 
     /// What a dispense probe part heard: which part, and the dispenser it was for.
     #[derive(Clone, Default)]

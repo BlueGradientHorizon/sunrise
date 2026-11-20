@@ -7812,7 +7812,10 @@ impl Game<'_> {
         };
         let parent = &self.mobs[index];
         if !parent.alive()
-            || !sunrise_client::mobs::finalize::spawn_egg_is_for(&stack.item, &parent.kind.id)
+            || !stack.item.ends_with("_spawn_egg")
+            || sunrise_client::block_entity_item::spawn_egg_type(&stack).as_deref()
+                != Some(parent.kind.id.as_str())
+            || self.ui.difficulty == 0 && !parent.kind.allowed_in_peaceful()
             || !sunrise_client::mobs::species::can_be_a_baby(parent.species())
             // WanderingTrader.getBreedOffspring returns null: no offspring, the
             // click carries on to trading.
@@ -7882,14 +7885,13 @@ impl Game<'_> {
         .then_some(hit)
     }
     /// Shared peaceful-mode eligibility for spawn eggs.
-    pub(super) fn spawn_egg_allowed(&self, item: &str) -> bool {
-        let kind = item.trim_end_matches("_spawn_egg");
+    pub(super) fn spawn_egg_allowed(&self, kind: &str) -> bool {
         self.ui.difficulty != 0
             || self
                 .res
                 .mob_types()
                 .get(kind)
-                .is_none_or(|t| sunrise_client::mobs::spawn_rules::allowed_in_peaceful(t.species))
+                .is_none_or(|t| t.allowed_in_peaceful())
     }
     /// `SpawnEggItem.useOn` for a block, or `use` for a fluid source.
     fn use_spawn_egg(&mut self, stack: &ItemStack) -> Result<bool> {
@@ -7901,13 +7903,16 @@ impl Game<'_> {
         }) else {
             return Ok(false);
         };
-        let kind = stack.item.trim_end_matches("_spawn_egg").to_owned();
         // ItemStack.useOn in adventure mode: an egg used on a block without a
         // matching `can_place_on` passes to `use`, whose fluid ray finds none.
         if !fluid && !self.may_use_on(hit.pos) {
             return Ok(false);
         }
-        if !self.spawn_egg_allowed(&stack.item) {
+        let (kind, data) = sunrise_client::block_entity_item::spawn_egg_on_spawner(
+            stack,
+            self.acting_player_is_op(),
+        );
+        if !self.spawn_egg_allowed(&kind) {
             self.use_failed = true;
             return Ok(true);
         }
@@ -7923,11 +7928,7 @@ impl Game<'_> {
             return Ok(true);
         }
         // SpawnEggItem.useOn on a spawner sets its mob (and an op's egg data).
-        let (spawner_id, data) = sunrise_client::block_entity_item::spawn_egg_on_spawner(
-            stack,
-            self.acting_player_is_op(),
-        );
-        if let Some(done) = self.use_spawn_egg_on_spawner(hit.pos, &spawner_id, data.as_ref()) {
+        if let Some(done) = self.use_spawn_egg_on_spawner(hit.pos, &kind, data.as_ref()) {
             if done {
                 self.swing_arm();
                 self.award_stat("used", &stack.item, 1);
@@ -8719,6 +8720,36 @@ mod local_sound_event_tests;
 
 #[cfg(test)]
 mod general_creature_tests;
+
+#[cfg(test)]
+#[test]
+#[ignore = "daily"]
+fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
+    use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
+    peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
+        game.set_mode_id(0);
+        game.forced_hit = Some(crate::game::Hit {
+            pos: [4, 64, 4],
+            face: [0, 1, 0],
+            point: [4.5, 65.0, 4.5],
+            inside: false,
+        });
+        let egg = peaceful_tests::trader_egg();
+        game.inventory[game.selected] = Some(egg.clone());
+        assert!(game.use_spawn_egg(&egg).unwrap());
+        assert!(game.use_failed);
+        assert!(game.mobs.is_empty());
+        assert_eq!(game.held().unwrap().count, 1);
+
+        game.use_failed = false;
+        game.set_difficulty_forced(2);
+        assert!(game.use_spawn_egg(&egg).unwrap());
+        assert!(!game.use_failed);
+        assert!(game.held().is_none());
+        assert_eq!(game.mobs.len(), 1);
+        assert_eq!(game.mobs[0].kind.id, peaceful_tests::TRADER);
+    });
+}
 
 /// Whether the killing blow's causing entity (`DamageSource.getEntity`) was a
 /// mob, such as a tame wolf whose owner gets the kill credit.

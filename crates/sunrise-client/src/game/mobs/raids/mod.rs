@@ -1406,15 +1406,13 @@ impl Game<'_> {
                 centers: self.village_centers(),
                 can_spawn: &biome_ok,
             };
-            let mut spawn = |l: &PatrolCx, m: Member, _: &mut sunrise_core::random::LevelRandom| {
-                // EntityType.create makes no monsters in peaceful.
-                if l.level.game.difficulty_id() == 0 {
-                    return false;
-                }
+            let mut spawn = |_: &PatrolCx, m: Member, _: &mut sunrise_core::random::LevelRandom| {
                 members.push(m);
                 true
             };
-            spawner.tick(&level, enemies, &mut random, &mut spawn);
+            if let Some(pillager) = self.res.mob_types().get("minecraft:pillager") {
+                spawner.tick(&level, enemies, pillager, &mut random, &mut spawn);
+            }
         }
         self.raiding.patrol = spawner;
         self.world.random = random;
@@ -1552,6 +1550,7 @@ impl Game<'_> {
             LevelRandom::for_level(LegacyRandom::new(0)),
         );
         let mut found = None;
+        let kind = self.res.mob_types().get("minecraft:zombie");
         for _ in 0..10 {
             let x = spot[0] + random.next_int_bound(16).unwrap_or(0) - 8;
             let z = spot[2] + random.next_int_bound(16).unwrap_or(0) - 8;
@@ -1560,14 +1559,15 @@ impl Game<'_> {
             }
             let y = self.surface_height(x, z);
             if Self::is_village(centers, [x, y, z])
-                && spawn_rules::check_spawn_rules(
-                    "minecraft:zombie",
-                    Species::Zombie,
-                    &self.natural_level(),
-                    spawn_rules::Reason::Event,
-                    &mut random,
-                    [x, y, z],
-                )
+                && kind.is_some_and(|kind| {
+                    spawn_rules::check_spawn_rules(
+                        kind,
+                        &self.natural_level(),
+                        spawn_rules::Reason::Event,
+                        &mut random,
+                        [x, y, z],
+                    )
+                })
             {
                 found = Some([f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5]);
                 break;

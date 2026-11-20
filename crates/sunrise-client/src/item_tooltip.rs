@@ -713,30 +713,7 @@ pub fn spawn_egg_peaceful_line(
     if !peaceful || !display.shows("minecraft:entity_data") {
         return None;
     }
-    // `TypedEntityData.addToTooltip` hangs on the `entity_data` component, whatever the item;
-    // a spawn egg without the component has its own mob as the default.
-    let id = match stack
-        .data()
-        .and_then(|d| d.other("minecraft:entity_data"))
-        .and_then(|data| data.get("id"))
-    {
-        Some(Tag::String(id)) => {
-            let id = id.to_string_lossy();
-            if id.contains(':') {
-                id
-            } else {
-                format!("minecraft:{id}")
-            }
-        }
-        _ if stack.item.ends_with("_spawn_egg") => format!(
-            "minecraft:{}",
-            stack
-                .item
-                .trim_start_matches("minecraft:")
-                .trim_end_matches("_spawn_egg")
-        ),
-        _ => return None,
-    };
+    let id = crate::block_entity_item::spawn_egg_type(stack)?;
     (!allowed_in_peaceful(&id)).then(|| {
         translate("item.spawn_egg.peaceful").unwrap_or_else(|| "item.spawn_egg.peaceful".into())
     })
