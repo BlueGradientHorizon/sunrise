@@ -12,7 +12,7 @@ use super::Game;
 use sunrise_client::{
     camera::{CameraEntity, LivingCamera},
     entities::{ArmorStand, ItemFrame},
-    mobs::Mob,
+    mobs::{Mob, Species, render, villager},
 };
 
 /// `Minecraft.setCameraEntity` from a ClientboundSetCameraPacket: the player's
@@ -33,6 +33,20 @@ pub(super) fn camera_after_packet(
     }
 }
 
+/// `LivingEntity.isSleeping` with `getBedOrientation` as its `toYRot`: a villager, player or
+/// mannequin lying in a bed, whose facing `sleep_pose` keeps in `ints[1]`.
+fn sleeping_view(m: &Mob) -> Option<Option<f32>> {
+    if !(m.species() == Species::Villager || render::avatar(m)) || m.extra.ints[1] == 0 {
+        return None;
+    }
+    Some(villager::bed_orientation(m).map(|d| match d {
+        mod_api::Direction::South => 0.0,
+        mod_api::Direction::West => 90.0,
+        mod_api::Direction::North => 180.0,
+        _ => 270.0,
+    }))
+}
+
 /// `Camera.alignWithEntity`'s view of a mob or another player: its
 /// interpolated position, `getViewYRot`/`getViewXRot` and eye height, with
 /// its scale and camera distance for a detached view. A living entity's
@@ -51,7 +65,7 @@ pub(super) fn mob_camera_entity(m: &Mob) -> CameraEntity {
         living: Some(LivingCamera {
             scale: attribute("minecraft:scale", 1.0) as f32,
             camera_distance: attribute("minecraft:camera_distance", 4.0),
-            sleeping: None,
+            sleeping: sleeping_view(m),
             dead: None,
         }),
         mount: None,
