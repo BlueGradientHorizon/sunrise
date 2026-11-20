@@ -187,6 +187,7 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
             )
             .unwrap();
         let [root_ref, pig_ref, leaf_ref] = [root, pig, leaf].map(|id| game.entity(id).unwrap());
+        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         assert_eq!(game.entity_start_riding(pig_ref, root_ref, false), Ok(()));
         assert_eq!(game.entity_start_riding(leaf_ref, pig_ref, false), Ok(()));
         assert_eq!(
@@ -195,6 +196,8 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
         );
         game.tickets.update(None);
         game.begin_ordered_ticks();
+        // The mobs' pass first, as tick_mobs runs it: it names the general vehicles mobs ride.
+        game.position_riders();
         game.tick_general().unwrap();
         assert_eq!(pig_ref.position(game), Some([2.5, 65.25, 1.5]));
         assert_eq!(
