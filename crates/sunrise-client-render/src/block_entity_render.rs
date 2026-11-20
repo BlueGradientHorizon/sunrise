@@ -4523,9 +4523,6 @@ mod tests {
         );
     }
 
-    /// A glowing sign's own colour still wins over its dye, and the outline
-    /// stays the dye's dark colour. `§` codes in a line colour it too, and
-    /// `§r` goes back to the sign's colour.
     /// A glowing sign's outline belongs to its text: an image span is one quad, as on a plain
     /// sign, while a glyph run still gets the outline's eight passes under its own.
     #[test]
@@ -4571,6 +4568,9 @@ mod tests {
         assert_eq!(quads(&letter(outline)), 9);
     }
 
+    /// A glowing sign's own colour still wins over its dye, and the outline
+    /// stays the dye's dark colour. `§` codes in a line colour it too, and
+    /// `§r` goes back to the sign's colour.
     #[test]
     fn glowing_sign_text_keeps_its_outline_under_a_lines_own_colors() {
         let mut data = sign_with([

@@ -124,7 +124,7 @@ fn substitute_inline_images(&self, _: &dyn ClientHost, event: &mut SubstituteInl
 Each half-open UTF-8 byte range must stay within the run and must not include a newline. The first valid proposal in
 hook dispatch order wins over overlapping proposals. A missing sprite or invalid range leaves the text alone unless
 another valid proposal covers it. Each replacement occupies one 8×8 `minecraft:gui` glyph. Chat clicks and hovers keep
-the span's style; signing, search and copy still use the original message. Sign data and the editor keep the original
+the span's style; signing, search and copy still use the original message. An image takes its span's colour, or white when the span has none, and never a sign's dye. Sign data and the editor keep the original
 text. Name tags and the chat input field do not use this hook.
 
 Give the hook the id of a pack sprite or an existing dynamic texture. Keep the listener a cheap match: it may run

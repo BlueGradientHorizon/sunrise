@@ -23,11 +23,12 @@ impl HudAtlas {
         let plain = sprite.strip_prefix("minecraft:").unwrap_or(sprite);
         let gui_atlas = atlas.strip_prefix("minecraft:").unwrap_or(atlas) == "gui";
         // The GUI atlas's sprites are found by GUI id; another atlas's by its packed name, then
-        // as a GUI sprite.
+        // as a GUI sprite. A GUI entry the list removed or failed has no sprite to give.
+        let gui = || self.gui_present(plain).map(|(rect, _)| rect);
         let found = if gui_atlas {
-            self.gui_rect(plain)
+            gui()
         } else {
-            self.sprites.get(plain).or_else(|| self.gui_rect(plain))
+            self.sprites.get(plain).or_else(gui)
         };
         found.copied()
     }
