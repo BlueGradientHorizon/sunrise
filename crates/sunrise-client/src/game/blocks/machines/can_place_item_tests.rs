@@ -6,7 +6,7 @@ use mod_api::{
 };
 use sunrise_client::{
     chunk::Chunk,
-    containers::{ModBlockEntity, ModContainerInsertRule},
+    containers::{ModBlockEntity, ModBlockEntityFields, ModContainerInsertRule},
 };
 use sunrise_core::position::ChunkPos;
 
@@ -26,6 +26,15 @@ impl BlockEntityPart for Filter {
             Some(2) => return None,
             Some(3) => return Some(event.slot == 2 && event.stack.count() == 1),
             Some(4) => return Some(event.slot == 1 && event.stack.count() == 2),
+            Some(5) => {
+                let barrel = mod_api::__private::block_key("minecraft:barrel").unwrap();
+                let metadata = super::super::api_values::block_metadata_table().unwrap();
+                return Some(
+                    event.pos == mod_api::BlockPos::new(TARGET.0, TARGET.1, TARGET.2)
+                        && event.state.block() == barrel
+                        && event.state.property(metadata, "open").unwrap() == Some("true"),
+                );
+            }
             _ => {}
         }
         match event.slot {
@@ -154,6 +163,68 @@ fn hopper_skips_a_refused_slot_and_preserves_the_stack_if_all_refuse() {
         );
         assert_eq!(target(game).items, before.0);
         assert_eq!(target(game).revision(), before.1);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn shared_admission_part_distinguishes_blocks_and_current_state() {
+    fixture(|game| {
+        let registry = game.pack.assets.registry;
+        let closed = registry.default_state("minecraft:barrel").unwrap();
+        let open = registry
+            .resolve(&sunrise_world::chunk::BlockState {
+                name: "minecraft:barrel".to_owned(),
+                properties: [("open".to_owned(), "true".to_owned())]
+                    .into_iter()
+                    .collect(),
+            })
+            .unwrap();
+        let chest = registry.default_state("minecraft:chest").unwrap();
+        let other = (TARGET.0 + 1, TARGET.1, TARGET.2);
+        game.world.block_entities.set_mod_containers(
+            [closed, open, chest]
+                .into_iter()
+                .map(|state| {
+                    (
+                        state.0,
+                        Arc::new(ModContainer {
+                            slots: 1,
+                            inputs: vec![0],
+                            ..Default::default()
+                        }),
+                    )
+                })
+                .collect(),
+        );
+        let mut attempt = PlacementAttempt::default();
+        let stack = ItemStack::new("minecraft:stone", 1);
+        for (pos, state, expected) in [
+            (TARGET, closed, false),
+            (TARGET, open, true),
+            (other, open, false),
+            (TARGET, chest, false),
+        ] {
+            game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+            let entity = ModBlockEntity::new(
+                "admission:filtered".into(),
+                ModBlockEntityFields {
+                    items: vec![None],
+                    data: vec![5],
+                    ..Default::default()
+                },
+            );
+            game.world
+                .block_entities
+                .insert(pos, BlockEntity::Mod(Box::new(entity)));
+            let containers = game.containers();
+            let view = containers.view(pos, false).unwrap();
+            assert_eq!(
+                containers.can_place(&view, 0, &stack, PlacementQuery::Offer(&mut attempt)),
+                expected,
+                "at {pos:?} with {state:?}",
+            );
+        }
     });
 }
 
@@ -421,6 +492,12 @@ fn native_admission_allocates_only_when_preparing_subscribed_snapshots() {
     with_filter(|mods| {
         crate::game::api_values::install_parts(mods).unwrap();
         mod_api::__private::resolve_items(["minecraft:stone"]).unwrap();
+        let facts =
+            r#"{"defaults":{"minecraft:air":0},"states":[["a",true,false,"","minecraft:air"]]}"#;
+        let registry =
+            sunrise_world::registry::BlockRegistry::from_facts_json(facts.as_bytes()).unwrap();
+        super::super::api_values::resolve_block_definitions(&registry).unwrap();
+        let world = World::new(registry.default_state("minecraft:air").unwrap(), 0);
         let mut stack = ItemStack::new("minecraft:stone", 2);
         stack
             .data_mut()
@@ -434,29 +511,31 @@ fn native_admission_allocates_only_when_preparing_subscribed_snapshots() {
         // doesn't convert the component-bearing offer or the entity's saved fields.
         let plain = make_entity("admission:plain");
         let mut attempt = PlacementAttempt::default();
-        let (plain_answers, plain_allocs) =
-            measure(|| [0, 1].map(|slot| black_box(attempt.ask((0, 64, 0), &plain, slot, &stack))));
+        let (plain_answers, plain_allocs) = measure(|| {
+            [0, 1].map(|slot| black_box(attempt.ask(&world, (0, 64, 0), &plain, slot, &stack)))
+        });
         assert_eq!(plain_answers, [None, None]);
         assert_eq!(plain_allocs, 0);
 
         let mut filtered = make_entity("admission:filtered");
         let mut attempt = PlacementAttempt::default();
         let (first, setup_allocs) =
-            measure(|| black_box(attempt.ask(TARGET, &filtered, 0, &stack)));
+            measure(|| black_box(attempt.ask(&world, TARGET, &filtered, 0, &stack)));
         assert_eq!(first, Some(false));
         assert!(
             setup_allocs > 0,
             "allocation counter must observe snapshot creation"
         );
         stack.count = 1;
-        let (next, reuse_allocs) = measure(|| black_box(attempt.ask(TARGET, &filtered, 2, &stack)));
+        let (next, reuse_allocs) =
+            measure(|| black_box(attempt.ask(&world, TARGET, &filtered, 2, &stack)));
         assert_eq!(next, Some(true));
         assert_eq!(reuse_allocs, 0);
 
         *filtered.item_slot_mut(1).unwrap() = Some(ItemStack::new("minecraft:stone", 1));
         attempt.wrote_entity();
         let (refreshed, refresh_allocs) =
-            measure(|| black_box(attempt.ask(TARGET, &filtered, 2, &stack)));
+            measure(|| black_box(attempt.ask(&world, TARGET, &filtered, 2, &stack)));
         assert_eq!(refreshed, Some(false));
         assert!(refresh_allocs > 0);
         println!(
