@@ -122,6 +122,8 @@ Any other server.properties key, spelled as vanilla spells it, for example: spaw
 | `restart_on_crash` | `true` |  | start the game again when it crashes |
 | `low_memory` | `false` |  | true: no transparent huge pages, ~60 MB less idle for ~1 % more tick time |
 | `parallel_tick` | `false` |  | reserved: parallel phases are currently disabled in this fork |
+| `droppable_clientbound` | `262144` |  | bytes a second of droppable mod payloads (voice) sent to each player; 0 turns them off |
+| `droppable_serverbound` | `16384` |  | the same, accepted from each player |
 
 ### `[backups]`
 

@@ -845,15 +845,6 @@ pub trait LevelAccess: BlockEntityNeighbors {
         _answer: &mut Option<Option<BlockStateId>>,
     ) {
     }
-    /// `BlockItem.updatePlacementContext`: replace or refuse the item context.
-    /// None retains the vanilla item rewrite, including scaffolding's walk.
-    fn placement_context(
-        &self,
-        _item: &str,
-        _context: &PlacementContext,
-    ) -> Option<Option<PlacementContext>> {
-        None
-    }
     /// `BlockItem.mustSurvive`: None retains the item's vanilla requirement.
     fn must_survive(&self, _item: &str) -> Option<bool> {
         None
@@ -2446,6 +2437,42 @@ mod liquid_container_tests {
         b.scheduled_fluid_tick(&mut level, &mut Ticks::default(), source);
         assert_eq!(level.block_state(north), filled);
         assert_eq!(level.block_state(south), stone);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn lateral_flow_still_spreads_to_a_target_changed_to_another_washable_block() {
+        let fixture = tests::fixture().expect("prepared block facts for daily fixture");
+        let b = &fixture.behaviours;
+        let state = |name| fixture.registry.default_state(name).unwrap();
+        let source = BlockPos::new(0, 65, 0);
+        let north = source.offset(0, 0, -1);
+        let south = source.offset(0, 0, 1);
+        let container = state("minecraft:dandelion");
+        let stone = state("minecraft:stone");
+        let wire = state("minecraft:redstone_wire");
+        let mut level = ContainerLevel {
+            base: TestLevel::new(b),
+            container,
+            accepts: Some(FluidKind::FlowingWater),
+            filled: state("minecraft:emerald_block"),
+            // Stands in for a neighbour update rewriting the target mid-spread,
+            // the way a wire's power recompute does in a real cascade.
+            replace_on_fill: Some((south, wire)),
+        };
+        level.set_raw(source, state("minecraft:water"));
+        level.set_raw(source.offset(0, -1, 0), stone);
+        level.set_raw(source.offset(-1, 0, 0), stone);
+        level.set_raw(source.offset(1, 0, 0), stone);
+        level.set_raw(north, container);
+        b.scheduled_fluid_tick(&mut level, &mut Ticks::default(), source);
+        // Vanilla's spreadTo acts on the live block: air tested, wire found, water
+        // still washes the wire away instead of skipping the target.
+        assert!(
+            b.fluid(level.block_state(south))
+                .kind()
+                .same_family(FluidKind::Water)
+        );
     }
 }
 

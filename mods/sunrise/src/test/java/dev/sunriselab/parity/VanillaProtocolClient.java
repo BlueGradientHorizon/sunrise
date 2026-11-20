@@ -24,11 +24,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 import net.minecraft.SharedConstants;
+import net.minecraft.server.level.ChunkTrackingView;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -59,6 +62,8 @@ import net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerChatPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
+import net.minecraft.network.protocol.game.ClientboundSetChunkCacheCenterPacket;
+import net.minecraft.network.protocol.game.ClientboundSetChunkCacheRadiusPacket;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.network.protocol.game.GameProtocols;
 import net.minecraft.network.protocol.game.ServerboundAcceptTeleportationPacket;
@@ -106,6 +111,7 @@ import net.minecraft.world.phys.Vec3;
  * (entity ids, keep-alive ids, times, salts) are not part of the summaries.
  */
 public final class VanillaProtocolClient {
+    private final ClientInformation clientInformation = ClientInformation.createDefault();
     private Socket socket;
     private DataInputStream in;
     private OutputStream out;
@@ -391,7 +397,7 @@ public final class VanillaProtocolClient {
         inbound = ConfigurationProtocols.CLIENTBOUND;
         // ClientHandshakePacketListenerImpl.handleLoginFinished: brand, then the options.
         send(new ServerboundCustomPayloadPacket(new BrandPayload("vanilla")));
-        send(new ServerboundClientInformationPacket(ClientInformation.createDefault()));
+        send(new ServerboundClientInformationPacket(clientInformation));
         while (true) {
             Received r = read();
             if (r.packet instanceof ClientboundSelectKnownPacks p) {
@@ -473,6 +479,8 @@ public final class VanillaProtocolClient {
         socket.setSoTimeout(250);
         Map<String, String> chunks = new TreeMap<>();
         Map<String, String> layers = new TreeMap<>();
+        ChunkPos chunkCacheCenter = null;
+        int chunkCacheRadius = -1;
         Map<String, Integer> counts = new TreeMap<>();
         boolean ordered = true;
         boolean loaded = false;
@@ -561,7 +569,14 @@ public final class VanillaProtocolClient {
                         loadStart = true;
                     }
                 }
-                if (packet instanceof net.minecraft.network.protocol.game.ClientboundLoginPacket p) playerId = p.playerId();
+                if (packet instanceof net.minecraft.network.protocol.game.ClientboundLoginPacket p) {
+                    playerId = p.playerId();
+                    chunkCacheRadius = p.chunkRadius();
+                }
+                if (packet instanceof ClientboundSetChunkCacheCenterPacket p) {
+                    chunkCacheCenter = new ChunkPos(p.getX(), p.getZ());
+                }
+                if (packet instanceof ClientboundSetChunkCacheRadiusPacket p) chunkCacheRadius = p.getRadius();
                 // The first health after the pearl: the hurt (regeneration follows each server's ticks).
                 if (pearl && pearlHealth < 0 && packet instanceof net.minecraft.network.protocol.game.ClientboundSetHealthPacket p) {
                     pearlHealth = p.getHealth();
@@ -594,7 +609,7 @@ public final class VanillaProtocolClient {
                     send(new ServerboundChunkBatchReceivedPacket(64.0F));
                 } else if (packet instanceof ClientboundLevelChunkWithLightPacket p) {
                     chunks.put(p.x() + "," + p.z(), chunkHash(p));
-                    layers.put(p.x() + "," + p.z(), lightLayers(p));
+                    if (entities == null && step == 0) layers.putIfAbsent(p.x() + "," + p.z(), lightLayers(p));
                     lastChunk = now;
                     int px = (int) Math.floor(position.position().x) >> 4;
                     int pz = (int) Math.floor(position.position().z) >> 4;
@@ -726,17 +741,21 @@ public final class VanillaProtocolClient {
             if (entities == null && loaded && lastChunk > 0 && now - lastChunk > 3000 && step == 0) {
                 record("play-chunks", chunks.size() + " " + chunks);
                 BLOCK_ENTITIES.forEach((k, v) -> record("play-block-entities", k + " " + v));
-                // Which light layers exist depends on the neighbouring
-                // columns: compared where all eight were sent.
-                Map<String, String> inner = new TreeMap<>();
-                layers.forEach((k, v) -> {
-                    String[] xz = k.split(",");
-                    int x = Integer.parseInt(xz[0]), z = Integer.parseInt(xz[1]);
-                    boolean all = true;
-                    for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++) all &= chunks.containsKey((x + dx) + "," + (z + dz));
-                    if (all) inner.put(k, v);
-                });
-                record("play-light-layers", inner.size() + " " + inner);
+                if (chunkCacheCenter == null || chunkCacheRadius < 0) {
+                    throw new IllegalStateException("no initial chunk cache position or radius");
+                }
+                var expected = new TreeSet<String>();
+                // The cache-radius packet advertises the server cap, not the client's effective view.
+                int view = Math.min(chunkCacheRadius, Math.max(2, clientInformation.viewDistance()));
+                ChunkTrackingView.of(chunkCacheCenter, view).forEach(p -> expected.add(p.x() + "," + p.z()));
+                if (!expected.equals(layers.keySet())) {
+                    var missing = new TreeSet<>(expected);
+                    missing.removeAll(layers.keySet());
+                    var unexpected = new TreeSet<>(layers.keySet());
+                    unexpected.removeAll(expected);
+                    throw new IllegalStateException("incomplete initial chunk view: missing " + missing + ", unexpected " + unexpected);
+                }
+                record("play-light-layers", layers.size() + " " + layers);
                 step = 1;
                 stepAt = now;
                 repliesBefore = replies;
@@ -945,7 +964,8 @@ public final class VanillaProtocolClient {
             || t.equals("minecraft:block_update") || t.equals("minecraft:section_blocks_update")) {
             return null;
         }
-        if (t.equals("minecraft:keep_alive") || t.equals("minecraft:ping") || t.equals("minecraft:level_chunk_with_light")
+        // A play ping is compared, not left out: vanilla's server sends none.
+        if (t.equals("minecraft:keep_alive") || t.equals("minecraft:level_chunk_with_light")
             || t.equals("minecraft:chunk_batch_start") || t.equals("minecraft:chunk_batch_finished")
             || t.equals("minecraft:light_update") || t.equals("minecraft:bundle_delimiter")
             // Chat (the death message and /kill's feedback) is compared before the death.
@@ -1020,14 +1040,24 @@ public final class VanillaProtocolClient {
             + sha(entities.toString().getBytes()).substring(0, 8);
     }
 
-    /** The light layers a chunk has, sky then block (with data or empty). */
+    /** Compare both data and empty masks and every byte of each sent layer. */
     private static String lightLayers(ClientboundLevelChunkWithLightPacket p) {
-        var light = p.lightData();
-        BitSet sky = (BitSet) light.skyYMask().clone();
-        sky.or(light.emptySkyYMask());
-        BitSet block = (BitSet) light.blockYMask().clone();
-        block.or(light.emptyBlockYMask());
-        return sky + "/" + block;
+        var data = p.lightData();
+        return data.skyYMask() + "/" + data.blockYMask() + "/" + data.emptySkyYMask() + "/" + data.emptyBlockYMask()
+            + "/" + lightPayloadHash(data.skyUpdates()) + "/" + lightPayloadHash(data.blockUpdates());
+    }
+
+    private static String lightPayloadHash(List<byte[]> layers) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            for (byte[] layer : layers) {
+                if (layer.length != 2048) throw new IllegalStateException("wrong light layer length: " + layer.length);
+                digest.update(layer);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new AssertionError(e);
+        }
     }
 
     /** The player's chunk part by part, so a difference in its bytes can be told apart. */

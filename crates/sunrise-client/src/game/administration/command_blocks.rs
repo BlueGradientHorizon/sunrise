@@ -773,13 +773,11 @@ impl Game<'_> {
             ui::button_as(
                 batch,
                 atlas,
-                x,
-                y,
-                bw,
-                20.0,
+                [x, y, bw, 20.0],
                 &s.label(b),
                 true,
                 hover,
+                None,
                 |rect| s.narration(b, rect, &super::screen_info::tr),
             );
         }
