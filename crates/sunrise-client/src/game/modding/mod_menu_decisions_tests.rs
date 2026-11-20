@@ -24,7 +24,6 @@ struct Script {
     /// Put dirt in guest slot 20 through the `Host`, in the listener's own nested transaction.
     write_dirt: bool,
     panic: bool,
-    guest: Option<GuestFailure>,
     /// `menu_quick_move`: take 9 of the stack into slots 1 and 2 of the block (4, then 5).
     take: bool,
     all: bool,
@@ -72,41 +71,6 @@ fn write_dirt(host: &mut dyn ServerHost) {
     assert_eq!(place.insert(host, &tx, &ItemResource::of(&dirt), 2), 2);
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(super) enum GuestFailure {
-    Trap,
-    Missing,
-    Malformed,
-}
-
-impl GuestFailure {
-    pub(super) const ALL: [Self; 3] = [Self::Trap, Self::Missing, Self::Malformed];
-
-    pub(super) fn module(self) -> sunrise_mod_wasm::WasmMod {
-        let reply = match self {
-            Self::Trap => "unreachable",
-            // The guest returns no event write-back.
-            Self::Missing => "i64.const 0",
-            // One invalid byte cannot decode as the expected complete reply.
-            Self::Malformed => "i64.const 4096 i64.const 32 i64.shl i64.const 1 i64.or",
-        };
-        let bytes = wat::parse_str(format!(
-            r#"(module
-              (@custom "dylink.0" "\01\04\00\00\00\00")
-              (import "env" "memory" (memory 1))
-              (import "env" "__indirect_function_table" (table 1 funcref))
-              {log}
-              (data (i32.const 4096) "\ff")
-              (func (export "sunrise_in") (param i32) (result i32) i32.const 512)
-              (func (export "sunrise_hook") (param i64) (result i64) {reply})
-            )"#,
-            log = sunrise_mod_wasm::fixture::log_import(),
-        ))
-        .unwrap();
-        sunrise_mod_wasm::fixture::module(&bytes).unwrap()
-    }
-}
-
 struct Part;
 #[mod_api::sunrise_part]
 impl mod_api::BlockPart for Part {}
@@ -129,11 +93,6 @@ impl BlockEntityPart for Part {
         };
         if s.write_dirt {
             write_dirt(host);
-        }
-        if let Some(failure) = s.guest {
-            let guest = failure.module();
-            let handler = sunrise_mod_wasm::WasmHandler::new(&guest, mod_api::wire::Id(1));
-            return handler.menu_quick_move(host, event);
         }
         if s.take {
             event.entity.items.resize(9, None);
@@ -230,9 +189,6 @@ impl Hooks for Mod {
         if s.write_dirt {
             write_dirt(host);
         }
-        if let Some(failure) = s.guest {
-            return failure.module().menu_clicked(host, event);
-        }
         if s.panic {
             panic!("a listener failed");
         }
@@ -307,66 +263,6 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
             assert_eq!(inventory(game, 20), 2);
             game.transaction_close(&seal, false);
             assert_eq!(inventory(game, 20), 0);
-        });
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_guest_failure_aborts_menu_clicked_and_scoped_menu_quick_move() {
-    sunrise_guest_stack::run_on_guest_stack(|| {
-        with_mod(|| {
-            with_guests(|game| {
-                for failure in GuestFailure::ALL {
-                    let failures = game.wasm_dispatch_failures.get();
-                    let window = open_native_menu(game);
-                    script(Script {
-                        write_dirt: true,
-                        guest: Some(failure),
-                        ..Script::default()
-                    });
-                    game.lan_guest_packet(12, container_click(window, 3, 0));
-                    game.run_native_menu_events();
-                    assert_eq!(
-                        game.wasm_dispatch_failures.get(),
-                        failures + 1,
-                        "{failure:?}"
-                    );
-                    assert_eq!(inventory(game, 20), 0, "{failure:?}");
-                    assert_eq!((decided(), DISPATCHES.get()), (1, 1));
-                    assert!(game.transactions.is_empty());
-
-                    // Test without a preceding inventory edit too, so staleness
-                    // cannot make an erroneous Continue/fallback pass.
-                    for write_dirt in [true, false] {
-                        let failures = game.wasm_dispatch_failures.get();
-                        let window = open_depot(game);
-                        script(Script {
-                            write_dirt,
-                            guest: Some(failure),
-                            ..Script::default()
-                        });
-                        game.lan_guest_packet(12, container_click(window, 0, 1));
-                        assert_eq!(
-                            game.wasm_dispatch_failures.get(),
-                            failures + 1,
-                            "{failure:?}"
-                        );
-                        assert_eq!(depot(game), (10, 0, 0, 0), "{failure:?}");
-                        assert_eq!(inventory(game, 20), 0, "{failure:?}");
-                        assert_eq!((decided(), DISPATCHES.get()), (1, 1));
-                        assert!(game.transactions.is_empty());
-                    }
-                }
-
-                let window = open_depot(game);
-                script(Script {
-                    take: true,
-                    ..Script::default()
-                });
-                game.lan_guest_packet(12, container_click(window, 0, 1));
-                assert_eq!(depot(game), (1, 4, 5, 0));
-            });
         });
     });
 }

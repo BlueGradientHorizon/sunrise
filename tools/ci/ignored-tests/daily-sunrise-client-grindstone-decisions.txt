@@ -10,4 +10,4 @@ sunrise-client game::grindstone_decisions_tests::a_stale_place_is_refused_and_th
 sunrise-client game::grindstone_decisions_tests::an_invalid_place_answer_is_refused lib daily resources
 sunrise-client game::grindstone_decisions_tests::an_outer_abort_undoes_an_accepted_grindstone_take lib daily resources
 sunrise-client game::grindstone_decisions_tests::equal_state_backing_replacement_refuses_place_and_take lib daily resources
-sunrise-client game::grindstone_decisions_tests::failed_grindstone_listeners_rollback_place_and_take lib daily resources
+sunrise-client game::grindstone_decisions_tests::panicking_grindstone_listeners_roll_back_place_and_take lib daily resources

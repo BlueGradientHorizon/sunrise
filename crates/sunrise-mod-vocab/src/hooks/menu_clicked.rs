@@ -14,9 +14,8 @@ pub trait Hooks {
     /// hotbar slots. `PlayerSlot` and `PlayerHand` resolve the online clicking player through
     /// the usual acting-player or guest path. For a player still connected, the mods are
     /// told inside an action: what a listener writes through the `Host` stays when it
-    /// returns, and is undone with the rest of the action on a native panic or a wasm trap,
-    /// missing reply, or malformed reply. A click drained after its player left is still told,
-    /// outside an action.
+    /// returns, and is undone, with the rest of the action, when a listener fails (panics or
+    /// traps). A click drained after its player left is still told, outside an action.
     #[hook(
         side = "server",
         contract = "listen",

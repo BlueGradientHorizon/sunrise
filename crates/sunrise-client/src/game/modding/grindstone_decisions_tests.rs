@@ -1,7 +1,6 @@
 //! `grindstone_place` and `grindstone_take` through real listeners: both run as decided actions
 //! on a guest's workstation menu, with the same savepoint and refusal as the other menu hooks.
 //! The fixtures need prepared resources.
-use super::mod_menu_decisions_tests::GuestFailure;
 use crate::game::{
     native_guest_turn_tests::with_guests,
     stations::{Kind as StationKind, Station},
@@ -23,7 +22,6 @@ struct Script {
     replace_backing: bool,
     place_panic: bool,
     take_panic: bool,
-    guest: Option<GuestFailure>,
     take_write: bool,
     take_cancel: bool,
     take_bad_xp: bool,
@@ -109,9 +107,6 @@ impl Hooks for Mod {
         if s.place_cancel {
             event.cancelled = true;
         }
-        if let Some(failure) = s.guest {
-            return failure.module().grindstone_place(host, event);
-        }
         if s.place_panic {
             panic!("a place listener failed");
         }
@@ -138,9 +133,6 @@ impl Hooks for Mod {
         }
         if s.take_cancel {
             event.cancelled = true;
-        }
-        if let Some(failure) = s.guest {
-            return failure.module().grindstone_take(host, event);
         }
         if s.take_panic {
             panic!("a take listener failed");
@@ -609,83 +601,59 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
 
 #[test]
 #[ignore = "daily"]
-fn failed_grindstone_listeners_rollback_place_and_take() {
-    sunrise_guest_stack::run_on_guest_stack(|| {
-        with_mod(|| {
-            with_guests(|game| {
-                let window = open_grindstone(game);
-                let sword = enchanted_sword(game, 200);
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                    g.carried = Some(sword.clone());
-                });
-                // With no preceding slot write, the epoch is still current: the wasm
-                // failure itself must refuse the action instead of returning Continue.
-                let failures = [(None, true)].into_iter().chain(
-                    GuestFailure::ALL
-                        .into_iter()
-                        .flat_map(|failure| [(Some(failure), true), (Some(failure), false)]),
-                );
-                for (guest, write_slot) in failures.clone() {
-                    let before = game.wasm_dispatch_failures.get();
-                    script(Script {
-                        place_output: true,
-                        place_write: write_slot,
-                        place_panic: guest.is_none(),
-                        guest,
-                        ..Script::default()
-                    });
-                    click(game, window, 0, 0);
-                    assert_eq!(DISPATCHES.get(), 1);
-                    assert_eq!(
-                        game.wasm_dispatch_failures.get(),
-                        before + u64::from(guest.is_some())
-                    );
-                    // A failed createResult does not undo the already placed input.
-                    assert_eq!(slot(game, 0), Some(sword.clone()));
-                    assert_eq!(slot(game, 2), None, "{guest:?}, slot write: {write_slot}");
-                    assert_eq!(inventory(game, 20), 0, "{guest:?}");
-                    assert!(game.transactions.is_empty());
-
-                    script(Script::default());
-                    click(game, window, 0, 0);
-                }
-                script(Script {
-                    place_output: true,
-                    ..Script::default()
-                });
-                click(game, window, 0, 0);
-                let output = Some(ItemStack::new("minecraft:dirt", 1));
-                assert_eq!(slot(game, 2), output);
-
-                for (guest, write_slot) in failures {
-                    let before = game.wasm_dispatch_failures.get();
-                    let events = game.lan_events.len();
-                    script(Script {
-                        take_write: write_slot,
-                        take_panic: guest.is_none(),
-                        guest,
-                        ..Script::default()
-                    });
-                    click(game, window, 2, 0);
-                    assert_eq!(TAKE_XP.get(), Some(5));
-                    assert_eq!(DISPATCHES.get(), 1);
-                    assert_eq!(
-                        game.wasm_dispatch_failures.get(),
-                        before + u64::from(guest.is_some())
-                    );
-                    assert_eq!(slot(game, 0), Some(sword.clone()));
-                    assert_eq!(slot(game, 2), output, "{guest:?}, slot write: {write_slot}");
-                    assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].carried, None);
-                    assert_eq!(inventory(game, 20), 0, "{guest:?}");
-                    assert_eq!(game.lan_events.len(), events);
-                    assert!(game.orbs.is_empty());
-                    assert!(game.transactions.is_empty());
-                }
-                script(Script::default());
-                click(game, window, 2, 0);
-                assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].carried, output);
-                assert!(!game.orbs.is_empty());
+fn panicking_grindstone_listeners_roll_back_place_and_take() {
+    with_mod(|| {
+        with_guests(|game| {
+            let window = open_grindstone(game);
+            let sword = enchanted_sword(game, 200);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(sword.clone());
             });
+            script(Script {
+                place_output: true,
+                place_write: true,
+                place_panic: true,
+                ..Script::default()
+            });
+            click(game, window, 0, 0);
+            assert_eq!(DISPATCHES.get(), 1);
+            // A failed createResult does not undo the already placed input.
+            assert_eq!(slot(game, 0), Some(sword.clone()));
+            assert_eq!(slot(game, 2), None);
+            assert_eq!(inventory(game, 20), 0);
+            assert!(game.transactions.is_empty());
+
+            script(Script::default());
+            click(game, window, 0, 0);
+            script(Script {
+                place_output: true,
+                ..Script::default()
+            });
+            click(game, window, 0, 0);
+            let output = Some(ItemStack::new("minecraft:dirt", 1));
+            assert_eq!(slot(game, 2), output);
+
+            let events = game.lan_events.len();
+            script(Script {
+                take_write: true,
+                take_panic: true,
+                ..Script::default()
+            });
+            click(game, window, 2, 0);
+            assert_eq!(TAKE_XP.get(), Some(5));
+            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(slot(game, 0), Some(sword));
+            assert_eq!(slot(game, 2), output);
+            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].carried, None);
+            assert_eq!(inventory(game, 20), 0);
+            assert_eq!(game.lan_events.len(), events);
+            assert!(game.orbs.is_empty());
+            assert!(game.transactions.is_empty());
+
+            script(Script::default());
+            click(game, window, 2, 0);
+            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].carried, output);
+            assert!(!game.orbs.is_empty());
         });
     });
 }

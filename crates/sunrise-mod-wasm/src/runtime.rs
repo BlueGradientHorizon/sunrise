@@ -490,21 +490,6 @@ pub(crate) fn take_refusal() -> String {
         .with(|last| last.borrow_mut().take())
         .unwrap_or_else(|| "refused".into())
 }
-
-fn refuse_action_hook(class: CallClass, member: &str, export: u64) {
-    // Injection points share the hook budget, but not the menu action's listener policy.
-    if class == CallClass::Hook
-        && export & mod_call::POINT_TAG == 0
-        && sunrise_mod_runtime::dispatch_failures::action_fire_active()
-        && !std::thread::panicking()
-    {
-        log::warn!("wasm listener {member} export {export}: {}", take_refusal());
-        // The action coordinator is already the unwind boundary for native
-        // listeners. Do not let this proxy return a synthetic Continue or ().
-        std::panic::resume_unwind(Box::new("wasm listener did not answer"));
-    }
-}
-
 fn fault_reason(error: &wasmtime::Error, budget: u64, limits: &mut Limits) -> String {
     let reason = match error.downcast_ref::<wasmtime::Trap>() {
         Some(wasmtime::Trap::Interrupt) => {
@@ -752,12 +737,7 @@ impl WeakWasmMod {
         args: impl FnOnce(&mut Writer),
         reply: impl FnOnce(&mut Reader<'_>) -> Result<R, WireError>,
     ) -> Option<R> {
-        if let Some(module) = self.upgrade() {
-            module.call(class, frame, id, handler, args, reply)
-        } else {
-            refuse_action_hook(class, &self.id, id);
-            None
-        }
+        self.upgrade()?.call(class, frame, id, handler, args, reply)
     }
     /// Payload ingress must retain ownership instead of waiting for a busy group.
     pub(crate) fn call_payload<R>(
@@ -1229,14 +1209,9 @@ impl WasmMod {
         args: impl FnOnce(&mut Writer),
         reply: impl FnOnce(&mut Reader<'_>) -> Result<R, WireError>,
     ) -> Option<R> {
-        let answer = self
-            .try_call(CallMode::Ordinary(class), frame, id, handler, args, reply)
+        self.try_call(CallMode::Ordinary(class), frame, id, handler, args, reply)
             .ok()
-            .flatten();
-        if answer.is_none() {
-            refuse_action_hook(class, &self.id, id);
-        }
-        answer
+            .flatten()
     }
 
     fn try_call<R>(
