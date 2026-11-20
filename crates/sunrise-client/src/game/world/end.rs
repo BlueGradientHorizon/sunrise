@@ -380,8 +380,8 @@ impl Game<'_> {
     pub(super) fn view_environment(&self) -> &Environment {
         if let Some(own) = self.remote.as_ref().and_then(|r| {
             r.level_pack_environment
-                .as_ref()
-                .or(r.level_environment.as_ref())
+                .as_deref()
+                .or(r.level_environment.as_deref())
         }) {
             return own;
         }
@@ -399,7 +399,7 @@ impl Game<'_> {
         if let Some(own) = self
             .remote
             .as_ref()
-            .and_then(|r| r.level_environment.as_ref())
+            .and_then(|r| r.level_environment.as_deref())
         {
             return own;
         }

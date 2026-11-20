@@ -618,15 +618,20 @@ pub(super) struct Remote {
     /// level's facts, the integrated server's included.
     pub(in crate::game) level_facts: Option<Arc<sunrise_world::dimension_type::DimensionFacts>>,
     /// The sky, fog and cloud attributes (and timelines) of the level from the server's type over
-    /// the client's own environment of that type (`None` when the server sent no data for the
-    /// type, or it is refused): what gameplay reads.
-    pub(in crate::game) level_environment: Option<sunrise_client::environment::Environment>,
+    /// the client's own environment of that type: what gameplay reads. `None` when the type is
+    /// refused, or has no data at all: neither the server sent it nor the client's resources hold
+    /// it (`fill_known_entries` fills a known pack's entries from the client's own files).
+    pub(in crate::game) level_environment: Option<Arc<sunrise_client::environment::Environment>>,
     /// The same over the packs' Polytone stack of that type, what the frame draws (`None` without
-    /// pack modifiers, or for a type the packs have no stack of).
-    pub(in crate::game) level_pack_environment: Option<sunrise_client::environment::Environment>,
+    /// pack modifiers, or for a type the packs have no stack of: any but the three vanilla IDs).
+    pub(in crate::game) level_pack_environment:
+        Option<Arc<sunrise_client::environment::Environment>>,
     /// The level's synchronized dimension type, which both environments are built from again
     /// when the packs change.
     synced_type: Option<(String, serde_json::Value)>,
+    /// Both environments by synchronized type name, with what they were built from, so that a
+    /// level of an unchanged type is entered again without reading the biome files.
+    level_environments: HashMap<String, level_format::LevelEnvironments>,
     /// Connection-owned facts, cached by level and the full named type identity.
     facts_cache: HashMap<
         String,
@@ -1267,6 +1272,7 @@ impl Game<'_> {
             level_environment: None,
             level_pack_environment: None,
             synced_type: None,
+            level_environments: Default::default(),
             facts_cache: Default::default(),
             added_levels: Default::default(),
             viewed: Default::default(),
@@ -1519,6 +1525,7 @@ impl Game<'_> {
             level_environment: None,
             level_pack_environment: None,
             synced_type: None,
+            level_environments: Default::default(),
             facts_cache: Default::default(),
             added_levels: Default::default(),
             viewed: Default::default(),

@@ -119,7 +119,7 @@ impl Game<'_> {
         let environment = match self
             .remote
             .as_ref()
-            .and_then(|r| r.level_environment.as_ref())
+            .and_then(|r| r.level_environment.as_deref())
             .filter(|_| dimension == self.dim)
         {
             Some(own) => own,
