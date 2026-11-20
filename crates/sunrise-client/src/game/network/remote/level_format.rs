@@ -65,10 +65,10 @@ impl crate::game::Game<'_> {
     ///
     /// Building one reads every biome file, so both are kept by type name with the JSON and the
     /// packs' stacks they were built from (`LevelEnvironments`): entering a level of an unchanged
-    /// type again (a respawn, a travel back) reuses them, and a pack reload, which makes new
-    /// stacks, builds the frame's again.
+    /// type again (a respawn, a travel back) reuses them as kept, without cloning the JSON, and a
+    /// pack reload, which makes new stacks, builds only the frame's again, in the same entry.
     pub(in crate::game) fn build_level_environments(&mut self) {
-        let stacks = self.pack.environments.clone();
+        let stacks = self.pack.environments.as_ref();
         let Some(r) = self.remote.as_mut() else {
             return;
         };
@@ -77,34 +77,27 @@ impl crate::game::Game<'_> {
             r.level_pack_environment = None;
             return;
         };
-        let built = r.level_environments.get(name).filter(|e| e.json == *json);
-        if let Some(e) = built
-            && same_stacks(e.stacks.as_ref(), stacks.as_ref())
+        if let Some(e) = r
+            .level_environments
+            .get_mut(name)
+            .filter(|e| e.json == *json)
         {
+            if !same_stacks(e.stacks.as_ref(), stacks) {
+                e.pack = pack_environment(name, json, stacks);
+                e.stacks = stacks.map(Arc::downgrade);
+            }
             r.level_environment = e.own.clone();
             r.level_pack_environment = e.pack.clone();
             return;
         }
-        let own = match built {
-            Some(e) => e.own.clone(),
-            None => Environment::with_type(self.res.environment_of(name), json).map(Arc::new),
-        };
-        let pack = stacks
-            .as_ref()
-            .and_then(|e| match name.as_str() {
-                "minecraft:overworld" => Some(&e[0]),
-                "minecraft:the_nether" => Some(&e[1]),
-                "minecraft:the_end" => Some(&e[2]),
-                _ => None,
-            })
-            .and_then(|base| Environment::with_type(base, json))
-            .map(Arc::new);
+        let own = Environment::with_type(self.res.environment_of(name), json).map(Arc::new);
+        let pack = pack_environment(name, json, stacks);
         r.level_environments.insert(
             name.clone(),
             LevelEnvironments {
                 json: json.clone(),
                 own: own.clone(),
-                stacks: stacks.as_ref().map(Arc::downgrade),
+                stacks: stacks.map(Arc::downgrade),
                 pack: pack.clone(),
             },
         );
@@ -125,6 +118,22 @@ pub(super) struct LevelEnvironments {
     stacks: Option<Weak<[Environment; 3]>>,
     /// Over the packs' stack of the type: the frame's.
     pack: Option<Arc<Environment>>,
+}
+
+/// The frame's environment of the synchronized type `name` with `json`: the type over the packs'
+/// stack of that type, or `None` without pack modifiers or for a type with no pack stack.
+fn pack_environment(
+    name: &str,
+    json: &serde_json::Value,
+    stacks: Option<&Arc<[Environment; 3]>>,
+) -> Option<Arc<Environment>> {
+    let base = match name {
+        "minecraft:overworld" => &stacks?[0],
+        "minecraft:the_nether" => &stacks?[1],
+        "minecraft:the_end" => &stacks?[2],
+        _ => return None,
+    };
+    Environment::with_type(base, json).map(Arc::new)
 }
 
 /// Whether `built` are the packs' current stacks `now`.
@@ -164,14 +173,14 @@ impl Remote {
         // longer taken for the Overworld.
         let mut facts = None;
         let synced_type = self.registries.dimension_json(spawn.dimension_type);
-        if let Some((name, json)) = synced_type.clone() {
+        if let Some((name, json)) = &synced_type {
             let cached = self
                 .facts_cache
                 .get(&spawn.dimension)
-                .filter(|(old_name, old, _)| *old_name == name && *old == json)
+                .filter(|(old_name, old, _)| old_name == name && old == json)
                 .map(|(_, _, facts)| facts.clone());
             facts = cached.or_else(|| {
-                let base = DimensionFacts::base_for_type(&name);
+                let base = DimensionFacts::base_for_type(name);
                 let facts = (|| {
                     for field in ["coordinate_scale", "ambient_light"] {
                         if json.get(field).is_some()
@@ -185,7 +194,7 @@ impl Remote {
                     {
                         return Err("invalid monster_spawn_block_light_limit".into());
                     }
-                    DimensionFacts::patched(base, &name, &json)
+                    DimensionFacts::patched(base, name, json)
                 })()
                 .map_err(|why| log::warn!("the server's dimension type {name} is refused ({why})"))
                 .unwrap_or_else(|_| base.clone());
