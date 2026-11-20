@@ -54,9 +54,8 @@ impl BlockEntityPart for Consume {
         assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 2);
         assert_eq!(
             ItemPlace::ItemEntity { id: first.id() }
-                .stack(host)
-                .unwrap()
-                .count(),
+                .with_stack(host, |stack| stack.count())
+                .unwrap(),
             2
         );
         if case == "nested_abort" {
@@ -80,7 +79,7 @@ impl BlockEntityPart for Consume {
         assert!(second_item.with_stack(host, |_| ()).is_none());
         assert!(
             ItemPlace::ItemEntity { id: second.id() }
-                .stack(host)
+                .with_stack(host, |_| ())
                 .is_none()
         );
         let level = host.level("minecraft:overworld").unwrap();
@@ -120,7 +119,7 @@ impl BlockEntityPart for Observe {
             assert!(item.with_stack(host, |_| ()).is_none());
             assert!(
                 ItemPlace::ItemEntity { id: first.id() }
-                    .stack(host)
+                    .with_stack(host, |_| ())
                     .is_none()
             );
         }

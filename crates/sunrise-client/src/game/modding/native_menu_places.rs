@@ -246,7 +246,8 @@ impl Game<'_> {
                 break;
             }
             let stack = ItemPlace::MenuSlot { menu, slot: n }
-                .stack(host)
+                .with_stack(host, |stack| stack.project())
+                .flatten()
                 .and_then(|stack| stack.try_into_engine(self.items()).ok());
             let Some(lan) = self.lan.as_mut() else {
                 return false;
@@ -621,13 +622,16 @@ mod tests {
             assert!(game.place_menu_click(123, window, 27, 0, 1));
             let host: &mut dyn ServerHost = game;
             assert_eq!(held_slot(0).amount(host), 64);
-            assert_eq!(ItemPlace::MenuSlot { menu, slot: 27 }.stack(host), None);
+            assert_eq!(
+                ItemPlace::MenuSlot { menu, slot: 27 }.with_stack(host, |_| ()),
+                None
+            );
             assert_eq!(ItemPlace::MenuSlot { menu, slot: 0 }.amount(host), 64);
 
             // The box's own hotbar slot (menu slot 54) takes no click.
             assert!(game.place_menu_click(123, window, 54, 0, 0));
             let host: &mut dyn ServerHost = game;
-            assert_eq!(menu.cursor().stack(host), None);
+            assert_eq!(menu.cursor().with_stack(host, |_| ()), None);
             let held = ItemPlace::PlayerHand {
                 player: 123,
                 hand: Hand::Main,
@@ -709,7 +713,10 @@ mod tests {
             );
             let host: &mut dyn ServerHost = game;
             assert_eq!(menu.slot_backing(host, 0), Some(MenuSlotBacking::Native(0)));
-            assert_eq!(ItemPlace::MenuSlot { menu, slot: 0 }.stack(host), None);
+            assert_eq!(
+                ItemPlace::MenuSlot { menu, slot: 0 }.with_stack(host, |_| ()),
+                None
+            );
             assert_eq!(stone(game, menu), 64);
         });
     }
@@ -1124,14 +1131,18 @@ mod tests {
         assert_eq!(held_slot(0).amount(host), 5);
         let contents = |game: &mut Game<'_>| {
             (0..45)
-                .map(|slot| ItemPlace::MenuSlot { menu, slot }.stack(game))
+                .map(|slot| {
+                    ItemPlace::MenuSlot { menu, slot }
+                        .with_stack(game, |stack| stack.project())
+                        .flatten()
+                })
                 .collect::<Vec<_>>()
         };
         let before = contents(game);
         for mode in [0, 1] {
             assert!(game.place_menu_click(123, window, 0, 0, mode));
             assert_eq!(contents(game), before);
-            assert_eq!(menu.cursor().stack(game), None);
+            assert_eq!(menu.cursor().with_stack(game, |_| ()), None);
             assert_eq!(held_slot(0).amount(game), 5);
         }
     }

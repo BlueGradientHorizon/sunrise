@@ -49,6 +49,15 @@ def stack_snapshot(call: str, *, prefix="", suffix="", count=1) -> Edit:
     return Edit(prefix + call + suffix, prefix + new + suffix, count)
 
 
+def place_scalar(call: str, scalar: str, *, prefix="", suffix="", count=1) -> Edit:
+    receiver, _, args = call.rpartition(".stack(")
+    old = call + (f".unwrap().{scalar}()" if scalar else "")
+    read = f"stack.{scalar}()" if scalar else "()"
+    parameter = "stack" if scalar else "_"
+    new = f"{receiver}.with_stack({args[:-1]}, |{parameter}| {read})"
+    return Edit(prefix + old + suffix, prefix + new + (".unwrap()" if scalar else "") + suffix, count)
+
+
 # A receiver spelling is only meaningful in its audited file and expression context.
 BATCHES = {
     "inventory": {
@@ -178,6 +187,14 @@ BATCHES = {
         ),
     },
     "item-place": {
+        MODDING + "block_entity_tick_items_tests.rs": (
+            Edit(
+                ".stack(host)\n                .unwrap()\n                .count()",
+                ".with_stack(host, |stack| stack.count())\n                .unwrap()",
+            ),
+            Edit(".stack(host)\n                .is_none()", ".with_stack(host, |_| ()).is_none()"),
+            Edit(".stack(host)\n                    .is_none()", ".with_stack(host, |_| ()).is_none()"),
+        ),
         MODDING + "native_book_apply.rs": (
             stack_snapshot("place.stack(host)", prefix="if ", suffix=".as_ref() != before.as_ref()"),
         ),
@@ -196,12 +213,39 @@ BATCHES = {
                 "ItemPlace::MenuSlot { menu, slot }.stack(host)", prefix="let stack = ", suffix=";",
             ),
         ),
+        MODDING + "native_entity_refs.rs": (
+            place_scalar("place.stack(game)", "", suffix=".is_none()"),
+            place_scalar("place.stack(game)", "count", suffix=", 1"),
+        ),
         MODDING + "native_item_places.rs": (
             stack_snapshot("slot.stack(host)", prefix="assert_eq!(", suffix=", Some(", count=2),
             stack_snapshot("filled.stack(game)", suffix=",\n"),
-            stack_snapshot("place.stack(game)", prefix="assert_eq!(", suffix=", Some(", count=2),
+            stack_snapshot("place.stack(game)", prefix="assert_eq!(", suffix=", Some(", count=4),
+            stack_snapshot("place.stack(game)", prefix="let updated = ", suffix=".unwrap();"),
+            place_scalar("shop.stack(host)", "", suffix=", None"),
+            place_scalar("stale.cursor().stack(host)", "", suffix=", None"),
+        ),
+        MODDING + "native_menu_inventory_tests.rs": (
+            Edit(
+                ".stack(host)\n            .unwrap()\n            .count()",
+                ".with_stack(host, |stack| stack.count())\n            .unwrap()",
+                count=2,
+            ),
+            place_scalar("hand.stack(game)", "count"),
+            place_scalar("direct.stack(game)", "count", count=2),
+            place_scalar("take.stack(game)", "count"),
+            place_scalar("give.stack(game)", "count", count=2),
+            place_scalar("partial.stack(game)", "count"),
         ),
         MODDING + "native_menu_places.rs": (
+            Edit(
+                ".stack(host)\n                .and_then(|stack| stack.try_into_engine(self.items()).ok())",
+                ".with_stack(host, |stack| stack.project())\n                .flatten()\n                .and_then(|stack| stack.try_into_engine(self.items()).ok())",
+            ),
+            place_scalar("ItemPlace::MenuSlot { menu, slot: 27 }.stack(host)", "", suffix=", None"),
+            place_scalar("ItemPlace::MenuSlot { menu, slot: 0 }.stack(host)", "", suffix=", None"),
+            place_scalar("menu.cursor().stack(host)", "", suffix=", None"),
+            place_scalar("menu.cursor().stack(game)", "", suffix=", None"),
             stack_snapshot(
                 "ItemPlace::MenuSlot { menu, slot }.stack(game)",
                 prefix=".map(|slot| ",
@@ -213,14 +257,36 @@ BATCHES = {
             stack_snapshot("place.stack(host)", prefix="restored.push((inner_restored, ", suffix="));"),
             stack_snapshot("place.stack(host)", suffix=",\n                            Some(stack.clone()", count=2),
         ),
+        GAME + "network/lan_actions/guest_body/tests.rs": (
+            Edit(
+                ".stack(host)\n            .and_then(|stack| mod_api::__private::item_key_id(stack.item()).map(str::to_owned))",
+                ".with_stack(host, |stack| mod_api::__private::item_key_id(stack.item()).map(str::to_owned))\n            .flatten()",
+            ),
+        ),
         GAME + "runtime/transactions.rs": (
+            Edit("hand.stack(host).map(|s| {", "hand.with_stack(host, |s| {"),
             stack_snapshot("place(0).stack(host)", suffix=",\n                Some(sticks(", count=2),
+            place_scalar("place(1).stack(host)", "", suffix=", None"),
+            place_scalar("place.stack(host)", "", suffix=".is_none()", count=2),
+            place_scalar("entity.stack(host)", "", suffix=".is_none()"),
             stack_snapshot("entity.stack(host)", prefix="assert_eq!(", suffix=", Some(sticks(", count=2),
+            Edit(
+                ".stack(host)\n                .map(|s| mod_api::__private::item_key_id(s.item()).unwrap())",
+                ".with_stack(host, |s| mod_api::__private::item_key_id(s.item()).unwrap())",
+            ),
         ),
         "crates/sunrise-mod-api/src/parts/items.rs": (
             stack_snapshot("in_bag.stack(host)", prefix="assert_eq!(", suffix=", Some(stack("),
             stack_snapshot("HAND.stack(host)", prefix="assert_eq!(", suffix=", Some(stack(", count=2),
             stack_snapshot("charm.stack(host)", prefix="assert_eq!(", suffix=", Some(stack("),
+            stack_snapshot("HAND.stack(host)", prefix="                ", suffix="\n            }"),
+            place_scalar("charm.stack(&mut player)", "", suffix=".is_none()"),
+            place_scalar("unknown.stack(host)", "", suffix=".is_none()"),
+            Edit("self.0.stack(host).map_or(0, |pouch| pouch.damage())", "self.0.with_stack(host, |pouch| pouch.damage()).unwrap_or(0)"),
+            Edit("self.0.stack(host).map_or(0, |case| case.damage())", "self.0.with_stack(host, |case| case.damage()).unwrap_or(0)", count=3),
+            Edit("self.0.stack(host).map_or(0, |cell| cell.damage())", "self.0.with_stack(host, |cell| cell.damage()).unwrap_or(0)"),
+            Edit("self.0.stack(host)?.damage()", "self.0.with_stack(host, |stack| stack.damage())?", count=2),
+            place_scalar("self.0.stack(host)", "damage", count=2),
         ),
     },
 }

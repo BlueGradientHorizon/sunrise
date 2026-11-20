@@ -804,7 +804,10 @@ pub(super) mod tests {
                         })
                         .is_ok()
                     );
-                    assert_eq!(slot.stack(host), Some(expected_stack.clone()));
+                    assert_eq!(
+                        slot.with_stack(host, |stack| stack.project()).flatten(),
+                        Some(expected_stack.clone())
+                    );
                     Err::<(), ()>(())
                 }),
                 Err(())
@@ -824,7 +827,10 @@ pub(super) mod tests {
                         Err::<(), ()>(())
                     });
                     assert_eq!(child, Err(()));
-                    assert_eq!(slot.stack(host), Some(original_stack.clone()));
+                    assert_eq!(
+                        slot.with_stack(host, |stack| stack.project()).flatten(),
+                        Some(original_stack.clone())
+                    );
                     Ok::<(), ()>(())
                 }),
                 Ok(())
@@ -904,7 +910,7 @@ pub(super) mod tests {
             assert_eq!(moved(game, a, &filled, false), Ok(1000));
             assert_eq!(block(game, a), cauldron(game, 3));
             assert_eq!(
-                filled.stack(game),
+                filled.with_stack(game, |stack| stack.project()).flatten(),
                 Some(
                     ItemStack::new("minecraft:bucket", 1)
                         .try_into_api()
@@ -2315,7 +2321,10 @@ pub(super) mod tests {
                 )
                 .unwrap();
                 let place = ItemPlace::MenuSlot { menu, slot: 0 };
-                assert_eq!(place.stack(game), Some(map.clone()));
+                assert_eq!(
+                    place.with_stack(game, |stack| stack.project()).flatten(),
+                    Some(map.clone())
+                );
                 test(game, place, source, map);
             });
         });
@@ -2329,7 +2338,10 @@ pub(super) mod tests {
                 game.transaction(|game, tx| place.on_crafted_by(game, tx, 3)),
                 Ok(())
             );
-            let updated = place.stack(game).unwrap();
+            let updated = place
+                .with_stack(game, |stack| stack.project())
+                .flatten()
+                .unwrap();
             use sunrise_core::nbt::JavaString;
             let patch = updated.components().unwrap().as_nbt();
             let custom_data = JavaString::from("minecraft:custom_data");
@@ -2364,7 +2376,10 @@ pub(super) mod tests {
                 game.transaction(|game, tx| Ok::<_, ()>(place.on_crafted_by(game, tx, 3))),
                 Ok(Err(CraftedByError::Unavailable))
             );
-            assert_eq!(place.stack(game), Some(original));
+            assert_eq!(
+                place.with_stack(game, |stack| stack.project()).flatten(),
+                Some(original)
+            );
             assert!(game.map(source + 1).is_none());
             assert_eq!(game.peek_map_id(), source + 1);
             let crafted = game
@@ -2626,7 +2641,7 @@ pub(super) mod tests {
             assert_eq!(write(game, &shop, "minecraft:diamond", 1, true), 0);
             assert_eq!(write(game, &shop, "minecraft:diamond", -1, true), 0);
             let host: &mut dyn ServerHost = game;
-            assert_eq!(shop.stack(host), None);
+            assert_eq!(shop.with_stack(host, |_| ()), None);
             let fresh = ItemPlace::MenuSlot {
                 menu: again,
                 slot: 2,
@@ -2704,7 +2719,7 @@ pub(super) mod tests {
             assert_eq!(write(game, &stale.cursor(), "minecraft:stick", -1, true), 0);
             assert_eq!(write(game, &stale.cursor(), "minecraft:stick", 1, true), 0);
             let host: &mut dyn ServerHost = game;
-            assert_eq!(stale.cursor().stack(host), None);
+            assert_eq!(stale.cursor().with_stack(host, |_| ()), None);
             let fresh = menu_of(game).cursor();
             assert_eq!(write(game, &fresh, "minecraft:stick", -1, true), 1);
         });
@@ -3018,7 +3033,10 @@ pub(super) mod tests {
                 entity: 600,
                 slot: 2,
             };
-            assert_eq!(place.stack(game), Some(stone.try_into_api().unwrap()));
+            assert_eq!(
+                place.with_stack(game, |stack| stack.project()).flatten(),
+                Some(stone.try_into_api().unwrap())
+            );
             assert_eq!(game.carts[0].loot.as_ref(), Some(&pending));
             assert_eq!(game.carts[0].items, resident);
 
@@ -3028,7 +3046,10 @@ pub(super) mod tests {
             game.world
                 .block_entities
                 .insert((i32::MAX - 15, CART_KEY_Y, 600), BlockEntity::Chest(open));
-            assert_eq!(place.stack(game), Some(sand.try_into_api().unwrap()));
+            assert_eq!(
+                place.with_stack(game, |stack| stack.project()).flatten(),
+                Some(sand.try_into_api().unwrap())
+            );
             assert_eq!(game.carts[0].loot.as_ref(), Some(&pending));
             assert_eq!(game.carts[0].items, resident);
         });

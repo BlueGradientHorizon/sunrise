@@ -1927,7 +1927,7 @@ mod tests {
                 };
                 self.seen.lock().unwrap().push((
                     level.block_state(host, [2, 64, 2]),
-                    hand.stack(host).map(|s| {
+                    hand.with_stack(host, |s| {
                         mod_api::__private::item_key_id(s.item())
                             .unwrap()
                             .to_string()
@@ -2836,7 +2836,7 @@ mod tests {
                 entity: id,
                 slot: 0,
             };
-            assert!(place.stack(host).is_none());
+            assert!(place.with_stack(host, |_| ()).is_none());
             assert_eq!(place.insert(host, tx, &stick, 1), 1);
             Err::<(), ()>(())
         });
@@ -2851,7 +2851,7 @@ mod tests {
         let result = host.transaction(|host, _| {
             host.transaction(|host, _| {
                 host.transaction(|host, tx| {
-                    assert!(place.stack(host).is_none());
+                    assert!(place.with_stack(host, |_| ()).is_none());
                     assert_eq!(place.insert(host, tx, &stick, 1), 1);
                     Ok::<_, ()>(())
                 })?;
@@ -2878,21 +2878,20 @@ mod tests {
             });
             let host: &mut dyn ServerHost = &mut game;
             assert_eq!(
-                place(0).stack(host),
+                place(0).with_stack(host, |stack| stack.project()).flatten(),
                 Some(sticks(5).try_into_api().unwrap()),
                 "{kind}"
             );
-            assert_eq!(place(1).stack(host), None, "{kind}");
+            assert_eq!(place(1).with_stack(host, |_| ()), None, "{kind}");
             let _ = host.transaction(|host, tx| Ok::<_, ()>(place(0).exchange(host, tx, &rod, 1)));
             let host: &mut dyn ServerHost = &mut game;
             assert_eq!(
-                place(0).stack(host),
+                place(0).with_stack(host, |stack| stack.project()).flatten(),
                 Some(sticks(4).try_into_api().unwrap()),
                 "{kind}"
             );
-            let rod = place(1)
-                .stack(host)
-                .map(|s| mod_api::__private::item_key_id(s.item()).unwrap());
+            let rod =
+                place(1).with_stack(host, |s| mod_api::__private::item_key_id(s.item()).unwrap());
             assert_eq!(rod, Some("minecraft:blaze_rod"), "{kind}");
         }
 
@@ -2907,14 +2906,20 @@ mod tests {
         let host: &mut dyn ServerHost = &mut game;
         let _ = host.transaction(|host, tx| {
             assert_eq!(entity.extract(host, tx, &stick, 4), 4);
-            assert!(entity.stack(host).is_none());
+            assert!(entity.with_stack(host, |_| ()).is_none());
             Err::<(), ()>(())
         });
         let host: &mut dyn ServerHost = &mut game;
-        assert_eq!(entity.stack(host), Some(sticks(4).try_into_api().unwrap()));
+        assert_eq!(
+            entity.with_stack(host, |stack| stack.project()).flatten(),
+            Some(sticks(4).try_into_api().unwrap())
+        );
         let _ = host.transaction(|host, tx| Ok::<_, ()>(entity.exchange(host, tx, &rod, 1)));
         let host: &mut dyn ServerHost = &mut game;
-        assert_eq!(entity.stack(host), Some(sticks(3).try_into_api().unwrap()));
+        assert_eq!(
+            entity.with_stack(host, |stack| stack.project()).flatten(),
+            Some(sticks(3).try_into_api().unwrap())
+        );
         assert_eq!(count(&game), items + 1);
         let host: &mut dyn ServerHost = &mut game;
         let _ = host.transaction(|host, tx| Ok::<_, ()>(entity.extract(host, tx, &stick, 3)));

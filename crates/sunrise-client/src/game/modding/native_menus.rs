@@ -585,12 +585,16 @@ mod tests {
                                 Err::<(), ()>(())
                             });
                             assert_eq!(inner, Err(()));
-                            inner_restored = place.stack(host);
+                            inner_restored =
+                                place.with_stack(host, |stack| stack.project()).flatten();
                             assert_eq!(place.extract(host, tx, &resource, 1), 1);
                             Err::<(), ()>(())
                         });
                         assert_eq!(aborted, Err(()));
-                        restored.push((inner_restored, place.stack(host)));
+                        restored.push((
+                            inner_restored,
+                            place.with_stack(host, |stack| stack.project()).flatten(),
+                        ));
                         // Player and menu writes share the ender snapshot, not competing copies.
                         let aborted = host.transaction(|host, tx| {
                             assert_eq!(place.extract(host, tx, &resource, 1), 1);
@@ -599,7 +603,7 @@ mod tests {
                         });
                         assert_eq!(aborted, Err(()));
                         assert_eq!(
-                            place.stack(host),
+                            place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
                         );
                         assert_eq!(menu.carried(host), Some(None));
@@ -614,7 +618,7 @@ mod tests {
                         });
                         assert_eq!(aborted, Err(()));
                         assert_eq!(
-                            place.stack(host),
+                            place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
                         );
                     });

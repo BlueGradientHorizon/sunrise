@@ -3275,7 +3275,7 @@ pub(super) mod tests {
                 Err(())
             });
             assert!(rolled_back.is_err());
-            assert!(place.stack(game).is_none());
+            assert!(place.with_stack(game, |_| ()).is_none());
             assert_eq!(
                 game.lan
                     .as_ref()
@@ -3293,7 +3293,7 @@ pub(super) mod tests {
                 host.transaction(|host, tx| Ok::<_, ()>(place.insert(host, tx, &sticks, 1))),
                 Ok(1)
             );
-            assert_eq!(place.stack(game).unwrap().count(), 1);
+            assert_eq!(place.with_stack(game, |stack| stack.count()).unwrap(), 1);
             assert_eq!(game.fake_player(nether, 2345, "parked"), Some(nether_actor));
             assert!(game.player_set_experience_levels(nether_actor, 8));
             assert!(game.player_set_experience_levels(overworld_actor, 3));

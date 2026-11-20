@@ -298,7 +298,7 @@ pub mod tests {
             (self.amount(host, index) > 0).then(|| ItemResource::of(&stick()))
         }
         fn amount(&self, host: &mut dyn ServerHost, _: usize) -> u32 {
-            self.0.stack(host).map_or(0, |pouch| pouch.damage())
+            self.0.with_stack(host, |pouch| pouch.damage()).unwrap_or(0)
         }
         fn capacity(
             &self,
@@ -349,7 +349,7 @@ pub mod tests {
             1
         }
         fn resource(&self, host: &mut dyn ServerHost, _: usize) -> Option<ItemResource> {
-            let held = self.0.stack(host)?.damage();
+            let held = self.0.with_stack(host, |stack| stack.damage())?;
             (held > 0).then(|| ItemResource::of(&stack("test:pouch", 1, held - 1)))
         }
         fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
@@ -406,7 +406,7 @@ pub mod tests {
     pub(crate) struct Case(pub(crate) ItemPlace);
     impl Case {
         fn held(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
-            let damage = self.0.stack(host).map_or(0, |case| case.damage());
+            let damage = self.0.with_stack(host, |case| case.damage()).unwrap_or(0);
             [damage / 100, damage % 100][index]
         }
         fn rewrite(&self, host: &mut dyn ServerHost, tx: &Transaction, damage: u32) -> bool {
@@ -449,7 +449,7 @@ pub mod tests {
             if index != 1 || resource.item() != fixture_item_key("minecraft:stick") {
                 return 0;
             }
-            let damage = self.0.stack(host).map_or(0, |case| case.damage());
+            let damage = self.0.with_stack(host, |case| case.damage()).unwrap_or(0);
             match self.rewrite(host, tx, damage + amount) {
                 true => amount,
                 false => 0,
@@ -466,13 +466,13 @@ pub mod tests {
             if index != 1 || resource.item() != fixture_item_key("minecraft:stick") {
                 return 0;
             }
-            let damage = self.0.stack(host).map_or(0, |case| case.damage());
+            let damage = self.0.with_stack(host, |case| case.damage()).unwrap_or(0);
             let tried: Result<(), ()> = host.transaction(|host, tx| {
                 self.rewrite(host, tx, damage % 100);
                 Err(())
             });
             assert!(tried.is_err());
-            let damage = self.0.stack(host).unwrap().damage();
+            let damage = self.0.with_stack(host, |stack| stack.damage()).unwrap();
             assert_eq!(damage / 100, 1, "diamond restored after inner abort");
             let took = amount.min(damage % 100);
             match self.rewrite(host, tx, damage - took) {
@@ -953,7 +953,7 @@ pub mod tests {
     }
     impl EnergyHandler for Cell {
         fn amount(&self, host: &mut dyn ServerHost) -> u32 {
-            self.0.stack(host).map_or(0, |cell| cell.damage())
+            self.0.with_stack(host, |cell| cell.damage()).unwrap_or(0)
         }
         fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
             1000
@@ -1124,20 +1124,29 @@ pub mod tests {
             slot: 0,
         };
         assert_eq!(fill(host, &in_bag, stick(), 3), 3);
-        assert_eq!(in_bag.stack(host), Some(stack("test:pouch", 1, 3)));
-        assert_eq!(HAND.stack(host), Some(stack("test:bag", 1, 4)));
+        assert_eq!(
+            in_bag.with_stack(host, |stack| stack.project()).flatten(),
+            Some(stack("test:pouch", 1, 3))
+        );
+        assert_eq!(
+            HAND.with_stack(host, |stack| stack.project()).flatten(),
+            Some(stack("test:bag", 1, 4))
+        );
         // A charm slot is a mod's place, read and written by its provider.
         let charm = ItemPlace::Mod {
             provider: "test:charms",
             key: 4,
         };
         assert_eq!(fill(host, &charm, stick(), 1), 1);
-        assert_eq!(charm.stack(host), Some(stack("test:pouch", 1, 3)));
+        assert_eq!(
+            charm.with_stack(host, |stack| stack.project()).flatten(),
+            Some(stack("test:pouch", 1, 3))
+        );
         let unknown = ItemPlace::Mod {
             provider: "test:none",
             key: 4,
         };
-        assert!(unknown.stack(host).is_none());
+        assert!(unknown.with_stack(host, |_| ()).is_none());
         assert_eq!(insert(host, &unknown, stick()), 0);
     }
 
@@ -1631,7 +1640,7 @@ pub mod tests {
                 1
             }
             fn resource(&self, host: &mut dyn ServerHost, _: usize) -> Option<ItemResource> {
-                let n = self.0.stack(host)?.damage();
+                let n = self.0.with_stack(host, |stack| stack.damage())?;
                 (n > 0).then(|| ItemResource::of(&stack("test:bag", 1, n - 1)))
             }
             fn amount(&self, host: &mut dyn ServerHost, i: usize) -> u32 {
@@ -1650,7 +1659,7 @@ pub mod tests {
             ) -> u32 {
                 if n == 0
                     || r.item() != fixture_item_key("test:bag")
-                    || self.0.stack(host).unwrap().damage() != 0
+                    || self.0.with_stack(host, |stack| stack.damage()).unwrap() != 0
                 {
                     return 0;
                 }
@@ -1678,7 +1687,7 @@ pub mod tests {
         pub(crate) struct LyingPlace;
         impl PlaceProvider for LyingPlace {
             fn stack(&self, host: &mut dyn ServerHost, _: u64) -> Option<ItemStack> {
-                HAND.stack(host)
+                HAND.with_stack(host, |stack| stack.project()).flatten()
             }
             fn insert(
                 &self,
@@ -1803,7 +1812,10 @@ pub mod tests {
             host.transaction(|host, tx| {
                 assert_eq!(at.insert(host, tx, &r, 1), 0);
                 assert_eq!(at.extract(host, tx, &r, 1), 0);
-                assert_eq!(HAND.stack(host), Some(stack("minecraft:stick", 2, 0)));
+                assert_eq!(
+                    HAND.with_stack(host, |stack| stack.project()).flatten(),
+                    Some(stack("minecraft:stick", 2, 0))
+                );
                 Ok::<_, ()>(())
             })
             .unwrap();
@@ -1853,7 +1865,7 @@ pub mod tests {
             "another mod's flag is independent"
         );
         assert!(crate::__private::set_mod_enabled("doubler", false));
-        assert!(charm.stack(&mut player).is_none());
+        assert!(charm.with_stack(&mut player, |_| ()).is_none());
         assert_eq!(insert(&mut player, &charm, stick()), 0);
         let resource = ItemResource::of(&stick());
         assert_eq!(
