@@ -26,11 +26,12 @@ pub trait Hooks {
     /// For a player, the veto takes effect at the server's travel boundary:
     /// reports it already accepted are not rewound. While the veto stands,
     /// the server corrects new movement reports to its accepted position.
-    /// An edit that changes the input or velocity always sends one correction,
-    /// even if collision absorbs it. It carries the live server position and
-    /// velocity. The server compares the vectors bit for bit, except that
+    /// An edit that changes the input or velocity sends one correction, even
+    /// if collision absorbs it, if the player remains eligible and no
+    /// correction awaits acknowledgement. A separate teleport in the same
+    /// tick takes priority. The correction carries the live server position
+    /// and velocity. The server compares the vectors bit for bit, except that
     /// inputs within vanilla's movement dead zone are equivalent.
-    /// Travel does not replace a position correction or its velocity while awaiting acknowledgement.
     /// The hook never runs on the client.
     /// Beyond NeoForge: there is no counterpart.
     #[hook(
