@@ -117,7 +117,6 @@ pub struct ColumnBlocks {
 /// of its own. There is no size refusal.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum NbtUpgradeError {
     /// The data version is below zero. Refused before any fix runs.
     NegativeVersion(i32),
@@ -172,7 +171,6 @@ impl ConfigKind {
 /// written there when the file is missing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct Config {
     pub mod_id: String,
     pub kind: ConfigKind,
@@ -199,7 +197,6 @@ impl Config {
 /// A config's file as the game read it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct ConfigFile {
     pub mod_id: String,
     pub kind: ConfigKind,
@@ -211,7 +208,6 @@ pub struct ConfigFile {
 /// A data map type a mod registers (`RegisterDataMapTypesEvent`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct DataMapType {
     /// `mod_id:name`: not in the `minecraft` namespace. Its files are
     /// `data/<mod_id>/data_maps/<registry folder>/<name>.json`, the
@@ -225,7 +221,6 @@ pub struct DataMapType {
 /// (`ModMismatchEvent`'s `MismatchedVersionInfo`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct ModMismatch {
     /// The mod's `[mod] id`.
     pub mod_id: String,

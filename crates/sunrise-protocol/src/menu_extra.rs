@@ -16,10 +16,8 @@
 //! [`encode_legacy`]'s layout instead (the window, then the three axes —
 //! never `None` — then the bytes), and no menu is opened without a block
 //! for it. A vanilla client is never asked.
-use crate::{
-    Error, Result,
-    buf::{Reader, Writer},
-};
+use crate::{Error, Result, buf::Reader};
+use sunrise_core::vanilla_bytes::Writer;
 
 /// The custom payload channel.
 pub const CHANNEL: &str = "sunrise:menu_extra";

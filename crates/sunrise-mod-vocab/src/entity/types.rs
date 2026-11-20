@@ -49,9 +49,8 @@ pub struct EffectKey(pub(crate) u32);
 /// registration order. Returned by `EntityRef::kind`; Copy/Eq comparisons do not
 /// allocate. Request `key.id(host)` for its namespaced name (an owned diagnostic
 /// string). A key stays valid until the game exits.
-// The derived scalar codec validates host slots.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
-#[wire(via = u32)]
+// no wire: the manual scalar codec validates host slots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: incoming scalar slots are checked against the host's registry
 pub struct EntityTypeKey(pub(crate) u32);
 

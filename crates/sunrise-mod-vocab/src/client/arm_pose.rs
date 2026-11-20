@@ -113,7 +113,7 @@ impl CustomArmPose {
 /// Absolute model arm rotations in radians. Each non-finite component leaves
 /// that component of the ordinary humanoid pose unchanged.
 // exhaustive: mods write either arm's three model rotation components
-#[derive(Clone, Copy, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ArmAngles {
     /// Right arm pitch, yaw and roll.
     pub right: [f32; 3],
