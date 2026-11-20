@@ -3,7 +3,7 @@ use crate::{Identifier, ServerboundPlayPacket};
 use sunrise_core::vanilla_bytes::Writer;
 
 /// A value cannot be represented by the named packet field.
-#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PacketBuildError {
     /// A number exceeds the field's wire representation.
