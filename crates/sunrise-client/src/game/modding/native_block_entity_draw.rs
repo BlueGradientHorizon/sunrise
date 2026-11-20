@@ -335,8 +335,8 @@ struct LitElement {
     start: usize,
     end: usize,
     centre: Vec3,
-    /// The ambient fallback, or the first sample once kept stationary. The vertex light
-    /// itself stores only the intrinsic floor until placement, so turning cannot ratchet it.
+    /// Fixed ambient fallback. The vertex light stores only the intrinsic floor until
+    /// placement, so turning cannot ratchet it.
     ambient: u32,
 }
 
@@ -372,12 +372,17 @@ impl LevelLight<'_> {
     }
 }
 
-/// Walks the ordered light records alongside the spin segments. A kept stationary
-/// element uses the ambient it got on the first draw; turning records keep their fixed fallback.
+/// Walks the ordered light records alongside the spin segments. Kept stationary
+/// vertices store their first sample; kept turning vertices store their intrinsic floors.
 struct PlacementLight<'a> {
-    elements: &'a mut [LitElement],
+    elements: &'a [LitElement],
     level: &'a LevelLight<'a>,
-    fresh: bool,
+    pass: LightPass<'a>,
+}
+
+enum LightPass<'a> {
+    Fresh(Option<&'a mut [Vertex]>),
+    Retained,
 }
 
 impl PlacementLight<'_> {
@@ -385,18 +390,23 @@ impl PlacementLight<'_> {
         let count = self
             .elements
             .partition_point(|e| e.start < start + vertices.len());
-        let (elements, rest) = std::mem::take(&mut self.elements).split_at_mut(count);
+        let (elements, rest) = self.elements.split_at(count);
         self.elements = rest;
+        if turn.is_none() && matches!(self.pass, LightPass::Retained) {
+            return;
+        }
         for e in elements {
-            let mut ambient = e.ambient;
-            if self.fresh || turn.is_some() {
-                let centre = turn.map_or(e.centre, |m| m.transform_point3(e.centre));
-                ambient = self.level.sample(centre).unwrap_or(ambient);
-                if turn.is_none() {
-                    e.ambient = ambient;
+            let centre = turn.map_or(e.centre, |m| m.transform_point3(e.centre));
+            let ambient = self.level.sample(centre).unwrap_or(e.ambient);
+            let span = &mut vertices[e.start - start..e.end - start];
+            LitElement::apply_light(span, ambient);
+            if turn.is_none()
+                && let LightPass::Fresh(Some(kept)) = &mut self.pass
+            {
+                for (kept, drawn) in kept[e.start..e.end].iter_mut().zip(span) {
+                    kept.light = drawn.light;
                 }
             }
-            LitElement::apply_light(&mut vertices[e.start - start..e.end - start], ambient);
         }
     }
 }
@@ -796,13 +806,7 @@ impl BlockEntityDraw {
     pub(super) fn light(&self) -> u32 {
         self.light
     }
-    pub(super) fn quad(
-        &mut self,
-        corners: [[f32; 3]; 4],
-        uv: [[f32; 2]; 4],
-        sprite: Rect,
-        tint: u32,
-    ) {
+    fn quad(&mut self, corners: [[f32; 3]; 4], uv: [[f32; 2]; 4], sprite: Rect, tint: u32) {
         let start = self.vertices.len();
         self.emit_quad(corners, uv, sprite, tint, self.element_ambient());
         self.lit_since(
@@ -947,7 +951,7 @@ impl KeptGeometry {
         key: KeptKey,
         revision: ModRevision,
         now: i64,
-    ) -> Option<&mut KeptEntry> {
+    ) -> Option<&KeptEntry> {
         let entry = self
             .entries
             .get_mut(&pos)
@@ -1005,18 +1009,25 @@ impl KeptGeometry {
         let start = draw.vertices.len();
         if let Some(entry) = self.get(pos, key, revision, draw.game_time) {
             if visible(entry.bounds, start) {
-                draw.vertices.extend_from_slice(&entry.vertices);
-                place_geometry(
-                    &mut draw.vertices[start..],
-                    &entry.spins,
-                    draw.animation,
-                    origin,
-                    (!entry.lit.is_empty()).then_some(PlacementLight {
-                        elements: &mut entry.lit,
-                        level,
-                        fresh: false,
-                    }),
-                );
+                if entry.spins.is_empty() {
+                    draw.vertices.extend(entry.vertices.iter().map(|v| Vertex {
+                        pos: (Vec3::from_array(v.pos) + origin).to_array(),
+                        ..*v
+                    }));
+                } else {
+                    draw.vertices.extend_from_slice(&entry.vertices);
+                    place_geometry(
+                        &mut draw.vertices[start..],
+                        &entry.spins,
+                        draw.animation,
+                        origin,
+                        (!entry.lit.is_empty()).then_some(PlacementLight {
+                            elements: &entry.lit,
+                            level,
+                            pass: LightPass::Retained,
+                        }),
+                    );
+                }
             }
             return;
         }
@@ -1043,7 +1054,7 @@ impl KeptGeometry {
             e.end -= start;
         }
         let vertices = &mut draw.vertices[start..];
-        let (spins, lit) = if draw.kept {
+        let (spins, lit, cached) = if draw.kept {
             // Keep the intrinsic floors, not the sampled light written into the frame.
             let entry = self.keep(
                 pos,
@@ -1055,10 +1066,14 @@ impl KeptGeometry {
                 std::mem::take(&mut draw.lit),
                 draw.game_time,
             );
-            (&entry.spins, &mut entry.lit)
+            (
+                &entry.spins,
+                &entry.lit,
+                Some(entry.vertices.as_mut_slice()),
+            )
         } else {
             self.forget(pos);
-            (&draw.spins, &mut draw.lit)
+            (&draw.spins, &draw.lit, None)
         };
         place_geometry(
             vertices,
@@ -1068,7 +1083,7 @@ impl KeptGeometry {
             (!lit.is_empty()).then_some(PlacementLight {
                 elements: lit,
                 level,
-                fresh: true,
+                pass: LightPass::Fresh(cached),
             }),
         );
     }
