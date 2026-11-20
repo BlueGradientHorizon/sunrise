@@ -187,7 +187,7 @@ impl Game<'_> {
         if !self.world.chunks.contains_key(&(p.x, p.z)) {
             return;
         }
-        let (layers, _) = format.light(&p.light);
+        let layers = format.light(&p.light);
         let Some(chunk) = self.world.chunks.get_mut(&(p.x, p.z)) else {
             return;
         };
