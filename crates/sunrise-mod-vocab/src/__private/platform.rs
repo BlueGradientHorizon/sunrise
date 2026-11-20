@@ -1,11 +1,14 @@
 //! Set-once platform services used by the engine during load and profiler commands.
-use mod_vocab::{
+use crate::{
     __private::{RegistrationData, RuleSchema},
     DimensionSettings, ModEntry, PackageInfo,
 };
 use std::sync::OnceLock;
 
 /// Platform callbacks. All boundary values belong to the engine vocabulary.
+// exhaustive: the engine host supplies every callback when it installs the socket.
+// hidden: platform-owned instrumentation plumbing, not a mod authoring surface.
+#[doc(hidden)]
 pub struct Platform {
     pub install_packages: fn(&[PackageInfo], &[PackageInfo]),
     pub install_registration_data: fn(RegistrationData),
@@ -18,6 +21,9 @@ pub struct Platform {
     pub profiler_firefox_profile: fn() -> Result<Vec<u8>, String>,
 }
 /// A platform socket access or installation refusal.
+// exhaustive: the set-once socket fails only before installation or on a second install.
+// hidden: the engine handles socket failures, never a mod.
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlatformRefusal {
     NotInstalled,
