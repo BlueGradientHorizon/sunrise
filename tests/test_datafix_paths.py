@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import importlib
 import io
+import json
 import os
 from pathlib import Path
 import sys
@@ -138,7 +139,8 @@ class DatafixPaths(unittest.TestCase):
             self.assertEqual('--exclude datafix' in step.command, not opt_in)
             self.assertEqual(output.getvalue().count('datafix parity not run:'), 0 if opt_in else 1)
 
-    def test_download_and_lock_destinations_are_private(self):
+    def consumers(self):
+        """datafix_worlds and test_datafix_parity, imported with the owning boundary selecting a temp root."""
         # Script consumers import siblings directly and mutate sys.path. Keep
         # those mutations scoped so later unittest discovery cannot import a
         # tools/test_* module in place of a tests/test_* module with the same name.
@@ -148,12 +150,45 @@ class DatafixPaths(unittest.TestCase):
         alias = mock.patch.dict(sys.modules, {'datafix_paths': datafix_paths})
         alias.start()
         self.addCleanup(alias.stop)
-        # Import the actual consumers with the owning boundary selecting a temp root.
         for name in ('datafix_worlds', 'test_datafix_parity'):
             sys.modules.pop(name, None)
             self.addCleanup(sys.modules.pop, name, None)
-        worlds = importlib.import_module('datafix_worlds')
-        parity = importlib.import_module('test_datafix_parity')
+        return importlib.import_module('datafix_worlds'), importlib.import_module('test_datafix_parity')
+
+    def test_a_cut_short_download_is_fetched_again(self):
+        worlds, _ = self.consumers()
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, 'w') as jar:
+            jar.writestr('version.json', json.dumps({'world_version': 1, 'protocol_version': 2}))
+        body = payload.getvalue()
+        jar_meta = {'url': 'https://invalid.test/jar', 'sha1': hashlib.sha1(body).hexdigest()}
+        metadata = json.dumps({'downloads': {'server': jar_meta}}).encode()
+        manifest = json.dumps({'versions': [{'id': '1.19', 'url': 'https://invalid.test/meta',
+                                             'sha1': hashlib.sha1(metadata).hexdigest()}]}).encode()
+        answers = {worlds.MANIFEST: manifest, 'https://invalid.test/meta': metadata, jar_meta['url']: body}
+        fetched = []
+
+        def urlopen(url):
+            fetched.append(url)
+            return io.BytesIO(answers[url])
+
+        # What a full disk left behind: an empty jar and a version.json cut mid-write.
+        folder = self.checkout / '.local/datafix/servers/1.19'
+        folder.mkdir(parents=True)
+        (folder / 'server.jar').write_bytes(b'')
+        (folder / 'version.json').write_bytes(metadata[:10])
+        with mock.patch.object(worlds.urllib.request, 'urlopen', urlopen):
+            path, _, _ = worlds.server_jar('1.19')
+            self.assertEqual(path.read_bytes(), body)
+            self.assertEqual(json.loads((folder / 'version.json').read_text())['downloads']['server'], jar_meta)
+            self.assertEqual(fetched, [worlds.MANIFEST, 'https://invalid.test/meta', jar_meta['url']])
+            # Now whole, both are used as they are.
+            worlds.server_jar('1.19')
+        self.assertEqual(len(fetched), 3)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), ['server.jar', 'version.json'])
+
+    def test_download_and_lock_destinations_are_private(self):
+        worlds, parity = self.consumers()
         payload = io.BytesIO()
         with zipfile.ZipFile(payload, 'w') as jar:
             jar.writestr('dummy', 'synthetic jar')
