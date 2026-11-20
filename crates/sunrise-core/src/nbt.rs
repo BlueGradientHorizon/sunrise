@@ -2,7 +2,7 @@
 use crate::{
     hashed_key::HashedKey,
     java_hash_map::{IntoIter, Iter, JavaHashMap, JavaKey},
-    java_string::java_string_hash,
+    java_string::{java_string_hash, java_string_hash_ascii},
 };
 use std::{
     cmp::Ordering,
@@ -692,6 +692,18 @@ impl<'a> Reader<'a, '_> {
         let bytes = self.take(len)?;
         modified_utf8(bytes).ok_or_else(|| self.error("invalid Java modified UTF-8"))
     }
+    /// Decode a compound key and compute its `String.hashCode` separately.
+    fn key(&mut self) -> Result<HashedKey<JavaString>, Error> {
+        let len = u16::from_be_bytes(self.number()?) as usize;
+        let bytes = self.take(len)?;
+        if bytes.is_ascii() {
+            let hash = java_string_hash_ascii(bytes);
+            let units = bytes.iter().map(|&b| u16::from(b)).collect();
+            return Ok(HashedKey::from_parts(hash, JavaString(units)));
+        }
+        let text = modified_utf8(bytes).ok_or_else(|| self.error("invalid Java modified UTF-8"))?;
+        Ok(HashedKey::from_parts(java_string_hash(&text.0), text))
+    }
     /// `StringTag.skipString`: vanilla skips a file root's name unread, so a
     /// name that isn't modified UTF-8 is read as empty rather than refused.
     fn root_name(&mut self) -> Result<JavaString, Error> {
@@ -812,28 +824,28 @@ impl<'a> Reader<'a, '_> {
             if id == 0 {
                 break;
             }
-            let name = self.string()?;
-            self.charge(28 + 2 * name.0.len() as u64)?;
-            if self.strict && map.contains_key(&name) {
+            let name = self.key()?;
+            self.charge(28 + 2 * name.text().0.len() as u64)?;
+            if self.strict && keyed::contains_key(&map, &name) {
                 return Err(self.error("duplicate key"));
             }
-            let value = if id == 9 && depth <= 1 && self.streams(&name) {
+            let value = if id == 9 && depth <= 1 && self.streams(name.text()) {
                 self.stream_list(depth + 1)?
-            } else if parent && !self.strict && self.bounds(&name) {
+            } else if parent && !self.strict && self.bounds(name.text()) {
                 match self.bounded_payload(id, depth + 1)? {
                     Some(value) => value,
                     None => continue,
                 }
             } else {
                 self.entering = if id == 10 && !self.strict {
-                    self.descend(paths, depth, &name)
+                    self.descend(paths, depth, name.text())
                 } else {
                     0
                 };
                 self.payload(id, depth + 1)?
             };
             // Java maps retain the last duplicate key and charge new entries only.
-            if map.insert(name, value).is_none() {
+            if keyed::insert(&mut map, name, value).is_none() {
                 self.charge(36)?;
             }
         }
