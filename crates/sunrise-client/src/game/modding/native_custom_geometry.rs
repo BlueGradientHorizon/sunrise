@@ -627,12 +627,13 @@ mod tests {
                     .map(|face| face.quad.color)
                     .collect::<Vec<_>>()
             };
-            // Grass's top face is tinted by the grass colour, which is not white.
             let grass = colours("minecraft:grass_block");
             assert!(!grass.is_empty(), "the grass block has a tinted face");
+            // `GrassColor.getDefaultColor()` is `get(0.5, 1.0)`: pixel (127, 127) of
+            // `colormap/grass.png`, 0x7CBD6B, times white.
             assert!(
-                grass.iter().all(|c| c.is_some_and(|c| c != -1)),
-                "{grass:?}"
+                grass.iter().all(|c| *c == Some(0xFF7C_BD6Bu32 as i32)),
+                "{grass:x?}"
             );
             // Stone has no tinted face, so nothing is baked into its colour.
             assert!(colours("minecraft:stone").is_empty());
