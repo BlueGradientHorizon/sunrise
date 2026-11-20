@@ -687,9 +687,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
 - `level.chunk_ref(host, [x, z])` makes a `ChunkRef` for any chunk of an open level (None past 30 million blocks).
   `chunk.forced(host)` and `level.forced_chunks(host)` query `/forceload` tickets. `chunk.set_forced(host, bool)` adds
   or removes one and returns whether the saved set changed. A successful add waits for the chunk to load, even in a
-  parked level. A paused add loads the chunk when streaming starts; if generation stops during the wait, the ticket
-  is kept for the next startup. Both return true. Adds after generation stops return false; repeated adds and
-  removals do not load chunks.
+  parked level. If streaming is paused, the add records the ticket to take effect when its level starts streaming.
+  Adds after generation stops return false; repeated adds and removals do not load chunks.
 - Ticket controllers (NeoForge's `TicketController`, registered in `RegisterTicketControllersEvent`): a mod registers
   each one once at startup, from `Hooks::register`, with `r.register_ticket_controller("quarry", validates)` and keeps the
   `TicketController` it returns (it is `Copy`; `Hooks` methods take `&self`, so a `OnceLock` holds it). The id is the

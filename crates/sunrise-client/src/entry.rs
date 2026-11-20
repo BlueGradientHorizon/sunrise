@@ -183,7 +183,11 @@ pub fn start(
         // A bad command line is the caller's mistake, not a crash: no report.
         let missing_mods = game::dedicated::is_missing_mods_refusal(error.as_ref());
         let usage = error.is::<game::UsageError>() || missing_mods;
-        if !missing_mods {
+        if let Some(refusals) = error.downcast_ref::<game::mods::DeclarationFailures>() {
+            for line in refusals.lines() {
+                log::error!("Sunrise: {line}");
+            }
+        } else if !missing_mods {
             log::error!("Sunrise: {error}");
         }
         logging::flush();

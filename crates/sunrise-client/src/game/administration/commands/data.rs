@@ -52,7 +52,7 @@ pub(in crate::game) fn stored_block_entity_data(
             hopper_cooldown: (name == "minecraft:hopper").then(hopper_cooldown),
         },
         items,
-        |_, _| None,
+        |_| None,
     )
 }
 fn set_key(tag: &mut Tag, key: &str, value: Tag) {
@@ -1272,6 +1272,7 @@ impl Game<'_> {
             .get(&(key.0 >> 4, key.2 >> 4))
             .and_then(|chunk| chunk.saved.as_ref())
             .and_then(|saved| saved.pending_loot.get(&key));
+        let items = self.items();
         Some(save::block_entity_encode::data_with(
             key,
             e,
@@ -1282,8 +1283,8 @@ impl Game<'_> {
                 pending,
                 hopper_cooldown: (name == "minecraft:hopper").then(|| self.hopper_cooldown(key)),
             },
-            self.items(),
-            |kind, tag| self.capture_block_entity_payload(key, kind, tag),
+            items,
+            |row| self.capture_block_entity_payload(key, &name, row, items),
         ))
     }
     pub(in crate::game) fn set_data_of(&mut self, r: &DataRef, tag: Tag) -> R<()> {
