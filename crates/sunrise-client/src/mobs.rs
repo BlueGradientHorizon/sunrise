@@ -6,7 +6,6 @@
 pub mod ai;
 mod ai_pause;
 pub mod allay;
-pub mod ambient;
 pub mod anim;
 pub mod animal_brain;
 pub mod aquatic;
