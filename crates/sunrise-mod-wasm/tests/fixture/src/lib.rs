@@ -70,6 +70,10 @@ impl Hooks for Mod {
             event.millis = strict_math_checks::check_vectors() as f32;
             return;
         }
+        if event.millis == audio_stream::TICK {
+            event.millis = audio_stream::tick(host);
+            return;
+        }
         let profile = host.math_profile();
         assert_eq!(profile, host.math_profile());
         event.millis = match profile {

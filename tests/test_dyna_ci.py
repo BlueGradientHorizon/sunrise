@@ -358,6 +358,7 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertEqual(fetch["env"]["HISTORY_FILTER"], "tree:0")
         self.assertEqual(select["env"]["FILES"],
                          "${{ steps.files.outputs.listed == 'true' && format('{0}/pr-files', runner.temp) || '' }}")
+        self.assertEqual(select["env"]["ENTRIES"], "${{ steps.files.outputs.entries }}")
         # The selection step as written: the API's list when there is one, else git's diff of base...head.
         with tempfile.TemporaryDirectory() as directory:
             def git(*args):
@@ -373,11 +374,13 @@ class DynaRoutingTests(unittest.TestCase):
             head = git("rev-parse", "HEAD")
             listing_file = Path(directory, "pr-files")
             listing_file.write_bytes(b"M\0docs/setup.md\0")
-            for files, rust in (("", "true"), (str(listing_file), "false")):
-                with self.subTest(files=files):
+            # A listing that lost a record (the producer printed 2 entries, one remains) selects everything.
+            for files, entries, rust in (("", "", "true"), (str(listing_file), "1", "false"),
+                                         (str(listing_file), "2", "true")):
+                with self.subTest(files=files, entries=entries):
                     output = Path(directory, "output")
                     output.write_text("")
-                    env = dict(os.environ, BASE_SHA=base, HEAD_SHA=head, FILES=files, GITHUB_OUTPUT=str(output))
+                    env = dict(os.environ, BASE_SHA=base, HEAD_SHA=head, FILES=files, ENTRIES=entries, GITHUB_OUTPUT=str(output))
                     subprocess.run(["bash", "-e", "-c", select["run"].replace("tools/ci/", f"{ROOT}/tools/ci/")],
                                    cwd=directory, env=env, check=True)
                     self.assertIn(f"rust_required={rust}\n", output.read_text())

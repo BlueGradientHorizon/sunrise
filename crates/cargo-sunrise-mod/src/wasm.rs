@@ -7,6 +7,7 @@
 //! source (`-Zbuild-std`) so its symbols are the same in every member. This tool is also the
 //! link step (cargo calls it as the linker, with `SUNRISE_MOD_LINK` set): the std member links
 //! std whole and exports it; a mod leaves std and its library mods out, to resolve to theirs.
+use crate::options::Options;
 use serde_json::Value;
 use sunrise_mod_package::manifest::{MANIFEST, WASM, sha512_of};
 mod group;
@@ -223,17 +224,25 @@ fn std_member(target_dir: &Path, toolchain: &Toolchain) -> Result<Vec<u8>, Strin
     .map_err(|e| e.to_string())
 }
 
+/// `wasm-std <out.wasm>` and the CI-only `--catalog <points.json>`, copied beside it.
+fn wasm_std_args(args: &[String]) -> Result<(&str, Option<&str>), String> {
+    let mut options = Options::new("wasm-std", args);
+    let catalog = options.value("--catalog")?;
+    let out = options.positional().first().copied();
+    options.finish()?;
+    let out = out.ok_or("cargo sunrise-mod wasm-std <out.wasm>")?;
+    Ok((out, catalog))
+}
+
 /// `wasm-std <out>`: the std member the game ships beside its executable.
 pub fn wasm_std(args: &[String]) -> Result<(), String> {
-    let out = args
-        .first()
-        .ok_or("cargo sunrise-mod wasm-std <out.wasm>")?;
+    let (out, catalog) = wasm_std_args(args)?;
     let toolchain = toolchain()?;
     let target = std::env::current_dir()
         .map_err(|e| e.to_string())?
         .join("target/sunrise-mod");
     std::fs::write(out, std_member(&target, &toolchain)?).map_err(|e| format!("{out}: {e}"))?;
-    if let Some(input) = super::flag(&args[1..], "--catalog") {
+    if let Some(input) = catalog {
         let path = Path::new(out)
             .parent()
             .unwrap_or(Path::new("."))
@@ -641,5 +650,24 @@ mod refusal_tests {
             super::registrations(&manifest, Some(&catalog)).unwrap_err(),
             "addon:before: no API listener at game::tick: argument 1 `value` (`&RegistrationData`) has no API type yet"
         );
+    }
+}
+
+#[cfg(test)]
+mod wasm_std_args_tests {
+    use super::wasm_std_args;
+
+    fn argv(line: &str) -> Vec<String> {
+        line.split(' ').map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn wasm_std_reads_its_file_and_catalog_and_refuses_another_option() {
+        assert_eq!(
+            wasm_std_args(&argv("out.wasm --catalog points.json")),
+            Ok(("out.wasm", Some("points.json")))
+        );
+        let error = wasm_std_args(&argv("out.wasm --catlog points.json")).unwrap_err();
+        assert!(error.contains("--catlog"), "{error}");
     }
 }

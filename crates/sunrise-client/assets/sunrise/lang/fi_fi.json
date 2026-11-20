@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "Kuinka nopeasti oikea tikku kääntää näkymää.",
   "How fast the stick moves the crosshair in inventories.": "Kuinka nopeasti tikku liikuttaa tähtäintä varastoissa.",
   "How frames reach the screen while VSync is off.": "Kuinka kehykset saavuttavat näytön, kun VSync on pois päältä.",
-  "How frames reach the screen, and the performance overlay.": "Kuinka kehykset saavuttavat näytön ja suorituskyvyn peittokuva.",
   "How long a held direction takes between repeats.": "Kuinka kauan pidetyn suunnan toistojen välissä kuluu.",
   "How long a held direction waits before it repeats.": "Kuinka kauan pidetty suunta odottaa ennen toistoa.",
   "How many particles effects spawn.": "Kuinka monta hiukkasvaikutusta syntyy.",
