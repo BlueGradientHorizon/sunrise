@@ -160,7 +160,7 @@ fn a_cell_with_anything_removed_stops_being_solid() {
     let mut rows = vec![u32::MAX; P * P];
     open_masked(&plan, &mut rows);
     let row = |y: i32, z: i32| rows[((y + B) as usize) * P + (z + B) as usize];
-    assert_eq!(row(0, 15), u32::MAX & !(1 << (4 + B)));
+    assert_eq!(row(0, 15), !(1u32 << (4 + B)));
     assert_eq!(row(0, 14), u32::MAX);
     assert!(occludes(ALL, 3));
     assert!(

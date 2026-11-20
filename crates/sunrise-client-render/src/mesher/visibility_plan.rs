@@ -308,7 +308,7 @@ pub(super) fn substitute(
 pub(super) fn open_masked(masks: &impl CellMasks, rows: &mut [u32]) {
     for y in -1i32..=16 {
         for z in -1i32..=16 {
-            let row = ((y + B) as usize * P + (z + B) as usize) as usize;
+            let row = (y + B) as usize * P + (z + B) as usize;
             for x in -1i32..=16 {
                 if masks.at(pi(x, y, z)) != ALL {
                     rows[row] &= !(1 << (x + B));

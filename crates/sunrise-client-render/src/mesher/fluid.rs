@@ -778,9 +778,9 @@ mod tests {
             );
             mesh.translucent.len()
         };
-        let model = 0xFF & !visibility_plan::MODEL;
-        let west_face = 0xFF & !(1 << Direction::West as u8);
-        let up_face = 0xFF & !(1 << Direction::Up as u8);
+        let model = !visibility_plan::MODEL;
+        let west_face = !(1u8 << Direction::West as u8);
+        let up_face = !(1u8 << Direction::Up as u8);
         let east = pi(1, 0, 0);
         for (at, beside, stone) in [
             ([0, 0, 0], [1, 0, 0], east),
