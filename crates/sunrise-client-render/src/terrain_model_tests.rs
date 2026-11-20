@@ -195,7 +195,12 @@ fn the_draw_colour_multiplies_every_channel_and_white_changes_nothing() {
             .iter()
             .all(|v| v.layer & 0xffff == gfx::TERRAIN_MODEL_TRANSLUCENT_OVERLAY)
     );
-    let (_, plain) = draw(&[tinted()], Mat4::IDENTITY, Default::default());
+    // The same tint under the default white draw colour: the tint alone, opaque and unshaded.
+    let white = NativeModelRenderOptions {
+        tint: 0x80_ffff,
+        ..Default::default()
+    };
+    let (_, plain) = draw(&[tinted()], Mat4::IDENTITY, white);
     assert_eq!(plain[0].layer & 0xffff, gfx::TERRAIN_MODEL_SOLID_OVERLAY);
     assert_eq!(plain[0].color, 0xFFFF_FF80);
 }
