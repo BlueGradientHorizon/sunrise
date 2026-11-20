@@ -121,6 +121,11 @@ mod root {
         impl Refusal {
             pub(super) fn report(&self) {}
         }
+        pub(super) fn first_output_refusal(_: super::HookId, id: &'static str) -> bool {
+            super::OUTPUT_REFUSALS.with(|refusals| refusals.borrow_mut().push(id));
+            true
+        }
+
         pub(super) fn outside_world() -> bool {
             false
         }

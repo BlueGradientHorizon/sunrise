@@ -448,11 +448,17 @@ impl RenderAssets {
             Default::default()
         };
         let mut emissive = Vec::new();
-        let connected = if draws {
+        let mut connected = if draws {
             crate::native_emissive::load(root.source(), &mut sprites);
             // A side's sprite, for rules that connect by tile: the first quad facing it.
             let catalog = &models.catalog;
             let mut found = Vec::new();
+            // Which states are panes, read only when a rule can draw on a pane by its sprite.
+            let panes = if ctm_rules.iter().any(|rule| rule.match_blocks.is_empty()) {
+                Some(crate::blocks::BlockFacts::load(root.prepared(), registry)?)
+            } else {
+                None
+            };
             crate::connected::ConnectedTextures::load(
                 root.source(),
                 ctm_rules,
@@ -473,10 +479,24 @@ impl RenderAssets {
                         .find(|f| f.quad.facing == side)
                         .map(|f| f.layer)
                 },
+                |state| {
+                    panes
+                        .as_ref()
+                        .and_then(|facts| facts.states.get(state.0 as usize))
+                        .is_some_and(|facts| facts.is_pane())
+                },
             )
         } else {
             Default::default()
         };
+        // Rules that join by height read one number per block state: the highest point of its
+        // collision shape. Nothing is read when no rule does.
+        if connected.joins_by_height() {
+            connected.set_heights(crate::connected::collision_heights(
+                root.prepared(),
+                registry,
+            )?);
+        }
         // After the connected tiles: a tile identical to a block shares its layer, and the
         // overlays skip shared layers.
         if draws {

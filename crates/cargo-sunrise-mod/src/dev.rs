@@ -2,23 +2,16 @@
 //! and verified into a per-user cache, the Rust the SDK names, then the same compile the launcher's
 //! `native-build` runs (`sunrise_native_build::contract::run`, docs/modding/src/reference/sdk/08-native-build.md),
 //! and for `run` the result staged beside the SDK's game executable and started.
-use crate::sdk_fetch::{self, Base};
+use crate::sdk_fetch::{self, Base, CacheStamp};
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use sunrise_mod_package::{Manifest, manifest::MANIFEST, sdk::Index};
+use sunrise_mod_package::sdk::Index;
 use sunrise_native_build::{contract, library_record::Library, prebuilt::Route, rust::Unpacked};
 
 /// Names the cache's folder instead of the platform's.
 const CACHE_ENV: &str = "SUNRISE_MOD_CACHE";
-
-/// Whether `dir`'s package is a native mod.
-pub(crate) fn is_native(dir: &Path) -> Result<bool, String> {
-    let path = dir.join(MANIFEST);
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(Manifest::parse(&text)?.native.is_some())
-}
 
 /// The per-user cache folder: `SUNRISE_MOD_CACHE`, else the platform's cache folder.
 pub(crate) fn cache_dir() -> Result<PathBuf, String> {
@@ -183,6 +176,7 @@ pub(crate) struct NativeSdk {
     pub rust: Unpacked,
     base: Base,
     dir: PathBuf,
+    stamp: CacheStamp,
 }
 
 impl NativeSdk {
@@ -192,6 +186,7 @@ impl NativeSdk {
             &self.index,
             &self.rust.target,
             &self.dir,
+            &self.stamp,
             &|line| println!("{line}"),
         )
     }
@@ -201,7 +196,8 @@ pub(crate) fn native_sdk(cache: &Path, build: &str) -> Result<NativeSdk, String>
     let target = computer()?;
     let base = Base::from_env();
     let dir = cache.join("sdk").join(build);
-    sdk_fetch::fetch(&base, &sdk_fetch::keys(), build, &dir, false)?;
+    let keys = sdk_fetch::keys();
+    sdk_fetch::fetch(&base, &keys, build, &dir, false)?;
     let index = Index::read(
         &std::fs::read(dir.join(sunrise_mod_package::sdk::INDEX))
             .map_err(|e| format!("{}: {e}", dir.display()))?,
@@ -214,12 +210,14 @@ pub(crate) fn native_sdk(cache: &Path, build: &str) -> Result<NativeSdk, String>
         rust,
         base,
         dir,
+        stamp: CacheStamp::new(build, &keys),
     })
 }
 
 /// What a native build made.
 pub(crate) struct Built {
     binary: PathBuf,
+    crate_name: String,
     libraries: Vec<PathBuf>,
     records: Vec<Library>,
     /// Revision for the package manifest: checked for mixins, inherited when they are unused.
@@ -292,11 +290,9 @@ pub(crate) fn build(project: &Path, update_lock: bool) -> Result<Built, String> 
         format!("{error}{hint}Build log: {}", log.display())
     };
 
-    let registry = {
-        let project =
-            sunrise_native_build::api::Project::read(&bundle).map_err(|e| e.to_string())?;
-        matches!(Route::of(&[project]), Route::Registry)
-    };
+    let cargo = sunrise_native_build::api::Project::read(&bundle).map_err(|e| e.to_string())?;
+    let crate_name = cargo.crate_name();
+    let registry = matches!(Route::of(&[cargo]), Route::Registry);
     if registry {
         println!("Compiling the crates.io dependencies of {id}, as `cargo build` would");
         if update_lock || !project.join("Cargo.lock").exists() {
@@ -348,6 +344,7 @@ pub(crate) fn build(project: &Path, update_lock: bool) -> Result<Built, String> 
     println!("Built {}\nBuild log: {}", library.display(), log.display());
     Ok(Built {
         binary,
+        crate_name,
         libraries,
         records,
         mixins,
@@ -437,6 +434,7 @@ pub(crate) fn run(
         .arg(&resources)
         .args(args)
         .env("SUNRISE_HOME", &home)
+        .env("SUNRISE_LOG_STDERR", &built.crate_name)
         // A session file handed to this process is the caller's: the game would read and delete it.
         .env_remove("SUNRISE_SESSION_FILE");
     #[cfg(target_os = "linux")]
@@ -446,7 +444,7 @@ pub(crate) fn run(
         .map_err(|e| format!("{}: {e}", executable.display()))?;
     status.success().then_some(()).ok_or_else(|| {
         format!(
-            "the game exited with {status}; its log is {}",
+            "the game exited with {status}; the default log path is {}",
             home.join("logs/latest.log").display()
         )
     })

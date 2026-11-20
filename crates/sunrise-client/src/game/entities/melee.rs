@@ -217,8 +217,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// `Player.attack` on a pickable general row. A plain `Entity` declines `hurtServer`,
-    /// so the blow spends the charge and plays the no-damage sound, and hurts nothing.
+    /// Whether the ray picked a general row and consumed the click.
     fn attack_general_row(&mut self) -> bool {
         let Some((eye, direction)) = self.aim() else {
             return false;
@@ -249,6 +248,13 @@ impl Game<'_> {
         {
             return false;
         }
+        self.strike_general_row(id, kind);
+        true
+    }
+
+    /// `Player.attack` on a named general row. A plain `Entity` declines `hurtServer`,
+    /// so the blow spends the charge and plays the no-damage sound, and hurts nothing.
+    pub(super) fn strike_general_row(&mut self, id: u32, kind: &str) {
         let ((_, scale, _, _), admitted) = self.melee_damage_with_admission(kind, false, Some(id));
         // Player.onAttack: the blow starts the attack strength again, hurt or not.
         self.attack_ticks = 0;
@@ -261,7 +267,6 @@ impl Game<'_> {
         }
         self.post_piercing_attack();
         self.swing_arm();
-        true
     }
 }
 
