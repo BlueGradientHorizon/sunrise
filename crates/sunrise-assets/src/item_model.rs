@@ -1278,8 +1278,8 @@ pub enum LayerContent {
     },
 }
 /// A special model renderer's answer as the item renderer prepared it to draw, its models baked
-/// once (`item_render::PreparedSpecial` in the client), so a draw looks nothing up by name. Kept
-/// as long as the answer is; equal only to itself.
+/// once (`item_render::registered_special::PreparedSpecial` in the client), so a draw looks
+/// nothing up by name. Kept as long as the answer is; equal only to itself.
 #[derive(Clone)]
 pub struct PreparedParts(pub Arc<dyn std::any::Any + Send + Sync>);
 impl std::fmt::Debug for PreparedParts {
@@ -1389,24 +1389,47 @@ impl ItemModels {
         ctx: &Context,
         env: &dyn ItemEnv,
     ) {
+        if let Some(oversized_in_gui) =
+            self.visit_layers(stack, ctx, env, LayerTransform::Model, &mut |layer, _| {
+                out.layers.push(layer);
+            })
+        {
+            out.oversized_in_gui = oversized_in_gui;
+        }
+    }
+    /// Visit each layer in draw order with the stack it resolved from (which may be a bundle's
+    /// selected stack). An inherited [`LayerTransform::None`] suppresses the model transform
+    /// for every descendant. Returns the final `oversized_in_gui`, or `None` if the stack has
+    /// no `minecraft:item_model` string. Like [`Self::append_layers`], this does not filter
+    /// empty stacks.
+    pub fn visit_layers(
+        &self,
+        stack: &StackView,
+        ctx: &Context,
+        env: &dyn ItemEnv,
+        display_transform: LayerTransform,
+        visit: &mut impl FnMut(Layer, &StackView),
+    ) -> Option<bool> {
         let components = self.components_view(stack);
         let Some(Value::String(model_id)) = components.get("minecraft:item_model") else {
-            return;
+            return None;
         };
         let id = identifier(model_id).unwrap_or_else(|_| model_id.clone());
         let definition = self.definitions.get(&id);
-        out.oversized_in_gui = definition.is_some_and(|d| d.oversized_in_gui);
         let mut state = Resolve {
             models: self,
             stack,
             components,
             ctx,
             env,
+            visit,
+            oversized_in_gui: definition.is_some_and(|d| d.oversized_in_gui),
         };
         match definition {
-            Some(d) => state.node(out, &d.model, &Mat4::IDENTITY),
-            None => state.missing(out, &Mat4::IDENTITY),
+            Some(d) => state.node(&d.model, &Mat4::IDENTITY, display_transform),
+            None => state.missing(&Mat4::IDENTITY, display_transform),
         }
+        Some(state.oversized_in_gui)
     }
     /// `ItemModelResolver.shouldPlaySwapAnimation`.
     pub fn hand_animation_on_swap(&self, stack: &StackView) -> bool {
@@ -1433,12 +1456,14 @@ impl ItemModels {
     }
 }
 
-struct Resolve<'a> {
+struct Resolve<'a, 'visit, F> {
     models: &'a ItemModels,
     stack: &'a StackView,
     components: ComponentsView<'a>,
     ctx: &'a Context<'a>,
     env: &'a dyn ItemEnv,
+    visit: &'visit mut F,
+    oversized_in_gui: bool,
 }
 
 /// A `Transformation` of scale `(1, 1, z)` as `FaceBakery.bakeVertex` applies a model
@@ -1454,7 +1479,7 @@ fn compose(parent: &Mat4, own: &Option<Mat4>) -> Mat4 {
     own.as_ref().map_or(*parent, |t| parent.mul(t))
 }
 
-impl Resolve<'_> {
+impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
     fn component(&self, key: &str) -> Option<&Value> {
         self.components.get(key)
     }
@@ -1492,16 +1517,19 @@ impl Resolve<'_> {
             .and_then(|v| int(v).ok())
             .unwrap_or(1)
     }
-    fn missing(&self, out: &mut ResolvedItem, transform: &Mat4) {
-        out.layers.push(Layer {
+    fn emit(&mut self, layer: Layer) {
+        (self.visit)(layer, self.stack);
+    }
+    fn missing(&mut self, transform: &Mat4, display_transform: LayerTransform) {
+        self.emit(Layer {
             content: LayerContent::Missing,
             tints: Vec::new(),
             foil: FoilType::None,
             transform: *transform,
-            display_transform: LayerTransform::Model,
+            display_transform,
         });
     }
-    fn node(&mut self, out: &mut ResolvedItem, node: &ItemModelNode, parent: &Mat4) {
+    fn node(&mut self, node: &ItemModelNode, parent: &Mat4, display_transform: LayerTransform) {
         match node {
             ItemModelNode::Empty => {}
             ItemModelNode::Model(leaf) => {
@@ -1518,14 +1546,14 @@ impl Resolve<'_> {
                     FoilType::None
                 };
                 let tints = leaf.tints.iter().map(|t| self.tint(t)).collect();
-                out.layers.push(Layer {
+                self.emit(Layer {
                     content: LayerContent::Model {
                         model: leaf.model.clone(),
                     },
                     tints,
                     foil,
                     transform,
-                    display_transform: LayerTransform::Model,
+                    display_transform,
                 });
             }
             ItemModelNode::Composite {
@@ -1534,7 +1562,7 @@ impl Resolve<'_> {
             } => {
                 let child = compose(parent, transformation);
                 for m in models {
-                    self.node(out, m, &child);
+                    self.node(m, &child, display_transform);
                 }
             }
             ItemModelNode::Condition {
@@ -1549,7 +1577,7 @@ impl Resolve<'_> {
                 } else {
                     on_false
                 };
-                self.node(out, chosen, &child);
+                self.node(chosen, &child, display_transform);
             }
             ItemModelNode::Select {
                 transformation,
@@ -1566,9 +1594,9 @@ impl Resolve<'_> {
                         .map(|c| &c.model)
                 });
                 match (chosen, fallback) {
-                    (Some(m), _) => self.node(out, m, &child),
-                    (None, Some(f)) => self.node(out, f, &child),
-                    (None, None) => self.missing(out, &child),
+                    (Some(m), _) => self.node(m, &child, display_transform),
+                    (None, Some(f)) => self.node(f, &child, display_transform),
+                    (None, None) => self.missing(&child, display_transform),
                 }
             }
             ItemModelNode::RangeDispatch {
@@ -1586,9 +1614,9 @@ impl Resolve<'_> {
                     last_index_less_or_equal(entries, value).map(|i| &entries[i].1)
                 };
                 match (chosen, fallback) {
-                    (Some(m), _) => self.node(out, m, &child),
-                    (None, Some(f)) => self.node(out, f, &child),
-                    (None, None) => self.missing(out, &child),
+                    (Some(m), _) => self.node(m, &child, display_transform),
+                    (None, Some(f)) => self.node(f, &child, display_transform),
+                    (None, None) => self.missing(&child, display_transform),
                 }
             }
             ItemModelNode::Special {
@@ -1597,7 +1625,7 @@ impl Resolve<'_> {
                 model,
             } => {
                 let transform = compose(parent, transformation);
-                out.layers.push(Layer {
+                self.emit(Layer {
                     content: LayerContent::Special {
                         base: base.clone(),
                         model: model.clone(),
@@ -1610,7 +1638,7 @@ impl Resolve<'_> {
                         FoilType::None
                     },
                     transform,
-                    display_transform: LayerTransform::Model,
+                    display_transform,
                 });
             }
             ItemModelNode::RegisteredSpecial {
@@ -1626,7 +1654,7 @@ impl Resolve<'_> {
                     Some(prepared) => LayerContent::Parts(prepared),
                     None => LayerContent::Missing,
                 };
-                out.layers.push(Layer {
+                self.emit(Layer {
                     content,
                     tints: Vec::new(),
                     foil: if self.has_foil() {
@@ -1635,16 +1663,23 @@ impl Resolve<'_> {
                         FoilType::None
                     },
                     transform: compose(parent, transformation),
-                    display_transform: LayerTransform::Model,
+                    display_transform,
                 });
             }
             ItemModelNode::FluidContainer(container) => {
-                self.fluid_container(out, container, parent);
+                self.fluid_container(container, parent, display_transform);
             }
             ItemModelNode::BundleSelectedItem => {
-                if let Some(selected) = self.bundle_selected() {
-                    self.models
-                        .append_layers(out, &selected, self.ctx, self.env);
+                if let Some(selected) = self.bundle_selected()
+                    && let Some(oversized_in_gui) = self.models.visit_layers(
+                        &selected,
+                        self.ctx,
+                        self.env,
+                        display_transform,
+                        self.visit,
+                    )
+                {
+                    self.oversized_in_gui = oversized_in_gui;
                 }
             }
             ItemModelNode::Registered {
@@ -1659,15 +1694,13 @@ impl Resolve<'_> {
                 let child = compose(parent, transformation);
                 for choice in &drawn {
                     if let Some((_, model)) = models.iter().find(|(key, _)| *key == choice.model) {
-                        let first = out.layers.len();
-                        self.node(out, model, &child);
-                        // The layer's choice wins over what the model chose below it; the
-                        // model's own transform is kept only where no layer above refused it.
-                        if choice.transform == LayerTransform::None {
-                            for layer in &mut out.layers[first..] {
-                                layer.display_transform = LayerTransform::None;
-                            }
-                        }
+                        // The model's own transform is kept only where no layer above refused it.
+                        let display_transform = if display_transform == LayerTransform::None {
+                            display_transform
+                        } else {
+                            choice.transform
+                        };
+                        self.node(model, &child, display_transform);
                     }
                 }
             }
@@ -1678,13 +1711,18 @@ impl Resolve<'_> {
     /// baked under `FLUID_TRANSFORM` and the cover under `COVER_TRANSFORM` (offsets 403-415,
     /// 617-629), Z scales of 1.002 and 1.004 (`<clinit>` 0-83) that `FaceBakery` applies
     /// about the block's middle: each sits a little further out than the one below it.
-    fn fluid_container(&self, out: &mut ResolvedItem, container: &FluidContainer, parent: &Mat4) {
+    fn fluid_container(
+        &mut self,
+        container: &FluidContainer,
+        parent: &Mat4,
+        display_transform: LayerTransform,
+    ) {
         let textures = &container.textures;
         // `update`: the fluid the stack holds, else the model's own (offsets 0-29).
         let held = self.env.stack_fluid(self.stack);
         let drawn = held.unwrap_or(&container.fluid);
         if let Some(base) = &textures.base {
-            self.sprite_layer(out, base, None, Vec::new(), parent);
+            self.sprite_layer(base, None, Vec::new(), parent, display_transform);
         }
         // `fluid != EMPTY ? FluidStateModelSet.get(fluid).stillMaterial() : null` (offsets
         // 129-145): a fluid the host has no model for gets `ModelBakery.MissingModels.fluid`,
@@ -1702,7 +1740,13 @@ impl Resolve<'_> {
             // same fluid, so its tint is the appearance already looked up.
             let tint = if held.is_some() { appearance.tint } else { -1 };
             let parent = parent.mul(&depth_scale(1.002));
-            self.sprite_layer(out, &appearance.still, Some(mask), vec![tint], &parent);
+            self.sprite_layer(
+                &appearance.still,
+                Some(mask),
+                vec![tint],
+                &parent,
+                display_transform,
+            );
         }
         // The cover is always the mask (`bakeItemMaskQuads(baker, 0, cover, drawn, ...)`, offsets
         // 631-639). With `cover_is_mask` it picks out the parts of `base` drawn again over the
@@ -1715,20 +1759,20 @@ impl Resolve<'_> {
             };
             if let Some(drawn) = drawn {
                 let parent = parent.mul(&depth_scale(1.004));
-                self.sprite_layer(out, drawn, Some(cover), Vec::new(), &parent);
+                self.sprite_layer(drawn, Some(cover), Vec::new(), &parent, display_transform);
             }
         }
     }
     /// One `item/generated` layer, which [`crate::item_bake::bake_sprite_layer`] extrudes.
     fn sprite_layer(
-        &self,
-        out: &mut ResolvedItem,
+        &mut self,
         sprite: &str,
         mask: Option<&str>,
         tints: Vec<i32>,
         parent: &Mat4,
+        display_transform: LayerTransform,
     ) {
-        out.layers.push(Layer {
+        self.emit(Layer {
             content: LayerContent::Sprite {
                 sprite: sprite.to_owned(),
                 mask: mask.map(str::to_owned),
@@ -1740,7 +1784,7 @@ impl Resolve<'_> {
                 FoilType::None
             },
             transform: *parent,
-            display_transform: LayerTransform::Model,
+            display_transform,
         });
     }
     fn item_in_compass_tag(&self) -> bool {
