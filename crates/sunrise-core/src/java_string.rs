@@ -15,8 +15,11 @@ use simd::{WIDE_FROM, fold};
 /// `String.hashCode` of a string's UTF-16 units.
 #[inline]
 pub fn java_string_hash(units: &[u16]) -> i32 {
-    if units.is_empty() {
-        return 0;
+    if units.len() < WIDE_FROM {
+        // Below a vector step, the plain loop main had, with no other branch in front of it.
+        return units.iter().fold(0i32, |hash, &unit| {
+            hash.wrapping_mul(31).wrapping_add(i32::from(unit))
+        });
     }
     fold(0, units) as i32
 }
@@ -29,14 +32,21 @@ pub fn utf16_with_hash(text: &str) -> (Vec<u16>, i32) {
         let units: Vec<u16> = bytes.iter().map(|&b| u16::from(b)).collect();
         return (units, java_string_hash_ascii(bytes));
     }
-    // Units never outnumber bytes: one allocation, not a guess and a regrowth.
+    // One allocation of exactly the units the text encodes to: one per byte that starts a character,
+    // and a second for each four-byte character (a surrogate pair). A larger guess would keep the
+    // spare capacity in every key and can move the block up an allocator size class.
+    let len = bytes
+        .iter()
+        .map(|&b| usize::from(b & 0xC0 != 0x80) + usize::from(b >= 0xF0))
+        .sum();
     let mut units;
     if bytes.iter().all(|&b| b < 0xC4) {
         // Only ASCII and the two-byte forms of U+0080..U+00FF (C2 or C3, then a continuation): each
         // non-continuation byte is one unit, worked out from it and the byte after it, so that no
         // step waits for the one before. The unit is written even for a continuation byte, and the
-        // next unit overwrites it.
-        units = vec![0u16; bytes.len()];
+        // next unit overwrites it, so a text that ends in a continuation byte writes one past the
+        // last unit, which the truncate drops.
+        units = vec![0u16; len + 1];
         let mut out = 0;
         for (i, &b) in bytes.iter().enumerate() {
             let next = bytes.get(i + 1).copied().unwrap_or(0);
@@ -49,7 +59,7 @@ pub fn utf16_with_hash(text: &str) -> (Vec<u16>, i32) {
         }
         units.truncate(out);
     } else {
-        units = Vec::with_capacity(bytes.len());
+        units = Vec::with_capacity(len);
         units.extend(text.encode_utf16());
     }
     let hash = java_string_hash(&units);
@@ -421,6 +431,8 @@ mod tests {
             let (units, hash) = utf16_with_hash(&text);
             let expected: Vec<u16> = text.encode_utf16().collect();
             assert_eq!(units, expected, "{text:?}");
+            // The key keeps its buffer: at most one spare unit (the Latin-1 path's overwrite slot).
+            assert!(units.capacity() <= expected.len() + 1, "{text:?}");
             assert_eq!(hash, java_string_hash(&expected));
         }
     }
