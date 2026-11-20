@@ -444,7 +444,8 @@ mod tests {
     }
     #[test]
     fn sorted_quads_go_far_to_near_and_those_at_one_distance_keep_their_order() {
-        // x is the distance; y marks the original order of the two quads at x = 5.
+        // The distance is from the origin: (5, 0), (3, 4) and (4, 3) are all 5 away, so those
+        // three must keep the order they came in.
         let quad = |x: f32, y: f32| {
             [Vertex {
                 layer: TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
@@ -452,7 +453,7 @@ mod tests {
                 ..geometry(1, false)[0]
             }; 4]
         };
-        let entities: Vec<_> = [(2.0, 0.0), (5.0, 1.0), (9.0, 0.0), (5.0, 2.0), (5.0, 3.0)]
+        let entities: Vec<_> = [(2.0, 0.0), (5.0, 0.0), (9.0, 0.0), (3.0, 4.0), (4.0, 3.0)]
             .into_iter()
             .flat_map(|(x, y)| quad(x, y))
             .collect();
@@ -466,7 +467,7 @@ mod tests {
             .collect();
         assert_eq!(
             order,
-            [(9.0, 0.0), (5.0, 1.0), (5.0, 2.0), (5.0, 3.0), (2.0, 0.0)]
+            [(9.0, 0.0), (5.0, 0.0), (3.0, 4.0), (4.0, 3.0), (2.0, 0.0)]
         );
     }
     #[test]

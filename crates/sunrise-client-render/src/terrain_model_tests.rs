@@ -185,10 +185,11 @@ fn the_draw_colour_multiplies_every_channel_and_white_changes_nothing() {
     let (accepted, output) = draw(&[tinted(), face()], Mat4::IDENTITY, options);
     assert!(accepted);
     // Red: 255 * 0x80 / 255 = 0x80, then * 0x80 / 255 = 0x40. Green and blue: 255, then * 0xFF
-    // and * 0x40 / 255.
-    assert_eq!(output[0].color, 0xC0 << 24 | 0x40 << 16 | 0xFF << 8 | 0x40);
-    // The untinted quad takes the draw colour alone, and the alpha makes it translucent.
-    assert_eq!(output[4].color, 0xC0 << 24 | 0x40 << 16 | 0xFF << 8 | 0x80);
+    // and * 0x40 / 255. The alpha makes the quads translucent, and a translucent quad carries its
+    // face's shade in the colour: the south face's 0.8, as 204 / 255 on each colour channel.
+    assert_eq!(output[0].color, 0xC0 << 24 | 0x33 << 16 | 0xCC << 8 | 0x33);
+    // The untinted quad takes the draw colour alone, then the same shade.
+    assert_eq!(output[4].color, 0xC0 << 24 | 0x33 << 16 | 0xCC << 8 | 0x66);
     assert!(
         output
             .iter()
