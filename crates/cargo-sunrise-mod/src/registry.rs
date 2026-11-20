@@ -180,10 +180,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 return Err(USAGE.into());
             };
             let files = Path::new(files.ok_or(USAGE)?);
-            // The first pull request has no entries to compare with.
-            let base_entries = registry::load(Path::new(base))
-                .map(|base| base.entries)
-                .unwrap_or_default();
+            let base_entries = registry::load(Path::new(base)).map_err(lines)?.entries;
             let old: std::collections::HashSet<String> = base_entries
                 .iter()
                 .flat_map(|e| e.versions.iter().map(|v| v.sha256.clone()))

@@ -866,8 +866,16 @@ fn the_screenshot_rule_covers_new_projects_new_versions_and_exempts_libraries() 
     update.versions.insert(0, next);
     assert!(screenshot_required(Some(&base), &update));
     // Only a mod or native-mod in the `library` category is exempt.
+    for kind in [Kind::Mod, Kind::NativeMod] {
+        update.kind = kind;
+        assert!(screenshot_required(None, &update));
+        assert!(screenshot_required(Some(&base), &update));
+        update.categories.push("library".into());
+        assert!(!screenshot_required(None, &update));
+        assert!(!screenshot_required(Some(&base), &update));
+        update.categories.pop();
+    }
     update.categories = vec!["library".into()];
-    assert!(!screenshot_required(None, &update));
     update.kind = Kind::Modpack;
     assert!(screenshot_required(None, &update));
 }

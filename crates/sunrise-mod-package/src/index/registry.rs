@@ -940,7 +940,7 @@ pub fn check_kind(id: &str, old: &Kind, new: &Kind) -> Result<(), String> {
 }
 
 /// A `mod` or `native-mod` listed in the `library` category has nothing to show: it is exempt from
-/// [`screenshot_required`].
+/// the screenshot requirement.
 fn is_library(entry: &Entry) -> bool {
     matches!(entry.kind, Kind::Mod | Kind::NativeMod)
         && entry.categories.iter().any(|c| c == "library")
@@ -949,7 +949,7 @@ fn is_library(entry: &Entry) -> bool {
 /// Whether a project needs a screenshot: it is new (`base` is `None`), or `head` adds a version to
 /// a listing, unless it is a library mod. An existing listing with no screenshots that gains no
 /// version stays valid. Collections are not entries, so they never need one.
-pub fn screenshot_required(base: Option<&Entry>, head: &Entry) -> bool {
+fn screenshot_required(base: Option<&Entry>, head: &Entry) -> bool {
     if is_library(head) {
         return false;
     }
@@ -961,9 +961,9 @@ pub fn screenshot_required(base: Option<&Entry>, head: &Entry) -> bool {
 }
 
 /// The one screenshot rule, for `registry check`, `registry review` and `publish`: every project of
-/// `head` that [`screenshot_required`] says needs a screenshot must list at least one that is an
-/// image file (`screenshots/<id>/<name>.png|.jpg`) in the `registry` checkout, not empty and a
-/// valid PNG or JPEG: an address elsewhere does not count.
+/// `head` with a new listing or version, other than library mods, must list at least one valid
+/// PNG or JPEG (`screenshots/<id>/<name>.png|.jpg`) in the `registry` checkout. An address elsewhere
+/// does not count.
 pub fn check_screenshot_rule(base: &[Entry], head: &[Entry], registry: &Path) -> Vec<String> {
     let mut errors = Vec::new();
     for new in head {

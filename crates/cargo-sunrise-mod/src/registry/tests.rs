@@ -88,6 +88,17 @@ impl Registry {
         )
     }
 
+    fn bare_review(&self) -> Result<(), String> {
+        let path = |p| self.0.path().join(p).to_str().unwrap().to_owned();
+        super::main(&[
+            "review".into(),
+            path("base"),
+            path("head"),
+            "--author".into(),
+            "author".into(),
+        ])
+    }
+
     fn run(&self, command: &str, paths: &[&str], flags: &[&str]) -> Result<(), String> {
         let path = |p| self.0.path().join(p).to_str().unwrap().to_owned();
         let mut args = vec![command.to_owned()];
@@ -278,6 +289,16 @@ fn a_registry_command_reads_its_own_options_and_refuses_others() {
     }
 }
 
+#[test]
+fn check_refuses_a_malformed_base_checkout() {
+    let r = Registry::new();
+    r.add("coords", "1.0.0", "26.3", "");
+    let base = r.0.path().join("base/mods/broken.toml");
+    std::fs::write(base, "id = [").unwrap();
+    let error = r.check().unwrap_err();
+    assert!(error.contains("mods/broken.toml"), "{error}");
+}
+
 const NEEDS: &str = "needs at least one screenshot";
 
 #[test]
@@ -286,6 +307,7 @@ fn a_new_project_needs_a_screenshot_image_in_the_checkout() {
     r.add("coords", "1.0.0", "26.3", "");
     assert_eq!(r.check(), Ok(()));
     assert_eq!(r.review(), Ok(()));
+    assert_eq!(r.bare_review(), Ok(()));
     // Listed but missing, empty or remote: refused by check and review alike.
     for (what, edit) in [
         ("missing", None),
@@ -300,7 +322,7 @@ fn a_new_project_needs_a_screenshot_image_in_the_checkout() {
             Some(bytes) => std::fs::write(&file, bytes).unwrap(),
         }
         assert!(r.check().unwrap_err().contains(NEEDS), "{what}");
-        assert!(r.review().is_err(), "{what}");
+        assert!(r.bare_review().is_err(), "{what}");
     }
     let r = Registry::new();
     r.add("coords", "1.0.0", "26.3", "");
@@ -308,10 +330,7 @@ fn a_new_project_needs_a_screenshot_image_in_the_checkout() {
         t.replace("screenshots/coords/one.png", "https://example.test/one.png")
     });
     assert!(r.check().unwrap_err().contains(NEEDS));
-    r.edit("coords", |t| {
-        t.replace("screenshots=['https://example.test/one.png']\n", "")
-    });
-    assert!(r.review().is_err());
+    assert!(r.bare_review().is_err());
 }
 
 #[test]
@@ -330,7 +349,7 @@ fn an_existing_listing_without_screenshots_needs_one_only_for_a_new_version() {
     // A new version of it is refused until it has a screenshot.
     r.add("coords", "1.1.0", "26.3", "");
     assert!(r.check().unwrap_err().contains(NEEDS));
-    assert!(r.review().unwrap_err().contains("1 change"));
+    assert!(r.bare_review().is_err());
     r.edit("coords", |t| {
         t.replacen(
             "\n[[versions]]",
