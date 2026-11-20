@@ -4293,6 +4293,7 @@ mod tests {
                         &mut test_level.level(),
                         Vec3::ZERO,
                         &mut events,
+                        false,
                     );
                     let dust = events
                         .iter()
