@@ -3726,6 +3726,29 @@ pub(crate) mod tests {
         });
     }
 
+    #[test]
+    fn an_anvil_rename_uses_vanillas_definition_of_blank() {
+        bare_env(|env| {
+            let renamed = |name| {
+                let mut menu = Menu::new(Kind::Anvil);
+                menu.set_slot(env, 0, stack("iron_sword", 1));
+                menu.anvil_created();
+                assert!(menu.rename(env, name));
+                menu
+            };
+            let menu = renamed("\u{85}");
+            assert_eq!(
+                menu.slot(2).unwrap().custom_name().as_deref(),
+                Some("\u{85}")
+            );
+            assert_eq!(menu.data[0], 1);
+
+            let menu = renamed("\u{a0}\u{2007}\u{202f}");
+            assert!(menu.slot(2).is_none());
+            assert_eq!(menu.data[0], 0);
+        });
+    }
+
     /// A rename beside a right input the anvil can't use changes neither
     /// the (empty) result nor the cost, but `createResult` ran: the mods
     /// are asked, and their output is the result.
