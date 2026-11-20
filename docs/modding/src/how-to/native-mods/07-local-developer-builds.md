@@ -60,9 +60,10 @@ generated `Cargo.toml` points there, so plain `cargo check` and your editor can 
 the game. In a fresh clone or after `update`, run `cargo sunrise-mod check` to fetch the pinned source
 again. `build` links against the compiled SDK and writes the `.smod` under `target/sunrise-mod/`.
 
-Here `fits` and `update` check the local SDK against the mod's existing pin. To compare with another
-build, the tool needs that build's SDK too. If you build another local SDK, use a new base folder and
-read its public key again.
+Here `fits` and `update` check the mod's existing pin. To compare two builds, their SDKs must be
+available from the same `SUNRISE_SDK_BASE`. Each invocation uses one base and trusts at most one
+extra key. This recipe makes a separate base and key for each local SDK, so it cannot compare two
+independently built local SDKs as they are.
 
 To start the game with the mod, see [Run it](../../start/first-mod.md#6-run-it); that step needs
 resources prepared from your own copy of Minecraft.
