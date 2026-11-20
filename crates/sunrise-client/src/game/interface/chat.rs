@@ -875,18 +875,7 @@ impl Game<'_> {
         reg.block_tags.sort();
         reg.blocks = BlockProperties::clone(&block_properties(self.pack.assets.registry));
         reg.summonable = summonable_entities(&ids.entity_types, self.res.mob_types().keys());
-        let mut types = ids.entity_types.clone();
-        if types.is_empty() {
-            types = reg.summonable.clone();
-            types.push("minecraft:player".into());
-            types.sort();
-        }
-        for key in super::general::general_type_catalog().keys() {
-            if !types.iter().any(|id| id == key) {
-                types.push(key.to_owned());
-            }
-        }
-        reg.entity_types = types;
+        reg.entity_types.clone_from(&ids.entity_types);
         // The mob effect registry: every effect `/effect` and the
         // `mob_effect` resource arguments accept.
         reg.effects = sunrise_client::brewing::all_effects()
@@ -914,6 +903,22 @@ impl Game<'_> {
             }
         }
         let reg = &mut self.ui.registries;
+        if reg.entity_types.is_empty() {
+            reg.entity_types.clone_from(&reg.summonable);
+            reg.entity_types.push("minecraft:player".into());
+        }
+        reg.entity_types.extend(
+            super::general::general_type_catalog()
+                .keys()
+                .map(str::to_owned),
+        );
+        reg.entity_types.sort();
+        reg.entity_types.dedup();
+        // Selector validation prefers the exported registry entry. Replace its
+        // vanilla IDs with the live list, keeping its tags.
+        if let Some(entry) = reg.by_registry.get_mut("minecraft:entity_type") {
+            entry.ids.clone_from(&reg.entity_types);
+        }
         // Native component names were validated and frozen before resources loaded.
         // The same inventory supplies both wire IDs and command components.
         for (_, name) in sunrise_protocol::item::custom::entries() {
@@ -1699,6 +1704,15 @@ impl Game<'_> {
         self.ui.chat.queue = self.chat_queue_len();
         if self.ui.hide_gui && !focused {
             return;
+        }
+        let revision = self.inline_images_revision();
+        if self.ui.chat.inline_images_stale(revision) {
+            // Layout borrows a read-only Host while asking listeners.
+            let mut chat = std::mem::take(&mut self.ui.chat);
+            chat.refresh_inline_images(&self.gui.atlas, revision, |text| {
+                self.substitute_inline_images(text)
+            });
+            self.ui.chat = chat;
         }
         self.ui.chat.smooth = self.settings.extras.chat_animation;
         self.ui.chat.hide_indicator = !self.settings.extras.chat_indicator;

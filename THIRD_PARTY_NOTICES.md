@@ -140,9 +140,14 @@ files ship beside the DLL as `DXC-LICENSE-MS.txt` and `DXC-LICENSE-LLVM.txt`, wi
 `third_party/libmimalloc-sys` is [libmimalloc-sys](https://github.com/purpleprotocol/mimalloc_rust)
 0.1.49 by Octavian Oncescu, with the [mimalloc](https://github.com/microsoft/mimalloc) v3 sources it
 bundles (Copyright (c) 2018-2025 Microsoft Corporation, Daan Leijen), both under the MIT license
-(`LICENSE.txt` and `c_src/mimalloc/v3/LICENSE` in that folder). It holds only the v3 sources. One
-change: `mi_popcount` in `include/mimalloc/bits.h` uses mimalloc's portable bit count on MSVC
-x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264).
+(`LICENSE.txt` and `c_src/mimalloc/v3/LICENSE` in that folder). It holds only the v3 sources. Three
+changes: `mi_popcount` in `include/mimalloc/bits.h` uses mimalloc's portable bit count on MSVC
+x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264);
+`build.rs` reruns when a file under `c_src/mimalloc/v3` changes, so a kept build directory never links stale
+sources (#3299); and
+`_mi_arenas_page_free` in `src/arena.c` lowers the `malloc_huge` statistic when a huge page is freed, at
+every `MI_STAT` level as `src/page.c` raises it, instead of `mi_stat_free` (`src/free.c`) and
+`_mi_theap_page_destroy` (`src/theap.c`) lowering it only with detailed statistics (#3299).
 
 ## Pixelify Sans
 

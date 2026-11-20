@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "ແທ່ງຂວາຫັນມຸມມອງໄວເທົ່າໃດ.",
   "How fast the stick moves the crosshair in inventories.": "ແທ່ງເຄື່ອນເຄື່ອງໝາຍເປົ້າໃນກະເປົາໄວເທົ່າໃດ.",
   "How frames reach the screen while VSync is off.": "ເຟຣມໄປຮອດໜ້າຈໍແນວໃດໃນຂະນະທີ່ VSync ປິດຢູ່.",
-  "How frames reach the screen, and the performance overlay.": "ຂອບໄປຮອດໜ້າຈໍແນວໃດ, ແລະການສະແດງຜົນຊ້ອນກັນ.",
   "How long a held direction takes between repeats.": "ທິດທີ່ກົດຄ້າງໄວ້ໃຊ້ເວລາດົນປານໃດລະຫວ່າງການເຮັດຊ້ຳ.",
   "How long a held direction waits before it repeats.": "ທິດທີ່ກົດຄ້າງໄວ້ລໍຖ້າດົນປານໃດກ່ອນຈະເຮັດຊ້ຳ.",
   "How many particles effects spawn.": "ວິທີການຈໍານວນຫຼາຍ particles ມີຜົນກະທົບ spawn.",
