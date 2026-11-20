@@ -3,7 +3,7 @@
 //! hook is fired inside an action savepoint, its answer is validated once and applied once, and a
 //! refusal (stale, invalid, a failing listener) changes nothing and undoes every write the
 //! listener made. The fixtures need prepared resources.
-use crate::game::native_guest_turn_tests::with_guests;
+use crate::game::native_guest_turn_tests::{register_test_menu, with_guests};
 use mod_api::{
     BlockEntityPart, Flow, Hooks, ITEMS, ItemPlace, ItemResource, MenuButtonEvent,
     MenuClickedEvent, MenuQuickMoveEvent, ModEntry, Mods, Registrar, ServerHost,
@@ -620,8 +620,7 @@ fn a_replaced_block_entity_makes_an_admitted_quick_move_stale() {
 
 /// A content mod's menu type, the one the depot's container opens (`depot_container`).
 const DEPOT_MENU: &str = "movemod:depot_menu";
-// Use a prepared protocol ID for this fixture's registered content menu.
-const STATUS_MENU: &str = "minecraft:generic_9x2";
+const STATUS_MENU: &str = "movemod:status_menu";
 
 /// Makes the depot at `POS` a mod container whose menu is `DEPOT_MENU`, so `mod_menu_at(POS)`
 /// names it.
@@ -772,12 +771,7 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
                     guest.sender.menu_extra_rev = sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
                 });
                 let player = game.player(12).unwrap();
-                let key = mod_api::__private::menu_keys()
-                    .into_iter()
-                    .find(|key| {
-                        mod_api::__private::menu_key_id(*key).as_deref() == Some(STATUS_MENU)
-                    })
-                    .unwrap();
+                let key = register_test_menu(game, STATUS_MENU);
                 let window = player
                     .open_mod_menu(
                         game,

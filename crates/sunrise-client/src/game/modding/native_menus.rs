@@ -1322,9 +1322,8 @@ mod tests {
         });
     }
 
-    /// The content mod menu type the mod-menu tests open: a prepared registry slot
-    /// (`minecraft:generic_9x1`) for a synthetic definition.
-    const MOD_MENU: &str = "minecraft:generic_9x1";
+    /// The content menu type shared by the mod-menu fixtures.
+    const MOD_MENU: &str = "listen:status";
 
     /// [`with_game`] with [`MOD_MENU`] as the thread's menu types, so a test neither depends on
     /// registering first nor touches the one-shot process table.
@@ -1352,10 +1351,8 @@ mod tests {
             g.brand = "sunrise".into();
             g.sender.menu_extra_rev = 1;
         });
-        let key = mod_api::__private::menu_keys()
-            .into_iter()
-            .find(|key| mod_api::__private::menu_key_id(*key).as_deref() == Some(MOD_MENU))
-            .unwrap();
+        let key = super::super::native_guest_turn_tests::register_test_menu(game, MOD_MENU);
+        rx.try_iter().for_each(drop); // Registry setup sent reload packets, not part of these opens.
         (rx, key)
     }
 
@@ -1781,7 +1778,7 @@ mod tests {
                             // The menu's namespace is not its package identity.
                             let _guard = mod_api::content::crash::enter_native_mod(
                                 mod_api::content::crash::ModCall {
-                                    id: "minecraft",
+                                    id: "listen",
                                     hook: "test",
                                     part: None,
                                 },
