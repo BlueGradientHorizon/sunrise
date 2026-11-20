@@ -13,4 +13,8 @@ would save with. To omit a vehicle and all its passengers, set the flag on the r
 The flag follows the live entity across dimensions but is never saved. Native and wasm mods use the same
 method. It returns `Ok(false)` for players, dragon parts and handles that do not resolve in the current level.
 
+Use `EntityRef::hurt` on the server with the fully qualified id of a registered damage type, vanilla
+or modded. Hurt hooks see that exact id. The direct and causing entities are separate from the type:
+passing a player as the cause of `minecraft:explosion` does not turn it into `minecraft:player_explosion`.
+
 <!-- section-pages -->
