@@ -129,7 +129,8 @@ impl LightTables {
             && let Some(upper) = status.occupied.iter().last()
         {
             // `ChunkSkyLightSources.getHighestLowestSourceY` bounds the sections
-            // filled by `setLightEnabled`. Search down to the first occluded edge.
+            // filled by `setLightEnabled`. With no occlusion the Java sentinel
+            // wraps on subtraction, so no already allocated layer is filled.
             let mut above = [0; 256];
             let lower = (shape.min_section() - first) as usize;
             'sections: for s in (lower..=upper).rev() {
@@ -1194,6 +1195,20 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
     layers: &[(Option<L>, Option<L>)],
     sky_light: bool,
 ) -> Vec<usize> {
+    edit_light_layers(chunk, layers, SectionMask::EMPTY, sky_light)
+}
+
+/// `markNewInconsistencies`: drop layers whose last section-status support went away.
+pub(crate) fn remove_light_layers(chunk: &mut Chunk, removed: SectionMask) -> Vec<usize> {
+    edit_light_layers::<&[u8]>(chunk, &[], removed, chunk.light_sky)
+}
+
+fn edit_light_layers<L: AsRef<[u8]>>(
+    chunk: &mut Chunk,
+    layers: &[(Option<L>, Option<L>)],
+    removed: SectionMask,
+    sky_light: bool,
+) -> Vec<usize> {
     let sections = chunk.sections.len();
     let mut above = [15 * u8::from(sky_light); 256];
     let mut stored = chunk
@@ -1207,6 +1222,22 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
     let mut unchanged_source = None;
     let mut refresh = false;
     for b in (0..sections + 2).rev() {
+        let drop = removed.contains(b);
+        if drop {
+            refresh |= stored[0].contains(b);
+            stored[0].remove(b);
+            stored[1].remove(b);
+            if b == 0 || b == sections + 1 {
+                let (pad, adjacent) = if b == 0 {
+                    (&mut chunk.pad_below, 0)
+                } else {
+                    (&mut chunk.pad_above, sections - 1)
+                };
+                *pad = None;
+                changed.insert(adjacent);
+                continue;
+            }
+        }
         let (sky, block) = layers.get(b).map_or((None, None), |(sky, block)| {
             (
                 sky.as_ref().filter(|_| sky_light).map(AsRef::as_ref),
@@ -1233,7 +1264,7 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
             stored[1].insert(b);
         }
         let inherited = !has_sky && (refresh || old.is_none());
-        if sky.is_none() && block.is_none() && (!inherited || old.is_none()) {
+        if !drop && sky.is_none() && block.is_none() && (!inherited || old.is_none()) {
             continue;
         }
         // An unchanged stored source need not be sampled for every section: gaps already
@@ -1256,7 +1287,9 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
                 None if inherited => above[i & 255],
                 None => previous >> 4,
             };
-            let block = block.map_or(previous & 15, |layer| nibble(layer, i));
+            let block = block.map_or(if drop { 0 } else { previous & 15 }, |layer| {
+                nibble(layer, i)
+            });
             *packed = sky << 4 | block;
         }
         let light = Light::packed(data);
@@ -1284,7 +1317,10 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
     }
     chunk.light_layers = Some(StoredLight {
         masks: stored,
-        saved_arrays: chunk.light_layers.and_then(|light| light.saved_arrays),
+        saved_arrays: chunk
+            .light_layers
+            .and_then(|light| light.saved_arrays)
+            .map(|arrays| arrays.map(|mask| mask & !removed)),
     });
     chunk.light_sky = sky_light;
     changed.iter().collect()

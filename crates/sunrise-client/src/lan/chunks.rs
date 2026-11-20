@@ -2487,6 +2487,58 @@ mod tests {
     }
 
     #[test]
+    fn a_saved_column_resend_drops_layers_after_the_last_supporting_neighbour_unloads() {
+        use sunrise_protocol::buf::{Reader, bit};
+        use sunrise_world::registry::BlockStateId;
+
+        let mut world = crate::world::World::new(BlockStateId(0), 0);
+        for (x, z, s) in [(1, 0, 0), (0, 1, 0), (-1, 0, 4)] {
+            let mut neighbour = Chunk::empty(x, z);
+            neighbour.add_light_support(s);
+            world.install_light_column(neighbour);
+        }
+        let mut chunk = Chunk::empty(0, 0);
+        let mut layers = vec![(None, None); SECTIONS + 2];
+        layers[1].1 = Some([0x22; 2048]);
+        let mut upper = [0x33; 2048];
+        upper[..128].fill(0x77);
+        layers[4].0 = Some(upper);
+        crate::light::light_from_saved_layers(&mut chunk, &layers, true);
+        world.install_light_column(chunk);
+        let encoder = encoder();
+        let first = encoder.body_in(&world.chunks[&(0, 0)], &world);
+        assert_eq!(world.light(0, MIN_Y, 0), 2);
+        world.unload_chunk((1, 0)).unwrap();
+        assert_eq!(encoder.body_in(&world.chunks[&(0, 0)], &world), first);
+
+        world.unload_chunk((0, 1)).unwrap();
+        assert_eq!(world.light(0, MIN_Y - 1, 0), 0x70);
+        assert_eq!(world.light(0, MIN_Y, 0), 0x70);
+        assert_eq!(world.light(0, MIN_Y + 16, 0), 0x70);
+        let resend = encoder.body_in(&world.chunks[&(0, 0)], &world);
+        let mut reader = Reader::new(&resend);
+        let id = reader.varint().unwrap();
+        let Ok(play::Clientbound::LevelChunkWithLight(packet)) =
+            play::Clientbound::decode(id, reader.rest())
+        else {
+            panic!("not a chunk packet");
+        };
+        for mask in [
+            &packet.light.sky_mask,
+            &packet.light.block_mask,
+            &packet.light.empty_sky_mask,
+            &packet.light.empty_block_mask,
+        ] {
+            assert!((0..=2).all(|b| !bit(mask, b)));
+        }
+        assert!(bit(&packet.light.sky_mask, 4));
+        assert_eq!(packet.light.sky[0], upper);
+        let mut client = Chunk::empty(0, 0);
+        crate::light::light_from_layers(&mut client, &packet.light.layers(SECTIONS + 2), true);
+        assert_eq!(client.light(0, MIN_Y - 1, 0), world.light(0, MIN_Y - 1, 0));
+    }
+
+    #[test]
     fn the_body_is_the_packet_encoded() {
         let builtin = Builtin::parse(
             r#"{"minecraft:block_entity_type": {"entries": {

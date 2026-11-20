@@ -7,7 +7,7 @@
 use std::{borrow::Cow, sync::Arc};
 
 use crate::chunk::{Chunk, Light, StoredLight, index};
-use crate::light::{SectionStatus, update_light_layers};
+use crate::light::{SectionStatus, remove_light_layers, update_light_layers};
 use crate::section_mask::SectionMask;
 use crate::world::World;
 
@@ -31,10 +31,21 @@ fn neighbours((x, z): (i32, i32)) -> impl Iterator<Item = (i32, i32)> {
 
 impl World {
     fn border_support(&self, key: (i32, i32), except: Option<(i32, i32)>) -> SectionMask {
-        neighbours(key)
-            .filter(|&near| except != Some(near))
-            .filter_map(|near| self.chunks.get(&near))
-            .fold(SectionMask::EMPTY, |a, c| a | c.light_support)
+        neighbours(key).filter(|&near| except != Some(near)).fold(
+            SectionMask::EMPTY,
+            |support, near| {
+                support
+                    | self.chunks.get(&near).map_or_else(
+                        || {
+                            self.proto_light_support
+                                .get(&near)
+                                .copied()
+                                .unwrap_or_default()
+                        },
+                        |chunk| chunk.light_support,
+                    )
+            },
+        )
     }
 
     /// `SkyLightSectionStorage.getLightValue`: an unstored section uses the bottom row of
@@ -69,22 +80,18 @@ impl World {
 
     /// Install a column with its light section status already sampled at publication, not on reads.
     pub fn install_light_column(&mut self, chunk: Chunk) {
-        self.install_light_column_initialized(chunk, SectionMask::EMPTY, SectionStatus::default());
+        self.install_light_column_initialized(chunk, SectionStatus::default());
     }
 
-    pub(crate) fn install_light_column_initialized(
-        &mut self,
-        chunk: Chunk,
-        proto_support: SectionMask,
-        status: SectionStatus,
-    ) {
+    pub(crate) fn install_light_column_initialized(&mut self, chunk: Chunk, status: SectionStatus) {
         let key = (chunk.x, chunk.z);
+        let proto = self.proto_light_support.remove(&key).unwrap_or_default();
         let mut chunk = Arc::new(chunk);
         if chunk
             .light_layers
             .is_some_and(|light| light.saved_arrays.is_some())
         {
-            let earlier = self.border_support(key, None) | proto_support;
+            let earlier = self.border_support(key, None) | proto;
             let support = chunk.light_support | earlier;
             restore_saved_layers(
                 &mut chunk,
@@ -98,11 +105,23 @@ impl World {
             );
         }
         let old = self.chunks.insert(key, chunk);
-        self.publish_light_border(key, old.map_or(SectionMask::EMPTY, |c| c.light_support));
+        self.publish_light_border(key, old.map_or(proto, |c| c.light_support));
+    }
+
+    /// Hold a proto's section status through temporary worker checkout and replace
+    /// it atomically with the full column's status on install.
+    pub(crate) fn set_proto_light_support(&mut self, key: (i32, i32), support: SectionMask) {
+        let before = if support.is_empty() {
+            self.proto_light_support.remove(&key)
+        } else {
+            self.proto_light_support.insert(key, support)
+        }
+        .unwrap_or_default();
+        self.publish_light_support(key, before, support);
     }
 
     /// A newly published non-air section can initialize layers in an adjacent saved column.
-    pub(crate) fn publish_saved_neighbour_support(&mut self, key: (i32, i32), added: SectionMask) {
+    fn publish_saved_neighbour_support(&mut self, key: (i32, i32), added: SectionMask) {
         if added.is_empty() {
             return;
         }
@@ -122,17 +141,56 @@ impl World {
         }
     }
 
+    /// A resident saved column may lose storage even though the column itself stays loaded.
+    fn expire_saved_neighbour_support(&mut self, key: (i32, i32), lost: SectionMask) {
+        if lost.is_empty() {
+            return;
+        }
+        for near in neighbours(key) {
+            let Some(chunk) = self.chunks.get(&near) else {
+                continue;
+            };
+            let Some(StoredLight {
+                masks: [sky, block],
+                saved_arrays: Some(_),
+            }) = chunk.light_layers
+            else {
+                continue;
+            };
+            let removed =
+                lost & (sky | block) & !(chunk.light_support | self.border_support(near, None));
+            if removed.is_empty() {
+                continue;
+            }
+            let chunk = self.chunks.get_mut(&near).expect("resident saved column");
+            let changed = remove_light_layers(Arc::make_mut(chunk), removed);
+            self.modified.insert(near);
+            if !changed.is_empty() {
+                crate::streaming::Streaming::light_updated(self, near.0, near.1, &changed);
+            }
+        }
+    }
+
     /// Update the neighbouring missing columns for a new section-status snapshot.
     pub(crate) fn publish_light_border(&mut self, key: (i32, i32), before: SectionMask) {
         self.border.remove(&key);
-        let current = self.chunks[&key].light_support;
+        self.publish_light_support(key, before, self.chunks[&key].light_support);
+    }
+
+    fn publish_light_support(
+        &mut self,
+        key: (i32, i32),
+        before: SectionMask,
+        current: SectionMask,
+    ) {
         if current == before {
             return;
         }
         self.publish_saved_neighbour_support(key, current & !before);
+        self.expire_saved_neighbour_support(key, before & !current);
         for near in neighbours(key).filter(|near| !self.chunks.contains_key(near)) {
             let other = self.border_support(near, Some(key));
-            let added = current & !(before | other);
+            let added = current & !before;
             let supported = current | other;
             if added.is_empty() && !self.border.contains_key(&near) {
                 continue;
@@ -141,6 +199,13 @@ impl World {
             let border = self.border.entry(near).or_default();
             for section in added.iter() {
                 let i = border.0.partition_point(|layer| layer.section < section);
+                if border
+                    .0
+                    .get(i)
+                    .is_some_and(|layer| layer.section == section)
+                {
+                    continue;
+                }
                 // `SkyLightSectionStorage.createDataLayer`: an unlit column starts dark, or
                 // copies the bottom row of an existing sky layer above the newly stored one.
                 let values = match border.0[i..]
@@ -180,6 +245,7 @@ impl World {
 
     /// The column has just left: keep only its actually stored layers a neighbour still supports.
     pub(crate) fn retain_border(&mut self, key: (i32, i32), chunk: &Chunk) {
+        self.expire_saved_neighbour_support(key, chunk.light_support);
         let supported = self.border_support(key, None);
         let kept: Vec<_> = supported
             .iter()
@@ -205,6 +271,10 @@ impl World {
         } else {
             self.border.insert(key, Border(kept));
         }
+        self.prune_border_neighbours(key);
+    }
+
+    fn prune_border_neighbours(&mut self, key: (i32, i32)) {
         for near in neighbours(key) {
             if !self.border.contains_key(&near) {
                 continue;
@@ -396,7 +466,7 @@ mod tests {
         let mut world = World::new(BlockStateId(0), 0);
         let status = tables().publish_section_status(&mut chunk, world.shape);
         let mut without_proto = World::new(BlockStateId(0), 0);
-        without_proto.install_light_column_initialized(chunk.clone(), SectionMask::EMPTY, status);
+        without_proto.install_light_column_initialized(chunk.clone(), status);
         assert_eq!(without_proto.light(0, MIN_Y - 1, 0), 0x70);
         assert_eq!(
             without_proto.chunks[&(0, 0)].stored_light_layers(3),
@@ -405,7 +475,7 @@ mod tests {
         // Announcing the same proto later still publishes the missing layer, even
         // when the values did not change from the old read cache.
         without_proto.light_log = Some(Default::default());
-        without_proto.publish_saved_neighbour_support((1, 0), SectionMask::from_iter([1, 2, 3]));
+        without_proto.set_proto_light_support((1, 0), SectionMask::from_iter([1, 2, 3]));
         assert_eq!(
             without_proto.chunks[&(0, 0)].stored_light_layers(3),
             Some([true; 2])
@@ -415,7 +485,8 @@ mod tests {
             SectionMask::single(3)
         );
 
-        world.install_light_column_initialized(chunk, SectionMask::from_iter([1, 2, 3]), status);
+        world.set_proto_light_support((1, 0), SectionMask::from_iter([1, 2, 3]));
+        world.install_light_column_initialized(chunk, status);
         let stored = world.chunks[&(0, 0)].stored_light().unwrap();
         assert_eq!(stored.presence(3), [true; 2]);
         assert_eq!(stored.saved_arrays(0), Some([true, false]));
@@ -423,6 +494,43 @@ mod tests {
         assert_eq!(world.light(0, top + 16, 0), 0xF0);
         assert_eq!(world.light(0, MIN_Y - 1, 0), 0x70);
         assert_eq!(world.light(1, MIN_Y - 16, 1), 0xA0);
+    }
+
+    #[test]
+    fn saved_void_pad_depends_on_when_support_was_published() {
+        use crate::{
+            chunk::MIN_Y,
+            light::{light_from_saved_layers, tests::tables},
+        };
+        for enabled_before_support in [false, true] {
+            let mut world = World::new(BlockStateId(0), 0);
+            let mut chunk = Chunk::empty(0, 0);
+            light_from_saved_layers::<&[u8]>(&mut chunk, &[], true);
+            let status = tables().publish_section_status(&mut chunk, world.shape);
+            let mut neighbour = Chunk::empty(1, 0);
+            neighbour.add_light_support(0);
+            if enabled_before_support {
+                world.install_light_column_initialized(chunk, status);
+                world.install_light_column(neighbour);
+            } else {
+                world.install_light_column(neighbour);
+                world.install_light_column_initialized(chunk, status);
+            }
+            assert_eq!(
+                world.chunks[&(0, 0)].stored_light_layers(0),
+                Some([true; 2])
+            );
+            assert_eq!(
+                world.light(0, MIN_Y - 1, 0),
+                if enabled_before_support { 0xF0 } else { 0 }
+            );
+            world.unload_chunk((1, 0)).unwrap();
+            assert_eq!(
+                world.chunks[&(0, 0)].stored_light_layers(0),
+                Some([false; 2])
+            );
+            assert_eq!(world.light(0, MIN_Y - 1, 0), 0xF0);
+        }
     }
 
     #[test]

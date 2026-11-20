@@ -64,13 +64,20 @@ public final class VanillaLightStorageOracle {
     private static void savedPadding() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        var obstructed = fixtureChunk(true);
+        verifySavedPadding(obstructed, false);
+        verifySavedPadding(obstructed, true);
+        verifyVoidPadding(fixtureChunk(false));
+    }
+
+    private static LightChunk fixtureChunk(boolean obstructed) {
         int bottom = MIN_SECTION * 16;
         int top = (MIN_SECTION + SECTIONS - 1) * 16;
         LightChunk chunk = new LightChunk() {
             final ChunkSkyLightSources sources = new ChunkSkyLightSources(this);
             public net.minecraft.world.level.block.entity.BlockEntity getBlockEntity(BlockPos pos) { return null; }
             public BlockState getBlockState(BlockPos pos) {
-                return (pos.getX() == 0 && pos.getZ() == 0 && (pos.getY() == top || pos.getY() == bottom))
+                return (obstructed && pos.getX() == 0 && pos.getZ() == 0 && (pos.getY() == top || pos.getY() == bottom))
                     ? Blocks.STONE.defaultBlockState() : Blocks.AIR.defaultBlockState();
             }
             public net.minecraft.world.level.material.FluidState getFluidState(BlockPos pos) { return getBlockState(pos).getFluidState(); }
@@ -79,9 +86,8 @@ public final class VanillaLightStorageOracle {
             public void findBlockLightSources(java.util.function.BiConsumer<BlockPos, BlockState> consumer) {}
             public ChunkSkyLightSources getSkyLightSources() { return sources; }
         };
-        chunk.getSkyLightSources().update(chunk, 0, top, 0);
-        verifySavedPadding(chunk, false);
-        verifySavedPadding(chunk, true);
+        if (obstructed) chunk.getSkyLightSources().update(chunk, 0, top, 0);
+        return chunk;
     }
 
     private static void verifySavedPadding(LightChunk chunk, boolean initializedProto) {
@@ -123,6 +129,43 @@ public final class VanillaLightStorageOracle {
         if (!Arrays.equals(initial.skyUpdates().getLast(), new DataLayer(15).getData())
             || !Arrays.equals(initial.blockUpdates().getFirst(), new byte[2048])) {
             throw new AssertionError("saved upper pad must carry full sky; saved zero array must carry bytes");
+        }
+    }
+
+    private static void verifyVoidPadding(LightChunk chunk) {
+        var center = new ChunkPos(0, 0);
+        var neighbour = SectionPos.of(1, MIN_SECTION, 0);
+        var pad = new BlockPos(0, MIN_SECTION * 16 - 1, 0);
+        for (boolean enabledBeforeSupport : new boolean[] {false, true}) {
+            var engine = engine(true, chunk);
+            if (enabledBeforeSupport) engine.setLightEnabled(center, true);
+            engine.updateSectionStatus(neighbour, false);
+            engine.runLightUpdates();
+            if (!enabledBeforeSupport) engine.setLightEnabled(center, true);
+            engine.runLightUpdates();
+            var packet = new ClientboundLightUpdatePacketData(center, engine, null, null);
+            if (enabledBeforeSupport) {
+                checkMask(packet.skyYMask(), 0, 1, 2);
+                checkMask(packet.emptySkyYMask());
+                if (!Arrays.equals(packet.skyUpdates().getFirst(), new DataLayer(15).getData())) {
+                    throw new AssertionError("pad established after enabling carries full sky");
+                }
+            } else {
+                checkMask(packet.skyYMask());
+                checkMask(packet.emptySkyYMask(), 0, 1, 2);
+            }
+            if (engine.getLayerListener(LightLayer.SKY).getLightValue(pad) != (enabledBeforeSupport ? 15 : 0)) {
+                throw new AssertionError("void pad sky does not agree with the allocated layer");
+            }
+            engine.updateSectionStatus(neighbour, true);
+            engine.runLightUpdates();
+            var resend = new ClientboundLightUpdatePacketData(center, engine, null, null);
+            checkMask(resend.skyYMask());
+            checkMask(resend.emptySkyYMask());
+            checkMask(resend.emptyBlockYMask());
+            if (engine.getLayerListener(LightLayer.SKY).getLightValue(pad) != 15) {
+                throw new AssertionError("removed void pad must again read as open sky");
+            }
         }
     }
 

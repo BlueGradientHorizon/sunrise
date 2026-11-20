@@ -1526,6 +1526,7 @@ impl Streaming {
         // neighbours were decorated around it, so generating it again would
         // not give it back.
         if !self.ranges().chunk_kept(key.0, key.1, self.decorates) {
+            world.set_proto_light_support(key, SectionMask::EMPTY);
             if chunk.fresh {
                 self.dropped_new.insert(key);
                 return Some(chunk);
@@ -1556,18 +1557,20 @@ impl Streaming {
         let status = self
             .light_tables
             .publish_section_status(&mut chunk, world.shape);
-        let mut proto_support = SectionMask::EMPTY;
         if loaded {
             for dz in -1..=1 {
                 for dx in -1..=1 {
                     let neighbour = (key.0 + dx, key.1 + dz);
                     if neighbour != key && !world.chunks.contains_key(&neighbour) {
-                        proto_support |= self.proto_light_support(world, neighbour);
+                        let support = self.proto_light_support(world, neighbour);
+                        if !support.is_empty() {
+                            world.set_proto_light_support(neighbour, support);
+                        }
                     }
                 }
             }
         }
-        world.install_light_column_initialized(chunk, proto_support, status);
+        world.install_light_column_initialized(chunk, status);
         if loaded {
             self.lit.insert(key);
             for sy in 0..world.layout().sections() as i32 {
@@ -1699,7 +1702,7 @@ impl Streaming {
                     .is_some_and(|c| c.light_loaded)
             })
         }) {
-            world.publish_saved_neighbour_support(key, self.proto_light_support(world, key));
+            world.set_proto_light_support(key, self.proto_light_support(world, key));
         }
     }
     /// `ChunkMap.getLatestStatus` for the loading screen's chunk map: the
@@ -2045,6 +2048,7 @@ impl Streaming {
                 } else {
                     self.protos.remove(&key);
                     self.light_views.remove(&key);
+                    world.set_proto_light_support(key, SectionMask::EMPTY);
                 }
             }
             proto_saves = self.checkout_protos(written);

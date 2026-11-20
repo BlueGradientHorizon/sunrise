@@ -87,6 +87,8 @@ pub struct World {
     pub chunks: crate::chunk_map::ChunkMap,
     /// The light the columns that left the level keep (`light_border.rs`).
     pub border: crate::fast_hash::FxHashMap<(i32, i32), crate::light_border::Border>,
+    /// Published section support of proto neighbours of saved columns.
+    pub(crate) proto_light_support: crate::fast_hash::FxHashMap<(i32, i32), SectionMask>,
     pub random: LevelRandom,
     pub revision: u64,
     pub health_rules: HealthRules,
@@ -314,6 +316,7 @@ impl World {
             shape: LevelShape::OVERWORLD,
             chunks: Default::default(),
             border: Default::default(),
+            proto_light_support: Default::default(),
             random: LevelRandom::for_level(LegacyRandom::new(seed)),
             revision: 0,
             health_rules: HealthRules::default(),
