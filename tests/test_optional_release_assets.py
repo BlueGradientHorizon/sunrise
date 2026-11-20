@@ -1,5 +1,6 @@
 """Execute release shell steps with optional archives present and absent."""
 
+import base64
 import hashlib
 from itertools import product
 import os
@@ -55,9 +56,9 @@ class OptionalReleaseAssetsTests(unittest.TestCase):
                 # The steps' own env from nightly-build.yml: SHORT is the commit the title and
                 # SHA256SUMS.v2.sig name (ALSO_FOR, nightly-<date>-<short>).
                 env = dict(os.environ, GITHUB_REPOSITORY=repository, EPHEMERAL="yes", SHA="0123456789abcdef", SHORT="0123456", DATE="2026-11-04",
-                           KIND="nightly", ALSO_FOR="nightly-2026-11-04-0123456", SOURCE_TAG="nightly-test",
+                           KIND="nightly", SIGN_FOR="nightly", ALSO_FOR="nightly-2026-11-04-0123456", SOURCE_TAG="nightly-test",
                            RELEASE_SIGNING_KEY="", RELEASE_SIGNING_KEY_NEXT="")
-                signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$KIND"')],
+                signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')],
                                         cwd=root, env=env, text=True, capture_output=True)
                 self.assertEqual(signed.returncode, 0, signed.stderr)
                 # Windows' sha256sum defaults to binary mode, marked by a * before each name.
@@ -92,6 +93,66 @@ gh() {
                     self.assertIn(f"::warning::{OPTIONAL} is missing", signed.stdout)
                     self.assertIn(f"::warning::{OPTIONAL} is missing", published.stdout)
 
+    def test_a_stable_release_has_a_nightlys_assets_both_signed_for_its_tag(self):
+        # A launcher checks a stable release as signed_digest does: SHA256SUMS signed for "horizon release <tag>".
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            dist = root / "dist"
+            dist.mkdir()
+            present = REQUIRED | {OPTIONAL, "sdk.json"}
+            for name in present | {MUSL}:
+                (dist / name).write_text(name)
+            (root / "tools/ci").mkdir(parents=True)
+            shutil.copy(ROOT / "tools/ci/sign_release.sh", root / "tools/ci")
+            tag = "26.3-0.1.0"
+            env = dict(os.environ, GITHUB_REPOSITORY="sunrise-org/sunrise", EPHEMERAL="yes", SHA="0123456789abcdef",
+                       SHORT="0123456", DATE="2026-11-20", KIND="stable", SIGN_FOR=tag, ALSO_FOR=tag, TAG=tag,
+                       RELEASE_SIGNING_KEY="", RELEASE_SIGNING_KEY_NEXT="")
+            signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')],
+                                    cwd=root, env=env, text=True, capture_output=True)
+            self.assertEqual(signed.returncode, 0, signed.stderr)
+            message = root / "message"
+            message.write_bytes(f"horizon release {tag}\n".encode() + (dist / "SHA256SUMS").read_bytes())
+            # ephemeral.pub is the raw 32-byte key; OpenSSL takes it as DER SubjectPublicKeyInfo.
+            spki = bytes.fromhex("302a300506032b6570032100") + base64.b64decode((dist / "ephemeral.pub").read_text())
+            (root / "key.der").write_bytes(spki)
+            for name in ("SHA256SUMS.sig", "SHA256SUMS.v2.sig"):
+                lines = (dist / name).read_text().split()
+                self.assertEqual(len(lines), 1, name)
+                (root / "sig").write_bytes(base64.b64decode(lines[0]))
+                checked = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", str(root / "key.der"),
+                                          "-keyform", "DER", "-rawin", "-in", str(message), "-sigfile", str(root / "sig")],
+                                         capture_output=True, text=True)
+                self.assertEqual(checked.returncode, 0, f"{name}: {checked.stdout}{checked.stderr}")
+            # Never signed for another tag beside its own.
+            other = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')], cwd=root,
+                                   env=dict(env, ALSO_FOR="26.3-0.1.1"), text=True, capture_output=True)
+            self.assertNotEqual(other.returncode, 0)
+            self.assertIn("nor a stable tag's own", other.stderr)
+            (dist / "smoke-test.json").write_text("{}")
+            (dist / "nightly-notes.md").write_text("test")
+            subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')], cwd=root, env=env, check=True,
+                           capture_output=True)
+            stubs = """
+python3() { :; }
+gh() {
+  printf '%s\\n' "$*" >> command
+  for arg in "$@"; do
+    case "$arg" in dist/*) test -f "${arg%%#*}" || return 1; printf '%s\\n' "${arg%%#*}" >> published; esac
+  done
+}
+"""
+            published = subprocess.run([BASH, "-e", "-c", stubs + run_step('gh release create "$TAG" --verify-tag --latest=false')],
+                                       cwd=root, env=env, text=True, capture_output=True)
+            self.assertEqual(published.returncode, 0, published.stderr)
+            files = {Path(name).name for name in (root / "published").read_text().splitlines()}
+            self.assertEqual(files, present | {"SHA256SUMS", "SHA256SUMS.sig", "SHA256SUMS.v2.sig", "smoke-test.json",
+                                               "nightly-notes.md"}, "the Nightly's asset set")
+            command = (root / "command").read_text()
+            self.assertIn(f"release create {tag} --verify-tag --latest=false", command)
+            self.assertNotIn("--target", command)
+            self.assertNotIn("--prerelease", command)
+
     def test_a_snapshot_is_signed_for_its_channel_and_published_under_its_own_tag(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -103,9 +164,9 @@ gh() {
             (root / "tools/ci").mkdir(parents=True)
             shutil.copy(ROOT / "tools/ci/sign_release.sh", root / "tools/ci")
             env = dict(os.environ, GITHUB_REPOSITORY="horizon-rust/horizon", EPHEMERAL="yes", SHA="0123456789abcdef",
-                       SHORT="0123456", DATE="2026-11-13", KIND="snapshot", ALSO_FOR="snapshot-2026-11-13-0123456",
+                       SHORT="0123456", DATE="2026-11-13", KIND="snapshot", SIGN_FOR="snapshot", ALSO_FOR="snapshot-2026-11-13-0123456",
                        TAG="snapshot-2026-11-13-0123456", RELEASE_SIGNING_KEY="", RELEASE_SIGNING_KEY_NEXT="")
-            signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$KIND"')],
+            signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')],
                                     cwd=root, env=env, text=True, capture_output=True)
             self.assertEqual(signed.returncode, 0, signed.stderr)
             (dist / "smoke-test.json").write_text("{}")
@@ -126,6 +187,6 @@ gh() { printf '%s\\n' "$@" > gh-args; for arg in "$@"; do case "$arg" in dist/*)
             self.assertEqual(files, present | {"SHA256SUMS", "SHA256SUMS.sig", "SHA256SUMS.v2.sig", "smoke-test.json",
                                                "nightly-notes.md"})
             # A snapshot's version signed beside the nightly channel is refused before anything is signed.
-            refused = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$KIND"')], cwd=root,
-                                     env=dict(env, KIND="nightly"), text=True, capture_output=True)
+            refused = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')], cwd=root,
+                                     env=dict(env, KIND="nightly", SIGN_FOR="nightly"), text=True, capture_output=True)
             self.assertNotEqual(refused.returncode, 0)
