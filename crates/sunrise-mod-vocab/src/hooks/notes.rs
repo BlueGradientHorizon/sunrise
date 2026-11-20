@@ -21,37 +21,43 @@ A native server tick hook can call `native_server_block` with its context, a dim
 For mods that run where the world is simulated: a dedicated server, a LAN host, single player's server thread
 (`crates/sunrise-client/src/game/modding/native_server.rs`).
 
-- **`register_commands(commands)`**: push a `Command` per usage, asked once when a world opens to
-  players. A usage is words, then arguments `<name:kind>`, optional ones last in brackets:
-  `Command::new("pay <player:player> <amount:integer>")`, `Command::op("eco set <player:player>
-  <amount:integer>", 3)` for operators of level 3. Kinds: `word`, `text` (the rest of the line, last), `integer`,
+- **`register_commands(commands)`**: push a `CommandRegistration` per usage with
+  `Command::new(usage).executes(executor)` or `Command::op(usage, level).executes(executor)`.
+  The server asks when a world opens, reloads data packs, or refreshes its commands.
+  A usage is words, then arguments `<name:kind>`, optional ones last in brackets:
+  `pay <player:player> <amount:integer>` or `balance [player:player]`.
+  Kinds: `word`, `text` (the rest of the line, last), `integer`,
   `number`, `boolean`, `player`, `item`, `block_pos`, `vec3`, `id`, and any command argument type a mod registered
   (`Registrar::register_command_argument`): its namespaced id is the kind, as in
   `<machine:mymod:machine>`. A custom argument is one word (or the rest of the line when its type says
-  `Greedy`) and delivers its type's canonical value in `run_mod_command`. The usages of one command merge into
+  `Greedy`) and delivers its type's canonical value to the executor. The usages of one command merge into
   one tree, which every player receives after vanilla's (filtered by their level, as vanilla's is), so their
   chat box completes and colours it. A client that does not know a custom type still parses and completes it:
   the tree sends the argument as a Brigadier string and asks the server for its suggestions. Fabric sends
   the registered argument type's id instead, which an unmodded client cannot read; the string keeps its
   tree valid. The server also parses player and console invocations against that tree, including each
-  usage's permission and argument types, before calling a mod.
+  usage's permission and argument types, before calling the executor as the registering mod.
   Each executable usage keeps its own permission: an operator-only `foo` remains unavailable to ordinary players
   even if `foo bar` is public. Players can traverse the shared `foo` prefix to reach `bar`, but cannot execute
   `foo` itself. Optional arguments make their preceding prefixes executable at that usage's level; if several
-  usages execute at the same prefix, its lowest executable usage level wins. A rejected usage does not change
+  usages execute at the same prefix, the lowest executable level wins, with the first registration at that level
+  supplying the executor. A rejected usage does not change
   the permissions of accepted usages. When argument alternatives consume the same input without errors, an
   executable alternative takes precedence over a denied one; equally valid alternatives keep registration order.
   A name vanilla has, or a usage that doesn't parse, is left out with a warning in the log.
 
-- **`run_mod_command`**: `event.command` is an owned `CommandInvocation` with its literal path, its `dimension` and
+- **Command executor**: the closure receives `(&mut dyn ServerHost, &CommandSource, &CommandInvocation)`.
+  The invocation has its literal path, its `dimension` and
   `position` after `execute in/at`, and named `CommandArgumentValue` values, not raw command text. Integer, number and boolean
   values retain the dispatcher's types; word and greedy text are strings. Player selectors resolve to a single live
   `PlayerRef`, items become component-bearing stacks of one, and block positions resolve source-relative/local
   coordinates without requiring loaded chunks. `mod_id` is a loaded package id as a string; `resource:<registry>`
   is `CommandArgumentValue::Id`, an id that registry holds. A custom argument is `CommandArgumentValue::Custom
   { kind, value }`: its registered type's id and what its parser returned. Missing optional arguments are absent.
-  Parsing, permission and resolution failures produce feedback without calling listeners. The console resolves from the world spawn's
-  block corner, in the level the spawn is in, with zero rotation and no source entity (`@s` fails). Return `Flow::Cancel` when handled.
+  Parsing, permission and resolution failures produce feedback without calling the executor. The console resolves from the world spawn's
+  block corner, in the level the spawn is in, with zero rotation and no source entity (`@s` fails).
+  Return `Some(n)` for success, including `Some(0)`: `execute store result` receives `n`. Return `None` for failure;
+  no other mod is asked. Clients get the command tree's display data, not the executors.
 - **`armor_stand_manipulate(player, name, stand_id, slot, cancel)`**: a player takes an item from an armor stand or
   puts one on it, heard after the stand's disabled-slot checks and before anything moves. `slot` is `mainhand`,
   `offhand`, `feet`, `legs`, `chest` or `head`. Set `cancel` and nothing changes (the click is spent). The player's
@@ -82,7 +88,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   (`from` and `to` are ids such as `minecraft:overworld` and `minecraft:the_nether`), heard when the move has ended:
   the portal's exit is found and the player stands there, a command's teleport has landed, or a respawn in another
   level than the death's is placed for good. `to` is the level in place and the player's state is swapped in (as in
-  `run_mod_command`), so `host.players().acting_player` and `PlayerRef::tell` reach them. Heard for Nether and End portals
+  a command executor), so `host.players().acting_player` and `PlayerRef::tell` reach them. Heard for Nether and End portals
   (also riding, and leaving the End as its winner), `/execute in ... run tp` and any command teleporting into another
   level, and death respawns, on dedicated and integrated servers (single player and LAN), where the world is simulated.
   Not heard by a remote client window, for a move within a level (`/tp`, an End gateway), for a player who leaves before the move ends, or for a move ending where it started (a respawn in the death's level).
@@ -141,8 +147,6 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   (a quiet batch drops them). The player's state is not swapped in, and `PlayerRef::tell` and the other helpers that take a
   UUID reach nobody inside this hook: answer through `replies`. Commands may carry secrets (`/msg`, a login plugin's
   password), so don't log them carelessly.
-- **`run_mod_command(source, command, ran)`**: executes a registered command with typed origin and
-  permission. Feedback honours silence and track-output; set `ran` when handled, otherwise execution fails.
 - **`player_respawned(player, name)`**: a dead player came back, once per respawn, on a server: after
   `PlayerList.respawn` reset their health, food and experience and placed them at their bed, anchor or the world spawn
   (NeoForge's `PlayerRespawnEvent`). The player's state is swapped in for the call, as for their other actions, so
@@ -403,7 +407,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   (`checkTotemDeathProtection`), heard just before it is used up. Listen only: the health state machine decides before a
   mod is asked, so a mod cannot veto it. The player's state is swapped in, so `host.players().acting_player`, `PlayerRef::tell` and the
   item helpers reach them. Not heard: the host of a LAN world.
-- `host.players().acting_player()`, the player whose state is swapped in (inside `run_mod_command`,
+- `host.players().acting_player()`, the player whose state is swapped in (inside a command executor,
   `right_click_block`, `native_use_on`, `break_block`...; None elsewhere);
   `host.commands().run_command(line)`, a command run as the server's console (level 4, no output), including during a guest's
   turn. The acting player and other live guests are reachable; displaced outer players are excluded only on this
@@ -1844,7 +1848,7 @@ still go on each event or registrar.
 - Giving a whole stack (damage, name, enchantments kept) to any player from a server hook: `insert` into
   the player's [`ENTITY_ITEMS`](../concepts/capabilities/entity-items.md) handler places it as `Inventory.add` does, and answers how many went.
 
-- Registered mod commands from every source use `run_mod_command(source, command, ran)`. Players retain their swapped-in state; the console has no acting player. Functions are silent, and block/cart feedback follows track-output. Unhandled invocations fail as unknown commands.
+- A mod's command executor handles every source of its registered usage. Players retain their swapped-in state; the console has no acting player. Functions are silent, and block/cart feedback follows track-output. Returning `None` fails as an unknown command.
 
 - Player-use drops to `loot_drops`: shears on a sheep, a mooshroom, a snow golem or a bogged, a brush on an
   armadillo or a suspicious block, carving a pumpkin, picking sweet berries or cave vines, and a player taking an item frame or
@@ -2719,8 +2723,8 @@ registration path.
 - Authoritative server tick events through `server_tick`: start (before any level ticks, like NeoForge's `ServerTickEvent.Pre`) and end of each non-paused
   server tick, with `world_running`. A frozen world reports false except during a requested step.
 
-- Server commands and players: `register_commands` (the commands a mod adds to every player's
-  command tree) and `run_mod_command` (a player's command on the server), with helpers to answer
+- Server commands and players: `register_commands` adds usages to the server tree with
+  `Command::executes` to bind their executors, with helpers to answer
   ([Server commands and players](#server-commands-and-players)).
 
 - A player's items for server mods: counting, taking and giving go through the player's

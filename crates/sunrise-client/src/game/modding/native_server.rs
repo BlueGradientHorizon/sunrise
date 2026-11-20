@@ -1,7 +1,7 @@
 //! Server commands and players for native mods (docs/modding/src/how-to/native-mods.md,
 //! "Server commands and players"): the commands mods add to the
 //! server's command tree (`native_register_commands`), a player's command
-//! reaching them (`native_run_mod_command`), and the helpers a server mod
+//! reaching its bound executor, and the helpers a server mod
 //! answers with: the players online, a line to one of them or to all, the
 //! command's feedback and the world's folder; and the acting
 //! player's plain items: count, take, give. They act on the server's own
@@ -1810,7 +1810,7 @@ impl Game<'_> {
         );
     }
     /// The player whose action or command a hook hears, as their state is
-    /// swapped in (`native_run_mod_command`, `native_right_click_block`,
+    /// swapped in (command executors, `native_right_click_block`,
     /// `native_use_on`, `native_break_block`...): None outside such a
     /// hook.
     pub(super) fn native_acting_player(&self) -> Option<PlayerRef> {
@@ -2159,21 +2159,24 @@ impl Game<'_> {
         use super::commands::err;
         // Argument resolution uses node IDs from the parse. Never use them against a
         // replacement tree, even if the new tree has the same command at the same ID.
-        if !context
+        let executor = context
             .executor
-            .is_some_and(|key| self.ui.dispatcher.0.owns_executor(key))
-        {
-            return Err(err("command.unknown.command", &[]));
-        }
+            .filter(|&key| self.ui.dispatcher.0.owns_executor(key))
+            .and_then(|key| {
+                self.native_commands
+                    .registered
+                    .as_ref()?
+                    .executors
+                    .get(key.slot())
+            })
+            .filter(|executor| mod_api::__private::mod_index_on(executor.mod_index))
+            .ok_or_else(|| err("command.unknown.command", &[]))?;
+        let owner = executor.owner;
+        let call = Arc::clone(&executor.call);
         let command = self.resolve_native_command(context)?;
         let origin = self.native_command_origin(self.ui.registries.permission)?;
-        let mut ran = false;
-        self.native_run_mod_command(&origin, &command, &mut ran);
-        if ran {
-            Ok(1)
-        } else {
-            Err(err("command.unknown.command", &[]))
-        }
+        let _scope = mod_api::__private::enter(owner, "command_executor");
+        call(self, &origin, &command).ok_or_else(|| err("command.unknown.command", &[]))
     }
 
     fn native_command_player_target(&self, target: super::commands::Target) -> Option<PlayerRef> {
@@ -3570,6 +3573,8 @@ mod tests {
         struct ChangingCommands {
             changed: Arc<AtomicBool>,
             registrations: Arc<AtomicUsize>,
+            calls: Arc<Mutex<Vec<Option<&'static str>>>>,
+            replacement: bool,
         }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for ChangingCommands {
@@ -3578,14 +3583,31 @@ mod tests {
                 _: &mut dyn mod_api::ServerHost,
                 event: &mut mod_api::RegisterCommandsEvent<'_>,
             ) {
-                self.registrations.fetch_add(1, Ordering::Relaxed);
-                event.commands.push(mod_api::Command::new(
-                    if self.changed.load(Ordering::Relaxed) {
+                let changed = self.changed.load(Ordering::Relaxed);
+                if !self.replacement {
+                    self.registrations.fetch_add(1, Ordering::Relaxed);
+                    let usage = if changed {
                         "after <n:integer>"
                     } else {
                         "before"
-                    },
-                ));
+                    };
+                    event
+                        .commands
+                        .push(mod_api::Command::new(usage).executes(|_, _, _| Some(1)));
+                }
+                if changed == self.replacement {
+                    let calls = self.calls.clone();
+                    let result = if self.replacement { 37 } else { 0 };
+                    event
+                        .commands
+                        .push(mod_api::Command::new("retained").executes(move |_, _, _| {
+                            calls
+                                .lock()
+                                .unwrap()
+                                .push(mod_api::content::crash::current_native_mod());
+                            Some(result)
+                        }));
+                }
             }
             fn player_commands_sent(
                 &self,
@@ -3597,20 +3619,34 @@ mod tests {
         }
         let changed = Arc::new(AtomicBool::new(false));
         let registrations = Arc::new(AtomicUsize::new(0));
+        let calls = Arc::new(Mutex::new(Vec::new()));
         mod_platform::testing::with_mods(
-            vec![mod_api::ModEntry::new(
-                "refresh",
-                Box::new(ChangingCommands {
-                    changed: changed.clone(),
-                    registrations: registrations.clone(),
-                }),
-            )]
-            .into(),
+            [("refresh", false), ("replacement", true)]
+                .map(|(id, replacement)| {
+                    mod_api::ModEntry::new(
+                        id,
+                        Box::new(ChangingCommands {
+                            changed: changed.clone(),
+                            registrations: registrations.clone(),
+                            calls: calls.clone(),
+                            replacement,
+                        }),
+                    )
+                })
+                .into(),
             || {
                 super::super::native_guest_turn_tests::with_guests(|game| {
                     game.build_registries();
                     game.register_native_commands();
                     assert_eq!(registrations.load(Ordering::Relaxed), 1);
+                    let old_parse = game.ui.dispatcher.0.parse("retained", &game.ui.registries);
+                    let old_context = old_parse.executable().unwrap().0;
+                    let (result, outcome) = game.recording_command_outcome(|game| {
+                        game.execute_line("retained", game.server_source())
+                    });
+                    assert_eq!(result, Ok(0));
+                    assert_eq!(outcome, Some((true, 0)));
+                    assert_eq!(*calls.lock().unwrap(), [Some("refresh")]);
                     changed.store(true, Ordering::Relaxed);
                     game.register_native_commands();
                     assert_eq!(registrations.load(Ordering::Relaxed), 1);
@@ -3630,6 +3666,30 @@ mod tests {
                         2,
                         "requests coalesce"
                     );
+                    assert_eq!(
+                        game.run_native_command(old_context.clone())
+                            .unwrap_err()
+                            .key,
+                        "command.unknown.command"
+                    );
+                    assert_eq!(*calls.lock().unwrap(), [Some("refresh")]);
+                    assert_eq!(game.execute_line("retained", game.server_source()), Ok(37));
+                    assert_eq!(
+                        *calls.lock().unwrap(),
+                        [Some("refresh"), Some("replacement")]
+                    );
+                    assert!(mod_api::__private::set_mod_enabled("replacement", false));
+                    assert_eq!(
+                        game.execute_line("retained", game.server_source())
+                            .unwrap_err()
+                            .key,
+                        "command.unknown.command"
+                    );
+                    assert_eq!(
+                        *calls.lock().unwrap(),
+                        [Some("refresh"), Some("replacement")]
+                    );
+                    assert!(mod_api::__private::set_mod_enabled("replacement", true));
                     let commands = game.native_commands.registered.as_ref().unwrap();
                     assert!(!commands.levels.contains_key("before"));
                     assert!(commands.levels.contains_key("after"));
@@ -3711,21 +3771,6 @@ mod tests {
     fn native_typed_commands_reach_listeners_after_parse_and_source_resolution() {
         use mod_api::{CommandArgumentValue as Value, CommandInvocation};
         struct Commands(Arc<Mutex<Vec<(bool, CommandInvocation)>>>);
-        impl Commands {
-            fn record(&self, console: bool, command: &CommandInvocation) {
-                if command.literals == ["typed", "give"] {
-                    let Some(Value::Integer(amount)) = command.argument("amount") else {
-                        panic!("listener must receive an integer")
-                    };
-                    let Some(Value::Player(player)) = command.argument("who") else {
-                        panic!("listener must receive a resolved player")
-                    };
-                    assert_ne!(*amount, 0);
-                    assert_ne!(player.uuid(), 0);
-                }
-                self.0.lock().unwrap().push((console, command.clone()));
-            }
-        }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Commands {
             fn register_commands(
@@ -3733,6 +3778,24 @@ mod tests {
                 _: &mut dyn mod_api::ServerHost,
                 event: &mut mod_api::RegisterCommandsEvent<'_>,
             ) {
+                let heard = self.0.clone();
+                let record = move |_: &mut dyn mod_api::ServerHost,
+                                   source: &mod_api::CommandSource,
+                                   command: &CommandInvocation| {
+                    if command.literals == ["typed", "give"] {
+                        let Some(Value::Integer(amount)) = command.argument("amount") else {
+                            panic!("executor must receive an integer")
+                        };
+                        let Some(Value::Player(player)) = command.argument("who") else {
+                            panic!("executor must receive a resolved player")
+                        };
+                        assert_ne!(*amount, 0);
+                        assert_ne!(player.uuid(), 0);
+                    }
+                    let console = matches!(source, mod_api::CommandSource::Console { .. });
+                    heard.lock().unwrap().push((console, command.clone()));
+                    Some(1)
+                };
                 event.commands.extend([
                     mod_api::Command::new("typed give <who:player> <amount:integer> [message:text]"),
                     mod_api::Command::new("typed data <word:word> <number:number> <enabled:boolean> <item:item> <pos:block_pos>"),
@@ -3741,18 +3804,7 @@ mod tests {
                     mod_api::Command::new("typed repeat <value:player> <value:integer>"),
                     mod_api::Command::new("typed at <pos:vec3>"),
                     mod_api::Command::op("protected <who:player>", 4),
-                ]);
-            }
-            fn run_mod_command(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::RunModCommandEvent<'_>,
-            ) -> mod_api::Flow {
-                self.record(
-                    matches!(event.source, mod_api::CommandSource::Console { .. }),
-                    event.command,
-                );
-                mod_api::Flow::Cancel
+                ].map(|command| command.executes(record.clone())));
             }
         }
         let heard = Arc::new(Mutex::new(Vec::new()));
@@ -3948,25 +4000,23 @@ mod tests {
                 _: &mut dyn mod_api::ServerHost,
                 event: &mut mod_api::RegisterCommandsEvent<'_>,
             ) {
+                let heard = self.0.clone();
+                let execute = move |host: &mut dyn mod_api::ServerHost,
+                                    source: &CommandSource,
+                                    _: &mod_api::CommandInvocation| {
+                    heard.lock().unwrap().push(source.clone());
+                    host.commands()
+                        .feedback(mod_api::Text::literal("source answer"))
+                        .unwrap();
+                    Some(1)
+                };
                 event.commands.extend([
-                    mod_api::Command::new("origin"),
-                    mod_api::Command::op("denied", 4),
-                    mod_api::Command::new("unhandled"),
+                    mod_api::Command::new("origin").executes(execute.clone()),
+                    mod_api::Command::op("denied", 4).executes(execute),
+                    mod_api::Command::new("unhandled").executes(|_, _, _| None),
+                    // The selected executor's failure must not fall back to this usage.
+                    mod_api::Command::new("unhandled").executes(|_, _, _| Some(99)),
                 ]);
-            }
-            fn run_mod_command(
-                &self,
-                host: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::RunModCommandEvent<'_>,
-            ) -> mod_api::Flow {
-                if event.command.literals == ["unhandled"] {
-                    return mod_api::Flow::Continue;
-                }
-                self.0.lock().unwrap().push(event.source.clone());
-                host.commands()
-                    .feedback(mod_api::Text::literal("source answer"))
-                    .unwrap();
-                mod_api::Flow::Cancel
             }
         }
         let heard = Arc::new(Mutex::new(Vec::new()));
@@ -4050,21 +4100,22 @@ mod tests {
                 _: &mut dyn mod_api::ServerHost,
                 event: &mut mod_api::RegisterCommandsEvent<'_>,
             ) {
-                event.commands.extend([
-                    mod_api::Command::op("foo [value:integer]", 4),
-                    mod_api::Command::new("foo bar"),
-                    mod_api::Command::op("choice <a:integer>", 4),
-                    mod_api::Command::new("choice <a:integer> bar"),
-                    mod_api::Command::new("choice <b:word>"),
-                ]);
-            }
-            fn run_mod_command(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::RunModCommandEvent<'_>,
-            ) -> mod_api::Flow {
-                self.0.lock().unwrap().push(event.command.clone());
-                mod_api::Flow::Cancel
+                event.commands.extend(
+                    [
+                        mod_api::Command::op("foo [value:integer]", 4),
+                        mod_api::Command::new("foo bar"),
+                        mod_api::Command::op("choice <a:integer>", 4),
+                        mod_api::Command::new("choice <a:integer> bar"),
+                        mod_api::Command::new("choice <b:word>"),
+                    ]
+                    .map(|command| {
+                        let heard = self.0.clone();
+                        command.executes(move |_, _, invocation| {
+                            heard.lock().unwrap().push(invocation.clone());
+                            Some(1)
+                        })
+                    }),
+                );
             }
         }
         let heard = Arc::new(Mutex::new(Vec::new()));

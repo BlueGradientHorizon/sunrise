@@ -1,12 +1,39 @@
 //! Commands and their authority.
 
+use crate::{CommandInvocation, CommandSource, ServerHost};
+use std::sync::Arc;
+
+// no wire: a native executor runs only in the server process.
+/// The server's retained callable for an executable command usage.
+pub type CommandExecutor = dyn Fn(&mut dyn ServerHost, &CommandSource, &CommandInvocation) -> Option<i32>
+    + Send
+    + Sync
+    + 'static;
+
+// no wire: a registration binds server code to a descriptor; only the descriptor is data.
+/// A server command usage together with its executor. Create it with [`Command::executes`].
+pub struct CommandRegistration {
+    command: Command,
+    executor: Arc<CommandExecutor>,
+}
+
+/// Separate a registration's display descriptor from its process-local executor.
+pub fn split_command_registration(
+    registration: CommandRegistration,
+) -> (Command, Arc<CommandExecutor>) {
+    (registration.command, registration.executor)
+}
+
+/// A data-only command usage. Attach behavior with [`Command::executes`] when
+/// registering it on the server.
+///
 /// Literal words use lowercase letters, digits, `_` and `-`. Only the first word may
 /// additionally begin with one `/`: register `/set <x:word>` and type `//set stone` in chat.
 /// The command's literals retain `/set`. A slash alone, repeated leading slashes and
 /// slashes in later literal words are refused.
 ///
-/// A command a native mod adds, as one usage: words, then arguments
-/// `<name:kind>`, optional ones last in brackets `[name:kind]`:
+/// A usage is words followed by arguments `<name:kind>`, with optional arguments
+/// last in brackets `[name:kind]`:
 /// `pay <player:player> <amount:integer>`, `balance [player:player]`,
 /// `eco give <player:player> <amount:integer>`. Kinds: `word`, `text` (the
 /// rest of the line, last), `integer`, `number`, `boolean`, `player`, `players`,
@@ -50,6 +77,25 @@ impl Command {
         Self {
             usage: usage.to_owned(),
             level: level.min(4),
+        }
+    }
+
+    /// Bind this usage to a server executor for `register_commands`.
+    /// The executor runs as the registering mod, after permission checks and argument
+    /// resolution. The source identifies the origin and permission, independent of
+    /// `execute as`; feedback respects silence, track-output and the acting player.
+    /// Return `Some(n)` for success with result `n` (including zero), or `None` for
+    /// failure. Failure does not try another registration.
+    pub fn executes(
+        self,
+        executor: impl Fn(&mut dyn ServerHost, &CommandSource, &CommandInvocation) -> Option<i32>
+        + Send
+        + Sync
+        + 'static,
+    ) -> CommandRegistration {
+        CommandRegistration {
+            command: self,
+            executor: Arc::new(executor),
         }
     }
 }

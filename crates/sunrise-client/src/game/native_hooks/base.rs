@@ -1403,18 +1403,9 @@ impl Game<'_> {
     /// within their level. A name vanilla has is left out.
     pub(in crate::game) fn native_register_commands(
         &mut self,
-        commands: &mut Vec<mod_api::Command>,
+        commands: &mut Vec<mod_api::Answered<mod_api::CommandRegistration>>,
     ) {
         self.fire_register_commands(commands);
-    }
-    /// Execute a parsed mod command with its origin and effective permission.
-    pub(in crate::game) fn native_run_mod_command(
-        &mut self,
-        source: &CommandSource,
-        command: &CommandInvocation,
-        ran: &mut bool,
-    ) {
-        self.fire_run_mod_command(source, command, ran);
     }
     /// A player takes an item from an armor stand or puts one on it
     /// (`ArmorStand.interactAt`, after the stand's disabled-slot checks and

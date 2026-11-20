@@ -7,8 +7,15 @@ use super::{
     CommandArguments, CommandExecutorSlots, Game, command_arguments, command_tree_for,
     register_command_nodes,
 };
+use mod_api::__private::{CommandExecutor, mod_index, split_command_registration};
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
+
+pub(super) struct RegisteredExecutor {
+    pub(super) owner: &'static str,
+    pub(super) mod_index: usize,
+    pub(super) call: Arc<CommandExecutor>,
+}
 
 /// The commands the mods registered, as the session's tree holds them.
 pub(in crate::game) struct NativeCommands {
@@ -18,7 +25,9 @@ pub(in crate::game) struct NativeCommands {
     tree: Value,
     arguments: CommandArguments,
     /// Executable path to registration slot; never sent to the hub.
-    executors: CommandExecutorSlots,
+    slots: CommandExecutorSlots,
+    /// Process-local execution table indexed by the current dispatcher's parsed keys.
+    pub(super) executors: Vec<RegisteredExecutor>,
 }
 
 /// The session's state of the mods' commands.
@@ -52,21 +61,37 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return;
         }
-        let mut usages = Vec::new();
-        self.native_register_commands(&mut usages);
+        let mut registrations = Vec::new();
+        self.native_register_commands(&mut registrations);
+        let (usages, executors): (Vec<_>, Vec<_>) = registrations
+            .into_iter()
+            .filter_map(|registration| {
+                let owner = registration.mod_id;
+                let mod_index = mod_index(owner)?;
+                let (command, call) = split_command_registration(registration.answer);
+                Some((
+                    command,
+                    RegisteredExecutor {
+                        owner,
+                        mod_index,
+                        call,
+                    },
+                ))
+            })
+            .unzip();
         let vanilla = sunrise_client::command::vanilla::session_dispatcher(
             &self.level.rule_registry,
             features,
         );
         let arguments = command_arguments();
         let hub = self.lan.as_ref().map(|host| &host.hub);
-        let mut executors = HashMap::new();
+        let mut slots = HashMap::new();
         let (tree, levels, problems) = command_tree_for(
             &usages,
             |name| hub.is_some_and(|hub| hub.vanilla_command(name)) || vanilla.find(name).is_some(),
             &arguments,
             false,
-            Some(&mut executors),
+            Some(&mut slots),
         );
         for p in problems {
             log::warn!("Sunrise: a native mod's command was left out: {p}");
@@ -76,6 +101,7 @@ impl Game<'_> {
             levels,
             tree,
             arguments,
+            slots,
             executors,
         });
         state.display_revision = state.display_revision.wrapping_add(1);
@@ -150,7 +176,7 @@ impl Game<'_> {
             &report,
             "native_mod_command",
             &commands.arguments,
-            Some(&commands.executors),
+            Some(&commands.slots),
         );
         let changed = state.report != report;
         state.report = report;

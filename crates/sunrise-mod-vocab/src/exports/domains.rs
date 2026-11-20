@@ -16,7 +16,7 @@ pub use backend::{
 };
 pub use block::types::*;
 pub use client::types::*;
-pub use command::types::*;
+pub use command::types::{Authority, Command, CommandRegistration, PermissionLevel};
 pub use entity::effect_category::EffectCategory;
 pub use entity::types::*;
 pub use item::types::*;

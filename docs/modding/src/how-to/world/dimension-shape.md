@@ -109,15 +109,16 @@ as `Entity.teleport` with a portal's transition. It works for a player, a mob, a
 trident, a firework and the thrown items and fireballs a chunk saves. The entity keeps its motion;
 set it first with `entity.set_velocity` to stop or turn it.
 
+In `Hooks::register_commands`, for example:
+
 ```rust,ignore
-fn run_mod_command(&self, host: &mut dyn ServerHost, event: &mut RunModCommandEvent<'_>) -> Flow {
-    let CommandSource::Player { player, .. } = event.source else {
-        return Flow::Continue;
+event.commands.push(Command::new("pocket").executes(|host, source, _| {
+    let CommandSource::Player { player, .. } = source else {
+        return None;
     };
-    let entity = player.entity();
-    entity.teleport_to_level(host, "mymod:pocket", [8.5, 100.0, 8.5], None);
-    Flow::Cancel
-}
+    player.entity().teleport_to_level(host, "mymod:pocket", [8.5, 100.0, 8.5], None)
+        .then_some(1)
+}));
 ```
 
 `pos` is in the destination's own coordinates: nothing scales it by the level's
