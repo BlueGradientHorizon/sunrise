@@ -415,7 +415,6 @@ impl Game<'_> {
         // the game, before the staging worker starts: each listener keeps its
         // registering mod for crash attribution.
         let client_listeners = self.register_client_reload_listeners();
-        let runtime_sprites = super::client_reload::collect_runtime_sprites();
         let texture_atlases = super::client_reload::collect_texture_atlases();
         super::mods::register_fluid_models(self.options.execution_role);
         let stage = move |progress: &crate::game::Progress| {
@@ -425,7 +424,6 @@ impl Game<'_> {
                 &server,
                 &mod_sources,
                 client_listeners,
-                &runtime_sprites,
                 &texture_atlases,
                 &assets,
                 &res,
@@ -504,7 +502,6 @@ impl Game<'_> {
             armor_stand_assets,
             frame_models,
             sounds,
-            ui_metadata,
             language,
         } = staged;
         let loop_context = self.prepare_loop_context(&root)?;
@@ -589,9 +586,8 @@ impl Game<'_> {
         self.text_patches.get_mut().clear();
         // Mods' dynamic textures keep their names and slots in the new atlas's pool, and their
         // kept pixels upload into it again.
-        let atlas = &mut self.gui.atlas;
-        self.dynamic_textures
-            .rebind(atlas.dynamic_texture_pool.as_ref(), &mut atlas.sprites);
+        let (pool, mut names) = self.gui.atlas.dynamic_names();
+        self.dynamic_textures.rebind(pool, &mut names);
         // Kept mod block entities name the old atlas's sprites, and their view distances the old
         // registry's states.
         self.kept_block_entities.get_mut().clear();
@@ -645,7 +641,6 @@ impl Game<'_> {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
             std::mem::take(&mut self.gui.atlas.blinks);
-        sunrise_client::ui::set_metadata(ui_metadata);
         // Read with the language in use when the reload started: one picked since then wins.
         let code = lang::code();
         lang::set(if language.code == code {
@@ -704,7 +699,6 @@ pub(super) fn stage_pack(
     server: &[Pack],
     mod_sources: &super::mods::ModsState,
     client_listeners: mod_api::ClientListenerRegistry,
-    runtime_sprites: &[mod_api::RuntimeSprite],
     texture_atlases: &[mod_api::TextureAtlasRegistration],
     assets: &Arc<Assets>,
     res: &Resources,
@@ -714,7 +708,6 @@ pub(super) fn stage_pack(
     progress: &super::Progress,
 ) -> sunrise_client::Result<StagedPack> {
     let resource_root = startup_root(vanilla_root, selected, server, mod_sources)?;
-    let resource_root = super::client_reload::stage_runtime_sprites(resource_root, runtime_sprites);
     let resource_root = super::client_reload::stage_texture_atlases(resource_root, texture_atlases);
     let root = resource_root.prepared().to_path_buf();
     let source = resource_root.source().clone();
@@ -731,9 +724,9 @@ pub(super) fn stage_pack(
     // The world's models and sprites and the GUI atlas read the same root and nothing of
     // each other: about a second each, side by side.
     let pool = super::resource_tables::dynamic_texture_pool();
-    // The sound events, the GUI sprites' metadata and the language are read here too, not in
+    // The sound events and the language are read here too, not in
     // the frame that applies the reload (about 20 ms of it).
-    let (render, atlas, panorama, (sounds, ui_metadata, language)) = std::thread::scope(|s| {
+    let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
         let atlas = super::resource_load::named_scope(s, "pack-assets", || {
             let game = sunrise_assets::resource_source::ResourceSource::directory(
                 vanilla_root.to_path_buf(),
@@ -747,7 +740,6 @@ pub(super) fn stage_pack(
         let small = super::resource_load::named_scope(s, "pack-assets", || {
             (
                 sunrise_client::sound_events::SoundRegistry::load(&source),
-                sunrise_client::ui::read_metadata(&source),
                 lang::Language::load(&[&source], &lang::code()),
             )
         });
@@ -804,7 +796,6 @@ pub(super) fn stage_pack(
         armor_stand_assets,
         frame_models,
         sounds,
-        ui_metadata,
         language,
     })
 }
@@ -826,9 +817,8 @@ pub(super) struct StagedPack {
     pub cem: Arc<sunrise_client::mobs::cem::CemModels>,
     /// The block entities' models, the packs' custom entity models over vanilla's.
     pub block_entity_shapes: Arc<sunrise_client::block_entity_render::BlockEntityShapes>,
-    /// The root's sound events, GUI sprite metadata and current language.
+    /// The root's sound events and current language.
     pub sounds: sunrise_client::sound_events::SoundRegistry,
-    pub ui_metadata: sunrise_client::ui::UiMetadata,
     pub language: lang::Language,
 }
 
@@ -1223,3 +1213,7 @@ mod tests {
         assert!(reload_waits(true, true));
     }
 }
+
+#[cfg(test)]
+#[path = "clouds_reload_tests.rs"]
+mod clouds_reload_tests;

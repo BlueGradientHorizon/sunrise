@@ -205,7 +205,7 @@ message GameRules {
 
 // Typed allowlist of the Sunrise switches that change what a tick costs, boolean or numeric.
 message SunriseOptions {
-  // The far ring's distance in chunks; 0 when off.
+  // The far ring's distance in chunks, 0 when off; always 0 since the far ring was removed.
   optional uint32 max_view_distance = 1;
   // How far the server serves LOD tiles, in chunks; 0 when off.
   optional uint32 lod_distance = 2;

@@ -46,6 +46,7 @@ Never write `[wasm]` by hand; rebuild instead.
 
 Start the game with the package, from the `greeter` folder:
 
+<!-- quickstart-test: skip, needs the reader's game and prepared resources -->
 ```sh
 <path to sunrise-client> --dev-mod target/sunrise-mod/greeter.smod --resources <resources folder> \
   --game-dir target/sunrise-mod/game --home target/sunrise-mod/home
