@@ -105,6 +105,7 @@ pub enum MappingError {
 ///
 /// Fields beyond the type id are exposed only for custom payloads. This is
 /// plain mod API data, not the game's decoded protocol enum.
+// no wire: this is a local envelope for already-encoded vanilla packet bytes.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct ClientPacket {

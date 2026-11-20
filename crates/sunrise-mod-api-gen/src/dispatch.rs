@@ -660,7 +660,7 @@ pub(super) fn emit<'a>(
             (false, false) => ("", ""),
         };
         let event_struct = format!(
-            "/// Built by the game and passed to the listener.\n#[non_exhaustive]\n#[allow(missing_docs)]\npub struct {event_type}{generics} {{\n{fields}}}\n"
+            "/// An in-process callback record built by the game and passed to the listener.\n#[non_exhaustive]\n#[allow(missing_docs)]\npub struct {event_type}{generics} {{\n{fields}}}\n"
         );
         if is_render {
             render_dispatch.push_str(&event_struct);

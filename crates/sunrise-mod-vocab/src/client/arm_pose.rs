@@ -112,6 +112,7 @@ impl CustomArmPose {
 
 /// Absolute model arm rotations in radians. Each non-finite component leaves
 /// that component of the ordinary humanoid pose unchanged.
+// no wire: used by the local arm-pose callback.
 // exhaustive: mods write either arm's three model rotation components
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ArmAngles {
