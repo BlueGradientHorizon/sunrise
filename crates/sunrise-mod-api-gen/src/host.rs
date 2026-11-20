@@ -392,6 +392,68 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
             stem = area.stem
         ));
     }
+    // A partial read backend advertises the backend but can only answer some of it.
+    // Forward the named methods, and let the API's standard no-backend value handle
+    // the rest. Infallible key metadata retains the usual fail-loud default.
+    let mut choices = String::new();
+    let mut partial_impls = String::new();
+    let mut read_names = std::collections::BTreeSet::new();
+    for area in &areas {
+        for tier in [Tier::Backend, Tier::ClientBackend] {
+            let Some(entries) = area.tiers.get(&tier) else {
+                continue;
+            };
+            let trait_name = area.trait_name(tier);
+            writeln!(
+                partial_impls,
+                "#[deny(unconditional_recursion)] impl $crate::prelude::{trait_name} for $host {{"
+            )
+            .unwrap();
+            for entry in entries {
+                let name = entry.name.as_str();
+                if read_names.insert(name) {
+                    writeln!(choices, "(@known {name}) => {{}};\n([{name} $($tail:ident)*] {name} $forward:item {{$($refused:item)*}}) => {{ $forward }};").unwrap();
+                }
+                let sig = entry.sig.to_token_stream();
+                let args = signature_args(&entry.sig, name)?;
+                let call_args = if args.is_empty() {
+                    "self".to_owned()
+                } else {
+                    format!("self, {args}")
+                };
+                let refused = refusal(&entry.sig, name)?
+                    .map(|value| {
+                        if args.is_empty() {
+                            format!("{sig} {{ {value} }}")
+                        } else {
+                            format!("{sig} {{ let _ = ({args},); {value} }}")
+                        }
+                    })
+                    .unwrap_or_default();
+                writeln!(partial_impls, "$crate::__partial_read!([$($provided)*] {name} {sig} {{ Self::{name}({call_args}) }} {{ {refused} }});").unwrap();
+            }
+            partial_impls.push_str("}\n");
+        }
+    }
+    writeln!(macros, r#"#[doc(hidden)] #[macro_export] macro_rules! __mod_api_partial_read {{
+        {choices}
+        (@known $name:ident) => {{ compile_error!(concat!("unknown backend read: ", stringify!($name))); }};
+        ([$other:ident $($tail:ident)*] $name:ident $forward:item {{$($refused:item)*}}) => {{
+            $crate::__partial_read!([$($tail)*] $name $forward {{$($refused)*}});
+        }};
+        ([] $name:ident $forward:item {{$($refused:item)*}}) => {{ $($refused)* }};
+    }}
+    #[doc(hidden)] pub use __mod_api_partial_read as __partial_read;"#).unwrap();
+    let partial = format!(
+        "($host:ty, partial($($provided:ident),* $(,)?)) => {{
+        const _: () = {{
+            #[allow(unused_imports)] use $crate::*;
+            #[allow(unused_imports)] use ::std::{{path::PathBuf, sync::Arc}};
+            $($crate::__partial_read!(@known $provided);)*
+            {partial_impls}
+        }};
+    }};"
+    );
     for (name, tiers, union) in [
         ("impl_host_areas", &[Tier::Host][..], "Host"),
         (
@@ -432,8 +494,16 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
                 )
             })
             .collect();
+        let (partial, partial_doc) = if name == "impl_backend_areas" {
+            (
+                partial.as_str(),
+                "/// `partial(method, ...)` forwards the listed reads to inherent methods and answers\n/// the ordinary no-backend value for other reads that can refuse.\n",
+            )
+        } else {
+            ("", "")
+        };
         macros.push_str(&format!(
-            "/// Implements the area traits of `{union}` for `$host` with their defaults, except the areas listed in `except(...)`, which the caller implements itself. The union trait is left to the caller.\n#[doc(hidden)]\n#[macro_export]\nmacro_rules! __mod_api_{name} {{ ($host:ty $(, except($($skip:ident),*))?) => {{ {impls} }}; }}\n#[doc(hidden)]\npub use __mod_api_{name} as {name};\n"
+            "/// Implements the area traits of `{union}` for `$host` with their defaults, except the areas listed in `except(...)`, which the caller implements itself. The union trait is left to the caller.\n{partial_doc}#[doc(hidden)]\n#[macro_export]\nmacro_rules! __mod_api_{name} {{ ($host:ty $(, except($($skip:ident),*))?) => {{ {impls} }}; {partial} }}\n#[doc(hidden)]\npub use __mod_api_{name} as {name};\n"
         ));
     }
     Ok(format!(
@@ -972,7 +1042,7 @@ fn refusal(sig: &syn::Signature, name: &str) -> Result<Option<&'static str>, Str
         Some("Option") => Some("None"),
         Some("bool") => Some("false"),
         // A read that answers `Result`: its refusal is the error a host without a backend answers.
-        Some("Result") => Some("Err(mod_api::NoBackend::no_backend())"),
+        Some("Result") => Some("Err(NoBackend::no_backend())"),
         Some("u64" | "u32" | "i32" | "u16" | "u8" | "usize") => Some("0"),
         // A registry key's metadata: a read the goal view only forwards.
         Some("String") => None,

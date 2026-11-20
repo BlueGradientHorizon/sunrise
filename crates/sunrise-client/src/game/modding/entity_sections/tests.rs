@@ -7,6 +7,20 @@ use mod_api::{EntityEnteringSectionEvent, Hooks, HostSide};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+#[test]
+fn section_read_backend_refuses_reads_outside_its_snapshot() {
+    let host = LiveSectionHost(None);
+    let entity = EntityRef::new(mod_api::WorldEpoch::new(1), 1);
+    let player = mod_api::__private::game::player_ref(entity, 1);
+    let menu = mod_api::__private::game::menu_ref(player, 1, 1);
+
+    assert_eq!(entity.bounding_box(&host), None);
+    assert!(matches!(
+        menu.merchant_offers(&host),
+        Err(mod_api::LevelReadError::Unavailable)
+    ));
+}
+
 /// What each told crossing carried: client side, entity id, old, new, chunk changed.
 type Calls = Arc<Mutex<Vec<(bool, u32, [i32; 3], [i32; 3], bool)>>>;
 
