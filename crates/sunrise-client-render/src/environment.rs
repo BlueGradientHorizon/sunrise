@@ -148,8 +148,10 @@ impl PackModifiers {
 
 /// What a pack's expression can ask about the frame (wiki "Scripting Expressions": the global,
 /// player, camera and positional contexts), set before the frame samples the sky. `clone_from`
-/// keeps the destination's strings, so a context copied into every frame allocates nothing.
-#[derive(Debug, Default, PartialEq)]
+/// keeps the destination's strings, so a context copied into every frame allocates nothing once
+/// its strings have room for the names.
+#[derive(Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Frame {
     pub rain: f32,
     pub thunder: f32,
@@ -1230,7 +1232,8 @@ mod tests {
 
     /// `Frame::clone_from` copies every field and writes the strings into the destination's own
     /// buffers (their address and capacity kept), so a context copied each frame allocates
-    /// nothing; `clone` gives an equal frame.
+    /// nothing; `clone` gives an equal frame. The environment's held frame, which its attribute
+    /// expressions read, is written the same way by `set_frame`, every time it is set.
     #[test]
     fn a_frame_copies_into_its_own_strings() {
         let source = Frame {
@@ -1244,7 +1247,7 @@ mod tests {
             player: [1.0, 2.0, 3.0],
             player_velocity: [4.0, 5.0, 6.0],
             player_on_ground: true,
-            in_water: true,
+            in_water: false,
             camera: [7.0, 8.0, 9.0],
             sky_light: 10,
             block_light: 11,
@@ -1252,21 +1255,34 @@ mod tests {
             temperature: 0.75,
             downfall: 0.125,
         };
-        let mut frame = Frame {
+        // Room for the names, and the booleans the other way round from the source's.
+        let roomy = || Frame {
             dimension: String::with_capacity(64),
             biome: String::with_capacity(64),
+            player_on_ground: false,
+            in_water: true,
             ..Default::default()
         };
+        let mut frame = roomy();
         let buffers = |f: &Frame| [&f.dimension, &f.biome].map(|s| (s.as_ptr(), s.capacity()));
         let before = buffers(&frame);
         frame.clone_from(&source);
         assert_eq!(buffers(&frame), before);
         assert_eq!(frame, source);
         assert_eq!(source.clone(), source);
-        // The environment's own copy, the one its attribute expressions read.
+        // The environment's own copy, set twice: the second time over the first's names.
         let environment = with_packs(&[]);
+        *environment.frame.write().unwrap() = roomy();
+        let before = buffers(&environment.frame.read().unwrap());
+        let overworld = Frame {
+            dimension: "minecraft:overworld".to_owned(),
+            biome: "minecraft:plains".to_owned(),
+            ..Default::default()
+        };
+        environment.set_frame(&overworld);
         environment.set_frame(&source);
         let held = environment.frame.read().unwrap();
+        assert_eq!(buffers(&held), before);
         assert_eq!(*held, source);
     }
 

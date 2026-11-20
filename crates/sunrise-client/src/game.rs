@@ -1554,9 +1554,9 @@ struct Game<'a> {
     post_effects: Vec<String>,
     /// The game time (ticks and partial) of the last frame, for `PolyDeltaTime`.
     polytone_post_ticks: f64,
-    /// What the packs' expressions read this frame, kept across frames so its strings are
-    /// rewritten in place instead of allocated each frame.
-    polytone_frame: sunrise_client::environment::Frame,
+    /// The last expression context built (what the packs' expressions read), kept across frames
+    /// so its strings are rewritten in place instead of allocated each frame.
+    expression_frame: sunrise_client::environment::Frame,
     /// `GameRenderer.spectatedEntityPostEffect` (`checkEntityPostEffect`).
     spectated_post_effect: Option<&'static str>,
     /// `LocalPlayer.experienceDisplayStartTick`: (last progress, seen a change, tick).
@@ -8302,7 +8302,7 @@ impl Game<'_> {
         // What the packs' expressions read, taken for the frame and put back after the post
         // chains: its strings are rewritten in place, so it allocates nothing once they have
         // grown to the dimension's and biome's names.
-        let mut frame = std::mem::take(&mut self.polytone_frame);
+        let mut frame = std::mem::take(&mut self.expression_frame);
         let environment = self.view_environment();
         // EnvironmentAttributeProbe: the spatially interpolated biome colours,
         // Gaussian-weighted over the noise biomes around the camera (plains
@@ -8354,29 +8354,49 @@ impl Game<'_> {
         {
             let light = self.world.light(block[0], block[1], block[2]);
             let info = biomes.get(biome);
-            frame.dimension.clear();
-            frame.dimension.push_str(self.dim.id());
-            frame.biome.clone_from(&info.name);
-            (frame.temperature, frame.downfall) = (info.temperature, info.downfall);
-            (frame.rain, frame.thunder) = (rain, thunder);
-            (frame.game_time, frame.day_time) = (self.world.game_time, self.view_day_time());
-            frame.render_distance = self.streaming.radius;
-            frame.sky_type = match self.dimension_type().skybox {
+            // Every field named, so a new one has to be written here too.
+            let sunrise_client::environment::Frame {
+                rain: frame_rain,
+                thunder: frame_thunder,
+                game_time,
+                day_time,
+                render_distance,
+                sky_type,
+                dimension,
+                player,
+                player_velocity,
+                player_on_ground,
+                in_water,
+                camera: frame_camera,
+                sky_light,
+                block_light,
+                biome: biome_name,
+                temperature,
+                downfall,
+            } = &mut frame;
+            dimension.clear();
+            dimension.push_str(self.dim.id());
+            biome_name.clone_from(&info.name);
+            (*temperature, *downfall) = (info.temperature, info.downfall);
+            (*frame_rain, *frame_thunder) = (rain, thunder);
+            (*game_time, *day_time) = (self.world.game_time, self.view_day_time());
+            *render_distance = self.streaming.radius;
+            *sky_type = match self.dimension_type().skybox {
                 sunrise_world::dimension_type::Skybox::Overworld => 1,
                 sunrise_world::dimension_type::Skybox::End => 2,
                 sunrise_world::dimension_type::Skybox::None => 0,
             };
-            frame.player = self.player.as_ref().map_or(camera.to_array(), |p| {
+            *player = self.player.as_ref().map_or(camera.to_array(), |p| {
                 [p.position.x, p.position.y, p.position.z]
             });
-            frame.player_velocity = self
+            *player_velocity = self
                 .player
                 .as_ref()
                 .map_or([0.0; 3], |p| [p.velocity.x, p.velocity.y, p.velocity.z]);
-            frame.player_on_ground = self.player.as_ref().is_some_and(|p| p.ground.on_ground);
-            frame.in_water = underwater;
-            frame.camera = camera.to_array();
-            (frame.sky_light, frame.block_light) = (i32::from(light >> 4), i32::from(light & 15));
+            *player_on_ground = self.player.as_ref().is_some_and(|p| p.ground.on_ground);
+            *in_water = underwater;
+            *frame_camera = camera.to_array();
+            (*sky_light, *block_light) = (i32::from(light >> 4), i32::from(light & 15));
             if let Some(particles) = &self.pack.polytone_particles
                 && let Ok(mut f) = particles.frame.write()
             {
@@ -8608,7 +8628,7 @@ impl Game<'_> {
             }
             _ => None,
         };
-        self.polytone_frame = frame;
+        self.expression_frame = frame;
         self.view_frustum =
             self.world_view_frustum(camera, [fov_degrees, yaw, pitch], bob * spin, depth_far);
         let billboard_frustum = if self.settings.sunrise.taa {
@@ -11037,7 +11057,7 @@ impl<'a> Game<'a> {
             posed_rotation: None,
             post_effects: Vec::new(),
             polytone_post_ticks: 0.0,
-            polytone_frame: Default::default(),
+            expression_frame: Default::default(),
             spectated_post_effect: None,
             experience_display: Default::default(),
             boats: Default::default(),
