@@ -19,6 +19,8 @@ use std::{io::Read, path::Path};
 /// The index format this build reads and writes. A reader refuses a newer
 /// one rather than misread it.
 pub const SCHEMA: u32 = 1;
+/// Byte budget for the in-game browser's HTTPS index download.
+pub const MAX_INDEX: u64 = 16 << 20;
 /// The biggest file the registry takes (a `.smod` with content, a `.spack`).
 pub const MAX_FILE: u64 = 64 << 20;
 /// The biggest native binary build ID, in bytes.
@@ -625,12 +627,19 @@ impl Index {
 
     /// Why the file of `id` with this hash was taken down, if it was.
     pub fn revoked(&self, id: &str, sha256: &str) -> Option<&Revoked> {
-        self.revoked.iter().find(|r| {
-            r.id == id
-                && r.sha256
-                    .as_ref()
-                    .is_none_or(|h| h.eq_ignore_ascii_case(sha256))
-        })
+        self.revoked.iter().find(|r| r.covers(id, sha256))
+    }
+}
+
+impl Revoked {
+    /// Whether this takedown covers `id`'s file with this hash: every file of the project when it
+    /// names no hash.
+    pub(crate) fn covers(&self, id: &str, sha256: &str) -> bool {
+        self.id == id
+            && self
+                .sha256
+                .as_ref()
+                .is_none_or(|h| h.eq_ignore_ascii_case(sha256))
     }
 }
 
@@ -895,8 +904,6 @@ pub struct Facts {
     /// The mod's dependencies, sorted by id.
     pub dependencies: Vec<Dependency>,
     pub requires: Vec<Requirement>,
-    /// A mod that declares `[wasm]`: its `mod.wasm` runs in the game's sandbox.
-    pub wasm: bool,
 }
 
 /// Whether a package's own `found` version and a registry's `listed` label are one version. A mod's
@@ -985,11 +992,9 @@ pub fn inspect(kind: &Kind, path: &Path) -> Result<Facts, String> {
             if package.is_native() {
                 return Err("it has native code: it is a native-mod".into());
             }
-            package.read_runtime(path)?;
             let m = package.manifest;
             crate::Content::read(path, &m)?;
             Ok(Facts {
-                wasm: m.wasm.is_some(),
                 dependencies: manifest_dependencies(&m),
                 capabilities: m.capabilities,
                 id: Some(m.id),
@@ -1182,6 +1187,7 @@ fn names(caps: &[Capability]) -> String {
     format!("[{}]", names.join(", "))
 }
 
+pub mod browser_state;
 mod collections;
 pub use collections::{Collection, MAX_COLLECTION_MEMBERS, Member};
 mod dependencies;

@@ -23,7 +23,7 @@ use sunrise_mod_package::{
     manifest::MANIFEST,
 };
 
-const USAGE: &str = "cargo sunrise-mod publish [--out <dir>] [--registry <checkout>] [--summary <text>] [--owner <login>]… [--categories a,b] [--tags a,b] [--changelog <text>] [--key <public key> --signature <file.minisig>] [--wasm]";
+const USAGE: &str = "cargo sunrise-mod publish [--out <dir>] [--registry <checkout>] [--summary <text>] [--owner <login>]… [--categories a,b] [--tags a,b] [--changelog <text>] [--key <public key> --signature <file.minisig>]";
 
 #[derive(Default)]
 struct Options {
@@ -36,7 +36,6 @@ struct Options {
     changelog: String,
     key: Option<String>,
     signature: Option<PathBuf>,
-    wasm: bool,
 }
 
 fn list(value: &str) -> Vec<String> {
@@ -52,10 +51,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
     let mut o = Options::default();
     let mut it = args.iter();
     while let Some(arg) = it.next() {
-        if arg == "--wasm" {
-            o.wasm = true;
-            continue;
-        }
         let known = [
             "--out",
             "--registry",
@@ -213,6 +208,30 @@ fn draft(
     }
 }
 
+fn checklist(before: &[Entry], entry: &Entry, checkout: Option<&Path>) -> Vec<String> {
+    let mut remaining = entry.check_fields();
+    remaining.extend(
+        page::check_required(
+            &entry.id,
+            &entry.description,
+            &entry.categories,
+            entry.icon.as_deref(),
+            &entry.screenshots,
+        )
+        .into_iter()
+        .map(|p| format!("{}: {p}", entry.id)),
+    );
+    // A draft made without --registry has an empty screenshot list, so the rule never reads a file.
+    remaining.extend(registry::check_screenshot_rule(
+        before,
+        std::slice::from_ref(entry),
+        checkout.unwrap_or_else(|| Path::new(".")),
+    ));
+    // A category that is still the TODO is already listed as such.
+    remaining.retain(|r| !r.contains("is not a category") || !r.contains(TODO));
+    remaining
+}
+
 fn pull_request(entry: &Entry, v: &EntryVersion, size: u64, first: bool) -> (String, String) {
     let id = &entry.id;
     let title = if first {
@@ -266,26 +285,31 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     } else {
         Kind::Mod
     };
-    let existing = if let Some(checkout) = &o.registry {
-        let loaded = registry::load(checkout).map_err(|errors| format!(
-            "--registry {} is not a valid registry checkout: {}. Restore the checked-in entries or use a clean checkout",
-            checkout.display(),
-            errors.join("; ")
-        ))?;
-        if loaded
+    let checkout = o
+        .registry
+        .as_ref()
+        .map(|checkout| {
+            registry::load(checkout).map_err(|errors| format!(
+                "--registry {} is not a valid registry checkout: {}. Restore the checked-in entries or use a clean checkout",
+                checkout.display(),
+                errors.join("; ")
+            ))
+        })
+        .transpose()?;
+    if let Some(loaded) = &checkout
+        && loaded
             .collections
             .iter()
             .any(|collection| &collection.id == id)
-        {
-            return Err(format!(
-                "{id} is already a registry collection: choose a different `id` in {MANIFEST}"
-            ));
-        }
-        // The registry loader has bound every entry's id to its file name; select this project's id.
-        loaded.entries.into_iter().find(|e| &e.id == id)
-    } else {
-        None
-    };
+    {
+        return Err(format!(
+            "{id} is already a registry collection: choose a different `id` in {MANIFEST}"
+        ));
+    }
+    // The registry loader has bound every entry's id to its file name; select this project's id.
+    let existing = checkout
+        .as_ref()
+        .and_then(|loaded| loaded.entries.iter().find(|e| &e.id == id).cloned());
     if let Some(entry) = &existing {
         if let Some(repo) = &entry.repo {
             return Err(format!(
@@ -376,8 +400,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     let package = if signature.is_some() {
         root.join("target/sunrise-mod").join(format!("{id}.smod"))
     } else {
-        let args: Vec<String> = o.wasm.then(|| "--wasm".to_owned()).into_iter().collect();
-        crate::build_command(entry_point, &args)?
+        crate::build_command(entry_point, &[])?
     };
     let package_bytes = bounded::read_bytes(&package, index::MAX_FILE, Symlinks::Refuse).map_err(|e| {
         format!("{e}: build a regular .smod within the registry's size limit with `cargo sunrise-mod build` and sign it again if needed")
@@ -423,6 +446,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
         signature,
         changelog: o.changelog.clone(),
     };
+    let before = existing.clone();
     let entry = match existing {
         Some(mut entry) => {
             entry.versions.insert(0, version.clone());
@@ -450,20 +474,26 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     }
     write(out.join("PULL_REQUEST.md"), body.as_bytes())?;
 
-    let mut remaining = entry.check_fields();
-    remaining.extend(
-        page::check_required(
-            &entry.id,
-            &entry.description,
-            &entry.categories,
-            entry.icon.as_deref(),
-            &entry.screenshots,
-        )
-        .into_iter()
-        .map(|p| format!("{}: {p}", entry.id)),
-    );
-    // A category that is still the TODO is already listed as such.
-    remaining.retain(|r| !r.contains("is not a category") || !r.contains(TODO));
+    let mut remaining = checklist(before.as_slice(), &entry, o.registry.as_deref());
+    if let Some(loaded) = &checkout {
+        let game = &version.game;
+        remaining.extend(
+            loaded
+                .unmet_dependencies(game, &report.facts.dependencies)
+                .into_iter()
+                .map(|unmet| {
+                    let listed = if unmet.listed.is_empty() {
+                        "no version of it".to_owned()
+                    } else {
+                        format!("only {}", unmet.listed.join(", "))
+                    };
+                    format!(
+                        "{id}: requires {} {}, but the registry lists {listed} for Minecraft {game}: publish a matching version of {} first, or change the range in {MANIFEST}",
+                        unmet.id, unmet.range, unmet.id
+                    )
+                }),
+        );
+    }
     println!(
         "{} {} ({}, {} bytes, SHA-256 {})",
         entry.id,
@@ -539,6 +569,40 @@ mod tests {
             signature: None,
             changelog: String::new(),
         }
+    }
+
+    #[test]
+    fn the_checklist_requires_a_screenshot_file_in_the_checkout() {
+        let o = Options {
+            owners: vec!["ada".into()],
+            categories: vec!["decoration".into()],
+            ..Options::default()
+        };
+        let mut entry = draft(&manifest(), Kind::Mod, &o, true, row("0.2.0"));
+        let needs = |problems: Vec<String>| {
+            problems
+                .iter()
+                .any(|p| p.contains("needs at least one screenshot"))
+        };
+        assert!(needs(checklist(&[], &entry, None)));
+
+        let checkout = tempfile::tempdir().unwrap();
+        let path = "screenshots/glowing_blocks/one.png";
+        entry.screenshots = vec![path.into()];
+        let mut update = entry.clone();
+        update.versions.insert(0, row("0.3.0"));
+        let remaining = || checklist(std::slice::from_ref(&entry), &update, Some(checkout.path()));
+        assert!(needs(remaining()));
+
+        let image = checkout.path().join(path);
+        fs::create_dir_all(image.parent().unwrap()).unwrap();
+        // A 320x180 PNG header is sufficient for the registry's dimension check.
+        fs::write(
+            image,
+            b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\x01\x40\0\0\0\xb4\x08\x06\0\0\0",
+        )
+        .unwrap();
+        assert!(!needs(remaining()));
     }
 
     #[test]
