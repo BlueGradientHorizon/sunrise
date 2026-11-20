@@ -88,6 +88,25 @@ pub enum Value {
     /// A real stream value for which the persistent codec refuses encoding.
     StreamOnly(Box<Value>),
 }
+impl Drop for Value {
+    fn drop(&mut self) {
+        use std::mem::{replace, take};
+
+        // Move children out before the automatic field drops. Growing the
+        // stack only near its guard keeps ordinary shallow drops allocation-free.
+        match self {
+            Self::List(v) | Self::Set(v) if !v.is_empty() => with_tree_stack(|| drop(take(v))),
+            Self::Map(v) if !v.is_empty() => with_tree_stack(|| drop(take(v))),
+            Self::Template(v) if !v.patch.is_empty() => {
+                with_tree_stack(|| drop(take(&mut v.patch)))
+            }
+            Self::Container(v) if !v.is_empty() => with_tree_stack(|| drop(take(v))),
+            Self::StreamOnly(v) => with_tree_stack(|| drop(replace(v.as_mut(), Self::Empty))),
+            _ => (),
+        }
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         use Value::*;
@@ -192,27 +211,16 @@ impl Value {
         })
     }
 
-    /// Release an owned materialized value without recursive container drops.
-    pub fn discard(self) {
-        let mut pending = vec![self];
-        while let Some(value) = pending.pop() {
-            match value {
-                Self::List(values) | Self::Set(values) => pending.extend(values),
-                Self::Map(entries) => {
-                    pending.extend(entries.into_iter().flat_map(|(key, value)| [key, value]))
-                }
-                Self::Template(template) => {
-                    pending.extend(template.patch.into_iter().filter_map(|(_, value)| value))
-                }
-                Self::Container(slots) => {
-                    pending.extend(slots.into_iter().flatten().flat_map(|template| {
-                        template.patch.into_iter().filter_map(|(_, value)| value)
-                    }))
-                }
-                Self::StreamOnly(value) => pending.push(*value),
-                _ => {}
-            }
-        }
+    /// Take ownership of a template without cloning its patch.
+    pub fn into_template(mut self) -> Option<Template> {
+        let Self::Template(template) = &mut self else {
+            return None;
+        };
+        Some(Template {
+            item: std::mem::take(&mut template.item),
+            count: template.count,
+            patch: std::mem::take(&mut template.patch),
+        })
     }
 
     /// A read-only encoding error leaves the value available to the caller.
@@ -233,10 +241,7 @@ impl Value {
             .tag(Projection::Codec)
             .map_err(|error| format!("{name}: {error}"))?;
         match source::from_component_tag_with(name, &tag, is_native) {
-            Ok(value) => {
-                value.discard();
-                Ok(tag)
-            }
+            Ok(_) => Ok(tag),
             Err(error) => {
                 sunrise_core::nbt::discard_tag(tag);
                 Err(error)
@@ -344,7 +349,7 @@ impl Template {
         let tag = Tag::Compound(fields.into_iter().collect());
         if projection == Projection::Tree {
             match source::template_from_tag(&tag) {
-                Ok(template) => Value::Template(Box::new(template)).discard(),
+                Ok(_) => (),
                 Err(error) => {
                     sunrise_core::nbt::discard_tag(tag);
                     return Err(error);
@@ -366,6 +371,23 @@ pub fn is_persistent(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn deep_materialized_values_drop_on_a_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let value = (0..8_192).fold(Value::Int(1), |child, level| match level % 3 {
+                    0 => Value::List(vec![child]),
+                    1 => Value::Map(vec![(Value::string("child"), child)]),
+                    _ => Value::StreamOnly(Box::new(child)),
+                });
+                drop(value);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     #[test]
     fn java_float_and_collection_identity() {
         assert_eq!(Value::Float(0x7fc00001), Value::Float(0x7fc00002));

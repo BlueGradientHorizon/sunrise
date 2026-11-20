@@ -95,7 +95,6 @@ pub fn component_to_tag(kind: i32, value: &Component, names: &dyn Names) -> Resu
     }
     let value = component_value_named(kind, name, value, names)?;
     let projected = value.to_component_tag_with(name, is_native_component);
-    value.discard();
     projected.map(Some).map_err(Error::new)
 }
 

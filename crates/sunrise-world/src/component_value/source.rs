@@ -47,10 +47,13 @@ fn ident(t: &Tag) -> Result<Value> {
     Ok(Value::string(&identifier(&string(t)?)?))
 }
 fn int(t: &Tag) -> Result<Value> {
-    Ok(Value::Int(match t {
+    integer(t).map(Value::Int)
+}
+fn integer(t: &Tag) -> Result<i32> {
+    Ok(match t {
         Tag::Long(v) => *v as i32,
         _ => number(t)? as i32,
-    }))
+    })
 }
 fn number(t: &Tag) -> Result<f64> {
     Ok(match t {
@@ -216,12 +219,14 @@ fn list(t: &Tag, f: impl Fn(&Tag) -> Result<Value>) -> Result<Value> {
     };
     Ok(Value::List(values))
 }
-fn integer_list(t: &Tag) -> Result<Value> {
-    if let Tag::IntArray(v) = t {
-        return Ok(Value::List(v.iter().copied().map(Value::Int).collect()));
+fn integer_list(t: &Tag) -> Result<Vec<i32>> {
+    match t {
+        Tag::IntArray(v) => Ok(v.clone()),
+        Tag::List(v) => v.iter().map(integer).collect(),
+        _ => Err("expected list".into()),
     }
-    list(t, int)
 }
+
 fn map(t: &Tag, f: impl Fn(&Tag) -> Result<Value>) -> Result<Value> {
     let Tag::Compound(v) = t else {
         return Err("expected map".into());
@@ -399,10 +404,15 @@ fn consume_effect(t: &Tag) -> Result<Value> {
 }
 fn explosion(t: &Tag) -> Result<Value> {
     validate_source("firework_explosion", t)?;
+    let colors = |v: &Tag| {
+        Ok(Value::List(
+            integer_list(v)?.into_iter().map(Value::Int).collect(),
+        ))
+    };
     record(t, |r| {
         r.required("shape", string_value)?;
-        r.default("colors", Value::List(vec![]), integer_list)?;
-        r.default("fade_colors", Value::List(vec![]), integer_list)?;
+        r.default("colors", Value::List(vec![]), colors)?;
+        r.default("fade_colors", Value::List(vec![]), colors)?;
         r.b("has_trail", false)?;
         r.b("has_twinkle", false)
     })
@@ -933,18 +943,16 @@ fn component_leaf(name: &str, id: &str, t: &Tag, source: Source) -> Result<Value
         "tooltip_display" => record(t, |r| {
             r.b("hide_tooltip", false)?;
             if let Some(v) = t.get("hidden_components") {
-                let Value::List(v) = list(v, |entry| {
+                let Tag::List(v) = v else {
+                    return Err("expected list".into());
+                };
+                let mut seen = std::collections::HashSet::new();
+                let mut set = vec![];
+                for entry in v {
                     let name = identifier(&string(entry)?)?;
                     source.component_type(&name)?;
-                    Ok(Value::string(&name))
-                })?
-                else {
-                    unreachable!()
-                };
-                let mut set = vec![];
-                for v in v {
-                    if !set.contains(&v) {
-                        set.push(v);
+                    if seen.insert(name.clone()) {
+                        set.push(Value::string(&name));
                     }
                 }
                 if !set.is_empty() {
@@ -1005,23 +1013,11 @@ fn component_leaf(name: &str, id: &str, t: &Tag, source: Source) -> Result<Value
                 record(v, |r| {
                     r.required("dimension", ident)?;
                     r.required("pos", |v| {
-                        let Value::List(v) = integer_list(v)? else {
-                            unreachable!()
-                        };
+                        let v = integer_list(v)?;
                         if v.len() != 3 {
                             return Err("position must have three coordinates".into());
                         }
-                        Ok(Value::IntArray(
-                            v.into_iter()
-                                .map(|v| {
-                                    if let Value::Int(v) = v {
-                                        v
-                                    } else {
-                                        unreachable!()
-                                    }
-                                })
-                                .collect(),
-                        ))
+                        Ok(Value::IntArray(v))
                     })
                 })
             })?;
@@ -1067,25 +1063,11 @@ fn profile(t: &Tag) -> Result<Value> {
     record(t, |r| {
         r.optional("name", string_value)?;
         r.optional("id", |v| {
-            let value = integer_list(v)?;
-            let Value::List(parts) = value else {
-                unreachable!()
-            };
+            let parts = integer_list(v)?;
             if parts.len() != 4 {
                 return Err("profile UUID must have four integers".into());
             }
-            Ok(Value::IntArray(
-                parts
-                    .into_iter()
-                    .map(|v| {
-                        if let Value::Int(v) = v {
-                            v
-                        } else {
-                            unreachable!()
-                        }
-                    })
-                    .collect(),
-            ))
+            Ok(Value::IntArray(parts))
         })?;
         if let Some(properties) = t.get("properties") {
             let properties = if let Tag::Compound(entries) = properties {
@@ -1751,7 +1733,7 @@ mod tests {
                 .contains("map_post_processing")
         );
         let native = from_upgraded_component_tag("minecraft:use_remainder", &removal).unwrap();
-        let Value::Template(native) = native else {
+        let Some(native) = native.into_template() else {
             panic!("use_remainder holds a template");
         };
         assert_eq!(

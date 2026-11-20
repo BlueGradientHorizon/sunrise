@@ -197,9 +197,8 @@ impl Ops for Values {
     }
     fn container_slot(slots: &mut Self::Container, _: usize, item: Option<Value>) -> Option<()> {
         slots.push(match item {
-            Some(Value::Template(item)) => Some(*item),
+            Some(item) => Some(item.into_template()?),
             None => None,
-            Some(_) => return None,
         });
         Some(())
     }

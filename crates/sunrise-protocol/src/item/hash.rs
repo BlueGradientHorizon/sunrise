@@ -174,7 +174,6 @@ impl Component {
             }
             Err(_) => None,
         };
-        value.discard();
         hash
     }
     /// Decode the retained stream value, preserving native-only state.

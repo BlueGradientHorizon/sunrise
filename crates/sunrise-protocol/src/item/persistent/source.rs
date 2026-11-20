@@ -324,7 +324,6 @@ pub fn component_from_tag(kind: i32, value: &Tag, ids: &dyn Ids) -> Result<Compo
     )
     .map_err(err)?;
     let component = component_from_value(kind, &value, ids);
-    value.discard();
     component
 }
 pub fn component_from_value(kind: i32, value: &Value, ids: &dyn Ids) -> Result<Component> {
