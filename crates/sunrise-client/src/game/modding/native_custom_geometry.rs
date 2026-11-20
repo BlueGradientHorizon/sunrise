@@ -614,7 +614,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_tinted_block_state_carries_its_default_tint_in_the_baked_colour() {
-        let _fixture = sunrise_client::models::standalone_fixture(Vec::new());
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let colours = |name: &str| {
                 let state = game.pack.assets.registry.default_state(name).unwrap();
