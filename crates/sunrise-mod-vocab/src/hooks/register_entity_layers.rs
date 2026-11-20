@@ -4,7 +4,8 @@ pub trait Hooks {
     /// The layers a mod adds to living entity renderers (NeoForge's
     /// `EntityRenderersEvent.AddLayers`): `add(target, layer)`, and every living entity of the
     /// type, or every player of the player model, in view draws `EntityRenderLayer::submit` after
-    /// its model and the layers added before. `entity_types`, `is_living`, `player_models` and
+    /// its model and the layers added before, with an optional borrow of the final body pose.
+    /// `entity_types`, `is_living`, `player_models` and
     /// `has_mod_renderer` tell what renderers this load built. A target that is no living entity
     /// type is refused by name. Asked on the client on every resource load, the first one and each
     /// reload, after the renderers resolve (`register_entity_renderers`): layers don't carry over
@@ -23,9 +24,14 @@ impl EntityRenderLayer for Halo {
     fn submit(
         &self,
         _entity: &EntityRenderState,
-        _model: Option<&dyn FrameModel>,
+        model: Option<&dyn FrameModel>,
         draw: &mut dyn BlockEntityDrawContext,
     ) -> Result<(), String> {
+        // Skip the halo when the body has a head and that part or an ancestor was hidden.
+        // A replacement renderer or a body without this part still gets a halo.
+        if model.and_then(|body| body.part("head")).is_some_and(|head| !head.visible) {
+            return Ok(());
+        }
         // In the entity's frame: at its feet, turned with its body. Any atlas sprite will do:
         // a vanilla one, as here, or one of the mod's own assets.
         let face = Some(CubeFace::new("block/gold_block"));
@@ -63,8 +69,9 @@ NeoForge's canceled `RenderLivingEvent.Pre` skips them. Several mods may add to 
 draw in the order they were added, after the entity's model and its vanilla layers, each from the entity's
 frame (at its feet, turned with its body, as `render_living_pre` draws). `entity.yaw` is the body's turn
 and `entity.pitch` the head's. `model` lends the final body hierarchy for the callback, including for
-nonhumanoids, or `None` if no body pose was produced. Read a named part or follow the hierarchy
-to attach geometry. A layer that returns an `Err` or panics is logged once with the error
+nonhumanoids, or `None` if no body pose was produced (such as after a successful replacement
+renderer). Read a named part or follow the hierarchy and compose its parent transforms to attach
+geometry. A layer that returns an `Err` or panics is logged once with the error
 and asked no more until the next resource load adds it again; what it drew that frame is dropped. The layers draw on the mobs (vanilla's and the content mods'
 living types) and the players; the armour stand and the ender dragon take them once their own draws run
 layers, in a follow-up of #860, which lifts their refusal."#]

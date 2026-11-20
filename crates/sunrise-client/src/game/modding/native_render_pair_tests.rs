@@ -1,7 +1,7 @@
 //! The render hook pair around a living entity (#3681): `render_living_pre` and
 //! `render_living_post`, wrapped for a player by `render_player_pre` and `render_player_post`. A
-//! canceled pre hook skips the entity's model, its layers, its post hooks and the frame's later
-//! passes; a culled entity is asked neither; the hooks run in the draw queue's order.
+//! canceled Pre skips the model, layers and later passes. Canceling only Living Pre still calls
+//! Player Post without a model. Culled entities are not asked; the hooks run in draw queue order.
 use super::Game;
 use mod_api::{
     BlockEntityDrawContext, Hooks, RenderLivingPostEvent, RenderLivingPreEvent,
@@ -20,8 +20,8 @@ struct Heard {
     cancel_player: Vec<bool>,
 }
 
-/// A mod listening to the four hooks: it records each call and, in each pre hook, draws one stone
-/// quad 100 blocks above the entity, so a test sees what a canceled entity still draws.
+/// Records the four callbacks and their model observations. Living Pre draws a marker 100 blocks
+/// above the entity so the test can see which geometry survives cancellation.
 struct Pair(Arc<Mutex<Heard>>);
 
 fn marker(draw: &mut dyn BlockEntityDrawContext) {
@@ -42,12 +42,18 @@ impl Hooks for Pair {
         event: &mut RenderPlayerPreEvent<'_>,
     ) -> mod_api::Flow {
         let mut heard = self.0.lock().unwrap();
-        heard.events.push(format!("player_pre {}", event.who.local));
-        if event.who.local {
-            let head = event.model.part("head").unwrap();
-            assert!(head.visible, "a new draw doesn't inherit the previous edit");
-            let index = head.index;
-            assert!(event.model.hide(index));
+        let head = event
+            .model
+            .part("head")
+            .map(|part| (part.index, part.visible));
+        let visible = head.map(|(_, visible)| visible);
+        heard
+            .events
+            .push(format!("player_pre {} head {visible:?}", event.who.local));
+        if event.who.local
+            && let Some((index, _)) = head
+        {
+            event.model.hide(index);
         }
         event.cancelled = heard.cancel_player.contains(&event.who.local);
         mod_api::Flow::Continue
@@ -58,13 +64,14 @@ impl Hooks for Pair {
         event: &mut RenderLivingPreEvent<'_>,
     ) -> mod_api::Flow {
         let mut heard = self.0.lock().unwrap();
-        heard.events.push(format!("living_pre {}", event.entity.id));
-        if event.entity.id == 4321 {
-            assert!(
-                !event.model.part("head").unwrap().visible,
-                "Living Pre sees the Player Pre edit"
-            );
-        }
+        let id = event.entity.id;
+        let observation = if id == 4321 {
+            let visible = event.model.part("head").map(|part| part.visible);
+            format!("living_pre {id} head {visible:?}")
+        } else {
+            format!("living_pre {id}")
+        };
+        heard.events.push(observation);
         marker(event.draw);
         event.cancelled = heard.cancel_living.contains(&event.entity.id);
         mod_api::Flow::Continue
@@ -85,19 +92,15 @@ impl Hooks for Pair {
         event: &mut RenderPlayerPostEvent<'_>,
     ) {
         let mut heard = self.0.lock().unwrap();
+        let visible = event
+            .model
+            .and_then(|model| model.part("head"))
+            .map(|part| part.visible);
         heard.events.push(format!(
-            "player_post {} model {}",
+            "player_post {} model {} head {visible:?}",
             event.who.local,
             event.model.is_some()
         ));
-        if event.who.local
-            && let Some(model) = event.model
-        {
-            assert!(
-                !model.part("head").unwrap().visible,
-                "Player Post sees the final visibility"
-            );
-        }
     }
 }
 
@@ -257,31 +260,35 @@ fn the_player_pair_wraps_the_living_pair() {
         assert_eq!(
             events(&heard),
             [
-                "player_pre true",
-                "living_pre 4321",
+                "player_pre true head Some(true)",
+                "living_pre 4321 head Some(false)",
                 "living_post 4321",
-                "player_post true model true"
-            ]
+                "player_post true model true head Some(false)"
+            ],
+            "Living Pre and the final Player Post model both see the Player Pre edit"
         );
         heard.lock().unwrap().cancel_living.push(4321);
-        own_player_frame(game, false);
+        let out = own_player_frame(game, false);
         assert_eq!(
             events(&heard),
             [
-                "player_pre true",
-                "living_pre 4321",
-                "player_post true model false"
+                "player_pre true head Some(true)",
+                "living_pre 4321 head Some(false)",
+                "player_post true model false head None"
             ],
-            "a canceled living pre still asks the player post, without a model"
+            "the edit is draw-local, and canceling only Living Pre still calls Player Post without a model"
         );
+        assert_eq!((out.len(), markers(&out)), (4, 4), "only the marker draws");
         assert!(game.own_render_canceled());
         heard.lock().unwrap().cancel_player.push(true);
-        own_player_frame(game, false);
+        let out = own_player_frame(game, false);
         assert_eq!(
             events(&heard),
-            ["player_pre true"],
+            ["player_pre true head Some(true)"],
             "a canceled player pre skips the rest"
         );
+        assert!(out.is_empty());
+        assert!(game.own_render_canceled());
     });
 }
 
@@ -295,10 +302,10 @@ fn a_spectator_draws_no_layers_but_gets_its_post_hooks() {
         assert_eq!(
             events(&heard),
             [
-                "player_pre true",
-                "living_pre 4321",
+                "player_pre true head Some(true)",
+                "living_pre 4321 head Some(false)",
                 "living_post 4321",
-                "player_post true model true"
+                "player_post true model true head Some(false)"
             ]
         );
         // A spectating mannequin in the level's draw.

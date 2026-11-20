@@ -42,13 +42,14 @@ pub trait EntityRenderLayer: Send + Sync + 'static {
     /// `item`, `model_part`), after its model and the layers before this one. The pose stack starts
     /// in the entity's frame: at its feet, turned with its body, +z the way it faces, +x its left,
     /// +y up, in blocks (`entity.yaw` is the body's turn, `entity.pitch` the head's). `model`
-    /// borrows the final posed body hierarchy for this callback (also passed to the Post hooks),
-    /// or `None` if no body pose was produced, for example by a successful replacement renderer.
-    /// `draw` also has the partial tick, the game time and
-    /// the entity's light. Asked once a frame for each entity of the target in view, but not for
-    /// one whose `render_living_pre` or `render_player_pre` a mod canceled: as with NeoForge's
-    /// canceled `RenderLivingEvent.Pre`, none of its layers draw then. A frame is
-    /// drawn afresh: `draw.keep()` does nothing here. `Ok(())` keeps what it drew. On an `Err`
+    /// borrows the final posed body hierarchy for this callback, as in the Post hooks. Follow
+    /// its parent links when attaching geometry; a layer drawing on the body can honor each
+    /// part's effective visibility, while an independent layer need not. `None` means the
+    /// draw produced no body pose (for example, a successful replacement renderer), not that
+    /// the body is nonhumanoid. `draw` also has the partial tick, the game time and the entity's
+    /// light. In the world, called once a frame for each entity of the target in view, but not
+    /// when its `render_living_pre` or `render_player_pre` was canceled. A frame is drawn afresh:
+    /// `draw.keep()` does nothing here. `Ok(())` keeps what it drew. On an `Err`
     /// or panic, what it drew this frame is dropped, the error is logged once, and the layer
     /// is asked no more until the next resource load adds it again.
     fn submit(

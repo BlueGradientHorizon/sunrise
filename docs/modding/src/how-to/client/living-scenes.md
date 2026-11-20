@@ -42,9 +42,11 @@ of a living type, with optional saved data (a baby, a sheep's colour), or an ent
 client's level as it is this frame. It is prepared and drawn by that same path: its type's
 renderer as in the world (a mod's `register_entity_renderers` renderer in place of the
 vanilla model, then the `register_entity_layers` layers), full bright, shaded by face like
-the scene's blocks and sorted with them by depth. Its feet stand at `pos` in the scene's
-coordinates, turned by `yaw`, `head_yaw` and `head_pitch` in entity degrees (yaw 0 faces
-south).
+the scene's blocks and sorted with them by depth. A layer borrows the
+[final body model](model-drawing.md#read-the-final-body-model) as in the world, or receives
+`model: None` if a registered replacement drew instead. Scene draws do not run the world
+Player or Living Pre/Post hooks. The entity's feet stand at `pos` in the scene's coordinates,
+turned by `yaw`, `head_yaw` and `head_pitch` in entity degrees (yaw 0 faces south).
 
 The entity is made for drawing only. It never joins a level and never ticks, and no mod
 part's `register_goals` runs for it. Its age is the clock's tick, so the model's idle

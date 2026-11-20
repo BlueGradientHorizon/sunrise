@@ -1056,8 +1056,17 @@ steers a mob through the engine's own controls, each a momentary wish the mob's 
 once a frame for every mob and player in view, before its model (NeoForge's `RenderLivingEvent.Pre`). Set `canceled` and nothing
 more of it draws this frame: model, layers, name tag, shadow, flames, leash, outline and `render_living_post`.
 
-- `model` lends the selected body's hierarchy and bind pose. Look up a part with `part(name)` and
-  call `hide(part.index)` to hide that subtree after animation, for this draw only.
+- `event.model` borrows the selected body's hierarchy in bind pose. To leave out a part and
+  its descendants after animation, hide its model-local index for this draw only:
+
+  ```rust,ignore
+  if let Some(index) = event.model.part("nose").map(|part| part.index) {
+      event.model.hide(index);
+  }
+  ```
+
+  A missing name doesn't refuse the draw. Layers using the same body respect the hide;
+  independent models (armour, held items, the cape) are unaffected.
 - `entity` (`MobRender`) is the frame's `LivingEntityRenderState`: the id, kind, custom name and `baby`, the partial tick,
   `age` (ticks lived plus the partial tick), `body_yaw`, `head_yaw` (from the body) and `pitch` in degrees, the walk cycle
   (`walk_position`, `walk_speed`: a vanilla quadruped's legs swing `cos(walk_position * 0.6662) * 1.4 * walk_speed` radians), `hurt_time`,
@@ -1071,11 +1080,14 @@ more of it draws this frame: model, layers, name tag, shadow, flames, leash, out
   ids the server half sends with mod messages, or by its custom name.
 - Players have an outer pair: `render_player_pre(player, who, draw, model, canceled)` (`RenderPlayerEvent.Pre`) before the
   living pre, and `render_player_post(player, who, model, draw)` after the living post, once a frame for each other player in
-  view and for this window's player in third person, with the same frame and `who` (the profile name, and `local`). A
-  canceled player pre skips all four; canceling only the living pre still asks `render_player_post` with no model.
+  view and for this window's player in third person, with the same frame and `who` (the profile name, and `local`).
+  Living Pre sees edits already made in Player Pre. Canceling Player Pre skips Living Pre and both
+  Post hooks; canceling only Living Pre still calls `render_player_post` with `model: None`.
 - `render_living_post(entity, model, draw)` (`RenderLivingEvent.Post`; a type's own layers are `register_entity_layers`)
-  adds after the entity's model and layers, in the same frame. The draw starts in the entity's frame; use the final borrowed
-  `model` to read a named part and its parents when placing geometry on a bone.
+  adds after the entity's model and layers, in the same frame. Use the optional final `event.model`
+  to find a part by name or follow the parent, child and sibling links with `part_at(index)`. Read
+  `part.pose()` and check `part.visible`, which includes its ancestors. A successful replacement
+  renderer supplies no body pose to the layers or Post. Don't keep a model view or index after the callback.
 
 ### Advancement triggers
 

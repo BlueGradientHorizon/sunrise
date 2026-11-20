@@ -1,8 +1,9 @@
 //! Borrowed parts of a living model before, during and after posing.
 
 // no wire: in-process model part selector
-/// A part of a humanoid model, by the name vanilla's `PlayerModel` gives it. The outer skin
-/// layer's parts (`Hat`, `Jacket`, the sleeves and the pants) are children of the part they cover.
+/// A named humanoid part, as vanilla's `PlayerModel` names it. The outer skin parts (`Hat`,
+/// `Jacket`, the sleeves and the pants) are children of the parts they cover. Use
+/// [`Self::model_name`] to look it up on a [`FrameModel`]; the enum is not a model index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum HumanoidPart {
@@ -69,15 +70,18 @@ impl HumanoidPart {
 }
 
 // no wire: borrows the baked hierarchy and pose for this draw.
-/// Read access to the selected living model. Pre sees its bind pose; registered layers and
-/// Post see its final animated pose. Indices belong to this model, not to the entity or to a
-/// later draw (which may select a different model). The borrow lasts only for the callback.
+/// The selected living model's baked hierarchy, including resource-pack parts. Pre sees the
+/// bind pose (before animation and skin visibility); registered layers and Post see the final
+/// pose and effective visibility. The hierarchy and name indices are resolved when the model
+/// is baked. Borrowed parts and their indices are scoped to this callback: a later draw may
+/// select a different model.
 pub trait FrameModel {
     /// The root of this model, even when it has no cubes of its own.
     fn root(&self) -> FrameModelPart<'_>;
 
-    /// The first depth-first match for this exact name, including the root. Returns `None` if
-    /// there is no match; use the hierarchy to distinguish parts with the same name.
+    /// The first depth-first match for this exact name, including the root and hidden parts.
+    /// Returns `None` if there is no match. Follow hierarchy links with [`Self::part_at`] to
+    /// distinguish parts with the same name.
     fn part(&self, name: &str) -> Option<FrameModelPart<'_>>;
 
     /// The part at a model-local index, or `None` if it is outside this model.
@@ -85,9 +89,10 @@ pub trait FrameModel {
 }
 
 // no wire: borrows the selected hierarchy and draw-local visibility.
-/// The selected living model in a Pre callback, before animation. Edits are visible to later
-/// Pre listeners for the same draw. They take effect on the body and layers drawn on that model
-/// after animation, not on independent models such as armour, and never persist to another draw.
+/// The selected body in a Pre callback, before animation. Player Pre and Living Pre edit the same
+/// model, in that order. Each later listener sees the earlier hides. Those hides apply to the
+/// body and layers drawn on it after animation and skin visibility, not to independent draws
+/// such as armour, held items or capes. They never persist to another draw.
 pub trait FrameModelEdit: FrameModel {
     /// Hides the part at this model-local index and its descendants. Returns `false` without
     /// making a change if the index is outside this model. Hiding a part again succeeds.
@@ -119,8 +124,9 @@ pub struct FrameModelPart<'a> {
 }
 
 impl FrameModelPart<'_> {
-    /// The local pose as a [`crate::PartPose`] for drawing. Use the parent links to compose
-    /// the full transform when attaching geometry to a nested part.
+    /// Copies the nine local components into a [`crate::PartPose`]. This is bind pose in Pre
+    /// and final pose in a layer or Post. Follow the parent links and compose the transforms
+    /// from the root down when attaching geometry to a nested part.
     pub fn pose(&self) -> crate::PartPose {
         let &[x, y, z, x_rot, y_rot, z_rot, x_scale, y_scale, z_scale] = self.local_pose;
         crate::PartPose {
@@ -138,10 +144,10 @@ impl FrameModelPart<'_> {
 }
 
 // no wire: lends the live pose of this setup-animation invocation.
-/// The live local pose at the mid-`HumanoidModel.setupAnim` seam, borrowed only
-/// for the listener. The head, hat, body, arms and legs can be posed here if
-/// present. Edits affect this draw only and are visible to later listeners.
-/// Scale and visibility are not writable through this view.
+/// The live local pose borrowed during `HumanoidModel.setupAnim`. The head, hat, body,
+/// arms and legs can be posed here if present. Later listeners see each edit immediately;
+/// vanilla's remaining animation steps can still change the edited components. The
+/// view is valid only for the current callback. Scale and visibility are not writable here.
 pub trait HumanoidPose {
     /// The local [position, rotation] of a base part. Missing parts, sleeves, the
     /// jacket and pants return `None`.

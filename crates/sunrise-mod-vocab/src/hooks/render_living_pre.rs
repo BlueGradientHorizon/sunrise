@@ -12,11 +12,12 @@ pub trait Hooks {
     /// glowing outline, and `render_living_post`, and the renderer a mod registered for its type
     /// (`register_entity_renderers`), which draws in the model's place; a mod drawing a model of
     /// its own draws it here and cancels. A player's `render_player_pre` comes first and edits the
-    /// same `model`; a cancel here still asks `render_player_post` with no model. `model` lends the
-    /// selected body's hierarchy and bind pose. Use `model.part("nose")` to find a villager's nose,
-    /// then `model.hide(index)` to leave it and its children out of the body and layers on that
-    /// model (such as a spider's eyes). Armour, held items and independent layers are unaffected.
-    /// Missing names return `None`; invalid indices return `false` without editing the model.
+    /// same `event.model`; a cancel here still calls `render_player_post` with `model: None`.
+    /// `event.model` lends the selected body's baked hierarchy and bind pose as a
+    /// [`crate::FrameModelEdit`]. Use `model.part("nose")` to get a villager's nose index, then
+    /// `model.hide(index)` to leave it and its descendants out of the body and layers drawn on
+    /// that model (such as a spider's eyes). Armour, held items and independent layers are
+    /// unaffected. Missing names return `None`; invalid indices return `false` without an edit.
     /// Edits last for this draw only; `draw.keep()` does nothing here.
     #[hook(
         side = "client",
