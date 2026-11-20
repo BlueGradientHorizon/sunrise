@@ -10,6 +10,7 @@ pub mod tests {
     #[cfg(test)]
     use super::*;
     use crate::parts::tests::*;
+    #[cfg(test)]
     use crate::resource_util::move_resources;
     use crate::*;
 
