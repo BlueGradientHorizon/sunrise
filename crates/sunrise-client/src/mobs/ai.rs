@@ -2469,10 +2469,12 @@ fn freeze_tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &
     }
     let can_freeze = can_freeze(m, w);
     if in_snow && can_freeze {
-        m.ticks_frozen =
-            (m.ticks_frozen + 1).min(crate::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
+        m.ticks_frozen = m
+            .ticks_frozen
+            .wrapping_add(1)
+            .min(crate::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
     } else {
-        m.ticks_frozen = (m.ticks_frozen - 2).max(0);
+        m.ticks_frozen = m.ticks_frozen.wrapping_sub(2).max(0);
     }
     if m.age.is_multiple_of(40) && m.is_fully_frozen() && can_freeze {
         m.damage(level, 1.0, Damage::of(DamageKind::Freeze));
@@ -7129,6 +7131,40 @@ mod noai_species_step_tests {
             let b = super::super::bee::get(&bee).unwrap();
             assert_eq!(b.hive, None, "a hive 2^31 blocks away is too far");
             assert_eq!(b.anger_end, i64::MAX);
+        });
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// A saved `TicksFrozen` at an int extreme thaws with Java's wrapping `Math.max(0, ticks - 2)`.
+    #[test]
+    #[ignore = "daily"]
+    fn a_saved_noai_bee_with_extreme_ticks_frozen_thaws_like_vanilla() {
+        use sunrise_core::nbt::Tag;
+        let ran = crate::mobs::world::with_test_world(&[], |w, types| {
+            let kind = Arc::new(types.types["minecraft:bee"].clone());
+            let mob_types = std::collections::HashMap::from([(kind.id.clone(), kind.clone())]);
+            for (saved_ticks, thawed) in [(i32::MIN, i32::MAX - 1), (i32::MAX, i32::MAX - 2)] {
+                let fresh = Mob::new(1, kind.clone(), Vec3::new(2.5, 64.0, 8.5), 0.0);
+                let mut saved = crate::entity_nbt::mob_to_nbt(
+                    &fresh,
+                    [1, 2, 3, 4],
+                    None,
+                    None,
+                    |_| None,
+                    &Default::default(),
+                );
+                let Tag::Compound(map) = &mut saved else {
+                    panic!("a mob saves a compound");
+                };
+                map.insert("NoAI".into(), Tag::Byte(1));
+                map.insert("TicksFrozen".into(), Tag::Int(saved_ticks));
+                let mut bee = crate::entity_nbt::mob_from_nbt(&saved, &mob_types, 1, None).unwrap();
+                assert!(bee.no_ai);
+                assert_eq!(bee.ticks_frozen, saved_ticks);
+                let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                tick(&mut bee, w, &mut level.level(), &mut events);
+                assert_eq!(bee.ticks_frozen, thawed);
+            }
         });
         assert!(ran, "vanilla data is missing");
     }
