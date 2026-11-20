@@ -64,10 +64,20 @@ fn a_bounded_list_past_its_budget_reserves_nothing_for_its_count() {
 
 #[test]
 fn short_java_strings_need_no_allocation_for_their_units() {
-    const SHORT: &[&str] = &["", "a", "éé", "xyz", "𐐷𐐷", "🦀xyz", "abcdef", "ééééééé"];
-    for (len, &text) in SHORT.iter().enumerate() {
+    for text in [
+        "",
+        "a",
+        "éé",
+        "xyz",
+        "𐐷𐐷",
+        "🦀xyz",
+        "abcdef",
+        "ééééééé",
+        "abcdefgh",
+        "éééééééé",
+        "🦀🦀🦀🦀",
+    ] {
         let expected: Vec<u16> = text.encode_utf16().collect();
-        assert_eq!(expected.len(), len);
         let source = expected.clone();
         let encoded =
             write_network(&Tag::String(JavaString::from(text)), Limits::default()).unwrap();
@@ -95,14 +105,14 @@ fn short_java_strings_need_no_allocation_for_their_units() {
 #[test]
 fn a_hashed_heap_string_reserves_once() {
     for text in [
-        "abcdefgh",
-        "éééééééé",
+        "abcdefghi",
+        "ééééééééé",
         "ééééééééééé",
-        "本語日本語日本語",
+        "日本語日本語日本語",
         "🦀🦀🦀🦀🦀🦀",
     ] {
         let expected: Vec<_> = text.encode_utf16().collect();
-        assert!(expected.len() > 7);
+        assert!(expected.len() > 8);
         ALLOCS.with(|count| count.set(Some(0)));
         let hashed = HashedKey::<JavaString>::from_text(black_box(text));
         let allocations = ALLOCS.with(|count| count.replace(None).unwrap());

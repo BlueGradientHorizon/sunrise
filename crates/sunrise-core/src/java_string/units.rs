@@ -1,14 +1,16 @@
 //! Small UTF-16 storage, shared by the plain and hashed string constructors.
 
-pub(crate) const INLINE_CAPACITY: usize = 7;
+pub(crate) const INLINE_CAPACITY: usize = 8;
 
 #[derive(Clone)]
 pub(crate) enum Units {
     Static(&'static [u16]),
     Inline {
         len: u8,
-        units: [u16; INLINE_CAPACITY],
+        units: [u16; INLINE_CAPACITY - 1],
     },
+    // The discriminant supplies the length when all eight units are in use.
+    Full([u16; INLINE_CAPACITY]),
     Heap(Vec<u16>),
 }
 
@@ -16,12 +18,15 @@ impl Units {
     pub(crate) const EMPTY: Self = Self::Static(&[]);
 
     pub(crate) fn inline(units: [u16; INLINE_CAPACITY], len: usize) -> Self {
-        if len == 0 {
-            Self::EMPTY
-        } else {
-            Self::Inline {
-                len: len as u8,
-                units,
+        match len {
+            0 => Self::EMPTY,
+            INLINE_CAPACITY => Self::Full(units),
+            _ => {
+                let [units @ .., _] = units;
+                Self::Inline {
+                    len: len as u8,
+                    units,
+                }
             }
         }
     }
@@ -30,6 +35,7 @@ impl Units {
         match self {
             Self::Static(units) => units,
             Self::Inline { len, units } => &units[..usize::from(*len)],
+            Self::Full(units) => units,
             Self::Heap(units) => units,
         }
     }

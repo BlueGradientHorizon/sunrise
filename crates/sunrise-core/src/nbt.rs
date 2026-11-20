@@ -158,7 +158,7 @@ fn modified_utf8_len(units: &[u16]) -> usize {
 pub fn java_string_heap_bytes(value: &JavaString) -> usize {
     match &value.0 {
         Units::Heap(units) => units.capacity() * size_of::<u16>(),
-        Units::Static(_) | Units::Inline { .. } => 0,
+        Units::Static(_) | Units::Inline { .. } | Units::Full(_) => 0,
     }
 }
 
