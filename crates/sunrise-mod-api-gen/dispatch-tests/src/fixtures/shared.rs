@@ -139,15 +139,11 @@ mod generated {
         include!(concat!(env!("OUT_DIR"), "/dispatch_fixtures_api.rs"));
     }
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
+    pub(super) use self::mod_api::InlineImageReplacement;
     pub(super) use self::mod_api::{
         BlockEntityTickReply, BlockFace, BlockKey, BlockState, CrosshairTarget,
     };
     pub use sunrise_mod_api_macros::__subscriptions;
-    // What `#[__subscriptions]` marks each implemented hook with: these listeners are not built for wasm.
-    macro_rules! __sunrise_mark {
-        ($owner:literal $method:ident) => {};
-    }
-    pub(crate) use __sunrise_mark;
 }
 use generated::*;
 struct Installed {

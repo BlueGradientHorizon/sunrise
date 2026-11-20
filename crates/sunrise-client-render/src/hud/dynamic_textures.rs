@@ -108,6 +108,7 @@ pub struct DynamicTextures {
     /// Each image by its id; its owner is the id's namespace.
     images: BTreeMap<Identifier, Image>,
     limits: Limits,
+    geometry_revision: u64,
 }
 
 struct Image {
@@ -157,6 +158,11 @@ fn lane_key(name: &str) -> &str {
 }
 
 impl DynamicTextures {
+    /// Changes when an image is added, removed or resized; pixel-only updates don't relayout text.
+    pub fn geometry_revision(&self) -> u64 {
+        self.geometry_revision
+    }
+
     /// Mod `owner` (none outside a mod's call) creates image `id` of `size` (width, height) from
     /// `rgba`, `width * height` pixels of four bytes, in a free slot of `pool` (none when the atlas
     /// has no pool), and names it among the atlas's `sprites`. Every refusal comes before the
@@ -210,6 +216,7 @@ impl DynamicTextures {
                 dirty: true,
             },
         );
+        self.geometry_revision = self.geometry_revision.wrapping_add(1);
         Ok(())
     }
     /// Mod `owner` gives its image `id` new pixels, of a `size` of the same class: they go into
@@ -251,6 +258,7 @@ impl DynamicTextures {
                 names.sprites.insert(name.clone(), rect);
             }
             names.live.insert(key.to_owned(), rect);
+            self.geometry_revision = self.geometry_revision.wrapping_add(1);
         }
         image.dirty = true;
         Ok(())
@@ -272,6 +280,7 @@ impl DynamicTextures {
         if names.sprites.get(&name) == held.as_ref() {
             names.sprites.remove(&name);
         }
+        self.geometry_revision = self.geometry_revision.wrapping_add(1);
         Ok(())
     }
     /// The dimensions of a live image, if this id names one.
@@ -434,6 +443,7 @@ mod tests {
                 bytes: 64 * 64 * 4 + 16,
                 slots: [2, 1, 1],
             },
+            geometry_revision: 0,
         }
     }
 
@@ -1238,6 +1248,53 @@ mod tests {
             assert_eq!(update, Err(refusal), "update {size:?}");
             assert_eq!(state(&textures, &sprites), before, "{size:?}");
         }
+    }
+
+    #[test]
+    fn inline_image_cache_tracks_geometry_not_pixel_updates() {
+        let pool = pool();
+        let (mut textures, mut sprites) = (textures(), Tables::default());
+        let id = id("alpha:star");
+        let empty = textures.geometry_revision();
+        textures
+            .create(
+                Some(&pool),
+                &mut sprites.names(),
+                Some("alpha"),
+                &id,
+                [1, 1],
+                &[0; 4],
+            )
+            .unwrap();
+        let created = textures.geometry_revision();
+        assert_ne!(created, empty);
+        textures
+            .update(
+                Some(&pool),
+                &mut sprites.names(),
+                Some("alpha"),
+                &id,
+                [1, 1],
+                &[1; 4],
+            )
+            .unwrap();
+        assert_eq!(textures.geometry_revision(), created);
+        textures
+            .update(
+                Some(&pool),
+                &mut sprites.names(),
+                Some("alpha"),
+                &id,
+                [2, 1],
+                &[2; 8],
+            )
+            .unwrap();
+        let resized = textures.geometry_revision();
+        assert_ne!(resized, created);
+        textures
+            .free(Some(&pool), &mut sprites.names(), Some("alpha"), &id)
+            .unwrap();
+        assert_ne!(textures.geometry_revision(), resized);
     }
 
     /// A frame still holding an image's first patch while the mod updates it again and again: the
