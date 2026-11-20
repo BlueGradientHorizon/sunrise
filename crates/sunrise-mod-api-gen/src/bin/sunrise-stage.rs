@@ -15,11 +15,13 @@
 //! `sunrise-stage fits USES_JSON TARGET_SURFACE`: whether a uses table fits a build's surface,
 //! naming each changed item. Exit 0 fits, 1 does not fit, 2 error.
 //!
-//! `sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--json OUT] [--gate]`:
+//! `sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--covered-by DIR --covered-base DIR] [--json OUT] [--gate]`:
 //! print what changed between two surface exports, breaking changes first. `--notes` attaches
 //! the change notes of DIR (`crates/sunrise-mod-vocab/changes`) whose file names are not in
 //! `--base-notes` (the base tree's folder; required with `--notes`). For an SDK comparison,
-//! `--api-notes-only` excludes engine ids from note attachment and stale-id checking. Exits 1 when a new note
+//! `--api-notes-only` excludes engine ids from note attachment and stale-id checking. `--covered-by` attaches the
+//! notes of its DIR not in `--covered-base` (a landed merge's own notes, against its first parent's) as coverage
+//! only: their ids no longer read as unnoted, and an id among them that did not change is not stale. Exits 1 when a new note
 //! names an id that did not change, or with `--gate` when a breaking change has no note; 2 when
 //! an input cannot be read or the options are wrong.
 use mod_source::mod_uses;
@@ -210,10 +212,11 @@ fn surface_diff(args: &[PathBuf]) -> ! {
     use sunrise_mod_api_gen::surface::notes;
     let [old, new, options @ ..] = args else {
         fail(
-            "usage: sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--json OUT] [--gate]",
+            "usage: sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--covered-by DIR --covered-base DIR] [--json OUT] [--gate]",
         )
     };
     let (mut notes_dir, mut base_notes, mut json, mut landed) = (None, None, None, None);
+    let (mut covered_by, mut covered_base) = (None, None);
     let (mut gate, mut api_notes_only) = (false, false);
     let mut options = options.iter();
     while let Some(option) = options.next() {
@@ -230,6 +233,8 @@ fn surface_diff(args: &[PathBuf]) -> ! {
             Some("--base-notes") => &mut base_notes,
             Some("--json") => &mut json,
             Some("--landed") => &mut landed,
+            Some("--covered-by") => &mut covered_by,
+            Some("--covered-base") => &mut covered_base,
             _ => fail(format!("unknown option {}", option.display())),
         };
         let value = options
@@ -238,6 +243,13 @@ fn surface_diff(args: &[PathBuf]) -> ! {
         *slot = Some(value);
     }
     let mut diff = mod_surface::diff(&read_surface(old), &read_surface(new));
+    let filter_ids = |file: &mut notes::NoteFile| {
+        if api_notes_only {
+            file.ids.retain(|id| {
+                !matches!(id.split_once(':'), Some(("point" | "loop" | "internal", _)))
+            });
+        }
+    };
     let mut stale = Vec::new();
     if let Some(dir) = notes_dir {
         // Without the base's notes every older note would read as new, and stale.
@@ -251,16 +263,22 @@ fn surface_diff(args: &[PathBuf]) -> ! {
             if file.landed != wanted {
                 continue;
             }
-            if api_notes_only {
-                file.ids.retain(|id| {
-                    !matches!(id.split_once(':'), Some(("point" | "loop" | "internal", _)))
-                });
-            }
+            filter_ids(&mut file);
             for id in diff.attach(&file.note, &file.ids) {
                 stale.push(format!(
                     "change note {} names {id}, which did not change",
                     file.note.file
                 ));
+            }
+        }
+    }
+    if let Some(dir) = covered_by {
+        let base = covered_base.unwrap_or_else(|| fail("--covered-by needs --covered-base"));
+        // Read apart from --notes, so neither set's file names can hide or replace the other's.
+        for mut file in notes::read(dir, base).unwrap_or_else(|e| fail(e)) {
+            if file.landed.is_none() {
+                filter_ids(&mut file);
+                diff.attach(&file.note, &file.ids);
             }
         }
     }
@@ -295,7 +313,7 @@ fn main() {
     }
     let usage = || {
         eprintln!(
-            "usage: sunrise-stage ROOT POINTS_JSON INTERNALS_JSON COMMIT [--sync-internals]\n       sunrise-stage surface ROOT OUT [--without-calls] [--with-points-and-loops] [--with-internals]\n       sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--json OUT] [--gate]\n       sunrise-stage uses SURFACE MOD_DIR [--json OUT --made-for BUILD]\n       sunrise-stage fits USES_JSON TARGET_SURFACE"
+            "usage: sunrise-stage ROOT POINTS_JSON INTERNALS_JSON COMMIT [--sync-internals]\n       sunrise-stage surface ROOT OUT [--without-calls] [--with-points-and-loops] [--with-internals]\n       sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--covered-by DIR --covered-base DIR] [--json OUT] [--gate]\n       sunrise-stage uses SURFACE MOD_DIR [--json OUT --made-for BUILD]\n       sunrise-stage fits USES_JSON TARGET_SURFACE"
         );
         std::process::exit(2)
     };
