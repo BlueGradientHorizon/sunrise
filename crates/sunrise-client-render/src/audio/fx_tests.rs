@@ -97,7 +97,9 @@ fn a_cutoff_swept_every_frame_stays_bounded() {
 
 #[test]
 fn a_glide_lands_on_its_target_and_then_bypasses() {
+    // A voice already playing: its first buffer had no effects.
     let mut fx = VoiceFx::default();
+    fx.begin(1, RATE);
     let mut e = SoundEffects::NONE;
     e.gain = 0.25;
     e.lowpass = 2000.0;
@@ -122,4 +124,40 @@ fn a_glide_lands_on_its_target_and_then_bypasses() {
         fx.frame(&mut glide, &mut [1.0, 0.0], false);
     }
     assert!(fx.bypassed());
+}
+
+#[test]
+fn a_voice_starts_on_its_effects_from_its_first_frame() {
+    // Started at gain 0: silent from frame 0, sends included.
+    let mut silent = SoundEffects::NONE;
+    silent.gain = 0.0;
+    silent.room = 1.0;
+    let mut fx = VoiceFx {
+        target: silent,
+        ..VoiceFx::default()
+    };
+    let mut glide = fx.begin(480, RATE);
+    for s in tone(1000.0, 480) {
+        let mut x = [s, s];
+        let send = fx.frame(&mut glide, &mut x, true);
+        assert_eq!((x, send), ([0.0; 2], [0.0; 3]));
+    }
+    // Started behind a wall: filtered from frame 0, exactly as a voice that settled there.
+    let mut muffled = SoundEffects::NONE;
+    muffled.lowpass = 500.0;
+    let signal = tone(6000.0, 480);
+    let mut fx = VoiceFx {
+        target: muffled,
+        ..VoiceFx::default()
+    };
+    let mut glide = fx.begin(signal.len(), RATE);
+    let first: Vec<f32> = signal
+        .iter()
+        .map(|&s| {
+            let mut x = [s, 0.0];
+            fx.frame(&mut glide, &mut x, false);
+            x[0]
+        })
+        .collect();
+    assert_eq!(first, through(muffled, &signal));
 }

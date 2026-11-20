@@ -1118,6 +1118,7 @@ fn mix(mixer: &mut Mixer, data: &mut [f32], channels: usize, rate: u32) {
             );
             continue;
         }
+        c.fx.played(rate);
         for frame in out.chunks_mut(channels) {
             let mut i = c.position as usize;
             if i + 1 >= frames {
@@ -3304,6 +3305,19 @@ mod tests {
             (m.reverbs.input.as_ptr(), m.reverbs.input.capacity()),
             (pointer, capacity)
         );
+    }
+
+    #[test]
+    fn a_sound_started_with_effects_has_them_from_its_first_frame() {
+        let mut m = Mixer::default();
+        let mut c = channel(sine(440.0), None, [0.0, 0.0, 2.0], true);
+        let mut silent = mod_api::SoundEffects::NONE;
+        silent.gain = 0.0;
+        silent.room = 1.0;
+        c.fx.target = silent;
+        m.channels.insert(1, c);
+        assert!(listen(&mut m, 0.1).iter().all(|s| *s == 0.0));
+        assert!(m.reverbs.buses.iter().all(reverb::Reverb::idle));
     }
 
     #[test]

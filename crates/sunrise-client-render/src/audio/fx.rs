@@ -133,7 +133,7 @@ pub(super) struct VoiceFx {
     pub(super) target: SoundEffects,
     /// Where the last buffer ended.
     current: Params,
-    /// The output rate `current` was worked out at; 0 before the first buffer.
+    /// The output rate `current` was worked out at; 0 before the voice's first buffer.
     rate: u32,
     lowpass: [Svf; 2],
     highpass: [Svf; 2],
@@ -177,12 +177,23 @@ impl VoiceFx {
         self.target == SoundEffects::NONE && self.current.is_none()
     }
 
+    /// The mixer's plain path played a buffer of the voice at output rate `rate`: effects asked
+    /// for later glide in from the sound as it was heard.
+    pub(super) fn played(&mut self, rate: u32) {
+        self.rate = rate;
+    }
+
     /// Starts a buffer of `frames` frames at output rate `rate`: the parameters glide from
-    /// where the last buffer ended to the target in equal steps.
+    /// where the last buffer ended to the target in equal steps. The voice's first buffer starts
+    /// on the target: there is no earlier sound to glide from, so a sound started silent, or
+    /// behind a wall, is silent or muffled from its first frame.
     pub(super) fn begin(&mut self, frames: usize, rate: u32) -> Glide {
         let target = Params::of(&self.target, rate as f32, &self.current);
-        if self.rate != rate {
-            // A first buffer, or a new output rate: the filters' warped cutoffs depend on it.
+        if self.rate == 0 {
+            self.current = target;
+            self.rate = rate;
+        } else if self.rate != rate {
+            // A new output rate: the filters' warped cutoffs depend on it.
             self.current.lowpass_g = target.lowpass_g;
             self.current.highpass_g = target.highpass_g;
             self.rate = rate;
