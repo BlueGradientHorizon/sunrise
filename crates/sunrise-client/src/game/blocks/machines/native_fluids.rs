@@ -304,7 +304,7 @@ impl Game<'_> {
                 let real = side_tanks(&tanks, at.side).nth(tank)?;
                 let (fluid, amount) = self.tank_entry(at.pos, real)?;
                 let amount = u32::try_from(amount).ok().filter(|&amount| amount > 0)?;
-                let id = &fluid?.units();
+                let id = fluid?.units();
                 let identity = fluid_identity(id)?;
                 Some(FluidStack {
                     fluid: identity,
@@ -431,7 +431,7 @@ impl Game<'_> {
                     .nth(tank)
                     .filter(|real| tanks.outputs.contains(real))?;
                 let (name, amount) = self.tank_entry(at.pos, real)?;
-                let id = &name?.units();
+                let id = name?.units();
                 let identity = fluid_identity(id)?;
                 let mut state = self.tank_state(at.pos, tanks.tanks.len())?;
                 let entry = &mut state[real];

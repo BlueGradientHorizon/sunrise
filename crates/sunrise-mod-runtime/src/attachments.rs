@@ -1026,8 +1026,9 @@ impl Attachments {
         }
         let invalid = self.raw.as_ref().is_some_and(|raw| {
             NAMESPACE.with_borrow_mut(|key| {
-                key.units_mut().clear();
-                key.units_mut().extend(namespace.encode_utf16());
+                let units = key.units_mut();
+                units.clear();
+                units.extend(namespace.encode_utf16());
                 raw.get(key)
                     .is_some_and(|tag| !matches!(tag, Tag::Compound(_)))
             })
@@ -1060,17 +1061,7 @@ impl Attachments {
     }
     fn store(&mut self, namespace: &str, name: &str, value: Decoded, write: AttachmentWrite) {
         let sync = value.policy.sync;
-        // UTF-8 byte length is an upper bound on UTF-16 units. Reserve once
-        // instead of repeatedly growing the short key buffers during encoding.
-        let [owned_namespace, owned_name] = [namespace, name].map(|text| {
-            let mut units = Vec::with_capacity(text.len());
-            if text.is_ascii() {
-                units.extend(text.bytes().map(u16::from));
-            } else {
-                units.extend(text.encode_utf16());
-            }
-            JavaString::from(units)
-        });
+        let [owned_namespace, owned_name] = [namespace, name].map(JavaString::from);
         let key = (owned_namespace, owned_name);
         self.write_entry(
             &key,
