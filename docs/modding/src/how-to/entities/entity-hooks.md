@@ -93,6 +93,14 @@ still be vetoed. A listener panic restores the originally resolved values, ends
 the dispatch and disables the failed listener for this hook for the session;
 its other hooks remain enabled.
 
+For a player, a veto holds the position accepted at the server's travel boundary;
+it does not rewind reports already accepted before that tick. While the veto
+stands, the server corrects new reports that would move the player away. A
+replacement uses the server branch's displacement and velocity and sends the
+ordinary position and velocity corrections if needed. A no-op, including an
+input-only edit that leaves the branch's position and velocity unchanged, keeps
+the ordinary client-reported movement path. The client never calls this hook.
+
 ## Teleport hooks
 
 `ender_pearl_teleport` covers player-owned and mob-owned pearls. Its `owner` is an

@@ -62,10 +62,10 @@ References verified at worktree HEAD `9556bd72a8`; paths below are relative to
 
 | Route / owner | Current file:line | Required integration |
 | --- | --- | --- |
-| Player travel / air / glide | `motion/travel.rs` (`player_travel`, `travel_fall_flying`) | One travel decision before branch selection; water, lava, air, glide and creative flying covered |
+| Player travel / air / glide | `motion/travel.rs` (`player_travel`, `travel_fall_flying`) | One travel decision for the selected branch, before it runs; water, lava, air, glide and creative flying covered |
 | Physical player movement | `motion.rs:2297`, trait adapter `:3039` | Shared move operation, retain cause through adapters |
 | Shulker box push / piston limit | `motion.rs:2292`, `:2492` | Same move moment before external-motion restrictions |
-| Controlled window simulation | `game/network/remote/mod.rs:7129` | Predict with client-side context |
+| Controlled window simulation | `game/network/remote/mod.rs:7129` | No travel listener in the client-side context |
 | Local tick / replay | `motion.rs:1367`, `lan/prediction.rs:900` | Same deterministic decision/apply path; replay is not a new action |
 | Integrated, LAN and dedicated guest turns | `game/network/lan_actions/turns.rs:6`, `:18`, `:45` | Server context bound to acting guest, never host player identity |
 | Action service and scoped fake actors | `game/modding/native_server.rs:538`, `:549` | Enter existing player action validation; physical motion subsequently uses shared hooks |
@@ -98,7 +98,16 @@ measured need from a real mod, as its own PR. Both take
 the existing path without snapshots, allocations or mod scans when nobody
 subscribes — dispatch only to subscribed mods, resolved once.
 
-Integrate with the [client action pipeline](client-action-pipeline.md), preserving
+The first native travel hook runs only on the server. For players, its single
+`ServerPlayer.doTick` travel boundary governs new position reports, not reports
+already accepted. The ordinary move validator corrects divergent reports while
+a veto stands. A changed replacement uses the server branch's displacement and
+velocity through the existing position and velocity corrections. A no-op or an
+input-only edit with bit-identical branch position and velocity does not change
+the move validator or send a correction. There is no new packet or replayed
+hook. Integrated and network players use the same path.
+
+For future shared prediction, integrate with the [client action pipeline](client-action-pipeline.md), preserving
 its input/action ordering and server validation. Negotiate movement-rule identity
 and deterministic configuration before enabling prediction. Server validates intent,
 attachment state, reach and environment independently; it never trusts a client's

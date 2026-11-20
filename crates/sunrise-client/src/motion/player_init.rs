@@ -106,6 +106,7 @@ impl PlayerMotion {
             burn_from_stepping_immune: false,
             old_position: position,
             server_copy: false,
+            travel_probe: false,
             replaying: false,
             wall_hit_events: None,
             client_side: false,

@@ -2,7 +2,7 @@
 use super::*;
 use sunrise_client::{
     lan::guest::Guest,
-    motion::{MotionResources, PlayerMotion},
+    motion::{MotionResources, PlayerMotion, ServerTravel},
 };
 use sunrise_core::geometry::Vec3;
 
@@ -153,6 +153,7 @@ impl Game<'_> {
             return;
         }
         let at = g.position;
+        let travel_teleport = g.teleport_counter;
         let dimensions = g.dimensions();
         let (sneaking, sleeping) = (g.sneaking, g.sleeping);
         let riding = g.vehicle.is_some();
@@ -172,7 +173,7 @@ impl Game<'_> {
             let burn_immune = game.wears_burn_from_stepping_immunity();
             let boat = game.riding_boat_fluid_box();
             let Some(player) = game.player.as_mut() else {
-                return (Vec::new(), None);
+                return (Vec::new(), None, ServerTravel::Continue);
             };
             player.fluids.boat = boat;
             // The supporting-block scan for this tick's moves reads the boots.
@@ -274,7 +275,7 @@ impl Game<'_> {
                     step => step.map(|step| (step, step.vanilla)),
                 };
                 let Some(player) = game.player.as_mut() else {
-                    return (collected, None);
+                    return (collected, None, ServerTravel::Continue);
                 };
                 collected.append(&mut player.events);
                 player.events = collected;
@@ -336,7 +337,7 @@ impl Game<'_> {
             soul = game.tick_soul_speed();
             game.handle_shoulder_entities();
             let Some(player) = game.player.as_mut() else {
-                return (Vec::new(), None);
+                return (Vec::new(), None, ServerTravel::Continue);
             };
             let _ = player.peaceful_regeneration(&game.loop_context, rules);
             let _ = player.food_tick(
@@ -353,13 +354,15 @@ impl Game<'_> {
             events.append(&mut player.events);
             player.carry_client_movement(tick_movement);
             let side = game_side!(game);
-            let _ = motion_world!(game, side, player).server_travel();
+            let travel = motion_world!(game, side, player)
+                .server_travel()
+                .unwrap_or(ServerTravel::Continue);
             // Player.aiStep's entity contacts run with the player's body,
             // even when the level and its mobs are frozen. Flush their damage
             // events and marked velocity through the existing guest path.
             game.touch_pufferfish();
             let Some(player) = game.player.as_mut() else {
-                return (events, None);
+                return (events, None, ServerTravel::Continue);
             };
             // Landing damage from this travel reaches the tracker too.
             events.append(&mut player.events);
@@ -376,11 +379,15 @@ impl Game<'_> {
             }
             game.record_combat(&events);
             game.wear_armor(&events);
-            (events, velocity)
+            (events, velocity, travel)
         });
-        let Some((events, marked)) = events else {
+        let Some((events, marked, travel)) = events else {
             return;
         };
+        let travel_synced = self
+            .lan
+            .as_mut()
+            .is_some_and(|host| host.hub.apply_server_travel(conn, travel_teleport, travel));
         if let Some((at, velocity)) = soul
             && let Some(host) = self.lan.as_ref()
         {
@@ -587,7 +594,9 @@ impl Game<'_> {
             {
                 self.native_player_velocity(uuid, &name, [v.x, v.y, v.z]);
             }
-            if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+            if !travel_synced
+                && let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
+            {
                 g.send(&C::SetEntityMotion(play::SetEntityMotion {
                     id: g.entity_id,
                     velocity: [v.x, v.y, v.z],

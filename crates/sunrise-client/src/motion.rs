@@ -133,6 +133,7 @@ pub use surface::{
     FrictionLevel, SideLevel, block_friction, native_block_jump_factor, native_block_speed_factor,
     native_is_ladder, read_friction,
 };
+pub use travel::ServerTravel;
 
 pub struct MotionResources {
     pub attributes: Arc<Catalog>,
@@ -543,6 +544,9 @@ pub struct PlayerMotion {
     /// it travels on the server: `isLocalInstanceAuthoritative` is false, so
     /// its moves check no fall damage.
     pub server_copy: bool,
+    /// Scratch branch evaluation for an input-only server travel proposal.
+    /// It may query the level, but never fires move/bounce callbacks or publishes position.
+    travel_probe: bool,
     /// A tick played again (`replayed_tick`): the notifications of what it did (`living_jump`,
     /// `living_fall`, `player_flyable_fall`) don't fire. What its movement asks (block parts'
     /// answers, the movement value hooks) still answers, as on any tick.
@@ -1431,11 +1435,10 @@ impl MotionWorld<'_, '_, '_> {
     }
     /// ServerPlayer's own travel: the server simulates a player too
     /// (`MoveSimulationType.AUTHORITATIVE_SIDE_AND_SERVER`), with no input
-    /// (it never sets xxa/zza). Only the delta movement it leaves stays: it
-    /// is what a hurt sends the player (`ServerEntity.sendChanges`), and
-    /// what the next knockback starts from; the client's next move places
-    /// the player.
-    pub fn server_travel(&mut self) -> Result<()> {
+    /// (it never sets xxa/zza). Normally only the delta movement stays, for
+    /// knockback and later move validation. When `living_travel` changes the
+    /// travel, the connection's move validator owns the position correction.
+    pub fn server_travel(&mut self) -> Result<ServerTravel> {
         let p = &mut *self.player;
         let (position, ground, collision) = (p.position, p.ground, p.collision);
         let (history, fall_distance, steps) = (p.history.clone(), p.fall_distance, p.steps);
@@ -1986,14 +1989,22 @@ impl MotionWorld<'_, '_, '_> {
     /// horizontal displacement. The gate is this invocation's (#2414), armed
     /// here before the move's own handling, no-physics included.
     pub fn move_self(&mut self, gate: &mut MoveGate, movement: Vec3) -> Result<()> {
-        crate::move_gate::arm(
-            gate,
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            MoverType::SelfMovement,
-            movement,
-        );
+        if self.player.travel_probe {
+            gate.arm(
+                self.player.entity_id as u32,
+                MoverType::SelfMovement,
+                movement,
+            );
+        } else {
+            crate::move_gate::arm(
+                gate,
+                self.loop_context,
+                self.player.entity_id as u32,
+                "minecraft:player",
+                MoverType::SelfMovement,
+                movement,
+            );
+        }
         if gate.skipped() {
             return Ok(());
         }
@@ -2116,7 +2127,7 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
     fn set_position(&mut self, p: Vec3) -> Result<()> {
         let from = self.player.position;
         self.player.position = p;
-        if from != p {
+        if from != p && !self.player.travel_probe {
             section_writes::position_written(self.player, from);
         }
         Ok(())
@@ -2548,6 +2559,9 @@ impl RestitutionWorld for MotionWorld<'_, '_, '_> {
         fall_distance: f64,
         movement: Vec3,
     ) -> Result<Vec3> {
+        if self.player.travel_probe {
+            return Ok(movement);
+        }
         self.player.events.push(MotionEvent::Bounce {
             state,
             position,

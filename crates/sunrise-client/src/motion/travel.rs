@@ -5,17 +5,33 @@ use super::{MotionEvent, MotionWorld, Result, fall_flying_movement};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_world::{living_air, move_gate::MoveGate};
 
+/// How the server's own travel changes the movement the client may report.
+#[derive(Clone, Copy)]
+pub enum ServerTravel {
+    /// The usual client-reported movement stands.
+    Continue,
+    /// Reject new position reports until the next server travel decision.
+    Veto,
+    /// Commit the server branch's displacement instead of relying on the client.
+    Replace { position: Vec3, on_ground: bool },
+}
+
+#[derive(Clone, Copy)]
+enum TravelBranch {
+    Water,
+    Lava,
+    Glide,
+    EndGlide,
+    Air,
+}
+
 impl MotionWorld<'_, '_, '_> {
     pub fn travel_in_air(&mut self, gate: &mut MoveGate, input: Vec3) -> Result<()> {
         living_air::travel_in_air(self, gate, input)
     }
     /// Player.travel: swim steering, then LivingEntity.travel (fluids first,
     /// then gliding, then air), keeping 0.6 of the vertical speed while flying.
-    pub(super) fn player_travel(&mut self, input: Vec3) -> Result<()> {
-        // The player's one physical move this tick goes through the move gate
-        // (#2414): whichever travel branch runs, `move_self` arms the gate it
-        // receives here.
-        let mut gate = MoveGate::new();
+    pub(super) fn player_travel(&mut self, requested_input: Vec3) -> Result<ServerTravel> {
         if self.player.swimming {
             let look_y =
                 sunrise_world::view_direction::view_vector(self.player.pitch, self.player.yaw).y;
@@ -32,80 +48,137 @@ impl MotionWorld<'_, '_, '_> {
                 self.player.velocity.y += (look_y - self.player.velocity.y) * blend;
             }
         }
-        // The living_travel hook (#2414): one decision before the branch
-        // selection, on the authoritative side, one branch with no listener.
-        // A cancel skips the invocation - the branch, its nested move and
-        // the flying damping below included; the swim steering above, part
-        // of the tick's earlier processing, is not undone.
-        let mut input = input;
-        let mut velocity = self.player.velocity;
-        // A replayed tick runs the resolved values: replay callbacks never
-        // reach a listener.
+        let branch = self.travel_branch()?;
+        let requested_velocity = self.player.velocity;
+        let mut input = requested_input;
+        let mut velocity = requested_velocity;
         if !self.player.replaying
             && !crate::travel_gate::decide(
                 self.loop_context,
                 self.player.entity_id as u32,
                 "minecraft:player",
-                || self.travel_mode(),
+                || {
+                    use sunrise_world::travel::TravelMode;
+                    match branch {
+                        TravelBranch::Water => TravelMode::Water,
+                        TravelBranch::Lava => TravelMode::Lava,
+                        TravelBranch::Glide => TravelMode::Glide,
+                        _ if self.player.flying => TravelMode::Flying,
+                        _ => TravelMode::Air,
+                    }
+                },
                 &mut input,
                 &mut velocity,
             )
         {
-            return Ok(());
+            return Ok(ServerTravel::Veto);
         }
+
+        // An input write alone need not change the result: glide ignores it,
+        // small inputs can be below the move-relative threshold, and a wall
+        // can stop the whole change. Compare the branch's motion on scratch
+        // bodies; only the real travel below fires move/bounce callbacks.
+        let changed = self.player.server_copy
+            && (!same_vector(velocity, requested_velocity)
+                || (!same_vector(input, requested_input)
+                    && !matches!(branch, TravelBranch::Glide)
+                    && match (
+                        self.measure_travel(branch, requested_input),
+                        self.measure_travel(branch, input),
+                    ) {
+                        (Ok(before), Ok(after)) => before != after,
+                        // A failed scratch evaluation must not skip the real travel.
+                        _ => true,
+                    }));
         self.player.velocity = velocity;
-        // The flying damping keeps 0.6 of the vertical speed the branch starts
-        // from: the accepted replacement's, when a listener replaced it.
+        self.apply_player_travel(branch, input)?;
+        Ok(if changed {
+            ServerTravel::Replace {
+                position: self.player.position,
+                on_ground: self.player.ground.on_ground,
+            }
+        } else {
+            ServerTravel::Continue
+        })
+    }
+
+    fn measure_travel(&mut self, branch: TravelBranch, input: Vec3) -> Result<[[u64; 3]; 2]> {
+        let mut body = self.player.clone();
+        body.travel_probe = true;
+        MotionWorld {
+            player: &mut body,
+            scene: self.scene,
+            entities: self.entities,
+            assets: self.assets,
+            collision_binding: self.collision_binding,
+            resources: self.resources,
+            health: self.health,
+            tag_items: self.tag_items,
+            loop_context: self.loop_context,
+            side: self.side,
+            damage_hooks: self.damage_hooks,
+            block_registries: self.block_registries,
+        }
+        .apply_player_travel(branch, input)?;
+        Ok([
+            body.position.components().map(f64::to_bits),
+            body.velocity.components().map(f64::to_bits),
+        ])
+    }
+
+    fn apply_player_travel(&mut self, branch: TravelBranch, input: Vec3) -> Result<()> {
+        // Creative flight damps the accepted vertical speed, not the speed
+        // left by the branch after the move.
         let flying_y = self.player.flying.then_some(self.player.velocity.y);
-        self.living_travel(&mut gate, input)?;
+        self.apply_travel_branch(branch, &mut MoveGate::new(), input)?;
         if let Some(y) = flying_y {
             self.player.velocity.y = y * 0.6;
         }
         Ok(())
     }
-    /// `LivingEntity.travel`: in a fluid (`isAffectedByFluids`: not while
-    /// flying), gliding, or in the air.
+
+    /// `LivingEntity.travel` without `Player.travel`'s swim steering, hook and
+    /// flight damping (the rider's route).
     pub(super) fn living_travel(&mut self, gate: &mut MoveGate, input: Vec3) -> Result<()> {
-        if !self.player.flying
-            && (self.player.fluids.was_touching_water || self.player.is_in_lava())
-        {
-            sunrise_world::living_fluid::travel_in_fluid(self, gate, input)?;
-            Ok(())
-        } else if self.player.fall_flying {
-            // LivingEntity.travelFallFlying: on a climbable the glide ends and
-            // the player moves like in the air.
-            if self.climbable()? {
+        let branch = self.travel_branch()?;
+        self.apply_travel_branch(branch, gate, input)
+    }
+
+    fn travel_branch(&mut self) -> Result<TravelBranch> {
+        Ok(
+            if !self.player.flying && self.player.fluids.was_touching_water {
+                TravelBranch::Water
+            } else if !self.player.flying && self.player.is_in_lava() {
+                TravelBranch::Lava
+            } else if self.player.fall_flying {
+                if self.climbable()? {
+                    TravelBranch::EndGlide
+                } else {
+                    TravelBranch::Glide
+                }
+            } else {
+                TravelBranch::Air
+            },
+        )
+    }
+
+    fn apply_travel_branch(
+        &mut self,
+        branch: TravelBranch,
+        gate: &mut MoveGate,
+        input: Vec3,
+    ) -> Result<()> {
+        match branch {
+            TravelBranch::Water | TravelBranch::Lava => {
+                sunrise_world::living_fluid::travel_in_fluid(self, gate, input)
+            }
+            TravelBranch::Glide => self.travel_fall_flying(gate),
+            TravelBranch::EndGlide => {
                 self.travel_in_air(gate, input)?;
                 self.player.fall_flying = false;
                 Ok(())
-            } else {
-                self.travel_fall_flying(gate)
             }
-        } else {
-            self.travel_in_air(gate, input)
-        }
-    }
-    /// The branch this travel is about to run, as the `living_travel` hook
-    /// of #2414 hears it (its `mode`, built only when a listener asks): the
-    /// same branch the selection below picks, fluid first, then the glide,
-    /// with the flying damping riding the air branch.
-    fn travel_mode(&self) -> sunrise_world::travel::TravelMode {
-        use sunrise_world::travel::TravelMode;
-        if !self.player.flying
-            && (self.player.fluids.was_touching_water || self.player.is_in_lava())
-        {
-            // `travel_in_fluid` picks water first.
-            if self.player.fluids.was_touching_water {
-                TravelMode::Water
-            } else {
-                TravelMode::Lava
-            }
-        } else if self.player.fall_flying {
-            TravelMode::Glide
-        } else if self.player.flying {
-            TravelMode::Flying
-        } else {
-            TravelMode::Air
+            TravelBranch::Air => self.travel_in_air(gate, input),
         }
     }
     /// LivingEntity.travelFallFlying with updateFallFlyingMovement.
@@ -171,6 +244,10 @@ impl MotionWorld<'_, '_, '_> {
         }
         Ok(())
     }
+}
+
+fn same_vector(left: Vec3, right: Vec3) -> bool {
+    left.components().map(f64::to_bits) == right.components().map(f64::to_bits)
 }
 
 #[cfg(test)]

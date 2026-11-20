@@ -22,7 +22,13 @@ pub trait Hooks {
     /// listener panics, the game uses the originally resolved values, skips later
     /// listeners for that invocation and disables the failed listener for this
     /// hook for the session. The hook takes a loop context, not a `Host`.
-    /// Beyond NeoForge: there is no counterpart.
+    ///
+    /// For a player, the veto takes effect at the server's travel boundary:
+    /// reports it already accepted are not rewound. While the veto stands,
+    /// the server corrects new movement reports to its accepted position.
+    /// Until shared prediction lands, a replacement that changes the result
+    /// also uses the existing position and velocity corrections. The hook
+    /// never runs on the client. Beyond NeoForge: there is no counterpart.
     #[hook(
         side = "server",
         contract = "cancel",
@@ -30,7 +36,6 @@ pub trait Hooks {
         context = "loop",
         cancellable = true,
         isolate = true,
-        non_exhaustive = true,
         output_validator = "crate::entity::types::refused_travel_output",
         neoforge = "none (fork addition; see travel-and-move.md, #2308)",
         target = "sunrise_client_lib::travel_gate::native_living_travel"
