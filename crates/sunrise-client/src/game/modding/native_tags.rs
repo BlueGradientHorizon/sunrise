@@ -1,6 +1,6 @@
 //! One membership implementation for full-game and in-write tag services.
-use mod_api::{BlockKey, FluidKey, ItemKey, TagKey};
-use sunrise_items::items::Items;
+use mod_api::{BlockKey, FluidKey, ItemKey, ItemTagMembers, TagKey};
+use sunrise_items::items::{Items, TagRegistry};
 
 pub(super) fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Option<bool> {
     let items = items?;
@@ -14,19 +14,28 @@ pub(super) fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Op
         )
     })
 }
-pub(super) fn items(items: Option<&Items>, tag: TagKey) -> Option<Vec<ItemKey>> {
-    let items = items?;
-    mod_api::__private::with_tag_name(tag, |name| {
-        items.item_tag_order.get(name?).map_or_else(
-            || Some(Vec::new()),
-            |members| {
-                members
-                    .iter()
-                    .map(|id| mod_api::__private::item_key(id))
-                    .collect()
-            },
-        )
+pub(super) fn items(items: Option<&Items>, tag: TagKey) -> ItemTagMembers {
+    let Some(items) = items.filter(|items| items.item_tags_loaded()) else {
+        return ItemTagMembers::Unavailable;
+    };
+    mod_api::__private::with_tag_name(tag, |name| match name {
+        Some(name) => item_members(items.tag_members(TagRegistry::Item, name)),
+        None => ItemTagMembers::Unavailable,
     })
+}
+
+/// Map complete ordered membership from either a host snapshot or a loot table.
+pub(super) fn item_members<S: AsRef<str>>(
+    members: Option<impl IntoIterator<Item = S>>,
+) -> ItemTagMembers {
+    let Some(members) = members else {
+        return ItemTagMembers::Missing;
+    };
+    members
+        .into_iter()
+        .map(|id| mod_api::__private::item_key(id.as_ref()))
+        .collect::<Option<Vec<_>>>()
+        .map_or(ItemTagMembers::Unavailable, ItemTagMembers::Members)
 }
 pub(super) fn fluids(items: Option<&Items>, tag: TagKey) -> Option<Vec<FluidKey>> {
     let items = items?;
@@ -70,7 +79,7 @@ macro_rules! impl_tags {
                 let $this = self;
                 $crate::game::native_tags::is_in_tag($items, item, tag)
             }
-            fn items(&self, tag: mod_api::TagKey) -> Option<Vec<mod_api::ItemKey>> {
+            fn items(&self, tag: mod_api::TagKey) -> mod_api::ItemTagMembers {
                 let $this = self;
                 $crate::game::native_tags::items($items, tag)
             }
@@ -196,7 +205,7 @@ mod tests {
         );
         assert_eq!(
             items(Some(&table), tag),
-            None,
+            ItemTagMembers::Unavailable,
             "unresolved members must not produce a partial list"
         );
     }
@@ -211,26 +220,40 @@ mod tests {
         let missing =
             mod_api::__private::tag_key(&mod_api::Identifier::parse("test:missing").unwrap())
                 .unwrap();
-        let mut table = Items::for_tests(Default::default());
-        table
-            .item_tags
-            .insert("test:reload".into(), ["minecraft:stick".into()].into());
-        table
-            .item_tag_order
-            .insert("test:reload".into(), vec!["minecraft:stick".into()]);
+        let mut table = Items::empty();
+        assert_eq!(items(Some(&table), tag), ItemTagMembers::Unavailable);
+        table.set_tags(
+            TagRegistry::Item,
+            [
+                (
+                    "test:reload".into(),
+                    vec!["minecraft:stone".into(), "minecraft:stick".into()],
+                ),
+                ("test:missing".into(), Vec::new()),
+            ]
+            .into(),
+        );
         assert_eq!(is_in_tag(Some(&table), stick, tag), Some(true));
-        assert_eq!(items(Some(&table), tag), Some(vec![stick]));
-        table
-            .item_tags
-            .insert("test:reload".into(), ["minecraft:stone".into()].into());
-        table
-            .item_tag_order
-            .insert("test:reload".into(), vec!["minecraft:stone".into()]);
+        assert_eq!(
+            items(Some(&table), tag),
+            ItemTagMembers::Members(vec![stone, stick])
+        );
+        assert_eq!(
+            items(Some(&table), missing),
+            ItemTagMembers::Members(vec![])
+        );
+        table.set_tags(
+            TagRegistry::Item,
+            [("test:reload".into(), vec!["minecraft:stone".into()])].into(),
+        );
         assert_eq!(is_in_tag(Some(&table), stick, tag), Some(false));
-        assert_eq!(items(Some(&table), tag), Some(vec![stone]));
+        assert_eq!(
+            items(Some(&table), tag),
+            ItemTagMembers::Members(vec![stone])
+        );
         assert_eq!(is_in_tag(Some(&table), stone, missing), Some(false));
-        assert_eq!(items(Some(&table), missing), Some(vec![]));
+        assert_eq!(items(Some(&table), missing), ItemTagMembers::Missing);
         assert_eq!(is_in_tag(None, stone, tag), None);
-        assert_eq!(items(None, tag), None);
+        assert_eq!(items(None, tag), ItemTagMembers::Unavailable);
     }
 }

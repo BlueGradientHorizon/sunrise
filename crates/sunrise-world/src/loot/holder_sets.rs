@@ -63,7 +63,7 @@ impl Binding {
             return Ok(false);
         }
         let universe = || self.universes[registry].clone();
-        let tag = |tag: &str| Ok(loot_tags::members(tags, registry, tag));
+        let tag = |tag: &str| Ok(loot_tags::members(tags, registry, tag).unwrap_or_default());
         let entry = |id: &str| Ok(vec![id.to_owned()]);
         let lookup = crate::holder_set::StringLookup {
             what: registry,

@@ -1,7 +1,7 @@
 struct TestTags;
 impl engine::LootTags for TestTags {
-    fn members(&self, _: &str, _: &str) -> Vec<String> {
-        Vec::new()
+    fn members(&self, _: &str, _: &str) -> Option<Vec<String>> {
+        None
     }
 }
 struct TagReader;
@@ -32,19 +32,20 @@ impl ModLootFunction for TagReader {
         let tag = tags
             .key(&mod_api::Identifier::parse("test:ingredients").unwrap())
             .unwrap();
-        let members = tags.items(tag).unwrap();
-        stack.count = if tags.is_in_tag(stack.item, tag) == Some(true) {
-            assert_eq!(
-                members
-                    .iter()
-                    .map(|key| mod_api::__private::item_key_id(*key).unwrap())
-                    .collect::<Vec<_>>(),
-                ["minecraft:potion", "minecraft:stick"]
-            );
-            2
-        } else {
-            assert!(members.is_empty());
-            0
+        stack.count = match tags.items(tag) {
+            mod_api::ItemTagMembers::Members(members) if members.is_empty() => 1,
+            mod_api::ItemTagMembers::Members(members) => {
+                assert_eq!(
+                    members
+                        .iter()
+                        .map(|key| mod_api::__private::item_key_id(*key).unwrap())
+                        .collect::<Vec<_>>(),
+                    ["minecraft:potion", "minecraft:stick"]
+                );
+                2
+            }
+            mod_api::ItemTagMembers::Missing => 0,
+            mod_api::ItemTagMembers::Unavailable => panic!("loot has a loaded item table"),
         };
         Ok(stack)
     }
@@ -64,7 +65,7 @@ impl mod_api::ModLootCondition for TagReader {
             .key(&mod_api::Identifier::parse("test:missing").unwrap())
             .unwrap();
         assert_eq!(tags.is_in_tag(stick, missing), Some(false));
-        assert!(tags.items(missing).unwrap().is_empty());
+        assert_eq!(tags.items(missing), mod_api::ItemTagMembers::Missing);
         Ok(holds)
     }
 }
@@ -83,15 +84,22 @@ fn loot_types_read_current_membership_and_order_after_tag_reload() {
             super::super::resolve_stack_boundary_test_items();
             for (members, expected_count, expected_holds) in [
                 (
-                    vec!["minecraft:potion".to_owned(), "minecraft:stick".to_owned()],
+                    Some(vec![
+                        "minecraft:potion".to_owned(),
+                        "minecraft:stick".to_owned(),
+                    ]),
                     2,
                     true,
                 ),
-                (Vec::new(), 0, false),
+                (Some(Vec::new()), 1, false),
+                (None, 0, false),
             ] {
                 items.set_tags(
                     TagRegistry::Item,
-                    HashMap::from([("test:ingredients".into(), members)]),
+                    members
+                        .into_iter()
+                        .map(|members| ("test:ingredients".into(), members))
+                        .collect(),
                 );
                 let mut value = stack();
                 let mut holds = false;

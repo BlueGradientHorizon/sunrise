@@ -350,13 +350,17 @@ A bare name uses the `minecraft` namespace; an invalid name refuses the mod at l
 `tags.key(&identifier)` resolves the same key from a validated identifier. Naming a tag does
 not require it to have any members. Item, block and fluid tags share one name table; the
 membership method chooses the registry. Reload replaces membership, not key identity.
-`tags.is_in_tag(item_key, tag_key)` tests merged item membership. `tags.items(tag_key)`,
-`tags.blocks(tag_key)` and `tags.fluids(tag_key)` return registered keys in vanilla's member order. Unknown tags
-return false or empty lists. Clients read the tags sent by their server. Membership reads return `None` before
-authoritative tags are applied or if the relevant registry mapping is unavailable. Key resolution itself can be
-refused if the runtime cannot allocate a name slot. No lookup stringifies a retained key.
-Block enumeration returns `BlockKey` values, including blocks no mod requested. An unresolved
-member returns `None` for the entire list, not a partial result.
+`tags.is_in_tag(item_key, tag_key)` tests merged item membership. It returns `Some(false)`
+for either an absent tag or a loaded empty tag. `tags.items(tag_key)` tells them apart:
+`ItemTagMembers::Missing` means the tag is absent; `ItemTagMembers::Members(keys)` gives the
+loaded members in vanilla's order, possibly none. `ItemTagMembers::Unavailable` means the
+authoritative item tags have not been applied or a member key cannot be resolved. It never
+returns a partial list. Clients read only the tags sent by their server.
+
+`tags.blocks(tag_key)` and `tags.fluids(tag_key)` return registered keys in vanilla's member
+order, an empty list for an unknown tag, or `None` when the tags or a mapping are unavailable.
+Block enumeration includes blocks no mod requested. Key resolution itself can be refused if
+the runtime cannot allocate a name slot. No lookup stringifies a retained key.
 The engine `TagRegistry`, `StackData`, `StackView` and `DisplayContext` are not API types.
 
 ## Scoped Parts

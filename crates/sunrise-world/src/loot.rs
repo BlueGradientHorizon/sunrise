@@ -1020,7 +1020,7 @@ impl LootData {
     /// Tag members in tag order (nested tags expanded in place, duplicates
     /// dropped).
     fn tag(&self, registry: &str, name: &str) -> Vec<String> {
-        loot_tags::members(&self.tags, registry, name)
+        self.members(registry, name).unwrap_or_default()
     }
     /// A published HolderSet: "#tag", "id" or resolved IDs. Objects bind at load.
     fn holder_set(&self, registry: &str, v: &Value) -> Vec<String> {

@@ -1,5 +1,5 @@
 //! Adapt the current loot evaluator's tag reads to the existing API resource.
-use mod_api::{BlockKey, FluidKey, Identifier, ItemKey, TagKey, Tags};
+use mod_api::{BlockKey, FluidKey, Identifier, ItemKey, ItemTagMembers, TagKey, Tags};
 
 pub(crate) struct LootTags<'a>(pub &'a dyn sunrise_world::loot::LootTags);
 
@@ -11,19 +11,17 @@ impl Tags for LootTags<'_> {
         let item = mod_api::__private::item_key_id(item)?;
         mod_api::__private::with_tag_name(tag, |tag| Some(self.0.contains("item", tag?, item)))
     }
-    fn items(&self, tag: TagKey) -> Option<Vec<ItemKey>> {
-        mod_api::__private::with_tag_name(tag, |tag| {
-            self.0
-                .members("item", tag?)
-                .iter()
-                .map(|id| mod_api::__private::item_key(id))
-                .collect()
+    fn items(&self, tag: TagKey) -> ItemTagMembers {
+        mod_api::__private::with_tag_name(tag, |tag| match tag {
+            Some(tag) => super::native_tags::item_members(self.0.members("item", tag)),
+            None => ItemTagMembers::Unavailable,
         })
     }
     fn blocks(&self, tag: TagKey) -> Option<Vec<BlockKey>> {
         mod_api::__private::with_tag_name(tag, |tag| {
             self.0
                 .members("block", tag?)
+                .unwrap_or_default()
                 .iter()
                 .map(|id| mod_api::__private::block_key(id))
                 .collect()
@@ -33,6 +31,7 @@ impl Tags for LootTags<'_> {
         mod_api::__private::with_tag_name(tag, |tag| {
             self.0
                 .members("fluid", tag?)
+                .unwrap_or_default()
                 .iter()
                 .map(|id| mod_api::__private::fluid_key(id))
                 .collect()

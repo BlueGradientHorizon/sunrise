@@ -17,10 +17,21 @@ impl TagKey {
     }
 }
 
+/// The result of reading one item tag from the current authoritative snapshot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+// exhaustive: the lookup can only find a tag, miss it, or be unavailable.
+pub enum ItemTagMembers {
+    /// The snapshot has no tag of this name.
+    Missing,
+    /// The loaded tag's members in vanilla's order. The list may be empty.
+    Members(Vec<ItemKey>),
+    /// The snapshot or a required key mapping is unavailable. No partial list is returned.
+    Unavailable,
+}
+
 /// Read merged block, item and fluid tags without borrowing the game's registry structs.
-/// Unknown tags answer false or an empty member list. A client reads the tags its server
-/// sent. Membership reads answer `None` before authoritative tags are loaded, on a client
-/// before its server's are applied, or while their key table is unavailable.
+/// A client reads the tags its server sent. [`Tags::items`] distinguishes absent tags
+/// from loaded empty tags; the membership predicate treats both as false.
 pub trait Tags {
     /// Resolve a validated name once. The name need not currently have members;
     /// retain its key across reloads. None if the runtime cannot allocate a name slot.
@@ -40,9 +51,12 @@ pub trait Tags {
             crate::world::phase::LoadAccess::Metadata,
         )
     }
-    /// Item members in vanilla's order, including unrequested vanilla items.
-    /// Unknown tags are empty; unavailable authoritative tags or item mappings answer None.
-    fn items(&self, _tag: TagKey) -> Option<Vec<ItemKey>> {
+    /// Read the current item tag, including unrequested vanilla items, in vanilla's order.
+    /// An absent tag is [`ItemTagMembers::Missing`], not a loaded empty list.
+    /// Before the authoritative item tags are applied, or if a required key mapping
+    /// cannot be resolved, the result is [`ItemTagMembers::Unavailable`]. A retained
+    /// key reads the current snapshot on each call, including after reload.
+    fn items(&self, _tag: TagKey) -> ItemTagMembers {
         crate::world::phase::unprovided(
             "Tags::items",
             "tags_items",

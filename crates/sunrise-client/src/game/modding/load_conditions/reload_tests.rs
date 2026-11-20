@@ -66,6 +66,8 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
         &root.join("datapacks.json"),
         br#"{"enabled":["vanilla","file/base"],"disabled":[]}"#,
     );
+    let empty_tag = pack.join("data/reload_conditions/tags/item/empty.json");
+    write(&empty_tag, br#"{"values":[]}"#);
     for (name, condition) in [
         (
             "registered",
@@ -103,6 +105,20 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                 .unwrap();
                 request.save_root = root.to_owned();
                 game.load_world(request).unwrap();
+                let item_tags = |game: &crate::game::Game<'_>, tag| mod_api::Tags::items(game, tag);
+                let key = |path: &str| {
+                    mod_api::__private::tag_key(
+                        &mod_api::Identifier::parse(&format!("reload_conditions:{path}")).unwrap(),
+                    )
+                    .unwrap()
+                };
+                let empty = key("empty");
+                let flag = key("flag");
+                assert_eq!(
+                    item_tags(game, empty),
+                    mod_api::ItemTagMembers::Members(vec![])
+                );
+                assert_eq!(item_tags(game, flag), mod_api::ItemTagMembers::Missing);
                 let answers = |game: &crate::game::Game<'_>| {
                     ["registered", "empty", "absent"].map(|name| {
                         game.recipes()
@@ -117,7 +133,7 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                 );
                 write(
                     &pack.join("data/reload_conditions/tags/item/flag.json"),
-                    br#"{"values":["minecraft:flint"]}"#,
+                    br#"{"values":["minecraft:stick","minecraft:flint"]}"#,
                 );
                 assert!(game.run_command("reload"));
                 assert_eq!(
@@ -127,6 +143,14 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                     Some(vec!["reload_conditions:fire".into()])
                 );
                 assert_eq!(answers(game), [true, false, true]);
+                assert_eq!(
+                    item_tags(game, flag),
+                    mod_api::ItemTagMembers::Members(vec![
+                        mod_api::__private::item_key("minecraft:stick").unwrap(),
+                        mod_api::__private::item_key("minecraft:flint").unwrap(),
+                    ])
+                );
+                std::fs::remove_file(empty_tag).unwrap();
                 std::fs::remove_file(
                     pack.join("data/reload_conditions/reload_conditions/spell/fire.json"),
                 )
@@ -135,6 +159,7 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                     .unwrap();
                 assert!(game.run_command("reload"));
                 assert_eq!(answers(game), [false, true, true]);
+                assert_eq!(item_tags(game, empty), mod_api::ItemTagMembers::Missing);
                 assert_eq!(
                     game.mods
                         .load_condition_candidate

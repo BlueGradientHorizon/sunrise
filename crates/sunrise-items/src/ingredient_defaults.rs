@@ -21,6 +21,7 @@ impl Items {
             item_tags: load_tags(root, "item", overlay)?,
             fluid_tags: load_tags(root, "fluid", overlay)?,
             item_tag_order: load_tag_lists(root, "item", overlay)?,
+            item_tags_loaded: true,
             block_tag_order: load_tag_lists(root, "block", overlay)?,
             fluid_tag_order: load_tag_lists(root, "fluid", overlay)?,
             loot: Default::default(),

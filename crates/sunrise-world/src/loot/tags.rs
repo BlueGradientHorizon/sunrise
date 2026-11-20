@@ -3,19 +3,18 @@
 /// Authoritative tag reads without a game or registry borrow.
 /// Registry names are vanilla directory names (`item`, `block`, `fluid`).
 pub trait LootTags {
-    /// Members of one tag in its resolved order. Unknown tags are empty.
-    fn members(&self, registry: &str, tag: &str) -> Vec<String>;
+    /// Members of a loaded tag in its resolved order, or `None` if absent.
+    fn members(&self, registry: &str, tag: &str) -> Option<Vec<String>>;
     /// Whether one registry value belongs to a tag.
     fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {
         self.members(registry, tag)
-            .iter()
-            .any(|member| member == id)
+            .is_some_and(|members| members.iter().any(|member| member == id))
     }
 }
 
 impl LootTags for super::LootData {
-    fn members(&self, registry: &str, tag: &str) -> Vec<String> {
-        self.tag(registry, tag)
+    fn members(&self, registry: &str, tag: &str) -> Option<Vec<String>> {
+        members(&self.tags, registry, tag)
     }
 }
 
@@ -28,7 +27,7 @@ pub(super) fn members(
     tags: &std::collections::HashMap<(String, String), crate::tag_layers::TagLayers>,
     registry: &str,
     name: &str,
-) -> Vec<String> {
+) -> Option<Vec<String>> {
     enum Step<'a> {
         Enter(&'a str),
         Exit(&'a str),
@@ -36,7 +35,7 @@ pub(super) fn members(
     let layers = |name: &str| tags.get(&(registry.to_owned(), name.to_owned()));
     let mut pending = vec![Step::Enter(name)];
     let mut active = std::collections::HashSet::new();
-    let mut built: std::collections::HashMap<&str, Vec<String>> = Default::default();
+    let mut built: std::collections::HashMap<&str, Option<Vec<String>>> = Default::default();
     while let Some(step) = pending.pop() {
         #[cfg(test)]
         STEP_BUDGET.with(|budget| {
@@ -54,7 +53,7 @@ pub(super) fn members(
                     continue;
                 }
                 if !active.insert(name) {
-                    return Vec::new();
+                    return Some(Vec::new());
                 }
                 pending.push(Step::Exit(name));
                 if let Some(layers) = layers(name) {
@@ -63,14 +62,14 @@ pub(super) fn members(
             }
             Step::Exit(name) => {
                 active.remove(name);
-                let members = layers(name).map_or_else(Vec::new, |layers| {
-                    layers.build(|tag| built.get(tag).cloned().unwrap_or_default())
+                let members = layers(name).map(|layers| {
+                    layers.build(|tag| built.get(tag).cloned().flatten().unwrap_or_default())
                 });
                 built.insert(name, members);
             }
         }
     }
-    built.remove(name).unwrap_or_default()
+    built.remove(name).flatten()
 }
 
 #[cfg(test)]
@@ -97,10 +96,10 @@ mod tests {
         gone.push(&json!({"values": [], "remove": ["#test:other"]}));
         tags.insert(("item".into(), "test:gone".into()), gone);
         assert_eq!(
-            members(&tags, "item", "test:things"),
+            members(&tags, "item", "test:things").unwrap(),
             ["minecraft:dirt", "minecraft:sand"]
         );
-        assert!(members(&tags, "item", "test:gone").is_empty());
+        assert!(members(&tags, "item", "test:gone").unwrap().is_empty());
     }
     #[test]
     fn repeated_shared_subtags_are_visited_once_without_exponential_work() {
@@ -121,7 +120,7 @@ mod tests {
         STEP_BUDGET.with(|budget| budget.set(Some(4096)));
         let result = members(&tags, "item", "test:0");
         STEP_BUDGET.with(|budget| budget.set(None));
-        assert_eq!(result, ["minecraft:stick"]);
+        assert_eq!(result.unwrap(), ["minecraft:stick"]);
     }
 
     #[test]
@@ -142,14 +141,14 @@ mod tests {
             ]),
         );
         assert_eq!(
-            members(&tags, "item", "test:0"),
+            members(&tags, "item", "test:0").unwrap(),
             ["minecraft:stick", "minecraft:potion"]
         );
-        assert!(members(&tags, "item", "test:missing").is_empty());
+        assert_eq!(members(&tags, "item", "test:missing"), None);
         tags.insert(
             ("item".into(), "test:64".into()),
             layers(vec![json!("#test:0")]),
         );
-        assert!(members(&tags, "item", "test:0").is_empty());
+        assert!(members(&tags, "item", "test:0").unwrap().is_empty());
     }
 }

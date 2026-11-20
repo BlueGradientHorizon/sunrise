@@ -186,7 +186,8 @@ fn set(value: &mut Value, function: bool, tags: &Tags, types: &Types) {
         } else {
             "predicate"
         };
-        let ids = super::super::loot_tags::members(tags, registry, &tag.to_string());
+        let ids =
+            super::super::loot_tags::members(tags, registry, &tag.to_string()).unwrap_or_default();
         *value = Value::Array(ids.into_iter().map(Value::String).collect());
     } else if !value.is_array() {
         *value = Value::Array(vec![std::mem::take(value)]);
