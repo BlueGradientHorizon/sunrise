@@ -447,8 +447,8 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
     let partial = format!(
         "($host:ty, partial($($provided:ident),* $(,)?)) => {{
         const _: () = {{
-            #[allow(unused_imports)] use $crate::*;
-            #[allow(unused_imports)] use ::std::{{path::PathBuf, sync::Arc}};
+            use $crate::*;
+            use ::std::sync::Arc;
             $($crate::__partial_read!(@known $provided);)*
             {partial_impls}
         }};
