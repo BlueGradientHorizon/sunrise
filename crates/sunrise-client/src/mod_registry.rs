@@ -191,6 +191,9 @@ pub fn install(
             return Err("code mods are installed and updated in the launcher".into());
         }
     }
+    if let Some(other) = list.taken_by(&relative, id) {
+        return Err(format!("{relative} belongs to {other}: remove it first"));
+    }
     if let Some(i) = ours
         && list.entries[i]["version"].as_str() == Some(v.version.as_str())
         && target.exists()
@@ -208,9 +211,6 @@ pub fn install(
             "a mod with the id {id} is already in {}: move it away first",
             crate::mod_list::DIR
         ));
-    }
-    if let Some(other) = list.taken_by(&relative, id) {
-        return Err(format!("{relative} belongs to {other}: remove it first"));
     }
     let bytes = get(&v.file.url, v.file.size)?;
     let staging = home.join(DOWNLOADS);
