@@ -97,7 +97,7 @@ fn columns_loaded_past_the_render_distance_mesh_when_they_come_in_range() {
             assert!(Instant::now() < deadline, "streaming never settled");
             let before = (world.chunks.len(), meshed.len());
             let (uploads, _) = streaming.update(world);
-            meshed.extend(uploads.iter().map(|(key, _)| *key));
+            meshed.extend(uploads.iter().map(|upload| upload.key));
             // As the game does once they are uploaded: a worker frees them,
             // and nothing comes back (`pending` empties).
             streaming.free(uploads);
@@ -409,7 +409,7 @@ fn meshes_waiting_for_upload_hold_back_new_mesh_jobs() {
             assert!(Instant::now() < deadline, "streaming never settled");
             let before = (world.chunks.len(), meshed.len());
             let (uploads, _) = streaming.update(world);
-            meshed.extend(uploads.iter().map(|(key, _)| *key));
+            meshed.extend(uploads.iter().map(|upload| upload.key));
             streaming.free(uploads);
             thread::sleep(Duration::from_millis(5));
             let idle = !streaming.busy() && before == (world.chunks.len(), meshed.len());
