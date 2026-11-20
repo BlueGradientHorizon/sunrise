@@ -121,6 +121,15 @@ impl PartialEq for Value {
         }
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Projection {
+    /// Opaque values may contain templates; each outermost template validates its own saved codec.
+    Tree,
+    /// The owning component or template validates the completed projection once.
+    Codec,
+    Presentation,
+}
+
 impl Value {
     pub fn string(value: &str) -> Self {
         Self::String(value.encode_utf16().collect())
@@ -167,13 +176,19 @@ impl Value {
     }
     /// A read-only encoding error leaves the value available to the caller.
     pub fn to_tag(&self) -> Result<Tag, String> {
-        self.tag(false, 0)
+        self.tag(Projection::Tree, 0)
+    }
+    /// Project to the named saved codec, refusing stream-only values and tags it cannot decode.
+    pub fn to_component_tag(&self, name: &str) -> Result<Tag, String> {
+        let tag = self.tag(Projection::Codec, 0)?;
+        source::from_component_tag(name, &tag)?;
+        Ok(tag)
     }
     /// Presentation may inspect inline stream holders without claiming they persist.
     pub fn presentation_tag(&self) -> Result<Tag, String> {
-        self.tag(true, 0)
+        self.tag(Projection::Presentation, 0)
     }
-    fn tag(&self, presentation: bool, depth: usize) -> Result<Tag, String> {
+    fn tag(&self, projection: Projection, depth: usize) -> Result<Tag, String> {
         if depth > MAX_TREE_DEPTH
             || depth == MAX_TREE_DEPTH
                 && matches!(
@@ -198,7 +213,7 @@ impl Value {
             Self::LongArray(v) => Tag::LongArray(v.clone()),
             Self::List(v) | Self::Set(v) => Tag::List(
                 v.iter()
-                    .map(|v| v.tag(presentation, depth + 1))
+                    .map(|v| v.tag(projection, depth + 1))
                     .collect::<Result<_, _>>()?,
             ),
             Self::Map(v) => Tag::Compound(
@@ -207,11 +222,11 @@ impl Value {
                         let Self::String(k) = k else {
                             return Err("component map key is not a string".into());
                         };
-                        Ok((JavaString(k.clone()), v.tag(presentation, depth + 1)?))
+                        Ok((JavaString(k.clone()), v.tag(projection, depth + 1)?))
                     })
                     .collect::<Result<_, String>>()?,
             ),
-            Self::Template(v) => v.tag(presentation, depth)?,
+            Self::Template(v) => v.tag(projection, depth)?,
             Self::Container(slots) => Tag::List(
                 slots
                     .iter()
@@ -220,14 +235,14 @@ impl Value {
                         item.as_ref().map(|item| {
                             Ok(Tag::compound([
                                 ("slot", Tag::Int(slot as i32)),
-                                ("item", item.tag(presentation, depth + 2)?),
+                                ("item", item.tag(projection, depth + 2)?),
                             ]))
                         })
                     })
                     .collect::<Result<_, String>>()?,
             ),
-            Self::StreamOnly(v) if presentation => {
-                v.tag(presentation, depth + 1)?
+            Self::StreamOnly(v) if projection == Projection::Presentation => {
+                v.tag(projection, depth + 1)?
             }
             Self::StreamOnly(_) => return Err("inline holder has no persistent encoding".into()),
         })
@@ -236,29 +251,31 @@ impl Value {
 impl Template {
     /// Project the own patch to its saved form, omitting transients without changing the template.
     pub fn to_tag(&self) -> Result<Tag, String> {
-        self.tag(false, 0)
+        self.tag(Projection::Tree, 0)
     }
-    fn tag(&self, presentation: bool, depth: usize) -> Result<Tag, String> {
+    fn tag(&self, projection: Projection, depth: usize) -> Result<Tag, String> {
         if depth >= MAX_TREE_DEPTH {
             return Err(format!("value nesting exceeds {MAX_TREE_DEPTH}"));
         }
-        if !presentation && !(1..=99).contains(&self.count) {
-            return Err("persistent item template count must be in 1..99".into());
-        }
+        let children = if projection == Projection::Presentation {
+            projection
+        } else {
+            Projection::Codec
+        };
         let mut fields = vec![("id".into(), Tag::String(self.item.as_str().into()))];
         if self.count != 1 {
             fields.push(("count".into(), Tag::Int(self.count)));
         }
         let mut patch = Vec::with_capacity(self.patch.len());
         for (name, value) in effective_patch(&self.patch) {
-            if !presentation && !is_persistent(name) {
+            if projection != Projection::Presentation && !is_persistent(name) {
                 continue;
             }
             if depth + 1 >= MAX_TREE_DEPTH {
                 return Err(format!("value nesting exceeds {MAX_TREE_DEPTH}"));
             }
             patch.push(match value {
-                Some(value) => (name.as_str().into(), value.tag(presentation, depth + 2)?),
+                Some(value) => (name.as_str().into(), value.tag(children, depth + 2)?),
                 None if depth + 2 >= MAX_TREE_DEPTH => {
                     return Err(format!("value nesting exceeds {MAX_TREE_DEPTH}"));
                 }
@@ -274,7 +291,11 @@ impl Template {
                 Tag::Compound(patch.into_iter().collect()),
             ));
         }
-        Ok(Tag::Compound(fields.into_iter().collect()))
+        let tag = Tag::Compound(fields.into_iter().collect());
+        if projection == Projection::Tree {
+            source::template_from_tag(&tag)?;
+        }
+        Ok(tag)
     }
 }
 /// The pinned component types that intentionally have no persistent codec.

@@ -226,11 +226,13 @@ pub fn component_value(kind: i32, value: &Component, names: &dyn Names) -> Resul
 }
 /// `None` is a deliberately transient component; errors do not modify the value.
 pub fn component_to_tag(kind: i32, value: &Component, names: &dyn Names) -> Result<Option<Tag>> {
-    if matches!(kind, 20 | 42 | 50) {
+    let name = component_name(kind)
+        .ok_or_else(|| Error::new(format!("unknown pinned component type {kind}")))?;
+    if !sunrise_world::component_value::is_persistent(name) {
         return Ok(None);
     }
     component_value(kind, value, names)?
-        .to_tag()
+        .to_component_tag(name)
         .map(Some)
         .map_err(Error::new)
 }
@@ -539,24 +541,6 @@ mod tests {
         }
     }
     #[test]
-    fn a_registry_id_at_the_top_of_the_range_is_refused_not_wrapped() {
-        let top = |_: &str, _: &str| Some(i32::MAX);
-        for (kind, registry) in [
-            (83, "minecraft:sound_event"),
-            (64, "minecraft:trim_material"),
-            (66, "minecraft:jukebox_song"),
-            (109, "minecraft:painting_variant"),
-        ] {
-            let error = component_from_value(kind, &Value::string("minecraft:test"), &top)
-                .unwrap_err()
-                .to_string();
-            assert!(
-                error.contains(registry) && error.contains("overflows"),
-                "{error}"
-            );
-        }
-    }
-    #[test]
     fn component_chains_up_to_the_readers_depth_convert_on_a_network_stack() {
         let chain = |bundles: usize| {
             let mut template = stone(vec![]);
@@ -585,6 +569,41 @@ mod tests {
         assert!(convert(crate::item::MAX_NESTING as usize + 1).is_err());
     }
     #[test]
+    fn persistent_projection_refuses_what_the_saved_codec_refuses() {
+        assert!(component_to_tag(3, &Component::Int(-1), &Registry).is_err());
+        assert_eq!(
+            component_to_tag(3, &Component::Int(4), &Registry).unwrap(),
+            Some(Tag::Int(4))
+        );
+        assert!(component_to_tag(0, &Component::Nbt(Tag::Int(4)), &Registry).is_err());
+        let custom_data = Tag::compound([("four", Tag::Int(4))]);
+        assert_eq!(
+            component_to_tag(0, &Component::Nbt(custom_data.clone()), &Registry).unwrap(),
+            Some(custom_data)
+        );
+        let use_effects = |speed: f32| {
+            let mut wire = Writer::new();
+            wire.bool(true);
+            wire.bool(true);
+            wire.f32(speed);
+            Component::Raw(wire.data)
+        };
+        for speed in [2.0, -0.5, -0.0] {
+            assert!(component_to_tag(5, &use_effects(speed), &Registry).is_err());
+        }
+        assert!(
+            component_to_tag(5, &use_effects(0.5), &Registry)
+                .unwrap()
+                .is_some()
+        );
+        // The retained value is untouched by the refusal.
+        let value = Component::Int(-1);
+        let _ = component_to_tag(3, &value, &Registry);
+        assert_eq!(value, Component::Int(-1));
+        let template = stone(vec![("minecraft:damage".into(), Some(Value::Int(-1)))]);
+        assert!(template.to_tag().is_err());
+    }
+    #[test]
     fn persistent_input_names_the_transient_component_it_refuses() {
         let error = component_from_tag(20, &Tag::Compound(Default::default()), &registry_id)
             .unwrap_err()
@@ -607,5 +626,23 @@ mod tests {
         let refused = Component::Nbt(Tag::compound([("a", tag)]));
         assert!(component_value(0, &refused, &Registry).is_err());
         assert!(refused.hash(0, &Registry).is_none());
+    }
+    #[test]
+    fn a_registry_id_at_the_top_of_the_range_is_refused_not_wrapped() {
+        let top = |_: &str, _: &str| Some(i32::MAX);
+        for (kind, registry) in [
+            (83, "minecraft:sound_event"),
+            (64, "minecraft:trim_material"),
+            (66, "minecraft:jukebox_song"),
+            (109, "minecraft:painting_variant"),
+        ] {
+            let error = component_from_value(kind, &Value::string("minecraft:test"), &top)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains(registry) && error.contains("overflows"),
+                "{error}"
+            );
+        }
     }
 }

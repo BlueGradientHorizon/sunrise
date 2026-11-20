@@ -473,7 +473,7 @@ fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
             let tag = if native_templates {
                 value.presentation_tag()?
             } else {
-                value.to_tag()?
+                value.tag(super::Projection::Codec, 0)?
             };
             Value::from_nbt(&tag, &[])?
         }
