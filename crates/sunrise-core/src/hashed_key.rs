@@ -168,7 +168,7 @@ impl<'a> HashedKey<&'a [u16]> {
             text: units,
         }
     }
-    /// For constants (`nbt_key!`): the hash is computed here, at compile time.
+    /// For constants: the hash is computed here, at compile time.
     pub const fn new_const(units: &'a [u16]) -> Self {
         Self {
             hash: java_string_hash_units_const(units),
