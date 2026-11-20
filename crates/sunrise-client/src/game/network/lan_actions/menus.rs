@@ -542,10 +542,9 @@ impl Game<'_> {
         g.menu.as_ref().is_none_or(|m| {
             m.slots.valid(&self.world)
                 && m.still_valid(&host.hub.loop_context, &self.world, g)
-                && !m.pos.is_some_and(|k| {
-                    k.1 == crate::game::minecarts::CART_KEY_Y
-                        && !self.chest_vehicle_still_valid(k.2, g)
-                })
+                && !matches!(m.slots, Slots::Block((_, y, id))
+                    if y == crate::game::minecarts::CART_KEY_Y
+                        && !self.chest_vehicle_still_valid(id, g))
         })
     }
 
@@ -589,11 +588,12 @@ impl Game<'_> {
     /// window with it, so the click lands on nothing
     /// (`ServerGamePacketListenerImpl.handleContainerClick` and the others
     /// ask `stillValid` first).
-    pub(super) fn guest_validate_menu(&mut self, conn: u32) {
+    pub(super) fn guest_validate_menu(&mut self, conn: u32) -> bool {
         if self.guest_menu_still_valid(conn) {
-            return;
+            return true;
         }
         self.guest_close_menus_and_tell(conn);
+        false
     }
 
     /// `ServerPlayer.closeContainer`: the client is told to close each window first, and
@@ -609,10 +609,12 @@ impl Game<'_> {
             .and_then(|g| g.menu.as_ref().map(|m| m.window))
             .into_iter()
             .collect();
+        // These windows stay in the host even while GuestPlay is out on a guest turn.
+        if let Some(menus) = host.menus.get(&conn) {
+            windows.extend(menus.crafting.table.as_ref().map(|t| t.0));
+            windows.extend(menus.station.as_ref().map(|s| s.window));
+        }
         if let Some(p) = host.play.get(&conn) {
-            let menus = host.menus.get(&conn);
-            windows.extend(menus.and_then(|m| m.crafting.table.as_ref()).map(|t| t.0));
-            windows.extend(menus.and_then(|m| m.station.as_ref()).map(|s| s.window));
             windows.extend(p.lectern.as_ref().map(|l| l.window));
             windows.extend(p.merchant.as_ref().map(|m| m.window));
             windows.extend(p.mount_window.as_ref().map(|m| m.window));

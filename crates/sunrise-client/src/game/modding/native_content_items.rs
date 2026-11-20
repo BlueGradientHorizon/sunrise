@@ -1,22 +1,24 @@
 //! Code item identities available while reading a package's content files.
-use sunrise_mod_package::{Manifest, content::Item};
+use std::collections::BTreeMap;
+use sunrise_client::mod_content::DeclaredContent;
+use sunrise_mod_package::Manifest;
 
-pub(super) fn owned_item_ids(manifest: &Manifest, items: &[Item]) -> Vec<String> {
-    items
-        .iter()
-        .filter(|item| {
-            item.id.split_once(':').is_some_and(|(namespace, _)| {
-                manifest.owned_namespaces().any(|owned| owned == namespace)
-            })
-        })
-        .map(|item| item.id.clone())
+pub(super) fn owned_item_ids(
+    manifest: &Manifest,
+    declarations: &BTreeMap<&'static str, DeclaredContent>,
+) -> Vec<String> {
+    declarations
+        .get(manifest.id.as_str())
+        .into_iter()
+        .flat_map(|batch| &batch.items)
+        .map(|item| item.get().id.clone())
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_mod_package::Content;
+    use sunrise_mod_package::{Content, content::Item};
 
     #[test]
     fn file_remainders_can_name_code_items_in_any_owned_namespace() {
@@ -32,12 +34,32 @@ mod tests {
         "#,
         )
         .unwrap();
-        let items = ["porter:spoon", "legacy:wrench", "foreign:tool"].map(|id| Item {
-            id: id.into(),
-            template: "minecraft:stick".into(),
-            ..Item::default()
-        });
-        let declared = owned_item_ids(&manifest, &items);
+        let item = |id: &str| {
+            Item {
+                id: id.into(),
+                template: "minecraft:stick".into(),
+                ..Item::default()
+            }
+            .validate_local()
+            .unwrap()
+        };
+        let batches = BTreeMap::from([
+            (
+                "porter",
+                DeclaredContent {
+                    items: vec![item("porter:spoon"), item("legacy:wrench")],
+                    ..Default::default()
+                },
+            ),
+            (
+                "foreign",
+                DeclaredContent {
+                    items: vec![item("foreign:tool")],
+                    ..Default::default()
+                },
+            ),
+        ]);
+        let declared = owned_item_ids(&manifest, &batches);
         assert_eq!(declared, ["porter:spoon", "legacy:wrench"]);
         let root = std::env::temp_dir().join(format!(
             "sunrise-owned-code-items-{}-{}",

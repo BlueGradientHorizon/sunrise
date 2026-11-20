@@ -48,7 +48,7 @@ entry leaves out.
 | `icon` | Required for a listed project. An HTTPS URL in the generated index, from the registry's `icons/<id>.png` (not a remote image input). |
 | `categories` | 1–3 from the kind’s category list for a listed project. |
 | `tags` | Up to 10 lowercase tags. |
-| `screenshots` | Optional, up to 8 HTTPS PNG or JPEG URLs in the generated index, from files kept in the registry under `screenshots/<id>/`. |
+| `screenshots` | Up to 8 HTTPS PNG or JPEG URLs in the generated index, from files kept in the registry under `screenshots/<id>/`. A new project, or an existing one whose pull request adds a version, needs at least one unless it is a collection or a `mod` or `native-mod` whose `categories` include `library`. The file must be a PNG or JPEG kept in the checkout and listed here, not a remote address. |
 | `key` | The author's [minisign](https://jedisct1.github.io/minisign/) public key. When set, every version must be signed with it; an update signed with another key is refused. Absent: the project is unsigned and the launcher says so. |
 | `versions` | Newest first, at least one. |
 | `downloads` | How many times its files were downloaded, every version together: GitHub's count of each release asset, summed across release assets. Absent when no file has been downloaded. Read-only: never in an entry. The registry's publish workflow reads the counts from GitHub and hands them to `cargo sunrise-mod registry build --counts <file>` (`{"downloads": {"<file address>": n}, "stars": {"<owner>/<repo>": n}}`), so both refresh each time the index is republished. |
@@ -81,6 +81,18 @@ handle it without selecting another build or architecture. These signatures are
 registry-produced metadata, independent of project package keys. The launcher
 builds native mods locally with its pinned Rust toolchain against the prebuilt
 game; registry-built native binaries are not used.
+
+## A native mod's list of what it uses
+
+A native mod file carries `uses.json`, the list of what the mod uses, made for the build the mod pins; with it a
+newer build can tell whether the mod still fits ([SDK fit](sdk/04-fit.md)). `cargo sunrise-mod build` writes the list
+when it can read the mod's source against the pinned SDK, and says what stops it when it cannot.
+
+`cargo sunrise-mod check <file>` refuses a native mod file with no list, or with one made for another build than the
+mod pins; `publish` and `registry release` run the same check on the file they are given. `registry check` applies
+it to files whose hash is new in the pull request. `registry build` and installs do not apply it, so files already
+listed stay as they are. A mod with a `[[native.module]]` or `[[native.bridge]]` row is outside
+this rule: no list can describe those rows, so its file needs none.
 
 ## Dependency checks
 
@@ -221,7 +233,7 @@ pull request yourself. See [Publishing your mod](../how-to/publish.md) for the s
 - A description of 50–10,000 characters after trimming.
 - 1–3 categories from your project kind’s list and up to 10 lowercase tags.
 - A square PNG icon, 64–1024 pixels and at most 256 KiB, stored in the registry as `icons/<id>.png`.
-- Optionally, up to 8 PNG or JPEG screenshots stored in the registry as `screenshots/<id>/<name>.png|.jpg`.
+- 1–8 PNG or JPEG screenshots stored in the registry as `screenshots/<id>/<name>.png|.jpg`. `registry review` refuses a new project with none, and a pull request that adds a version to a project that still has none. Existing listings the pull request leaves without a new version stay valid, and collections need none. `registry check` and `registry review` apply the same rule, and the listed file must be a non-empty PNG or JPEG in the checkout. A `mod` or `native-mod` in the `library` category needs no screenshot: it does not take a placeholder image.
 
 The generated index supplies HTTPS URLs for images. Unknown entry keys are refused. A project’s kind cannot change.
 If you set a minisign key, sign every version with it. The registry takes no new entry that follows a repository's
@@ -242,6 +254,7 @@ source = "https://github.com/you/coords_hud"
 icon = "icons/coords_hud.png"
 categories = ["utility"]        # 1 to 3 from your kind's list
 tags = ["hud"]                  # up to 10, lowercase
+screenshots = ["screenshots/coords_hud/main.png"]  # 1 to 8, files kept in the registry
 # key = "RWT..."                # optional minisign public key: every version must then carry a signature
 
 [[versions]]                    # newest first
@@ -284,7 +297,7 @@ Run these commands in your native mod’s project folder.
 | --- | --- |
 | `cargo sunrise-mod internals sync` | Checks a trusted native mod's library against an isolated copy of its pinned game source with the Rust version named by its signed SDK. Replaces top-level `internals` with compiler-discovered paths, kinds and hashes, including uses inside globs and macros. Removes unused declarations, preserves retained entries and prints additions/removals. Skips discovery when the mod neither depends on `sunrise-internals` nor declares `internals`. Never runs automatically on build. |
 | `cargo sunrise-mod internals add <path>…` | Adds each declared internal and its tool-written hash to top-level `internals` in your mod's `sunrise-mod.toml`. Reads `internals.json` from the pinned SDK, or discovers a catalog with the mod's `[[native.module]]` tables applied. Unknown paths, shape-only entries and paths available only under a `cfg` are refused before the manifest is changed. Existing declarations are refreshed, not duplicated. |
-| `cargo sunrise-mod update [--sunrise <build>]` | Moves the mod's pin to the current Nightly's build (or the build given: `nightly-<date>` or a sha); the next command fetches its SDK into `.sunrise/sdk/`. A native mod's pins are `[native] sunrise` and `[native] mixins`: `update` fetches the destination SDK's `sdk.json` (into `.sunrise/cache/<build>/`), writes its `mixins.rev` beside the new build, and changes nothing when that file is refused; `Cargo.toml` names the SDK by path, so it does not change. A wasm mod's pin is `sdk` under `[package.metadata.sunrise]` in `Cargo.toml`: only its value changes, and the native steps below are skipped. For a native mod's every declared internal, prints `missing`, `changed` (old signature → new signature), or `unchanged`, then refreshes the available hashes. Missing or gated declarations keep their old hash and must be removed or replaced before building. Build names: [the pin](sdk/03-in-a-project.md#the-pin). |
+| `cargo sunrise-mod update [--sunrise <build>]` | Moves the mod's pin to the current Nightly's build (or the build given: `nightly-<date>` or a sha); the next command fetches its SDK into `.sunrise/sdk/`. A native mod's pins are `[native] sunrise` and `[native] mixins`: `update` fetches the destination SDK's `sdk.json` (into `.sunrise/cache/<build>/`), writes its `mixins.rev` beside the new build, and changes nothing when that file is refused; `Cargo.toml` names the SDK by path, so it does not change. For a native mod's every declared internal, prints `missing`, `changed` (old signature → new signature), or `unchanged`, then refreshes the available hashes. Missing or gated declarations keep their old hash and must be removed or replaced before building. Build names: [the pin](sdk/03-in-a-project.md#the-pin). |
 
 The native-mod commands run in the mod's project folder and preserve the manifest's comments and
 layout. `sync` performs a metadata-only `cargo check` on the current host, using default features;
@@ -297,10 +310,10 @@ metadata-check game dependencies; it does not compile or link a game executable.
 check cache is not a native mod build route. `[[native.state]]` is refused with
 `E_MIXIN_STATE_LAYOUT`; use attachments for per-object mod data.
 
-Without support modules, `internals add`, `inject add` and `inject update` read `internals.json` and
-`points.json` from the pinned SDK's build data (`build-data.tar.xz`). The tool verifies the SDK release,
-`sdk-<build id>`, against its signed `SHA256SUMS`, using `SUNRISE_SDK_BASE` when set. No game or mod code is run.
-With `[[native.module]]` tables, these commands use the Rust named by the signed SDK to stage the pinned source
+Without support modules, `internals add` reads `internals.json` from the pinned SDK's build data
+(`build-data.tar.xz`). The tool verifies the SDK release, `sdk-<build id>`, against its signed `SHA256SUMS`,
+using `SUNRISE_SDK_BASE` when set. No game or mod code is run.
+With `[[native.module]]` tables, `internals add` uses the Rust named by the signed SDK to stage the pinned source
 with the mod's modules applied and save the catalog under `target/sunrise-mod/catalog-snapshots/`. Only use
 source discovery on mods you trust. It does not run the game.
 The separate `update` command compares the SDKs' build data for the old and new pins. Each build's data is kept

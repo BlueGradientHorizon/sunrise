@@ -19,6 +19,10 @@ use crate::{
     blocks::MAP_COLORS,
     mobs::data::{PartAnswers, PathComputationType, VALID_EMPTY_SPAWN},
 };
+use mod_api::{
+    __private::{DeclarationKind, DeclarationRefusal},
+    DeclarationError,
+};
 use serde::{Deserialize, Serialize, de};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -33,7 +37,7 @@ use sunrise_core::{
 };
 use sunrise_mod_package::content::{
     Block, BlockEntityType, BlockShapes, Content, ContextCollision, CreativeTab, EntityType,
-    FluidLook, MenuType, MobEffect, Rarity, StateProperty, StateValues,
+    FluidLook, Item, LocalDeclaration, MenuType, MobEffect, Rarity, StateProperty, StateValues,
 };
 use sunrise_mod_package::manifest::{
     JarInputsError, JarRef, collect_jar_requirements, missing_jars,
@@ -163,7 +167,7 @@ pub fn register_world_fluids(
 
 #[path = "mod_content_fluid_declarations.rs"]
 mod fluid_declarations;
-pub use fluid_declarations::{accept_world_fluids, fluid_interactions, set_fluid_interactions};
+pub use fluid_declarations::{fluid_interactions, set_fluid_interactions};
 
 /// How the fluid `id` looks, when a mod declares it.
 pub fn fluid_look(id: &str) -> Option<FluidLook> {
@@ -880,89 +884,108 @@ fn component_types(map: &J) -> BTreeSet<String> {
     }
 }
 
-/// Code declarations, joined to their manifest owner. Each owner's namespaces
-/// validate together, independent of namespace order, with all-or-nothing refusal.
-/// Unknown namespaces become synthetic content-only mods. Checked as files are
-/// ([`sunrise_mod_package::Content::declare`], [`accept_mod`]).
+/// A native package's staged declarations. Its dispatch owner is the map key,
+/// regardless of the namespaces used in these entries.
+#[derive(Clone, Default)]
+pub struct DeclaredContent {
+    pub blocks: Vec<LocalDeclaration<Block>>,
+    pub items: Vec<LocalDeclaration<Item>>,
+    pub types: Vec<BlockEntityType>,
+    pub fluids: Vec<FluidLook>,
+}
+
+/// Join code declarations to their manifest owner, even when no files were admitted.
+/// Validate the independent checks before deciding whether to add the owner's batch.
 pub fn accept_declared(
     mods: &mut Vec<ContentMod>,
-    blocks: &[sunrise_mod_package::content::Block],
-    items: &[sunrise_mod_package::content::Item],
-    types: &[BlockEntityType],
+    declared: &BTreeMap<&'static str, DeclaredContent>,
+    manifests: &[&sunrise_mod_package::Manifest],
     known: &BTreeSet<String>,
-) -> Vec<String> {
-    let owners: BTreeMap<_, _> = mods
-        .iter()
-        .flat_map(|m| {
-            m.content
-                .namespaces
-                .iter()
-                .map(|ns| (ns.clone(), m.id.clone()))
-        })
-        .collect();
-    let owner = |id: &str| {
-        let ns = id.split_once(':').map_or("", |(ns, _)| ns);
-        owners.get(ns).cloned().unwrap_or_else(|| ns.to_owned())
-    };
-    let mut by_owner: BTreeMap<String, (Vec<_>, Vec<_>)> = Default::default();
-    for block in blocks {
-        by_owner
-            .entry(owner(&block.id))
-            .or_default()
-            .0
-            .push(block.clone());
-    }
-    for item in items {
-        by_owner
-            .entry(owner(&item.id))
-            .or_default()
-            .1
-            .push(item.clone());
-    }
-    for kind in types {
-        by_owner.entry(owner(&kind.id)).or_default();
-    }
-    let mut errors = Vec::new();
-    for (id, (blocks, items)) in by_owner {
-        let types = types.iter().filter(|t| owner(&t.id) == id).cloned();
-        let result = match mods.iter().position(|m| m.id == id) {
-            Some(i) => {
-                let mut content = sunrise_mod_package::Content::declared(&mods[i].id);
-                content.namespaces.clone_from(&mods[i].content.namespaces);
-                content.blocks.clone_from(&mods[i].content.blocks);
-                content.items.clone_from(&mods[i].content.items);
-                content
-                    .declare(&blocks, &items)
-                    .and_then(|()| {
-                        let mut added = sunrise_mod_package::Content::declared(&id);
-                        added.blocks.clone_from(&blocks);
-                        added.items.clone_from(&items);
-                        validate_components(&added, known).map_err(|e| e.to_string())
-                    })
-                    .map(|()| {
-                        mods[i].content.blocks.extend(blocks);
-                        mods[i].content.items.extend(items);
-                        mods[i].content.block_entity_types.extend(types);
-                    })
+    errors: &mut Vec<DeclarationRefusal>,
+) -> Result<()> {
+    let mut namespace_error = None;
+    for (&id, batch) in declared {
+        let already_refused = errors.iter().any(|refusal| refusal.mod_id == id);
+        let before = errors.len();
+        let existing = mods.iter().position(|m| m.id == id);
+        let mut content = Content::declared(id);
+        if let Some(manifest) = manifests.iter().find(|m| m.id == id) {
+            content.namespaces = manifest.owned_namespaces().map(str::to_owned).collect();
+        }
+        if let Some(i) = existing {
+            content.blocks.clone_from(&mods[i].content.blocks);
+            content.items.clone_from(&mods[i].content.items);
+        }
+        if let Err(refusals) = content.declare_validated(&batch.blocks, &batch.items) {
+            errors.extend(
+                refusals
+                    .into_iter()
+                    .map(|(kind, error)| DeclarationRefusal::new(id, kind, error)),
+            );
+        }
+        for (kind, name, components) in batch
+            .items
+            .iter()
+            .map(|i| i.get())
+            .map(|i| (DeclarationKind::Item, &i.id, &i.components))
+            .chain(
+                batch
+                    .blocks
+                    .iter()
+                    .map(|b| b.get())
+                    .filter(|b| b.item)
+                    .map(|b| (DeclarationKind::Block, &b.id, &b.components)),
+            )
+        {
+            if let Err(reason) = validate_components_for(components, known) {
+                errors.push(DeclarationRefusal::new(
+                    id,
+                    kind,
+                    DeclarationError::Rejected {
+                        id: name.clone(),
+                        reason: reason.to_string(),
+                    },
+                ));
             }
-            None => {
-                let mut content = sunrise_mod_package::Content::declared(&id);
-                content.declare(&blocks, &items).and_then(|()| {
-                    content.block_entity_types.extend(types);
-                    let candidate = ContentMod {
-                        id: id.clone(),
-                        content,
-                        jars: Vec::new(),
-                    };
-                    accept_mod(mods, candidate, known).map_err(|e| e.to_string())
-                })
+        }
+        if already_refused || errors.len() != before {
+            continue;
+        }
+        let target = if let Some(i) = existing {
+            let target = &mut mods[i].content;
+            target.blocks = content.blocks;
+            target.items = content.items;
+            target
+        } else {
+            if let Some(error) = mods.iter().find_map(|m| {
+                sunrise_mod_package::content::clash(
+                    (&m.id, &m.content.namespaces),
+                    (id, &content.namespaces),
+                )
+            }) {
+                namespace_error.get_or_insert(error);
+                continue;
             }
+            mods.push(ContentMod {
+                id: id.into(),
+                content,
+                jars: vec![],
+            });
+            &mut mods.last_mut().unwrap().content
         };
-        if let Err(e) = result {
-            errors.push(format!("native blocks and items of {id}: {e}"));
+        target.block_entity_types.extend_from_slice(&batch.types);
+        // A file's fluid look still says how the code-declared fluid looks.
+        for fluid in &batch.fluids {
+            match target.fluids.iter_mut().find(|f| f.id == fluid.id) {
+                Some(look) => look.world = fluid.world,
+                None => target.fluids.push(fluid.clone()),
+            }
         }
     }
-    errors
+    match namespace_error {
+        Some(error) => Err(error.into()),
+        None => Ok(()),
+    }
 }
 
 /// Check and accept one mod without disturbing previously accepted mods.
@@ -997,11 +1020,17 @@ fn validate_components(
             .filter(|b| b.item)
             .map(|b| (&b.id, &b.components)),
     ) {
-        let patch = component_patch(id, components)?;
-        patch_components(&mut J::Obj(Vec::new()), &patch, known)
-            .map_err(|e| format!("{id}: {e}"))?;
+        validate_components_for(components, known).map_err(|error| format!("{id}: {error}"))?;
     }
     Ok(())
+}
+
+fn validate_components_for(
+    components: &BTreeMap<String, serde_json::Value>,
+    known: &BTreeSet<String>,
+) -> Result<()> {
+    let patch = component_patch(components)?;
+    Ok(patch_components(&mut J::Obj(Vec::new()), &patch, known)?)
 }
 
 /// An item's component patch on its entry; `known` holds every type a vanilla item has, so typos fail.
@@ -1025,22 +1054,16 @@ fn patch_components(
 }
 
 /// A declared component patch, as the overlay's JSON.
-fn component_patch(
-    id: &str,
-    components: &BTreeMap<String, serde_json::Value>,
-) -> Result<Vec<(String, J)>> {
+fn component_patch(components: &BTreeMap<String, serde_json::Value>) -> Result<Vec<(String, J)>> {
     components
         .iter()
         .map(|(key, value)| {
             if !key.starts_with('!') && sunrise_protocol::item::custom::id(key).is_some() {
                 let tag = sunrise_client_core::scoreboard::json_to_tag(value);
                 sunrise_core::nbt::validate_component_value(&tag)
-                    .map_err(|error| format!("{id}: component {key}: {error}"))?;
+                    .map_err(|error| format!("component {key}: {error}"))?;
             }
-            Ok((
-                key.clone(),
-                serde_json::from_value(value.clone()).map_err(|error| format!("{id}: {error}"))?,
-            ))
+            Ok((key.clone(), serde_json::from_value(value.clone())?))
         })
         .collect()
 }
@@ -1356,11 +1379,23 @@ impl<'a> Plan<'a> {
                     };
                     row.get(4)?.get("properties")
                 };
+                let declaration_source = || {
+                    // File declarations take their id from this path. A code declaration
+                    // in the same mod has no file, so name only its block id.
+                    if let Some((namespace, path)) = decl.id.split_once(':') {
+                        let file = format!("data/{namespace}/sunrise/block/{path}.json");
+                        if m.content.files.binary_search(&file).is_ok() {
+                            return format!("{file}: {}", decl.id);
+                        }
+                    }
+                    decl.id.clone()
+                };
                 for key in decl.state_properties.keys() {
                     if properties(default).is_some_and(|p| p.get(key).is_some()) {
                         return Err(format!(
-                            "{}: state property {key} is already on {}",
-                            decl.id, decl.template
+                            "{}: state_properties.{key} is already on {}",
+                            declaration_source(),
+                            decl.template
                         )
                         .into());
                     }
@@ -1369,7 +1404,7 @@ impl<'a> Plan<'a> {
                     if liquid_templates.contains(&decl.template) {
                         return Err(format!(
                             "{}: state_properties.waterlogged cannot be added: template {} is a standalone liquid block",
-                            decl.id, decl.template
+                            declaration_source(), decl.template
                         ).into());
                     }
                     let template_water = water_states
@@ -1378,7 +1413,7 @@ impl<'a> Plan<'a> {
                     if template_water.iter().all(|water| *water) {
                         return Err(format!(
                             "{}: state_properties.waterlogged cannot be added: every state of template {} already holds water",
-                            decl.id, decl.template
+                            declaration_source(), decl.template
                         ).into());
                     }
                 }
@@ -1672,7 +1707,8 @@ impl<'a> Plan<'a> {
                     rename: Rename::new(item, &b.decl.id),
                     max_stack_size: None,
                     rarity: None,
-                    components: component_patch(&b.decl.id, &b.decl.components)?,
+                    components: component_patch(&b.decl.components)
+                        .map_err(|error| format!("{}: {error}", b.decl.id))?,
                     crafting_remainder: None,
                     block: None,
                     arm_pose: None,
@@ -1693,7 +1729,8 @@ impl<'a> Plan<'a> {
                     rename: Rename::new(&i.template, &i.id),
                     max_stack_size: i.max_stack_size,
                     rarity: i.rarity,
-                    components: component_patch(&i.id, &i.components)?,
+                    components: component_patch(&i.components)
+                        .map_err(|error| format!("{}: {error}", i.id))?,
                     crafting_remainder: i.crafting_remainder.clone(),
                     block: i.block.clone(),
                     arm_pose: i.arm_pose,
@@ -2704,7 +2741,7 @@ impl<'a> Plan<'a> {
         let Tag::Compound(c) = tag else {
             return;
         };
-        for (key, value) in c.iter_mut() {
+        c.for_each_mut(|key, value| {
             match (key.to_string_lossy().as_str(), value) {
                 ("states", Tag::List(list)) if list.len() == self.states => {
                     for b in &self.blocks {
@@ -2764,7 +2801,7 @@ impl<'a> Plan<'a> {
                 (_, inner @ Tag::Compound(_)) => self.nbt(inner),
                 _ => {}
             }
-        }
+        });
     }
 }
 
@@ -2848,8 +2885,8 @@ const COMMAND_REGISTRIES: [(&str, &str); 7] = [
 
 /// A mod file that adds to a worldgen bundle: (bundle, id).
 fn worldgen_entry(file: &str) -> Option<(&'static str, String)> {
-    let (ns, rest) = file.strip_prefix("data/")?.split_once("/worldgen/")?;
-    let (kind, path) = rest.split_once('/')?;
+    let (ns, rest) = file.strip_prefix("data/")?.split_once('/')?;
+    let (kind, path) = rest.strip_prefix("worldgen/")?.split_once('/')?;
     let (_, bundle) = WORLDGEN_BUNDLES.iter().find(|(k, _)| *k == kind)?;
     if *bundle == BIOMES && ns == "minecraft" {
         return None;
@@ -3359,6 +3396,8 @@ struct Known {
     biome_tags: std::collections::BTreeSet<String>,
     /// `data/<ns>/tags/<kind>/<path>.json` files the mods add.
     tag_files: std::collections::BTreeSet<String>,
+    /// Block and item tag paths, by kind. A missing kind means the base has no folder to consult.
+    vanilla_tags: BTreeMap<&'static str, BTreeSet<String>>,
 }
 impl Known {
     fn new(
@@ -3367,6 +3406,8 @@ impl Known {
         tags: &BTreeMap<String, TagMerge>,
         mod_biomes: impl Iterator<Item = String>,
     ) -> Result<Self> {
+        use std::io::ErrorKind::{NotADirectory, NotFound};
+
         let mut blocks: std::collections::BTreeSet<String> =
             plan.defaults.keys().cloned().collect();
         blocks.extend(plan.blocks.iter().map(|b| b.decl.id.clone()));
@@ -3386,19 +3427,39 @@ impl Known {
         };
         let mut biomes = keys(BIOMES)?;
         biomes.extend(mod_biomes);
+        let mut vanilla_tags = BTreeMap::new();
+        for kind in ["block", "item"] {
+            let dir = base.join(format!("data/minecraft/tags/{kind}"));
+            let names = if let Some(files) =
+                sunrise_core::prepared_files::files_under(&dir).filter(|files| !files.is_empty())
+            {
+                files
+                    .into_iter()
+                    .filter_map(|name| name.strip_suffix(".json").map(str::to_owned))
+                    .collect()
+            } else {
+                match sunrise_world::json_folder::list(&dir) {
+                    Ok(files) => files.into_iter().map(|(name, _)| name).collect(),
+                    Err(e) if matches!(e.kind(), NotFound | NotADirectory) => continue,
+                    Err(e) => return Err(format!("{}: {e}", dir.display()).into()),
+                }
+            };
+            vanilla_tags.insert(kind, names);
+        }
         Ok(Known {
             blocks,
             items,
             biomes,
             biome_tags: keys(BIOME_TAGS)?,
             tag_files: tags.keys().cloned().collect(),
+            vanilla_tags,
         })
     }
     /// Whether tag `file` keeps entry `v`: a known id or an existing tag,
     /// for block, item and biome tags (other registries are kept as they
     /// are). The worldgen loader refuses a biome tag naming what it lacks
     /// (another mod's biomes, a loader's tags), so those entries go.
-    fn keeps(&self, file: &str, v: &J) -> bool {
+    fn keeps(&self, file: &str, v: &J, warnings: &mut Vec<String>) -> bool {
         let id = match v {
             J::Str(s) => s.as_str(),
             J::Obj(_) => match v.get("id") {
@@ -3407,16 +3468,18 @@ impl Known {
             },
             _ => return true,
         };
-        let Some(rest) = file
+        let Some((ns, rest)) = file
             .strip_prefix("data/")
             .and_then(|r| r.split_once("/tags/"))
-            .map(|(_, rest)| rest)
         else {
             return true;
         };
-        let kind = match rest.strip_prefix("worldgen/biome/") {
-            Some(_) => "worldgen/biome",
-            None => rest.split_once('/').map_or("", |(k, _)| k),
+        let Some((kind, tag_path)) = rest.strip_suffix(".json").and_then(|rest| {
+            rest.strip_prefix("worldgen/biome/")
+                .map(|path| ("worldgen/biome", path))
+                .or_else(|| rest.split_once('/'))
+        }) else {
+            return true;
         };
         let ids = match kind {
             "block" => &self.blocks,
@@ -3428,11 +3491,28 @@ impl Known {
             Some(tag) => {
                 let (tns, path) = tag.split_once(':').unwrap_or(("minecraft", tag));
                 let rel = format!("data/{tns}/tags/{kind}/{path}.json");
-                self.tag_files.contains(&rel)
-                    || match kind {
-                        "worldgen/biome" => self.biome_tags.contains(&format!("{tns}:{path}")),
-                        _ => tns == "minecraft",
+                if self.tag_files.contains(&rel) {
+                    return true;
+                }
+                match kind {
+                    "worldgen/biome" => self.biome_tags.contains(&format!("{tns}:{path}")),
+                    _ if tns != "minecraft" => false,
+                    _ => {
+                        let known = self
+                            .vanilla_tags
+                            .get(kind)
+                            .is_none_or(|tags| tags.contains(path));
+                        if !known
+                            && v.get("required") != Some(&J::Bool(false))
+                            && v.get("remove") != Some(&J::Bool(true))
+                        {
+                            warnings.push(format!(
+                                "{file}: skipped {id} in tag {ns}:{tag_path}: no such tag in the base or installed mods"
+                            ));
+                        }
+                        known
                     }
+                }
             }
             None => ids.contains(id),
         }
@@ -3583,7 +3663,8 @@ fn load_layers<'a>(jar_store: &Path, mods: &'a [ContentMod]) -> Result<Vec<ModLa
 /// Asset layers remain in their sources and are resolved by `resolved_resources`.
 /// Each jar's file is `<sha512>.jar` in `jar_store`, where the launcher
 /// puts it. A missing file refuses the load before decoded output is written.
-/// Returns warnings for shared tag replacements and duplicate asset paths.
+/// Returns warnings for shared tag replacements, missing required vanilla tag
+/// references and duplicate asset paths.
 pub fn build(
     base: &Path,
     jar_store: &Path,
@@ -3668,10 +3749,14 @@ pub fn resolved_resources(
             assets_base = ResourceSource::indexed(files);
         }
     }
-    let mod_layers = loaded
+    let data_layers: std::sync::Arc<[(String, ResourceSource)]> = loaded
         .iter()
         .flat_map(|group| &group.layers)
-        .map(|layer| layer.data.source().clone())
+        .map(|layer| (layer.data.id.clone(), layer.data.source().clone()))
+        .collect();
+    let mod_layers = data_layers
+        .iter()
+        .map(|(_, source)| source.clone())
         .collect();
     let layers = loaded
         .into_iter()
@@ -3697,7 +3782,7 @@ pub fn resolved_resources(
     Ok(ResourceRoot::new(prepared, cache, assets)
         .with_data(
             ResourceSource::indexed(data),
-            ResourceSource::indexed(changes),
+            ResourceSource::indexed_with_sources(changes, data_layers),
         )
         .with_mod_layers(mod_layers))
 }

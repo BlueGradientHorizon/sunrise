@@ -27,6 +27,19 @@ Because the probe library does not compile gameplay, its dep-info does not inclu
 or `game/`. Exact harness counts still depend on refreshed records and reachability; use the
 command above to inspect the selection rather than relying on historical counts.
 
+Item component values live in `W/component_value.rs`; the protocol's
+`item/persistent.rs` reconstructs stream values, and `item/hash/ops.rs` hashes
+those values after saved-codec validation. Templates retain their own patches and
+dense container holes. The last entry for a component wins, and saved projections
+and nested template hashes omit transients. Values outside the saved codec's
+contract stay intact when projection refuses them. Clicks check typed values
+without projecting a new saved tree; a failed component hash refuses the click.
+Equality of directly constructed `Value::Map`s allocates nothing but is quadratic
+in the number of entries. Binary NBT read limits live in `sunrise-core`'s `nbt.rs`;
+they do not apply to materialized component trees.
+Check this seam with `cargo test -p sunrise-world --lib component_value::` and
+`cargo test -p sunrise-protocol --lib item::`.
+
 | # | Area (commits) | Files | Checks |
 |---|---|---|---|
 | 1 | Game loop, tick order, frame pacing (554) | `L/game.rs` (`fn tick`, `fn render`), `G/world/level_tick.rs` (`fn tick_world`), `G/runtime/window_handler.rs` (`about_to_wait`), `L/clock.rs`, `N/window.rs`, `R/spans.rs` | game_loop, frame_limiter, interaction_input, tick |
@@ -69,6 +82,12 @@ command above to inspect the selection rather than relying on historical counts.
 | 38 | Command parsing (34) | `C/` (`args.rs`, `selector.rs`, `tree_*.rs`, `vanilla.rs`); `cargo test -p sunrise-command` | command_parse (corpus `tools/command_parse_corpus.py`) |
 | 39 | Benchmarks (34) | `L/benchmark.rs`, `tools/perf_bench.py`, `crates/sunrise-system/`, `crates/sunrise-bench/` | `python3 -m unittest tests.test_perf_bench`; [benchmark.md](benchmark.md) |
 | 40 | Explosions and TNT (31) | `G/entities/explosion.rs`, `G/entities/tnt.rs`, `G/blocks/nether_portal.rs`, `G/entities/vehicle_teleport.rs` | sulfur_portal_blast (calculator oracle; actual portal, `/tp` and mod cross-level arrivals, immediate item merges, transient TNT portal protection and disk reset); lan_e2e blast |
+
+NBT compounds (`crates/horizon-core/src/nbt.rs` and `java_hash_map.rs`) retain Java map
+traversal, including collision and mutation history. Rust `Clone` preserves that history;
+use `nbt::copy_tag` for Java `CompoundTag.copy` semantics. Reads must not reconstruct maps.
+Block-entity writers construct superclass/subclass fields before adding metadata, rather
+than repairing a completed compound and changing its traversal.
 
 Portal arrival regressions run with `python3 tools/test_sulfur_portal_blast_parity.py`
 and prepared 26.3 resources in `SUNRISE_TEST_RESOURCES`. The harness supplies private

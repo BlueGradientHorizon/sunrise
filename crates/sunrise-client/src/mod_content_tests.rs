@@ -928,7 +928,7 @@ fn creative_tabs_keep_vanilla_items_missing_from_search() {
         names: BTreeMap::new(),
     };
     let mut doc: J = serde_json::from_str(
-        r#"{"schema":4,"item_features":{},"potion_features":{},"tabs":[{"id":"minecraft:search","type":"SEARCH","build":[],"search_metadata":[]}]}"#,
+        r#"{"schema":4,"item_features":{},"potion_features":{},"tabs":[{"id":"minecraft:search","title":"Search Items","type":"SEARCH","build":[],"search_metadata":[]}]}"#,
     )
     .unwrap();
     plan.creative_tabs(&mut doc).unwrap();
@@ -4981,6 +4981,40 @@ fn content_block_state_properties_are_validated() {
     fs::remove_dir_all(&base).unwrap();
     fs::remove_dir_all(base.parent().unwrap().join("mod0")).ok();
 
+    // A code declaration is named by its ID even in a package with block JSON.
+    let (base, mut mods) = block_base("block-code-shadow", &[r#"{"template":"minecraft:test"}"#]);
+    let block = sunrise_mod_package::content::Block {
+        id: "testmod:code".into(),
+        template: "minecraft:test".into(),
+        state_properties: [(
+            "axis".into(),
+            sunrise_mod_package::content::StateProperty::Boolean,
+        )]
+        .into(),
+        ..Default::default()
+    };
+    let batches = BTreeMap::from([(
+        "testmod",
+        DeclaredContent {
+            blocks: vec![block.validate_local().unwrap()],
+            ..Default::default()
+        },
+    )]);
+    let mut errors = Vec::new();
+    accept_declared(&mut mods, &batches, &[], &BTreeSet::new(), &mut errors).unwrap();
+    assert!(errors.is_empty(), "{errors:?}");
+    let error = match Plan::new(&base, &mods) {
+        Err(e) => e.to_string(),
+        Ok(_) => panic!("a shadowed template property from code was accepted"),
+    };
+    assert!(error.starts_with("testmod:code:"), "{error}");
+    assert!(
+        error.contains("state_properties.axis") && error.contains("minecraft:test"),
+        "{error}"
+    );
+    fs::remove_dir_all(&base).unwrap();
+    fs::remove_dir_all(base.parent().unwrap().join("mod0")).ok();
+
     // A default is one of the values the block declared.
     let (base, mods) = block_base(
         "block-bad-default",
@@ -6158,13 +6192,25 @@ fn blocks_and_items_declared_in_code_get_ids() {
         ..Item::default()
     };
     let mut mods = vec![ruby_mod(&scratch.join("ruby"))];
-    let errors = accept_declared(
-        &mut mods,
-        &[block("ruby:ruby_log"), block("gears:shaft")],
-        &[wrench],
-        &[],
-        &known,
-    );
+    let batches = BTreeMap::from([
+        (
+            "ruby",
+            DeclaredContent {
+                blocks: vec![block("ruby:ruby_log").validate_local().unwrap()],
+                ..Default::default()
+            },
+        ),
+        (
+            "gears",
+            DeclaredContent {
+                blocks: vec![block("gears:shaft").validate_local().unwrap()],
+                items: vec![wrench.validate_local().unwrap()],
+                ..Default::default()
+            },
+        ),
+    ]);
+    let mut errors = Vec::new();
+    accept_declared(&mut mods, &batches, &[], &known, &mut errors).unwrap();
     assert!(errors.is_empty(), "{errors:?}");
     assert_eq!(mods.len(), 2);
     assert!(
@@ -6176,14 +6222,18 @@ fn blocks_and_items_declared_in_code_get_ids() {
     );
     assert_eq!(mods[1].id, "gears");
     // A namespace another mod owns, and a clash with a file's block, are refused whole.
-    let refused = accept_declared(
-        &mut mods,
-        &[block("ruby:ruby_block"), block("ruby:ruby_post")],
-        &[],
-        &[],
-        &known,
-    );
-    assert_eq!(refused.len(), 1, "{refused:?}");
+    let colliding = BTreeMap::from([(
+        "ruby",
+        DeclaredContent {
+            blocks: [block("ruby:ruby_block"), block("ruby:ruby_post")]
+                .into_iter()
+                .map(|b| b.validate_local().unwrap())
+                .collect(),
+            ..Default::default()
+        },
+    )]);
+    accept_declared(&mut mods, &colliding, &[], &known, &mut errors).unwrap();
+    assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(
         !mods[0]
             .content
