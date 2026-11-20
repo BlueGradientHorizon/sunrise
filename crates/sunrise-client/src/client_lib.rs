@@ -189,6 +189,7 @@ pub mod tick_chunk_membership;
 pub mod ticket_levels;
 pub mod title;
 pub mod toasts;
+pub mod travel_gate;
 pub mod ui_theme;
 pub mod vanillagen;
 pub mod viewed_levels_net;

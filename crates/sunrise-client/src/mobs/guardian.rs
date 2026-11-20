@@ -214,18 +214,14 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<bool, super::living::TravelTrample> {
-    if !m.fluids.in_water {
-        return Ok(false);
-    }
+) -> Result<(), super::living::TravelTrample> {
     m.move_relative(0.1, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {
         m.velocity = m.velocity.scale(0.9);
         if !m.extra.flag2 && m.ai.target.is_none() {
             m.velocity.y -= 0.005;
         }
-    })?;
-    Ok(true)
+    })
 }
 /// `Guardian.aiStep`'s `clientSideTailAnimation` and
 /// `clientSideSpikesAnimation` (the server's and a client's).

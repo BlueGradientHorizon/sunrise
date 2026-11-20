@@ -230,7 +230,7 @@ pub fn move_control(m: &mut Mob) {
 /// moved velocity's y, then the `0.91F`/`0.98F` drags widen from float. While
 /// the `NoGravity` of the tick's end stands, `effective_gravity` is 0 and the
 /// vex keeps gliding (`Vex.tick` sets the flag only after `super.tick()`).
-pub fn travel(m: &mut Mob, w: &super::MobWorld) -> bool {
+pub fn travel(m: &mut Mob, w: &super::MobWorld) {
     let from = m.position;
     m.position = m.position.add_vector(m.velocity);
     super::living::section_writes::record_with(
@@ -247,7 +247,6 @@ pub fn travel(m: &mut Mob, w: &super::MobWorld) -> bool {
         m.velocity.z * f64::from(0.91_f32),
     );
     m.on_ground = false;
-    true
 }
 /// `Vex.tick`: the limited life costs a heart a second once spent.
 pub fn ai_step(m: &mut Mob, w: &super::MobWorld, level: &mut DamageLevel<'_>) {

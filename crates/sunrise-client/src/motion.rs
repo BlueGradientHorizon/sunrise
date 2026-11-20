@@ -31,7 +31,7 @@ use sunrise_world::{
     entity_move::{self, CollisionFlags, EntityMoveWorld, MovementHistory, MoverType},
     entity_obstruction::EntityIdentity,
     ground_support::{GroundState, find_supporting_block},
-    living_air::{self, LivingAirWorld},
+    living_air::LivingAirWorld,
     living_fall::ImpulseContext,
     living_motion::{self, LivingMotionWorld},
     move_gate::MoveGate,
@@ -118,10 +118,10 @@ pub(crate) fn pushing_flow<W: sunrise_world::fluid_flow::FluidFlowWorld>(
 
 mod auto_jump;
 pub(crate) mod environment;
-use environment::fly_into_wall_damage;
 mod fluids;
 pub mod ladder;
 pub mod surface;
+mod travel;
 pub use fluids::{
     BubbleColumn, FluidResources, FluidTags, LAVA, PlayerFluids, RiddenBoat, WATER,
     bubble_column_at, bubble_column_push, bubble_column_push_over, bubble_column_surfaces,
@@ -133,6 +133,7 @@ pub use surface::{
     FrictionLevel, SideLevel, block_friction, native_block_jump_factor, native_block_speed_factor,
     native_is_ladder, read_friction,
 };
+pub use travel::ServerTravel;
 
 pub struct MotionResources {
     pub attributes: Arc<Catalog>,
@@ -1087,9 +1088,6 @@ impl MotionWorld<'_, '_, '_> {
         self.player.on_climbable = climbable;
         Ok(climbable)
     }
-    pub fn travel_in_air(&mut self, gate: &mut MoveGate, input: Vec3) -> Result<()> {
-        living_air::travel_in_air(self, gate, input)
-    }
     /// Dry, standing movement phases of LivingEntity.aiStep, including powder
     /// snow's block-inside effects and server freezing (thawing, the frost
     /// modifier, freeze damage). Equipment, interpolation, effects and other
@@ -1412,58 +1410,6 @@ impl MotionWorld<'_, '_, '_> {
             .state(self.block(on))
             .is_some_and(|s| self.resources.soul_speed_blocks.contains(&s.name)))
     }
-    /// Player.travel: swim steering, then LivingEntity.travel (fluids first,
-    /// then gliding, then air), keeping 0.6 of the vertical speed while flying.
-    fn player_travel(&mut self, input: Vec3) -> Result<()> {
-        // The player's one physical move this tick goes through the move gate
-        // (#2414): whichever travel branch runs, `move_self` arms the gate it
-        // receives here.
-        let mut gate = MoveGate::new();
-        if self.player.swimming {
-            let look_y =
-                sunrise_world::view_direction::view_vector(self.player.pitch, self.player.yaw).y;
-            let near_surface = BlockPos::containing(Vec3::new(
-                self.player.position.x,
-                self.player.position.y + 1.0 - 0.1,
-                self.player.position.z,
-            ));
-            if look_y <= 0.0
-                || self.player.jumping
-                || self.fluid_at(near_surface).kind() != sunrise_world::fluid::FluidKind::Empty
-            {
-                let blend = if look_y < -0.2 { 0.085 } else { 0.06 };
-                self.player.velocity.y += (look_y - self.player.velocity.y) * blend;
-            }
-        }
-        let flying_y = self.player.flying.then_some(self.player.velocity.y);
-        self.living_travel(&mut gate, input)?;
-        if let Some(y) = flying_y {
-            self.player.velocity.y = y * 0.6;
-        }
-        Ok(())
-    }
-    /// `LivingEntity.travel`: in a fluid (`isAffectedByFluids`: not while
-    /// flying), gliding, or in the air.
-    fn living_travel(&mut self, gate: &mut MoveGate, input: Vec3) -> Result<()> {
-        if !self.player.flying
-            && (self.player.fluids.was_touching_water || self.player.is_in_lava())
-        {
-            sunrise_world::living_fluid::travel_in_fluid(self, gate, input)?;
-            Ok(())
-        } else if self.player.fall_flying {
-            // LivingEntity.travelFallFlying: on a climbable the glide ends and
-            // the player moves like in the air.
-            if self.climbable()? {
-                self.travel_in_air(gate, input)?;
-                self.player.fall_flying = false;
-                Ok(())
-            } else {
-                self.travel_fall_flying(gate)
-            }
-        } else {
-            self.travel_in_air(gate, input)
-        }
-    }
     /// `Entity.rideTick` for a rider this client moves (`LocalPlayer`): its
     /// deltaMovement starts at zero, then `LivingEntity.aiStep` travels it as
     /// it does any entity it simulates (`Player.travel` for a passenger is
@@ -1486,11 +1432,10 @@ impl MotionWorld<'_, '_, '_> {
     }
     /// ServerPlayer's own travel: the server simulates a player too
     /// (`MoveSimulationType.AUTHORITATIVE_SIDE_AND_SERVER`), with no input
-    /// (it never sets xxa/zza). Only the delta movement it leaves stays: it
-    /// is what a hurt sends the player (`ServerEntity.sendChanges`), and
-    /// what the next knockback starts from; the client's next move places
-    /// the player.
-    pub fn server_travel(&mut self) -> Result<()> {
+    /// (it never sets xxa/zza). Normally only the delta movement stays, for
+    /// knockback and later move validation. When `living_travel` changes the
+    /// travel, the connection's move validator owns the position correction.
+    pub fn server_travel(&mut self) -> Result<ServerTravel> {
         let p = &mut *self.player;
         let (position, ground, collision) = (p.position, p.ground, p.collision);
         let (history, fall_distance, steps) = (p.history.clone(), p.fall_distance, p.steps);
@@ -2018,69 +1963,6 @@ impl MotionWorld<'_, '_, '_> {
             }));
         self.player
             .cause_food_exhaustion(if self.player.sprinting { 0.2 } else { 0.05 });
-        Ok(())
-    }
-    /// LivingEntity.travelFallFlying with updateFallFlyingMovement.
-    fn travel_fall_flying(&mut self, gate: &mut MoveGate) -> Result<()> {
-        let v = self.player.velocity;
-        let move_h = (v.x * v.x + v.z * v.z).sqrt();
-        let gravity = living_motion::effective_gravity(self)?;
-        self.player.velocity = fall_flying_movement(v, self.player.pitch, self.player.yaw, gravity);
-        let movement = self.player.velocity;
-        self.move_self(gate, movement)?;
-        // LivingEntity.handleFallFlyingCollisions: the fall-damage sound plays
-        // on both sides (a glider's own travel is client-side, and the sound
-        // must reach its own ears, #8906), only the server hurts, and it
-        // compares the horizontal speed before `updateFallFlyingMovement`
-        // with the delta `Entity.move` leaves (the collided axes zeroed).
-        if self.player.collision.horizontal {
-            let v = self.player.velocity;
-            let after_h = (v.x * v.x + v.z * v.z).sqrt();
-            let dmg = fly_into_wall_damage(move_h, after_h);
-            if dmg > 0.0 {
-                let first = self.player.events.len();
-                // getFallDamageSound((int) dmg)
-                let sound = if dmg as i32 > 4 {
-                    crate::landing::SceneSound::BigFall
-                } else {
-                    crate::landing::SceneSound::SmallFall
-                };
-                self.player
-                    .events
-                    .push(MotionEvent::Fall(crate::landing::FallEvent::Sound {
-                        sound,
-                        position: None,
-                        volume: 1.0,
-                        pitch: 1.0,
-                    }));
-                // Only the server hurts; the sound is shared.
-                if !self.player.client_side {
-                    let id = self
-                        .resources
-                        .health
-                        .damage
-                        .id("minecraft:fly_into_wall")
-                        .ok_or("missing fly_into_wall damage type")?;
-                    let rules = self.scene.health_rules;
-                    self.player.hurt(
-                        &mut crate::health::DamageLevel::of(
-                            self.scene,
-                            self.assets.registry,
-                            self.tag_items,
-                            self.block_registries,
-                            self.damage_hooks,
-                        ),
-                        self.health,
-                        rules,
-                        id,
-                        dmg,
-                    )?;
-                    if self.player.server_copy {
-                        self.player.wall_hit_events = Some(first..self.player.events.len());
-                    }
-                }
-            }
-        }
         Ok(())
     }
     /// One ordinary `Entity.move(mover, movement)`, outside travel. The collision
@@ -3209,6 +3091,7 @@ mod tests {
         assert!(fly_into_wall_damage(0.01, 0.0) < 0.0);
     }
 
+    use super::environment::fly_into_wall_damage;
     use super::*;
 
     /// `LocalPlayer.isHorizontalCollisionMinor`: sliding along a wall at a

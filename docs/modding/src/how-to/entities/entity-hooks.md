@@ -74,6 +74,35 @@ far the entity moved, and None for a stale handle, on a client, for a player (te
 outside the game's entity walk (a display, a painting, a frame, an End crystal, a dragon part) and for a delta
 that is not finite or beyond 64 blocks on an axis. Fall damage and block effects stay with the entity's tick.
 
+`living_travel` runs on the server, after the player's swim steering or at a
+mob's travel entry. It receives the loop context, not a `Host`, and lets a
+listener change the input and velocity or cancel. `TravelMode` names the branch
+about to run, including species overrides: an allay or vex reports `Flying`, and
+a squid reports `VelocityOnly` in or out of water. A replacement does not change
+the branch. A body that does not travel, such as a shulker, fires no hook; neither
+does a replayed player tick.
+
+Replacement input components must be finite and within [-1, 1]; replacement
+velocity components within ±64 blocks per tick. Untouched vectors are exempt.
+One malformed vector drops that listener's entire result, including its cancel
+flag. The preceding accepted result stands, and the log names the mod and field
+once per tick. An accepted cancellation cannot be cleared. It skips the branch,
+its nested moves and flying vertical damping, without undoing earlier work such
+as swim steering. If the branch runs and calls `entity_move`, that move can
+still be vetoed. A listener panic restores the originally resolved values, ends
+the dispatch and disables the failed listener for this hook for the session;
+its other hooks remain enabled.
+
+For a player, a veto holds the position accepted at the server's travel boundary;
+it does not rewind reports already accepted before that tick. While the veto
+stands, the server corrects new reports that would move the player away. An
+edit that changes the input or velocity always sends one correction, even if
+collision absorbs it. It carries the live server position and velocity. The
+server compares the vectors bit for bit, except that inputs within vanilla's
+movement dead zone are equivalent. A new travel tick does not replace a
+position correction or its velocity while awaiting acknowledgement. The client
+never calls this hook.
+
 ## Teleport hooks
 
 `ender_pearl_teleport` covers player-owned and mob-owned pearls. Its `owner` is an

@@ -42,6 +42,8 @@ pub struct Backend {
 pub struct Diagnostics {
     pub first_broken_warning: fn(&str) -> bool,
     pub first_off_thread_warning: fn() -> bool,
+    pub first_output_refusal: fn(crate::HookId, &'static str) -> bool,
+    pub reset_output_refusals: fn(),
 }
 
 /// Plain per-call instrumentation data. The platform must validate the pool

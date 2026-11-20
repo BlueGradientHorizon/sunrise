@@ -24,6 +24,7 @@ use sunrise_world::{
 };
 #[path = "climbing.rs"]
 mod climbing;
+mod travel;
 
 /// `DeathProtection.TOTEM_EFFECTS`: clear, then regeneration II, absorption II
 /// and fire resistance.
@@ -1757,58 +1758,15 @@ impl Mob {
         let _ = self.travel_until_trample(w, level, input, events, false);
     }
 
-    pub(super) fn travel_until_trample(
-        &mut self,
-        w: &MobWorld,
-        level: &mut DamageLevel<'_>,
-        mut input: Vec3,
-        events: &mut Vec<MobEvent>,
-        pause: bool,
-    ) -> Result<(), TravelTrample> {
-        // Camel.travel: on the ground, a camel that sits or changes pose keeps
-        // the vertical part of its motion and drops the horizontal input.
-        if super::camel::is_camel(self.species())
-            && self.on_ground
-            && super::camel::refuse_to_move(self)
-        {
-            let vertical = Vec3::new(0.0, 1.0, 0.0);
-            self.velocity = self.velocity.multiply(vertical);
-            input = input.multiply(vertical);
-        }
-        if super::ai::custom_travel(self, w, level, input, events, pause)? {
-            return Ok(());
-        }
-        if self.kind.flags.flying {
-            return self.travel_flying(w, level, input, events, pause);
-        }
-        // shouldTravelInFluid: not where the fluid at its feet holds it up.
-        let (x, y, z) = (
-            self.position.x.floor() as i32,
-            self.position.y.floor() as i32,
-            self.position.z.floor() as i32,
-        );
-        let stands_on_fluid = self.kind.flags.lava_walker && w.fluid(x, y, z) == Fluid::Lava;
-        if self.is_in_liquid() && self.affected_by_fluids() && !stands_on_fluid {
-            self.travel_in_fluid(w, level, input, events, pause)
-        } else if self.extra.fall_flying {
-            self.travel_fall_flying(w, level, input, events, pause)
-        } else {
-            self.travel_in_air(w, level, input, events, pause, false)
-        }
-    }
     /// `LivingEntity.travelFallFlying`: use the mob's existing authoritative move
     /// and damage routes, with the shared `updateFallFlyingMovement` arithmetic.
     fn travel_fall_flying(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
-        input: Vec3,
         events: &mut Vec<MobEvent>,
         pause: bool,
     ) -> Result<(), TravelTrample> {
-        if self.on_climbable(w) {
-            return self.travel_in_air(w, level, input, events, pause, true);
-        }
         let before = (self.velocity.x * self.velocity.x + self.velocity.z * self.velocity.z).sqrt();
         self.velocity = crate::motion::fall_flying_movement(
             self.velocity,
@@ -2035,11 +1993,12 @@ impl Mob {
         input: Vec3,
         events: &mut Vec<MobEvent>,
         pause: bool,
+        water: bool,
     ) -> Result<(), TravelTrample> {
         let falling = self.velocity.y <= 0.0;
         let old_y = self.position.y;
         let gravity = self.effective_gravity();
-        let water_slow = if self.fluids.in_water {
+        let water_slow = if water {
             let mut slow = if self.extra.sprinting {
                 0.9
             } else {

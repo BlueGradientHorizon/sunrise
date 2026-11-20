@@ -128,6 +128,11 @@ pub struct Hook {
     /// unwinds is switched off for this hook for the session, and the outputs it had written roll
     /// back to what the game requested (#2414 ruling).
     pub isolate: bool,
+    /// An isolated hook's per-listener check of the outputs it wrote: a path to
+    /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
+    /// vector/scalar outputs in declaration order and naming the first refused one. A refused
+    /// result, including its cancellation, rolls back; later listeners still run.
+    pub output_validator: Option<String>,
     pub scope: Option<PartScope>,
     pub host: Option<HostAccess>,
     pub context: Option<PhaseContext>,
@@ -287,6 +292,7 @@ struct ModApiEntry {
     owner: Option<String>,
     collect_validator: Option<String>,
     isolate: Option<bool>,
+    output_validator: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -386,6 +392,14 @@ impl Hook {
                 error: "isolate is for a global cancel hook".into(),
             });
         }
+        if let Some(validator) = &api.output_validator
+            && (!isolate || syn::parse_str::<syn::Path>(validator).is_err())
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name.clone(),
+                error: "output_validator is a path on an isolated hook".into(),
+            });
+        }
         let counterparts = Counterparts {
             neoforge: counterparts(&name, "neoforge", entry.neoforge)?,
             fabric: counterparts(&name, "fabric", entry.fabric)?,
@@ -404,6 +418,7 @@ impl Hook {
             collect_validator: api.collect_validator,
             inert: entry.inert,
             isolate,
+            output_validator: api.output_validator,
             scope,
             host: entry.host,
             context: entry.context,
@@ -664,6 +679,7 @@ impl Declared {
                             "owner",
                             "collect_validator",
                             "isolate",
+                            "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
                                 api.insert(key.into(), value);
@@ -847,6 +863,7 @@ impl Hook {
             collect_validator: None,
             inert: None,
             isolate: false,
+            output_validator: None,
             scope: None,
             host: None,
             context: None,

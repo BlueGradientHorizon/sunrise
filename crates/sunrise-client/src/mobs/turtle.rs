@@ -162,18 +162,14 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<bool, super::living::TravelTrample> {
-    if !m.fluids.in_water {
-        return Ok(false);
-    }
+) -> Result<(), super::living::TravelTrample> {
     m.move_relative(0.1, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {
         m.velocity = m.velocity.scale(0.9);
         if m.ai.target.is_none() && (!going_home(m) || !close_to_home(m, 20.0)) {
             m.velocity.y -= 0.005;
         }
-    })?;
-    Ok(true)
+    })
 }
 /// `Turtle.aiStep`: while digging, sand crumbs fly every fifth tick.
 pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {

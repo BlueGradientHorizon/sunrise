@@ -180,15 +180,11 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<bool, super::living::TravelTrample> {
-    if !m.fluids.in_water {
-        return Ok(false);
-    }
+) -> Result<(), super::living::TravelTrample> {
     m.move_relative(m.ai.speed, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {
         m.velocity = m.velocity.scale(0.9);
-    })?;
-    Ok(true)
+    })
 }
 
 /// `Frog.canEat`: a slime or magma cube of size 1.
@@ -1213,21 +1209,7 @@ mod tests {
             m.ai.speed = 0.25;
             m.yaw = 0.0;
             m.velocity = Vec3::new(1.0, -0.5, 0.125);
-            let kept = m.velocity;
             let mut test_level = crate::health::TestLevel::new(0);
-            assert!(
-                !travel(
-                    &mut m,
-                    w,
-                    &mut test_level.level(),
-                    Vec3::new(0.0, 0.0, 1.0),
-                    &mut Vec::new(),
-                    false,
-                )
-                .unwrap()
-            );
-            assert_eq!(m.velocity, kept);
-
             m.fluids.in_water = true;
             m.position = Vec3::new(0.5, 80.0, 0.5);
             m.travel(
