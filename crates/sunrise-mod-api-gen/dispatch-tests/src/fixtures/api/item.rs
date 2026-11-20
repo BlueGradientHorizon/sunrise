@@ -6,7 +6,7 @@ pub mod item {
             pub pos: Option<[i32; 3]>,
             pub id: i32,
         }
-        pub struct AnvilCraft;
+        pub struct AnvilCraftInputs<'a>(std::marker::PhantomData<&'a ()>);
         pub struct AnvilUpdate;
         pub struct GrindstonePlace;
         pub struct GrindstoneTake;

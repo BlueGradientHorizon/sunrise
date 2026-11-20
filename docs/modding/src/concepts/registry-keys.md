@@ -278,12 +278,14 @@ reads use `UnspawnedMobError::Text`. `TooDeep` means a component path or opaque 
 container path exceeds 512. Unavailable backends are distinct from invalid text or
 unrepresentable payloads.
 A refused hook capture does not dispatch; a refused writeback leaves every field unchanged.
-No subscriber means no conversion or snapshot allocation.
+No subscriber means no API conversion or API snapshot allocation.
 Mutable stack arguments are compared using value equality with the snapshot passed to
 the listener. An unchanged argument retains the original engine value without strict
 write validation (including engine-legal stacks above effective count or damage maxima).
 A changed argument is validated in full; a refusal commits no outputs. The same
-rule applies to anvil/grindstone records and menu cursor/quick-move stacks.
+rule applies to editable anvil/grindstone records and menu cursor/quick-move stacks. The
+anvil's Pre and Post take hooks instead borrow the same read-only API snapshot; neither writes
+back a stack.
 
 Recursive `Clone`, `Eq` and `Drop` of a tree a mod itself built are ordinary Rust ownership,
 not part of the boundary guarantee.

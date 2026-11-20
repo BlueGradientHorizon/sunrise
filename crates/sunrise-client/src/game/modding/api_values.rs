@@ -1194,25 +1194,14 @@ impl TryIntoEngine for mod_api::item::stations::AnvilResult {
     }
 }
 impl TryIntoApi for crate::menu::AnvilCraftSnapshot {
-    type Api = mod_api::item::menu::AnvilCraft;
+    type Api = (Option<ApiStack>, Option<ApiStack>, ApiStack);
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::menu::AnvilCraft {
-            left: self.left.try_into_api()?,
-            right: self.right.try_into_api()?,
-            output: self.output.try_into_api()?,
-        })
-    }
-}
-impl TryIntoEngine for mod_api::item::menu::AnvilCraft {
-    type Engine = crate::menu::AnvilCraftSnapshot;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::menu::AnvilCraftSnapshot {
-            left: self.left.try_into_engine(items)?,
-            right: self.right.try_into_engine(items)?,
-            output: self.output.try_into_engine(items)?,
-        })
+        Ok((
+            self.left.try_into_api()?,
+            self.right.try_into_api()?,
+            self.output.try_into_api()?,
+        ))
     }
 }
 impl TryIntoApi for crate::menu::GrindstonePlace {
@@ -1375,29 +1364,6 @@ impl super::Game<'_> {
             .try_into_engine(self.items())
             .map_err(|_| crate::game::transactions::decision::InvalidReason::Count)?;
         Ok(())
-    }
-    pub(in crate::game) fn api_anvil_craft_pre(
-        &mut self,
-        player: u128,
-        name: &str,
-        pos: [i32; 3],
-        value: &crate::menu::AnvilCraftSnapshot,
-        cancel: &mut bool,
-    ) {
-        if let Ok(api) = value.try_into_api() {
-            self.native_anvil_craft_pre(player, name, pos, &api, cancel);
-        }
-    }
-    pub(in crate::game) fn api_anvil_craft_post(
-        &mut self,
-        player: u128,
-        name: &str,
-        pos: [i32; 3],
-        value: &crate::menu::AnvilCraftSnapshot,
-    ) {
-        if let Ok(api) = value.try_into_api() {
-            self.native_anvil_craft_post(player, name, pos, &api);
-        }
     }
 }
 

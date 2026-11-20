@@ -9,17 +9,19 @@ use super::{
     stations::{Kind as StationKind, Station},
 };
 use crate::game::{
+    api_values::TryIntoApi,
     decided_action::Epoch,
     transactions::{
         After,
         decision::{InvalidReason, Reply},
     },
 };
+use mod_api::item::menu::AnvilCraftInputs;
 use std::cell::{Cell, RefCell};
 use sunrise_client::{
     containers::BlockEntity,
     items::ItemStack,
-    menu::{AnvilCraftSnapshot, GrindstonePlace, Kind, Menu, PendingGrindstoneTake},
+    menu::{GrindstonePlace, Kind, Menu, PendingGrindstoneTake},
 };
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -274,25 +276,41 @@ impl Game<'_> {
                 undo = hook.then(|| menu.anvil_undo());
                 op(menu, env);
             });
-            // AnvilCraftEvent.Pre: the taken result's onTake waits for the mods.
-            let mut anvil_craft = gs.menu.anvil_craft.take();
+            // Both anvil hooks borrow the same converted snapshot, even after the
+            // take changes the slots. The deferred take must run even if capture fails.
+            let pending = gs.menu.anvil_craft.take();
+            let deferred_take = pending.is_some();
+            let pre_listened =
+                deferred_take && mod_api::__private::listened(mod_api::HookId::AnvilCraftPre);
+            let post_listened =
+                deferred_take && mod_api::__private::listened(mod_api::HookId::AnvilCraftPost);
+            let snapshot = pending
+                .filter(|_| pre_listened || post_listened)
+                .and_then(|craft| craft.try_into_api().ok());
+            let inputs = snapshot
+                .as_ref()
+                .map(|(left, right, output)| AnvilCraftInputs {
+                    left: left.as_ref(),
+                    right: right.as_ref(),
+                    output,
+                });
             let mut cancelled = false;
-            if let Some(craft) = &anvil_craft {
-                let (uuid, name) = self
-                    .lan
-                    .as_ref()
-                    .map(|host| {
-                        let guest = &host.hub.guests[gi];
-                        (guest.uuid, guest.name.clone())
-                    })
-                    .unwrap_or((0, String::new()));
+            if deferred_take {
                 let mut cancel = false;
-                self.api_anvil_craft_pre(uuid, &name, gs.pos, craft, &mut cancel);
+                if pre_listened && let Some(inputs) = &inputs {
+                    let (uuid, name) = self
+                        .lan
+                        .as_ref()
+                        .map(|host| {
+                            let guest = &host.hub.guests[gi];
+                            (guest.uuid, guest.name.clone())
+                        })
+                        .unwrap_or((0, String::new()));
+                    self.native_anvil_craft_pre(uuid, &name, gs.pos, inputs, &mut cancel);
+                }
                 if cancel && let Some(undo) = undo {
-                    // The take is refused: the result, inputs, cost, inventory
-                    // and cursor are as before the click (the resync below
-                    // tells the client).
-                    anvil_craft = None;
+                    // Restore the result, inputs, cost, inventory and cursor.
+                    // The cancelled take drops nothing and is resynced below.
                     cancelled = true;
                     self.guest_menu_op(gi, &mut gs.menu, |menu, _| menu.anvil_cancel(undo));
                 } else {
@@ -494,7 +512,8 @@ impl Game<'_> {
                     self.native_player_item_smithed(uuid, entity_id, inputs, result);
                 }
             }
-            self.lan_station_combined(conn, &mut gs, anvil_craft.as_ref());
+            let post_inputs = inputs.as_ref().filter(|_| post_listened && !cancelled);
+            self.lan_station_combined(conn, &mut gs, post_inputs);
             if let Some(button) = gs.menu.enchant_button.take() {
                 self.lan_enchant(gi, &mut gs, button);
             }
@@ -698,13 +717,13 @@ impl Game<'_> {
 
     /// The rest of a taken anvil or smithing result's `onTake`: the guest
     /// pays the levels, the anvil wears (level event 1030 or 1029), the
-    /// smithing table sounds (1044). An anvil's `craft` is then reported to
-    /// the mods (`AnvilCraftEvent.Post`).
+    /// smithing table sounds (1044). An anvil's pre-take inputs and result are
+    /// then reported to the mods (`AnvilCraftEvent.Post`).
     fn lan_station_combined(
         &mut self,
         conn: u32,
         gs: &mut GuestStation,
-        craft: Option<&AnvilCraftSnapshot>,
+        inputs: Option<&AnvilCraftInputs<'_>>,
     ) {
         let change = std::mem::take(&mut gs.menu.level_change);
         if change != 0 {
@@ -719,14 +738,14 @@ impl Game<'_> {
             let creative = gs.menu.creative;
             // A broken anvil closes the menu on the next stillValid check.
             self.anvil_used(gs.pos, creative);
-            if let Some(craft) = craft
+            if let Some(inputs) = inputs
                 && let Some((uuid, name)) = self
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
                     .map(|guest| (guest.uuid, guest.name.clone()))
             {
-                self.api_anvil_craft_post(uuid, &name, gs.pos, craft);
+                self.native_anvil_craft_post(uuid, &name, gs.pos, inputs);
             }
         }
     }
@@ -1420,4 +1439,129 @@ pub(super) fn station_inputs(gs: &GuestStation) -> Vec<ItemStack> {
     menu_of(gs.kind)
         .map(|(_, _, inputs)| inputs.filter_map(|s| gs.menu.slot(s).cloned()).collect())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod anvil_tests {
+    use super::*;
+    use crate::game::native_guest_turn_tests::with_guests;
+    use mod_api::{AnvilCraftPostEvent, AnvilCraftPreEvent, Flow, Hooks, ModEntry, ServerHost};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct Observe(Arc<AtomicUsize>);
+
+    impl Observe {
+        fn check_inputs(&self, phase: usize, inputs: &AnvilCraftInputs<'_>) {
+            let stack = |s: &mod_api::ItemStack| {
+                (
+                    mod_api::__private::item_key_id(s.item()),
+                    s.count(),
+                    s.damage(),
+                )
+            };
+            assert_eq!(
+                inputs.left.map(stack),
+                Some((Some("minecraft:iron_sword"), 1, 80))
+            );
+            assert_eq!(
+                inputs.right.map(stack),
+                Some((Some("minecraft:iron_ingot"), 2, 0))
+            );
+            assert_eq!(stack(inputs.output), (Some("minecraft:iron_sword"), 1, 0));
+            assert_eq!(self.0.load(Ordering::Relaxed), phase);
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for Observe {
+        fn anvil_craft_pre(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut AnvilCraftPreEvent<'_>,
+        ) -> Flow {
+            self.check_inputs(0, event.inputs);
+            Flow::Continue
+        }
+
+        fn anvil_craft_post(&self, _: &mut dyn ServerHost, event: &mut AnvilCraftPostEvent<'_>) {
+            self.check_inputs(1, event.inputs);
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_pre_and_post_read_pre_take_inputs() {
+        const CONN: u32 = 12;
+        const POS: [i32; 3] = [1, 64, 1];
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mods = vec![ModEntry::new(
+            "anvil_observer",
+            Box::new(Observe(calls.clone())),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_guests(|game| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                let [x, y, z] = POS;
+                let state = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:anvil")
+                    .unwrap();
+                game.world.set(x, y, z, state).unwrap();
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(CONN, |guest| guest.xp_level = 10)
+                    .unwrap();
+                assert!(game.lan_open_station(CONN, &Station::new(StationKind::Anvil, POS)));
+                assert!(game.lan_station_op(CONN, None, |menu, env| {
+                    let mut sword = ItemStack::new("minecraft:iron_sword", 1);
+                    sword.damage = 80;
+                    menu.set_slot(env, 0, Some(sword));
+                    menu.set_slot(env, 1, Some(ItemStack::new("minecraft:iron_ingot", 2)));
+                }));
+                let window = game.lan.as_ref().unwrap().menus[&CONN]
+                    .station
+                    .as_ref()
+                    .unwrap()
+                    .window;
+                game.lan_guest_packet(
+                    CONN,
+                    play::Serverbound::ContainerClick(play::ContainerClick {
+                        container: window,
+                        state: 0,
+                        slot: 2,
+                        button: 0,
+                        input: 0,
+                        changed: Vec::new(),
+                        carried: None,
+                    }),
+                );
+
+                let host = game.lan.as_ref().unwrap();
+                let menu = &host.menus[&CONN].station.as_ref().unwrap().menu;
+                assert!((0..=2).all(|slot| menu.slot(slot).is_none()));
+                let guest = &host.hub.guests[0];
+                let carried = guest.carried.as_ref().expect("the guest took the output");
+                assert_eq!(
+                    (&*carried.item, carried.count, carried.damage),
+                    ("minecraft:iron_sword", 1, 0)
+                );
+                assert_eq!(guest.xp_level, 8);
+                assert_eq!(
+                    calls.load(Ordering::Relaxed),
+                    2,
+                    "Pre and Post both read the pre-take inputs"
+                );
+            });
+        });
+    }
 }

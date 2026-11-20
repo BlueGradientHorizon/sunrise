@@ -780,7 +780,6 @@ fn boundary_value(ty: &Type) -> bool {
             "RecipeTrimPattern",
             "FireworkShapeIngredient",
             "AnvilResult",
-            "AnvilCraft",
             "AnvilUpdate",
             "GrindstonePlace",
             "GrindstoneTake",

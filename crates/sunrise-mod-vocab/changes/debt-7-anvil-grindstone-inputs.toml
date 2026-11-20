@@ -1,0 +1,22 @@
+ids = [
+    "hook:anvil_craft_pre",
+    "hook:anvil_craft_pre.craft",
+    "hook:anvil_craft_pre.inputs",
+    "hook:anvil_craft_post",
+    "hook:anvil_craft_post.craft",
+    "hook:anvil_craft_post.inputs",
+    "type:AnvilCraftPreEvent.craft",
+    "type:AnvilCraftPreEvent.inputs",
+    "type:AnvilCraftPostEvent.craft",
+    "type:AnvilCraftPostEvent.inputs",
+    "type:item::menu::AnvilCraft",
+    "type:item::menu::AnvilCraft.left",
+    "type:item::menu::AnvilCraft.right",
+    "type:item::menu::AnvilCraft.output",
+    "type:item::menu::AnvilCraftInputs",
+    "type:item::menu::AnvilCraftInputs.left",
+    "type:item::menu::AnvilCraftInputs.right",
+    "type:item::menu::AnvilCraftInputs.output",
+]
+why = "The anvil's Pre and Post callbacks now borrow one snapshot of the input and result stacks from before the take. The snapshot is local to the hook call and has no Wire encoding."
+migrate = "In both callbacks, replace `event.craft` with `event.inputs` and any type annotation of `&mod_api::item::menu::AnvilCraft` with `&mod_api::item::menu::AnvilCraftInputs<'_>`. Replace `event.craft.left.as_ref()` and `event.craft.right.as_ref()` with `event.inputs.left` and `event.inputs.right`, and `&event.craft.output` with `event.inputs.output`. To keep a stack past the callback, use `event.inputs.left.cloned()`, `event.inputs.right.cloned()` or `(*event.inputs.output).clone()`; store the owned stacks rather than encoding the hook snapshot. Pre still cancels through `event.cancelled`. Rebuild and repack the mod to record version 2 of the hooks it uses."

@@ -2621,26 +2621,26 @@ impl Game<'_> {
     ) {
         self.fire_prepare_item_enchant(player, name, pos, costs);
     }
-    /// A player took an anvil's result at `pos` (`AnvilCraftEvent.Pre`), before the levels are charged, the inputs used up and the anvil worn. `craft` holds the inputs and the result as they were before. Set `cancel` to refuse the take: the result stays in its slot and the inputs, levels, inventory and cursor are as before the click.
+    /// A player took an anvil's result at `pos` (`AnvilCraftEvent.Pre`), before the levels are charged, the inputs used up and the anvil worn. `inputs` borrows the input stacks and result from before the take. Set `cancel` to refuse the take: the result stays in its slot and the inputs, levels, inventory and cursor are as before the click.
     pub(in crate::game) fn native_anvil_craft_pre(
         &mut self,
         player: u128,
         name: &str,
         pos: [i32; 3],
-        craft: &mod_api::item::menu::AnvilCraft,
+        inputs: &mod_api::item::menu::AnvilCraftInputs<'_>,
         cancel: &mut bool,
     ) {
-        self.fire_anvil_craft_pre(player, name, pos, craft, cancel);
+        self.fire_anvil_craft_pre(player, name, pos, inputs, cancel);
     }
-    /// A player took an anvil's result at `pos` and the levels, inputs and anvil wear are done (`AnvilCraftEvent.Post`); a broken anvil is already air. `craft` holds the inputs and the result as they were before. Not called when `native_anvil_craft_pre` cancelled.
+    /// A player took an anvil's result at `pos` and the levels, inputs and anvil wear are done (`AnvilCraftEvent.Post`); a broken anvil is already air. `inputs` borrows the input stacks and result from before the take. Not called when `native_anvil_craft_pre` cancelled.
     pub(in crate::game) fn native_anvil_craft_post(
         &mut self,
         player: u128,
         name: &str,
         pos: [i32; 3],
-        craft: &mod_api::item::menu::AnvilCraft,
+        inputs: &mod_api::item::menu::AnvilCraftInputs<'_>,
     ) {
-        self.fire_anvil_craft_post(player, name, pos, craft);
+        self.fire_anvil_craft_post(player, name, pos, inputs);
     }
     /// A smithing result was prepared for a server player at `pos`. Change it before it is sent.
     pub(in crate::game) fn native_prepare_smithing(

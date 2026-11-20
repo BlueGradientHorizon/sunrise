@@ -2,11 +2,12 @@
 // catalog-order: 0237
 
 pub trait Hooks {
-    /// A player took an anvil's result at `pos` and the levels, inputs and anvil wear are done (`AnvilCraftEvent.Post`); a broken anvil is already air. `craft` holds the inputs and the result as they were before. Not called when `anvil_craft_pre` cancelled.
+    /// A player took an anvil's result at `pos` and the levels, inputs and anvil wear are done (`AnvilCraftEvent.Post`); a broken anvil is already air. `inputs` borrows the same pre-take input stacks and result as `anvil_craft_pre`. Not called when `anvil_craft_pre` cancelled.
     #[hook(
         side = "server",
         contract = "listen",
-        neoforge = "AnvilCraftEvent.Post"
+        neoforge = "AnvilCraftEvent.Post",
+        version = 2
     )]
     fn anvil_craft_post();
 }

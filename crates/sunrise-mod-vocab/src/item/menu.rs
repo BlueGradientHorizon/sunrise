@@ -288,15 +288,18 @@ pub struct GrindstoneTake {
     pub new_top: Option<ItemStack>,
     pub new_bottom: Option<ItemStack>,
 }
-/// An anvil craft as `AnvilCraftEvent` reports it: the inputs and the result
-/// taken, before the crafting changed anything.
+/// The anvil inputs and result before the take. Both `anvil_craft_pre` and
+/// `anvil_craft_post` borrow this same snapshot for their callback.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct AnvilCraft {
-    pub left: Option<ItemStack>,
-    pub right: Option<ItemStack>,
-    pub output: ItemStack,
+// no wire: borrows the pre-take snapshot for this hook call.
+pub struct AnvilCraftInputs<'a> {
+    /// The stack in the left slot before the take, if present.
+    pub left: Option<&'a ItemStack>,
+    /// The stack in the right slot before the take, if present.
+    pub right: Option<&'a ItemStack>,
+    /// The result stack that was taken.
+    pub output: &'a ItemStack,
 }
 
 /// One of a menu's own (non-player) containers: the key a `menu_slot_rules` ask names its slot's

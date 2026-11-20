@@ -215,5 +215,12 @@ the click, including the result, cursor, inventory and any dropped item. Both ca
 undo the listener's writes. An accepted take is still tentative until the enclosing transaction
 commits.
 
+The server's `anvil_craft_pre` and `anvil_craft_post` both borrow the same pre-take snapshot
+through `event.inputs` (`AnvilCraftInputs<'_>`). Read the optional stacks through `inputs.left`
+and `inputs.right`, and the taken result through `inputs.output`. Clone an individual stack
+only if you need to keep it after the callback. Set `event.cancelled` in Pre to leave the menu,
+cursor, inventory and levels unchanged and skip Post. Post runs after the inputs are consumed,
+levels are charged and anvil wear is applied.
+
 `MenuPart::menu_slot_rules` answers per menu type and slot, including for a replacement from
 `item_stacked_on_other`.
