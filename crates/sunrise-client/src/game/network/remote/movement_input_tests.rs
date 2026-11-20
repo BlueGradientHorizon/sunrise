@@ -1,14 +1,14 @@
 //! Exercise the real local-player movement caller with and without a native listener.
 use super::*;
 use crate::game::native_entity_refs::tests::with_client_game;
-use mod_api::{ClientHost, Hooks, MovementInputEvent};
+use mod_api::{ClientHost, Hooks, MovementInputUpdateEvent};
 use sunrise_client::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
 
 struct Native;
 #[mod_api::__subscriptions]
 impl Hooks for Native {
-    fn movement_input(&self, _: &dyn ClientHost, event: &mut MovementInputEvent) {
+    fn movement_input_update(&self, _: &dyn ClientHost, event: &mut MovementInputUpdateEvent) {
         if event.right_key {
             event.forward_key = true;
             event.sprint = false;
@@ -74,7 +74,7 @@ fn matrix(mods: mod_api::Mods) {
         with_client_game(|game| {
             let server = connect(game);
             // A direction edit discards a controller's old angle and magnitude.
-            let keys = game.mod_movement_keys(Keys {
+            let keys = game.update_movement_input(Keys {
                 analog: Some([0.2, 0.8]),
                 ..Keys::default()
             });
@@ -83,7 +83,7 @@ fn matrix(mods: mod_api::Mods) {
             assert!(keys.analog.is_none());
 
             // Without a key edit, an independent controller vector remains intact.
-            let keys = game.mod_movement_keys(Keys {
+            let keys = game.update_movement_input(Keys {
                 forward: true,
                 analog: Some([0.2, 0.8]),
                 ..Keys::default()
@@ -91,7 +91,7 @@ fn matrix(mods: mod_api::Mods) {
             assert_eq!(keys.direction(), [0.2, 0.8]);
 
             // Raw opposites remain distinct; changed keys win over both axes.
-            let keys = game.mod_movement_keys(Keys {
+            let keys = game.update_movement_input(Keys {
                 backward: true,
                 analog: Some([0.0, -0.7]),
                 ..Keys::default()
@@ -101,14 +101,14 @@ fn matrix(mods: mod_api::Mods) {
             assert!(keys.analog.is_none());
 
             // Axis-only edits update just the corresponding packet directions.
-            let keys = game.mod_movement_keys(Keys {
+            let keys = game.update_movement_input(Keys {
                 left: true,
                 ..Keys::default()
             });
             assert_eq!(keys.direction(), [0.25, -0.5]);
             assert!(!keys.forward && keys.backward && keys.left && !keys.right);
             assert!(keys.jump && keys.shift && keys.sprint);
-            let keys = game.mod_movement_keys(Keys {
+            let keys = game.update_movement_input(Keys {
                 forward: true,
                 backward: true,
                 left: true,
@@ -226,7 +226,7 @@ fn movement_input_without_listeners_keeps_vanilla_latch_double_tap_and_controlle
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_client_game(|game| {
             let server = connect(game);
-            let keys = game.mod_movement_keys(Keys {
+            let keys = game.update_movement_input(Keys {
                 forward: true,
                 analog: Some([0.2, 0.8]),
                 ..Keys::default()
@@ -269,7 +269,7 @@ fn movement_input_disabled_listener_keeps_vanilla_keys() {
         || {
             assert!(mod_api::__private::set_mod_enabled("movement", false));
             with_client_game(|game| {
-                let keys = game.mod_movement_keys(Keys {
+                let keys = game.update_movement_input(Keys {
                     forward: true,
                     analog: Some([0.2, 0.8]),
                     ..Keys::default()
@@ -277,20 +277,20 @@ fn movement_input_disabled_listener_keeps_vanilla_keys() {
                 assert_eq!(keys.direction(), [0.2, 0.8]);
                 assert!(!keys.sprint_suppressed);
                 assert!(!keys.sprint);
-                let keys = game.mod_movement_keys(Keys::default());
+                let keys = game.update_movement_input(Keys::default());
                 assert_eq!(keys.direction(), [0.0, 0.0]);
                 assert!(!keys.forward && !keys.sprint_suppressed);
                 assert!(mod_api::__private::set_mod_enabled("movement", true));
-                let keys = game.mod_movement_keys(Keys::default());
+                let keys = game.update_movement_input(Keys::default());
                 assert_eq!(keys.direction(), [0.0, 1.0]);
                 assert!(keys.forward && keys.sprint && !keys.sprint_suppressed);
-                let keys = game.mod_movement_keys(Keys {
+                let keys = game.update_movement_input(Keys {
                     right: true,
                     ..Keys::default()
                 });
                 assert!(keys.forward && keys.right && keys.sprint_suppressed);
                 assert!(mod_api::__private::set_mod_enabled("movement", false));
-                let keys = game.mod_movement_keys(Keys::default());
+                let keys = game.update_movement_input(Keys::default());
                 assert_eq!(keys.direction(), [0.0, 0.0]);
                 assert!(!keys.forward && !keys.sprint_suppressed);
             });

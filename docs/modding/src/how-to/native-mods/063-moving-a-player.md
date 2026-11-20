@@ -50,5 +50,5 @@ velocity or ground flag. A server's write of a player's motion reaches that play
 motion packet, which replaces the client's velocity outright.
 
 At `player_tick_pre` the player's input fields hold the previous tick's applied values, so to scale this tick's forward
-input (Create's boots multiply a slow one by 1.3) use the `movement_input` hook, which runs after the keys are read
+input (Create's boots multiply a slow one by 1.3) use the `movement_input_update` hook, which runs after the keys are read
 and before they are applied.

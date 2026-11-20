@@ -3801,7 +3801,11 @@ mod tests {
                 self.1.lock().unwrap().push(self.0);
                 event.areas.push([self.0 as f32, 0.0, 0.0, 0.0]);
             }
-            fn movement_input(&self, _: &dyn ClientHost, event: &mut mod_api::MovementInputEvent) {
+            fn movement_input_update(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut mod_api::MovementInputUpdateEvent,
+            ) {
                 self.1.lock().unwrap().push(self.0);
                 event.forward += self.0 as f32;
             }

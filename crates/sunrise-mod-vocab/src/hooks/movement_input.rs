@@ -1,4 +1,4 @@
-//! The `movement_input` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
+//! The `movement_input_update` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
     /// Local player movement input, after reading it and before applying it.
@@ -15,7 +15,7 @@ pub trait Hooks {
         version = 2,
         cancellable = false
     )]
-    fn movement_input(
+    fn movement_input_update(
         forward: &mut f32,
         strafe: &mut f32,
         jump: &mut bool,

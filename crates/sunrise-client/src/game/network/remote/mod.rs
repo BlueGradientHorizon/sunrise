@@ -6560,7 +6560,7 @@ impl Game<'_> {
         if self.integrated.is_none() && self.server_address().is_some() {
             keys.analog = None;
         }
-        let keys = self.mod_movement_keys(keys);
+        let keys = self.update_movement_input(keys);
         let input = u8::from(keys.forward)
             | u8::from(keys.backward) << 1
             | u8::from(keys.left) << 2

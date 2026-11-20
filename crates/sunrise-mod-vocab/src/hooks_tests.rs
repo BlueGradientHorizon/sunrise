@@ -205,7 +205,11 @@ fn movement_input_writes_back_all_fields() {
     struct Movement;
     #[mod_api::__subscriptions]
     impl Hooks for Movement {
-        fn movement_input(&self, _host: &dyn ClientHost, event: &mut MovementInputEvent) {
+        fn movement_input_update(
+            &self,
+            _host: &dyn ClientHost,
+            event: &mut MovementInputUpdateEvent,
+        ) {
             event.forward = -0.5;
             event.strafe = 0.25;
             event.jump = true;
@@ -227,9 +231,9 @@ fn movement_input_writes_back_all_fields() {
     let (mut forward, mut strafe, mut jump, mut sneak) = (1.0, 0.0, false, false);
     let (mut forward_key, mut backward_key, mut left_key, mut right_key, mut sprint) =
         (false, true, false, true, false);
-    dispatch_movement_input(
+    dispatch_movement_input_update(
         &FakeHost::new(),
-        crate::__private::MovementInputCall {
+        crate::__private::MovementInputUpdateCall {
             forward: &mut forward,
             strafe: &mut strafe,
             jump: &mut jump,

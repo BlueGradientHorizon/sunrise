@@ -3,11 +3,11 @@ use super::*;
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
     /// Local player movement input, after reading it and before applying it.
-    pub(in crate::game) fn native_movement_input(
+    pub(in crate::game) fn native_movement_input_update(
         &self,
-        call: mod_api::__private::MovementInputCall<'_>,
+        call: mod_api::__private::MovementInputUpdateCall<'_>,
     ) {
-        self.fire_movement_input(call);
+        self.fire_movement_input_update(call);
     }
 }
 
@@ -15,17 +15,17 @@ impl Game<'_> {
     /// Apply the listener's keys or independent axes before local movement and
     /// packet construction. A key edit wins over all axis edits, including a
     /// controller's old vector; opposing keys remain independently observable.
-    pub(in crate::game) fn mod_movement_keys(
+    pub(in crate::game) fn update_movement_input(
         &self,
         mut keys: sunrise_client::sprint::Keys,
     ) -> sunrise_client::sprint::Keys {
-        if !mod_api::__private::enabled_listened(mod_api::HookId::MovementInput) {
+        if !mod_api::__private::enabled_listened(mod_api::HookId::MovementInputUpdate) {
             return keys;
         }
         let original_keys = [keys.forward, keys.backward, keys.left, keys.right];
         let [mut strafe, mut forward] = keys.direction();
         let original_axes = [strafe, forward];
-        self.native_movement_input(mod_api::__private::MovementInputCall {
+        self.native_movement_input_update(mod_api::__private::MovementInputUpdateCall {
             forward: &mut forward,
             strafe: &mut strafe,
             jump: &mut keys.jump,
@@ -61,7 +61,7 @@ impl Game<'_> {
     pub(in crate::game) fn movement_dispatch_fixture(&self, fire: bool) -> f32 {
         let mut keys = sunrise_client::sprint::Keys::default();
         let (mut forward, mut strafe) = (1.0, 0.0);
-        let call = mod_api::__private::MovementInputCall {
+        let call = mod_api::__private::MovementInputUpdateCall {
             forward: &mut forward,
             strafe: &mut strafe,
             jump: &mut keys.jump,
@@ -73,9 +73,9 @@ impl Game<'_> {
             sprint: &mut keys.sprint,
         };
         if fire {
-            self.native_movement_input(call);
+            self.native_movement_input_update(call);
         } else {
-            mod_api::dispatch_movement_input(self, call);
+            mod_api::dispatch_movement_input_update(self, call);
         }
         forward
     }
