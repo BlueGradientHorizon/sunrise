@@ -59,8 +59,8 @@ owned read results must be prepared outside traversal and borrowed during it; do
 promise arbitrary existing allocating Host methods are free. Unsupported reads report
 unavailable explicitly, never fabricated values. Client prediction uses the local
 player/replicated entity view at the click revision, without a server round trip;
-the server uses its current authoritative target. Missing/stale handles refuse the
-candidate, never alias a recycled entity id.
+the server uses its current authoritative target. A candidate that asks a Part
+refuses a missing or stale handle rather than aliasing a recycled entity ID.
 
 Decide captures stack/menu/entity revisions and prepares reads; fire asks once per
 candidate slot; apply rechecks those revisions and slot preconditions in the same
@@ -74,18 +74,16 @@ applied under one immutable borrow, through a Host adapter that offers observati
 (no commands, storage writes, scheduling or random draws), so nothing can change in
 between and a revision token would compare a value with itself. The recheck stays required
 wherever an answer is kept beyond the call, as with a cache or prediction applied later.
-A stale or missing entity handle refuses on every path. The removed guest route also
-rechecked revisions when reusing a prepared payload across candidates (#3549).
-
-Native lends the prepared values. Slot and entity-kind names are prepared outside
-traversal and asks carry IDs. Gameplay hoists preparation across candidates for one
-dispense, menu input scope and mob pickup attempt. `EquipDecision` exclusively owns the source slot during
+Native dispatch borrows the prepared values, including slot and entity-kind names.
+Gameplay hoists preparation across candidates for one dispense, menu input scope
+and mob pickup attempt. `EquipDecision` exclusively owns the source slot during
 mutation; every mutable field access bumps its revision before lending, and
 replacement/removal bumps its identity generation. Overflow retires the scope.
 A changed-and-restored source remains stale. Menu reuse uses scope and scalar stamps,
 not stack equality. Apply checks the source, menu and entity admission preconditions;
-a recycled numeric entity id does not reuse an earlier admission. No-listener paths
-retain their data answer without conversion or a new entity lookup.
+a recycled numeric entity ID does not reuse an earlier admission. The no-listener
+path returns the data answer without conversion or a new entity lookup; a missing
+target handle does not override that answer.
 
 The prepared target rows retain entity type (`EntityTypeKey`), position, health,
 maximum health, alive/living status and the eight physical equipment slots. Native
@@ -110,9 +108,10 @@ no-listener path. Native warmed traversal checks allocations.
 ## Historical guest preparation
 
 The removed guest route encoded the stack and read view once per participating guest
-instance, then passed call-scoped tokens, slot IDs and scalar answers without engine
-pointers or per-slot stack encoding. Its generation and release checks invalidated stale
-preparations; registration refused missing prepared exports. The old loopback tests
+instance, then passed call-scoped tokens, numeric slot IDs and scalar answers without
+engine pointers or per-slot stack encoding. It rechecked revisions when sharing a
+prepared payload across candidates (#3549); generation and release checks invalidated
+stale preparations, and registration refused missing prepared exports. The old loopback tests
 compared native and guest answers and checked token refusals. The guest copy probes
 measured preparation bytes separately from scalar asks. None of these guest exports,
 refusals or probes is required for native code.
