@@ -3451,6 +3451,9 @@ struct Game<'a> {
     /// Scratch for the copies a frame draws through the terrain materials.
     model_copy_order: Vec<u32>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
+    /// Unpublished startup declarations owned by a debug renderer test game.
+    #[cfg(test)]
+    test_debug_entries: Option<Vec<sunrise_client::debug_entries::RegisteredDebugEntry>>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     debug_renderers: Vec<mod_api::Answered<mod_api::DebugRenderer>>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
@@ -13301,6 +13304,8 @@ impl<'a> Game<'a> {
             prepared_model_draws: Default::default(),
             model_copy_order: Vec::new(),
             world_geometry: Some(Default::default()),
+            #[cfg(test)]
+            test_debug_entries: None,
             debug_renderers: Vec::new(),
             debug_renderers_version: None,
             hud_layer_next: None,

@@ -3,7 +3,8 @@
 pub trait Hooks {
     /// Collect world-space debug renderers at each client renderer-list refresh (NeoForge's
     /// `RegisterDebugRenderersEvent`). Push `DebugRenderer::new(id, draw)` for each renderer
-    /// on every refresh, using the ID of its startup `DebugEntry::renderer` toggle.
+    /// on every refresh, using the ID of its startup `DebugEntry::renderer` toggle. A selection
+    /// rebuild can refresh the list even when the same toggles end up enabled.
     #[notes = r#"## Debug renderers
 
 `Hooks::register_debug_renderers` is the client counterpart of NeoForge 26.3's
@@ -12,6 +13,8 @@ pub trait Hooks {
 of a world since the start, and on the next view of a world after the debug selection changes.
 That is a status set in the debug options or by a key, a profile loaded, the F3 overlay opened or
 closed, or reduced debug info rebuilt. Respawn also invalidates the list for the next view.
+The next world view refreshes after a rebuild even if the enabled toggles are unchanged, such as
+when the overlay opens and closes between views or reduced debug info is set to the same value.
 Drawing the title or connect screen doesn't refresh anything. The hook receives a
 `RegistrationContext`, so it reads no world. Each mod receives an empty `event.renderers`
 batch and pushes `DebugRenderer::new(id, draw)` per renderer.

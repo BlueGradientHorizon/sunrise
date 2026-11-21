@@ -199,11 +199,7 @@ static REGISTERED: OnceLock<Vec<RegisteredDebugEntry>> = OnceLock::new();
 /// `<namespace>:<path>` in a namespace other than vanilla's, or that another entry has
 /// already, is logged and left out.
 pub fn register(entries: Vec<Answered<DebugEntry>>) {
-    let entries = entries.into_iter().map(|answer| RegisteredDebugEntry {
-        owner: answer.mod_id,
-        entry: answer.answer,
-    });
-    if REGISTERED.set(checked(entries)).is_err() {
+    if REGISTERED.set(collect_registrations(entries)).is_err() {
         log::warn!("debug entries were registered already; these are left out");
     }
 }
@@ -211,6 +207,14 @@ pub fn register(entries: Vec<Answered<DebugEntry>>) {
 /// The entries native mods registered, in registration order.
 pub fn registered() -> &'static [RegisteredDebugEntry] {
     REGISTERED.get().map_or(&[], Vec::as_slice)
+}
+
+/// Apply the startup registration checks without publishing the resulting declarations.
+pub fn collect_registrations(entries: Vec<Answered<DebugEntry>>) -> Vec<RegisteredDebugEntry> {
+    checked(entries.into_iter().map(|answer| RegisteredDebugEntry {
+        owner: answer.mod_id,
+        entry: answer.answer,
+    }))
 }
 
 fn checked(entries: impl IntoIterator<Item = RegisteredDebugEntry>) -> Vec<RegisteredDebugEntry> {
@@ -489,6 +493,7 @@ impl DebugEntries {
     /// an ID wins.
     pub fn active_renderers(
         &self,
+        entries: &[RegisteredDebugEntry],
         renderers: Vec<Answered<DebugRenderer>>,
         overlay: bool,
         reduced: bool,
@@ -496,16 +501,17 @@ impl DebugEntries {
         let mut active: Vec<Answered<DebugRenderer>> = Vec::new();
         for renderer in renderers {
             let id = renderer.answer.id();
-            let Some(declared) =
-                entry(id).filter(|e| id.contains(':') && e.category == Category::Renderer)
-            else {
+            if !entries
+                .iter()
+                .any(|entry| entry.entry.id() == id && entry.entry.text_lines().is_none())
+            {
                 log::warn!(
                     "{}: debug renderer {id} has no renderer entry; it is left out",
                     renderer.mod_id
                 );
                 continue;
-            };
-            if (declared.reduced || !reduced)
+            }
+            if !reduced
                 && self.status(id).shown(overlay)
                 && !active.iter().any(|kept| kept.answer.id() == id)
             {

@@ -112,10 +112,12 @@ fn register_debug_renderers(&self, _: &RegistrationContext, event: &mut Register
 ```
 
 The client collects a fresh list at startup, login, the first world view and the next world view
-after a selection rebuild or respawn. Keep per-refresh state in the new callbacks. Push all
-renderers every time, even if their toggles are off; the first active registration for a switch
-wins. Only installed callbacks run in a world view, as their registering mods, after
-`submit_custom_geometry` and within its shared draw limits. Off or hidden toggles do not draw.
+after a selection rebuild or respawn. A rebuild refreshes the list even if the same toggles end up
+enabled, such as when the overlay opens and closes between world views. Keep per-refresh state in
+the new callbacks. Push all renderers every time, even if their toggles are off; the first active
+registration for a switch wins. Only installed callbacks run in a world view, as their registering
+mods, after `submit_custom_geometry` and within its shared draw limits. Off or hidden toggles do not
+draw.
 
 ## Block overlays
 
