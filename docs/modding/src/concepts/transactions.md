@@ -44,6 +44,11 @@ The journal covers writes through capability handlers to these storages:
 | Entity inventory | Chest or hopper minecart, chest boat, chested donkey, mule or llama inventory |
 | Item entity | Stack; an emptied entity remains until the outermost commit removes it |
 
+An abort restores recorded player storage even if the player died, is in another level, or
+is no longer the acting player when the transaction closes. This includes fake players.
+The player need not be available through a mod's handle at that point. Restoring these
+writes does not itself undo the death or move the player between levels.
+
 At the outermost commit, default `ITEMS` and item `STORAGE` writes to vanilla containers
 and engine-managed mod slots publish their implicit change notifications.
 Other deferred effects include jukebox playback, cauldron and composter block updates and

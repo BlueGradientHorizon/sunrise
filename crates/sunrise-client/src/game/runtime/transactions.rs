@@ -16,7 +16,8 @@
 //! told at the root commit from its record before and after, so a disc swapped in one
 //! transaction changes the song. A player's inventory (slots, armour, off hand, cursor) is kept
 //! whole on its first write, from wherever the player's state lives then: the acting fields
-//! or a parked guest's record. An item a write drops from a player waits for
+//! or a parked guest's record. On abort, the journal follows that storage through guest turns.
+//! An item a write drops from a player waits for
 //! the root commit too. An item entity's stack is kept on its first write; one emptied stays,
 //! empty, until the root commit removes it. A guest's menu storage (ender chest, crafting grid,
 //! a mod's chest menu) is kept whole on its first write through a menu slot; a crafting grid
@@ -27,10 +28,7 @@
 //! health and absorption, and the attribute modifier rows the effects own.
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
-use super::{
-    BlockEntity, BlockStateId, Game, machines::HopperState, maps::MapData,
-    native_server::PlayerRead,
-};
+use super::{BlockEntity, BlockStateId, Game, machines::HopperState, maps::MapData};
 use mod_api::{LevelRef, Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
@@ -254,10 +252,10 @@ pub(super) struct Level {
     composter_randoms: ComposterRandoms,
     /// Each quart cell before this transaction first wrote it.
     biomes: HashMap<Pos, u16>,
-    /// Each player's inventory before this transaction first wrote it, by UUID.
-    players: HashMap<u128, KeptPlayer>,
+    /// Each player's inventory and saved data before this transaction first wrote them.
+    players: HashMap<JournaledPlayer, KeptPlayer>,
     /// Ender storage has one journal shared by player and menu writes.
-    ender_items: HashMap<u128, Vec<Option<ItemStack>>>,
+    ender_items: HashMap<JournaledPlayer, Vec<Option<ItemStack>>>,
     /// Synced player health and its unpublished update events before set_health.
     player_health: HashMap<u128, KeptPlayerHealth>,
     /// Mob health and synchronization dirtiness before set_health.
@@ -406,6 +404,19 @@ struct KeptMobEffects {
     ambient: Vec<&'static str>,
     hidden: Vec<&'static str>,
     dirty: bool,
+}
+
+/// Storage identity, not a public player handle. Fake players in different levels
+/// can share a UUID; their hub connections still distinguish their records.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum JournaledPlayer {
+    Local(u128),
+    Guest(u32),
+}
+
+enum PlayerStorageHome {
+    Game,
+    Guest(usize),
 }
 
 #[derive(Clone)]
@@ -584,14 +595,14 @@ impl Level {
 
     fn keep_player(
         &mut self,
-        uuid: u128,
+        owner: JournaledPlayer,
         ender_items: &[Option<ItemStack>],
         capture: impl FnOnce() -> KeptPlayer,
     ) {
         self.ender_items
-            .entry(uuid)
+            .entry(owner)
             .or_insert_with(|| ender_items.to_vec());
-        self.players.entry(uuid).or_insert_with(capture);
+        self.players.entry(owner).or_insert_with(capture);
     }
 
     /// Keeps chested mob `id`'s item list's length, `len`, before `entity_slots` grows it, if
@@ -870,8 +881,8 @@ impl Game<'_> {
                 for (pos, biome) in level.biomes {
                     outer.biomes.entry(pos).or_insert(biome);
                 }
-                for (uuid, kept) in level.players {
-                    outer.players.entry(uuid).or_insert(kept);
+                for (owner, kept) in level.players {
+                    outer.players.entry(owner).or_insert(kept);
                 }
                 for (uuid, kept) in level.player_health {
                     outer.player_health.entry(uuid).or_insert(kept);
@@ -907,8 +918,8 @@ impl Game<'_> {
                 for (id, len) in level.mob_lengths {
                     outer.mob_lengths.entry(id).or_insert(len);
                 }
-                for (uuid, kept) in level.ender_items {
-                    outer.ender_items.entry(uuid).or_insert(kept);
+                for (owner, kept) in level.ender_items {
+                    outer.ender_items.entry(owner).or_insert(kept);
                 }
                 for (conn, kept) in level.menus {
                     outer.menus.entry(conn).or_insert(kept);
@@ -1193,7 +1204,10 @@ impl Game<'_> {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
-        level.keep_player(uuid, &self.ender_items, || KeptPlayer {
+        let owner = self
+            .lan_acting
+            .map_or(JournaledPlayer::Local(uuid), JournaledPlayer::Guest);
+        level.keep_player(owner, &self.ender_items, || KeptPlayer {
             player_extra: self.level.player_extra.clone(),
             inventory: self.inventory.clone(),
             armor: self.armor.clone(),
@@ -1203,19 +1217,49 @@ impl Game<'_> {
         });
     }
     /// The same journal for a player resolved to their own parked record at `index`.
-    pub(super) fn journal_parked_player(&mut self, uuid: u128, index: usize) {
+    pub(super) fn journal_parked_player(&mut self, index: usize) {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
         let guest = &self.lan.as_ref().expect("resolved guest").hub.guests[index];
-        level.keep_player(uuid, &guest.ender_items, || KeptPlayer {
-            player_extra: guest.saved.clone(),
-            inventory: guest.inventory.clone(),
-            armor: guest.armor.clone(),
-            offhand: guest.offhand.clone(),
-            equipment: guest.equipment.clone(),
-            carried: guest.carried.clone(),
-        });
+        level.keep_player(
+            JournaledPlayer::Guest(guest.conn),
+            &guest.ender_items,
+            || KeptPlayer {
+                player_extra: guest.saved.clone(),
+                inventory: guest.inventory.clone(),
+                armor: guest.armor.clone(),
+                offhand: guest.offhand.clone(),
+                equipment: guest.equipment.clone(),
+                carried: guest.carried.clone(),
+            },
+        );
+    }
+
+    /// Follow the actual storage, even when public handles cannot resolve the player.
+    /// Each outstanding swap holds the immediately preceding actor in the inner guest's row.
+    fn player_storage_home(&self, owner: JournaledPlayer) -> Option<PlayerStorageHome> {
+        let parked_in = match owner {
+            JournaledPlayer::Local(uuid) => {
+                let local = self
+                    .level
+                    .player_uuid
+                    .map(sunrise_client::lan::playerdata::ints_uuid);
+                if local != Some(uuid) {
+                    return None;
+                }
+                self.lan_guest_swaps.first().copied()
+            }
+            JournaledPlayer::Guest(conn) => self
+                .lan_guest_swaps
+                .iter()
+                .position(|&swapped| swapped == conn)
+                .map_or(Some(conn), |i| self.lan_guest_swaps.get(i + 1).copied()),
+        };
+        match parked_in {
+            Some(conn) => self.guest_index(conn).map(PlayerStorageHome::Guest),
+            None => Some(PlayerStorageHome::Game),
+        }
     }
     /// Called with the target player's body swapped in, before set_health changes it.
     pub(super) fn journal_player_health(&mut self) {
@@ -1334,8 +1378,8 @@ impl Game<'_> {
         if grid.is_none() && native.is_none() {
             return;
         }
-        let uuid = player.uuid();
-        let ender = (!level.ender_items.contains_key(&uuid)).then(|| {
+        let owner = JournaledPlayer::Guest(conn);
+        let ender = (!level.ender_items.contains_key(&owner)).then(|| {
             if self.lan_acting == Some(conn) {
                 self.ender_items.clone()
             } else {
@@ -1350,7 +1394,7 @@ impl Game<'_> {
                 level.native_menu_slots.insert(generation, slots);
             }
             if let Some(ender) = ender {
-                level.ender_items.insert(uuid, ender);
+                level.ender_items.insert(owner, ender);
             }
         }
     }
@@ -2153,24 +2197,19 @@ impl Game<'_> {
             self.score.board.restore(saved);
             self.sync_score_registries();
         }
-        for (uuid, kept) in level.ender_items {
-            if self.native_acting_id() == uuid {
-                self.ender_items = kept;
-            } else if let Some(host) = self.lan.as_mut()
-                && let Some(index) = host
-                    .hub
-                    .guests
-                    .iter()
-                    .position(|g| g.placed && g.uuid == uuid)
-            {
-                host.hub.guests.update(index, |g| g.ender_items = kept);
+        for (owner, kept) in level.ender_items {
+            match self.player_storage_home(owner) {
+                Some(PlayerStorageHome::Game) => self.ender_items = kept,
+                Some(PlayerStorageHome::Guest(index)) => {
+                    let host = self.lan.as_mut().expect("resolved guest");
+                    host.hub.guests.update(index, |g| g.ender_items = kept);
+                }
+                None => {}
             }
         }
-        for (uuid, kept) in level.players {
-            // A player's storage can move between the game and its row between writes.
-            // Resolve its current home without entering a turn just to restore it.
-            match self.native_item_place_player(uuid) {
-                Some(PlayerRead::Acting { .. }) => {
+        for (owner, kept) in level.players {
+            match self.player_storage_home(owner) {
+                Some(PlayerStorageHome::Game) => {
                     self.level.player_extra = kept.player_extra;
                     self.inventory = kept.inventory;
                     self.armor = kept.armor;
@@ -2178,18 +2217,16 @@ impl Game<'_> {
                     self.equipment = kept.equipment;
                     self.carried = kept.carried;
                 }
-                Some(PlayerRead::Guest(guest)) => {
-                    if let Some(index) = self.guest_index(guest.conn) {
-                        let host = self.lan.as_mut().expect("resolved guest");
-                        host.hub.guests.update(index, |g| {
-                            g.saved = kept.player_extra;
-                            g.inventory = kept.inventory;
-                            g.armor = kept.armor;
-                            g.offhand = kept.offhand;
-                            g.equipment = kept.equipment;
-                            g.carried = kept.carried;
-                        });
-                    }
+                Some(PlayerStorageHome::Guest(index)) => {
+                    let host = self.lan.as_mut().expect("resolved guest");
+                    host.hub.guests.update(index, |g| {
+                        g.saved = kept.player_extra;
+                        g.inventory = kept.inventory;
+                        g.armor = kept.armor;
+                        g.offhand = kept.offhand;
+                        g.equipment = kept.equipment;
+                        g.carried = kept.carried;
+                    });
                 }
                 None => {}
             }
