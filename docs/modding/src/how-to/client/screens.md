@@ -98,7 +98,14 @@ Its `reason` and optional smoothed integrated-server `progress` are current each
 If another load starts while the screen is open, the same presentation stays in place,
 even if the reason changes. The tracker still decides when the screen closes. Login and death
 respawn do not look up dimension keys; like unmatched travel, they use vanilla when opening
-a new loading screen.
+a new loading screen. The vanilla screen also draws when the matching factory or its presentation
+is disabled or refused. A failed draw leaves neither its paint nor its requests for blur, local sound,
+particle clears or camera changes. Requests pending before that draw stay in place. A phase refusal only
+affects that invocation. A draw panic disables drawing for that registration for the session, but does
+not stop the factory from being called on the next matching load. The presentation is dropped as its
+registering mod when the screen closes or the client disconnects, even if drawing has already been
+disabled. A destructor panic is reported with the mod's name and disables the registration's draw
+callback, not the factory. Closing still completes.
 
 ## Reading open trades
 

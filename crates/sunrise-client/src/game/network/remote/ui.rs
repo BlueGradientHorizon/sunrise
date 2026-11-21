@@ -136,15 +136,25 @@ impl Game<'_> {
                 .map(|i| i.load_view())
                 .filter(|v| v.has_progress())
                 .map(|v| v.server_progress());
-            sunrise_client::widgets::begin_screen(|| {
-                super::super::screen_info::level_loading(progress, &super::super::screen_info::tr)
-            });
-            if self.draw_dimension_transition_screen(
-                batch,
-                &r.level_load,
-                progress.map(|_| self.loading_progress),
-            ) {
-                return true;
+            let begin_loading_screen = || {
+                sunrise_client::widgets::begin_screen(|| {
+                    super::super::screen_info::level_loading(
+                        progress,
+                        &super::super::screen_info::tr,
+                    )
+                });
+            };
+            begin_loading_screen();
+            if r.level_load.transition_screen().is_some() {
+                if self.draw_dimension_transition_screen(
+                    batch,
+                    &r.level_load,
+                    progress.map(|_| self.loading_progress),
+                ) {
+                    return true;
+                }
+                // A failed presentation can also have registered widgets or narration.
+                begin_loading_screen();
             }
             self.draw_level_loading_background(batch, r.level_load.reason);
             let atlas = &self.gui.atlas;

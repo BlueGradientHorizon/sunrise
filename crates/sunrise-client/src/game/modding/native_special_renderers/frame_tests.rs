@@ -12,7 +12,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::item_render::ItemRenderState;
+use sunrise_client::item_render::{ItemRenderState, OwnedSpecialModelFactory};
 
 /// One directly submitted quad goes through the real dropped-item draw and its outline copy.
 #[test]
@@ -180,7 +180,10 @@ fn install_stick_with(
 ) {
     let factories = BTreeMap::from([(
         "test:stick".into(),
-        SpecialModelFactory::new(|_| Ok(()), move |(), bake| bake_geometry(bake).map(Stick)),
+        OwnedSpecialModelFactory::new(
+            "test",
+            SpecialModelFactory::new(|_| Ok(()), move |(), bake| bake_geometry(bake).map(Stick)),
+        ),
     )]);
     let definition = game.pack.item_renderer.decode_definition(
         r#"{"model":{"type":"minecraft:special","base":"minecraft:item/stick","model":{"type":"test:stick"}}}"#,
