@@ -8283,6 +8283,47 @@ def explosion_creaking_heart_experience():
                        f'/forceload remove {x0} {z0}')
 
 
+def summon_lightning_bolt_nbt():
+    # Vanilla 26.3 cases for /summon minecraft:lightning_bolt with trailing NBT (#2690).
+    return [
+        cmd('/setblock 4 209 4 minecraft:lightning_rod'),
+        cmd('/execute if block 4 209 4 minecraft:lightning_rod[powered=false]'),
+        cmd('/summon minecraft:creeper 4.5 210 4.5 {NoAI:1b,NoGravity:1b,Invulnerable:1b,Tags:["bolt_creeper"]}'),
+        cmd('/data get entity @e[tag=bolt_creeper,limit=1] powered'),
+        cmd('/summon minecraft:lightning_bolt 4.5 210 4.5 {CustomName:"fz"}'),
+        {'op': 'tick', 'n': 1},
+        cmd('/execute if block 4 209 4 minecraft:lightning_rod[powered=true]'),
+        cmd('/data get entity @e[tag=bolt_creeper,limit=1] powered'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt]'),
+        cmd('/execute if block 4 209 4 minecraft:lightning_rod[powered=false]'),
+        cmd('/setblock 8 209 4 minecraft:lightning_rod'),
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5 {}'),
+        {'op': 'tick', 'n': 1},
+        cmd('/execute if block 8 209 4 minecraft:lightning_rod[powered=true]'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt]'),
+        cmd('/execute if block 8 209 4 minecraft:lightning_rod[powered=false]'),
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5 {CustomName:{text:"Bolt",color:"gold"}}'),
+        {'op': 'tick', 'n': 1},
+        cmd('/execute if block 8 209 4 minecraft:lightning_rod[powered=true]'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt]'),
+        cmd('/execute if block 8 209 4 minecraft:lightning_rod[powered=false]'),
+        cmd('/summon minecraft:armor_stand 10.5 210 4.5 {NoGravity:1b,UUID:[I;2690,0,0,1],Tags:["bolt_uuid"]}'),
+        cmd('/setblock 12 209 4 minecraft:lightning_rod'),
+        cmd('/summon minecraft:lightning_bolt 12.5 210 4.5 {UUID:[I;2690,0,0,1],CustomName:"dup"}'),
+        {'op': 'tick', 'n': 1},
+        cmd('/execute if block 12 209 4 minecraft:lightning_rod[powered=false]'),
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt]'),
+        *setup(
+            '/kill @e[tag=bolt_creeper]',
+            '/kill @e[tag=bolt_uuid]',
+            '/fill 0 208 0 15 215 15 minecraft:air',
+        ),
+    ]
+
+
 def groups():
     try:
         from .spectral_duration_corpus import cases as spectral_saved_duration
@@ -8612,6 +8653,7 @@ def groups():
         ('vehicle ground and fall', vehicle_ground_and_fall()),
         ('vehicle saved ground and fall', vehicle_saved_ground_and_fall()),
         ('ravager saved movement speed', ravager_saved_movement_speed()),
+        ('summon lightning_bolt NBT', summon_lightning_bolt_nbt()),
         # Last: it leaves the player in other food than it found.
         (player_food.GROUP, player_food.cases(cmd, setup)),
     ]

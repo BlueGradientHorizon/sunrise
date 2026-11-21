@@ -1,0 +1,682 @@
+{
+  "minecraft": "26.3",
+  "oracle": "VanillaCommandExecOracle",
+  "groups": [
+    "summon lightning_bolt NBT"
+  ],
+  "steps": [
+    {
+      "op": "cmd",
+      "cmd": "/setblock 4 209 4 minecraft:lightning_rod",
+      "messages": [
+        [
+          [
+            "Changed the block at 4, 209, 4",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if block 4 209 4 minecraft:lightning_rod[powered=false]",
+      "messages": [
+        [
+          [
+            "Test passed",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/summon minecraft:creeper 4.5 210 4.5 {NoAI:1b,NoGravity:1b,Invulnerable:1b,Tags:[\"bolt_creeper\"]}",
+      "messages": [
+        [
+          [
+            "Summoned new Creeper",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/data get entity @e[tag=bolt_creeper,limit=1] powered",
+      "messages": [
+        [
+          [
+            "Creeper has the following entity data: ",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ],
+          [
+            "0",
+            [
+              16755200,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ],
+          [
+            "b",
+            [
+              16733525,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          0
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/summon minecraft:lightning_bolt 4.5 210 4.5 {CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "tick",
+      "n": 1
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if block 4 209 4 minecraft:lightning_rod[powered=true]",
+      "messages": [
+        [
+          [
+            "Test passed",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/data get entity @e[tag=bolt_creeper,limit=1] powered",
+      "messages": [
+        [
+          [
+            "Creeper has the following entity data: ",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ],
+          [
+            "1",
+            [
+              16755200,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ],
+          [
+            "b",
+            [
+              16733525,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "tick",
+      "n": 60
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if entity @e[type=minecraft:lightning_bolt]",
+      "messages": [
+        [
+          [
+            "Test failed",
+            [
+              16733525,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          false,
+          0
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if block 4 209 4 minecraft:lightning_rod[powered=false]",
+      "messages": [
+        [
+          [
+            "Test passed",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/setblock 8 209 4 minecraft:lightning_rod",
+      "messages": [
+        [
+          [
+            "Changed the block at 8, 209, 4",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/summon minecraft:lightning_bolt 8.5 210 4.5 {}",
+      "messages": [
+        [
+          [
+            "Summoned new Lightning Bolt",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "tick",
+      "n": 1
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if block 8 209 4 minecraft:lightning_rod[powered=true]",
+      "messages": [
+        [
+          [
+            "Test passed",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "tick",
+      "n": 60
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if entity @e[type=minecraft:lightning_bolt]",
+      "messages": [
+        [
+          [
+            "Test failed",
+            [
+              16733525,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          false,
+          0
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if block 8 209 4 minecraft:lightning_rod[powered=false]",
+      "messages": [
+        [
+          [
+            "Test passed",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/summon minecraft:lightning_bolt 8.5 210 4.5 {CustomName:{text:\"Bolt\",color:\"gold\"}}",
+      "messages": [
+        [
+          [
+            "Summoned new ",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ],
+          [
+            "Bolt",
+            [
+              16755200,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "tick",
+      "n": 1
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if block 8 209 4 minecraft:lightning_rod[powered=true]",
+      "messages": [
+        [
+          [
+            "Test passed",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "tick",
+      "n": 60
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if entity @e[type=minecraft:lightning_bolt]",
+      "messages": [
+        [
+          [
+            "Test failed",
+            [
+              16733525,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          false,
+          0
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if block 8 209 4 minecraft:lightning_rod[powered=false]",
+      "messages": [
+        [
+          [
+            "Test passed",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/summon minecraft:armor_stand 10.5 210 4.5 {NoGravity:1b,UUID:[I;2690,0,0,1],Tags:[\"bolt_uuid\"]}",
+      "messages": [
+        [
+          [
+            "Summoned new Armor Stand",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/setblock 12 209 4 minecraft:lightning_rod",
+      "messages": [
+        [
+          [
+            "Changed the block at 12, 209, 4",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/summon minecraft:lightning_bolt 12.5 210 4.5 {UUID:[I;2690,0,0,1],CustomName:\"dup\"}",
+      "messages": [
+        [
+          [
+            "Unable to summon entity due to duplicate UUIDs",
+            [
+              16733525,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          false,
+          0
+        ]
+      ]
+    },
+    {
+      "op": "tick",
+      "n": 1
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if block 12 209 4 minecraft:lightning_rod[powered=false]",
+      "messages": [
+        [
+          [
+            "Test passed",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/execute if entity @e[type=minecraft:lightning_bolt]",
+      "messages": [
+        [
+          [
+            "Test failed",
+            [
+              16733525,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          false,
+          0
+        ]
+      ]
+    },
+    {
+      "op": "cmd",
+      "cmd": "/kill @e[tag=bolt_creeper]",
+      "record": false
+    },
+    {
+      "op": "cmd",
+      "cmd": "/kill @e[tag=bolt_uuid]",
+      "record": false
+    },
+    {
+      "op": "cmd",
+      "cmd": "/fill 0 208 0 15 215 15 minecraft:air",
+      "record": false
+    }
+  ]
+}
