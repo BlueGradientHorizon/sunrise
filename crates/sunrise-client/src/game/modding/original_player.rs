@@ -801,9 +801,14 @@ mod tests {
                         .is_empty()
                 );
                 let batch = host.attachment_query("clone", "unsaved").unwrap();
-                assert_eq!(
-                    batch.query(&VALUE).unwrap().iter().count(),
-                    0,
+                assert!(
+                    batch
+                        .query(&VALUE)
+                        .unwrap()
+                        .iter()
+                        .try_next()
+                        .unwrap()
+                        .is_none(),
                     "clone writes are unpublished until placement"
                 );
                 *self.cloned.lock().unwrap() += 1;
@@ -858,7 +863,7 @@ mod tests {
                         let batch: mod_api::AttachmentBatch =
                             sunrise_mod_runtime::attachments::AttachmentBatch::new(rows).into();
                         let query = batch.query(&RETAINED).unwrap();
-                        let old = query.iter().next().unwrap().unwrap();
+                        let old = query.iter().try_next().unwrap().unwrap();
                         let token = AttachmentWriteToken::from(old.write_token());
                         assert_eq!(game.attachment_validate_write(token.clone()), Ok(()));
                         *source.lock().unwrap() = Some((index, token));

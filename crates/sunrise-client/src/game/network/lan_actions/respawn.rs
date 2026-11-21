@@ -151,8 +151,8 @@ impl Game<'_> {
                         return false;
                     }
                     // Keep the save's legacy point as a literal position, not a block lookup.
-                    if legacy.is_some() {
-                        g.spawn = legacy;
+                    if let Some([x, y, z]) = legacy {
+                        g.spawn = Some(Vec3::new(x, y, z));
                         g.respawn_config = None;
                     }
                     true
