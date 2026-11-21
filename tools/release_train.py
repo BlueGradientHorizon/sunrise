@@ -885,9 +885,10 @@ def full_dailies(sha, runs):
 
 
 def newest_full_daily(sha, runs, since=""):
-    """(URL, passed) of the newest real full daily run of sha created at or after `since`, or None."""
+    """(URL, passed) of the newest real full daily run of sha created after `since`, or None. Strictly after: the
+    timestamps have one-second resolution, so a run created in the publication's second may have started first."""
     return next(((entry["html_url"], passed) for entry, passed in full_dailies(sha, runs)
-                 if entry["created_at"] >= since), None)
+                 if entry["created_at"] > since), None)
 
 
 def break_glass_problems(sha, tag, parent):

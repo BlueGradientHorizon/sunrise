@@ -204,6 +204,8 @@ class EvidenceTests(unittest.TestCase):
         self.assertIsNone(train.newest_full_daily(self.SHA, [(moved, full("e" * 40))]))
         self.assertIsNone(train.newest_full_daily(self.SHA, [(green, full(self.SHA))], since="2026-11-20T00:00:00Z"),
                           "a break-glass parent's follow-up runs after its publication")
+        self.assertIsNone(train.newest_full_daily(self.SHA, [(green, full(self.SHA))], since=green["created_at"]),
+                          "a run created in the publication's second is not after it")
         # The run's own conclusion decides too: a failed run is red whatever its green job says, a cancelled one no
         # verdict.
         failed, cancelled = run_record(6, conclusion="failure"), run_record(7, conclusion="cancelled")
