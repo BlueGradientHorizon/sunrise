@@ -362,29 +362,33 @@ after it changes them.
 ## Custom selector tokens
 
 Side: server. Register a token such as `@allies` once from `Hooks::register` with
-`r.register_entity_selector("allies", Allies)`, where `Allies` implements
+`r.register_entity_selector("allies", Allies)?`, where `Allies` implements
 `EntitySelectorType` (NeoForge's `EntitySelectorManager.register` and
 `IEntitySelectorType`). `base` returns its `SelectorBase`: players only, a limit, a
 `SelectorSort` and the translation key of its completion tooltip. `matches(host, source,
 entity)` is asked for each candidate after the base selection and the `[...]` options,
-before sorting and the limit. Return `false` to drop the candidate; a panic drops it too.
+before sorting and the limit. Return `false` to drop the candidate. A panic in `base` or
+`matches` disables that selector for the rest of the session and reports an error toast
+naming the mod, while sibling selectors keep working.
 
 Every entity, entities, player and players argument then accepts `@allies[...]`, in
 vanilla commands and mod commands alike, with the same options and selector permission
-as `@e`. The parser reads the whole word after `@` before vanilla's letter, so `@allies`
-is never `@a`, and an unregistered word still fails with
-`argument.entity.selector.unknown`. A name that is empty, not lowercase letters, digits
-and `_`, one of `p a r s e n`, or already registered by any mod refuses the mods at
-startup. The base is evaluated once at registration; a panic or zero limit refuses
-registration. Token names and tooltip keys must fit the protocol string boundary
-(32767 ASCII bytes for names, 32767 UTF-16 units for tooltip keys). Sunrise also
-bounds the complete encoded metadata to 256 KiB and refuses the token that would exceed
-that total by name, without changing earlier records. The payload's revision is 1; an
-unsupported revision disables token metadata for that connection with one log line.
+as `@e`. The parser reads the whole Brigadier unquoted word (`[0-9A-Za-z_.+-]`) after `@`
+before vanilla's letter, so `@allies` is never `@a`, and an unregistered word still fails
+with `argument.entity.selector.unknown`. `register_entity_selector` returns
+`Result<(), EntitySelectorRegistrationError>` for an empty name, a character outside
+Brigadier's unquoted-string alphabet (`[0-9A-Za-z_.+-]`), one of vanilla's `p a r s e n`,
+a duplicate token name, or a call after startup registration closes, without poisoning
+unrelated registrations. `base()` is not called during registration.
 
-The server sends frozen token metadata alongside each command tree to connected Sunrise
-clients, including the single-player window. Their command parser and completion use the
-server's names, tooltip keys, base limits and sort order, even without the server's mod
-installed locally. This replaces the previous server's inventory at connection startup.
-Vanilla clients do not receive this Sunrise-specific metadata and can still send commands
-containing the token without local completion.
+The server sends token metadata alongside each command tree to connected Sunrise clients,
+including the single-player window. Their command parser and completion use the server's
+names, tooltip keys, base limits and sort order, even without the server's mod installed
+locally. Network framing follows vanilla's `STRING_UTF8` (32,767 UTF-16 code units) and
+`ClientboundCustomPayloadPacket` (1 MiB) bounds: an entry whose name or tooltip exceeds
+32,767 UTF-16 code units or would push the payload past 1 MiB is logged and skipped while
+earlier valid tokens are still sent. The payload's revision is 1; an unsupported revision
+disables token metadata for that connection with one log line. This replaces the previous
+server's inventory at connection startup. Vanilla clients do not receive this
+Sunrise-specific metadata and can still send commands containing the token without local
+completion.

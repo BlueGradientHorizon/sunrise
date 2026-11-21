@@ -34,6 +34,11 @@ use std::{
 };
 use sunrise_client_core::text::Text;
 
+/// Brigadier `StringReader.isAllowedInUnquotedString` on an ASCII byte.
+pub fn is_unquoted(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b'+')
+}
+
 /// The command id of a mod's command (`Dispatcher::with_mod_commands`).
 pub const MOD_COMMAND: &str = "mod";
 /// The command id of the client's own `/profiler` (`Dispatcher::with_profiler`).
@@ -231,7 +236,7 @@ impl<'a> Reader<'a> {
         c.is_ascii_digit() || c == '.' || c == '-'
     }
     pub fn is_allowed_in_unquoted(c: char) -> bool {
-        c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '+')
+        c.is_ascii() && is_unquoted(c as u8)
     }
     fn read_number_text(&mut self) -> &'a str {
         let start = self.cursor;

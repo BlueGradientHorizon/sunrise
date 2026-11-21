@@ -206,6 +206,11 @@ impl CallbackOwner {
         }
     }
 
+    /// Bind a retained registration to its exact `(id, index)` mod slot during registration.
+    pub fn for_slot(id: &'static str, index: usize) -> Self {
+        Self::for_index(id, index)
+    }
+
     /// Run a delayed task using its installed owner's shared state. A refusal is logged and
     /// aborts just the transaction; only a panic returns a diagnostic for the server to relay.
     pub fn call_scheduled_task<H: crate::ServerHost>(
