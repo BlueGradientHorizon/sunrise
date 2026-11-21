@@ -113,10 +113,10 @@ pub enum Event {
     BundleStart(Option<BundleDispatch>),
     /// Closing boundary of a `ClientboundBundlePacket`.
     BundleEnd,
-    /// Attachment sync decoded at ingress. Keep the original payload for `client_packet`.
+    /// Attachment sync decoded at ingress, with the original bytes for `client_packet`.
     AttachmentSync {
         payload: cfg::CustomPayload,
-        message: Box<sunrise_protocol::attachment_sync::Message>,
+        message: Box<sunrise_protocol::attachment_sync::StagedMessage>,
     },
     /// Registered application bytes, owned until the receiving root transaction ends.
     RawPayload(Box<crate::raw_payloads::Incoming>),
@@ -169,7 +169,7 @@ fn event_channel() -> (ingress::Producer<Event>, ingress::Consumer<Event>) {
 impl Event {
     /// Decode the engine payload at the play ingress boundary, before applying it.
     pub fn decode_attachment_sync(payload: cfg::CustomPayload) -> sunrise_protocol::Result<Self> {
-        let message = sunrise_protocol::attachment_sync::decode(&payload.data)?;
+        let message = sunrise_protocol::attachment_sync::decode_staged(&payload.data)?;
         Ok(Self::AttachmentSync {
             payload,
             message: Box::new(message),
@@ -212,21 +212,9 @@ impl Event {
             }
             Self::RawPayload(incoming) => size_of::<crate::raw_payloads::Incoming>()
                 .saturating_add(incoming.owned_heap_bytes()),
-            Self::AttachmentSync { payload, message } => {
-                let changes = &message.changes;
-                let fixed = size_of_val(&**message)
-                    .saturating_add(
-                        size_of::<sunrise_mod_runtime::attachments::AttachmentSync>()
-                            .saturating_mul(changes.capacity()),
-                    )
-                    .saturating_add(payload.owned_heap_bytes());
-                changes.iter().fold(fixed, |total, change| {
-                    total
-                        .saturating_add(change.namespace.owned_heap_bytes())
-                        .saturating_add(change.name.owned_heap_bytes())
-                        .saturating_add(change.value.owned_heap_bytes())
-                })
-            }
+            Self::AttachmentSync { payload, message } => size_of_val(&**message)
+                .saturating_add(message.owned_heap_bytes())
+                .saturating_add(payload.owned_heap_bytes()),
             Self::PackPush(packet) => packet.owned_heap_bytes(),
             Self::ShowDialog { dialog, registries } => dialog
                 .owned_heap_bytes()
@@ -1177,7 +1165,7 @@ struct BundleStep {
     event: Option<Event>,
     inline: Vec<ingress::Prepared<Event>>,
     stop: bool,
-    _credit: ingress::ReceiveLease<Event>,
+    credit: Option<ingress::ReceiveLease<Event>>,
 }
 
 pub enum BundleProgress {
@@ -1259,10 +1247,7 @@ impl PlayRouter<'_> {
     fn route(
         &mut self,
         packet: play::Clientbound,
-        bundled: Option<(
-            &mut ingress::ReceiveLease<Event>,
-            &mut Vec<ingress::Prepared<Event>>,
-        )>,
+        bundled: Option<&mut BundleStep>,
     ) -> Result<(Option<Event>, Option<Reason>), Reason> {
         use crate::raw_payloads::{Classified, Incoming};
         use sunrise_protocol::payload_negotiation::Phase;
@@ -1330,28 +1315,21 @@ impl PlayRouter<'_> {
                 None
             }
             play::Clientbound::CustomPayload(payload) => {
-                let payload = if let Some((credit, inline)) = bundled {
+                let payload = if let Some(step) = bundled {
                     // Classification can fail too: do not do it before the preceding game steps.
                     match Incoming::classify(self.endpoint.transport(), Phase::Play, payload)
                         .map_err(|error| Reason::plain(error.to_string()))?
                     {
                         Classified::Other(payload) => Some(payload),
-                        Classified::Application(incoming)
-                            if incoming.receiver.thread == mod_api::HandlerThread::Main =>
-                        {
-                            // Classification moved these buffers; only the envelope changed.
-                            let event = Event::RawPayload(Box::new(incoming));
-                            credit.resize(event.ingress_charge()).map_err(|_| {
-                                Reason::plain("incoming queue resource pressure for payload main")
-                            })?;
-                            return Ok((Some(event), None));
-                        }
                         Classified::Application(incoming) => {
                             if let Some(reason) = crate::raw_payloads::dispatch_in_bundle(
                                 incoming,
                                 &self.endpoint,
                                 self.send,
-                                inline,
+                                step.credit
+                                    .take()
+                                    .expect("routed packet carries its receipt"),
+                                &mut step.inline,
                             ) {
                                 let reason = crate::raw_payloads::disconnect_text(&reason);
                                 self.endpoint.transport().close();
@@ -1408,27 +1386,22 @@ impl PlayRouter<'_> {
 
         let mut exit = None;
         if let Some((requests, responses)) = reader {
-            while let Ok((packet, mut credit)) = requests.recv() {
-                let mut inline = Vec::new();
-                let event = match self.route(*packet, Some((&mut credit, &mut inline))) {
-                    Ok((event, end)) => {
-                        exit = end.map(Ok);
-                        event
-                    }
-                    Err(error) => {
-                        exit = Some(Err(error));
-                        None
-                    }
+            while let Ok((packet, credit)) = requests.recv() {
+                let mut step = BundleStep {
+                    event: None,
+                    inline: Vec::new(),
+                    stop: false,
+                    credit: Some(credit),
                 };
-                if responses
-                    .send(BundleStep {
-                        event,
-                        inline,
-                        stop: exit.is_some(),
-                        _credit: credit,
-                    })
-                    .is_err()
-                {
+                match self.route(*packet, Some(&mut step)) {
+                    Ok((event, end)) => {
+                        step.event = event;
+                        exit = end.map(Ok);
+                    }
+                    Err(error) => exit = Some(Err(error)),
+                }
+                step.stop = exit.is_some();
+                if responses.send(step).is_err() {
                     break;
                 }
                 if exit.is_some() {
@@ -3298,10 +3271,15 @@ mod tests {
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(matches!(event, Event::Packet(p) if *p == ping1));
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
-        assert!(
-            matches!(event, Event::AttachmentSync { payload, message: decoded }
-            if payload == sync && *decoded == message)
-        );
+        let Event::AttachmentSync {
+            payload,
+            message: decoded,
+        } = event
+        else {
+            panic!("expected a decoded attachment sync");
+        };
+        assert_eq!(payload, sync);
+        assert_eq!(decoded.into_message(), message);
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(matches!(event, Event::BundleEnd));
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();

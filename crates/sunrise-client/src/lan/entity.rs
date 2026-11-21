@@ -1288,7 +1288,7 @@ fn prepare_pairing_attachment_sync(
                     | PayloadSendError::StaleEpoch
                     | PayloadSendError::Disconnected
             );
-            if refused && epoch.first_engine_refusal() {
+            if refused {
                 log::warn!(
                     "Sunrise: attachment sync for {:?} not sent: {error:?}",
                     snapshot.holder

@@ -64,26 +64,34 @@ pub struct ReceiveLease<T> {
     charge: usize,
 }
 impl<T> ReceiveLease<T> {
-    /// Replace the charge of an inline delivery without refunding its retained buffers first.
-    /// On pressure the original lease stays intact.
-    pub fn resize(&mut self, owned_bytes: usize) -> Result<(), ReserveError> {
+    /// Reserve a replacement value without releasing and recharging buffers it inherits.
+    pub fn replace(mut self, owned_bytes: usize) -> Result<Permit<T>, ReserveError> {
         let charge = owned_bytes
             .checked_add(message_overhead::<T>())
             .ok_or(ReserveError::Full)?;
         let mut state = self.shared.lock();
+        if !state.receiver_alive || state.senders == 0 {
+            return Err(ReserveError::Disconnected);
+        }
         let other = state.stats.reserved_bytes - self.charge;
         if charge > self.shared.capacity - other {
             return Err(ReserveError::Full);
         }
-        state.held_bytes = state.held_bytes - self.charge + charge;
+        state.held_bytes -= std::mem::take(&mut self.charge);
+        state.pending_bytes += charge;
         state.stats.reserved_bytes = other + charge;
         state.stats.peak_reserved_bytes = state.stats.peak_reserved_bytes.max(other + charge);
-        self.charge = charge;
-        Ok(())
+        Ok(Permit {
+            shared: self.shared.clone(),
+            charge,
+        })
     }
 }
 impl<T> Drop for ReceiveLease<T> {
     fn drop(&mut self) {
+        if self.charge == 0 {
+            return;
+        }
         let mut state = self.shared.lock();
         state.held_bytes -= self.charge;
         state.stats.reserved_bytes -= self.charge;

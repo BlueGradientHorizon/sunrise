@@ -142,6 +142,91 @@ fn malformed_pairing_attachment_aborts_before_publishing_the_spawn() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn a_pairing_bundle_accepts_a_wire_valid_high_expansion_attachment() {
+    use sunrise_core::nbt::Tag;
+    use sunrise_mod_runtime::attachments::Holder;
+    use sunrise_protocol::attachment_sync;
+
+    let (root, data) = empty_item_data("expanded-pairing-attachment");
+    let transport = Transport::capture(Side::Client).unwrap();
+    transport
+        .accept(transport.local.manifest.entries())
+        .unwrap();
+    transport.finish_configuration().unwrap();
+    let (client, server) = Pipe::pair();
+    let (reader, writer) = Connection::local(client).split();
+    let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+    let (send, events) = event_channel();
+    let mut server = Connection::local(server);
+    let delimiter = play::Clientbound::BundleDelimiter(Empty).encode();
+    let spawn = play::Clientbound::AddEntity(play::AddEntity {
+        id: 37,
+        uuid: 37,
+        kind: 0,
+        position: [0.5, 64.0, 0.5],
+        velocity: [0.0; 3],
+        pitch: 0,
+        yaw: 0,
+        head_yaw: 0,
+        data: 0,
+    });
+    // Entity 37, replace, one change a:b. Its nameless compound has a list of
+    // 200,000 byte compounds (each {v: -7}), about 1.2 MB on the wire.
+    const COUNT: u32 = 200_000;
+    let mut body = vec![0, 37, 1, 1, 1, b'a', 1, b'b', 10, 9, 0, 1, b'l', 10];
+    body.extend(COUNT.to_be_bytes());
+    for _ in 0..COUNT {
+        body.extend([1, 0, 1, b'v', 249, 0]);
+    }
+    body.push(0);
+    let attachments = play::Clientbound::CustomPayload(cfg::CustomPayload {
+        channel: attachment_sync::CHANNEL.into(),
+        data: body,
+    });
+    for packet in [
+        delimiter.clone(),
+        spawn.encode(),
+        attachments.encode(),
+        delimiter,
+    ] {
+        server.send(&packet).unwrap();
+    }
+    drop(server);
+    let reader = play_reader(reader, writer.clone(), send, data, transport);
+    let timeout = Duration::from_secs(5);
+    let take = || events.recv_timeout_owned(timeout).unwrap().into_parts().0;
+    assert!(matches!(take(), Event::BundleStart(None)));
+    assert!(matches!(take(), Event::Packet(p) if *p == spawn));
+    let Event::AttachmentSync { payload, message } = take() else {
+        panic!("expected a decoded attachment sync");
+    };
+    assert_eq!(play::Clientbound::CustomPayload(payload), attachments);
+    assert!(matches!(take(), Event::BundleEnd));
+    let message = message.into_message();
+    assert_eq!(message.holder, Holder::Entity(37));
+    assert!(message.replace);
+    let [change] = &message.changes[..] else {
+        panic!("expected one attachment change");
+    };
+    assert_eq!(change.namespace, JavaString::from("a"));
+    assert_eq!(change.name, JavaString::from("b"));
+    let Some(Tag::List(items)) = change.value.as_ref().and_then(|map| map.get(&"l".into())) else {
+        panic!("expected the staged attachment list");
+    };
+    let key = "v".into();
+    assert_eq!(items.len(), COUNT as usize);
+    assert!(
+        items.iter().all(
+            |item| matches!(item, Tag::Compound(map) if map.get(&key) == Some(&Tag::Byte(-7)))
+        )
+    );
+    assert_eq!(events.stats().reserved_bytes, 0);
+    reader.join().unwrap().unwrap_err();
+    writer.lock().unwrap().take().unwrap().shutdown();
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 const MAIN: &str = "bundle_order_probe:main";
 const NETWORK: &str = "bundle_order_probe:network";
 struct Probe(Arc<Mutex<Vec<(u8, std::thread::ThreadId)>>>);
@@ -244,6 +329,76 @@ impl IPayloadContext for MainReply<'_> {
     ) -> Result<mod_api::PayloadWorkStatus, PayloadContextError> {
         unreachable!()
     }
+}
+
+#[test]
+fn inline_main_receipt_pressure_closes_the_epoch_at_the_routed_step() {
+    mod_platform::__private::initialize().unwrap();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let registration = Registration(Arc::new(Probe(seen.clone())));
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new("bundle_order_probe", Box::new(registration))].into(),
+        || {
+            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
+                .unwrap();
+            let transport = Transport::capture(Side::Client).unwrap();
+            transport
+                .accept(transport.local.manifest.entries())
+                .unwrap();
+            transport.finish_configuration().unwrap();
+            let epoch = transport.epoch().unwrap();
+            // The test producer's allowance admits the packet, but can't hold
+            // the Main envelope. Both deliveries must use this queue's charge.
+            const BUDGET: usize = 16 << 10;
+            let (send, events) = ingress::channel(BUDGET, |event| match event {
+                Event::RawPayload(_) => BUDGET,
+                _ => event.ingress_charge(),
+            })
+            .unwrap();
+            send.send(Event::Packet(Box::new(play::Clientbound::CustomPayload(
+                cfg::CustomPayload {
+                    channel: MAIN.into(),
+                    data: vec![1],
+                },
+            ))))
+            .unwrap();
+            let (Event::Packet(packet), credit) = events.try_recv_owned().unwrap().into_parts()
+            else {
+                panic!("expected a staged packet");
+            };
+            let writer = Arc::new(Mutex::new(None));
+            let endpoint = Endpoint::client(
+                writer.clone(),
+                Arc::new(AtomicBool::new(false)),
+                transport.clone(),
+                send.clone(),
+            );
+            let mut router = PlayRouter {
+                writer: &writer,
+                lang: &Language::new(),
+                send: &send,
+                cookies: &Cookies::default(),
+                far: &crate::lod_net::Inbox::default(),
+                endpoint,
+                batch: Default::default(),
+            };
+            let mut step = BundleStep {
+                event: None,
+                inline: Vec::new(),
+                stop: false,
+                credit: Some(credit),
+            };
+            assert!(
+                router.route(*packet, Some(&mut step)).is_err(),
+                "Main must refuse under ingress pressure"
+            );
+            assert!(transport.closed());
+            assert!(!epoch.active());
+            assert!(step.inline.is_empty());
+            assert!(seen.lock().unwrap().is_empty());
+            assert_eq!(events.stats().reserved_bytes, 0);
+        },
+    );
 }
 
 #[test]

@@ -19,6 +19,9 @@ use {
 use crate::{Error, Result, buf::Reader};
 use sunrise_core::vanilla_bytes::Writer;
 
+mod staged;
+pub use staged::StagedMessage;
+
 /// The custom payload channel, clientbound only: a client sends nothing back.
 pub const CHANNEL: &str = "sunrise:attachment_sync";
 /// The channel's exact declaration version in the negotiated table.
@@ -97,8 +100,13 @@ pub fn encode(message: &Message) -> Result<Vec<u8>> {
     Ok(w.data)
 }
 
-/// A payload's message; an error for one that breaks a cap.
+/// A payload's message, materialized immediately by callers that don't queue it.
 pub fn decode(data: &[u8]) -> Result<Message> {
+    decode_staged(data).map(StagedMessage::into_message)
+}
+
+/// Decode at packet ingress without allocating the holder's NBT maps there.
+pub fn decode_staged(data: &[u8]) -> Result<StagedMessage> {
     let mut r = Reader::new(data);
     let holder = match r.varint()? {
         0 => Holder::Entity(r.varint()? as u32),
@@ -109,31 +117,8 @@ pub fn decode(data: &[u8]) -> Result<Message> {
         kind => return Err(Error::new(format!("attachment sync: holder kind {kind}"))),
     };
     let replace = r.bool()?;
-    let max = r.remaining();
-    let changes = (0..r.count(max)?)
-        .map(|_| {
-            let namespace = r.string(MAX_NAME)?;
-            let name = r.string(MAX_NAME)?;
-            let value = match r.nbt_within(value_limits())? {
-                Tag::Compound(value) => Some(value),
-                Tag::End => None,
-                _ => return Err(Error::new("attachment sync: value is not a compound")),
-            };
-            Ok(AttachmentSync {
-                namespace: namespace.as_str().into(),
-                name: name.as_str().into(),
-                value,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    if r.remaining() > 0 {
-        return Err(Error::new("attachment sync: trailing bytes"));
-    }
-    Ok(Message {
-        holder,
-        replace,
-        changes,
-    })
+    let changes = r.count(r.remaining())?;
+    staged::stage(data, &mut r, holder, replace, changes)
 }
 
 #[cfg(test)]
@@ -157,6 +142,23 @@ mod tests {
 
     #[test]
     fn every_holder_round_trips_with_either_replace_and_a_removal() {
+        let expected: nbt::Compound = [
+            ("value".into(), Tag::Int(12)),
+            (
+                "mixed".into(),
+                Tag::List(vec![
+                    Tag::Short(-5),
+                    Tag::String(nbt::JavaString(vec![0, 0xd800, 0x20ac])),
+                    Tag::compound([("\0", Tag::Byte(-3))]),
+                    Tag::IntArray(vec![-11, 21]),
+                    Tag::LongArray(vec![i64::MIN, i64::MAX]),
+                    Tag::Long(-8),
+                    Tag::Float(0x7fc0_0003),
+                    Tag::Double(0x7ff8_0000_0000_0005),
+                ]),
+            ),
+        ]
+        .into();
         let holders = [
             Holder::Entity(4_000_000_000),
             Holder::Player(0x0123_4567_89ab_cdef_0011_2233_4455_6677),
@@ -166,10 +168,12 @@ mod tests {
         ];
         for holder in holders {
             for replace in [true, false] {
+                let mut changes = changes();
+                changes[0].value = Some(expected.clone());
                 let message = Message {
                     holder,
                     replace,
-                    changes: changes(),
+                    changes,
                 };
                 assert_eq!(decode(&encode(&message).unwrap()).unwrap(), message);
             }

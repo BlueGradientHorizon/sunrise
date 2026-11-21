@@ -3,52 +3,15 @@
 //! snapshots to the players who started seeing a holder; a client keeps them.
 //!
 //! The channel is an engine declaration in the negotiated payload table
-//! (`raw_payloads::engine`): a message goes only to a placed player whose connection
-//! offered it, is prepared against that connection's current epoch and is published
-//! at the root commit, in order with the player's other packets.
+//! (`raw_payloads::engine`): a message goes only to a player whose connection offered it
+//! and who sees the holder. It is prepared against the current epoch and published at
+//! the root commit, in order with the player's other packets.
 use super::Game;
-use crate::lan::{
-    conn::PlayerSender,
-    guest::Guest,
-    hub::{AttachmentSnapshot, Hub},
-};
+use crate::lan::{conn::PlayerSender, hub::AttachmentSnapshot};
 use mod_api::{PayloadBytes, PayloadId, PayloadSendError};
 use sunrise_client::raw_payloads::Endpoint;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::attachment_sync::{self, Message};
-
-/// Whether `guest` reads attachment sync: placed, and its connection's play epoch
-/// has the channel negotiated. A vanilla client never offers it.
-fn reads_attachment_sync(guest: &Guest) -> bool {
-    guest.placed && guest.negotiated_attachment_sync()
-}
-
-/// The guests `holder`'s changes go to: those in the level in place who see it,
-/// and a player's own wherever they are.
-fn recipients(hub: &Hub, holder: Holder) -> impl Iterator<Item = &Guest> {
-    let owner = match holder {
-        Holder::Player(uuid) => hub.holder_guest(uuid, &hub.config.dimension),
-        _ => None,
-    };
-    let sees = move |g: &Guest| match holder {
-        Holder::Level => true,
-        Holder::Chunk([x, z]) => g.sent_chunks.contains(&(x, z)),
-        Holder::BlockEntity([x, _, z]) => g.sent_chunks.contains(&(x >> 4, z >> 4)),
-        Holder::Entity(id) => g.tracker.is_tracking(id as i32),
-        Holder::Player(_) => owner.is_some_and(|o| g.tracker.is_tracking(o.entity_id)),
-        _ => false,
-    };
-    hub.guests.iter().filter(move |g| {
-        (owner.is_some_and(|o| g.conn == o.conn && g.participates_online())
-            || (hub.here(g) && sees(g)))
-            && reads_attachment_sync(g)
-    })
-}
-
-/// The senders of `holder`'s recipients, taken out of the hub so a send may journal.
-fn recipient_senders(hub: &Hub, holder: Holder) -> Vec<PlayerSender> {
-    recipients(hub, holder).map(|g| g.sender.clone()).collect()
-}
 
 impl Game<'_> {
     /// The messages that give a player `holder`'s synced attachments whole: its
@@ -127,7 +90,7 @@ impl Game<'_> {
             };
             // Each channel is its own: a peer with only the collider channel still gets the
             // collider.
-            let reads = reads_attachment_sync(guest);
+            let reads = guest.negotiated_attachment_sync();
             let reads_collider = collider_entity.is_some() && guest.negotiated_collider_sync();
             if !reads && !reads_collider {
                 continue;
@@ -168,7 +131,7 @@ impl Game<'_> {
             let senders = self
                 .lan
                 .as_ref()
-                .map_or_else(Vec::new, |host| recipient_senders(&host.hub, holder));
+                .map_or_else(Vec::new, |host| host.hub.attachment_recipients(holder));
             for message in &messages {
                 self.send_attachment_sync(&senders, message);
             }
@@ -190,14 +153,14 @@ impl Game<'_> {
             let senders = self
                 .lan
                 .as_ref()
-                .map_or_else(Vec::new, |host| recipient_senders(&host.hub, holder));
+                .map_or_else(Vec::new, |host| host.hub.attachment_recipients(holder));
             self.send_attachment_sync(&senders, &message);
         }
     }
 
     /// Queue `message` for each of `senders` through the negotiated transport. A peer
     /// that has the channel absent, or is between epochs, is sent nothing and that is no
-    /// error. Any other refusal is named in the log once per connection epoch: a message
+    /// error. Every other refusal is named in the log: a message
     /// past the connection's frame limits or one that cannot be written is not sent and the
     /// player stays joined; a full outgoing queue closes the connection, as a full queue
     /// did before, since the replica would miss the update.
@@ -213,16 +176,10 @@ impl Game<'_> {
             if !refused(&error) {
                 continue;
             }
-            if sender
-                .payload_transport()
-                .epoch()
-                .is_none_or(|epoch| epoch.first_engine_refusal())
-            {
-                log::warn!(
-                    "Sunrise: attachment sync for {:?} not sent: {error:?}",
-                    message.holder
-                );
-            }
+            log::warn!(
+                "Sunrise: attachment sync for {:?} not sent: {error:?}",
+                message.holder
+            );
             if matches!(error, PayloadSendError::Backpressure) {
                 sender.close();
             }

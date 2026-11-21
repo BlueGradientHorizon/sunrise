@@ -27,6 +27,14 @@ pub enum Refusal {
     Pressure,
     Closed,
 }
+impl From<byte_channel::ReserveError> for Refusal {
+    fn from(error: byte_channel::ReserveError) -> Self {
+        match error {
+            byte_channel::ReserveError::Full => Self::Pressure,
+            byte_channel::ReserveError::Disconnected => Self::Closed,
+        }
+    }
+}
 pub struct Refused<T> {
     pub reason: Refusal,
     pub value: T,
@@ -108,10 +116,21 @@ impl<T> Producer<T> {
         match self.sender.reserve((self.charge)(&value)) {
             Ok(permit) => Ok(Prepared { value, permit }),
             Err(error) => Err(Refused {
-                reason: match error {
-                    byte_channel::ReserveError::Full => Refusal::Pressure,
-                    byte_channel::ReserveError::Disconnected => Refusal::Closed,
-                },
+                reason: error.into(),
+                value,
+            }),
+        }
+    }
+    /// Prepare an inline delivery from a dequeued value's credit on this channel.
+    pub(crate) fn prepare_replacing(
+        &self,
+        value: T,
+        credit: ReceiveLease<T>,
+    ) -> Result<Prepared<T>, Refused<T>> {
+        match credit.replace((self.charge)(&value)) {
+            Ok(permit) => Ok(Prepared { value, permit }),
+            Err(error) => Err(Refused {
+                reason: error.into(),
                 value,
             }),
         }

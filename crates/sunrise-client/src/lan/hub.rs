@@ -1001,6 +1001,36 @@ impl Hub {
     pub fn here(&self, g: &Guest) -> bool {
         g.placed_in(&self.config.dimension)
     }
+    /// Senders of the clients that see this attachment holder and negotiated sync.
+    /// Entity deltas follow the same tracker as pairing, including held viewers.
+    /// Own-player, level, chunk and block-entity routing otherwise stays unchanged.
+    pub fn attachment_recipients(&self, holder: Holder) -> Vec<super::PlayerSender> {
+        let owner = match holder {
+            Holder::Player(uuid) => self.holder_guest(uuid, &self.config.dimension),
+            _ => None,
+        };
+        self.guests
+            .iter()
+            .filter(|g| {
+                let sees = match holder {
+                    Holder::Entity(id) => self.watches(g) && g.tracker.is_tracking(id as i32),
+                    Holder::Player(_) => owner.is_some_and(|o| {
+                        (g.conn == o.conn && g.participates_online())
+                            || (self.watches(g) && g.tracker.is_tracking(o.entity_id))
+                    }),
+                    Holder::Level => self.here(g),
+                    Holder::Chunk([x, z]) => self.here(g) && g.sent_chunks.contains(&(x, z)),
+                    Holder::BlockEntity([x, _, z]) => {
+                        self.here(g) && g.sent_chunks.contains(&(x >> 4, z >> 4))
+                    }
+                    _ => false,
+                };
+                sees && g.negotiated_attachment_sync()
+            })
+            .map(|g| g.sender.clone())
+            .collect()
+    }
+
     /// How many passes the level in place's entity tracking has run (None before its first).
     pub fn tracking_ticks(&self) -> Option<u32> {
         self.entities
@@ -3419,9 +3449,7 @@ impl Hub {
         // The viewers include the held players: they are shown the entities around them, but are
         // not among the entities shown; then the clients viewing the level (`viewed_levels`).
         let mut views = self.view_outs();
-        let here = |g: &Guest| {
-            g.participates_online() && (g.placed || g.held) && g.dimension == *dimension
-        };
+        let here = |g: &Guest| g.watches_level(dimension);
         outs.resize_with(self.guests.iter().filter(|g| here(g)).count(), Vec::new);
         let (mut viewers, player_attachments) = self.guests.tracking_viewers_and_views(
             here,
@@ -8019,7 +8047,7 @@ mod tests {
     }
 
     #[test]
-    fn a_held_viewer_gets_initial_player_attachments_inside_pairing_bundle() {
+    fn a_held_viewer_gets_pairing_attachments_and_their_removal_before_placement() {
         assert_player_initial_sync(true);
     }
 
@@ -8149,7 +8177,7 @@ mod tests {
         assert_eq!(syncs[0].holder, Holder::Player(1));
         assert!(syncs[0].replace);
         assert_eq!(syncs[0].changes.len(), 1);
-        assert_eq!(syncs[0].changes[0].name.as_str(), "badge");
+        assert_eq!(syncs[0].changes[0].name, JavaString::from("badge"));
         assert_eq!(
             syncs[0].changes[0].value,
             Some([("n".into(), Tag::Int(9))].into())
@@ -8160,5 +8188,64 @@ mod tests {
                 .any(|s| s.player == 2 && s.holder == Holder::Player(1)),
             "must not queue a duplicate post-pair Holder::Player snapshot"
         );
+        if held {
+            use crate::raw_payloads::Endpoint;
+            use mod_api::{PayloadBytes, PayloadId};
+            use sunrise_mod_runtime::attachments::Attachments;
+
+            let mut replica = Attachments::default();
+            replica.apply_sync(syncs[0].changes[0].clone());
+            let removal = AttachmentSync {
+                namespace: "test".into(),
+                name: "badge".into(),
+                value: None,
+            };
+            hub.guests
+                .update(0, |g| g.attachments.apply_sync(removal.clone()));
+            let holder = Holder::Player(1);
+            let delta = attachment_sync::Message {
+                holder,
+                replace: false,
+                changes: vec![removal],
+            };
+            for sender in hub.attachment_recipients(holder) {
+                let epoch = sender.payload_transport().epoch().unwrap();
+                let prepared = Endpoint::server(sender)
+                    .prepare(
+                        &epoch,
+                        &PayloadId(attachment_sync::CHANNEL.into()),
+                        PayloadBytes(attachment_sync::encode(&delta).unwrap()),
+                    )
+                    .unwrap();
+                epoch.with_active(|| prepared.publish()).unwrap().unwrap();
+            }
+            assert!(!hub.guests[1].placed);
+            let queued = ann_queued();
+            assert_eq!(
+                queued.len(),
+                packets.len() + 1,
+                "deliver the removal while held"
+            );
+            let mut r = sunrise_protocol::buf::Reader::new(queued.last().unwrap());
+            let id = r.varint().unwrap();
+            let C::CustomPayload(payload) = C::decode(id, r.rest()).unwrap() else {
+                panic!("expected an attachment payload");
+            };
+            assert_eq!(payload.channel, attachment_sync::CHANNEL);
+            let received = attachment_sync::decode(&payload.data).unwrap();
+            assert_eq!(received, delta);
+            for change in received.changes {
+                replica.apply_sync(change);
+            }
+            hub.place_arrival(1, false);
+            assert!(
+                hub.guests[1].tracker.is_tracking(1),
+                "placement keeps the existing pair"
+            );
+            assert!(
+                replica.synced().is_empty(),
+                "no stale badge after placement"
+            );
+        }
     }
 }

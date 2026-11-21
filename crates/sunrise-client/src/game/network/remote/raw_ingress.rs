@@ -208,7 +208,7 @@ impl Game<'_> {
             }
             Event::AttachmentSync { payload, message } => {
                 self.observe_client_packet(&C::CustomPayload(payload));
-                self.remote_attachment_sync(*message);
+                self.remote_attachment_sync(message.into_message());
             }
             Event::RawPayload(incoming) => {
                 if let Some(remote) = self.remote.as_ref() {

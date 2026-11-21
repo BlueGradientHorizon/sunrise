@@ -33,6 +33,7 @@ pub fn dispatch(incoming: Incoming, endpoint: Endpoint, main: MainQueue) {
             incoming,
             &endpoint,
             &main,
+            None,
             PreparedMain::publish,
             |reason| {
                 endpoint.disconnect(reason);
@@ -56,9 +57,16 @@ pub fn dispatch_pending(endpoint: &Endpoint, main: &MainQueue) {
         return;
     }
     while let Some(incoming) = connection.next_payload() {
-        execute(incoming, endpoint, main, PreparedMain::publish, |reason| {
-            endpoint.disconnect(reason);
-        });
+        execute(
+            incoming,
+            endpoint,
+            main,
+            None,
+            PreparedMain::publish,
+            |reason| {
+                endpoint.disconnect(reason);
+            },
+        );
     }
 }
 
@@ -68,6 +76,7 @@ pub(crate) fn dispatch_in_bundle(
     incoming: Incoming,
     endpoint: &Endpoint,
     send: &crate::net::ingress::Producer<crate::net::Event>,
+    credit: crate::net::ingress::ReceiveLease<crate::net::Event>,
     inline: &mut Vec<crate::net::ingress::Prepared<crate::net::Event>>,
 ) -> Option<Text> {
     let mut disconnected = None;
@@ -75,6 +84,7 @@ pub(crate) fn dispatch_in_bundle(
         incoming,
         endpoint,
         &MainQueue::Client(send.clone()),
+        Some(credit),
         |prepared| {
             let PreparedMain::Client(prepared) = prepared else {
                 unreachable!("client bundle has client main work");
@@ -91,6 +101,7 @@ fn execute(
     mut incoming: Incoming,
     endpoint: &Endpoint,
     main: &MainQueue,
+    credit: Option<crate::net::ingress::ReceiveLease<crate::net::Event>>,
     mut publish_main: impl FnMut(PreparedMain) -> Result<(), FailedMain>,
     disconnect: impl FnOnce(Text),
 ) {
@@ -99,7 +110,7 @@ fn execute(
     }
     if matches!(incoming.body, Body::Work(_)) || incoming.receiver.thread == HandlerThread::Main {
         let epoch = incoming.epoch.clone();
-        let prepared = match main.prepare(incoming) {
+        let prepared = match main.prepare(incoming, credit) {
             Ok(prepared) => prepared,
             Err(error) => {
                 disconnect(failure(&format!("payload main refused: {error:?}")));
@@ -304,7 +315,7 @@ impl IPayloadContext for NetworkContext<'_> {
             return Err(PayloadContextError::Disconnected);
         }
         let work = self.incoming.work(self.endpoint.transport(), work)?;
-        let prepared = self.main.prepare(work)?;
+        let prepared = self.main.prepare(work, None)?;
         self.after.push(Some(After::Work(prepared)));
         #[cfg(any(test, feature = "test-payload-probe"))]
         super::staging_probe::prepared(&self.incoming.id.0, true);
