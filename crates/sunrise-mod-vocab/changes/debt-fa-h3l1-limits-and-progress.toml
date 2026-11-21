@@ -1,6 +1,12 @@
 ids = [
     "handle:RegistrationContext::runtime_files",
     "handle:RegistrationContext::setting",
+    "handle:RegistrationContext::progress",
+    "handle:StartupProgress::label",
+    "method:StartupScreen::open",
+    "method:ProgressMeter::label",
+    "type:StartupProgressError",
+    "type:StartupProgressError.TooManyBars",
 ]
-why = "Follows NeoForge's StartupNotificationManager/ProgressMeter (net.neoforged.fml.loading.progress.StartupNotificationManager and ProgressMeter) and unrestricted mod runtime-file and settings loading: package [runtime] files drop the invented 256-file, 64 MiB per-file, and 256 MiB total caps (keeping manifest membership and SHA-512 checks); settings snapshots drop the invented 64 KiB per-file, 1024-key, 16 MiB aggregate, and 4096-name caps and skip-and-report individual non-UTF-8 filenames instead of discarding the entire mod's settings; startup progress bars keep the 64-bar TooManyBars guard (now logging a warning naming the calling mod when hit) and store bar labels verbatim in ModProgress::open and ProgressMeter::label, restricting one-line/256-byte trimming to startup status messages (matching FML's addModMessage)."
-migrate = "Remove references to sunrise_mod_package::manifest::{MAX_RUNTIME_FILE, MAX_RUNTIME_FILES, MAX_RUNTIME_TOTAL} and sunrise_world::native_load_context::{MAX_SETTING_BYTES, MAX_SETTING_KEYS, MAX_SNAPSHOT_BYTES}, and remove any code or tests that depended on runtime/settings caps, whole-mod settings discard on a non-UTF-8 sibling, or 256-byte/one-line truncation of startup progress bar labels."
+why = "Follows NeoForge's StartupNotificationManager/ProgressMeter (net.neoforged.fml.loading.progress.StartupNotificationManager and ProgressMeter) and unrestricted mod runtime-file and settings loading: package [runtime] files drop the invented 256-file, 64 MiB per-file, and 256 MiB total caps (keeping manifest membership and SHA-512 checks); settings snapshots drop the invented 64 KiB per-file, 1024-key, 16 MiB aggregate, and 4096-name caps and skip-and-report individual non-UTF-8 filenames instead of discarding the entire mod's settings; startup progress bars enforce the 64-bar TooManyBars guard per calling mod (logging a warning naming the offending mod without blocking other mods) and store bar labels verbatim in StartupScreen::open, ProgressMeter::label, and StartupProgress::label, restricting one-line/256-byte trimming to startup status messages (matching FML's addModMessage)."
+migrate = "Remove references to sunrise_mod_package::manifest::{MAX_RUNTIME_FILE, MAX_RUNTIME_FILES, MAX_RUNTIME_TOTAL} and sunrise_world::native_load_context::{MAX_SETTING_BYTES, MAX_SETTING_KEYS, MAX_SNAPSHOT_BYTES}, and remove any code or tests that depended on runtime/settings caps, whole-mod settings discard on a non-UTF-8 sibling, a global cross-mod 64-bar startup limit, or 256-byte/one-line truncation of startup progress bar labels."

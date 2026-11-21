@@ -1,6 +1,8 @@
 ids = [
     "hook:register_configs",
     "hook:config_loading",
+    "hook:config_reloading",
+    "hook:config_unloading",
     "hook:add_server_reload_listeners",
     "hook:data_maps_updated",
     "hook:default_components_bound",
@@ -11,7 +13,8 @@ ids = [
     "trait:ConfigContext",
     "trait:ReloadContext",
     "trait:ClientReloadHost",
+    "trait:ClientReloadListenerContext",
     "trait:ClientSetupContext",
 ]
-why = "Runtime load-phase gating (`ModPhase`, `PhaseOwner`, `check_access`, `PhaseRefusal`) is replaced by compile-time phase-scoped context traits. Config hooks take `&dyn ConfigContext`, server/shared reload hooks take `&dyn ReloadContext`, client reload hooks take `&dyn ClientReloadHost`, and `client_setup` takes `&mut dyn ClientSetupContext`, so world handles and transactions are absent at compile time."
-migrate = "Update hook parameter types to `&dyn ConfigContext` (`register_configs`, `config_loading`), `&dyn ReloadContext` (`add_server_reload_listeners`, `data_maps_updated`, `default_components_bound`, `tags_updated`), `&dyn ClientReloadHost` (`add_client_reload_listeners`, `client_resources_reloaded`), and `&mut dyn ClientSetupContext` (`client_setup`). In `tags_updated` and `data_maps_updated`, inspect `event.cause` instead of matching `HostSide`, and read data maps with `context.data_map(&key, &MAP)`."
+why = "Runtime load-phase gating (`ModPhase`, `PhaseOwner`, `check_access`, `PhaseRefusal`) is replaced by compile-time phase-scoped context traits, bumping each affected lifecycle hook from version 1 to version 2. All four config hooks (`register_configs`, `config_loading`, `config_reloading`, `config_unloading`, following NeoForge's `ModConfigEvent`) take `&dyn ConfigContext`; server/shared reload hooks take `&dyn ReloadContext`; `add_client_reload_listeners` (`AddClientReloadListenersEvent`) takes `&dyn ClientReloadListenerContext` (exposing only facts known on both initial startup and later reloads, plus `published() -> Option<&dyn ClientReloadHost>` which is `None` on startup and `Some` on later reloads); `client_resources_reloaded` takes `&dyn ClientReloadHost`; and `client_setup` (`FMLClientSetupEvent`) takes `&mut dyn ClientSetupContext` (including non-world setup audio/effects, sound/key-mapping handles, and window/view/screen options) without world handles or transactions."
+migrate = "Update hook parameter types (all bumped from version 1 to version 2): `&dyn ConfigContext` for `register_configs`, `config_loading`, `config_reloading`, and `config_unloading`; `&dyn ReloadContext` for `add_server_reload_listeners`, `data_maps_updated`, `default_components_bound`, and `tags_updated`; `&dyn ClientReloadListenerContext` for `add_client_reload_listeners` (calling `context.published()` when published client assets are needed on later reloads); `&dyn ClientReloadHost` for `client_resources_reloaded`; and `&mut dyn ClientSetupContext` for `client_setup`. In `tags_updated` and `data_maps_updated`, inspect `event.cause` instead of matching `HostSide`, and read data maps with `context.data_map(&key, &MAP)`."

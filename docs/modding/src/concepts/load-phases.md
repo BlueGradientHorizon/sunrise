@@ -18,7 +18,7 @@ Each owning thread progresses through `Packages → Registration → Setup → C
 | Registration | Declarations through `RegistrationContext`, with its mod-list, registry and settings reads; no Host. |
 | Setup | `ClientSetupContext`: client setup reads, published asset/data queries, and registry/settings/mod-list reads; no world handles or transactions. |
 | Config | `ConfigContext`: settings reads and the mod-scoped `ConfigFiles` service; no world handles, transactions or other game operations. |
-| Reloading | `ReloadContext` (server/shared data reload and tag/data-map/component notices), `ClientReloadHost` (client reload listener registration and client resource reload completion), and `DataLoadContext` callbacks: published asset/data queries, registry facts, settings and mod-list reads; no world handles or transactions. |
+| Reloading | `ReloadContext` (server/shared data reload and tag/data-map/component notices), `ClientReloadListenerContext` (`add_client_reload_listeners`, with `published() -> Option<&dyn ClientReloadHost>` returning `None` on initial startup and `Some` on later reloads), `ClientReloadHost` (`client_resources_reloaded`), and `DataLoadContext` callbacks: published asset/data queries, registry facts, settings and mod-list reads; no world handles or transactions. |
 | World | The owning game's side-typed `ServerHost` or `ClientHost`. |
 
 `RegistrationContext::instance_dir()` borrows the instance directory captured before
@@ -30,7 +30,7 @@ constructing a filesystem path. A context with no engine snapshot returns `None`
 A mod that does slow work while the game starts shows it on the startup loading screen
 (NeoForge's `StartupNotificationManager` and `ProgressMeter`). `RegistrationContext::progress(label,
 steps)` opens a bar under the game's stage bar and returns `Result<StartupProgress, StartupProgressError>`.
-It returns `TooManyBars` when 64 bars are already open. The returned bar is owned and `Send + Sync`:
+It returns `TooManyBars` when the calling mod already has 64 open bars. The returned bar is owned and `Send + Sync`:
 call `step()`, `set(n)` and `label(text)` to update it, and drop it to remove it. A mod can keep the bar
 after registration and update it or call `bar.message(text)` from a worker thread or from `client_setup`.
 
@@ -97,14 +97,17 @@ the union of every mod's asks, so the result does not depend on the dispatch ord
 
 Data and asset reload hooks receive phase-scoped contexts instead of a full `Host`:
 `add_server_reload_listeners`, `tags_updated`, `data_maps_updated` and `default_components_bound`
-receive `&dyn ReloadContext`, while `add_client_reload_listeners` and `client_resources_reloaded`
-receive `&dyn ClientReloadHost` (which extends `ReloadContext` with published client render assets,
-sprites and instance groups). Published asset/data queries read the published generation, not
-pending prepare output: completion callbacks can refresh sprite and recipe caches after apply,
-including on first world open, without gaining world handles or transactions. Callbacks that take
-`DataLoadContext` use its restricted reads. Neither permits opening a world handle or transaction.
-The first client registration and prepare run on the loader thread; later registration runs on the
-render thread, prepare on its worker, and apply on the owning game thread.
+receive `&dyn ReloadContext`, `add_client_reload_listeners` receives
+`&dyn ClientReloadListenerContext` (whose `published()` method returns `None` on initial startup
+before any resources are published and `Some(&dyn ClientReloadHost)` on later reloads), and
+`client_resources_reloaded` receives `&dyn ClientReloadHost` (which extends `ReloadContext` with
+published client render assets, sprites and instance groups). Published asset/data queries read
+the published generation, not pending prepare output: completion callbacks can refresh sprite and
+recipe caches after apply, including on first world open, without gaining world handles or
+transactions. Callbacks that take `DataLoadContext` use its restricted reads. Neither permits
+opening a world handle or transaction. The first client registration and prepare run on the loader
+thread; later registration runs on the render thread, prepare on its worker, and apply on the
+owning game thread.
 
 ## Load contexts
 
@@ -161,9 +164,10 @@ On clients, generic reads never fall back to prepared server-only datapack files
 built-ins and the connection's currently synchronized registries are the entire view.
 
 Phase boundaries are enforced at compile time by the context trait passed to each hook:
-registration hooks take `RegistrationContext`, config hooks take `ConfigContext`, server/shared
-reload hooks take `ReloadContext`, client reload hooks take `ClientReloadHost`, and client setup
-takes `ClientSetupContext`.
+registration hooks take `RegistrationContext`, config hooks (`register_configs`, `config_loading`,
+`config_reloading`, `config_unloading`) take `ConfigContext`, server/shared reload hooks take
+`ReloadContext`, `add_client_reload_listeners` takes `ClientReloadListenerContext`,
+`client_resources_reloaded` takes `ClientReloadHost`, and client setup takes `ClientSetupContext`.
 There is no separate common-setup, load-complete or intermod event: registration and the first server
 reload cover common setup, client setup is `client_setup`, dedicated setup is `server_about_to_start`,
 and dependencies express intermod ordering. Load complete is the edge after initial Config and before
