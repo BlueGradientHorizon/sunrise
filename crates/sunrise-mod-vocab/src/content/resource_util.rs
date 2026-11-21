@@ -537,11 +537,11 @@ fn try_insert_stacking<R: PartialEq>(
     .map_err(|error| endpoint.attribute(error))
 }
 
-/// Takes up to `amount` of the first extractable resource `filter` accepts. An overanswer
-/// aborts the extraction. Pass `Some(tx)` for the innermost open transaction or `None` to
-/// open a root. A refused scope is `Err(TransactionError::Unavailable)`, not `Ok(None)`.
-/// Panics if `tx` does not match the host's innermost open transaction (including passing `None`
-/// while a transaction is open).
+/// Takes up to `amount` of the first extractable resource `filter` accepts. A positive amount
+/// opens a rollback probe before scanning, even if nothing matches. An overanswer aborts the
+/// extraction. Pass `Some(tx)` for the innermost open transaction or `None` to open a root.
+/// A refused scope is `Err(TransactionError::Unavailable)`, not `Ok(None)`. Panics if `tx` does
+/// not match the host's innermost open transaction (including passing `None` while one is open).
 pub fn extract_first<R>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
@@ -573,11 +573,12 @@ pub fn extract_first<R>(
     }
 }
 
-/// The first resource `filter` accepts that can be extracted. Probes with the slot's whole
-/// int amount in a transaction that always rolls back. Pass `Some(tx)` for the innermost open
-/// transaction or `None` to probe at the root. Panics if `tx` does not match the host's
-/// innermost open transaction (including passing `None` while a transaction is open).
-/// Returns `Ok(None)` if nothing matched, or `Err` for refusal or an overanswer.
+/// The first resource `filter` accepts that can be extracted. Opens a rollback scope before
+/// reading the handler and tries each candidate's whole int amount in a separate scope so a
+/// failed candidate cannot affect the next. Pass `Some(tx)` for the innermost open transaction
+/// or `None` to probe at the root. Panics if `tx` does not match the host's innermost open
+/// transaction (including passing `None` while a transaction is open). Returns `Ok(None)`
+/// if nothing matched, or `Err` for refusal or an overanswer.
 pub fn find_extractable_resource<R>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
@@ -593,22 +594,31 @@ fn probe_extractable<R>(
     handler: &dyn ResourceHandler<R>,
     filter: impl Fn(&R) -> bool,
 ) -> Result<Option<R>, TransactionError<Overanswered>> {
-    for index in 0..handler.size(host) {
-        let Ok(amount) = u32::try_from(handler.amount_int(host, index)) else {
-            continue;
-        };
-        let Some(resource) = handler
-            .resource(host, index)
-            .filter(|r| amount != 0 && filter(r))
-        else {
-            continue;
-        };
-        let probe: Result<std::convert::Infallible, TransactionError<u32>> = host
-            .transaction(|host, tx| Err(handler.extract_at(host, tx, index, &resource, amount)));
+    let mut remaining: Option<Range<usize>> = None;
+    while remaining.as_ref().is_none_or(|indices| !indices.is_empty()) {
+        let probe: Result<std::convert::Infallible, _> = host.transaction(|host, tx| {
+            let indices = remaining.get_or_insert_with(|| 0..handler.size(host));
+            for index in indices {
+                let Ok(amount) = u32::try_from(handler.amount_int(host, index)) else {
+                    continue;
+                };
+                let Some(resource) = handler
+                    .resource(host, index)
+                    .filter(|r| amount != 0 && filter(r))
+                else {
+                    continue;
+                };
+                let answer = handler.extract_at(host, tx, index, &resource, amount);
+                // Roll back before looking at another candidate, even on a zero answer.
+                return Err(Some((resource, amount, answer)));
+            }
+            Err(None)
+        });
         match probe {
             Ok(never) => match never {},
             Err(TransactionError::Unavailable) => return Err(TransactionError::Unavailable),
-            Err(TransactionError::Aborted(answer)) => {
+            Err(TransactionError::Aborted(None)) => return Ok(None),
+            Err(TransactionError::Aborted(Some((resource, amount, answer)))) => {
                 if checked_transfer(answer, amount).map_err(TransactionError::Aborted)? > 0 {
                     return Ok(Some(resource));
                 }

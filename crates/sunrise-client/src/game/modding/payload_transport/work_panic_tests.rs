@@ -144,7 +144,7 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
                 toast.message.as_ref().unwrap().component(),
                 serde_json::json!({
                     "translate": "sunrise.mods.hook_panic.description",
-                    "with": ["work_probe", "payload work"],
+                    "with": [{"text": "work_probe"}, {"text": "payload work"}],
                 })
             );
         });

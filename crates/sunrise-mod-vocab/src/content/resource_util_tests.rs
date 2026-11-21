@@ -955,19 +955,30 @@ fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
     };
     let from_handler: &dyn ResourceHandler<Chemical> = &from;
     let to_handler: &dyn ResourceHandler<Chemical> = &to;
+    let empty = EmptyResourceHandler;
+    let no_match: [(&dyn ResourceHandler<Chemical>, bool); 2] =
+        [(&empty, true), (from_handler, false)];
     for _ in 0..2 {
         assert_eq!(
             insert_stacking(&mut host, &to, &HYDROGEN, 1, None),
             Err(TransactionError::Unavailable)
         );
-        assert_eq!(
-            find_extractable_resource(&mut host, &from, |_| true, None),
-            Err(TransactionError::Unavailable)
-        );
-        assert_eq!(
-            extract_first(&mut host, &from, |_| true, 1, None),
-            Err(TransactionError::Unavailable)
-        );
+        for (handler, accepts) in [(from_handler, true)].into_iter().chain(no_match) {
+            let filter_calls = std::cell::Cell::new(0);
+            let filter = |_: &Chemical| {
+                filter_calls.set(filter_calls.get() + 1);
+                accepts
+            };
+            assert_eq!(
+                find_extractable_resource(&mut host, handler, filter, None),
+                Err(TransactionError::Unavailable)
+            );
+            assert_eq!(
+                extract_first(&mut host, handler, filter, 1, None),
+                Err(TransactionError::Unavailable)
+            );
+            assert_eq!(filter_calls.get(), 0);
+        }
         assert_eq!(
             move_resources(&mut host, from_handler, to_handler, |_| true, 1, None),
             Err(TransactionError::Unavailable)
@@ -991,5 +1002,15 @@ fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
         Ok::<_, ()>(())
     })
     .unwrap();
-    assert_eq!(host.refusals, 12);
+    assert_eq!(host.refusals, 20);
+    for (handler, accepts) in no_match {
+        assert_eq!(
+            find_extractable_resource(&mut host, handler, |_| accepts, None),
+            Ok(None)
+        );
+        assert_eq!(
+            extract_first(&mut host, handler, |_| accepts, 1, None),
+            Ok(None)
+        );
+    }
 }

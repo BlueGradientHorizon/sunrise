@@ -735,7 +735,7 @@ impl Game<'_> {
         f: impl FnOnce(&mut Self, TransactionFrame) -> (R, bool),
     ) -> R {
         let frame = self.open_storage_transaction();
-        let mut guard = StorageScope {
+        let guard = StorageScope {
             game: self,
             frame,
             open: true,

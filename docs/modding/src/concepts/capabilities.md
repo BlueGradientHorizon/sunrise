@@ -133,10 +133,12 @@ uses general capacity at empty indices, so an empty, zero-capacity index is alre
 `comparator_signal` averages the fill over all indices: empty and zero-capacity indices contribute
 zero and overfilled indices contribute at most one. `insert_stacking` tops up matching indices
 before filling empty ones; an overanswer rolls it back and returns `TransactionError::Aborted(Overanswered)`. `extract_first`
-takes the first extractable resource matching a filter. `find_extractable_resource` probes each
-candidate with its full int amount in a separate transaction that always rolls back. These three
-helpers follow the same rule for `Some(tx)` and `None`. The two extraction queries return
-`Ok(None)` when nothing matches, not when opening the required transaction fails.
+takes the first extractable resource matching a filter. `find_extractable_resource` and a
+positive-amount `extract_first` open a rollback scope before reading the handler. Each candidate
+is probed with its full int amount and rolled back before trying the next. These three helpers
+follow the same rule for `Some(tx)` and `None`. A scan with no match returns `Ok(None)` only if
+its required scopes opened; an empty handler or a filter that rejects everything still returns
+`Err(TransactionError::Unavailable)` if the host refuses the scope.
 
 Compose handlers from the same module: `CombinedResourceHandler` assigns indices in order and fixes
 its size at construction; `RangedResourceHandler::of` and `of_single_index` return `None` for
