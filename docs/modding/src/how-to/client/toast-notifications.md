@@ -27,5 +27,7 @@ admission point. Candidates produced during the initial resource loading screen 
 the game can invoke the hook with a `ClientHost`. The pause screen's persistent song label
 is HUD content, not a queued toast, and is not filtered by this hook.
 
-Mandatory mod-error toasts do not fire `toast_add` and cannot be hidden by cancelling
-`render_gui_pre`. They use ordinary toast slots and animation timing; F1 still hides them.
+A [panic diagnostic](../../concepts/hooks-and-the-host.md#failures-and-panics) uses ordinary
+toast slots and animation timing and names the mod and callback. It bypasses `toast_add`, so
+mods cannot cancel it or rewrite its text, and a `render_gui_pre` veto cannot hide it. The
+player's F1 setting still controls HUD visibility. A dedicated server reports it in the log.

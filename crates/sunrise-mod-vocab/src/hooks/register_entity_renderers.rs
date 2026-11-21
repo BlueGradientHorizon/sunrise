@@ -89,7 +89,7 @@ dropped, and until then its type draws as it would without one."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         staged_surface = "renderers",
         context = "registration",

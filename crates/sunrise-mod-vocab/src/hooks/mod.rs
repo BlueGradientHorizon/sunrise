@@ -26,10 +26,10 @@
 //! | `side` | `"server"`, `"client"` or `"both"`; required |
 //! | `contract` | `"listen"`, `"cancel"`, `"collect"` or `"replace"`; required |
 //! | `out` | the event field a cancel, collect or replace hook writes; not for `"listen"` |
-//! | `staged_surface` | engine-only: a flat global listener's mutable registrar field; fire lends the engine a thunk for one listener so the registrar can stage and commit that listener's edits. Not for draw surfaces. |
+//! | `staged_surface` | Engine-only marker naming the one mutable registrar field of a flat global listen hook. The fire adapter hands the owning registrar one listener thunk at a time, under that listener's mod scope. Only an accepted callback publishes the batch. This is not a draw surface or a mod-facing parameter. |
 //! | `scope`, `key` | a Part method: the kind of Part (`"block"`, `"block_entity"`, `"item"`, `"menu"`, `"fluid"`, `"entity"`) and the hook argument naming what it is attached to |
 //! | `answered_by` | `"mod"`: a global replace hook whose output also names the mod that answered, or a global collect hook whose output is `Vec<Answered<T>>`: each mod pushes `T`s into its own empty batch and dispatch names that mod on each entry |
-//! | `output_validator` | a path on a global cancel hook with Copy outputs: `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` takes each set of outputs in declaration order and checks a completed listener's proposal against the preceding accepted one. A refusal rolls back all outputs including cancellation, logs the mod and field every time, and lets later eligible listeners run. An accepted cancellation cannot be cleared. |
+//! | `output_validator` | A path on a global cancel hook with `Copy` outputs. In the shared cancel dispatch, `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` takes both sets in declaration order. It checks only completed proposals. A refusal rejects the whole proposal, including cancellation, reports the mod and field every time, and does not disable the callback. Later eligible listeners see the accepted outputs; these validated hooks do not clear an accepted cancellation. |
 //! | `host`, `context` | `"read"` or `"level"`; `"registration"`, `"data_load"`, `"loop"` or `"worldgen"` |
 //! | `neoforge`, `fabric`, `paper` | the counterpart's name, or a list of them, for the rustdoc and the gap lists |
 //! | `cancellable` | whether the NeoForge counterpart event is cancellable (documentation, not the contract) |

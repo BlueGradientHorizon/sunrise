@@ -81,18 +81,18 @@ distinguishes self movement, player packets, pistons, shulker boxes, shulkers an
 moving collider carrying a body (`Carried`, version 2 of the hook);
 boats and minecarts use self movement.
 
-A replacement must have finite components, each within ±64 blocks. Invalid
-output is refused whole, retaining the requested delta rather than clamping it.
-Cancellation skips the invocation: no position, velocity, collision-flag or fall
+A replacement must have finite components, each within ±64 blocks. The final
+output is checked as a whole: an invalid answer leaves the requested delta
+rather than clamping it. Cancellation skips the invocation: no position, velocity, collision-flag or fall
 change, and no displacement notice. An overridden player or vehicle packet move
 sends a correction even below the normal distance threshold, for creative players
 and from obstructed starts too. A replacement equal to the request retains the
 normal vanilla distance rules.
 
 If a listener panics or incurs a phase refusal, its proposed delta and any
-change to the cancel flag are discarded. Earlier proposals stand and later
-eligible listeners still run. Only a panic disables that mod's callback for
-this hook for the session; its other hooks remain enabled.
+change to the cancel flag are discarded. Later eligible listeners see the last
+accepted result; a failed callback neither vetoes movement nor clears an earlier
+veto. Only a panic disables that mod's callback for this hook for the session.
 
 A mod moves an entity through the same moment with `EntityRef::move_by(host, delta, cause)`
 (`Entity.move(cause, delta)`, server only): the collision scan stops it at blocks, the world border and

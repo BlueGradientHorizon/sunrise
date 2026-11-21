@@ -16,11 +16,11 @@ pub trait Hooks {
 with a namespaced ID, a `GuiLayerPlacement` and an owned draw callback. The four placements
 are `BelowAll`, `Below(id)`, `Above(id)` and `AboveAll`, as `registerBelowAll`, `registerBelow`,
 `registerAbove` and `registerAboveAll`. `Below` and `Above` name a vanilla layer (the IDs
-`Hooks::gui_layer_pre` lists) or a layer already registered. Calls take effect in order, in mod
-load order. Each listener sees its pending edits, but a panic or phase refusal discards
-only that listener's insertions, replacements and wrappers. Invalid, reserved or duplicate
-IDs and unknown relative anchors are logged and refused at the call. The client calls each
-installed callback as the mod that registered it.
+`Hooks::gui_layer_pre` lists) or a layer already registered, including in this callback's own
+batch. The game publishes a completed batch in call order before invoking the next listener.
+A panic or phase refusal discards only the failing listener's pending insertions, replacements
+and wrappers. Invalid, reserved or duplicate IDs and unknown relative anchors are logged and
+refused at the call. The client calls each installed callback as the mod that registered it.
 
 Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or
 `layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID,
@@ -41,7 +41,7 @@ pass regardless of F1 uses `Hooks::gui_render_post`."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 3,
+        version = 4,
         contract = "listen",
         staged_surface = "layers",
         context = "registration",

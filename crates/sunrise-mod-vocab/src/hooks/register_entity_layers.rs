@@ -82,7 +82,7 @@ layers, in a follow-up of #860, which lifts their refusal."#]
         side = "client",
         contract = "listen",
         staged_surface = "layers",
-        version = 2,
+        version = 3,
         context = "registration",
         neoforge = "EntityRenderersEvent.AddLayers"
     )]

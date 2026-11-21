@@ -5,8 +5,8 @@ ordinary item model cannot describe the drawing. Register a factory for a `minec
 type. For each node of that type, the factory decodes its configuration and bakes a renderer
 at client resource load. The renderer implements vanilla's `SpecialModelRenderer` split: extract
 an argument from the item being drawn, then submit geometry. The last published registration
-for a type wins. If a registration listener panics or is refused by the load phase, none of
-its factories or replacement reports take effect.
+for a type wins. A [failed registration callback](../../concepts/load-phases.md#registration-and-setup)
+changes neither the winning factory nor the replacement reports.
 
 ## Decode, bake, then draw
 

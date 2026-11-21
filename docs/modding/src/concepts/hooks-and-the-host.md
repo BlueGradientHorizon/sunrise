@@ -17,7 +17,7 @@ depends on. When a mod cancels an event, the mods after it are skipped, unless t
 What a hook's return value means depends on its kind:
 
 - **Listen** hooks are notices: every subscribed mod is called.
-- **Cancellable** hooks return `Flow`: `Flow::Cancel` stops the game's action and skips later mods.
+- **Cancellable** hooks return `Flow`: `Flow::Cancel` stops the game's action and skips later listeners unless they receive cancelled events.
 - **Replacement** hooks return an `Option`: the first mod to answer `Some` wins.
 - **Collection** hooks call every mod, each adding to a list in the event.
 
@@ -25,21 +25,23 @@ A hook with no receiver gets no `Host`.
 
 ## Failures and panics
 
-Every hook's dispatcher — including chunk-disk callbacks and startup `Hooks::register` — catches
-panics in mod callbacks. A panicking callback is disabled for that hook for the rest of the session
-— the mod's other hooks and every other mod's listeners keep running — its mutable event fields and
-transactional host writes are rolled back, and the panic is reported once loudly with an `error!`
-log line and, on a client, a non-vetoable error toast naming the mod and the hook (headless
-dedicated servers log the error and do not drain the client toast queue).
+The dispatcher catches panics in hook callbacks, including chunk-disk callbacks and startup
+`Hooks::register`. A panic disables only that mod's callback for that hook for the session. The game
+names the mod and hook in the error log and in a [client diagnostic toast](../how-to/client/toast-notifications.md#admission-rules)
+that mods cannot cancel or rewrite. A dedicated server logs the error without showing a toast.
+Ordinary refusals, such as an unavailable phase operation or a rejected output, are reported every
+time they occur and do not disable the callback.
 
-Failed listeners do not undo proposals accepted from earlier listeners. The dispatcher discards
-the failed callback's own proposal, including any change to the cancel flag, then continues to
-later listeners under the normal `receive_cancelled` rules. Ordinary refusals, such as a load-phase
-or output-validator refusal, are reported every time without disabling the listener.
+A failed proposal is not a cancel or replacement. Its changes to the event, including the cancel
+flag, do not publish. Later eligible listeners start from the last accepted result, not from the
+original request. An accepted cancellation still skips listeners that don't receive cancelled
+events; a successful replacement still ends a first-answer-wins hook.
 
-For `farmland_trample`, each listener's writes join the trample transaction only if that
-callback succeeds. A panic is not a veto. A successful veto or stale landing state still
-rolls back the whole trample action; the entity takes its fall damage either way.
+[Staged registration](load-phases.md#registration-and-setup) discards the failed callback's pending
+entries and replacements. For a journaled action such as `farmland_trample`, a failed callback's
+writes do not join the action. A successful veto or stale landing state still aborts the whole
+trample action, and fall damage still runs. For [chunk-disk jobs](../how-to/chunk-data-load.md), later
+listeners can run after a panic or codec failure, but the failed job's changes cannot publish.
 
 ## Player tick hooks
 

@@ -24,7 +24,7 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         staged_surface = "listeners",
-        version = 2,
+        version = 4,
         neoforge = "AddClientReloadListenersEvent"
     )]
     fn add_client_reload_listeners(listeners: &mut dyn ClientReloadListeners);

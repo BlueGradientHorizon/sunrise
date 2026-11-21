@@ -1,14 +1,17 @@
 //! The installed mods, who is subscribed to what, the crash marks around a call, and the
 //! unified hook-dispatch failure rule.
 //!
-//! Every generated hook dispatcher runs mod callbacks through [`invoke`]:
-//! - A panic in a mod's callback disables that mod's callback for that hook for the rest of the
-//!   session, leaves the mod's other hooks and every other mod's listeners running, and reports the
-//!   panic once loudly via an `error!` log line and (on a client) a queued error toast naming the
-//!   mod and hook. A headless dedicated server logs the `error!` line and does not drain the
-//!   client toast queue.
-//! - Any other failure or refusal (such as a load-phase refusal or output-validator refusal) is
-//!   reported each time and never latched or used to disable the listener.
+//! Generated dispatch uses [`invoke`] to distinguish a completed callback, a phase refusal and
+//! a panic. A panic disables that mod's callback for that hook for the session, reports the mod
+//! and hook in the error log, and queues a local client error toast. A headless dedicated server
+//! logs the error without presenting a toast. A phase refusal is reported each time and does not
+//! disable the callback. Startup [`invoke_registration`] uses the same panic boundary for the
+//! once-only `Hooks::register` call.
+//!
+//! Dispatch and the owning publication boundary discard unfinished work. Later eligible listeners
+//! still run from the last accepted outputs; only a completed proposal can cancel or replace.
+//! Output validation reports each refusal without disabling the callback. A chunk-disk panic or
+//! codec error fails publication of the job, not the remaining listener calls.
 use crate::*;
 
 // no wire: installed hook trait objects and shared dispatch ownership are process-local.

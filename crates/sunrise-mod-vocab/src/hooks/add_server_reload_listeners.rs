@@ -18,7 +18,7 @@ pub trait Hooks {
         side = "server",
         contract = "listen",
         staged_surface = "listeners",
-        version = 2,
+        version = 4,
         host = "read",
         neoforge = "AddServerReloadListenersEvent"
     )]

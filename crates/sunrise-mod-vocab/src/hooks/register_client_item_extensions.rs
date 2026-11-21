@@ -13,7 +13,7 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         staged_surface = "extensions",
-        version = 2,
+        version = 3,
         context = "registration",
         neoforge = "RegisterClientExtensionsEvent"
     )]

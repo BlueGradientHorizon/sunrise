@@ -46,7 +46,7 @@ hidden data packs for operators."##]
         side = "both",
         contract = "listen",
         staged_surface = "packs",
-        version = 2,
+        version = 3,
         neoforge = "AddPackFindersEvent"
     )]
     fn add_pack_finders(packs: &mut dyn mod_api::PackFinders);

@@ -85,8 +85,8 @@ carry over, so add them each time. The event also tells what renderers this load
   of its own which doesn't run layers yet (the armour stand, the ender dragon): the `Err` names the
   target, and the game logs it too.
 - Several mods may add to one target: the layers draw in successful registration order, after the
-  entity's model and its vanilla layers. A registration callback that panics or incurs a phase
-  refusal adds no layers; the other callbacks can still register theirs. On a type a mod registered a renderer for
+  entity's model and its vanilla layers. A [failed registration callback](../../concepts/load-phases.md#registration-and-setup)
+  adds no layers; other callbacks can still register theirs. On a type a mod registered a renderer for
   ([entity renderers](entity-renderers.md)), they draw after that renderer, which replaces the model
   and the vanilla layers. They receive `model: None` when the replacement renderer succeeds.
 - An entity whose `render_living_pre` or `render_player_pre` a mod canceled draws none of its layers,

@@ -102,8 +102,9 @@ Model names belong to the registering mod's namespace. Duplicate model names,
 non-finite geometry or poses, an unknown texture, an unknown item and two
 providers for one item refuse the resource-load registration by name. A duplicate
 item diagnostic names both providers. A completed callback's registration error
-still refuses preparation even if it ignored the returned error. A panic or
-phase refusal discards only that callback's models, textures and providers;
+still refuses preparation even if it ignored the returned error. A
+[failed registration callback](../../concepts/load-phases.md#registration-and-setup)
+loses only its own models, textures and providers;
 other callbacks can still register. Do not keep model or texture references
 from a discarded registration. Disabling the owning mod stops its Part.
 A server-only package cannot declare this client registration hook.

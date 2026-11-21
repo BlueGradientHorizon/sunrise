@@ -54,8 +54,9 @@ fallback. At server startup the Overworld, Nether and End are published in that 
 firing `level_load` before the next is available. The server then validates and activates their
 saved tickets and waits for the ticketed chunks before `server_started`, even if no player
 visits those levels. In `Hooks::validate_tickets`, a controller's owning mod can remove saved
-tickets through `event.validation`. The callback sees its removals immediately, but a panic or
-phase refusal discards them before tickets are reinstated. Other controllers still validate.
+tickets through `event.validation`. The callback sees its removals immediately. As with
+[staged registration](../../concepts/load-phases.md#registration-and-setup), a panic or phase
+refusal discards those edits before the saved tickets take hold. Other controllers still validate.
 
 Success means queue admission, not apply completion. Apply failures are logged with the
 requesting mod and level id. A failed open rolls back publication and frees the id for retry;

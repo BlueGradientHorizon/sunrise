@@ -5,8 +5,8 @@ Use `Hooks::register_cauldron_interaction` with a `RegistrationContext` and
 from registration. The hook runs on both
 sides when preparing the resource snapshot; publication happens only after the
 complete candidate validates. Failed preparation retains the previous snapshot.
-A callback that panics or incurs a phase refusal contributes no exact, tag or
-all-dispatcher registrations. The other callbacks can still register theirs.
+A [failed registration callback](../../concepts/load-phases.md#registration-and-setup)
+contributes no exact, tag or all-dispatcher registrations. Other callbacks can still register theirs.
 
 ## Register an item
 

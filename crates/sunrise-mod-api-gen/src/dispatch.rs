@@ -997,8 +997,8 @@ pub(super) fn emit<'a>(
         let mut restores: Vec<String> = Vec::new();
         let answered_collect_batch =
             answered && contract == Contract::Collect && declaration.is_none();
-        // A `&mut dyn Trait` field is a registrar or a draw surface: its effects stand, as the
-        // surface has no whole value to copy.
+        // Trait-object fields have no whole value to copy. For a staged registrar the
+        // owning sink handles publication; drawing and other live views are not registrars.
         for (field, by_reference) in rollback
             .iter()
             .filter(|(field, _)| !surfaces.contains(field))

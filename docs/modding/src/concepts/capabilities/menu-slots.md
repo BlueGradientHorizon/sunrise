@@ -301,7 +301,7 @@ host.transaction(|host, tx| {
 })
 ```
 
-`menu_clicked` (contract version 2) and `menu_quick_move` (contract version 3, with an optional remainder where `None` empties the clicked slot) each run as one action: what a listener writes
+`menu_clicked` (contract version 2) and `menu_quick_move` (contract version 4, with an optional remainder where `None` empties the clicked slot) each run as one action: what a listener writes
 through the `Host` stays when it returns and is undone with the rest of the action when a listener fails. A
 panicking `menu_quick_move` publishes neither the detached block entity (including one-shot update fields)
 nor the stack remainder or handled answer. A panic, an invalid answer, or a `Host` write to a player's inventory,

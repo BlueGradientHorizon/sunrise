@@ -7,8 +7,6 @@ the mod registers, and no world until the World phase.
 enters Reloading and returns to the phase it came from.](../images/load-phases.svg)
 
 Registration, config loading and reload-listener registration all use the installed dependency order.
-A failed `extend_poi_types` callback publishes none of its pending block-state predicates;
-other mods still extend the existing types.
 The resolver keeps bundle-order ties, checks present optional dependencies and refuses cycles. Content-only
 packages stay after code in the loaded-mod inventory; listener-specific edges use `ReloadOrder`.
 
@@ -59,14 +57,14 @@ receive no `Host` and read startup facts through `RegistrationContext`.
 `event.register("mymod:charge".into())` with each owned, namespaced ID. The game checks IDs and
 duplicates before freezing the component registry.
 
-Scoped registration events are borrowed only for the listener call. Their registration methods
-add entries in dispatch order without letting a listener read, edit or remove earlier registrations.
-If the phase gate refuses a listener, its additions are discarded and earlier registrations stand.
-For block tints, colour resolvers, cauldron contents, enchantment damage effects, villager professions,
-entity renderers and particle providers, registration is committed only when the listener succeeds.
-A panic discards that listener’s registrations and any attempted replacements; earlier registrations
-stand and later listeners still run. The panicking listener is disabled for that hook for the session.
-A phase refusal is reported each time and does not disable the listener.
+A registration event is borrowed only for that callback. The game accepts a listener's pending
+registrations in call order when the callback completes. Where the registrar supports replacement
+or relative placement, later calls in that callback can use its pending edits. A panic or phase
+refusal discards the failed callback's whole batch; installed entries stand and later listeners
+can register. Only a panic disables the callback for the session; an ordinary refusal is reported
+on each call. A normal registration method returning an error still follows that registrar's
+contract. For example, a duplicate can reject one entry or reject the whole resource candidate,
+depending on the registrar. Handle the returned error; it is not a callback panic.
 
 A callback registered on the event cannot borrow the event or the context. Capture owned inputs
 for its `Send + Sync + 'static` closure. A model layer supplier runs once at the startup freeze;
@@ -115,9 +113,11 @@ registration retains `&dyn Host`, restricted to these published facts, registry 
 mod-list queries. Callbacks that take `DataLoadContext` use its restricted reads. Neither permits
 opening a world handle or transaction. The first client registration and prepare run on the loader
 thread; later registration runs on the render thread, prepare on its worker, and apply on the owning
-game thread. A panic or phase refusal during listener registration discards only that callback's
-pending listeners and dependencies, including any server listeners it asked to retain. An ordinary
-registration error is returned and logged at the call; a completed dependency cycle still fails the reload.
+game thread. Reload listener registration follows the same per-callback rule as startup: a panic or
+phase refusal discards only that callback's pending listeners, dependencies and retained entries.
+A rejected `add_listener`, `add_dependency` or server `add_retained_listener` call returns its
+error and is logged without failing the whole reload. A cycle in the completed graph still fails it.
+See [data files](../how-to/native-mods/03-data-files.md) for preparing and applying listeners.
 
 ## Load contexts
 

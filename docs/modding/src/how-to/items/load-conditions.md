@@ -9,8 +9,9 @@ Registration happens once per mod load, with one handler per id and a read-only
 mod B can register `a:x` while mod A registers `a:y`. Built-in IDs such as
 `neoforge:always`, `neoforge:never` and `neoforge:mod_loaded` cannot be replaced.
 A duplicate ID names both mods in the error. A completed listener's registration error
-refuses admission even if the listener ignores it. If the registration listener panics or
-makes a call refused by the load phase, the game discards its handlers and preparation errors.
+refuses admission even if the listener ignores it. A
+[failed registration callback](../../concepts/load-phases.md#registration-and-setup) publishes
+neither handlers nor preparation errors.
 Later listeners can still register those IDs.
 
 ```rust,ignore
