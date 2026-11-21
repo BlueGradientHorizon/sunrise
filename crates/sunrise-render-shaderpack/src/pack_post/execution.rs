@@ -13,6 +13,7 @@ use sunrise_render_core::UniformFrameView;
 use sunrise_shaders::{BUFFERS, Group, SHADOW_COLORS};
 
 use super::construction::*;
+use crate::PollLive;
 use crate::pack_hand;
 use crate::pack_images;
 use crate::pack_sky::SkyFrame;
@@ -258,8 +259,9 @@ impl PackPost {
         ticks: u64,
         day_time: i64,
         lost: &std::sync::atomic::AtomicBool,
+        poll: PollLive,
     ) -> Result<(), String> {
-        self.resize(device, size, lost)?;
+        self.resize(device, size, lost, poll)?;
         // Last frame's water patches (or a new texture's zeros) out: depth 1 is no patch.
         if self.water_mask_dirty
             && let Some((_, view)) = self.targets.as_ref().and_then(|t| t.water_mask.as_ref())
@@ -336,7 +338,7 @@ impl PackPost {
             }
         }
         if let Some(t) = &mut self.timing {
-            t.begin(device, queue, lost)?;
+            t.begin(device, queue, lost, poll)?;
         }
         self.uniforms.center_depth_raw = self
             .center_depth
@@ -351,7 +353,7 @@ impl PackPost {
         }
         // Images start the frame cleared, before the shadow pass writes them.
         if let Some(dump) = &mut self.dump {
-            dump.read(device, lost)?;
+            dump.read(device, lost, poll)?;
             dump.copy(device, encoder, &self.images);
         }
         pack_images::clear(
@@ -1916,6 +1918,7 @@ impl PackPost {
         device: &wgpu::Device,
         size: [u32; 2],
         lost: &std::sync::atomic::AtomicBool,
+        poll: PollLive,
     ) -> Result<(), String> {
         if pack_images::resize_images(device, &mut self.images, size) {
             self.forget_groups();
@@ -1933,7 +1936,7 @@ impl PackPost {
         if self.targets.take().is_some() {
             self.forget_groups();
             // A lost device stops the frame here, before the new targets are made.
-            poll_live(device, lost, wgpu::PollType::wait_indefinitely())?;
+            poll(device, lost, wgpu::PollType::wait_indefinitely())?;
         }
         let sizes: [[u32; 2]; BUFFERS] =
             std::array::from_fn(|i| self.sizes[i].map_or(size, |s| s.resolve(size)));
@@ -2362,17 +2365,4 @@ impl PackPost {
         }
         hasher.finish()
     }
-}
-
-/// `Device::poll`, unless the device is lost (`lost`, set by the client's loss callback): a
-/// wait on a lost device is skipped and reported as the loss.
-fn poll_live(
-    device: &wgpu::Device,
-    lost: &std::sync::atomic::AtomicBool,
-    poll: wgpu::PollType,
-) -> Result<(), String> {
-    if lost.load(std::sync::atomic::Ordering::Relaxed) {
-        return Err("the graphics device was lost".into());
-    }
-    device.poll(poll).map(|_| ()).map_err(|e| e.to_string())
 }

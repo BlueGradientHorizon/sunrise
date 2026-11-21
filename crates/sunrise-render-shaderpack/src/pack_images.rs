@@ -3,22 +3,11 @@
 //! frame when the pack asks.
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
+use crate::PollLive;
 use sunrise_shaders::{BufferObject, CustomImage, Format, Kind};
 use wgpu::util::DeviceExt;
-
-/// The error of a wait that found the device lost.
-const LOST: &str = "the graphics device was lost";
-
-/// `Device::poll`, unless the device is lost (`lost`, set by its loss callback): a poll on a
-/// lost device reads nothing back and may panic, so it is skipped.
-fn poll_live(device: &wgpu::Device, lost: &AtomicBool, poll: wgpu::PollType) -> Result<(), String> {
-    if lost.load(Ordering::Relaxed) {
-        return Err(LOST.into());
-    }
-    device.poll(poll).map(|_| ()).map_err(|e| e.to_string())
-}
 
 pub struct PackImage {
     pub def: CustomImage,
@@ -556,12 +545,17 @@ impl Dump {
     }
 
     /// Reads last frame's copy, once its commands ran.
-    pub fn read(&mut self, device: &wgpu::Device, lost: &AtomicBool) -> Result<(), String> {
+    pub fn read(
+        &mut self,
+        device: &wgpu::Device,
+        lost: &AtomicBool,
+        poll: PollLive,
+    ) -> Result<(), String> {
         let Some((buffer, texel, [w, h, d], row)) = self.pending.take() else {
             return Ok(());
         };
         buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
-        poll_live(
+        poll(
             device,
             lost,
             wgpu::PollType::Wait {

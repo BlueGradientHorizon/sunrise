@@ -3047,8 +3047,13 @@ mod tests {
             }
             let whole = gpu.records.all_dirty;
             if let Some(t) = &mut timing {
-                t.begin(device, queue, &std::sync::atomic::AtomicBool::new(false))
-                    .unwrap();
+                t.begin(
+                    device,
+                    queue,
+                    &std::sync::atomic::AtomicBool::new(false),
+                    super::super::in_flight::poll_live,
+                )
+                .unwrap();
             }
             let mut encoder = device.create_command_encoder(&Default::default());
             let input = FrameInputs::new(camera, min_y, height, radius, &frustum)
@@ -3254,8 +3259,13 @@ mod tests {
                 let mut out = Vec::new();
                 for frame in 0..12 {
                     if let Some(t) = timing {
-                        t.begin(device, queue, &std::sync::atomic::AtomicBool::new(false))
-                            .unwrap();
+                        t.begin(
+                            device,
+                            queue,
+                            &std::sync::atomic::AtomicBool::new(false),
+                            super::super::in_flight::poll_live,
+                        )
+                        .unwrap();
                     }
                     let mut encoder = device.create_command_encoder(&Default::default());
                     let input = FrameInputs::new(DVec3::new(0.5, 70.0, 0.5), -64, 24, 5, &frustum)

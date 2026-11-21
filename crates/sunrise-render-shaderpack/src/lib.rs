@@ -19,6 +19,11 @@ pub mod pack_uniforms;
 pub mod pack_weather;
 pub(crate) mod timing;
 
+/// The client's loss-aware `Device::poll` (`gfx::in_flight::poll_live`), which turns the panic a
+/// wait on a lost device can raise into the loss. Every wait this crate makes takes it.
+pub type PollLive =
+    fn(&wgpu::Device, &std::sync::atomic::AtomicBool, wgpu::PollType) -> Result<(), String>;
+
 /// What a celestial quad is (the client's `gfx::CelestialBody`), for the pack's sky.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CelestialBody {

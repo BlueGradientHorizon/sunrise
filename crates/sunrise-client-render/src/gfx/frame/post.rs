@@ -224,6 +224,7 @@ impl Renderer {
                 pages,
                 &mut terrain,
                 &self.device_lost,
+                super::super::in_flight::poll_live,
             );
             // Keep the capacity, not the buffers: a page the arena frees must not stay alive
             // here until the next shader-pack frame (or forever once the pack is off).

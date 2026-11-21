@@ -67,6 +67,7 @@ pub trait PackPostExt: Sized {
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
         lost: &std::sync::atomic::AtomicBool,
+        poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String>;
     /// The pack's GPU pass timer (`pack_timing::PassTiming` in this crate), in the slot the
     /// renderer's timing API hands out and reads beside Sunrise's own timer.
@@ -191,6 +192,7 @@ impl PackPostExt for PackPost {
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
         lost: &std::sync::atomic::AtomicBool,
+        poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String> {
         let view = frame_view(frame);
         let celestial_bodies: Vec<_> = frame
@@ -240,6 +242,7 @@ impl PackPostExt for PackPost {
             frame.ticks,
             frame.pack.day_time,
             lost,
+            poll,
         )
     }
 

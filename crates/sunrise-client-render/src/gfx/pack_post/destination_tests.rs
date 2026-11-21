@@ -314,6 +314,7 @@ impl Fixture {
             &[],
             terrain,
             &std::sync::atomic::AtomicBool::new(false),
+            super::super::in_flight::poll_live,
         )
         .unwrap();
         encoder.copy_texture_to_buffer(

@@ -13,6 +13,8 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+use crate::PollLive;
+
 /// Timestamp pairs per frame at most: a pass, a part or an encoder span takes one.
 const CAPACITY: u32 = 128;
 const TIMESTAMP_BYTES: u64 = CAPACITY as u64 * 16;
@@ -366,6 +368,7 @@ impl PassTiming {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         lost: &AtomicBool,
+        poll: PollLive,
     ) -> Result<(), String> {
         match &self.stage {
             // A timed frame that was never submitted: time this one instead.
@@ -403,7 +406,7 @@ impl PassTiming {
                 ty: wgpu::QueryType::PipelineStatistics(STAT_FLAGS),
                 count: STATS_CAPACITY,
             }));
-            self.fragment_unit = calibrate_fragment_unit(device, queue, lost)?;
+            self.fragment_unit = calibrate_fragment_unit(device, queue, lost, poll)?;
         }
         if matches!(self.stage, Stage::Idle)
             && self.timed_at.is_none_or(|at| at.elapsed() >= self.gap)
@@ -753,8 +756,8 @@ fn calibrate_fragment_unit(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     lost: &AtomicBool,
+    poll: PollLive,
 ) -> Result<Option<FragmentUnit>, String> {
-    const LOST: &str = "the graphics device was lost";
     const SIDE: u32 = 64;
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Fragment counter calibration"),
@@ -844,12 +847,7 @@ fn calibrate_fragment_unit(
     encoder.copy_buffer_to_buffer(&resolve, 0, &read, 0, 8);
     queue.submit([encoder.finish()]);
     read.slice(..).map_async(wgpu::MapMode::Read, |_| {});
-    if lost.load(Ordering::Relaxed) {
-        return Err(LOST.into());
-    }
-    device
-        .poll(wgpu::PollType::wait_indefinitely())
-        .map_err(|e| e.to_string())?;
+    poll(device, lost, wgpu::PollType::wait_indefinitely())?;
     let Ok(range) = read.slice(..).get_mapped_range() else {
         return Ok(None);
     };
@@ -1279,7 +1277,18 @@ mod tests {
     };
     use serde_json::json;
     use std::collections::VecDeque;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    fn test_poll(
+        device: &wgpu::Device,
+        lost: &AtomicBool,
+        poll: wgpu::PollType,
+    ) -> Result<(), String> {
+        if lost.load(Ordering::Relaxed) {
+            return Err("the graphics device was lost".into());
+        }
+        device.poll(poll).map(|_| ()).map_err(|e| e.to_string())
+    }
 
     fn interleave(pairs: &[(f32, f32)]) -> Vec<u64> {
         let ns = |ms: f32| (ms * 1e6) as u64;
@@ -1559,7 +1568,7 @@ mod tests {
         // A timed frame takes two iterations: record it, then resolve and map its times.
         for _ in 0..60 {
             timing
-                .begin(device, queue, &AtomicBool::new(false))
+                .begin(device, queue, &AtomicBool::new(false), test_poll)
                 .unwrap();
             let mut encoder = device.create_command_encoder(&Default::default());
             compute_parts(
@@ -1748,7 +1757,7 @@ mod tests {
     ) {
         for _ in 0..6 {
             timing
-                .begin(device, queue, &AtomicBool::new(false))
+                .begin(device, queue, &AtomicBool::new(false), test_poll)
                 .unwrap();
             if timing.recording() && (timing.counters_frame() == counts) {
                 return;
@@ -1811,7 +1820,7 @@ mod tests {
         finish(&mut timing, &device, &queue, encoder);
         for _ in 0..4 {
             timing
-                .begin(&device, &queue, &AtomicBool::new(false))
+                .begin(&device, &queue, &AtomicBool::new(false), test_poll)
                 .unwrap();
             device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         }
@@ -1887,7 +1896,7 @@ mod tests {
         timing.keep_frames(true);
         for _ in 0..12 {
             timing
-                .begin(&device, &queue, &AtomicBool::new(false))
+                .begin(&device, &queue, &AtomicBool::new(false), test_poll)
                 .unwrap();
             let mut encoder = device.create_command_encoder(&Default::default());
             let pass = scene.pass(&mut encoder, timing.writes("World"));
