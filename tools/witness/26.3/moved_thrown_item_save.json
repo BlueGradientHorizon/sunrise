@@ -1,0 +1,380 @@
+{
+  "minecraft": "26.3",
+  "oracle": "dev.sunriselab.parity.VanillaCommandExecOracle",
+  "seed": 1,
+  "groups": [
+    "moved thrown item save"
+  ],
+  "records": [
+    {
+      "cmd": "/summon egg 5698.5 302 5570.5 {UUID:[I;2691,0,1,1],Item:{id:\"minecraft:stone\",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Egg",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 302 5573.5 {UUID:[I;2691,0,2,1],Item:{id:\"minecraft:stone\",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon ender_pearl 5698.5 302 5576.5 {UUID:[I;2691,0,3,1],Item:{id:\"minecraft:stone\",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Ender Pearl",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon experience_bottle 5698.5 302 5579.5 {UUID:[I;2691,0,4,1],Item:{id:\"minecraft:stone\",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Bottle o' Enchanting",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon egg 5698.5 302 5582.5 {UUID:[I;2691,0,5,1],Item:{id:\"minecraft:blue_egg\",count:3},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Egg",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon egg 5698.5 304 5570.5 {UUID:[I;2691,0,6,1],Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Egg",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 304 5573.5 {UUID:[I;2691,0,7,1],Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon ender_pearl 5698.5 304 5576.5 {UUID:[I;2691,0,8,1],Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Ender Pearl",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon experience_bottle 5698.5 304 5579.5 {UUID:[I;2691,0,9,1],Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Bottle o' Enchanting",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000100000001 Pos",
+      "text": "Thrown Egg has the following entity data: [5698.549500000477d, 302.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000100000001 Item",
+      "text": "Thrown Egg has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000200000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 302.0d, 5573.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000200000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000300000001 Pos",
+      "text": "Thrown Ender Pearl has the following entity data: [5698.549500000477d, 302.0d, 5576.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000300000001 Item",
+      "text": "Thrown Ender Pearl has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000400000001 Pos",
+      "text": "Thrown Bottle o' Enchanting has the following entity data: [5698.549500000477d, 302.0d, 5579.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000400000001 Item",
+      "text": "Thrown Bottle o' Enchanting has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000500000001 Pos",
+      "text": "Thrown Egg has the following entity data: [5698.549500000477d, 302.0d, 5582.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000500000001 Item",
+      "text": "Thrown Egg has the following entity data: {count: 1, id: \"minecraft:blue_egg\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000600000001 Pos",
+      "text": "Thrown Egg has the following entity data: [5698.549500000477d, 304.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000600000001 Item",
+      "text": "Thrown Egg has the following entity data: {count: 1, id: \"minecraft:egg\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000700000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 304.0d, 5573.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000700000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000800000001 Pos",
+      "text": "Thrown Ender Pearl has the following entity data: [5698.549500000477d, 304.0d, 5576.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000800000001 Item",
+      "text": "Thrown Ender Pearl has the following entity data: {count: 1, id: \"minecraft:ender_pearl\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000900000001 Pos",
+      "text": "Thrown Bottle o' Enchanting has the following entity data: [5698.549500000477d, 304.0d, 5579.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000900000001 Item",
+      "text": "Thrown Bottle o' Enchanting has the following entity data: {count: 1, id: \"minecraft:experience_bottle\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/execute unless loaded 5696 300 5568",
+      "text": "Test passed",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000100000001 Item",
+      "text": "Thrown Egg has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000200000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000300000001 Item",
+      "text": "Thrown Ender Pearl has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000400000001 Item",
+      "text": "Thrown Bottle o' Enchanting has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000500000001 Item",
+      "text": "Thrown Egg has the following entity data: {count: 1, id: \"minecraft:blue_egg\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000600000001 Item",
+      "text": "Thrown Egg has the following entity data: {count: 1, id: \"minecraft:egg\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000700000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000800000001 Item",
+      "text": "Thrown Ender Pearl has the following entity data: {count: 1, id: \"minecraft:ender_pearl\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000900000001 Item",
+      "text": "Thrown Bottle o' Enchanting has the following entity data: {count: 1, id: \"minecraft:experience_bottle\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    }
+  ]
+}

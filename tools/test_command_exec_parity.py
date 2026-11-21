@@ -195,6 +195,8 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
+    parser.add_argument('--record-witness', type=Path,
+                        help='write verified vanilla oracle records to this witness JSON file')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -592,6 +594,8 @@ def main():
                 sys.exit(f'Java callback guard failed: {op}: {row.get("results")}')
             if 'expect_map' in op and row.get('messages') != [[[op['expect_map'], [None, False, False, False, False, False]]]]:
                 sys.exit(f'Java map prerequisite failed: {op}: {row}')
+        if args.record_witness:
+            write_witness(args.record_witness, lock, groups, reference)
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 
@@ -678,6 +682,8 @@ def main():
             sys.exit(f'Java weather guard failed: {op["label"]}: {reference.get("results")}')
         if 'expect_light' in op and reference.get('results') != [[True, n] for n in op['expect_light']]:
             sys.exit(f'Java light prerequisite failed: {op}: {reference}')
+    if args.record_witness:
+        write_witness(args.record_witness, lock, groups, vanilla)
     commands_by_group = []
     index = 0
     for name, lines in groups:
@@ -720,6 +726,25 @@ def main():
     if mismatches and not args.allow_gaps:
         sys.exit(f'{len(mismatches)} command execution mismatches; see {build}')
     print(f'Command execution parity report: {report_path}')
+
+
+def write_witness(path, lock, groups, reference):
+    witness = {
+        'minecraft': lock['minecraft']['version'],
+        'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
+        'seed': SEED,
+        'groups': [name for name, _ in groups if name != 'setup'],
+        'records': [
+            {
+                'cmd': row['cmd'],
+                'text': ''.join(span[0] for m in row['messages'] for span in m),
+                'results': row['results'],
+            }
+            for row in reference
+        ],
+    }
+    lab.write_json(path, witness)
+    print(f'Wrote witness: {path}')
 
 
 def assemble(groups, unsynced_randoms=False):

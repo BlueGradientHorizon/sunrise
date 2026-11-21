@@ -8283,6 +8283,43 @@ def explosion_creaking_heart_experience():
                        f'/forceload remove {x0} {z0}')
 
 
+def moved_thrown_item_save():
+    """#2691 (26.3): a moved thrown-item projectile saves and reloads its loaded Item."""
+    x0, y0, z0 = 5696, 300, 5568
+    ring = [[(x0 >> 4) + i, (z0 >> 4) + k] for i in range(-2, 3) for k in range(-2, 3)]
+    cases = [
+        ('egg', 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b'),
+        ('snowball', 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b'),
+        ('ender_pearl', 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b'),
+        ('experience_bottle', 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b'),
+        ('egg', 'Item:{id:"minecraft:blue_egg",count:3},Motion:[0.05d,0.0d,0.0d],NoGravity:1b'),
+        ('egg', 'Motion:[0.05d,0.0d,0.0d],NoGravity:1b'),
+        ('snowball', 'Motion:[0.05d,0.0d,0.0d],NoGravity:1b'),
+        ('ender_pearl', 'Motion:[0.05d,0.0d,0.0d],NoGravity:1b'),
+        ('experience_bottle', 'Motion:[0.05d,0.0d,0.0d],NoGravity:1b'),
+    ]
+    ops = [cmd(f'/forceload add {x0} {z0}', False), {'op': 'wait_chunks', 'chunks': ring},
+           cmd('/tick freeze', False)]
+    for n, (kind, fields) in enumerate(cases, 1):
+        x = x0 + 2.5
+        y = y0 + 2 + 2 * ((n - 1) // 5)
+        z = z0 + 2.5 + 3 * ((n - 1) % 5)
+        ops.append(cmd(f'/summon {kind} {x} {y} {z} {{UUID:[I;2691,0,{n},1],{fields}}}', expect_result=1))
+    ops += [cmd('/tick unfreeze', False), {'op': 'tick', 'n': 1}, cmd('/tick freeze', False)]
+    for n in range(1, len(cases) + 1):
+        uuid = f'00000a83-0000-0000-0000-{n:04x}00000001'
+        ops.append(cmd(f'/data get entity {uuid} Pos'))
+        ops.append(cmd(f'/data get entity {uuid} Item'))
+    ops += [cmd('/tick unfreeze', False), cmd(f'/forceload remove {x0} {z0}', False), {'op': 'tick', 'n': 60},
+            cmd(f'/execute unless loaded {x0} {y0} {z0}', expect_result=1),
+            cmd(f'/forceload add {x0} {z0}', False), {'op': 'wait_chunks', 'chunks': ring}]
+    for n in range(1, len(cases) + 1):
+        uuid = f'00000a83-0000-0000-0000-{n:04x}00000001'
+        ops.append(cmd(f'/data get entity {uuid} Item'))
+    return ops + setup(f'/kill @e[type=!player,x={x0},y={y0 - 8},z={z0},dx=16,dy=32,dz=16]',
+                       f'/forceload remove {x0} {z0}')
+
+
 def groups():
     try:
         from .spectral_duration_corpus import cases as spectral_saved_duration
@@ -8603,6 +8640,7 @@ def groups():
         ('boat float height', boat_float_height()),
         ('vehicle fall clip', vehicle_fall_clip()),
         ('projectile saved ground', projectile_saved_ground()),
+        ('moved thrown item save', moved_thrown_item_save()),
         ('teleport lands', teleport_lands()),
         ('rocket data merge', rocket_data_merge()),
         ('mob fall clip', mob_fall_clip()),
