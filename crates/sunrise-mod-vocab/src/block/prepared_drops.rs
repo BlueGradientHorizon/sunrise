@@ -8,6 +8,9 @@ use std::num::NonZeroU32;
 #[doc(hidden)]
 pub trait PreparedBlockDropsAccess {
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn stack_metadata(&self, index: usize) -> Option<(ItemKey, NonZeroU32, Option<u32>)>;
     fn project_stack(
         &self,
@@ -65,7 +68,7 @@ impl<'a> PreparedBlockDrops<'a> {
 
     /// Whether there are currently no prepared drops.
     pub fn is_empty(&self) -> bool {
-        self.access.len() == 0
+        self.access.is_empty()
     }
 
     /// Borrow the prepared drop at `index`, or `None` if `index` is out of bounds.

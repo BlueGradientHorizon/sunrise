@@ -94,6 +94,9 @@ impl<'a> TooltipDisplay<'a> {
 #[doc(hidden)]
 pub trait TooltipLinesAccess {
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn color(&self, index: usize) -> Option<u32>;
     fn get(&self, index: usize) -> Option<Result<(Text, u32), TextFormError>>;
     fn push(&mut self, text: Text, color: u32) -> Result<(), TextFormError>;
@@ -134,7 +137,7 @@ impl<'a> TooltipLines<'a> {
 
     /// Whether the tooltip currently has no lines.
     pub fn is_empty(&self) -> bool {
-        self.access.len() == 0
+        self.access.is_empty()
     }
 
     /// Read the packed RGBA colour at `index` without projecting its text.
