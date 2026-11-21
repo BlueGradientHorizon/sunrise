@@ -325,7 +325,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                     .set(bulk_pos[0], bulk_pos[1], bulk_pos[2], empty)
                     .unwrap();
                 let bulk = level
-                    .capability(game, &mod_api::ITEMS, bulk_pos, None)
+                    .capability(game, &mod_api::ITEMS, bulk_pos, Some(Direction::Up))
                     .unwrap();
                 let bulk_at = BlockPos::new(bulk_pos[0], bulk_pos[1], bulk_pos[2]);
                 quiet(game, &heard);
@@ -475,7 +475,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                     .capability(game, &mod_api::ITEMS, source_pos, None)
                     .unwrap();
                 let bulk = reopened
-                    .capability(game, &mod_api::ITEMS, bulk_pos, None)
+                    .capability(game, &mod_api::ITEMS, bulk_pos, Some(Direction::Up))
                     .unwrap();
                 game.world
                     .set(bulk_pos[0], bulk_pos[1], bulk_pos[2], empty)
