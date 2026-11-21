@@ -135,7 +135,8 @@ let full = Robot::edit_state(host, robot, |_, charge| {
   (boats, minecarts, items, projectiles, armor stands...) and an unknown id refuse the load with
   `PartStateRefusal::EntityKind`, naming the type. `entity_part` itself checks no type.
 - The declaration is refused at the call as for block entities, copying on death included. Part
-  state is server-side.
+  state is server-side. Its registration errors, residency checks and state errors are
+  local values; only the attachment's state value is saved through its codec.
 
 ## Brain behaviors
 
