@@ -1288,6 +1288,7 @@ impl Content {
             items
                 .iter()
                 .map(|i| (i, in_own(&i.id).and_then(|()| check_item(i)))),
+            &[],
         )?;
         self.blocks.extend_from_slice(blocks);
         self.items.extend_from_slice(items);
@@ -1295,14 +1296,19 @@ impl Content {
     }
 
     /// Joins declarations whose fields and submitting namespaces were checked at registration.
+    /// `admitted_items` lists item IDs (items and item-bearing blocks) already admitted in
+    /// content packages served by this host, so code-declared items may name them as
+    /// `crafting_remainder`.
     pub fn declare_validated(
         &mut self,
         blocks: &[LocalDeclaration<Block>],
         items: &[LocalDeclaration<Item>],
+        admitted_items: &[&str],
     ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
         self.check_declaration_batch(
             blocks.iter().map(|b| (b.get(), Ok(()))),
             items.iter().map(|i| (i.get(), Ok(()))),
+            admitted_items,
         )?;
         self.blocks.extend(blocks.iter().map(|b| b.get().clone()));
         self.items.extend(items.iter().map(|i| i.get().clone()));
@@ -1313,6 +1319,7 @@ impl Content {
         &self,
         blocks: impl IntoIterator<Item = (&'a Block, Result<(), String>)>,
         items: impl IntoIterator<Item = (&'a Item, Result<(), String>)>,
+        admitted_items: &[&str],
     ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
         let mut ids: BTreeSet<&str> = self
             .blocks
@@ -1373,7 +1380,9 @@ impl Content {
         for item in valid_items {
             if let Some(rest) = &item.crafting_remainder
                 && (rest == "minecraft:air"
-                    || !vanilla_id(rest) && !item_ids.contains(rest.as_str()))
+                    || !vanilla_id(rest)
+                        && !item_ids.contains(rest.as_str())
+                        && !admitted_items.contains(&rest.as_str()))
             {
                 refuse(
                     DeclarationKind::Item,

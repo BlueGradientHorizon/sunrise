@@ -2740,6 +2740,131 @@ mod tests {
     }
 
     #[test]
+    fn served_by_both_sides_validate_locally_and_agree_on_mod_list() {
+        const HOST_BOTH: &[BuiltMod] = &[BuiltMod {
+            id: "horizon_java",
+            version: "1.0.0",
+            side: mod_api::Side::Both,
+        }];
+        const HOST_CLIENT: &[BuiltMod] = &[BuiltMod {
+            id: "horizon_java",
+            version: "1.0.0",
+            side: mod_api::Side::Client,
+        }];
+        const HOST_SERVER: &[BuiltMod] = &[BuiltMod {
+            id: "horizon_java",
+            version: "1.0.0",
+            side: mod_api::Side::Server,
+        }];
+        let f = Fixture::new("served-by-mod-list");
+        let make_native = |dir_name: &str, side: &str, built: &'static [BuiltMod]| {
+            let compiled = f.0.join(dir_name);
+            let pkg = compiled.join(mod_list::NATIVE_DIR).join("horizon_java");
+            std::fs::create_dir_all(pkg.join("src")).unwrap();
+            std::fs::write(
+                pkg.join("Cargo.toml"),
+                "[package]\nname='horizon_java'\nversion='1.0.0'\n",
+            )
+            .unwrap();
+            std::fs::write(pkg.join("src/lib.rs"), "pub fn hooks() {}").unwrap();
+            std::fs::write(
+                pkg.join("sunrise-mod.toml"),
+                format!(
+                    "id='horizon_java'\nname='Horizon'\nversion='1.0.0'\napi='0.2'\nside='{side}'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nserves_content=true\n",
+                    "a".repeat(40),
+                ),
+            )
+            .unwrap();
+            Runtime::load(&compiled.join("sunrise-engine"), built).unwrap()
+        };
+        let path = f.0.join("runes.smod");
+        std::fs::write(
+            &path,
+            sunrise_mod_package::Package::write_files(
+                "id='runes'\nname='Runes'\nversion='2.1.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nserved_by='horizon_java'\n",
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let selected: Arc<[sunrise_mod_package::selection::SelectedPackage]> =
+            vec![sunrise_mod_package::selection::SelectedPackage {
+                package: sunrise_mod_package::Package::read(&path).unwrap(),
+                path,
+            }]
+            .into();
+
+        // A client-only or server-only host is refused locally for side="both" served content.
+        for (bad_side, built) in [("client", HOST_CLIENT), ("server", HOST_SERVER)] {
+            let bad_state = ModsState {
+                native: Arc::new(make_native(&format!("host-{bad_side}"), bad_side, built)),
+                selected: selected.clone(),
+                ..Default::default()
+            };
+            assert!(
+                validate_startup_packages(&bad_state)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("not covered"),
+                "{bad_side}"
+            );
+        }
+
+        // Valid side="both" host + served content validates on both sides and crosses sunrise:mod_list.
+        let both_host = Arc::new(make_native("host-both", "both", HOST_BOTH));
+        let server_state = ModsState {
+            native: both_host.clone(),
+            selected: selected.clone(),
+            installation_side: sunrise_mod_package::manifest::Side::Server,
+            ..Default::default()
+        };
+        let client_state = ModsState {
+            native: both_host,
+            selected: selected.clone(),
+            installation_side: sunrise_mod_package::manifest::Side::Client,
+            ..Default::default()
+        };
+        validate_startup_packages(&server_state).unwrap();
+        validate_startup_packages(&client_state).unwrap();
+
+        let announce = |state: &ModsState| -> Vec<sunrise_protocol::mod_list::Entry> {
+            state
+                .native
+                .built()
+                .iter()
+                .map(|m| announced_entry(m.id, m.version, m.side, None))
+                .chain(state.selected.iter().map(|p| {
+                    let m = &p.package.manifest;
+                    announced_entry(&m.id, &m.version.to_string(), m.side, m.runtime.as_ref())
+                }))
+                .collect()
+        };
+        let server_wire = sunrise_protocol::mod_list::decode(&sunrise_protocol::mod_list::encode(
+            &announce(&server_state),
+        ))
+        .unwrap();
+        let client_wire = sunrise_protocol::mod_list::decode(&sunrise_protocol::mod_list::encode(
+            &announce(&client_state),
+        ))
+        .unwrap();
+        assert!(sunrise_protocol::mod_list::compare(&server_wire, &client_wire).is_empty());
+
+        // A client missing the served package is rejected by sunrise:mod_list comparison.
+        let client_without_runes = ModsState {
+            native: server_state.native.clone(),
+            installation_side: sunrise_mod_package::manifest::Side::Client,
+            ..Default::default()
+        };
+        validate_startup_packages(&client_without_runes).unwrap();
+        let partial_wire = sunrise_protocol::mod_list::decode(&sunrise_protocol::mod_list::encode(
+            &announce(&client_without_runes),
+        ))
+        .unwrap();
+        let diff = sunrise_protocol::mod_list::compare(&server_wire, &partial_wire);
+        assert_eq!(diff.missing, ["runes 2.1.0"]);
+    }
+
+    #[test]
     fn only_clients_collect_registered_keys() {
         let declared = [(
             "sample",

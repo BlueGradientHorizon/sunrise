@@ -62,53 +62,42 @@ pub struct ContentMod {
 /// overlay would fail on it and no content mod at all would load. Returns what was left out.
 pub fn drop_dangling_remainders(mods: &mut Vec<ContentMod>) -> Vec<String> {
     let mut dropped = Vec::new();
-    let all_ids: BTreeSet<String> = mods
-        .iter()
-        .flat_map(|m| {
-            m.content.items.iter().map(|i| i.id.clone()).chain(
-                m.content
-                    .blocks
-                    .iter()
-                    .filter(|b| b.item)
-                    .map(|b| b.id.clone()),
-            )
-        })
-        .collect();
-    mods.retain(|m| {
-        // The mod's items and its blocks that have an item (`Content::read`'s own rule),
-        // plus code-declared items admitted in one of its namespaces (e.g. from its serving host).
-        let ids: BTreeSet<&str> = m
-            .content
-            .items
+    loop {
+        let all_ids: BTreeSet<String> = mods
             .iter()
-            .map(|i| i.id.as_str())
-            .chain(
-                m.content
-                    .blocks
-                    .iter()
-                    .filter(|b| b.item)
-                    .map(|b| b.id.as_str()),
-            )
-            .collect();
-        let dangling = m.content.items.iter().find(|i| {
-            i.crafting_remainder.as_deref().is_some_and(|r| {
-                !r.starts_with("minecraft:")
-                    && !ids.contains(r)
-                    && !(r.split_once(':').is_some_and(|(ns, _)| {
-                        m.content.namespaces.iter().any(|owned| owned == ns)
-                    }) && all_ids.contains(r))
+            .flat_map(|m| {
+                m.content.items.iter().map(|i| i.id.clone()).chain(
+                    m.content
+                        .blocks
+                        .iter()
+                        .filter(|b| b.item)
+                        .map(|b| b.id.clone()),
+                )
             })
+            .collect();
+        let before = mods.len();
+        mods.retain(|m| {
+            // Every item or item-bearing block admitted into the overlay; per-package ownership
+            // was already enforced by `Content::read_declaring` and `accept_declared`.
+            let dangling = m.content.items.iter().find(|i| {
+                i.crafting_remainder
+                    .as_deref()
+                    .is_some_and(|r| !r.starts_with("minecraft:") && !all_ids.contains(r))
+            });
+            if let Some(item) = dangling {
+                dropped.push(format!(
+                    "mod {} content not loaded: {}: crafting_remainder {:?} is not one of its items",
+                    m.id,
+                    item.id,
+                    item.crafting_remainder.as_deref().unwrap_or_default()
+                ));
+            }
+            dangling.is_none()
         });
-        if let Some(item) = dangling {
-            dropped.push(format!(
-                "mod {} content not loaded: {}: crafting_remainder {:?} is not one of its items",
-                m.id,
-                item.id,
-                item.crafting_remainder.as_deref().unwrap_or_default()
-            ));
+        if mods.len() == before {
+            break;
         }
-        dangling.is_none()
-    });
+    }
     dropped
 }
 
@@ -942,7 +931,27 @@ pub fn accept_declared(
             content.blocks.clone_from(&mods[i].content.blocks);
             content.items.clone_from(&mods[i].content.items);
         }
-        if let Err(refusals) = content.declare_validated(&batch.blocks, &batch.items) {
+        let served_item_ids: Vec<&str> = mods
+            .iter()
+            .filter(|m| {
+                m.id != id
+                    && manifests.iter().any(|manifest| {
+                        manifest.id == m.id && manifest.served_by.as_deref() == Some(id)
+                    })
+            })
+            .flat_map(|m| {
+                m.content.items.iter().map(|i| i.id.as_str()).chain(
+                    m.content
+                        .blocks
+                        .iter()
+                        .filter(|b| b.item)
+                        .map(|b| b.id.as_str()),
+                )
+            })
+            .collect();
+        if let Err(refusals) =
+            content.declare_validated(&batch.blocks, &batch.items, &served_item_ids)
+        {
             errors.extend(
                 refusals
                     .into_iter()

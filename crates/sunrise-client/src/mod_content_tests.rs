@@ -8336,6 +8336,11 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
     runes
         .items
         .push(item("runes:soup", Some("runes:extra_item")));
+    runes
+        .items
+        .push(item("runes:ritual", Some("runes:extra_block")));
+    let mut plain = Content::declared("plain");
+    plain.items.push(item("plain:spoon", None));
 
     let host_manifest = sunrise_mod_package::Manifest::parse(&format!(
         "id='horizon_java'\nname='Horizon'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nserves_content=true\n",
@@ -8346,21 +8351,42 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
         "id='runes'\nname='Runes'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nserved_by='horizon_java'\n",
     )
     .unwrap();
-    let manifests = [&host_manifest, &runes_manifest];
+    let plain_manifest = sunrise_mod_package::Manifest::parse(
+        "id='plain'\nname='Plain'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n",
+    )
+    .unwrap();
+    let manifests = [&host_manifest, &runes_manifest, &plain_manifest];
     let known = BTreeSet::new();
 
     // Non-colliding host declarations in a served namespace succeed and coexist without clash.
-    let mut mods = vec![ContentMod {
-        id: "runes".into(),
-        content: runes,
-        jars: Vec::new(),
-    }];
+    // Both directions of cross-layer crafting_remainder work (served -> host item & block item,
+    // and host -> served item & block item).
+    let mut mods = vec![
+        ContentMod {
+            id: "runes".into(),
+            content: runes,
+            jars: Vec::new(),
+        },
+        ContentMod {
+            id: "plain".into(),
+            content: plain,
+            jars: Vec::new(),
+        },
+    ];
     let valid = BTreeMap::from([(
         "horizon_java",
         DeclaredContent {
             blocks: vec![block("runes:extra_block", true).validate_local().unwrap()],
             items: vec![
                 item("runes:extra_item", None).validate_local().unwrap(),
+                // Host item using a served content item as its crafting_remainder.
+                item("runes:filled_stone", Some("runes:stone"))
+                    .validate_local()
+                    .unwrap(),
+                // Host item using a served content item-bearing block as its crafting_remainder.
+                item("horizon_java:altar_kit", Some("runes:altar"))
+                    .validate_local()
+                    .unwrap(),
                 // Same ID as a block with `item: false` is allowed.
                 item("runes:crop", None).validate_local().unwrap(),
             ],
@@ -8370,11 +8396,82 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
     let mut errors = Vec::new();
     accept_declared(&mut mods, &valid, &manifests, &known, &mut errors).unwrap();
     assert!(errors.is_empty(), "{errors:?}");
-    assert_eq!(mods.len(), 2);
-    assert_eq!(mods[1].id, "horizon_java");
-    // Served file item whose remainder was code-declared by the host survives dangling check.
+    assert_eq!(mods.len(), 3);
+    assert_eq!(mods[2].id, "horizon_java");
+    // Served and host items with valid cross-layer remainders (both items and block items) survive.
     assert!(drop_dangling_remainders(&mut mods).is_empty());
-    assert_eq!(mods.len(), 2);
+    assert_eq!(mods.len(), 3);
+
+    // Host items cannot use an unserved package's item or a nonexistent item as remainder.
+    for (label, bad_item) in [
+        (
+            "unserved package remainder",
+            item("horizon_java:stolen_rem", Some("plain:spoon")),
+        ),
+        (
+            "missing remainder",
+            item("runes:missing_rem", Some("runes:nonexistent")),
+        ),
+    ] {
+        let mut errors = Vec::new();
+        let batches = BTreeMap::from([(
+            "horizon_java",
+            DeclaredContent {
+                items: vec![bad_item.validate_local().unwrap()],
+                ..Default::default()
+            },
+        )]);
+        accept_declared(&mut mods, &batches, &manifests, &known, &mut errors).unwrap();
+        assert_eq!(errors.len(), 1, "{label}: {errors:?}");
+        assert!(
+            matches!(
+                &errors[0].error,
+                mod_api::DeclarationError::Rejected { reason, .. }
+                    if reason.contains("crafting_remainder")
+            ),
+            "{label}: {:?}",
+            errors[0]
+        );
+    }
+
+    // A served block with `item: false` does not supply a remainder item when no item shares its ID.
+    let mut itemless_runes = Content::declared("runes");
+    itemless_runes.blocks.push(block("runes:no_item", false));
+    let mut itemless_mods = vec![ContentMod {
+        id: "runes".into(),
+        content: itemless_runes,
+        jars: Vec::new(),
+    }];
+    let mut itemless_errors = Vec::new();
+    let itemless_batches = BTreeMap::from([(
+        "horizon_java",
+        DeclaredContent {
+            items: vec![
+                item("runes:uses_no_item", Some("runes:no_item"))
+                    .validate_local()
+                    .unwrap(),
+            ],
+            ..Default::default()
+        },
+    )]);
+    accept_declared(
+        &mut itemless_mods,
+        &itemless_batches,
+        &manifests,
+        &known,
+        &mut itemless_errors,
+    )
+    .unwrap();
+    assert_eq!(itemless_errors.len(), 1, "{itemless_errors:?}");
+    assert!(
+        matches!(
+            &itemless_errors[0].error,
+            mod_api::DeclarationError::Rejected { id, reason }
+                if id == "runes:uses_no_item" && reason.contains("crafting_remainder")
+        ),
+        "{:?}",
+        itemless_errors[0]
+    );
 
     // Every collision against a served package's blocks/items refuses atomically.
     let cases = [
@@ -8429,7 +8526,7 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
             errors[0]
         );
         assert!(
-            !mods[1]
+            !mods[2]
                 .content
                 .blocks
                 .iter()
