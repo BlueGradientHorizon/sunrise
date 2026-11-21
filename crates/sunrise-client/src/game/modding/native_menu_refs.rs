@@ -1237,7 +1237,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn number_key_swaps_predict_with_the_undisplayed_hotbar() {
+    fn the_menu_model_can_swap_with_an_undisplayed_hotbar() {
         with_panel(1, |game, _| {
             open_panel(game);
             assert_eq!(game.slots(), [300]);
@@ -1245,7 +1245,12 @@ mod tests {
             let stored = ItemStack::new("minecraft:dirt", 2);
             game.inventory[2] = Some(held.clone());
             *game.slot_mut(300) = Some(stored.clone());
-            assert!(game.menu_ops(&[(Some(300), 2, Input::Swap)]));
+            assert!(game.menu_session(|menu, env, to_menu| {
+                Some(
+                    menu.click(env, to_menu(300)? as i32, 2, Input::Swap)
+                        .is_ok(),
+                )
+            }));
             assert_eq!(game.inventory[2], Some(stored));
             assert_eq!(*game.slot_mut(300), Some(held));
             assert_eq!(game.slots(), [300]);
@@ -1876,27 +1881,41 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn inventory_armor_query_and_click_use_the_same_guest_equip_override() {
+    fn inventory_armor_query_and_click_keep_the_healthy_equip_answer_after_a_panic() {
         use super::super::native_guest_turn_tests::with_guests;
+        use std::sync::atomic::Ordering;
         use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
 
-        struct Helmet;
+        struct Helmet<const PANICS: bool>(Arc<AtomicUsize>);
         #[mod_api::sunrise_part]
-        impl mod_api::ItemPart for Helmet {
+        impl<const PANICS: bool> mod_api::ItemPart for Helmet<PANICS> {
             fn can_equip(&self, _: &dyn mod_api::Host, event: &mut mod_api::CanEquipEvent<'_>) {
-                event.can_equip = event.entity.id() == 13;
+                self.0.fetch_add(1, Ordering::Relaxed);
+                if PANICS {
+                    event.can_equip = false;
+                    panic!("broken equip rule");
+                }
+                event.can_equip &= event.entity.id() == 13;
             }
         }
-        struct Register;
+        struct Register<const PANICS: bool>(Arc<AtomicUsize>);
         #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Register {
+        impl<const PANICS: bool> mod_api::Hooks for Register<PANICS> {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
                 let helmet = r.item_key("minecraft:iron_helmet");
-                r.item_part(helmet, Helmet);
+                r.item_part(helmet, Helmet::<PANICS>(self.0.clone()));
             }
         }
-        let mods: mod_api::Mods =
-            vec![mod_api::ModEntry::new("helmet_test", Box::new(Register))].into();
+        let broken = Arc::new(AtomicUsize::new(0));
+        let healthy = Arc::new(AtomicUsize::new(0));
+        let mods: mod_api::Mods = vec![
+            mod_api::ModEntry::new("broken_helmet", Box::new(Register::<true>(broken.clone()))),
+            mod_api::ModEntry::new(
+                "healthy_helmet",
+                Box::new(Register::<false>(healthy.clone())),
+            ),
+        ]
+        .into();
         crate::entry::install_client_hooks();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
@@ -1904,7 +1923,7 @@ mod tests {
                 game.reset_entity_residency();
                 let helmet = ItemStack::new("minecraft:iron_helmet", 1);
                 let offered = helmet.try_into_api().unwrap();
-                for (conn, allowed) in [(12, false), (13, true)] {
+                for (conn, allowed) in [(13, true), (12, false)] {
                     game.lan
                         .as_mut()
                         .unwrap()
@@ -1918,6 +1937,16 @@ mod tests {
                         menu.with_view(game, |view| view.slot_holds(5, &offered)),
                         Some(Some(u32::from(allowed)))
                     );
+                    if conn == 13 {
+                        assert_eq!(healthy.load(Ordering::Relaxed), 1);
+                        assert_eq!(
+                            mod_api::__private::take_hook_panics(),
+                            [mod_api::__private::HookPanicReport {
+                                mod_id: "broken_helmet",
+                                hook: "can_equip",
+                            }]
+                        );
+                    }
 
                     game.lan_guest_packet(
                         conn,
@@ -1935,6 +1964,8 @@ mod tests {
                     assert_eq!(guest.armor[0].as_ref(), allowed.then_some(&helmet));
                     assert_eq!(guest.carried.as_ref(), (!allowed).then_some(&helmet));
                 }
+                assert_eq!(broken.load(Ordering::Relaxed), 1);
+                assert!(mod_api::__private::take_hook_panics().is_empty());
             })
         });
     }

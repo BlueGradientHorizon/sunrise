@@ -1,0 +1,1 @@
+sunrise-client game::remote::tests::client_menu_tests::a_stock_layout_with_a_slot_rule_waits_for_the_servers_backing_decision lib daily resources

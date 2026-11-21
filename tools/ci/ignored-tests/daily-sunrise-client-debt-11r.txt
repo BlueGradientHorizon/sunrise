@@ -1,5 +1,5 @@
 # PACKAGE TEST TARGET daily REASON; exact logical libtest identities, sorted.
 sunrise-client game::native_chunk_queries::tests::resident_boundary_column_lends_view_without_slime_query lib daily resources
 sunrise-client game::native_menu_refs::tests::chest_slot_capacity_matches_click_with_patched_stack_maximum lib daily resources
-sunrise-client game::native_menu_refs::tests::inventory_armor_query_and_click_use_the_same_guest_equip_override lib daily resources
+sunrise-client game::native_menu_refs::tests::inventory_armor_query_and_click_keep_the_healthy_equip_answer_after_a_panic lib daily resources
 sunrise-client game::native_menu_refs::tests::menu_view_slot_rules_honor_container_insert_rules_and_non_chest_blockless_menus lib daily resources

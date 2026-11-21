@@ -556,6 +556,118 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn a_stock_layout_with_a_slot_rule_waits_for_the_servers_backing_decision() {
+    use crate::game::native_entity_refs::tests::with_game;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use sunrise_core::nbt::Tag;
+    use sunrise_protocol::{
+        item::Stack,
+        packets::play::{self, Clientbound as C},
+    };
+
+    const MENU: &str = "minecraft:generic_9x3";
+    #[derive(Clone)]
+    struct Rule(Arc<AtomicUsize>);
+    #[mod_api::sunrise_part]
+    impl mod_api::MenuPart for Rule {
+        fn menu_slot_rules(&self, _: &dyn mod_api::Host, _: &mut mod_api::MenuSlotRulesEvent<'_>) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Rule {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            r.menu_part(MENU, self.clone());
+        }
+    }
+    let asks = Arc::new(AtomicUsize::new(0));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "rules",
+        Box::new(Rule(asks.clone())),
+    )]
+    .into();
+    crate::game::api_values::install_parts(&mods).unwrap();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let (mut reader, _writer) = connect_menu_test(game);
+            spawn_menu_test(game);
+            assert!(mod_api::__private::menu_listens(
+                mod_api::HookId::MenuSlotRules,
+                MENU
+            ));
+            let kind = game
+                .remote
+                .as_ref()
+                .unwrap()
+                .builtin
+                .get("minecraft:menu")
+                .unwrap()
+                .id(MENU)
+                .unwrap();
+            game.handle_packet(C::OpenScreen(play::OpenScreen {
+                container: 7,
+                menu: kind,
+                title: Tag::String("Chest".into()),
+            }))
+            .unwrap();
+            let stone = Stack::new(game.item_id("minecraft:stone"), 4);
+            game.handle_packet(C::SetCursorItem(play::SetCursorItem {
+                item: Some(stone.clone()),
+            }))
+            .unwrap();
+            let menu = game
+                .local_player()
+                .and_then(|p| game.player_container_menu(p))
+                .unwrap();
+            assert!(menu.click(
+                game,
+                &[mod_api::MenuClick::Pickup {
+                    slot: Some(2),
+                    button: mod_api::MouseButton::Left,
+                }]
+            ));
+            assert_eq!(asks.load(Ordering::Relaxed), 0);
+            assert_eq!(menu.with_view(game, |view| view.slot(2)), Some(Some(None)));
+            assert_eq!(game.carried.as_ref().map(|stack| stack.count), Some(4));
+            let sent = (0..32)
+                .find_map(|_| {
+                    let (id, body) = reader.recv().unwrap();
+                    match play::Serverbound::decode(id, &body).unwrap() {
+                        play::Serverbound::ContainerClick(sent) => Some(sent),
+                        _ => None,
+                    }
+                })
+                .expect("the click was sent without a prediction");
+            assert_eq!((sent.container, sent.slot, sent.input), (7, 2, 0));
+            assert!(sent.changed.is_empty());
+            assert_eq!(sent.carried.unwrap().count, 4);
+
+            game.handle_packet(C::ContainerSetSlot(play::ContainerSetSlot {
+                container: 7,
+                state: 1,
+                slot: 2,
+                item: Some(stone),
+            }))
+            .unwrap();
+            game.handle_packet(C::SetCursorItem(play::SetCursorItem { item: None }))
+                .unwrap();
+            assert_eq!(
+                menu.with_view(game, |view| view
+                    .slot(2)
+                    .flatten()
+                    .map(|stack| stack.count())),
+                Some(Some(4))
+            );
+            assert!(game.carried.is_none());
+        });
+    });
+}
+
 /// `MenuRef::close` and `click_button` go through the screen's own close
 /// and the button packet, and refuse a menu that is not open or stale.
 #[test]

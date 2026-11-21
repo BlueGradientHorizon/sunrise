@@ -65,7 +65,11 @@ impl Game<'_> {
     }
     /// The quick craft drag in progress, as the menu engine previews it.
     pub(super) fn drag_view(&mut self) -> Option<DragView> {
-        let (ty, slots) = self.inv_drag.clone()?;
+        let (ty, slots) = self.inv_drag.as_ref()?;
+        if !self.remote_menu_predicts_slots() {
+            return None;
+        }
+        let (ty, slots) = (*ty, slots.clone());
         let mut view = None;
         self.menu_session(|menu, env, to_menu| {
             let menu_slots: Option<Vec<usize>> = slots.iter().map(|&g| to_menu(g)).collect();
@@ -89,9 +93,12 @@ impl Game<'_> {
         view
     }
     /// Whether a quick craft drag takes `slot`
-    /// (`shouldAddSlotToQuickCraft`); screens the menu engine doesn't
-    /// model take every slot.
+    /// (`shouldAddSlotToQuickCraft`); when the backing isn't modeled, leave the
+    /// decision to the server instead of suppressing the drag's slot packets.
     pub(super) fn quick_craft_accepts(&mut self, slot: usize, ty: i32, dragged: usize) -> bool {
+        if !self.remote_menu_predicts_slots() {
+            return true;
+        }
         let mut accepts = true;
         self.menu_session(|menu, env, to_menu| {
             accepts = to_menu(slot).is_some_and(|s| menu.quick_craft_accepts(env, s, ty, dragged));

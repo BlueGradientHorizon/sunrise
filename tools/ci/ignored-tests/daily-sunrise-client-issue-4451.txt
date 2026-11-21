@@ -2436,7 +2436,7 @@ sunrise-client game::sign_edit::sign_edit_tests::a_sign_lets_its_editor_go_when_
 sunrise-client game::sign_edit::sign_edit_tests::one_sign_belongs_to_one_editor lib daily resources
 sunrise-client game::sign_edit::sign_edit_tests::the_editor_opens_only_on_plain_text lib daily resources
 sunrise-client game::slot_rules_tests::a_click_asks_the_part_for_each_slot_and_stack_it_consults_in_order lib daily resources
-sunrise-client game::slot_rules_tests::a_failing_listener_leaves_the_slots_own_answers_and_the_next_click_works lib daily resources
+sunrise-client game::slot_rules_tests::a_panicking_menu_part_loses_only_its_answer_and_is_disabled lib daily resources
 sunrise-client game::slot_rules_tests::a_lan_hub_click_asks_the_same_questions_in_the_same_order lib daily resources
 sunrise-client game::slot_rules_tests::the_answers_are_bounded_to_one_to_ninety_nine_and_the_items_limit lib daily resources
 sunrise-client game::slot_rules_tests::without_a_part_nothing_is_asked_and_the_click_is_the_same lib daily resources

@@ -515,7 +515,7 @@ impl Game<'_> {
         };
         // Client layout queries (for example the drag preview) must not ask a mod to decide
         // against guessed backing rules either. The server evaluates them on the real slots.
-        if self.remote.is_some() && matches!(kind, Kind::Mod(_)) {
+        if !self.remote_menu_predicts_slots() {
             env.slot_rules = None;
         }
         menu.creative = creative;

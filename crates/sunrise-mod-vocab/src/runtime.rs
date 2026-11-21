@@ -216,7 +216,8 @@ pub(crate) fn install(mods: Mods) -> &'static Installed {
 
 /// Checkpoint for an owning action around isolated dispatch. A trapped listener
 /// resets its outputs, but the owner must also abort any tentative Host writes.
-/// Unrelated threads do not affect the checkpoint.
+/// Menu rule queries only propose read-only answers; their failures do not abort
+/// an enclosing click. Unrelated threads do not affect the checkpoint.
 // hidden: the game's own decide/fire/apply actions read it; it is not a mod-facing call.
 #[doc(hidden)]
 pub fn isolated_failures() -> u64 {
@@ -228,8 +229,15 @@ pub fn isolated_failures() -> u64 {
 /// untouched, unlike a whole-mod disable. Returns `true` only on the first panic for
 /// `(hook, id)`, so the error log line and error toast fire once.
 pub(crate) fn poison(hook: generated::HookId, id: &'static str) -> bool {
-    let (entered, trapped) = LISTENER_SERIAL.get();
-    LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+    // The scalar answers of these slot queries are already restored per listener.
+    // They cannot write through their Host, even when a journaled click asks them.
+    if !matches!(
+        hook,
+        generated::HookId::MenuSlotRules | generated::HookId::CanEquip
+    ) {
+        let (entered, trapped) = LISTENER_SERIAL.get();
+        LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+    }
     let Some(installed) = installed() else {
         return true;
     };

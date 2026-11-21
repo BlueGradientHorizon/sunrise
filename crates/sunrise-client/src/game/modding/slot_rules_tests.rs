@@ -7,8 +7,12 @@ use mod_api::{Hooks, MenuPart, MenuSlotRulesEvent, ModEntry, Mods, Registrar};
 use std::cell::RefCell;
 use sunrise_client::{
     items::ItemStack,
+    lan::menu::Slots,
     menu::{Input, Kind, Menu},
 };
+use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+
+const CHEST_POS: (i32, i32, i32) = (1, 64, 1);
 
 thread_local! {
     /// Every question the part was asked: slot, item and count.
@@ -23,7 +27,8 @@ struct Rules;
 #[mod_api::sunrise_part]
 impl MenuPart for Rules {
     fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut MenuSlotRulesEvent<'_>) {
-        SAW_GUEST.with(|saw| saw.borrow_mut().push(host.player(12).is_some()));
+        let sees_guest = host.player(12).is_some();
+        SAW_GUEST.with(|saw| saw.borrow_mut().push(sees_guest));
         let item = mod_api::__private::item_key_id(event.stack.item())
             .unwrap()
             .to_owned();
@@ -34,9 +39,11 @@ impl MenuPart for Rules {
         });
         let (maximum, panic) = ANSWER.with(|answer| *answer.borrow());
         if panic && item == "minecraft:dirt" {
+            event.may_place = false;
+            event.max_stack = 1;
             panic!("a listener failed");
         }
-        if let Some(maximum) = maximum {
+        if let Some(maximum) = maximum.or_else(|| sees_guest.then_some(3)) {
             event.max_stack = maximum;
         }
     }
@@ -84,6 +91,61 @@ fn with_mods(mods: Vec<ModEntry>, test: impl FnOnce()) {
     mod_platform::testing::with_mods(mods, test);
 }
 
+fn with_hub_chest(test: impl FnOnce(&mut crate::game::Game<'_>, mod_api::MenuRef, i32)) {
+    with_guests(|game| {
+        game.reset_entity_residency();
+        let (x, y, z) = CHEST_POS;
+        game.world.chunks.insert(
+            (0, 0),
+            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        );
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        game.world.set(x, y, z, stone).unwrap();
+        game.world.block_entities.insert(
+            CHEST_POS,
+            sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
+        );
+        let host = game.lan.as_mut().unwrap();
+        host.hub.open_container(
+            12,
+            "minecraft:generic_9x3",
+            sunrise_core::nbt::Tag::String("test".into()),
+            CHEST_POS,
+            Slots::Block(CHEST_POS),
+            vec![None; 27],
+            None,
+        );
+        let window = host.hub.guests[0].menu.as_ref().unwrap().window;
+        let menu = game
+            .player_container_menu(game.player(12).unwrap())
+            .unwrap();
+        test(game, menu, window);
+    });
+}
+
+fn hub_pickup(game: &mut crate::game::Game<'_>, window: i32, item: &str) {
+    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+        guest.carried = Some(ItemStack::new(item, 8));
+    });
+    game.lan_guest_packet(
+        12,
+        Serverbound::ContainerClick(ContainerClick {
+            container: window,
+            state: 0,
+            slot: 0,
+            button: 0,
+            input: 0,
+            changed: Vec::new(),
+            carried: None,
+        }),
+    );
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_click_asks_the_part_for_each_slot_and_stack_it_consults_in_order() {
@@ -123,25 +185,78 @@ fn the_answers_are_bounded_to_one_to_ninety_nine_and_the_items_limit() {
 
 #[test]
 #[ignore = "daily"]
-fn a_failing_listener_leaves_the_slots_own_answers_and_the_next_click_works() {
-    with_mods(vec![ModEntry::new("rules", Box::new(Listener))], || {
-        with_game(|game| {
-            reset(None, true);
-            let mut menu = chest(("minecraft:dirt", 8));
-            // The listener panics on dirt: the panic does not leave the click, and the slot's own
-            // answers (it takes the stack) decide it.
-            assert_eq!(pickup(game, &mut menu), (8, 0));
-            assert!(
-                asked()
-                    .iter()
-                    .all(|(slot, item, _)| (*slot, item.as_str()) == (0, "minecraft:dirt"))
-            );
-            // The next built-in click works.
-            reset(None, true);
-            let mut next = chest(("minecraft:stone", 2));
-            assert_eq!(pickup(game, &mut next), (2, 0));
-        });
-    });
+fn a_panicking_menu_part_loses_only_its_answer_and_is_disabled() {
+    struct Capacity;
+    #[mod_api::sunrise_part]
+    impl MenuPart for Capacity {
+        fn menu_slot_rules(&self, _: &dyn mod_api::Host, event: &mut MenuSlotRulesEvent<'_>) {
+            event.max_stack = event.max_stack.min(3);
+        }
+    }
+    thread_local! {
+        static STACKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    struct Healthy;
+    #[mod_api::__subscriptions]
+    impl Hooks for Healthy {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            r.menu_part("minecraft:generic_9x3", Capacity);
+        }
+        fn item_stacked_on_other(
+            &self,
+            _: mod_api::HostSide<'_>,
+            _: &mut mod_api::ItemStackedOnOtherEvent<'_>,
+        ) -> mod_api::Flow {
+            STACKED.set(true);
+            mod_api::Flow::Continue
+        }
+    }
+    with_mods(
+        vec![
+            ModEntry::new("rules", Box::new(Listener)),
+            ModEntry::new("healthy", Box::new(Healthy)),
+        ],
+        || {
+            with_hub_chest(|game, menu, window| {
+                reset(None, true);
+                for attempt in 0..2 {
+                    // The rule panic occurs while planning the journaled pickup. It does not
+                    // invalidate that separate action, and the healthy Part still caps the slot.
+                    hub_pickup(game, window, "minecraft:dirt");
+                    assert!(STACKED.replace(false));
+                    assert_eq!(
+                        menu.with_view(game, |view| {
+                            (
+                                view.slot(0).flatten().map(|stack| stack.count()),
+                                view.carried().flatten().map(|stack| stack.count()),
+                            )
+                        }),
+                        Some((Some(3), Some(5)))
+                    );
+                    let reports = mod_api::__private::take_hook_panics();
+                    if attempt == 0 {
+                        assert_eq!(asked(), [(0, "minecraft:dirt".to_owned(), 8)]);
+                        assert_eq!(
+                            reports,
+                            [mod_api::__private::HookPanicReport {
+                                mod_id: "rules",
+                                hook: "menu_slot_rules",
+                            }]
+                        );
+                    } else {
+                        assert!(asked().is_empty());
+                        assert!(reports.is_empty());
+                    }
+                    game.world
+                        .block_entities
+                        .get_mut(&CHEST_POS)
+                        .unwrap()
+                        .slots_mut()[0] = None;
+                    reset(None, true);
+                }
+            });
+        },
+    );
 }
 
 #[test]
@@ -180,43 +295,8 @@ fn without_a_part_nothing_is_asked_and_the_click_is_the_same() {
 #[test]
 #[ignore = "daily"]
 fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
-    use sunrise_client::lan::menu::Slots;
-    use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
     with_mods(vec![ModEntry::new("rules", Box::new(Listener))], || {
-        with_guests(|game| {
-            let pos = (1, 64, 1);
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
-            );
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
-            game.world.block_entities.insert(
-                pos,
-                sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
-            );
-            let host = game.lan.as_mut().unwrap();
-            host.hub.open_container(
-                12,
-                "minecraft:generic_9x3",
-                sunrise_core::nbt::Tag::String("test".into()),
-                pos,
-                Slots::Block(pos),
-                vec![None; 27],
-                None,
-            );
-            let window = host.hub.guests[0].menu.as_ref().unwrap().window;
-            host.hub.guests.update(0, |guest| {
-                guest.carried = Some(ItemStack::new("minecraft:stone", 8))
-            });
-            let menu = game
-                .player_container_menu(game.player(12).unwrap())
-                .unwrap();
+        with_hub_chest(|game, menu, window| {
             let offered = crate::game::api_values::TryIntoApi::try_into_api(&ItemStack::new(
                 "minecraft:stone",
                 8,
@@ -225,22 +305,11 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
             reset(None, false);
             assert_eq!(
                 menu.with_view(game, |view| view.slot_holds(0, &offered)),
-                Some(Some(64))
+                Some(Some(3))
             );
             assert_eq!(SAW_GUEST.with(|saw| saw.borrow().clone()), [true]);
             reset(None, false);
-            game.lan_guest_packet(
-                12,
-                Serverbound::ContainerClick(ContainerClick {
-                    container: window,
-                    state: 0,
-                    slot: 0,
-                    button: 0,
-                    input: 0,
-                    changed: Vec::new(),
-                    carried: None,
-                }),
-            );
+            hub_pickup(game, window, "minecraft:stone");
             let lan = asked();
             // Planning the Hub click sees the same live guest as the menu view.
             assert_eq!(SAW_GUEST.with(|saw| saw.borrow().clone()), [true]);
@@ -248,15 +317,15 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
             // The local click of the same state asks the same, in the same order.
             reset(None, false);
             let mut menu = chest(("minecraft:stone", 8));
-            assert_eq!(pickup(game, &mut menu), (8, 0));
+            assert_eq!(pickup(game, &mut menu), (3, 5));
             assert_eq!(lan, asked());
             assert_eq!(lan.len(), 1);
             // A click made with the game whole (the local route) reaches the guest.
             assert_eq!(SAW_GUEST.with(|saw| saw.borrow().clone()), [true]);
-            let placed = game.world.block_entities.get(&pos).unwrap().slots()[0]
+            let placed = game.world.block_entities.get(&CHEST_POS).unwrap().slots()[0]
                 .as_ref()
                 .map_or(0, |s| s.count);
-            assert_eq!(placed, 8);
+            assert_eq!(placed, 3);
         });
     });
 }

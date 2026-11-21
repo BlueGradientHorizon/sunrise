@@ -53,8 +53,10 @@ The server reads its owning load; the client reads local preload sets before its
 `UpdateRecipes`, then the authoritative server generation. A packet replaces the entire
 generation, including an empty one. Closing a screen or changing dimension retains it;
 disconnecting discards it. Reads allocate nothing and do not rescan recipes or registries.
-For a declared mod menu the client cannot infer the backing container's insertion rules from
-its screen layout. It sends clicks unpredicted and uses the slots and cursor the server sends back.
+An open-screen packet names a layout, not the server's backing. For a declared mod menu or
+an ordinary stock layout with a slot-rule Part, the client cannot tell which rules apply to
+this opening. It sends clicks unpredicted and uses the slots and cursor the server sends back.
+It does not run the Part on a guessed backing, even for a drag preview.
 
 ### Who and where: the slot's context
 
@@ -139,6 +141,8 @@ A Part can close an admitted slot but cannot reopen one the backing refuses; a q
 backing already refuses does not ask the Part. The same ask answers `may_place` and `may_pickup`. Vanilla menu
 types keep their own `mayPickup`. A shift-click asks pickup before `menu_quick_move` and reuses the answer
 if the Part leaves the move to the engine and the slot, stack and base rules are unchanged.
+If a rule Part panics, only its answers are discarded. The game reports the mod and disables
+that mod's callback for the session; other Parts still answer.
 
 ## Taking from a slot
 

@@ -44,9 +44,7 @@ impl Game<'_> {
         // Unpredicted: nothing changed, the carried stack as it is.
         let mut prepared = None;
         let mut threw = false;
-        // A declared mod layout does not tell us which backing the server opened or what it
-        // admits. Use the existing unpredicted packets rather than asking Parts with guessed rules.
-        if sunrise_client::containers::mod_menu_type(&menu).is_none() {
+        if self.remote_menu_predicts_slots() {
             self.menu_session_with_game(|game, m, env, _| {
                 let Some((predicted, dropped)) = predict_clicks(m, env, &clicks) else {
                     // The server throws on it too: nothing is predicted.
@@ -104,8 +102,8 @@ impl Game<'_> {
     /// A Shift double click on a server (`AbstractContainerScreen.mouseReleased`):
     /// a predicted QUICK_MOVE for every slot the engine moves, each sent.
     pub(in crate::game) fn remote_quick_move_all(&mut self, slot: usize, moved: &ItemStack) {
-        let (container, menu_type) = self.remote_menu();
-        let can_predict = sunrise_client::containers::mod_menu_type(&menu_type).is_none();
+        let (container, _) = self.remote_menu();
+        let can_predict = self.remote_menu_predicts_slots();
         let mut sent: Vec<Predicted> = Vec::new();
         let mut prepared = None;
         self.menu_session_with_game(|game, m, env, to_menu| {
@@ -591,6 +589,15 @@ impl Game<'_> {
     /// The type of the menu a server opened (`MenuType`'s id).
     pub(in crate::game) fn remote_menu_type(&self) -> Option<&str> {
         Some(self.remote.as_ref()?.menu.as_ref()?.1.as_str())
+    }
+    /// `OpenScreen` names a layout, not its backing. A declared mod menu or a stock layout
+    /// with a slot-rule Part can have server-only admission or a native click handler. Do not
+    /// ask those Parts using a synthetic backing or predict writes the server may refuse.
+    pub(in crate::game) fn remote_menu_predicts_slots(&self) -> bool {
+        self.remote_menu_type().is_none_or(|menu| {
+            sunrise_client::containers::mod_menu_type(menu).is_none()
+                && !mod_api::__private::menu_listens(mod_api::HookId::MenuSlotRules, menu)
+        })
     }
     /// The title the server gave the menu it opened.
     pub(in crate::game) fn remote_menu_title(&self) -> Option<sunrise_client::text::Text> {

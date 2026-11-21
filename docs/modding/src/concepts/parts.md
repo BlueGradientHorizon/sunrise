@@ -59,7 +59,9 @@ entity. `event.can_equip` starts with the vanilla data answer; set it to overrid
 leave it alone. Read the target through its handle and the supplied read-only `Host`, for example
 `event.entity.health(host)` or `event.entity.entity().with_view(host, |view| view.position()).flatten()`.
 Group position and type reads in the same `with_view` call. Target type, position, health, living
-status and equipment come from the same snapshot across slot checks in a decision.
+status and equipment come from the same snapshot across slot checks in a decision. If an item
+Part panics, its answer is discarded, its callback is disabled for the session, and the game
+reports the mod. Other Parts still answer, including when a menu view asks about an armour slot.
 
 ## Fire eligibility
 

@@ -20,6 +20,8 @@ pub trait Hooks {
     /// whether the entity may wear one at all (`canUseSlot`) or the dispenser's
     /// own rules for the entity. Only the `ItemPart`s attached to `stack`'s
     /// item are asked, on both sides, as the client's menu predicts the slot.
+    /// If a Part panics, its answer is discarded and its callback is disabled for
+    /// the session with a report naming the mod; other Parts still answer.
     /// `host` is read-only. Use `entity.entity().with_view(host, |view| ...)` to read
     /// the prepared target position and type together. Other entities and fields not in the
     /// snapshot use the ordinary host. The stack is converted

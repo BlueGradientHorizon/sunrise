@@ -11,10 +11,13 @@ pub trait Hooks {
     /// those already refused by the backing are not asked. The maximum is
     /// bounded by the slot and the offered stack's component-aware item limit.
     /// This is a read-only query, including for a LAN guest on the server.
+    /// If a Part panics, its answers are discarded, its callback is disabled for
+    /// the session, and the game reports the mod; other Parts still answer.
     /// Click planning reuses an answer for the same slot, stack and base rules;
     /// validation and application do not ask again. The client only runs the
-    /// query when it can predict the rules of the opening. A declared mod menu
-    /// with server-owned backing sends clicks unpredicted; the server owns the
+    /// query when it knows the opening's backing. `OpenScreen` does not carry
+    /// that information for a declared mod menu or a stock layout with a
+    /// slot-rule Part. Those clicks go unpredicted; the server decides the
     /// slot rules and sends back the resulting slots and cursor.
     /// `container` is the container `slot` indexes ([`MenuContainer`]): a mod
     /// crafting grid's slots are `Grid`'s and its result `Result`'s slot 0.

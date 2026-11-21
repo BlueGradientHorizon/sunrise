@@ -58,23 +58,16 @@ impl SlotRules for Game<'_> {
                 &owned
             }
         };
-        // A listener that panics is a failed ask, not a failed click: the slot's own answers
-        // stand (the dispatcher disables that mod's `menu_slot_rules` for the session and
-        // reports it once), and the click goes on.
-        let failures = mod_api::runtime::isolated_failures();
-        let (mut place, mut pickup, mut maximum) = (*may_place, *may_pickup, *max_stack);
+        // Generated dispatch discards only the failing Part's edits to these answers.
         self.native_menu_slot_rules(mod_api::__private::MenuSlotRulesCall {
             menu,
             slot,
             container: context.container,
             stack: &stack,
             context: snapshot,
-            may_place: &mut place,
-            may_pickup: &mut pickup,
-            max_stack: &mut maximum,
+            may_place,
+            may_pickup,
+            max_stack,
         });
-        if mod_api::runtime::isolated_failures() == failures {
-            (*may_place, *may_pickup, *max_stack) = (place, pickup, maximum);
-        }
     }
 }
