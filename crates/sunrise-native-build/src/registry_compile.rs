@@ -512,7 +512,7 @@ pub fn compile(
         }
     }
     super::crates::check_game_graph_names(out, &super::read_lock(out)?, &game_names)?;
-    let inventory = metadata.inventory(&super::registry_lock::RegistryLock::default(), links)?;
+    let inventory = metadata.inventory(links)?;
     if inventory.added_crates > 0 && !options.consent.is_some_and(|ask| ask(&inventory)) {
         return Err(crate::host::tr("The mods' crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; their build scripts and proc macros then run on this computer").into());
     }
@@ -576,7 +576,7 @@ pub fn compile(
     for diagnostic in &outputs.errors {
         super::append_log(diagnostic.rendered().unwrap_or_default())?;
     }
-    if let Err(failure) = result {
+    if let Err(mut error) = result {
         // The compiler runs in the build's folder: its relative file names are relative to it.
         let sources = super::present::Sources::new(
             out.to_path_buf(),
@@ -588,7 +588,7 @@ pub fn compile(
                 })
                 .collect(),
         );
-        let (mut error, mut raw) = (failure.error, String::new());
+        let mut raw = String::new();
         let mut explained = false;
         for diagnostic in &outputs.errors {
             error.push('\n');
@@ -994,7 +994,7 @@ mod tests {
             &resolution,
             Options {
                 consent: Some(&|inventory| {
-                    eprintln!("{}\n{}", inventory.label(), inventory.detail());
+                    eprintln!("Registry dependencies: {inventory:?}");
                     approve
                 }),
                 adapter: &adapter,

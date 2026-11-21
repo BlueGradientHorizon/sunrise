@@ -2,9 +2,9 @@
 
 `cargo sunrise-mod native-build` compiles native mods against one build's SDK. It is the JSON form of what
 `cargo sunrise-mod build` does for one mod, for a caller that builds for someone else: a build server, or a player's
-launcher. All of them run the same code (`crates/sunrise-native-build`). Every SDK release carries the tool for each host it is built for, as
-`tool-<target>.tar.xz` holding `cargo-sunrise-mod` (`.exe` on Windows), so a caller that already checked the SDK's
-signed `sdk.json` gets a tool made from that build's own source.
+launcher. Both commands use the same compiler (`crates/sunrise-native-build`). Every SDK release carries the tool
+for each host it is built for, as `tool-<target>.tar.xz` holding `cargo-sunrise-mod` (`.exe` on Windows), so a caller
+that already checked the SDK's signed `sdk.json` gets a tool made from that build's own source.
 Use that SDK's tool for the JSON commands: its horizon-mixins revision and patch match the SDK by construction.
 
 Native mod authors keep the same code and `sunrise-mod.toml`. On Windows the SDK sets the main-thread stack
@@ -17,7 +17,9 @@ tool built. The tool compiles, and nothing else.
 
 It reads a plan from the first line of standard input, writes one JSON event per line to standard output, and appends
 its log to `build.log` in the plan's `work` folder: emptying it before a build is the caller's, since a caller's own
-lines about the build may go there first.
+lines about the build may go there first. The caller runs the tool as a subprocess and owns cancellation of the
+process tree. On Unix, start the tool in its own process group to be able to stop the whole build: its build
+commands stay in that group.
 
 ```sh
 cargo sunrise-mod native-build < plan.json
@@ -38,7 +40,7 @@ doesn't know is refused (exit 2).
 | Field | What it is |
 |---|---|
 | `contract` | `2`. A change to any field or event below takes a new number. |
-| `work` | The build's own folder: `build.log`, the horizon-mixins tool, the game source a mixin patch copies from, and kept compiles under `prebuilt-build/`. The launcher passes its `native/` folder, so the kept compiles are the ones its in-process build made. |
+| `work` | The build's own folder: `build.log`, the horizon-mixins tool, the game source a mixin patch copies from, and kept compiles under `prebuilt-build/`. |
 | `toolchain` | `dir` (holding `bin/cargo` and `bin/rustc`), `target` (its host triple), `cargo_home`, `cargo_config` (`--config` values every cargo command gets; the launcher's Windows ARM64 flags) and `c_bin` (the folder of its C and link programs, when it brings them). The Rust release must be the SDK's (`sdk.json`'s `toolchain.rust`). |
 | `package` | `runtime`, `api` and `engine`: the folders the SDK's three slices for this host and side are unpacked into. The API route reads only `runtime` and `api`. |
 | `mods` | A mod's folder, or a folder of mod folders, read in path order. Every mod in it is compiled: a caller leaves a mod out by not putting it there. |
