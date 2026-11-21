@@ -285,6 +285,19 @@ pub(super) struct PackIds {
     pub(super) separate_ao: bool,
 }
 
+#[cfg(test)]
+impl PackIds {
+    pub(super) fn with_entity_ids<'a>(ids: impl IntoIterator<Item = (&'a str, i32)>) -> Self {
+        Self {
+            entities: ids
+                .into_iter()
+                .map(|(name, id)| (name.into(), id))
+                .collect(),
+            ..Default::default()
+        }
+    }
+}
+
 impl Game<'_> {
     /// Loads the pack for the current dimension when it changed, and returns this frame's
     /// inputs to the pack's uniforms.
@@ -1289,6 +1302,53 @@ mod native_pack_tests {
         mods.installed[0].native = None;
         assert_eq!(active_pack(owned, &mods), owned);
     }
+}
+
+#[cfg(test)]
+#[test]
+#[ignore = "daily"]
+fn projectile_body_uses_its_own_shader_entity_id() {
+    use sunrise_client::projectiles::{Projectile, ProjectileKind};
+
+    super::native_entity_refs::tests::with_client_game(|game| {
+        game.pack_ids = Some(PackIds::with_entity_ids([
+            ("minecraft:snowball", 41),
+            ("minecraft:ominous_item_spawner", 42),
+            ("minecraft:arrow", 43),
+            ("minecraft:spectral_arrow", 44),
+        ]));
+        let arrow = |effect| ProjectileKind::Arrow {
+            base_damage: 2.0,
+            critical: false,
+            effect,
+        };
+        for kind in [
+            ProjectileKind::Snowball,
+            arrow(None),
+            arrow(Some(("minecraft:glowing", 200))),
+        ] {
+            game.creatures.projectiles.push(Projectile::new(
+                kind,
+                sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+                None,
+            ));
+        }
+        game.entity_geometry(
+            glam::DVec3::new(0.5, 64.0, -4.5),
+            1.0,
+            None,
+            Vec::new(),
+            &mut Vec::new(),
+        );
+        let ids: Vec<_> = game
+            .entity_spans
+            .borrow()
+            .windows(2)
+            .filter(|span| span[0].start < span[1].start && (41..=44).contains(&span[0].id))
+            .map(|span| span[0].id)
+            .collect();
+        assert_eq!(ids, [41, 43, 44]);
+    });
 }
 
 #[cfg(test)]

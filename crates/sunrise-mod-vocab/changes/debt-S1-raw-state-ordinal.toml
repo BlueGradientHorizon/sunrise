@@ -1,6 +1,7 @@
 ids = [
     "type:BlockStateId",
     "type:BlockStateId.0",
+    "type:SectionCell::State",
     "hook:alter_ground",
     "trait:GroundStateProvider",
     "method:GroundStateProvider::state_at",

@@ -120,6 +120,7 @@ pub(super) fn emit<'a>(
         let contract = hook.contract;
         let out = hook.out.as_deref();
         let answered = hook.answered_by_mod;
+        let isolated_collect = answered && hook.isolate && contract == Contract::Collect;
         let output = if let Some(out) = out {
             let index = args
                 .iter()
@@ -158,11 +159,20 @@ pub(super) fn emit<'a>(
                     format!(" -> Option<{}>", answer.to_token_stream())
                 }
                 Contract::Replace => format!(" -> {}", reference.elem.to_token_stream()),
+                Contract::Collect if isolated_collect => {
+                    let answer = answered_sink(&reference.elem)
+                        .filter(|(_, output)| matches!(output, syn::ReturnType::Default))
+                        .map(|(answer, _)| answer)
+                        .ok_or_else(|| {
+                            format!("{name}: output must be &mut dyn FnMut(Answered<T>)")
+                        })?;
+                    format!(" -> Option<{}>", answer.to_token_stream())
+                }
                 Contract::Collect
                     if answered
                         && answered_batch(&reference.elem).is_none()
                         && !(matches!(name, "blocks" | "items")
-                            && declaration_sink(&reference.elem).is_some()) =>
+                            && answered_sink(&reference.elem).is_some()) =>
                 {
                     return Err(format!("{name}: output must be Vec<Answered<T>>"));
                 }
@@ -189,6 +199,17 @@ pub(super) fn emit<'a>(
                     param,
                 )
             });
+        if isolated_collect
+            && (hook.context.is_some()
+                || host.as_ref().is_some_and(|(_, host)| {
+                    host.ty.starts_with("&mut ")
+                        || matches!(host.ty.as_str(), "HostSide" | "LevelSide")
+                }))
+        {
+            return Err(format!(
+                "{name}: an isolated collector needs a read-only world Host"
+            ));
+        }
         // A block notice may identify a watching block entity. Its Parts receive
         // the source payload without changing the declared source key.
         let observer_routed = hook
@@ -298,11 +319,10 @@ pub(super) fn emit<'a>(
         // The checked declaration view replaces the old plain collect output.
         // Surface export reads the input tree's types, including older trees.
         let declaration = match (name, output.as_ref()) {
-            ("blocks" | "items", Some((_, Type::Reference(output)))) => {
-                declaration_sink(&output.elem)
-                    .or_else(|| answered_batch(&output.elem))
-                    .map(ToTokens::to_token_stream)
-            }
+            ("blocks" | "items", Some((_, Type::Reference(output)))) => answered_sink(&output.elem)
+                .map(|(entry, _)| entry)
+                .or_else(|| answered_batch(&output.elem))
+                .map(ToTokens::to_token_stream),
             _ => None,
         };
         let registration_append = if let Some(mode) = hook.registration_append {
@@ -398,7 +418,9 @@ pub(super) fn emit<'a>(
         let stack_after = stack_outputs.iter().map(|(output, _)| format!(
             "if *{event}.{output} != __previous_{output} {{ match __validate_{output}({event}.{output}) {{ Ok(()) => __previous_{output} = {event}.{output}.clone(), Err(error) => {{ *{event}.{output} = __previous_{output}.clone(); log::warn!(\"mod {{}} hook {name} output {output} refused: {{error:?}}\", super::content::crash::current_native_mod().unwrap_or(\"unknown\")); }} }} }}\n"
         )).collect::<String>();
-        let collected = output.as_ref().filter(|_| contract == Contract::Collect);
+        let collected = output
+            .as_ref()
+            .filter(|_| contract == Contract::Collect && !isolated_collect);
         for (name, ty) in args.iter().chain(collected) {
             let mut owned_ty = (*ty).clone();
             struct OwnedLootContext;
@@ -414,6 +436,23 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
+            if isolated_collect {
+                struct MutableBorrow(bool);
+                impl<'ast> syn::visit::Visit<'ast> for MutableBorrow {
+                    fn visit_type_reference(&mut self, reference: &'ast syn::TypeReference) {
+                        self.0 |= reference.mutability.is_some();
+                        syn::visit::visit_type_reference(self, reference);
+                    }
+                }
+                let mut mutable = MutableBorrow(false);
+                syn::visit::Visit::visit_type(&mut mutable, ty);
+                if mutable.0 {
+                    return Err(format!(
+                        "{}: an isolated collector cannot also write to {name}",
+                        hook.name
+                    ));
+                }
+            }
             dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
             if collect_cancel && name == "cancel" {
                 continue;
@@ -461,7 +500,7 @@ pub(super) fn emit<'a>(
                 {
                     surfaces.push(name.clone());
                 }
-                if hook.isolate && !rollback_pointee_is_copy(&field_ty) {
+                if hook.isolate && batch_entry.is_none() && !rollback_pointee_is_copy(&field_ty) {
                     return Err(format!(
                         "{}: isolate rolls a listener's writes back to the requested values; \
                          its mutable argument {name} must be a Copy primitive or a fixed array \
@@ -520,7 +559,10 @@ pub(super) fn emit<'a>(
             fields.push_str("/// Whether the event is cancelled: by the game or an earlier listener, or by this one\n/// setting it. Only a listener that receives cancelled events (`#[listener(receive_cancelled)]`)\n/// sees `true`, and setting it back to `false` lets the game's behaviour run.\npub cancelled: bool,\n");
             inits.push(format!("cancelled: *{}", cancel_out.unwrap()));
         }
-        if let Some((name, ty)) = output.as_ref().filter(|_| contract != Contract::Collect) {
+        if let Some((name, ty)) = output
+            .as_ref()
+            .filter(|_| contract != Contract::Collect || isolated_collect)
+        {
             dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
         }
         if uses_carrier {
@@ -581,6 +623,7 @@ pub(super) fn emit<'a>(
             _ if collect_cancel => "Flow::Continue",
             Contract::Cancel => "Flow::Continue",
             Contract::Replace => "None",
+            Contract::Collect if isolated_collect => "None",
             _ => "",
         };
         // Direct game targets and free functions own their crossing. Everywhere else the
@@ -741,8 +784,15 @@ pub(super) fn emit<'a>(
                 .collect::<Vec<_>>()
                 .join(", ");
             let passed = passed.join(", ");
+            let dispatch_call = if name == "add_pack_finders" {
+                format!(
+                    "let mods = self.mods.clone(); mod_api::dispatch_{name}_for({passed}, |id| mods.code_owner_enabled(id));"
+                )
+            } else {
+                format!("mod_api::dispatch_{name}({passed});")
+            };
             fire.push_str(&format!(
-                "impl {receiver_impl} {{ #[inline] pub(super) fn fire_{name}({signature}) {{ {before} mod_api::dispatch_{name}({passed}); {after} }} }}\n"
+                "impl {receiver_impl} {{ #[inline] pub(super) fn fire_{name}({signature}) {{ {before} {dispatch_call} {after} }} }}\n"
             ));
             let receiver = if receiver.is_empty() {
                 "Self::"
@@ -762,6 +812,8 @@ pub(super) fn emit<'a>(
             && host
                 .as_ref()
                 .is_some_and(|(_, param)| param.ty == "&mut dyn LevelWriteHost");
+        let filtered_subscribers = name == "add_pack_finders";
+        let allow_subscriber = fresh_name("allow", &mut used);
         let invoke_part = fresh_name("invoke_part", &mut used);
         let invoke = call_args.join(", ");
         let trait_params = trait_params.join(", ");
@@ -797,6 +849,9 @@ pub(super) fn emit<'a>(
             )),
             (Contract::Collect, _) if declaration.is_some() => (),
             (Contract::Collect, _) if registration_append.is_some() => (),
+            (Contract::Collect, Some(_)) if isolated_collect => method_source.push_str(
+                "///\n/// Return `Some` to give one answer, or `None` to abstain. The game collects each mod's answer in order.\n"
+            ),
             (Contract::Collect, Some(out)) if answered => method_source.push_str(&format!(
                 "///\n/// Each mod receives its own empty `{event}.{out}` batch; every entry it adds is recorded\n/// as that mod's.\n"
             )),
@@ -875,7 +930,7 @@ pub(super) fn emit<'a>(
         } else {
             format!(
                 "{stack_snapshots}{}let mut {event} = {event_type} {{ {} }};",
-                if answered && contract == Contract::Collect {
+                if answered && contract == Contract::Collect && !isolated_collect {
                     format!("let mut {batch} = Vec::new(); ")
                 } else {
                     String::new()
@@ -886,11 +941,13 @@ pub(super) fn emit<'a>(
         // Each listener gets a fresh event with the original inputs. Writable borrowed
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.
-        let (build, local_event) = if hook.event_per_listener {
+        let (build, local_event) = if hook.event_per_listener || isolated_collect {
             // A replace answer is returned outside the event. A regular collect
             // output borrows one slot, reborrowed for each listener above. Answered
-            // collect batches and cancellation do not use this mode.
-            let reply_outside_event = matches!(contract, Contract::Listen | Contract::Replace);
+            // collect batches and cancellation do not use this mode. An isolated collector's
+            // one return value is outside the event too; each mod gets the original inputs.
+            let reply_outside_event =
+                matches!(contract, Contract::Listen | Contract::Replace) || isolated_collect;
             let shared_collect_output = collected.is_some() && !answered && !collect_cancel;
             if (!reply_outside_event && !shared_collect_output)
                 || !stack_outputs.is_empty()
@@ -915,6 +972,11 @@ pub(super) fn emit<'a>(
         // A trait mod's call is marked with the mod for a panic to name.
         let each = match &hook.owner {
             Some(owner) => format!("super::entered_owned(HookId::{hook_id}, \"{name}\", {owner})"),
+            None if filtered_subscribers => {
+                format!(
+                    "super::runtime::entered_matching(HookId::{hook_id}, \"{name}\", {allow_subscriber})"
+                )
+            }
             None if answered || hook.collect_validator.is_some() => {
                 format!("super::entered_with_id(HookId::{hook_id}, \"{name}\")")
             }
@@ -1048,7 +1110,7 @@ pub(super) fn emit<'a>(
         // The #2414 ruling an isolated cancel hook carries: a listener that unwinds keeps the
         // **requested** outputs — not one an earlier listener had proposed — is skipped by this
         // hook for the session, and no later listener runs on this invocation.
-        let (isolate_snapshot, isolate_restore) = if hook.isolate {
+        let (isolate_snapshot, isolate_restore) = if mod_cancel && hook.isolate {
             let snapshot = rollback
                 .iter()
                 .map(|(name, by_reference)| {
@@ -1177,6 +1239,15 @@ pub(super) fn emit<'a>(
                     owner = hook.owner.as_deref().unwrap(),
                 ),
             ),
+            None if isolated_collect => (
+                // The callback receives only completed answers. Containment covers the mod's call
+                // and the panic payload destructor, not the engine's answer callback.
+                String::new(),
+                format!(
+                    "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{ let mod_id = {mod_entry}.id; if super::runtime::poisoned(HookId::{hook_id}, mod_id) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {local_event} match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ Ok(Ok(Some(answer))) => {o}(Answered {{ answer, mod_id }}), Ok(Ok(None)) => {{}}, Ok(Err(refusal)) => refusal.report(), Err(payload) => {{ if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload))) {{ std::mem::forget(payload); }} super::runtime::poison(HookId::{hook_id}, mod_id); }} }} }} }}",
+                    o = out.unwrap()
+                ),
+            ),
             None if mod_cancel && hook.isolate => (
                 String::new(),
                 format!(
@@ -1283,6 +1354,24 @@ pub(super) fn emit<'a>(
             dispatch.push_str(&format!(
                 "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}) {{ dispatch_{name}_with({args}, |part, event| part.{name}(&mut *{host}, event)); }}\n\
                  #[doc(hidden)] pub fn dispatch_{name}_with({params}, mut {invoke_part}: impl FnMut(&dyn {part_trait}, &mut {event_type}{elided}){result}) {{ {unpack}{early_return}\n{body} }}\n"
+            ));
+        } else if filtered_subscribers {
+            let wrapper_params = dispatch_params
+                .iter()
+                .map(|param| param.trim().strip_prefix("mut ").unwrap_or(param.trim()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let args = dispatch_params
+                .iter()
+                .map(|param| {
+                    let binding = param.split_once(':').unwrap().0.trim();
+                    binding.strip_prefix("mut ").unwrap_or(binding)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            dispatch.push_str(&format!(
+                "#[doc(hidden)] pub fn dispatch_{name}({wrapper_params}) {{ dispatch_{name}_for({args}, |_| true); }}\n\
+                 #[doc(hidden)] pub fn dispatch_{name}_for({dispatch_signature}, {allow_subscriber}: impl FnMut(&str) -> bool) {{ {unpack}{early_return}\n{body} }}\n"
             ));
         } else {
             dispatch.push_str(&format!(
@@ -2306,8 +2395,8 @@ fn answered_batch(ty: &Type) -> Option<&Type> {
     generic_of(generic_of(ty, "Vec")?, "Answered")
 }
 
-/// `T` of the engine callback that validates and stages an `Answered<T>`.
-fn declaration_sink(ty: &Type) -> Option<&Type> {
+/// The payload and return type of an engine-only `dyn FnMut(Answered<T>)` sink.
+fn answered_sink(ty: &Type) -> Option<(&Type, &syn::ReturnType)> {
     let Type::TraitObject(object) = ty else {
         return None;
     };
@@ -2318,7 +2407,10 @@ fn declaration_sink(ty: &Type) -> Option<&Type> {
     let syn::PathArguments::Parenthesized(args) = &segment.arguments else {
         return None;
     };
-    generic_of(args.inputs.first()?, "Answered")
+    if args.inputs.len() != 1 {
+        return None;
+    }
+    Some((generic_of(args.inputs.first()?, "Answered")?, &args.output))
 }
 
 /// `T` of a `name<T>` type.
@@ -2696,6 +2788,46 @@ fn main() {{
             refused.as_deref(),
             Some("gather: output must be Vec<Answered<T>>")
         );
+    }
+
+    #[test]
+    fn an_isolated_collect_only_allows_its_single_answer_sink() {
+        let emit_hook = |receiver: Receiver, extra: Option<(&str, &str)>, sink: &str| {
+            let mut call = Vec::new();
+            if let Some((name, ty)) = extra {
+                call.push((name.into(), ty.into()));
+            }
+            call.push(("answers".into(), sink.into()));
+            let hook = Hook {
+                name: "gather".into(),
+                contract: Contract::Collect,
+                out: Some("answers".into()),
+                answered_by_mod: true,
+                isolate: true,
+                receiver,
+                dispatch: DispatchStyle::Flat,
+                call,
+                ..Hook::sample(
+                    "sunrise_client::game::native_hooks::gather::Game<'_>::native_gather",
+                    Side::Client,
+                )
+            };
+            emit(std::iter::once(&hook), &[], false)
+        };
+        let sink = "&mut dyn FnMut(Answered<u32>)";
+        if let Err(error) = emit_hook(Receiver::Read, Some(("input", "&u32")), sink) {
+            panic!("a read-only collector with one answer sink must generate: {error}");
+        }
+        for extra in [("extra", "&mut u32"), ("extra", "Option<&mut u32>")] {
+            assert!(emit_hook(Receiver::Read, Some(extra), sink).is_err());
+        }
+        for invalid_sink in [
+            "&mut Vec<Answered<u32>>",
+            "&mut dyn FnMut(Answered<u32>) -> Result<(), DeclarationError>",
+        ] {
+            assert!(emit_hook(Receiver::Read, None, invalid_sink).is_err());
+        }
+        assert!(emit_hook(Receiver::Write, Some(("input", "&u32")), sink).is_err());
     }
 
     #[test]

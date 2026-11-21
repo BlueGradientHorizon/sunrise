@@ -39,6 +39,8 @@ pub struct ModMenuType {
     /// Whether this menu appends the player's main inventory and hotbar.
     pub player_inventory: bool,
     pub data_slots: usize,
+    /// Validated transient-slot maxima, used when this type opens without a block.
+    pub owned_slots: Option<Vec<u8>>,
     pub results: Vec<usize>,
     /// Validated container indices marked as machine inputs in the client layout.
     pub inputs: Vec<usize>,
@@ -100,7 +102,7 @@ impl ModCrafting {
 static MOD_MENU_TYPES: std::sync::OnceLock<Vec<ModMenuType>> = std::sync::OnceLock::new();
 
 /// One menu type as [`register_mod_menu_types`] takes it: `(id, owner, slots, data
-/// slots, results, inputs, crafting, links, player inventory)`.
+/// slots, results, inputs, crafting, links, player inventory, owned slot maxima)`.
 pub type ModMenuTypeEntry = (
     String,
     String,
@@ -111,19 +113,32 @@ pub type ModMenuTypeEntry = (
     Option<ModCrafting>,
     Option<ModLinks>,
     bool,
+    Option<Vec<u8>>,
 );
 
 fn menu_types(menus: impl IntoIterator<Item = ModMenuTypeEntry>) -> Vec<ModMenuType> {
     menus
         .into_iter()
         .map(
-            |(id, owner, slots, data_slots, results, inputs, crafting, links, player_inventory)| {
+            |(
+                id,
+                owner,
+                slots,
+                data_slots,
+                results,
+                inputs,
+                crafting,
+                links,
+                player_inventory,
+                owned_slots,
+            )| {
                 ModMenuType {
                     id: Box::leak(id.into_boxed_str()),
                     owner: Box::leak(owner.into_boxed_str()),
                     slots,
                     player_inventory,
                     data_slots,
+                    owned_slots,
                     results,
                     inputs,
                     crafting,

@@ -1264,6 +1264,37 @@ impl OriginalPlayerRef {
     }
 }
 
+/// The collision flags left by a player's last `Entity.move`.
+#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CollisionFlags {
+    /// Movement hit a wall or another horizontal obstruction.
+    pub horizontal: bool,
+    /// The horizontal collision only slightly changed the movement direction.
+    pub minor_horizontal: bool,
+    /// Movement was stopped vertically, by a floor or a ceiling.
+    pub vertical: bool,
+    /// The vertical collision stopped downward movement.
+    pub vertical_below: bool,
+}
+
+impl CollisionFlags {
+    /// Build a snapshot of the collision flags retained by a move.
+    pub const fn new(
+        horizontal: bool,
+        minor_horizontal: bool,
+        vertical: bool,
+        vertical_below: bool,
+    ) -> Self {
+        Self {
+            horizontal,
+            minor_horizontal,
+            vertical,
+            vertical_below,
+        }
+    }
+}
+
 /// A player's food data.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
@@ -1339,6 +1370,10 @@ pub struct ProfileProperty<'a> {
 pub enum OpenMenuError {
     /// The menu type is not a content mod's (`data/<id>/sunrise/menu/`).
     NotModMenu,
+    /// A menu with `owned_slots` also declares a take-only or crafting result.
+    OwnedSlotsWithResults,
+    /// Opening a new window is not possible during the active menu click action.
+    ClickInProgress,
     /// The player is stale, dead, disconnecting, has no supported client, or their turn
     /// is unavailable for the open veto. Also returned by a host without a game.
     PlayerUnavailable,
@@ -1355,6 +1390,12 @@ pub enum OpenMenuError {
 impl From<crate::text::TextFormError> for OpenMenuError {
     fn from(error: crate::text::TextFormError) -> Self {
         Self::Title(error)
+    }
+}
+
+impl crate::AccessRefusal for OpenMenuError {
+    fn unavailable() -> Self {
+        Self::PlayerUnavailable
     }
 }
 
@@ -1407,6 +1448,8 @@ pub enum MenuItemsRefusal {
     /// One of the stacks was refused at the game's item conversion boundary: an item the world
     /// lacks, a count or damage the item does not allow.
     Stack(StackWriteError),
+    /// The window owns its slots. Write them through [`ItemPlace::MenuSlot`](crate::ItemPlace::MenuSlot).
+    OwnedSlots,
 }
 
 impl From<StackWriteError> for MenuItemsRefusal {

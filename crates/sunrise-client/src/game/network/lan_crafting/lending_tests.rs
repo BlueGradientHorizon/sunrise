@@ -91,6 +91,7 @@ fn setup(game: &mut Game<'_>) -> &'static ModMenuType {
         slots: 37,
         player_inventory: true,
         data_slots: 0,
+        owned_slots: None,
         results: vec![],
         inputs: Vec::new(),
         links: Some(ModLinks {
@@ -155,6 +156,7 @@ fn setup(game: &mut Game<'_>) -> &'static ModMenuType {
         craft: None,
         links: vec![],
         asks_still_valid: false,
+        opening_item: None,
     });
     game.lan.as_mut().unwrap().hub.guests.push(guest);
     t

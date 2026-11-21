@@ -374,4 +374,35 @@ mod tests {
             assert_eq!(order.slots()[at].id(), layer.id());
         }
     }
+
+    #[test]
+    fn only_existing_vanilla_layers_are_registration_anchors() {
+        let staged_ids = [
+            "camera_overlays",
+            "after_camera_decorations",
+            "contextual_info_bar_background",
+            "experience_level",
+            "armor_level",
+            "food_level",
+            "air_level",
+            "spectator_tooltip",
+            "demo_overlay",
+        ];
+        let mut layers = GuiLayers::default();
+        for id in staged_ids {
+            assert!(!layers.register(
+                "compass:bar".into(),
+                GuiLayerPlacement::Above(format!("minecraft:{id}")),
+                Box::new(|_, _| {}),
+            ));
+        }
+        let order = layers.into_order();
+        assert_eq!(order.slots().len(), VanillaGuiLayer::ALL.len());
+        assert!(
+            order
+                .slots()
+                .iter()
+                .all(|slot| slot.vanilla_anchor().is_some())
+        );
+    }
 }

@@ -14,6 +14,7 @@ use crate::{
     mobs::equip::equippable_in_slot,
     world::World,
 };
+use mod_api::{Hand, MenuOpeningItem};
 use sunrise_world::native_load_context::LoopContext;
 
 /// The equipment slots of the inventory menu's armour slots 5 to 8, in menu order.
@@ -96,6 +97,8 @@ pub struct Menu {
     /// Whether a part on this mod menu type answers `menu_still_valid`,
     /// resolved when it opened; vanilla menu types never ask one.
     pub asks_still_valid: bool,
+    /// The hand the opener supplied and its stack at open. Neither travels to the client.
+    pub opening_item: Option<(Hand, Option<ItemStack>)>,
 }
 
 /// What a mod menu type's crafting grid makes (`ResultContainer`), and the
@@ -116,9 +119,18 @@ pub fn native_menu_still_valid(
     menu: &str,
     pos: Option<[i32; 3]>,
     eye: [f64; 3],
+    opening_item: Option<MenuOpeningItem>,
     valid: &mut bool,
 ) {
-    crate::native_client_hooks::menu_still_valid(context, player, menu, pos, eye, valid);
+    crate::native_client_hooks::menu_still_valid(
+        context,
+        player,
+        menu,
+        pos,
+        eye,
+        opening_item,
+        valid,
+    );
 }
 
 /// Whether a menu of this type asks its parts `menu_still_valid`: only a mod
@@ -135,6 +147,37 @@ impl Menu {
 
     pub fn slot_count(&self) -> usize {
         self.size + self.player_slots()
+    }
+
+    /// Stack limits for an explicitly declared transient container; owned types are blockless.
+    pub fn owned_slots(&self) -> Option<&[u8]> {
+        self.mod_type?.owned_slots.as_deref()
+    }
+
+    /// Detached transient values and provenance, for the existing close notice. The old
+    /// native storage is emptied even for a menu that did not declare owned slots.
+    pub(super) fn native_closed(
+        &self,
+        uuid: u128,
+        generation: u64,
+        native_menu: &mut Vec<Option<ItemStack>>,
+    ) -> Option<NativeMenuEvent> {
+        if self.slots != Slots::Native {
+            return None;
+        }
+        let owned_slots = if self.owned_slots().is_some() {
+            std::mem::take(native_menu)
+        } else {
+            native_menu.clear();
+            Vec::new()
+        };
+        Some(NativeMenuEvent::Closed {
+            uuid,
+            window: self.window,
+            generation,
+            opening_hand: self.opening_item.as_ref().map(|(hand, _)| *hand),
+            owned_slots,
+        })
     }
 
     /// `AbstractContainerMenu.stillValid` of this menu for the guest: its
@@ -159,12 +202,23 @@ impl Menu {
             return false;
         }
         let mut valid = self.slots.in_reach(guest, self.pos);
+        let opening_item = self.opening_item.as_ref().map(|(hand, opening)| {
+            let stack = match hand {
+                Hand::Main => guest.inventory.get(guest.selected).and_then(Option::as_ref),
+                Hand::Off => guest.offhand.as_ref(),
+            };
+            let stack_matches = stack
+                .zip(opening.as_ref())
+                .is_some_and(|(now, then)| now.same_item_same_components(then));
+            MenuOpeningItem::new(*hand, stack_matches)
+        });
         native_menu_still_valid(
             context,
             guest.uuid,
             &self.registry_id,
             block.map(|(x, y, z)| [x, y, z]),
             guest.eye(),
+            opening_item,
             &mut valid,
         );
         valid
@@ -199,22 +253,21 @@ impl Menu {
     }
 }
 
-/// What a guest did with a native mod's menu (`Slots::Native`), for the game
-/// to tell the mod once the hub is back in its hands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A menu notice for the game once it has the hub back.
+#[derive(Clone, Debug, PartialEq)]
 pub enum NativeMenuEvent {
-    /// A click (`ServerboundContainerClickPacket`): the menu's slot (its own
-    /// first, then the player's 36; -999 outside), the button and the mode.
-    Click {
-        uuid: u128,
-        window: i32,
-        slot: i32,
-        button: i32,
-        mode: i32,
-    },
+    /// The cursor of a menu the hub closed itself, to be returned to its player.
+    ReturnCarried { conn: u32, item: ItemStack },
     /// The menu closed: by the player, by the server, another opened, or
     /// the player left.
-    Closed { uuid: u128, window: i32 },
+    Closed {
+        uuid: u128,
+        window: i32,
+        /// The window instance, for rolling back writes made before this pending close.
+        generation: u64,
+        opening_hand: Option<Hand>,
+        owned_slots: Vec<Option<ItemStack>>,
+    },
     /// The storage a mod backed the menu's slots with was written (the game's notice): its
     /// slots are looked at again once the write is done.
     PlacesChanged { uuid: u128, window: i32 },
@@ -234,8 +287,8 @@ pub enum Slots {
     Double((i32, i32, i32), (i32, i32, i32)),
     /// The player's own ender chest inventory (`PlayerEnderChestContainer`).
     Ender,
-    /// A native mod's menu (`Guest::native_menu`): items to look at, which no
-    /// click moves; the clicks go to the mod.
+    /// A blockless mod menu's vector (`Guest::native_menu`), either transient
+    /// owned slots or a display of stacks controlled by mods.
     Native,
 }
 
@@ -313,7 +366,7 @@ impl Slots {
         let m = guest.menu.as_ref().filter(|m| m.slots == self)?;
         m.linked()
     }
-    fn halves(self) -> impl Iterator<Item = (i32, i32, i32)> {
+    pub fn halves(self) -> impl Iterator<Item = (i32, i32, i32)> {
         match self {
             Slots::Block(k) => [Some(k), None],
             Slots::Double(a, b) => [Some(a), Some(b)],
@@ -453,7 +506,9 @@ impl Slots {
             return;
         }
         if self == Slots::Native {
-            // Only the mod changes what it shows.
+            if guest.menu.as_ref().and_then(Menu::owned_slots).is_some() {
+                guest.native_menu = items;
+            }
             return;
         }
         let mut items = items;
@@ -2066,6 +2121,7 @@ pub(crate) mod tests {
             slots: 5,
             player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
             inputs: Vec::new(),
             links: None,
@@ -2095,6 +2151,7 @@ pub(crate) mod tests {
             craft: None,
             links: Vec::new(),
             asks_still_valid: false,
+            opening_item: None,
         });
         // Nothing made yet: nothing shown.
         assert_eq!(slots.get(&world, &g, 0), None);
@@ -2188,6 +2245,7 @@ pub(crate) mod tests {
             slots: 6,
             player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
             inputs: Vec::new(),
             crafting: None,
@@ -2212,6 +2270,7 @@ pub(crate) mod tests {
             craft: None,
             links: Vec::new(),
             asks_still_valid: false,
+            opening_item: None,
         });
         // Nothing linked yet: the linked slots are empty and all left out.
         let read = slots.read(&world, &g).unwrap();
@@ -3350,6 +3409,7 @@ pub(crate) mod tests {
             craft: None,
             links: Vec::new(),
             asks_still_valid: false,
+            opening_item: None,
         });
         g.inventory[9] = Some(ItemStack::new("minecraft:stone", 1));
         let mut chest = vec![Some(ItemStack::new("minecraft:stone", 1))];

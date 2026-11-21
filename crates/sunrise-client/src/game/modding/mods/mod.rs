@@ -129,7 +129,7 @@ impl ModsState {
         }));
     }
 
-    fn apply_code_switches(&self, disabled: &std::collections::BTreeSet<String>) {
+    pub(super) fn apply_code_switches(&self, disabled: &std::collections::BTreeSet<String>) {
         for id in mod_api::__private::installed_code_ids() {
             mod_api::__private::set_mod_enabled(id, !disabled.contains(id));
         }
@@ -1459,6 +1459,7 @@ fn register_menu_types(
             crafting,
             links,
             m.player_inventory,
+            m.owned_slots.clone(),
         )
     }));
     if !set
@@ -2432,6 +2433,7 @@ mod tests {
                 save_policy: mod_api::GeneralSavePolicy::Save,
                 summonable: true,
                 pickable: false,
+                piston_push_reaction: mod_api::PushReaction::PushPull,
                 tracking_chunks: 8,
                 update_interval: 3,
                 payload_version: 1,

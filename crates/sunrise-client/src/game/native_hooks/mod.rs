@@ -507,6 +507,7 @@ mod screen_room;
 mod screen_slot_tests;
 mod screen_transparent_background;
 mod screenshot;
+mod section_visibility;
 mod server_chat;
 mod server_tick_rate_changed;
 mod set_placed_by;
