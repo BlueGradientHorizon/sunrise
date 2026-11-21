@@ -13,7 +13,10 @@ use super::persist::OffLevel;
 use super::respawn_anchor::RespawnConfig;
 use super::respawn_position::Respawn;
 use super::{Dim, Game, Mob, boats, lan::LanHost, minecarts};
-use sunrise_client::{lan::hub::TickCtx, world_spawn::PlayerSpawnFinder};
+use sunrise_client::{
+    lan::{guest::Guest, hub::TickCtx},
+    world_spawn::PlayerSpawnFinder,
+};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
@@ -253,6 +256,10 @@ impl Trip {
 }
 
 impl Game<'_> {
+    fn finish_credits_body(guest: &mut Guest) {
+        guest.new_body(true);
+        guest.carried_tick_count = None;
+    }
     pub(super) fn gateway_source_chunks(&self) -> Vec<(i32, i32)> {
         self.server_trips
             .iter()
@@ -1187,7 +1194,7 @@ impl Game<'_> {
 
     /// TeleportTransition.missingRespawnBlock: the world spawn, in its level
     /// (MinecraftServer.findRespawnDimension).
-    fn respawn_at_world_spawn(&mut self, conn: u32, missing: RespawnConfig) {
+    fn respawn_at_world_spawn(&mut self, conn: u32, missing: RespawnConfig, credits_respawn: bool) {
         let at = self.level.world_spawn.map_or(
             self.spawn.map_or([0.5, 80.0, 0.5], |s| [s.x, s.y, s.z]),
             |[x, y, z]| [f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5],
@@ -1201,6 +1208,9 @@ impl Game<'_> {
             vehicle: None,
         });
         self.run_level_teleports();
+        if credits_respawn && let Some(host) = self.lan.as_mut() {
+            let _ = host.hub.update_guest(conn, Self::finish_credits_body);
+        }
         self.world_spawn_trip(conn, Some(missing));
     }
 
@@ -1309,7 +1319,7 @@ impl Game<'_> {
                         if let Some(host) = self.lan.as_mut() {
                             host.hub.missing_respawn_block(trip.conn);
                         }
-                        self.respawn_at_world_spawn(trip.conn, config);
+                        self.respawn_at_world_spawn(trip.conn, config, trip.credits_respawn);
                         // The move to the world spawn ends the player's move
                         // from the level they left.
                         if let Some(left) = trip.left
@@ -1344,13 +1354,23 @@ impl Game<'_> {
                         if let Some(d) = self.respawn_position(trip.conn, found, trip.missing) {
                             self.apply_respawn_copy(trip.conn, &d, trip.missing);
                             if d.moved && d.to.dim != trip.dim {
+                                if trip.credits_respawn
+                                    && let Some(host) = self.lan.as_mut()
+                                {
+                                    let _ =
+                                        host.hub.update_guest(trip.conn, Self::finish_credits_body);
+                                }
                                 self.respawn_into_other_level(trip.conn, d.to);
                             } else if d.moved
                                 && let Some(host) = self.lan.as_mut()
                             {
                                 host.hub.guests.update(i, |g| {
                                     (g.yaw, g.pitch) = (d.to.yaw, d.to.pitch);
-                                    g.new_body(true);
+                                    if trip.credits_respawn {
+                                        Self::finish_credits_body(g);
+                                    } else {
+                                        g.new_body(true);
+                                    }
                                 });
                                 host.hub
                                     .teleport(i, Some([d.to.at.x, d.to.at.y, d.to.at.z]));
@@ -1465,8 +1485,7 @@ impl Game<'_> {
                 // respawn point is still a teleport of the existing player. Keep the full
                 // restore in both cases; the new identity only resets Entity.tickCount.
                 if trip.credits_respawn {
-                    g.new_body(true);
-                    g.carried_tick_count = None;
+                    Self::finish_credits_body(g);
                 } else if !trip.hold {
                     g.new_body(true);
                 }
