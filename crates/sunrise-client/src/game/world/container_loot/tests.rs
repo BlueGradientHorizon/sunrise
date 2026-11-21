@@ -1089,11 +1089,30 @@ fn container_fill_listener_contract() {
 fn vehicle_slot_read_fills_without_opener_while_acting() {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
-        let id = cart(game);
-        let index = game.carts.iter().position(|cart| cart.id == id).unwrap();
+        let cart_id = cart(game);
+        let cart = game
+            .carts
+            .iter()
+            .position(|cart| cart.id == cart_id)
+            .unwrap();
         let resident = ItemStack::new("minecraft:stick", 4);
         game.carts
-            .update(index, |cart| cart.items[0] = Some(resident.clone()));
+            .update(cart, |cart| cart.items[0] = Some(resident.clone()));
+        let (tag, _) = sunrise_core::nbt::parse_snbt(&format!(
+            r#"{{Pos:[8.5d,64d,8.5d],LootTable:"{TABLE}",LootTableSeed:37L}}"#
+        ))
+        .unwrap();
+        game.load_boat(tag, None, "minecraft:oak_chest_boat");
+        let boat = game.boats.len() - 1;
+        let boat_id = game.boats[boat].id;
+        assert!(game.persist.raw[&boat_id].get("LootTable").is_some());
+        assert_eq!(
+            game.persist.raw[&boat_id].get("LootTableSeed"),
+            Some(&Tag::Long(37))
+        );
+        game.boats
+            .update(boat, |boat| boat.items[0] = Some(resident.clone()));
+
         let seen = Arc::new(Mutex::new(Vec::new()));
         mod_platform::testing::with_mods(
             vec![mod_api::ModEntry::new(
@@ -1107,29 +1126,36 @@ fn vehicle_slot_read_fills_without_opener_while_acting() {
             || {
                 game.as_guest(12, |game| {
                     assert!(game.native_acting_player().is_some());
-                    let slot = mod_api::ItemPlace::EntitySlot {
-                        entity: id,
-                        slot: 0,
-                    };
-                    assert_eq!(slot.with_stack(game, |stack| stack.count()), Some(4));
-                    let _ = slot.with_stack(game, |stack| stack.count());
+                    for entity in [cart_id, boat_id] {
+                        seen.lock().unwrap().clear();
+                        let slot = mod_api::ItemPlace::EntitySlot { entity, slot: 0 };
+                        assert_eq!(slot.with_stack(game, |stack| stack.count()), Some(4));
+                        let items = if entity == cart_id {
+                            assert!(game.carts[cart].loot.is_none());
+                            &game.carts[cart].items
+                        } else {
+                            assert!(game.persist.raw[&boat_id].get("LootTable").is_none());
+                            assert!(game.persist.raw[&boat_id].get("LootTableSeed").is_none());
+                            &game.boats[boat].items
+                        };
+                        assert_eq!(items[0].as_ref(), Some(&resident));
+                        let filled = items[1..].iter().flatten().collect::<Vec<_>>();
+                        assert_eq!(filled, vec![&ItemStack::new("minecraft:diamond", 1)]);
+                        assert_eq!(
+                            seen.lock().unwrap().as_slice(),
+                            &[(
+                                TABLE.to_owned(),
+                                None,
+                                [8.5, 64.0, 8.5],
+                                vec![("minecraft:diamond".to_owned(), 1)]
+                            )],
+                        );
+                        assert_eq!(slot.with_stack(game, |stack| stack.count()), Some(4));
+                        assert_eq!(seen.lock().unwrap().len(), 1);
+                    }
                 })
                 .unwrap();
             },
-        );
-        let cart = &game.carts[index];
-        assert!(cart.loot.is_none());
-        assert_eq!(cart.items[0], Some(resident));
-        let filled = cart.items[1..].iter().flatten().collect::<Vec<_>>();
-        assert_eq!(filled, vec![&ItemStack::new("minecraft:diamond", 1)]);
-        assert_eq!(
-            seen.lock().unwrap().as_slice(),
-            &[(
-                TABLE.to_owned(),
-                None,
-                [8.5, 64.0, 8.5],
-                vec![("minecraft:diamond".to_owned(), 1)]
-            )],
         );
     });
 }

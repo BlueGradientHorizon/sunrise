@@ -403,8 +403,7 @@ pub struct Guest {
     pub selected: usize,
     pub carried: Option<ItemStack>,
     /// What the client believes the cursor holds (`AbstractContainerMenu.remoteCarried`).
-    /// Outer `None` means a full menu packet did not include the complete cursor.
-    pub carried_sent: Option<Option<ItemStack>>,
+    pub carried_sent: Option<ItemStack>,
     /// The inventory menu's crafting grid (2x2) and its result
     /// (`InventoryMenu.craftSlots`, `resultSlots`), which the game computes.
     pub craft_grid: [Option<ItemStack>; 4],
@@ -824,7 +823,7 @@ impl Guest {
             equipment_cache: Default::default(),
             selected: 0,
             carried: None,
-            carried_sent: Some(None),
+            carried_sent: None,
             craft_grid: Default::default(),
             craft_result: None,
             ender_items: vec![None; 27],
@@ -903,23 +902,12 @@ impl Guest {
         play::Clientbound::PlayerAbilities(self.abilities.packet())
     }
     pub fn send(&self, packet: &play::Clientbound) {
-        self.try_send(packet);
-    }
-
-    /// True when the complete packet encoded and was handed to the connection.
-    pub fn try_send(&self, packet: &play::Clientbound) -> bool {
         if !self.participates_online() {
-            return false;
+            return;
         }
         match packet.try_encode() {
-            Ok(body) => {
-                self.sender.send(body);
-                true
-            }
-            Err(error) => {
-                eprintln!("[lan] send refused: {error}");
-                false
-            }
+            Ok(body) => self.sender.send(body),
+            Err(error) => eprintln!("[lan] send refused: {error}"),
         }
     }
     /// Send the complete committed data of this guest's current blockless menu.
@@ -1314,7 +1302,7 @@ pub fn stack_to_network(
     synced_id: impl Fn(&str, &str) -> Option<i32>,
     s: &Option<ItemStack>,
 ) -> Option<Stack> {
-    Some(network_stack(&item_id, &synced_id, s.as_ref()?).0)
+    Some(network_stack(&item_id, &synced_id, s.as_ref()?))
 }
 /// `ProvidesTrimMaterial.STREAM_CODEC`, `ProvidesBannerPatterns.STREAM_CODEC`,
 /// `AdventureModePredicate.STREAM_CODEC` and `ItemAttributeModifiers.STREAM_CODEC`:
@@ -1695,16 +1683,15 @@ fn trim_component(
         (material, pattern) => Component::TrimDirect { material, pattern },
     })
 }
-/// Encode an item template and report whether all its synchronized components were sent.
+/// Encode the item template and its network-visible component patch.
 pub(super) fn network_stack(
     item_id: &dyn Fn(&str) -> i32,
     synced_id: &dyn Fn(&str, &str) -> Option<i32>,
     s: &ItemStack,
-) -> (Stack, bool) {
+) -> Stack {
     let enchantment_id = |name: &str| synced_id("minecraft:enchantment", name);
     let mut stack = Stack::new(item_id(&s.item), s.count as i32);
-    let mut complete = stack.item > 0;
-    if !complete {
+    if stack.item <= 0 {
         log::warn!("Cannot send item {}: no registered network id", s.item);
     }
     // Send the stack's own damage, including an explicit zero, not the prototype.
@@ -1930,22 +1917,6 @@ pub(super) fn network_stack(
             ));
         }
         stack.added.extend(firework_components(d));
-        // A goat horn's instrument, by its `minecraft:instrument` id.
-        if let Some(id) = d
-            .other("minecraft:instrument")
-            .and_then(|t| crate::save::text(Some(t)))
-            .and_then(|name| {
-                synced_id(
-                    "minecraft:instrument",
-                    &sunrise_world::datafix::dynamic::namespaced(&name),
-                )
-            })
-        {
-            stack.added.push((
-                sunrise_protocol::item::component::INSTRUMENT,
-                sunrise_protocol::item::Component::Instrument(id),
-            ));
-        }
         // The compass's lodestone target.
         if let Some(t) = d.other("minecraft:lodestone_tracker") {
             let target = t.get("target").and_then(|g| {
@@ -1981,11 +1952,7 @@ pub(super) fn network_stack(
             let charged = d
                 .charged
                 .iter()
-                .map(|c| {
-                    let (child, encoded) = network_stack(item_id, synced_id, c);
-                    complete &= encoded;
-                    child
-                })
+                .map(|c| network_stack(item_id, synced_id, c))
                 .collect();
             stack.added.push((
                 sunrise_protocol::item::component::CHARGED_PROJECTILES,
@@ -2000,11 +1967,7 @@ pub(super) fn network_stack(
             let slots: Vec<(i32, Stack)> = d
                 .container
                 .iter()
-                .map(|(slot, s)| {
-                    let (child, encoded) = network_stack(item_id, synced_id, s);
-                    complete &= encoded;
-                    (i32::from(*slot), child)
-                })
+                .map(|(slot, s)| (i32::from(*slot), network_stack(item_id, synced_id, s)))
                 .collect();
             // The saved list names only the filled slots; the codec counts them
             // all, from the first to the last that holds one.
@@ -2031,11 +1994,7 @@ pub(super) fn network_stack(
             let contents = d
                 .bundle_contents
                 .iter()
-                .map(|c| {
-                    let (child, encoded) = network_stack(item_id, synced_id, c);
-                    complete &= encoded;
-                    child
-                })
+                .map(|c| network_stack(item_id, synced_id, c))
                 .collect();
             stack.added.push((
                 sunrise_protocol::item::component::BUNDLE_CONTENTS,
@@ -2218,7 +2177,6 @@ pub(super) fn network_stack(
             match persistent::component_from_tag(kind, value, &ids) {
                 Ok(component) => stack.added.push((kind, component)),
                 Err(error) => {
-                    complete = false;
                     log::warn!("Cannot send component {name} on {}: {error}", s.item);
                 }
             }
@@ -2247,7 +2205,6 @@ pub(super) fn network_stack(
                     | "minecraft:painting/variant"
                     | "minecraft:sign_text_front"
                     | "minecraft:sign_text_back"
-                    | "minecraft:instrument"
                     | "minecraft:lodestone_tracker"
                     | "minecraft:custom_name"
                     | "minecraft:lore"
@@ -2280,7 +2237,7 @@ pub(super) fn network_stack(
             }
         }
     }
-    (stack, complete)
+    stack
 }
 
 /// `CustomModelData.CODEC` read from its saved form, for its stream codec.

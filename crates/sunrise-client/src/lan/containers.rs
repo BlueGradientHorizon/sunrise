@@ -1166,7 +1166,7 @@ impl Hub {
         }
         let carried = self.guests[i].carried.clone();
         if self.hashed_matches(&p.carried, &carried) {
-            self.guests.update(i, |g| g.carried_sent = Some(carried));
+            self.guests.update(i, |g| g.carried_sent = carried);
         } else {
             self.send_carried(i);
         }

@@ -12,7 +12,6 @@ use sunrise_protocol::registry::{Builtin, Dynamic};
 
 pub(crate) mod attribute_modifiers;
 pub(crate) mod kinetic;
-use sunrise_core::use_animation::UseAnimation;
 use sunrise_world::consumable::Consumable;
 pub type ItemConsumable = Consumable<String, ConsumeEffect>;
 
@@ -377,10 +376,11 @@ pub fn decode_consumable_bytes_with(
     let mut r = Reader::new(bytes);
     let seconds = r.f32().ok()?;
     let animation_id = r.varint().ok()?;
-    let animation = match animation_id {
-        2 => UseAnimation::Drink,
-        _ => UseAnimation::Eat,
-    };
+    let animation_name = sunrise_core::use_animation::NAMES
+        .get(animation_id as usize)
+        .copied()
+        .unwrap_or("none");
+    let animation = sunrise_items::use_animation::animation_name(animation_name.encode_utf16());
     let sound_holder = r.varint().ok()?;
     let sound = match sound_holder {
         0 => {
@@ -1072,15 +1072,15 @@ fn death_protection_tag(bytes: &[u8], builtin: &Builtin) -> Option<Tag> {
     }))
 }
 
-/// `Consumable.STREAM_CODEC` (component 45) as `Consumable.CODEC` saves it.
+/// `Consumable.STREAM_CODEC` as `Consumable.CODEC` saves it.
 fn consumable_tag(bytes: &[u8], builtin: &Builtin) -> Option<Tag> {
     let mut r = Reader::new(bytes);
     let seconds = r.f32().ok()?;
     let animation_id = r.varint().ok()?;
-    let animation = match animation_id {
-        2 => "drink",
-        _ => "eat",
-    };
+    let animation = sunrise_core::use_animation::NAMES
+        .get(animation_id as usize)
+        .copied()
+        .unwrap_or("none");
     let sound = sound_tag(&mut r, builtin)?;
     let particles = r.bool().ok()?;
     let n = r.count(r.remaining()).ok()?;
@@ -1321,6 +1321,7 @@ fn profile_tag(p: &Profile) -> Tag {
 mod tests {
     use super::*;
     use std::path::Path;
+    use sunrise_core::use_animation::UseAnimation;
     use sunrise_protocol::registry::Ids;
 
     /// `Equippable.equipSound` is the stack's component's own: a replaced

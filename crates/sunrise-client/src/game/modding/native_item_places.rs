@@ -1875,6 +1875,16 @@ pub(super) mod tests {
             game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
 
+            let direct_instrument = Tag::compound([
+                (
+                    "sound_event",
+                    Tag::compound([("sound_id", Tag::String("test:horn".into()))]),
+                ),
+                ("use_duration", Tag::Float(1.5_f32.to_bits())),
+                ("range", Tag::Float(32.0_f32.to_bits())),
+                ("durability_damage", Tag::Int(1)),
+                ("description", Tag::String("Test Horn".into())),
+            ]);
             // Parked cursor edit syncs once via sync_player_state (sync_guest_after_tick).
             let player = game.player(123).unwrap();
             let inv_menu = game.player_container_menu(player).unwrap();
@@ -1891,9 +1901,11 @@ pub(super) mod tests {
                                     "minecraft:consumable".into(),
                                     Tag::compound([
                                         ("consume_seconds", Tag::Float(0.75_f32.to_bits())),
+                                        ("animation", Tag::String("bow".into())),
                                         ("has_consume_particles", Tag::Byte(0)),
                                     ]),
                                 ),
+                                ("minecraft:instrument".into(), direct_instrument.clone()),
                                 (
                                     "minecraft:death_protection".into(),
                                     Tag::compound([("death_effects", Tag::List(Vec::new()))]),
@@ -1937,6 +1949,27 @@ pub(super) mod tests {
                 .expect("cursor's consumable override");
             assert_eq!(consumable.seconds.to_bits(), 0.75_f32.to_bits());
             assert!(!consumable.particles);
+            assert_eq!(
+                consumable.animation,
+                sunrise_core::use_animation::UseAnimation::Bow
+            );
+            let instrument = client
+                .data()
+                .unwrap()
+                .other("minecraft:instrument")
+                .unwrap();
+            assert!(matches!(
+                parked.component(component::INSTRUMENT),
+                Some(Component::Raw(_))
+            ));
+            for name in ["sound_event", "use_duration", "range", "durability_damage"] {
+                assert_eq!(instrument.get(name), direct_instrument.get(name), "{name}");
+            }
+            assert_eq!(
+                sunrise_client::component::name_text(instrument.get("description").unwrap())
+                    .plain(),
+                "Test Horn"
+            );
             assert!(client.death_protection(None).is_some_and(<[_]>::is_empty));
             assert_eq!(client.villager_food(None), Some(7));
             assert_eq!(
@@ -1949,6 +1982,29 @@ pub(super) mod tests {
                 })
             );
             game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_packets(&rx).is_empty());
+
+            // A resident component whose registry reference cannot be represented for
+            // this connection must not block an independent cursor edit or cause a retry.
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            hub.guests.update(0, |guest| {
+                let stack = guest.carried.as_mut().unwrap();
+                stack.data_mut().set_other(
+                    "minecraft:jukebox_playable",
+                    Some(Tag::String("test:missing_song".into())),
+                );
+                stack.damage = 7;
+            });
+            hub.sync_guest_after_tick(1);
+            let updates = cursor_packets(&rx);
+            let [Some(edited)] = updates.as_slice() else {
+                panic!("expected one cursor update despite the unresolved song, got {updates:?}");
+            };
+            assert_eq!(
+                edited.component(component::DAMAGE),
+                Some(&Component::Int(7))
+            );
+            hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
 
             // Open a container menu, populate and snapshot its cursor, then edit while acting.

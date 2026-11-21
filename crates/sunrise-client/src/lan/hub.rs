@@ -871,17 +871,7 @@ impl Hub {
         id
     }
     pub fn stack(&mut self, s: &Option<ItemStack>) -> Option<sunrise_protocol::item::Stack> {
-        self.stack_with_completeness(s).0
-    }
-
-    /// Encode the cursor for menu sync. Only a complete packet may advance its checkpoint.
-    fn stack_with_completeness(
-        &mut self,
-        s: &Option<ItemStack>,
-    ) -> (Option<sunrise_protocol::item::Stack>, bool) {
-        let Some(stack) = s else {
-            return (None, true);
-        };
+        let stack = s.as_ref()?;
         let item = stack.item.clone();
         let id = self.item_id(&item);
         let sync = self.sync.clone();
@@ -896,9 +886,11 @@ impl Hub {
                 .and_then(|i| i.id(name))
                 .unwrap_or(0)
         };
-        let (net, complete) =
-            network_stack(&item_id, &|registry, name| sync.id(registry, name), stack);
-        (Some(net), complete)
+        Some(network_stack(
+            &item_id,
+            &|registry, name| sync.id(registry, name),
+            stack,
+        ))
     }
 
     /// `PlayerList.broadcastAll`: send a packet to every placed player.
@@ -2390,23 +2382,20 @@ impl Hub {
         items: Vec<Option<sunrise_protocol::item::Stack>>,
     ) {
         let carried = self.guests[i].carried.clone();
-        let (carried_net, complete) = self.stack_with_completeness(&carried);
-        let sent = self.guests[i].try_send(&C::ContainerSetContent(play::ContainerSetContent {
+        let carried_net = self.stack(&carried);
+        self.guests.update(i, |g| g.carried_sent = carried);
+        self.guests[i].send(&C::ContainerSetContent(play::ContainerSetContent {
             container,
             state,
             items,
             carried: carried_net,
         }));
-        if sent {
-            self.guests
-                .update(i, |g| g.carried_sent = complete.then_some(carried));
-        }
     }
 
     /// `AbstractContainerMenu.synchronizeCarriedToRemote`: send the cursor stack when it differs
     /// from what the remote client last received.
     pub(in crate::lan) fn sync_carried(&mut self, i: usize) {
-        if self.guests[i].carried_sent.as_ref() == Some(&self.guests[i].carried) {
+        if self.guests[i].carried_sent == self.guests[i].carried {
             return;
         }
         self.send_carried(i);
@@ -2414,10 +2403,9 @@ impl Hub {
 
     pub fn send_carried(&mut self, i: usize) {
         let carried = self.guests[i].carried.clone();
-        let (item, complete) = self.stack_with_completeness(&carried);
-        if complete && self.guests[i].try_send(&C::SetCursorItem(play::SetCursorItem { item })) {
-            self.guests.update(i, |g| g.carried_sent = Some(carried));
-        }
+        let item = self.stack(&carried);
+        self.guests.update(i, |g| g.carried_sent = carried);
+        self.guests[i].send(&C::SetCursorItem(play::SetCursorItem { item }));
     }
 
     // ---- per tick ------------------------------------------------------

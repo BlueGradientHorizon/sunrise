@@ -1404,7 +1404,7 @@ impl Game<'_> {
                     for &s in changed.iter().filter(|&&s| s >= 10) {
                         g.menu_sent[s - 1] = menu.slot(s).cloned();
                     }
-                    g.carried_sent = Some(g.carried.clone());
+                    g.carried_sent = g.carried.clone();
                 });
             }
         }

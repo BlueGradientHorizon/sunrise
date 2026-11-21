@@ -6,20 +6,7 @@ use crate::buf::Reader;
 use crate::item::{ATTRIBUTE_OPERATIONS, EQUIPMENT_SLOT_GROUPS};
 use sunrise_world::snbt_text::to_snbt;
 
-const USE_ANIMATION: [&str; 12] = [
-    "none",
-    "eat",
-    "drink",
-    "block",
-    "bow",
-    "trident",
-    "crossbow",
-    "spyglass",
-    "toot_horn",
-    "brush",
-    "bundle",
-    "spear",
-];
+use sunrise_core::use_animation::NAMES as USE_ANIMATION;
 const SWING: [&str; 3] = ["none", "whack", "stab"];
 /// `EquipmentSlot` by `id` (not declaration order).
 const SLOT: [&str; 8] = [

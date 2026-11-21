@@ -222,20 +222,7 @@ const GROUP: &[&str] = &[
     "any", "mainhand", "offhand", "hand", "feet", "legs", "chest", "head", "armor", "body",
     "saddle",
 ];
-const ANIMATION: &[&str] = &[
-    "none",
-    "eat",
-    "drink",
-    "block",
-    "bow",
-    "trident",
-    "crossbow",
-    "spyglass",
-    "toot_horn",
-    "brush",
-    "bundle",
-    "spear",
-];
+use sunrise_core::use_animation::NAMES as ANIMATION;
 fn patch_kind(name: &str, ids: &dyn Ids) -> Result<i32> {
     if let Some(kind) = builtin_component_id(name) {
         return Ok(kind);
@@ -683,7 +670,7 @@ fn encode_leaf(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids) -> Result<()
         }
         24 => {
             w.f32(f(v, "consume_seconds", 1.6)?);
-            w.varint(named_default(v, "animation", 1, ANIMATION)?);
+            w.varint(named_default(v, "animation", 1, &ANIMATION)?);
             sound_default(w, v, "sound", "minecraft:entity.generic.eat", ids)?;
             w.bool(b(v, "has_consume_particles", true)?);
             sequence(w, values(v, "on_consume_effects")?, |w, v| {
