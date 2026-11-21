@@ -8,7 +8,7 @@
 //! the custom providers are the same code on both sides); any other node
 //! (another server's or a mod's) gets the type its parser and properties
 //! describe.
-use super::{ArgType, Dispatcher, Node, NodeKind, Suggests};
+use super::{ArgType, Dispatcher, Node, NodeKind, RegistryId, Suggests};
 use std::{
     collections::{HashSet, VecDeque},
     sync::{Mutex, OnceLock},
@@ -280,16 +280,26 @@ pub fn argument_type(id: i32, props: &[u8]) -> ArgType {
             "ocean_floor",
         ]),
         "minecraft:swing_animation" => ArgType::Enum(&["none", "whack", "stab"]),
-        "minecraft:loot_table" => ArgType::ResourceOrId("minecraft:loot_table"),
-        "minecraft:loot_predicate" => ArgType::ResourceOrId("minecraft:predicate"),
-        "minecraft:loot_modifier" => ArgType::ResourceOrId("minecraft:item_modifier"),
-        "minecraft:context_float_provider" => {
-            ArgType::ResourceOrId("minecraft:context_float_provider")
+        "minecraft:loot_table" => {
+            ArgType::ResourceOrId(RegistryId::from_static("minecraft:loot_table"))
         }
-        "minecraft:context_int_provider" => ArgType::ResourceOrId("minecraft:context_int_provider"),
+        "minecraft:loot_predicate" => {
+            ArgType::ResourceOrId(RegistryId::from_static("minecraft:predicate"))
+        }
+        "minecraft:loot_modifier" => {
+            ArgType::ResourceOrId(RegistryId::from_static("minecraft:item_modifier"))
+        }
+        "minecraft:context_float_provider" => {
+            ArgType::ResourceOrId(RegistryId::from_static("minecraft:context_float_provider"))
+        }
+        "minecraft:context_int_provider" => {
+            ArgType::ResourceOrId(RegistryId::from_static("minecraft:context_int_provider"))
+        }
         "minecraft:slot_source" => ArgType::SlotSource,
-        "minecraft:dialog" => ArgType::ResourceOrId("minecraft:dialog"),
-        "minecraft:feature" => ArgType::ResourceOrId("minecraft:worldgen/feature"),
+        "minecraft:dialog" => ArgType::ResourceOrId(RegistryId::from_static("minecraft:dialog")),
+        "minecraft:feature" => {
+            ArgType::ResourceOrId(RegistryId::from_static("minecraft:worldgen/feature"))
+        }
         "minecraft:uuid" => ArgType::Uuid,
         _ => ArgType::Word,
     }
