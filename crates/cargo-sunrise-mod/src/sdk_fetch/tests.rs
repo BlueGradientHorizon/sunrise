@@ -224,7 +224,7 @@ fn a_build_is_named_by_sha_short_sha_or_a_release_tag() {
     let stable = "26.3-0.1.0";
     let dev = format!(
         "{}-2026-11-21-0123456",
-        sunrise_release_sign::Channel::Snapshot.tag()
+        sunrise_release_sign::Channel::Dev.tag()
     );
     let v2 = sunrise_release_sign::SIGNATURE_V2;
     tag_release(
@@ -264,7 +264,7 @@ fn a_release_tag_resolves_only_through_its_own_signed_index() {
     let pair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
     let keys: [PublicKey; 1] = [pair.public_key().as_ref().try_into().unwrap()];
     let older = "89abcdef0123456789abcdef0123456789abcdef";
-    let channel = sunrise_release_sign::Channel::Snapshot.tag();
+    let channel = sunrise_release_sign::Channel::Dev.tag();
     let v1 = sunrise_release_sign::SIGNATURE;
     let v2 = sunrise_release_sign::SIGNATURE_V2;
     // Another build's index served under the tag, the tag's sums listing the real one.
@@ -331,9 +331,9 @@ fn a_nightly_name_is_only_nightly_or_a_dated_one() {
         "26.3-0.1",
         "026.3-0.1.0",
         "26.3.1.2-0.1.0",
-        "snapshot-2026-11-21",
-        "snapshot-2026-11-21-01234",
-        "snapshot-2026-11-21-/../../decoy",
+        "dev-2026-11-21",
+        "dev-2026-11-21-01234",
+        "dev-2026-11-21-/../../decoy",
     ] {
         let error = resolve(&base, &[], text).unwrap_err();
         assert!(error.contains("is not a build"), "{text}: {error}");

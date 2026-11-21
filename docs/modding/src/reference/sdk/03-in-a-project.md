@@ -27,15 +27,8 @@ with the line to write instead:
 The build a native mod is made for is its pin, a full commit SHA in `[native] sunrise` in
 `sunrise-mod.toml`.
 
-`cargo sunrise-mod new` writes the current Nightly's build, or the one selected with `--sunrise`. The pin is always
-the full SHA; `--sunrise` (for `new` and `update`) names the build as one of:
-
-| Written | Read through |
-|---|---|
-| a commit SHA, full or 7 to 39 hex digits | the SDK releases listed, when it is short: it must name one build |
-| `nightly`, `nightly-<YYYY-MM-DD>` | that Nightly's `sdk.json` |
-| a Stable tag such as `26.3-0.1.0` | that release's `sdk.json`, checked against its `SHA256SUMS` signed for the tag |
-| a Dev tag `dev-<YYYY-MM-DD>-<short sha>` | that build's `sdk.json`, checked against its `SHA256SUMS` signed for the tag (`SHA256SUMS.v2.sig`); the build it names must start with the short SHA |
+`cargo sunrise-mod new` writes the current Nightly's build, or the one selected with `--sunrise`, in any of the
+[forms below](#build-names). The pin is always the full SHA.
 
 A native project normally leaves `[native] mixins` out. When a mod uses mixins, builds and discovery use the
 horizon-mixins revision and patch recorded in the pinned SDK's signed `sdk.json`. The mod tool must support that
@@ -49,17 +42,22 @@ A project in a game checkout uses the checkout's API surface instead of fetching
 native compile and package revision still come from the pinned SDK. `cargo sunrise-mod update` moves the Sunrise
 build pin after checking the destination SDK; it leaves any explicit mixins revision alone.
 
-Wherever a build is given, these forms are accepted:
+### Build names
+
+Wherever a build is given (`--sunrise` for `new` and `update`, `sdk diff`, `fits`), these forms are accepted:
 
 | Written | Means |
 |---|---|
 | `nightly` | The current Nightly's build. |
 | `nightly-YYYY-MM-DD` | That day's Nightly's build. |
+| A Stable tag such as `26.3-0.1.0` | That release's build. |
+| A Dev tag `dev-YYYY-MM-DD-<short sha>` | That Dev build's; the build must start with the short SHA. |
 | 40 hex digits | That build. |
 | 7 to 39 hex digits | The one SDK whose build id starts with them, among the releases listed: this repository's 100 newest on GitHub, or a folder base's entries. Another URL base takes the full sha only. |
 
-A Nightly name is read from `<base>/<name>/sdk.json`. A Nightly whose build has no SDK says so, and asks for a build
-that has one.
+A release name is read from `<base>/<name>/sdk.json`. A Stable or Dev release's `sdk.json` must match its
+`SHA256SUMS`, signed with Sunrise's release key for exactly that tag (a Dev build's `SHA256SUMS.v2.sig`), so a mirror
+can't put another build under its name. A release whose build has no SDK says so, and asks for a build that has one.
 
 ## `.sunrise/sdk/`
 
@@ -82,7 +80,7 @@ launcher or sent to a registry.
 `SUNRISE_SDK_BASE` replaces the releases' base for the SDK fetches of the tool and the launcher alike:
 
 - a URL: a mirror with the same layout, `<base>/sdk-<build id>/<file>`, and `<base>/<tag>/sdk.json` for a
-  [release tag](#the-pin);
+  [release name](#build-names);
 - anything else: a folder holding `sdk-<build id>/` folders, and `<tag>/` folders with their `sdk.json`.
 
 A Stable or Dev tag's folder also holds that release's `SHA256SUMS` and its signature, as published. The launcher also reads game releases' folders there, for their build ids.

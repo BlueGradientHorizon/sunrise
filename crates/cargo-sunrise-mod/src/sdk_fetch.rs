@@ -145,7 +145,13 @@ pub(crate) fn pin(project: &Path) -> Result<String, String> {
 /// `sdk.json` (`nightly` and `nightly-<date>` as the mirror holds it; a Stable tag such as
 /// `26.3-0.1.0`, or a Dev build's `dev-<date>-<short sha>`, checked against the sums signed for
 /// that tag); a short sha through the releases listed.
-pub(crate) fn resolve(base: &Base, keys: &[PublicKey], text: &str) -> Result<String, String> {
+/// `release_keys` check a Stable or Dev tag's own sums: the game's release keys, never the
+/// developer key a debug build also trusts for an `sdk-<sha>`.
+pub(crate) fn resolve(
+    base: &Base,
+    release_keys: &[PublicKey],
+    text: &str,
+) -> Result<String, String> {
     if sunrise_mod_package::manifest::revision(text) {
         return Ok(text.to_owned());
     }
@@ -185,21 +191,22 @@ pub(crate) fn resolve(base: &Base, keys: &[PublicKey], text: &str) -> Result<Str
                     sdk::INDEX,
                     Some(&sums),
                     Some(&signature),
-                    keys,
+                    release_keys,
                 ),
                 None => sunrise_release_sign::signed_digest(
                     text,
                     sdk::INDEX,
                     Some(&sums),
                     Some(&signature),
-                    keys,
+                    release_keys,
                 ),
             }?;
             sunrise_release_sign::check(
                 sdk::INDEX,
                 &expected,
                 &sunrise_release_sign::sha256_hex(&bytes),
-            )?;
+            )
+            .map_err(|e| format!("Release {text}: {e}"))?;
         }
         #[derive(serde::Deserialize)]
         struct Named {
@@ -260,6 +267,11 @@ pub(crate) fn named(text: &str, build: &str, error: String) -> String {
     } else {
         format!("{text} (build {build}): {error}")
     }
+}
+
+/// The keys a game release (a Stable or Dev tag) must be signed with.
+pub(crate) fn release_keys() -> Vec<PublicKey> {
+    sunrise_release_sign::trusted_keys_for(native::PREBUILT_REPO)
 }
 
 /// The keys an SDK must be signed with: the release keys, and in a debug-assertions build the one in `SUNRISE_SDK_TRUSTED_KEY`.
@@ -499,15 +511,14 @@ fn pinned(index: &Index, dir: &Path) -> PinnedSdk {
     }
 }
 
-/// `text` (a Nightly name or a sha)'s build, its small files only (`sdk.json`, `surface.json`),
+/// `text` (a release tag or a sha)'s build, its small files only (`sdk.json`, `surface.json`),
 /// in the project's `.sunrise/cache/<build>/`, verified as the pinned SDK is, without repinning.
 pub(crate) fn fetch_build(project: &Path, text: &str) -> Result<PinnedSdk, String> {
     let base = Base::from_env();
-    let keys = keys();
-    let build = resolve(&base, &keys, text)?;
+    let build = resolve(&base, &release_keys(), text)?;
     fetch(
         &base,
-        &keys,
+        &keys(),
         &build,
         &project.join(CACHE).join(&build),
         false,

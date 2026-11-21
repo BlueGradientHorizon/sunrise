@@ -429,7 +429,11 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
 /// The build a code mod pins: `--sunrise`'s (a sha or a release tag), or by default the current
 /// Nightly's, the build players have.
 fn pin(sunrise: &str) -> Result<String, String> {
-    sdk_fetch::resolve(&sdk_fetch::Base::from_env(), &sdk_fetch::keys(), sunrise)
+    sdk_fetch::resolve(
+        &sdk_fetch::Base::from_env(),
+        &sdk_fetch::release_keys(),
+        sunrise,
+    )
 }
 
 /// The optional build in `update [--sunrise <build>]`.
