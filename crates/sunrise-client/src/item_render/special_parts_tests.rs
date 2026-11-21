@@ -731,9 +731,12 @@ fn child_poses_leave_following_submissions_in_their_own_scopes() {
     assert_eq!(quads.len(), 18);
     // The 1/4-wide cube, centered by -1/2 after the local pose: translated by 1/4 and
     // doubled in the child, only translated in its parent, then unposed at the root.
-    for (cube, expected) in quads
-        .chunks_exact(6)
-        .zip([(-0.25, 0.25), (-0.25, 0.0), (-0.5, -0.25)])
+    for (cube, expected) in
+        quads
+            .as_chunks::<6>()
+            .0
+            .iter()
+            .zip([(-0.25, 0.25), (-0.25, 0.0), (-0.5, -0.25)])
     {
         let bounds = cube
             .iter()
