@@ -225,4 +225,159 @@ mod tests {
             assert!(!has_factories());
         });
     }
+
+    #[test]
+    fn panicking_factory_or_component_methods_disable_only_that_owner() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        struct PanicCreateData;
+        impl TooltipComponentData for PanicCreateData {}
+        struct PanicWidthData;
+        impl TooltipComponentData for PanicWidthData {}
+        struct PanicHeightData;
+        impl TooltipComponentData for PanicHeightData {}
+        struct PanicHandData;
+        impl TooltipComponentData for PanicHandData {}
+        struct HealthyData(i32);
+        impl TooltipComponentData for HealthyData {}
+
+        struct PanicWidthClient(Arc<AtomicUsize>);
+        impl ClientTooltipComponent for PanicWidthClient {
+            fn height(&self, _font: &dyn TooltipFont) -> i32 {
+                10
+            }
+            fn width(&self, _font: &dyn TooltipFont) -> i32 {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                panic!("width boom");
+            }
+        }
+
+        struct PanicHeightClient(Arc<AtomicUsize>);
+        impl ClientTooltipComponent for PanicHeightClient {
+            fn height(&self, _font: &dyn TooltipFont) -> i32 {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                panic!("height boom");
+            }
+            fn width(&self, _font: &dyn TooltipFont) -> i32 {
+                10
+            }
+        }
+
+        struct PanicHandClient(Arc<AtomicUsize>);
+        impl ClientTooltipComponent for PanicHandClient {
+            fn height(&self, _font: &dyn TooltipFont) -> i32 {
+                10
+            }
+            fn width(&self, _font: &dyn TooltipFont) -> i32 {
+                10
+            }
+            fn show_tooltip_with_item_in_hand(&self) -> bool {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                panic!("hand boom");
+            }
+        }
+
+        let create_calls = Arc::new(AtomicUsize::new(0));
+        let width_calls = Arc::new(AtomicUsize::new(0));
+        let height_calls = Arc::new(AtomicUsize::new(0));
+        let hand_calls = Arc::new(AtomicUsize::new(0));
+
+        let mut factories = TooltipComponentFactories::default();
+        let insert_owned = |factories: &mut TooltipComponentFactories,
+                            mod_id: &'static str,
+                            factory: TooltipComponentFactory| {
+            factories.factories.insert(
+                factory.__type_id(),
+                RegisteredFactory {
+                    owner: Some(CallbackOwner::for_mod(mod_id)),
+                    factory,
+                },
+            );
+        };
+
+        let c_calls = create_calls.clone();
+        insert_owned(
+            &mut factories,
+            "panic_create_mod",
+            TooltipComponentFactory::new::<PanicCreateData, MetricClient>(move |_| {
+                c_calls.fetch_add(1, Ordering::Relaxed);
+                panic!("create boom");
+            }),
+        );
+        let w_calls = width_calls.clone();
+        insert_owned(
+            &mut factories,
+            "panic_width_mod",
+            TooltipComponentFactory::new::<PanicWidthData, PanicWidthClient>(move |_| {
+                PanicWidthClient(w_calls.clone())
+            }),
+        );
+        let h_calls = height_calls.clone();
+        insert_owned(
+            &mut factories,
+            "panic_height_mod",
+            TooltipComponentFactory::new::<PanicHeightData, PanicHeightClient>(move |_| {
+                PanicHeightClient(h_calls.clone())
+            }),
+        );
+        let s_calls = hand_calls.clone();
+        insert_owned(
+            &mut factories,
+            "panic_hand_mod",
+            TooltipComponentFactory::new::<PanicHandData, PanicHandClient>(move |_| {
+                PanicHandClient(s_calls.clone())
+            }),
+        );
+        insert_owned(
+            &mut factories,
+            "healthy_mod",
+            TooltipComponentFactory::new::<HealthyData, MetricClient>(|d| MetricClient {
+                width: d.0,
+                height: 14,
+            }),
+        );
+
+        let font = StubFont(Identifier::parse("minecraft:default").unwrap());
+        with_test_factories(factories, || {
+            let panic_create = TooltipComponent::custom(PanicCreateData);
+            assert!(create(&panic_create).is_none());
+            assert_eq!(create_calls.load(Ordering::Relaxed), 1);
+            // Disabled after first panic: subsequent create skips invoking the factory.
+            assert!(create(&panic_create).is_none());
+            assert_eq!(create_calls.load(Ordering::Relaxed), 1);
+
+            let panic_width = TooltipComponent::custom(PanicWidthData);
+            let prepared = create(&panic_width).expect("factory succeeds before width panics");
+            assert_eq!(prepared.width(&font), 0);
+            assert_eq!(width_calls.load(Ordering::Relaxed), 1);
+            assert_eq!(prepared.width(&font), 0);
+            assert_eq!(width_calls.load(Ordering::Relaxed), 1);
+            assert!(create(&panic_width).is_none());
+
+            let panic_height = TooltipComponent::custom(PanicHeightData);
+            let prepared = create(&panic_height).expect("factory succeeds before height panics");
+            assert_eq!(prepared.height(&font), 0);
+            assert_eq!(height_calls.load(Ordering::Relaxed), 1);
+            assert_eq!(prepared.height(&font), 0);
+            assert_eq!(height_calls.load(Ordering::Relaxed), 1);
+            assert!(create(&panic_height).is_none());
+
+            let panic_hand = TooltipComponent::custom(PanicHandData);
+            let prepared = create(&panic_hand).expect("factory succeeds before hand check panics");
+            assert!(!prepared.show_tooltip_with_item_in_hand());
+            assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
+            assert!(!prepared.show_tooltip_with_item_in_hand());
+            assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
+            assert!(create(&panic_hand).is_none());
+
+            // Sibling mod factory remains completely unaffected.
+            let healthy = TooltipComponent::custom(HealthyData(48));
+            let prepared = create(&healthy).expect("healthy sibling remains enabled");
+            assert_eq!(prepared.width(&font), 48);
+            assert_eq!(prepared.height(&font), 14);
+        });
+    }
 }

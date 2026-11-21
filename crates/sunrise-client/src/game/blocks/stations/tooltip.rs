@@ -597,18 +597,27 @@ mod tests {
 
     #[test]
     fn wrap_tooltip_width_matches_neoforge_client_hooks() {
-        // Fits on the right side without wrapping.
+        // A: fits on the right side without wrapping (including exact screen_width boundary).
         assert_eq!(wrap_tooltip_width(60, 10, 320, -1), (60, false));
-        // Overflows right, flips left cleanly without wrapping.
+        assert_eq!(wrap_tooltip_width(100, 100, 216, -1), (100, false));
+        // B: overflows right, flips left cleanly without wrapping (including exact tooltip_x == 4).
         assert_eq!(wrap_tooltip_width(80, 260, 320, -1), (80, false));
-        // Overflows both sides; cursor on right half wraps to mouse_x - 12 - 8.
+        assert_eq!(wrap_tooltip_width(80, 100, 190, -1), (80, false));
+        // C: overflows both sides; cursor on right half (mouse_x > screen_width / 2).
         assert_eq!(wrap_tooltip_width(180, 180, 320, -1), (160, true));
-        // Overflows both sides; cursor on left half wraps to screen_width - 16 - mouse_x.
-        assert_eq!(wrap_tooltip_width(180, 100, 320, -1), (204, true));
-        // Explicit positive max_width narrows and enables wrapping.
+        // D: overflows both sides; cursor on left half (mouse_x < screen_width / 2).
+        assert_eq!(wrap_tooltip_width(210, 100, 320, -1), (204, true));
+        // E: exact midpoint (mouse_x == screen_width / 2) uses the left-half formula.
+        assert_eq!(wrap_tooltip_width(200, 160, 320, -1), (144, true));
+        // F: explicit positive max_width narrows and wraps; >= width or <= 0 leaves wrapping off.
         assert_eq!(wrap_tooltip_width(100, 10, 320, 40), (40, true));
-        // Zero or negative max_width leaves wrapping disabled when tooltip fits.
+        assert_eq!(wrap_tooltip_width(100, 10, 320, 100), (100, false));
+        assert_eq!(wrap_tooltip_width(100, 10, 320, 140), (100, false));
         assert_eq!(wrap_tooltip_width(100, 10, 320, 0), (100, false));
+        // G: max_width tighter than screen wrap narrows further.
+        assert_eq!(wrap_tooltip_width(210, 180, 320, 100), (100, true));
+        // H: max_width wider than screen wrap keeps screen wrap width.
+        assert_eq!(wrap_tooltip_width(210, 180, 320, 180), (160, true));
         // Extreme values never overflow.
         let _ = wrap_tooltip_width(i32::MAX, i32::MAX, i32::MAX, i32::MAX);
         let _ = wrap_tooltip_width(i32::MIN, i32::MIN, i32::MIN, i32::MIN);
@@ -618,3 +627,7 @@ mod tests {
 #[cfg(test)]
 #[path = "tooltip_bundle_tests.rs"]
 mod bundle_tests;
+
+#[cfg(test)]
+#[path = "tooltip_component_tests.rs"]
+mod component_tests;

@@ -3108,9 +3108,12 @@ mod tests {
     #[ignore = "daily"]
     fn gathered_tooltip_components_wrap_only_when_a_mod_sets_the_width() {
         use mod_api::{
-            self, ClientHost, ClientTooltipComponent, ClientTooltipComponentFactoriesRegistrar,
-            Hooks, ModEntry, Mods, RenderTooltipGatherComponentsEvent, TooltipComponent,
-            TooltipComponentData, TooltipElement, TooltipFont,
+            self,
+            __private::{ModPhase, PhaseOwner, game::RegistrationContextNew},
+            ClientHost, ClientTooltipComponent, Hooks, ModEntry, Mods,
+            RegisterClientTooltipComponentFactoriesEvent, RegistrationContext,
+            RenderTooltipGatherComponentsEvent, TooltipComponent, TooltipComponentData,
+            TooltipElement, TooltipFont,
         };
         use std::sync::atomic::{AtomicU8, Ordering};
         use sunrise_client::{
@@ -3138,6 +3141,15 @@ mod tests {
         struct Mod;
         #[mod_api::__subscriptions]
         impl Hooks for Mod {
+            fn register_client_tooltip_component_factories(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterClientTooltipComponentFactoriesEvent<'_>,
+            ) {
+                event
+                    .factories
+                    .register::<KnownData, KnownClient>(|d| KnownClient(d.0, d.1));
+            }
             fn render_tooltip_gather_components(
                 &self,
                 _: &dyn ClientHost,
@@ -3176,12 +3188,17 @@ mod tests {
                 mod_api::Flow::Continue
             }
         }
-        let mut factories = TooltipComponentFactories::default();
-        let registrar: &mut dyn ClientTooltipComponentFactoriesRegistrar = &mut factories;
-        registrar.register::<KnownData, KnownClient>(|d| KnownClient(d.0, d.1));
 
         let mods: Mods = vec![ModEntry::new("gather", Box::new(Mod))].into();
         mod_platform::testing::with_mods(mods, || {
+            let mut factories = TooltipComponentFactories::default();
+            {
+                let _phase = PhaseOwner::scope(ModPhase::Registration);
+                super::Game::native_register_client_tooltip_component_factories(
+                    &RegistrationContext::new(),
+                    &mut factories,
+                );
+            }
             with_test_factories(factories, || {
                 super::super::native_entity_refs::tests::with_game(|game| {
                     let stick = super::ItemStack::new("minecraft:stick", 1);
@@ -3242,19 +3259,40 @@ mod tests {
     #[test]
     fn measured_image_tooltips_position_the_whole_box() {
         use super::tooltip_position;
+        let vanilla = |cursor: [i32; 2], screen: [i32; 2], size: [i32; 2]| {
+            let [x, y] = mod_api::ClientTooltipPositioner::position_tooltip(
+                &mod_api::DefaultTooltipPositioner,
+                screen,
+                cursor,
+                size,
+            );
+            (x as f32, y as f32)
+        };
         assert_eq!(
             tooltip_position((50.0, 90.0), (200.0, 160.0), (40.0, 8.0)),
             (62.0, 78.0)
+        );
+        assert_eq!(
+            tooltip_position((50.0, 90.0), (200.0, 160.0), (40.0, 8.0)),
+            vanilla([50, 90], [200, 160], [40, 8])
         );
         // A wide image makes the whole tooltip move to the other side.
         assert_eq!(
             tooltip_position((90.0, 90.0), (200.0, 160.0), (128.0, 42.0)),
             (4.0, 78.0)
         );
+        assert_eq!(
+            tooltip_position((90.0, 90.0), (200.0, 160.0), (128.0, 42.0)),
+            vanilla([90, 90], [200, 160], [128, 42])
+        );
         // Its height participates in the existing bottom-edge adjustment too.
         assert_eq!(
             tooltip_position((90.0, 90.0), (200.0, 80.0), (128.0, 42.0)),
             (4.0, 35.0)
+        );
+        assert_eq!(
+            tooltip_position((90.0, 90.0), (200.0, 80.0), (128.0, 42.0)),
+            vanilla([90, 90], [200, 80], [128, 42])
         );
     }
     use super::*;
@@ -3406,6 +3444,14 @@ mod cycling_tests {
                 assert_eq!((event.place.x, event.place.y), (10, 20));
                 assert_eq!(event.screen, [320.0, 240.0]);
                 assert_eq!(*event.font, Identifier::parse("minecraft:default").unwrap());
+                assert_eq!(
+                    event.positioner.position_tooltip(
+                        [320, 240],
+                        [event.place.x, event.place.y],
+                        [60, 20]
+                    ),
+                    [22, 8]
+                );
                 match MODE.load(Ordering::Relaxed) {
                     1 => {
                         event.place.x = 50;
@@ -3423,12 +3469,16 @@ mod cycling_tests {
                         );
                         return mod_api::Flow::Cancel;
                     }
+                    3 => {
+                        *event.font = Identifier::parse("minecraft:alt").unwrap();
+                    }
                     _ => {}
                 }
                 mod_api::Flow::Continue
             }
         }
         let default_font = Identifier::parse("minecraft:default").unwrap();
+        let alt_font = Identifier::parse("minecraft:alt").unwrap();
         let components = vec![PreparedTooltipComponent::__text(
             mod_api::Text::literal("Tip"),
             u32::MAX,
@@ -3451,6 +3501,8 @@ mod cycling_tests {
                 assert_eq!(pre(game), Some(((10.6, 20.4), default_font.clone())));
                 MODE.store(1, Ordering::Relaxed);
                 assert_eq!(pre(game), Some(((50.0, 60.0), default_font.clone())));
+                MODE.store(3, Ordering::Relaxed);
+                assert_eq!(pre(game), Some(((10.6, 20.4), alt_font.clone())));
                 MODE.store(2, Ordering::Relaxed);
                 assert_eq!(pre(game), None);
                 assert!(
