@@ -160,8 +160,11 @@ pub struct LootDrops<'a> {
     pub weapon: Option<&'a ItemStack>,
     /// The breaking or using tool (`LootContextParams.TOOL`). Always None for
     /// entity deaths. For the attacker's live hand, resolve `damage_source.causing`
-    /// through `host.entity`, then `host.living`, and read `living.hand_item(host, Hand::Main)`.
-    /// This reads when called, including changes made by earlier loot listeners.
+    /// through `host.entity`, then `host.living`, and read
+    /// `living.with_hand_item(host, Hand::Main, |stack| stack.item())`. To retain the
+    /// hand stack or inspect its components, call [`crate::ItemStackView::project`] in
+    /// the callback and handle a refused projection. This reads when called, including
+    /// changes made by earlier loot listeners.
     pub tool: Option<&'a ItemStack>,
     /// The radius of the explosion that broke the block.
     pub explosion: Option<f32>,
@@ -183,7 +186,8 @@ impl LootDrops<'_> {
     /// stack, preserving components even after the shooter changes hands.
     /// Otherwise reads the direct entity's weapon when called: a player's recorded
     /// auto-spin stack during Riptide, otherwise the live main hand.
-    /// Returns None for non-death drops or an absent or unavailable weapon.
+    /// Returns an owned snapshot, or `None` for non-death drops or a weapon that is absent,
+    /// unavailable or cannot be projected into an owned stack.
     pub fn weapon_item(&self, host: &dyn Host) -> Option<ItemStack> {
         let source = self.damage_source?;
         if let Some(weapon) = self.weapon {
@@ -191,7 +195,9 @@ impl LootDrops<'_> {
         }
         let entity = host.entity(u32::try_from(source.direct).ok().filter(|id| *id != 0)?)?;
         let living = host.living(entity)?;
-        backend_of(host)?.living_weapon_item(living)
+        living
+            .with_weapon_item(host, |stack| stack.project())
+            .flatten()
     }
 }
 

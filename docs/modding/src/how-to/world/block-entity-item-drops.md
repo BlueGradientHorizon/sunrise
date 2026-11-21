@@ -6,6 +6,10 @@ Use the tick scope's Host to read or write other objects. A dropped item's
 stops resolving immediately. A numeric entity ID never retargets a
 replacement or an item in another level.
 
+Use `item.with_stack(host, |stack| stack.count())` to inspect a dropped item's stack without
+copying it. For components or an owned snapshot, use
+`item.with_stack(host, |stack| stack.project()).flatten()`.
+
 If both the item and the ticking block entity must change or neither may
 change, make both edits in `event.subject.transaction`. Take the Host for the
 item write, then re-take the subject view. Return `Err` if the item operation

@@ -222,7 +222,7 @@ impl Game<'_> {
         }
     }
 
-    fn native_menu_guest(&self, menu: MenuRef) -> Option<&Guest> {
+    pub(super) fn native_menu_guest(&self, menu: MenuRef) -> Option<&Guest> {
         let guest = self.native_menu_player(menu.fields().player)?;
         let host = self.lan.as_ref()?;
         (host.hub.holder_guest(guest.uuid, self.dim.id())?.conn == guest.conn).then_some(())?;

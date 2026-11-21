@@ -588,12 +588,16 @@ mod tests {
                                 Err::<(), ()>(())
                             });
                             assert_eq!(inner, Err(()));
-                            inner_restored = place.stack(host);
+                            inner_restored =
+                                place.with_stack(host, |stack| stack.project()).flatten();
                             assert_eq!(place.extract(host, tx, &resource, 1), 1);
                             Err::<(), ()>(())
                         });
                         assert_eq!(aborted, Err(()));
-                        restored.push((inner_restored, place.stack(host)));
+                        restored.push((
+                            inner_restored,
+                            place.with_stack(host, |stack| stack.project()).flatten(),
+                        ));
                         // Player and menu writes share the ender snapshot, not competing copies.
                         let aborted = host.transaction(|host, tx| {
                             assert_eq!(place.extract(host, tx, &resource, 1), 1);
@@ -602,7 +606,7 @@ mod tests {
                         });
                         assert_eq!(aborted, Err(()));
                         assert_eq!(
-                            place.stack(host),
+                            place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
                         );
                         assert_eq!(menu.carried(host), Some(None));
@@ -617,7 +621,7 @@ mod tests {
                         });
                         assert_eq!(aborted, Err(()));
                         assert_eq!(
-                            place.stack(host),
+                            place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
                         );
                     });
@@ -1093,14 +1097,16 @@ mod tests {
             ) -> Flow {
                 if event.kind == "minecraft:item" {
                     let opener = host.player(123).unwrap();
-                    let stone = ItemStack::new("minecraft:stone", 64)
-                        .try_into_api()
-                        .unwrap();
-                    assert_eq!(
-                        opener.inventory_slots(host),
-                        Some((0..36).map(|slot| (slot, stone.clone())).collect()),
-                        "the listener sees the opener's full inventory after cursor reinsertion"
-                    );
+                    let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
+                    opener.with_inventory(host, |view| {
+                        let mut slots = view.iter();
+                        for expected in 0..36 {
+                            let (slot, stack) = slots.next().unwrap();
+                            assert_eq!((slot, stack.item(), stack.count()), (expected, stone, 64),
+                                "the listener sees the opener's full inventory after cursor reinsertion");
+                        }
+                        assert!(slots.next().is_none());
+                    }).unwrap();
                     opener.set_inventory_slot(host, 3, None).unwrap();
                     self.0.lock().unwrap().push("drop");
                 }

@@ -1058,11 +1058,12 @@ mod tests {
                 let outcome = host.entity(event.converted);
                 let weapon = outcome
                     .and_then(|entity| host.living(entity))
-                    .and_then(|living| living.equipment(host, EquipmentSlot::MainHand))
-                    .map(|stack| {
-                        mod_api::__private::item_key_id(stack.item())
-                            .unwrap()
-                            .to_string()
+                    .and_then(|living| {
+                        living.with_equipment(host, EquipmentSlot::MainHand, |stack| {
+                            mod_api::__private::item_key_id(stack.item())
+                                .unwrap()
+                                .to_string()
+                        })
                     });
                 let mushrooms = host
                     .level("minecraft:overworld")
@@ -1072,11 +1073,12 @@ mod tests {
                     .unwrap()
                     .into_iter()
                     .filter_map(|entity| host.item_entity(entity))
-                    .filter_map(|item| item.stack(host))
-                    .filter(|stack| {
-                        mod_api::__private::item_key_id(stack.item())
-                            .unwrap()
-                            .ends_with("mushroom")
+                    .filter(|item| {
+                        item.with_stack(host, |stack| {
+                            mod_api::__private::item_key_id(stack.item())
+                                .unwrap()
+                                .ends_with("mushroom")
+                        }) == Some(true)
                     })
                     .count();
                 self.seen.lock().unwrap().push(SeenConversion {

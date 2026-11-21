@@ -2811,12 +2811,15 @@ pub(super) mod tests {
                 .update_guest(12, |guest| guest.motion = Some(Box::new(motion)))
                 .unwrap();
             let player = game.player(12).unwrap();
-            assert_eq!(
-                player.inventory(game),
-                Some(vec![crate::game::api_values::test_snapshot(
-                    &ItemStack::new("minecraft:stone", 1)
-                )])
-            );
+            player
+                .with_inventory(game, |view| {
+                    let mut slots = view.iter();
+                    let (slot, stack) = slots.next().unwrap();
+                    let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
+                    assert_eq!((slot, stack.item(), stack.count()), (0, stone, 1));
+                    assert!(slots.next().is_none());
+                })
+                .unwrap();
             let guest_living = game.living(player.fields().entity).unwrap();
             let host: &dyn mod_api::Host = game;
             assert_eq!(
@@ -2844,8 +2847,10 @@ pub(super) mod tests {
                 Some(ItemStack::new("minecraft:iron_horse_armor", 1))
             ));
             assert_eq!(
-                game.living_equipment(living, EquipmentSlot::Saddle),
-                Some(saddle.clone())
+                game.living_equipment_stack(living, EquipmentSlot::Saddle)
+                    .map(|stack| stack.project())
+                    .as_deref(),
+                Some(&saddle)
             );
             assert_eq!(
                 game.lan.as_ref().unwrap().hub.guests[0]
@@ -2855,7 +2860,10 @@ pub(super) mod tests {
                 Some("minecraft:iron_horse_armor")
             );
             assert!(game.living_set_equipment(living, EquipmentSlot::Saddle, None));
-            assert_eq!(game.living_equipment(living, EquipmentSlot::Saddle), None);
+            assert!(
+                game.living_equipment_stack(living, EquipmentSlot::Saddle)
+                    .is_none()
+            );
             // The host's own previous mode, which no guest's change may touch.
             game.previous_mode = Some(sunrise_client::command::args::GameMode::Adventure);
             assert_eq!(game.player_previous_game_mode(player), Some(None));
@@ -2910,10 +2918,10 @@ pub(super) mod tests {
                 let living = game.living(entity).unwrap();
                 assert_eq!(
                     living
-                        .equipment(game, EquipmentSlot::MainHand)
-                        .unwrap()
-                        .item()
-                        .id(game),
+                        .with_equipment(game, EquipmentSlot::MainHand, |stack| stack
+                            .item()
+                            .id(game))
+                        .unwrap(),
                     "minecraft:stone"
                 );
                 assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
@@ -2986,10 +2994,8 @@ pub(super) mod tests {
             let living = game.living(other).unwrap();
             assert_eq!(
                 living
-                    .equipment(game, EquipmentSlot::MainHand)
-                    .unwrap()
-                    .item()
-                    .id(game),
+                    .with_equipment(game, EquipmentSlot::MainHand, |stack| stack.item().id(game))
+                    .unwrap(),
                 "minecraft:stone"
             );
             let player = game.player(13).unwrap();
@@ -3399,7 +3405,7 @@ pub(super) mod tests {
                 Err(())
             });
             assert!(rolled_back.is_err());
-            assert!(place.stack(game).is_none());
+            assert!(place.with_stack(game, |_| ()).is_none());
             assert_eq!(
                 game.lan
                     .as_ref()
@@ -3417,7 +3423,7 @@ pub(super) mod tests {
                 host.transaction(|host, tx| Ok::<_, ()>(place.insert(host, tx, &sticks, 1))),
                 Ok(1)
             );
-            assert_eq!(place.stack(game).unwrap().count(), 1);
+            assert_eq!(place.with_stack(game, |stack| stack.count()).unwrap(), 1);
             assert_eq!(game.fake_player(nether, 2345, "parked"), Some(nether_actor));
             assert!(game.player_set_experience_levels(nether_actor, 8));
             assert!(game.player_set_experience_levels(overworld_actor, 3));

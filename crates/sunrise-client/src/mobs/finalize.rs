@@ -22,10 +22,13 @@
 use super::{
     Mob, MobWorld, Species, farm::Climate, gear, spawn_rules::Reason, spawning::LocalDifficulty,
 };
-use crate::{enchant::Enchantments, items::Items};
+use crate::{
+    enchant::Enchantments,
+    items::{ItemStack, Items},
+};
 use serde_json::Value;
-use std::{fs, path::Path, sync::Arc};
-use sunrise_core::{geometry::Aabb, random::RandomSource};
+use std::{borrow::Cow, fs, path::Path, sync::Arc};
+use sunrise_core::{equipment_slot::EquipmentSlot, geometry::Aabb, random::RandomSource};
 
 /// What a level's finalizeSpawn event decided for a mob another mob's
 /// finalizeSpawn created: the rider is dropped, added without its own rolls,
@@ -1310,26 +1313,65 @@ pub fn item(m: &Mob, slot: usize) -> Option<Arc<str>> {
         _ => None,
     }
 }
-/// The whole stack a mob keeps in `slot` (damage, name, components, count,
-/// enchantments and trim), when it kept more than the item id.
-pub fn stored_stack(m: &Mob, slot: usize) -> Option<crate::items::ItemStack> {
-    if slot > HEAD {
-        return None;
+/// A single equipment stack, with any separate gear data needed to project it.
+pub struct EquipmentRead<'a> {
+    base: &'a ItemStack,
+    overlays: Option<(&'a gear::Gear, usize)>,
+}
+
+impl<'a> EquipmentRead<'a> {
+    /// Borrow a resident stack whose components are all on the stack itself.
+    pub fn resident(base: &'a ItemStack) -> Self {
+        Self {
+            base,
+            overlays: None,
+        }
     }
-    let mut stack = m.extra.slot_stack(slot)?.clone();
-    if stack.damage == 0 && stack.count <= 1 && stack.extra.is_none() {
+
+    /// The stored stack. Gear overlays affect components, not item, count or damage.
+    pub fn base(&self) -> &'a ItemStack {
+        self.base
+    }
+
+    /// The complete stack: still borrowed unless its gear data needs overlaying.
+    pub fn project(&self) -> Cow<'a, ItemStack> {
+        let Some((gear, index)) = self.overlays else {
+            return Cow::Borrowed(self.base);
+        };
+        let mut stack = self.base.clone();
+        if !gear.slots[index].is_empty() {
+            stack.data_mut().enchantments = gear.slots[index].clone();
+        }
+        if let Some(trim) = &gear.trims[index] {
+            stack.data_mut().trim = Some(trim.clone());
+        }
+        Cow::Owned(stack)
+    }
+}
+
+fn stored_equipment<'a>(m: &'a Mob, slot: usize, base: &'a ItemStack) -> Option<EquipmentRead<'a>> {
+    if slot > HEAD || (base.damage == 0 && base.count <= 1 && base.extra.is_none()) {
         return None;
     }
     let index = gear_slot(slot);
-    if let Some(g) = gear::gear(m) {
-        if !g.slots[index].is_empty() {
-            stack.data_mut().enchantments = g.slots[index].clone();
-        }
-        if g.trims[index].is_some() {
-            stack.data_mut().trim = g.trims[index].clone();
-        }
-    }
-    Some(stack)
+    let overlays = gear::gear(m)
+        .filter(|gear| !gear.slots[index].is_empty() || gear.trims[index].is_some())
+        .map(|gear| (gear, index));
+    Some(EquipmentRead { base, overlays })
+}
+
+/// Borrow one slot as `Mob::equipment_stacks` reads it, without reading the other slots.
+pub fn equipment_slot(m: &Mob, slot: EquipmentSlot) -> Option<EquipmentRead<'_>> {
+    let slot = slot as usize;
+    let base = m.extra.slot_stack(slot)?;
+    Some(stored_equipment(m, slot, base).unwrap_or_else(|| EquipmentRead::resident(base)))
+}
+
+/// The whole stack a mob keeps in `slot` (damage, name, components, count,
+/// enchantments and trim), when it kept more than the item id.
+pub fn stored_stack(m: &Mob, slot: usize) -> Option<ItemStack> {
+    let base = m.extra.slot_stack(slot)?;
+    Some(stored_equipment(m, slot, base)?.project().into_owned())
 }
 /// What a mob has in `slot` as a stack: the one it kept, else one item with
 /// its enchantments.

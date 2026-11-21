@@ -1,16 +1,22 @@
 //! The game's item places for native mods (`mod_api::ItemPlace`, arismoko/horizon#41 §7): a
 //! player's slots, hands and cursor, entities' slots, item entities and the guest storage a
 //! menu slot shows (ender chest, crafting grid, a mod's chest menu). Mods read and write
-//! them through `ItemPlace`'s `stack`, `insert` and `extract`, which come here for these places; a block entity's slots,
-//! a stack inside an item and a mod's own places go through their handlers.
+//! them through `ItemPlace`'s `with_stack`, `insert` and `extract`, which come here for these
+//! places; a block entity's slots, a stack inside an item and a mod's own places go through their handlers.
 use super::Game;
+use super::native_server::PlayerRead;
 use super::transactions::{After, DeferredEffect};
 use mod_api::__private::game::*;
 use mod_api::{
-    CraftedByError, EquipmentSlot, ItemPlace, ItemPlaceEditError, LivingRef, MenuSlotBacking,
-    Transaction,
+    CraftedByError, EquipmentSlot, ItemPlace, ItemPlaceEditError, ItemStackView, LivingRef,
+    MenuSlotBacking, Transaction,
 };
-use sunrise_client::{first_person::Hand, items::ItemStack, menu::Menu};
+use sunrise_client::{
+    first_person::Hand,
+    items::ItemStack,
+    menu::Menu,
+    mobs::finalize::{self, EquipmentRead},
+};
 
 impl Game<'_> {
     /// The player a place belongs to, if a player's: a cursor's only while its menu is open.
@@ -155,41 +161,109 @@ impl Game<'_> {
         let tag = sunrise_client::command::args::normalize(tag);
         self.res.mob_data().entity_has(&tag, entity_type)
     }
-    /// The stack at a player's or an item entity's place; none for an empty one, a player who
-    /// isn't here or is dead, an item entity not in the level in place, any other place
-    /// (`ItemPlace::stack` reads those), and on a client.
-    pub(super) fn game_stack(&mut self, place: &ItemPlace) -> Option<ItemStack> {
+    /// Lend a native place's stack without encoding components or initializing storage.
+    pub(super) fn game_stack(
+        &mut self,
+        place: &ItemPlace,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
+        super::native_living_refs::lend_equipment(self.game_stack_source(place)?, read)
+    }
+
+    /// Borrow the stack in a native place without initializing a player or container.
+    /// Equipment overlays are only applied when the caller projects a complete stack.
+    fn game_stack_source(&self, place: &ItemPlace) -> Option<EquipmentRead<'_>> {
         if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
-            return self.scratch_held(*id);
+            return self.scratch_held(*id).map(EquipmentRead::resident);
         }
         if !self.places_simulated() {
             return None;
         }
-        if let ItemPlace::ItemEntity { id } = place {
-            return self
-                .dropped
-                .iter()
-                .find(|e| e.id == *id)
-                .map(|e| e.stack.clone());
-        }
-        if let ItemPlace::EntitySlot { entity, slot } = place {
-            return self
-                .edit_entity_slots(*entity, |slots, _| {
-                    slots.get(*slot).cloned().flatten().filter(|s| s.count > 0)
-                })
-                .flatten();
-        }
-        if let ItemPlace::Equipment { entity, slot } = place {
-            return self
-                .equipment_stack(*entity, *slot)
-                .flatten()
-                .filter(|s| s.count > 0);
-        }
-        let mut stack = None;
-        self.native_as_player(self.place_player(place)?, |g| {
-            stack = g.player_place(place).and_then(|slot| slot.clone());
-        });
-        stack.filter(|s| s.count > 0)
+        let stack = match place {
+            ItemPlace::ItemEntity { id } => {
+                return self
+                    .dropped
+                    .iter()
+                    .find(|entity| entity.id == *id)
+                    .map(|entity| EquipmentRead::resident(&entity.stack));
+            }
+            ItemPlace::EntitySlot { entity, slot } => {
+                let vehicle = self
+                    .carts
+                    .iter()
+                    .find(|c| c.id == *entity && c.kind.slots() > 0)
+                    .map(|cart| cart.items.as_slice())
+                    .or_else(|| {
+                        self.boats
+                            .iter()
+                            .find(|b| b.id == *entity && b.chest)
+                            .map(|boat| boat.items.as_slice())
+                    });
+                let slots = if let Some(slots) = vehicle {
+                    // The placeholder owns the live slots while a vehicle's menu is open.
+                    let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, *entity as i32);
+                    match self.world.block_entities.get(&key) {
+                        Some(super::BlockEntity::Chest(open)) => open.as_slice(),
+                        _ => slots,
+                    }
+                } else {
+                    let mob = self
+                        .mobs
+                        .iter()
+                        .find(|m| m.id == *entity && m.extra.chested)?;
+                    let size = super::mount_menu::mount_columns(mob) * 3;
+                    &mob.extra.items[..size.min(mob.extra.items.len())]
+                };
+                slots.get(*slot)?.as_ref()
+            }
+            ItemPlace::Equipment { entity, slot } => {
+                return self
+                    .equipment_stack_source(*entity, *slot)?
+                    .filter(|stack| stack.base().count > 0);
+            }
+            ItemPlace::PlayerSlot { player, .. } | ItemPlace::PlayerHand { player, .. } => {
+                let (inventory, armor, selected, offhand) =
+                    match self.native_item_place_player(*player)? {
+                        PlayerRead::Acting { .. } => {
+                            (&self.inventory, &self.armor, self.selected, &self.offhand)
+                        }
+                        PlayerRead::Guest(guest) => (
+                            &guest.inventory,
+                            &guest.armor,
+                            guest.selected,
+                            &guest.offhand,
+                        ),
+                    };
+                match place {
+                    ItemPlace::PlayerSlot { slot, .. } => match *slot {
+                        100..=103 => armor[103 - *slot as usize].as_ref(),
+                        -106 => offhand.as_ref(),
+                        0.. => inventory.get(*slot as usize)?.as_ref(),
+                        _ => None,
+                    },
+                    ItemPlace::PlayerHand {
+                        hand: Hand::Main, ..
+                    } => inventory.get(selected)?.as_ref(),
+                    ItemPlace::PlayerHand {
+                        hand: Hand::Off, ..
+                    } => offhand.as_ref(),
+                    _ => None,
+                }
+            }
+            ItemPlace::PlayerCursor { menu } => {
+                let guest = self.native_menu_guest(*menu)?;
+                if self.lan_acting == Some(guest.conn) {
+                    self.native_live_acting_body()?;
+                    self.carried.as_ref()
+                } else if !guest.dead {
+                    guest.carried.as_ref()
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }?;
+        (stack.count > 0).then_some(EquipmentRead::resident(stack))
     }
     /// Component-only write, without going through an equipment setter or stopping item use.
     pub(super) fn game_edit_stack(
@@ -260,7 +334,12 @@ impl Game<'_> {
             )
         }) {
             // The handler owns this stack, not the slot's display mirror.
-            Some(place.stack(self).ok_or(CraftedByError::NotHeld)?)
+            Some(
+                place
+                    .with_stack(self, |stack| stack.project())
+                    .flatten()
+                    .ok_or(CraftedByError::NotHeld)?,
+            )
         } else {
             None
         };
@@ -585,19 +664,29 @@ impl Game<'_> {
         });
         took
     }
-    /// The equipment `slot` of living entity `entity` (#932): a mob's
-    /// (`equipment_stacks`, the worn stacks overlaid) or an armor stand's
-    /// own, `None` where the slot is empty. None where neither kind is
-    /// there — and on a client, whose copy writes nothing.
+    /// Project the equipment before a write. Outer `None` is an unavailable place; inner
+    /// `None` is an empty slot that can receive an item.
     fn equipment_stack(&self, entity: u32, slot: EquipmentSlot) -> Option<Option<ItemStack>> {
-        if !self.places_simulated() {
-            return None;
-        }
+        self.equipment_stack_source(entity, slot)
+            .map(|stack| stack.map(|stack| stack.project().into_owned()))
+    }
+
+    /// A mob's equipment with its worn overlays, or an armor stand's resident equipment.
+    fn equipment_stack_source(
+        &self,
+        entity: u32,
+        slot: EquipmentSlot,
+    ) -> Option<Option<EquipmentRead<'_>>> {
         if let Some(mob) = self.mobs.iter().find(|m| m.id == entity && !m.removed) {
-            return Some(mob.equipment_stacks().get(slot as usize).cloned());
+            return Some(finalize::equipment_slot(mob, slot));
         }
         let stand = self.armor_stands.iter().find(|a| a.id == entity)?;
-        Some(stand.equipment.get(slot as usize).cloned())
+        Some(
+            stand
+                .equipment
+                .get(slot as usize)
+                .map(EquipmentRead::resident),
+        )
     }
     /// The equipment write `set_equipment` makes (#932), deferred: whether it
     /// landed. False where the entity is gone or a client's copy refuses.
@@ -803,7 +892,10 @@ pub(super) mod tests {
                         })
                         .is_ok()
                     );
-                    assert_eq!(slot.stack(host), Some(expected_stack.clone()));
+                    assert_eq!(
+                        slot.with_stack(host, |stack| stack.project()).flatten(),
+                        Some(expected_stack.clone())
+                    );
                     Err::<(), ()>(())
                 }),
                 Err(())
@@ -823,7 +915,10 @@ pub(super) mod tests {
                         Err::<(), ()>(())
                     });
                     assert_eq!(child, Err(()));
-                    assert_eq!(slot.stack(host), Some(original_stack.clone()));
+                    assert_eq!(
+                        slot.with_stack(host, |stack| stack.project()).flatten(),
+                        Some(original_stack.clone())
+                    );
                     Ok::<(), ()>(())
                 }),
                 Ok(())
@@ -903,7 +998,7 @@ pub(super) mod tests {
             assert_eq!(moved(game, a, &filled, false), Ok(1000));
             assert_eq!(block(game, a), cauldron(game, 3));
             assert_eq!(
-                filled.stack(game),
+                filled.with_stack(game, |stack| stack.project()).flatten(),
                 Some(
                     ItemStack::new("minecraft:bucket", 1)
                         .try_into_api()
@@ -2314,7 +2409,10 @@ pub(super) mod tests {
                 )
                 .unwrap();
                 let place = ItemPlace::MenuSlot { menu, slot: 0 };
-                assert_eq!(place.stack(game), Some(map.clone()));
+                assert_eq!(
+                    place.with_stack(game, |stack| stack.project()).flatten(),
+                    Some(map.clone())
+                );
                 test(game, place, source, map);
             });
         });
@@ -2328,7 +2426,10 @@ pub(super) mod tests {
                 game.transaction(|game, tx| place.on_crafted_by(game, tx, 3)),
                 Ok(())
             );
-            let updated = place.stack(game).unwrap();
+            let updated = place
+                .with_stack(game, |stack| stack.project())
+                .flatten()
+                .unwrap();
             use sunrise_core::nbt::JavaString;
             let patch = updated.components().unwrap().as_nbt();
             let custom_data = JavaString::from("minecraft:custom_data");
@@ -2363,7 +2464,10 @@ pub(super) mod tests {
                 game.transaction(|game, tx| Ok::<_, ()>(place.on_crafted_by(game, tx, 3))),
                 Ok(Err(CraftedByError::Unavailable))
             );
-            assert_eq!(place.stack(game), Some(original));
+            assert_eq!(
+                place.with_stack(game, |stack| stack.project()).flatten(),
+                Some(original)
+            );
             assert!(game.map(source + 1).is_none());
             assert_eq!(game.peek_map_id(), source + 1);
             let crafted = game
@@ -2625,7 +2729,7 @@ pub(super) mod tests {
             assert_eq!(write(game, &shop, "minecraft:diamond", 1, true), 0);
             assert_eq!(write(game, &shop, "minecraft:diamond", -1, true), 0);
             let host: &mut dyn ServerHost = game;
-            assert_eq!(shop.stack(host), None);
+            assert_eq!(shop.with_stack(host, |_| ()), None);
             let fresh = ItemPlace::MenuSlot {
                 menu: again,
                 slot: 2,
@@ -2703,7 +2807,7 @@ pub(super) mod tests {
             assert_eq!(write(game, &stale.cursor(), "minecraft:stick", -1, true), 0);
             assert_eq!(write(game, &stale.cursor(), "minecraft:stick", 1, true), 0);
             let host: &mut dyn ServerHost = game;
-            assert_eq!(stale.cursor().stack(host), None);
+            assert_eq!(stale.cursor().with_stack(host, |_| ()), None);
             let fresh = menu_of(game).cursor();
             assert_eq!(write(game, &fresh, "minecraft:stick", -1, true), 1);
         });
@@ -2996,6 +3100,49 @@ pub(super) mod tests {
             assert!(plain.capability(host, &ENTITY_ITEMS, ()).is_none());
         });
     }
+    #[test]
+    #[ignore = "daily"]
+    fn reading_a_cart_slot_keeps_pending_loot_and_resident_items() {
+        use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
+        use sunrise_client::save::PendingContainerLoot;
+        use sunrise_core::{geometry::Vec3, nbt::Tag};
+        with_game(|game| {
+            let pending = PendingContainerLoot {
+                table: Tag::String("minecraft:chests/simple_dungeon".into()),
+                seed: Some(Tag::Long(47)),
+            };
+            let mut cart = Minecart::new(600, CartKind::Chest, Vec3::new(1.0, 65.0, 2.0));
+            let stone = ItemStack::new("minecraft:stone", 4);
+            cart.items[2] = Some(stone.clone());
+            cart.loot = Some(pending.clone());
+            let resident = cart.items.clone();
+            game.carts.push(cart);
+            let place = ItemPlace::EntitySlot {
+                entity: 600,
+                slot: 2,
+            };
+            assert_eq!(
+                place.with_stack(game, |stack| stack.project()).flatten(),
+                Some(stone.try_into_api().unwrap())
+            );
+            assert_eq!(game.carts[0].loot.as_ref(), Some(&pending));
+            assert_eq!(game.carts[0].items, resident);
+
+            let sand = ItemStack::new("minecraft:sand", 7);
+            let mut open = vec![None; 27];
+            open[2] = Some(sand.clone());
+            game.world
+                .block_entities
+                .insert((i32::MAX - 15, CART_KEY_Y, 600), BlockEntity::Chest(open));
+            assert_eq!(
+                place.with_stack(game, |stack| stack.project()).flatten(),
+                Some(sand.try_into_api().unwrap())
+            );
+            assert_eq!(game.carts[0].loot.as_ref(), Some(&pending));
+            assert_eq!(game.carts[0].items, resident);
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn cart_slot_edits_prefer_the_menu_and_refuse_a_removed_owner() {
@@ -3761,12 +3908,20 @@ pub(super) mod tests {
             let mut player = guest(1);
             player.inventory[0] = Some(ItemStack::new("minecraft:bucket", 16));
             game.lan.as_mut().unwrap().hub.guests.push(player);
-            let one = ItemPlace::OneByOne(Box::new(ItemPlace::PlayerSlot {
+            let slot = ItemPlace::PlayerSlot {
                 player: 123,
                 slot: 0,
-            }));
+            };
+            let one = ItemPlace::OneByOne(Box::new(slot.clone()));
             let host: &mut dyn ServerHost = game;
-            assert_eq!(one.amount(host), 1);
+            assert_eq!(
+                one.with_stack(host, |stack| (
+                    stack.count(),
+                    stack.project().map(|s| s.count())
+                )),
+                Some((1, Some(1)))
+            );
+            assert_eq!(slot.amount(host), 16);
             let block = level.capability(host, &FLUIDS, [2, 64, 0], None).unwrap();
             let bucket = one.capability(host, &ITEM_FLUIDS).unwrap();
             let moved = host.transaction(|host, tx| {

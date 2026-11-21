@@ -312,7 +312,10 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
             game.transaction_close(&root, true);
             let placed = {
                 let host: &mut dyn ServerHost = game;
-                ItemPlace::MenuSlot { menu, slot: 0 }.stack(host).unwrap()
+                ItemPlace::MenuSlot { menu, slot: 0 }
+                    .with_stack(host, |stack| stack.project())
+                    .flatten()
+                    .unwrap()
             };
             assert_eq!(
                 placed.item(),

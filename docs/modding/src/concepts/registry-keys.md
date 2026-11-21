@@ -352,6 +352,14 @@ error, never silently clamped. Consuming
 returns the remainder or `None`. There is no empty-stack sentinel. Component descriptors
 read and write an optional owned NBT patch; a plain stack has no patch allocation.
 
+`ItemStackView` lends a nonempty stack for read-only inspection. Read `item()`, `count()`,
+`damage()` or `damage_component()` without copying the stack or encoding its components.
+Use `project()` to read the component patch or keep an owned `ItemStack` after the loan ends;
+projection returns `None` if the source cannot be represented as an owned stack.
+`InventoryView::get(slot)` reads just that slot. `iter()` visits readable nonempty slots lazily,
+in ascending order, and yields each original slot number with its stack view. Neither operation
+projects a stack.
+
 Resolve and retain a `TagKey` during `Hooks::register` with `r.tag_key("minecraft:logs")`,
 for example when building a Part or a recipe kind.
 A bare name uses the `minecraft` namespace; an invalid name refuses the mod at load.

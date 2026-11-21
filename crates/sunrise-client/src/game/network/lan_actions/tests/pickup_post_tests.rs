@@ -33,7 +33,10 @@ struct Probe(Arc<Mutex<State>>);
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn item_picked_up(&self, host: &mut dyn ServerHost, event: &mut ItemPickedUpEvent<'_>) {
-        let read = event.item.stack(host);
+        let read = event
+            .item
+            .with_stack(host, |stack| stack.project())
+            .flatten();
         let mut state = self.0.lock().unwrap();
         state.touched.push((event.item.entity().id(), read));
         *event.can_pickup = state.answer;

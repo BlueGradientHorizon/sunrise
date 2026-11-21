@@ -3,6 +3,7 @@
 #[path = "api_values/ingredient.rs"]
 mod ingredient_values;
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 #[cfg(test)]
 use sunrise_client::parallel::ListenSnapshot;
@@ -844,23 +845,40 @@ impl TryIntoEngine for mod_api::MerchantOffer {
     }
 }
 
+pub(in crate::game) type StackReadMetadata = (mod_api::ItemKey, NonZeroU32, Option<u32>);
+
+/// Resolve the item and check the count without copying the stack or encoding its patch.
+pub(in crate::game) fn stack_read_metadata(
+    stack: &EngineStack,
+) -> Result<StackReadMetadata, StackReadError> {
+    let key = mod_api::__private::item_key(&stack.item).ok_or(StackReadError::UnknownItem)?;
+    let count = NonZeroU32::new(stack.count).ok_or(StackReadError::Empty)?;
+    let damage = stack
+        .carries_component(None, "minecraft:damage")
+        .then_some(stack.damage);
+    Ok((key, count, damage))
+}
+
+/// Encode and normalize the patch using the scalars already read from this same stack.
+pub(in crate::game) fn project_stack(
+    stack: &EngineStack,
+    (key, count, damage): StackReadMetadata,
+) -> Result<ApiStack, StackReadError> {
+    let mut result = ApiStack::from_scalars(key, count, damage);
+    if let Some(Tag::Compound(patch)) = sunrise_items::item_data::encode_extra_components(stack) {
+        result
+            .set_components(patch)
+            .map_err(StackReadError::InvalidComponents)?;
+    }
+    Ok(result)
+}
+
 impl TryIntoApi for EngineStack {
     type Api = ApiStack;
     type Error = StackReadError;
 
     fn try_into_api(&self) -> Result<ApiStack, Self::Error> {
-        let key = mod_api::__private::item_key(&self.item).ok_or(StackReadError::UnknownItem)?;
-        let mut result = ApiStack::new(key, self.count).ok_or(StackReadError::Empty)?;
-        if self.carries_component(None, "minecraft:damage") {
-            result.set_damage(self.damage);
-        }
-        if let Some(Tag::Compound(patch)) = sunrise_items::item_data::encode_extra_components(self)
-        {
-            result
-                .set_components(patch)
-                .map_err(StackReadError::InvalidComponents)?;
-        }
-        Ok(result)
+        project_stack(self, stack_read_metadata(self)?)
     }
 }
 

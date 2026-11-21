@@ -53,8 +53,9 @@ use crate::runtime::Installed;
 use crate::world::ticket_controller::{ControllerInfo, TEST_CONTROLLERS};
 use crate::{
     Backend, BackendMut, BackendMutRef, BackendRef, BlockEntityRef, BlockEntityTypeKey, BlockSide,
-    ClientHost, Commands, EntityRef, FluidStack, Host, ItemPlace, ItemStack, LevelRef, Messages,
-    Mods, PlayerRef, Players, ServerHost, TEST_MODS, Tag, Text, TicketController, WorldEpoch,
+    ClientHost, Commands, EntityRef, FluidStack, Host, InventoryView, ItemPlace, ItemStack,
+    ItemStackView, LevelRef, Messages, Mods, PlayerRef, Players, ServerHost, TEST_MODS, Tag, Text,
+    TicketController, WorldEpoch,
 };
 
 /// The world epoch of every fake's handles.
@@ -647,9 +648,28 @@ impl crate::prelude::PlayerInventoryBackend for FakeHost {
     fn player_selected_slot(&self, player: PlayerRef) -> Option<usize> {
         Some(self.players.get(player.uuid())?.selected_slot)
     }
-    fn player_inventory(&self, player: PlayerRef) -> Option<Vec<ItemStack>> {
+    fn player_inventory_slots(
+        &self,
+        player: PlayerRef,
+        read: &mut dyn for<'a> FnMut(InventoryView<'a>),
+    ) -> Option<()> {
         let slots = &self.players.get(player.uuid())?.slots;
-        Some(slots.range(0..36).map(|(_, stack)| stack.clone()).collect())
+        let stack_at = |slot: u32| {
+            let index = match slot {
+                0..=35 => slot as i32,
+                36..=39 => slot as i32 + 64,
+                40 => -106,
+                // The fake stores ItemPlace slots only.
+                _ => return None,
+            };
+            slots.get(&index)
+        };
+        read(InventoryView::new(
+            0..43,
+            &|slot| Some(stack_at(slot)?.read_metadata()),
+            &|slot, _| stack_at(slot).cloned(),
+        ));
+        Some(())
     }
 }
 impl crate::prelude::PlayerModesBackend for FakeHost {
@@ -782,9 +802,14 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         }
         amount - left
     }
-    fn game_stack(&mut self, place: &ItemPlace) -> Option<ItemStack> {
+    fn game_stack(
+        &mut self,
+        place: &ItemPlace,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
         let (player, slot) = self.players.place(place)?;
-        player.slots.get(&slot).cloned()
+        read(ItemStackView::from_stack(player.slots.get(&slot)?));
+        Some(())
     }
     fn game_edit_stack(
         &mut self,

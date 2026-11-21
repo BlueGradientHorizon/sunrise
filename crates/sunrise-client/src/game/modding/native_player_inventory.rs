@@ -1,9 +1,14 @@
-//! A server player's inventory by vanilla's slot numbers (`Inventory.getItem`/`setItem`), for
-//! mods that copy or edit it whole: player data sync, `/invsee`.
-use super::{Game, commands::items::Slot, native_server::PlayerRead};
-use mod_api::{PlayerDataRefusal, PlayerRef};
+//! A player's inventory by vanilla's slot numbers (`Inventory.getItem`/`setItem`).
+//! Reads lend the current slots; writes go through the authoritative server.
+use super::{
+    Game,
+    api_values::{project_stack, stack_read_metadata},
+    commands::items::Slot,
+    native_server::PlayerRead,
+};
+use mod_api::{InventoryView, PlayerDataRefusal, PlayerRef};
 use sunrise_client::items::ItemStack;
-use sunrise_items::equipment::{BODY, Equipment, SADDLE};
+use sunrise_items::equipment::{BODY, SADDLE};
 
 /// `Inventory`'s slot numbers past the 36 main slots (`EQUIPMENT_SLOT_MAPPING`).
 const SLOTS: u32 = 43;
@@ -21,27 +26,6 @@ fn inventory_slot(slot: u32) -> Option<Slot> {
         42 => Slot::Equipment(SADDLE),
         _ => return None,
     })
-}
-
-/// The non-empty slots, by number, of an inventory laid out as the game keeps it.
-fn numbered(
-    inventory: &[Option<ItemStack>],
-    armor: &[Option<ItemStack>; 4],
-    offhand: &Option<ItemStack>,
-    equipment: &Equipment,
-) -> Vec<(u32, ItemStack)> {
-    (0..SLOTS)
-        .filter_map(|slot| {
-            let stack = match inventory_slot(slot)? {
-                Slot::Inv(i) => inventory.get(i).cloned().flatten(),
-                Slot::Armor(i) => armor[i].clone(),
-                Slot::Offhand => offhand.clone(),
-                Slot::Equipment(i) => equipment.get(i).cloned(),
-                _ => None,
-            };
-            Some((slot, stack.filter(|s| s.count > 0)?))
-        })
-        .collect()
 }
 
 /// The authority refusals shared by writes to a server player's own state.
@@ -62,17 +46,31 @@ impl From<PlayerWriteRefusal> for PlayerDataRefusal {
 }
 
 impl Game<'_> {
-    /// `Inventory.getItem` for every slot that holds something.
+    /// Lend `Inventory.getItem` over the resident slots.
     pub(super) fn player_inventory_slots(
         &self,
         player: PlayerRef,
-    ) -> Option<Vec<(u32, ItemStack)>> {
-        Some(match self.player_read_both(player)? {
+        read: &mut dyn for<'a> FnMut(InventoryView<'a>),
+    ) -> Option<()> {
+        let (inventory, armor, offhand, equipment) = match self.player_read_both(player)? {
             PlayerRead::Acting { .. } => {
-                numbered(&self.inventory, &self.armor, &self.offhand, &self.equipment)
+                (&self.inventory, &self.armor, &self.offhand, &self.equipment)
             }
-            PlayerRead::Guest(g) => numbered(&g.inventory, &g.armor, &g.offhand, &g.equipment),
-        })
+            PlayerRead::Guest(g) => (&g.inventory, &g.armor, &g.offhand, &g.equipment),
+        };
+        let stack_at = |slot| match inventory_slot(slot)? {
+            Slot::Inv(i) => inventory.get(i)?.as_ref(),
+            Slot::Armor(i) => armor[i].as_ref(),
+            Slot::Offhand => offhand.as_ref(),
+            Slot::Equipment(i) => equipment.get(i),
+            _ => None,
+        };
+        read(InventoryView::new(
+            0..SLOTS,
+            &|slot| stack_read_metadata(stack_at(slot)?).ok(),
+            &|slot, metadata| project_stack(stack_at(slot)?, metadata).ok(),
+        ));
+        Some(())
     }
 
     /// Why a write to this player's inventory, ender chest, hands or saved data is refused

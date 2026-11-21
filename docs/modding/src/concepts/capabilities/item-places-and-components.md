@@ -5,6 +5,27 @@ slot, hand or cursor, a block entity's slot, an item entity, an entity's invento
 a menu slot, or a stack inside another item (`ItemPlace::Nested`). For storage you manage,
 register a `PlaceProvider` with `r.place_provider` and use `ItemPlace::Mod`.
 
+`place.with_stack(host, |stack| stack.item())` reads the item at a nonempty place. The
+callback receives an `ItemStackView` for that call only. Read `item()`, `count()` and
+`damage()` there without copying a resident stack. If you only need to know whether
+the place is occupied, use `place.amount(host) != 0`. For components or an owned
+`ItemStack` beyond the callback, project it explicitly:
+
+```rust,ignore
+match place.with_stack(host, |stack| stack.project()) {
+    None => { /* empty or unavailable place */ }
+    Some(None) => { /* occupied, but the stack could not be projected */ }
+    Some(Some(stack)) => { /* inspect components or retain the owned stack */ }
+}
+```
+
+Native reads use storage already present: they do not load chunks, initialize a player or
+unpack pending loot, and an item entity's place sees the current block entity tick's proposals.
+For a provider-backed or decoded place, the view lends the value produced for that read. A
+provider-backed menu slot reads its live backing, not the menu's display copy. A dropped
+item narrowed to an `ItemEntityRef` has its own
+[`with_stack`](../../how-to/world/block-entity-item-drops.md).
+
 ## Item capabilities
 
 Register an item's capability with
@@ -28,7 +49,7 @@ Keep the contents in the stack and use these methods to access it:
 
 | Method | Result |
 |---|---|
-| `place.stack(host)` | The stack, or `None` |
+| `place.with_stack(host, read)` | The callback's result, or `None` without calling it if the place is empty or unavailable |
 | `place.resource(host)` | Its resource without a count, or `None` |
 | `place.amount(host)` | Its count, or 0 |
 | `place.insert(host, tx, &resource, amount)` | How much was inserted |
@@ -75,8 +96,8 @@ These correspond to NeoForge's other `ItemAccess` factories:
   It lives and aborts as a scratch stack does.
 - `ItemPlace::Strict(place)` (`forHandlerIndexStrict`) refuses what a block entity's, entity's
   or nested item's slot doesn't take, where the plain place would spread it to the other slots.
-- `ItemPlace::OneByOne(place)` (`oneByOne`) reads at most one item and extracts at most one, so a
-  handler that acts on the whole stack acts on one.
+- `ItemPlace::OneByOne(place)` (`oneByOne`) lends and projects a count of one for a nonempty
+  stack without changing its stored count. An extract takes at most one item.
 - `ItemPlace::InfiniteMaterials { player, inner }` (`forInfiniteMaterials`) reaches `inner` as a
   creative player does while `player` has infinite materials. Extracts give without taking.
   Inserts are taken whole, and one item goes to the player only if they have none: into their

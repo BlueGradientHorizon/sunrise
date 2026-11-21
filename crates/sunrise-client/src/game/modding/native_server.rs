@@ -1945,9 +1945,7 @@ impl Game<'_> {
         // With no guest's turn running, `native_acting_id` is the world's owner: on a server
         // thread that owner is a guest too, whose state is theirs, not the `Game`'s own.
         let conn = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.holder_guest(uuid, self.dim.id()))
+            .native_player_holder(uuid)
             .filter(|g| !g.dead)
             .map(|g| g.conn);
         match conn {
@@ -1957,13 +1955,47 @@ impl Game<'_> {
         }
     }
 
+    fn native_player_holder(&self, uuid: u128) -> Option<&Guest> {
+        self.lan.as_ref()?.hub.holder_guest(uuid, self.dim.id())
+    }
+
+    /// Resolve a UUID-based item place in the acting state or a parked guest's own record.
+    /// Unlike a write, a read never initializes a body or the level owner's UUID.
+    pub(super) fn native_item_place_player(&self, uuid: u128) -> Option<PlayerRead<'_>> {
+        if self.lan_acting_uuid != Some(uuid) {
+            if let Some(guest) = self.native_player_holder(uuid) {
+                return (!guest.dead && !self.lan_guest_swaps.contains(&guest.conn))
+                    .then_some(PlayerRead::Guest(guest));
+            }
+            if self.lan_acting_uuid.is_some()
+                || self
+                    .level
+                    .player_uuid
+                    .map(sunrise_client::lan::playerdata::ints_uuid)
+                    != Some(uuid)
+            {
+                return None;
+            }
+        }
+        Some(PlayerRead::Acting {
+            mode: self.mode_id(),
+            body: Some(self.native_live_acting_body()?),
+            abilities: self.acting_abilities,
+            last_death: self.level.last_death.as_ref(),
+        })
+    }
+
+    pub(super) fn native_live_acting_body(&self) -> Option<&PlayerMotion> {
+        let body = self.player.as_ref()?;
+        if body.health.health() <= 0.0 {
+            return None;
+        }
+        Some(body)
+    }
+
     /// `f` for the acting player, whose state is in place: false when they are dead.
     fn native_as_acting(&mut self, f: impl FnOnce(&mut Self)) -> bool {
-        if self
-            .player
-            .as_ref()
-            .is_none_or(|p| p.health.health() <= 0.0)
-        {
+        if self.native_live_acting_body().is_none() {
             return false;
         }
         f(self);

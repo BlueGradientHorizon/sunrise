@@ -1,4 +1,5 @@
 // Types that lived in the API root before the domain split.
+use crate::item::item_stack::read_stack_view;
 use crate::*;
 
 /// Why an entity type's attribute declaration or addition was refused
@@ -207,6 +208,50 @@ impl LivingRef {
     /// The entity's id (the network id events carry).
     pub fn id(self) -> u32 {
         self.0.id()
+    }
+
+    /// Read the stack in `slot` (`LivingEntity.getItemBySlot`). Players, mobs, armor stands
+    /// and the dragon store all eight slots. An armor stand's body and saddle slots are storage
+    /// only: vanilla's `canUseSlot` refuses them for interaction. On the client only the local
+    /// player's copy is available.
+    ///
+    /// Returns `Some` of `read`'s result, or `None` without calling it if the slot is empty or
+    /// unavailable or the handle is stale. This does not load chunks or change equipment.
+    /// The view is valid only during `read`; use [`ItemStackView::project`] to get an owned
+    /// copy with components.
+    pub fn with_equipment<R>(
+        self,
+        host: &dyn Host,
+        slot: EquipmentSlot,
+        read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    ) -> Option<R> {
+        let backend = crate::backend_of(host)?;
+        read_stack_view(read, |lend| backend.living_equipment(self, slot, lend))
+    }
+
+    /// Read `hand` (`LivingEntity.getItemInHand`): the selected main-hand slot or the off hand.
+    /// The view, return value and availability follow [`Self::with_equipment`].
+    pub fn with_hand_item<R>(
+        self,
+        host: &dyn Host,
+        hand: Hand,
+        read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    ) -> Option<R> {
+        let backend = crate::backend_of(host)?;
+        read_stack_view(read, |lend| backend.living_hand_item(self, hand, lend))
+    }
+
+    /// Read the living attacker's weapon (`DamageSource.getWeaponItem`): the stack kept for a
+    /// player's active Riptide spin if present, otherwise the live main hand. Server-side only.
+    /// The view and return value follow [`Self::with_equipment`]. For the recorded projectile
+    /// weapon of a death, use [`LootDrops::weapon_item`] instead.
+    pub fn with_weapon_item<R>(
+        self,
+        host: &dyn Host,
+        read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    ) -> Option<R> {
+        let backend = crate::backend_of(host)?;
+        read_stack_view(read, |lend| backend.living_weapon_item(self, lend))
     }
 }
 
@@ -706,6 +751,20 @@ impl ItemEntityRef {
     pub fn entity(self) -> EntityRef {
         self.0
     }
+    /// Read `ItemEntity.getItem` on the server, without copying the stack. During a mod
+    /// block-entity tick this sees the latest proposed replacement, if any.
+    ///
+    /// Returns `Some` of `read`'s result, or `None` without calling it if the handle is stale,
+    /// the stack is unavailable or the item has a proposed removal. Use
+    /// [`ItemStackView::project`] to read components or keep an owned stack past the callback.
+    pub fn with_stack<R>(
+        self,
+        host: &dyn Host,
+        read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    ) -> Option<R> {
+        let backend = crate::backend_of(host)?;
+        read_stack_view(read, |lend| backend.item_entity_stack(self, lend))
+    }
 }
 
 /// A display entity of the open world (`block_display`, `item_display` or
@@ -1128,6 +1187,53 @@ impl PlayerRef {
     /// The player's UUID.
     pub fn uuid(self) -> u128 {
         self.uuid
+    }
+
+    /// Read the player's current inventory by vanilla `Inventory.getItem` numbers: 0 to 35
+    /// main (0 to 8 hotbar), 36 feet, 37 legs, 38 chest, 39 head, 40 offhand, 41 body, 42 saddle.
+    /// The view is read-only and valid only in `read`. Use [`InventoryView::get`] for one slot
+    /// or [`InventoryView::iter`] for nonempty slots in ascending order. For just the main
+    /// inventory, use `view.iter().take_while(|(slot, _)| *slot < 36)`. Read scalars in `read`;
+    /// use [`ItemStackView::project`] to get components or retain an owned stack, and handle
+    /// refusal separately from an empty slot.
+    ///
+    /// Returns `Some` of the callback's result even when the inventory is empty. Returns
+    /// `None` without calling it if the player is stale or unavailable. On the client only
+    /// the local player's inventory is available, including its local predictions.
+    pub fn with_inventory<R>(
+        self,
+        host: &dyn Host,
+        read: impl for<'a> FnOnce(InventoryView<'a>) -> R,
+    ) -> Option<R> {
+        let mut read = Some(read);
+        let mut result = None;
+        crate::backend_of(host)?.player_inventory_slots(self, &mut |view| {
+            if let Some(read) = read.take() {
+                result = Some(read(view));
+            }
+        })?;
+        result
+    }
+
+    /// Read the player's ender chest by vanilla slot number, 0 to 26, the `Slot` numbers
+    /// in the player's saved `EnderItems`. If the chest is open, this reads the live slots.
+    /// The view is read-only and valid only in `read`.
+    ///
+    /// Returns `Some` of the callback's result even when the chest is empty. Returns
+    /// `None` without calling it on a client or if the player is stale or unavailable.
+    pub fn with_ender_chest<R>(
+        self,
+        host: &dyn Host,
+        read: impl for<'a> FnOnce(InventoryView<'a>) -> R,
+    ) -> Option<R> {
+        let mut read = Some(read);
+        let mut result = None;
+        crate::backend_of(host)?.player_ender_chest(self, &mut |view| {
+            if let Some(read) = read.take() {
+                result = Some(read(view));
+            }
+        })?;
+        result
     }
 }
 

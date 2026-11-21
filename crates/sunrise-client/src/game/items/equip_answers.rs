@@ -77,16 +77,6 @@ impl Game<'_> {
     fn capture_equip_read(&self, id: u32) -> Option<EquipSnapshot> {
         let entity = self.entity(id)?;
         let living = mod_api::LivingRef::new(entity);
-        let slots = [
-            mod_api::EquipmentSlot::MainHand,
-            mod_api::EquipmentSlot::OffHand,
-            mod_api::EquipmentSlot::Feet,
-            mod_api::EquipmentSlot::Legs,
-            mod_api::EquipmentSlot::Chest,
-            mod_api::EquipmentSlot::Head,
-            mod_api::EquipmentSlot::Body,
-            mod_api::EquipmentSlot::Saddle,
-        ];
         Some(EquipSnapshot {
             entity,
             kind: self.entity_kind(entity),
@@ -95,9 +85,10 @@ impl Game<'_> {
             max_health: self.living_max_health(living),
             alive: self.living_alive(living),
             living: self.living(entity).is_some(),
+            // The prepared decision owns this snapshot so it can recheck before applying.
             equipment: std::array::from_fn(|i| {
-                self.living_equipment(living, slots[i])
-                    .and_then(|stack| stack.try_into_api().ok())
+                let stack = self.living_equipment_stack(living, mod_api::EquipmentSlot::ALL[i])?;
+                stack.project().try_into_api().ok()
             }),
         })
     }
@@ -319,8 +310,13 @@ mod tests {
             assert!(entity.kind(host).is_some());
             let _health = event.entity.health(host);
             let _alive = event.entity.alive(host);
-            let _equipment = event.entity.equipment(host, mod_api::EquipmentSlot::Head);
-            let _hand = event.entity.hand_item(host, mod_api::Hand::Main);
+            let _equipment =
+                event
+                    .entity
+                    .with_equipment(host, mod_api::EquipmentSlot::Head, |_| ());
+            let _hand = event
+                .entity
+                .with_hand_item(host, mod_api::Hand::Main, |_| ());
             self.0.fetch_add(1, Ordering::Relaxed);
             event.can_equip = event.slot == "feet";
         }

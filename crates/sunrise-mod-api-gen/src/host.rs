@@ -651,10 +651,12 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                         "living_health" => Some(("living.entity()", "self.row.health")),
                         "living_max_health" => Some(("living.entity()", "self.row.max_health")),
                         "living_alive" => Some(("living.entity()", "self.row.alive")),
-                        "living_equipment" => Some(("living.entity()", "self.equipment(slot)")),
+                        "living_equipment" => {
+                            Some(("living.entity()", "self.with_equipment(slot, read)"))
+                        }
                         "living_hand_item" => Some((
                             "living.entity()",
-                            "self.equipment(match hand { Hand::Main => EquipmentSlot::MainHand, Hand::Off => EquipmentSlot::OffHand })",
+                            "self.with_equipment(crate::game::native_living_refs::hand_slot(hand), read)",
                         )),
                         _ => None,
                     };
@@ -1011,11 +1013,19 @@ fn refusal(sig: &syn::Signature, name: &str) -> Result<Option<&'static str>, Str
 
 /// `entity_position(entity)` on a backend is also `EntityRef::position(self, host)`: the handle
 /// a method is of, when its first argument is one and its name starts with the handle's.
+/// `#[manual_handle]` opts out only from this inherent wrapper, not backend routing.
 fn handle_method(
     entry: &Entry,
     tier: Tier,
     handles: &BTreeMap<String, String>,
 ) -> Result<Option<(String, String)>, String> {
+    if entry
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("manual_handle"))
+    {
+        return Ok(None);
+    }
     let name = entry.name.as_str();
     let mut inputs = entry.sig.inputs.iter();
     let mutable = matches!(inputs.next(), Some(FnArg::Receiver(r)) if r.mutability.is_some());
