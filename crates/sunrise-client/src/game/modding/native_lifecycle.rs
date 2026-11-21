@@ -225,7 +225,7 @@ impl Game<'_> {
         self.reset_entity_residency();
         self.entity_initialization = Default::default();
         if let Some(remote) = &mut self.remote {
-            remote.attachments.clear();
+            remote.clear_attachments();
         }
         self.attachment_indexes.clear();
         self.passages.retire_world();
