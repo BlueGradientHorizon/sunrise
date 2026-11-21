@@ -39,32 +39,11 @@ impl Game<'_> {
         if pos.1 == crate::game::minecarts::CART_KEY_Y {
             return self.lan_open_vehicle_container(conn, pos);
         }
-        let opened = self.open_block_menu_with_opener(conn, pos, true);
-        if opened != MenuOpen::Opened
-            && self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guest(conn))
-                .is_some_and(|guest| !guest.spectator())
-        {
-            // No menu took ownership of the use's opener.
-            self.container_openers_changed(pos, false);
-        }
-        opened
+        self.open_block_menu(conn, pos)
     }
 
+    /// Install the block menu for a guest's use or a direct BlockEntityRef open.
     pub(in crate::game) fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
-        self.open_block_menu_with_opener(conn, pos, false)
-    }
-
-    /// A use handed over from `open_menu` already started its opener; a direct
-    /// `BlockEntityRef::open_menu` must start it after its checks succeed.
-    pub(super) fn open_block_menu_with_opener(
-        &mut self,
-        conn: u32,
-        pos: (i32, i32, i32),
-        opener_started: bool,
-    ) -> MenuOpen {
         let generation = self.world.block_entities.generation(&pos);
         let name = &self
             .res
@@ -230,10 +209,6 @@ impl Game<'_> {
             super::super::native_menus::open_menu_of(host, conn).map(|(window, ..)| window)
         });
         self.guest_close_all(conn);
-        // A hand-off from `open_menu` must not count one player twice. A direct
-        // handle open has no earlier `startOpen`; only it starts the block's lid.
-        let counts_openers =
-            !opener_started && matches!(slots, Slots::Block(_) | Slots::Double(_, _));
         let hidden = self.native_hidden_slots(menu, Some(pos), items.len());
         // A mod menu type's block tells the client where it is, with what its
         // mod writes (`openMenu` with an extra-data writer); a stock menu
@@ -283,12 +258,9 @@ impl Game<'_> {
         {
             return MenuOpen::Refused;
         }
-        // `ContainerOpenersCounter.incrementOpeners`: a direct handle open
-        // starts the lid once, sounding on its first opener. A spectator's
-        // `startOpen` does nothing, so its close must have nothing to decrement.
-        if counts_openers && !spectator && self.container_openers_changed(pos, true) {
-            self.container_edge_sound(pos, true);
-        }
+        // ChestMenu and ShulkerBoxMenu own startOpen, including a ChestMenu
+        // backed by PlayerEnderChestContainer with an active ender chest.
+        self.guest_container_opener(conn, pos, true);
         self.player_menu_opening(conn);
         MenuOpen::Opened
     }
@@ -413,29 +385,58 @@ impl Game<'_> {
     /// `playSound` with no player), the guest included, once the last opener
     /// has left.
     pub(in crate::game) fn guest_container_closed(&mut self, conn: u32) {
-        let pos = self.lan.as_ref().and_then(|host| {
-            let guest = host.hub.guest(conn)?;
-            (!guest.spectator())
-                .then(|| guest.menu.as_ref().and_then(|m| m.pos))
-                .flatten()
-        });
-        if let Some(pos) = pos
-            && self.container_openers_changed(pos, false)
+        if let Some(pos) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+            .and_then(|guest| guest.menu.as_ref()?.pos)
         {
-            self.container_edge_sound(pos, false);
-            let post = |game: &mut Self| {
-                game.post_block_game_event(
-                    "minecraft:container_close",
-                    [pos.0, pos.1, pos.2],
-                    Some(sunrise_client::mobs::Who::Player),
-                    None,
-                );
+            self.guest_container_opener(conn, pos, false);
+        }
+    }
+
+    /// `ContainerOpenersCounter.incrementOpeners` / `ContainerOpenersCounter.decrementOpeners`:
+    /// the first opener and the last closer each trigger a sound and game event.
+    fn guest_container_opener(&mut self, conn: u32, pos: (i32, i32, i32), open: bool) {
+        let acting = self.lan_acting == Some(conn);
+        let spectator = if acting {
+            self.spectator()
+        } else {
+            let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+                return;
             };
-            if self.lan_acting == Some(conn) {
-                post(self);
-            } else {
-                self.as_guest(conn, post);
-            }
+            guest.spectator()
+        };
+        if spectator || !self.container_openers_changed(pos, open) {
+            return;
+        }
+        let state = self.world.block(pos.0, pos.1, pos.2);
+        let shulker = super::super::storage::is_shulker_box(&self.res.facts().get(state).name);
+        // ContainerOpenersCounter calls onOpen/onClose before the game event;
+        // ShulkerBoxBlockEntity emits its game event before playing its sound.
+        if !shulker {
+            self.container_edge_sound(pos, open);
+        }
+        let event = if open {
+            "minecraft:container_open"
+        } else {
+            "minecraft:container_close"
+        };
+        let post = |game: &mut Self| {
+            game.post_block_game_event(
+                event,
+                [pos.0, pos.1, pos.2],
+                Some(sunrise_client::mobs::Who::Player),
+                None,
+            );
+        };
+        if acting {
+            post(self);
+        } else {
+            self.as_guest(conn, post);
+        }
+        if shulker {
+            self.container_edge_sound(pos, open);
         }
     }
 
