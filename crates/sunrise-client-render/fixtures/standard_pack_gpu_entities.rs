@@ -215,7 +215,7 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         scaled: false,
         background: false,
     });
-    renderer.render(&frame)?;
+    renderer.render(&frame, None)?;
     renderer
         .screenshot_result
         .take()
@@ -265,7 +265,7 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         scaled: false,
         background: false,
     });
-    renderer.render(&frame)?;
+    renderer.render(&frame, None)?;
     renderer
         .screenshot_result
         .take()
@@ -285,7 +285,7 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     frame.skin = None;
     frame.entities = &cpu;
     frame.entity_spans = &spans;
-    renderer.render(&frame)?;
+    renderer.render(&frame, None)?;
     assert_eq!(OBSERVED.load(Ordering::Relaxed), 1);
     NEEDS_SPANS.store(false, Ordering::Relaxed);
     assert!(renderer.skins_entities());

@@ -3446,7 +3446,7 @@ struct Game<'a> {
     model_copy_order: Vec<u32>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
     /// Read-only renderer snapshot cached while `self.renderer` is temporarily taken for
-    /// `Renderer::render_with_hooks` so `ClientHost` queries still see framebuffer size and
+    /// `Renderer::render` so `ClientHost` queries still see framebuffer size and
     /// prepared-model limits.
     render_snapshot: std::cell::Cell<Option<RenderSnapshot>>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
@@ -10440,7 +10440,7 @@ impl Game<'_> {
     }
     fn render_frame(&mut self) -> Result<bool> {
         self.render_with_hooks(|renderer, frame, hooks| {
-            sunrise_client::spans::time("renderer", || renderer.render_with_hooks(frame, hooks))
+            sunrise_client::spans::time("renderer", || renderer.render(frame, hooks))
         })
     }
 
@@ -10514,7 +10514,7 @@ impl Game<'_> {
                     );
                     pr.lap("pr_loading");
                     drop(prepare);
-                    return renderer.render(&loading_frame(&hud));
+                    return renderer.render(&loading_frame(&hud), None);
                 }
                 return Ok(false);
             }
@@ -10558,7 +10558,7 @@ impl Game<'_> {
                 );
                 pr.lap("pr_loading");
                 drop(prepare);
-                return renderer.render(&loading_frame(&hud));
+                return renderer.render(&loading_frame(&hud), None);
             }
             return Ok(false);
         }
@@ -10579,7 +10579,7 @@ impl Game<'_> {
                 );
                 pr.lap("pr_loading");
                 drop(prepare);
-                return renderer.render(&loading_frame(&hud));
+                return renderer.render(&loading_frame(&hud), None);
             }
             return Ok(false);
         }
@@ -10601,7 +10601,7 @@ impl Game<'_> {
                 );
                 pr.lap("pr_loading");
                 drop(prepare);
-                return renderer.render(&loading_frame(&hud));
+                return renderer.render(&loading_frame(&hud), None);
             }
             return Ok(false);
         }
@@ -11447,7 +11447,7 @@ impl Game<'_> {
     }
 }
 /// Read-only renderer state cached while `Game::renderer` is temporarily taken for
-/// `Renderer::render_with_hooks` so `ClientHost` queries keep working inside stage callbacks.
+/// `Renderer::render` so `ClientHost` queries keep working inside stage callbacks.
 #[derive(Clone, Copy)]
 pub(super) struct RenderSnapshot {
     pub(super) framebuffer: [u32; 2],

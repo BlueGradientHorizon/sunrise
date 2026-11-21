@@ -24,11 +24,11 @@ use client::{
     },
 };
 use glam::DVec3;
-use sunrise_client_render as client;
 use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
+use sunrise_client_render as client;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -361,7 +361,7 @@ fn fixture(window: Arc<Window>) -> Result<(), Box<dyn std::error::Error>> {
         let asked = ASKED.load(std::sync::atomic::Ordering::Relaxed);
         for _ in 0..2 {
             entity_frusta(renderer);
-            renderer.render(&frame).unwrap();
+            renderer.render(&frame, None).unwrap();
         }
         let asked = ASKED.load(std::sync::atomic::Ordering::Relaxed) - asked;
         assert_eq!(asked, 2, "the mod is asked once a frame");
@@ -479,7 +479,7 @@ fn fixture(window: Arc<Window>) -> Result<(), Box<dyn std::error::Error>> {
     let mut frame = fixture_frame(&hud);
     frame.entities = &entity;
     entity_frusta(&mut renderer);
-    renderer.render(&frame).unwrap();
+    renderer.render(&frame, None).unwrap();
     renderer.wait_submissions();
     assert_eq!(
         *PUSHED.lock().unwrap(),
@@ -798,7 +798,7 @@ fn bench(renderer: &mut Renderer, out: &Path) -> Result<(), Box<dyn std::error::
         frame.depth_far = 2000.0;
         frame.cave_culling = true;
         for _ in 0..30 {
-            renderer.render(&frame).unwrap();
+            renderer.render(&frame, None).unwrap();
             DRAWN.lock().unwrap().clear();
         }
         client::spans::take();
@@ -807,7 +807,7 @@ fn bench(renderer: &mut Renderer, out: &Path) -> Result<(), Box<dyn std::error::
         let (mut cpu, mut walk, mut views_walk) = (0.0, 0.0, 0.0);
         for _ in 0..FRAMES {
             let started = std::time::Instant::now();
-            renderer.render(&frame).unwrap();
+            renderer.render(&frame, None).unwrap();
             cpu += started.elapsed().as_secs_f64() * 1000.0;
             for span in client::spans::take() {
                 match span.name {

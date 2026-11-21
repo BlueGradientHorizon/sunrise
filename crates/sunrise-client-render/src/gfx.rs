@@ -1380,13 +1380,10 @@ impl Renderer {
     pub fn max_buffer_size(&self) -> u64 {
         self.device.limits().max_buffer_size
     }
-    #[sunrise_mod_api_macros::replaceable]
-    pub fn render(&mut self, frame: &Frame) -> Result<bool> {
-        self.render_with_hooks(frame, None)
-    }
     /// Render `frame`, optionally driving mod world-render hooks (`FrameHooks`) at the renderer's
     /// real visibility, sky, prepare, pass-stage, and post-world boundaries.
-    pub fn render_with_hooks(
+    #[sunrise_mod_api_macros::replaceable]
+    pub fn render(
         &mut self,
         frame: &Frame,
         hooks: Option<&mut dyn world_primitives::FrameHooks>,
