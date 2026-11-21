@@ -73,6 +73,25 @@ fn run(dir: &Path, extra: &[&str]) -> (i32, String, String) {
 
 #[test]
 #[ignore = "daily"]
+fn stable_release_gates_the_real_surface_verdict() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let output = std::process::Command::new("python3")
+        .current_dir(root)
+        .env("SUNRISE_STAGE_TOOL", env!("CARGO_BIN_EXE_sunrise-stage"))
+        .env("PYTHONPATH", ".")
+        .arg("tests/stable_mod_api_integration.py")
+        .output()
+        .expect("run the stable release integration test");
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+#[ignore = "daily"]
 fn without_the_gate_a_break_reports_and_passes() {
     let dir = folder();
     let (code, out, _) = run(dir.path(), &["--notes", "changes", "--base-notes", "base"]);
