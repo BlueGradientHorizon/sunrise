@@ -1681,5 +1681,896 @@
         ]
       }
     ]
+  },
+  "sleeping_spectated_camera": {
+    "cases": [
+      {
+        "name": "remote_player_bed_south",
+        "kind": "minecraft:player",
+        "sleeping": true,
+        "bed_orientation": "south",
+        "entity_is_sleeping": true,
+        "state_is_sleeping": true,
+        "eye_height_bits": "3e4ccccd",
+        "entity_pos_bits": [
+          "4025000000000000",
+          "40502c0000000000",
+          "4025000000000000"
+        ],
+        "camera_pos_after_1_tick_bits": [
+          "4025000000000000",
+          "40503c0000080000",
+          "4025000000000000"
+        ],
+        "camera_pos_settled_bits": [
+          "4025000000000000",
+          "4050426666600000",
+          "4025000000000000"
+        ],
+        "camera_yRot_bits": "c3340000",
+        "camera_xRot_bits": "00000000",
+        "camera_rotation_bits": [
+          "00000000",
+          "b3bbbd2e",
+          "80000000",
+          "bf800000"
+        ],
+        "hidden_in_first_person": false
+      },
+      {
+        "name": "remote_player_bed_west",
+        "kind": "minecraft:player",
+        "sleeping": true,
+        "bed_orientation": "west",
+        "entity_is_sleeping": true,
+        "state_is_sleeping": true,
+        "eye_height_bits": "3e4ccccd",
+        "entity_pos_bits": [
+          "4025000000000000",
+          "40502c0000000000",
+          "4025000000000000"
+        ],
+        "camera_pos_after_1_tick_bits": [
+          "4025000000000000",
+          "40503c0000080000",
+          "4025000000000000"
+        ],
+        "camera_pos_settled_bits": [
+          "4025000000000000",
+          "4050426666600000",
+          "4025000000000000"
+        ],
+        "camera_yRot_bits": "c2b40000",
+        "camera_xRot_bits": "00000000",
+        "camera_rotation_bits": [
+          "00000000",
+          "3f3504f3",
+          "00000000",
+          "bf3504f3"
+        ],
+        "hidden_in_first_person": false
+      },
+      {
+        "name": "remote_player_bed_north",
+        "kind": "minecraft:player",
+        "sleeping": true,
+        "bed_orientation": "north",
+        "entity_is_sleeping": true,
+        "state_is_sleeping": true,
+        "eye_height_bits": "3e4ccccd",
+        "entity_pos_bits": [
+          "4025000000000000",
+          "40502c0000000000",
+          "4025000000000000"
+        ],
+        "camera_pos_after_1_tick_bits": [
+          "4025000000000000",
+          "40503c0000080000",
+          "4025000000000000"
+        ],
+        "camera_pos_settled_bits": [
+          "4025000000000000",
+          "4050426666600000",
+          "4025000000000000"
+        ],
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_rotation_bits": [
+          "00000000",
+          "3f800000",
+          "00000000",
+          "80000000"
+        ],
+        "hidden_in_first_person": false
+      },
+      {
+        "name": "remote_player_bed_east",
+        "kind": "minecraft:player",
+        "sleeping": true,
+        "bed_orientation": "east",
+        "entity_is_sleeping": true,
+        "state_is_sleeping": true,
+        "eye_height_bits": "3e4ccccd",
+        "entity_pos_bits": [
+          "4025000000000000",
+          "40502c0000000000",
+          "4025000000000000"
+        ],
+        "camera_pos_after_1_tick_bits": [
+          "4025000000000000",
+          "40503c0000080000",
+          "4025000000000000"
+        ],
+        "camera_pos_settled_bits": [
+          "4025000000000000",
+          "4050426666600000",
+          "4025000000000000"
+        ],
+        "camera_yRot_bits": "42b40000",
+        "camera_xRot_bits": "00000000",
+        "camera_rotation_bits": [
+          "00000000",
+          "3f3504f3",
+          "00000000",
+          "3f3504f3"
+        ],
+        "hidden_in_first_person": false
+      },
+      {
+        "name": "remote_player_stone_non_bed",
+        "kind": "minecraft:player",
+        "sleeping": true,
+        "bed_orientation": null,
+        "entity_is_sleeping": true,
+        "state_is_sleeping": true,
+        "eye_height_bits": "3e4ccccd",
+        "entity_pos_bits": [
+          "4025000000000000",
+          "40502c0000000000",
+          "4025000000000000"
+        ],
+        "camera_pos_after_1_tick_bits": [
+          "4025000000000000",
+          "40503c0000080000",
+          "4025000000000000"
+        ],
+        "camera_pos_settled_bits": [
+          "4025000000000000",
+          "4050426666600000",
+          "4025000000000000"
+        ],
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_rotation_bits": [
+          "00000000",
+          "3f800000",
+          "00000000",
+          "80000000"
+        ],
+        "hidden_in_first_person": false
+      },
+      {
+        "name": "remote_player_furnace_non_bed",
+        "kind": "minecraft:player",
+        "sleeping": true,
+        "bed_orientation": null,
+        "entity_is_sleeping": true,
+        "state_is_sleeping": true,
+        "eye_height_bits": "3e4ccccd",
+        "entity_pos_bits": [
+          "4025000000000000",
+          "40502c0000000000",
+          "4025000000000000"
+        ],
+        "camera_pos_after_1_tick_bits": [
+          "4025000000000000",
+          "40503c0000080000",
+          "4025000000000000"
+        ],
+        "camera_pos_settled_bits": [
+          "4025000000000000",
+          "4050426666600000",
+          "4025000000000000"
+        ],
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_rotation_bits": [
+          "00000000",
+          "3f800000",
+          "00000000",
+          "80000000"
+        ],
+        "hidden_in_first_person": false
+      },
+      {
+        "name": "zombie_bed_west",
+        "kind": "minecraft:zombie",
+        "sleeping": true,
+        "bed_orientation": "west",
+        "entity_is_sleeping": true,
+        "state_is_sleeping": true,
+        "eye_height_bits": "3e4ccccd",
+        "entity_pos_bits": [
+          "4025000000000000",
+          "40502c0000000000",
+          "4025000000000000"
+        ],
+        "camera_pos_after_1_tick_bits": [
+          "4025000000000000",
+          "40503c0000080000",
+          "4025000000000000"
+        ],
+        "camera_pos_settled_bits": [
+          "4025000000000000",
+          "4050426666600000",
+          "4025000000000000"
+        ],
+        "camera_yRot_bits": "c2b40000",
+        "camera_xRot_bits": "00000000",
+        "camera_rotation_bits": [
+          "00000000",
+          "3f3504f3",
+          "00000000",
+          "bf3504f3"
+        ],
+        "hidden_in_first_person": false
+      },
+      {
+        "name": "zombie_stone_non_bed",
+        "kind": "minecraft:zombie",
+        "sleeping": true,
+        "bed_orientation": null,
+        "entity_is_sleeping": true,
+        "state_is_sleeping": true,
+        "eye_height_bits": "3e4ccccd",
+        "entity_pos_bits": [
+          "4025000000000000",
+          "40502c0000000000",
+          "4025000000000000"
+        ],
+        "camera_pos_after_1_tick_bits": [
+          "4025000000000000",
+          "40503c0000080000",
+          "4025000000000000"
+        ],
+        "camera_pos_settled_bits": [
+          "4025000000000000",
+          "4050426666600000",
+          "4025000000000000"
+        ],
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_rotation_bits": [
+          "00000000",
+          "3f800000",
+          "00000000",
+          "80000000"
+        ],
+        "hidden_in_first_person": false
+      },
+      {
+        "name": "remote_player_awake",
+        "kind": "minecraft:player",
+        "sleeping": false,
+        "bed_orientation": null,
+        "entity_is_sleeping": false,
+        "state_is_sleeping": false,
+        "eye_height_bits": "3fcf5c29",
+        "entity_pos_bits": [
+          "4025000000000000",
+          "40502c0000000000",
+          "4025000000000000"
+        ],
+        "camera_pos_after_1_tick_bits": [
+          "4025000000000000",
+          "40505fd70a400000",
+          "4025000000000000"
+        ],
+        "camera_pos_settled_bits": [
+          "4025000000000000",
+          "405093ae14000000",
+          "4025000000000000"
+        ],
+        "camera_yRot_bits": "42124000",
+        "camera_xRot_bits": "c1778000",
+        "camera_rotation_bits": [
+          "3d2cea2f",
+          "3f70de2a",
+          "be02dae7",
+          "3e9f24df"
+        ],
+        "hidden_in_first_person": true
+      }
+    ]
+  },
+  "camera_player_fov_modifier": {
+    "cases": [
+      {
+        "name": "sprinting_speed_scale_1_0",
+        "movement_speed_bits": "3fc0a3d70a3d70a4",
+        "fov_effect_scale_bits": "3f800000",
+        "modifier_bits": "3f933333",
+        "fov_after_1_tick_p1_bits": "42210000",
+        "fov_after_1_tick_p05_bits": "41a10000",
+        "hud_after_1_tick_p1_bits": "428c0000",
+        "fov_settled_bits": "42a0ffff",
+        "hud_settled_bits": "428c0000"
+      },
+      {
+        "name": "speed_0_2_scale_0_5",
+        "movement_speed_bits": "3fc999999999999a",
+        "fov_effect_scale_bits": "3f000000",
+        "modifier_bits": "3fa00000",
+        "fov_settled_bits": "42af0000",
+        "hud_settled_bits": "428c0000"
+      },
+      {
+        "name": "bow_draw_mainhand",
+        "samples": [
+          {
+            "elapsed_ticks": 0,
+            "ticks_using_item": 0,
+            "modifier_bits": "3f800000",
+            "fov_settled_bits": "428c0000"
+          },
+          {
+            "elapsed_ticks": 5,
+            "ticks_using_item": 5,
+            "modifier_bits": "3f7d999a",
+            "fov_settled_bits": "428ab000"
+          },
+          {
+            "elapsed_ticks": 10,
+            "ticks_using_item": 10,
+            "modifier_bits": "3f766666",
+            "fov_settled_bits": "4286c000"
+          },
+          {
+            "elapsed_ticks": 20,
+            "ticks_using_item": 20,
+            "modifier_bits": "3f59999a",
+            "fov_settled_bits": "426e0000"
+          },
+          {
+            "elapsed_ticks": 25,
+            "ticks_using_item": 25,
+            "modifier_bits": "3f59999a",
+            "fov_settled_bits": "426e0000"
+          }
+        ]
+      },
+      {
+        "name": "spyglass_offhand_first_person",
+        "first_person": true,
+        "fov_effect_scale_bits": "3f000000",
+        "modifier_bits": "3dcccccd",
+        "fov_settled_bits": "40e00000",
+        "hud_settled_bits": "428c0000"
+      },
+      {
+        "name": "spyglass_offhand_third_person",
+        "first_person": false,
+        "fov_effect_scale_bits": "3f000000",
+        "modifier_bits": "3f800000",
+        "fov_settled_bits": "428c0000",
+        "hud_settled_bits": "428c0000"
+      },
+      {
+        "name": "local_dying_spectating_healthy_remote_player",
+        "fov_settled_bits": "428c0000",
+        "hud_settled_bits": "428c0000"
+      },
+      {
+        "name": "local_dying_spectating_healthy_creeper",
+        "fov_settled_bits": "428c0000",
+        "hud_settled_bits": "428c0000"
+      },
+      {
+        "name": "local_healthy_spectating_dying_sprinting_remote_player",
+        "fov_p05_bits": "429aa385",
+        "hud_p05_bits": "428677ef",
+        "fov_p1_bits": "429a5ac6",
+        "hud_p1_bits": "428638ad"
+      }
+    ]
+  },
+  "camera_pick_exclusion": {
+    "cases": [
+      {
+        "name": "oak_boat",
+        "kind": "minecraft:oak_boat",
+        "data": 0,
+        "spawn_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fe0000000000000",
+          "4050240000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_height_bits": "3f100000",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "0000000000000000",
+          "8000000000000000",
+          "3ff0000000000000"
+        ],
+        "camera_box_bits": [
+          "bfc8000000000000",
+          "4050000000000000",
+          "bfc8000000000000",
+          "3ff3000000000000",
+          "4050240000000000",
+          "3ff3000000000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": false,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "3fe0000000000000",
+          "404fdb3333333333",
+          "4008000000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "item_frame_south",
+        "kind": "minecraft:item_frame",
+        "data": 3,
+        "spawn_pos_bits": [
+          "0000000000000000",
+          "4050000000000000",
+          "0000000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fe0000000000000",
+          "4050200000000000",
+          "3fa0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fe0000000000000",
+          "4050200000000000",
+          "3fa0000000000000"
+        ],
+        "camera_eye_height_bits": "00000000",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "0000000000000000",
+          "8000000000000000",
+          "3ff0000000000000"
+        ],
+        "camera_box_bits": [
+          "3fc0000000000000",
+          "4050080000000000",
+          "0000000000000000",
+          "3fec000000000000",
+          "4050380000000000",
+          "3fb0000000000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "3fe0000000000000",
+          "404fd33333333333",
+          "4004400000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "item_frame_west",
+        "kind": "minecraft:item_frame",
+        "data": 4,
+        "spawn_pos_bits": [
+          "0000000000000000",
+          "4050000000000000",
+          "0000000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fef000000000000",
+          "4050200000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fef000000000000",
+          "4050200000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_height_bits": "00000000",
+        "camera_yRot_bits": "42b40000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "bff0000000000000",
+          "8000000000000000",
+          "0000000000000000"
+        ],
+        "camera_box_bits": [
+          "3fee000000000000",
+          "4050080000000000",
+          "3fc0000000000000",
+          "3ff0000000000000",
+          "4050380000000000",
+          "3fec000000000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "bff8800000000000",
+          "404fd33333333333",
+          "3fe0000000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "minecart",
+        "kind": "minecraft:minecart",
+        "data": 0,
+        "spawn_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fe0000000000000",
+          "405026147b000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_height_bits": "3f1851ec",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "0000000000000000",
+          "8000000000000000",
+          "3ff0000000000000"
+        ],
+        "camera_box_bits": [
+          "3f847ae000000000",
+          "4050000000000000",
+          "3f847ae000000000",
+          "3fefae1480000000",
+          "40502cccccc00000",
+          "3fefae1480000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "3fe0000000000000",
+          "404fdf5c29333333",
+          "4008000000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "tnt",
+        "kind": "minecraft:tnt",
+        "data": 0,
+        "spawn_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fe0000000000000",
+          "4050099999a00000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_height_bits": "3e19999a",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "0000000000000000",
+          "8000000000000000",
+          "3ff0000000000000"
+        ],
+        "camera_box_bits": [
+          "3f847ae000000000",
+          "4050000000000000",
+          "3f847ae000000000",
+          "3fefae1480000000",
+          "40503eb852000000",
+          "3fefae1480000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "3fe0000000000000",
+          "404fa66666733333",
+          "4008000000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "interaction",
+        "kind": "minecraft:interaction",
+        "data": 0,
+        "spawn_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fe0000000000000",
+          "4050366666800000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_height_bits": "3f59999a",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "0000000000000000",
+          "8000000000000000",
+          "3ff0000000000000"
+        ],
+        "camera_box_bits": [
+          "0000000000000000",
+          "4050000000000000",
+          "0000000000000000",
+          "3ff0000000000000",
+          "4050400000000000",
+          "3ff0000000000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "3fe0000000000000",
+          "405000000019999a",
+          "4008000000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "end_crystal",
+        "kind": "minecraft:end_crystal",
+        "data": 0,
+        "spawn_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fe0000000000000",
+          "40506ccccd000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_height_bits": "3fd9999a",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "0000000000000000",
+          "8000000000000000",
+          "3ff0000000000000"
+        ],
+        "camera_box_bits": [
+          "bfe0000000000000",
+          "4050000000000000",
+          "bfe0000000000000",
+          "3ff8000000000000",
+          "4050800000000000",
+          "3ff8000000000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "3fe0000000000000",
+          "405036666699999a",
+          "4008000000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "painting_south",
+        "kind": "minecraft:painting",
+        "data": 3,
+        "spawn_pos_bits": [
+          "0000000000000000",
+          "4050000000000000",
+          "0000000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fe0000000000000",
+          "4050200000000000",
+          "3fa0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fe0000000000000",
+          "40503b3333400000",
+          "3fa0000000000000"
+        ],
+        "camera_eye_height_bits": "3ed9999a",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "0000000000000000",
+          "8000000000000000",
+          "3ff0000000000000"
+        ],
+        "camera_box_bits": [
+          "0000000000000000",
+          "4050000000000000",
+          "0000000000000000",
+          "3ff0000000000000",
+          "4050400000000000",
+          "3fb0000000000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "3fe0000000000000",
+          "405004ccccd9999a",
+          "4004400000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "painting_west",
+        "kind": "minecraft:painting",
+        "data": 4,
+        "spawn_pos_bits": [
+          "0000000000000000",
+          "4050000000000000",
+          "0000000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fef000000000000",
+          "4050200000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fef000000000000",
+          "40503b3333400000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_height_bits": "3ed9999a",
+        "camera_yRot_bits": "42b40000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "bff0000000000000",
+          "8000000000000000",
+          "0000000000000000"
+        ],
+        "camera_box_bits": [
+          "3fee000000000000",
+          "4050000000000000",
+          "0000000000000000",
+          "3ff0000000000000",
+          "4050400000000000",
+          "3ff0000000000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "bff8800000000000",
+          "405004ccccd9999a",
+          "3fe0000000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "armor_stand",
+        "kind": "minecraft:armor_stand",
+        "data": 0,
+        "spawn_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fe0000000000000",
+          "405071c28f800000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_height_bits": "3fe3851f",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "0000000000000000",
+          "8000000000000000",
+          "3ff0000000000000"
+        ],
+        "camera_box_bits": [
+          "3fd0000000000000",
+          "4050000000000000",
+          "3fd0000000000000",
+          "3fe8000000000000",
+          "40507e6666800000",
+          "3fe8000000000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "3fe0000000000000",
+          "40503b5c2919999a",
+          "4008000000000000"
+        ],
+        "hit_with_target_id": 900
+      },
+      {
+        "name": "creeper",
+        "kind": "minecraft:creeper",
+        "data": 0,
+        "spawn_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_pos_bits": [
+          "3fe0000000000000",
+          "4050000000000000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_bits": [
+          "3fe0000000000000",
+          "40505c7ae1800000",
+          "3fe0000000000000"
+        ],
+        "camera_eye_height_bits": "3fb8f5c3",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "camera_look_bits": [
+          "0000000000000000",
+          "8000000000000000",
+          "3ff0000000000000"
+        ],
+        "camera_box_bits": [
+          "3fc9999980000000",
+          "4050000000000000",
+          "3fc9999980000000",
+          "3fe99999a0000000",
+          "40506ccccd000000",
+          "3fe99999a0000000"
+        ],
+        "self_is_pickable": true,
+        "self_box_contains_eye": true,
+        "hit_without_target_id": -1,
+        "target_feet_bits": [
+          "3fe0000000000000",
+          "405026147b19999a",
+          "4008000000000000"
+        ],
+        "hit_with_target_id": 900
+      }
+    ]
   }
 }

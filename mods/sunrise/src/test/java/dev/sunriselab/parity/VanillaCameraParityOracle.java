@@ -1,6 +1,7 @@
 package dev.sunriselab.parity;
 
 import com.google.gson.*;
+import com.mojang.authlib.GameProfile;
 import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -22,16 +23,21 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.player.RemotePlayer;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.SkyRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.debug.ChunkBorderRenderer;
 import net.minecraft.client.renderer.debug.EntityHitboxDebugRenderer;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.extract.LevelExtractor;
 import net.minecraft.client.renderer.fog.FogData;
 import net.minecraft.client.renderer.fog.environment.*;
 import net.minecraft.client.renderer.state.GameRenderState;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.core.*;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -53,18 +59,28 @@ import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.*;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.decoration.painting.Painting;
+import net.minecraft.world.entity.decoration.painting.PaintingVariant;
+import net.minecraft.world.entity.decoration.painting.PaintingVariants;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.player.Abilities;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.entity.vehicle.minecart.Minecart;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FurnaceBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.lighting.LevelLightEngine;
@@ -224,6 +240,25 @@ public final class VanillaCameraParityOracle {
         public LevelLightEngine getLightEngine() {
             return light;
         }
+
+        @Override
+        public net.minecraft.world.level.chunk.LevelChunk getChunk(int x, int z, net.minecraft.world.level.chunk.status.ChunkStatus status, boolean load) {
+            return null;
+        }
+    }
+
+    static final class StubEntityRenderDispatcher extends EntityRenderDispatcher {
+        Set<Integer> extractedIds = new HashSet<>();
+
+        StubEntityRenderDispatcher() {
+            super(null, null, null, null, null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public <E extends Entity> EntityRenderState extractEntity(E entity, float partialTick) {
+            extractedIds.add(entity.getId());
+            return new EntityRenderState();
+        }
     }
 
     static final class StubLevelExtractor extends LevelExtractor {
@@ -242,6 +277,7 @@ public final class VanillaCameraParityOracle {
         TickRateManager tickRateManager = new TickRateManager();
         WorldBorder worldBorder = new WorldBorder();
         Map<BlockPos, Integer> brightnessMap = new HashMap<>();
+        Map<BlockPos, BlockState> blocks = new HashMap<>();
         int defaultBrightness = 15;
         DimensionType dimType;
         boolean flat = false;
@@ -262,7 +298,7 @@ public final class VanillaCameraParityOracle {
         @Override public Entity getEntity(int id) { return entities.get(id); }
         @Override public Iterable<Entity> entitiesForRendering() { return entities.values(); }
         @Override public boolean isTickingEntity(Entity e) { return entities.containsKey(e.getId()); }
-        @Override public BlockState getBlockState(BlockPos p) { return Blocks.AIR.defaultBlockState(); }
+        @Override public BlockState getBlockState(BlockPos p) { return blocks.getOrDefault(p, Blocks.AIR.defaultBlockState()); }
         @Override public FluidState getFluidState(BlockPos p) { return Fluids.EMPTY.defaultFluidState(); }
         @Override public int getMaxLocalRawBrightness(BlockPos pos) { return brightnessMap.getOrDefault(pos, defaultBrightness); }
         @Override public int getBrightness(LightLayer layer, BlockPos pos) {
@@ -352,6 +388,7 @@ public final class VanillaCameraParityOracle {
         lvl.tickRateManager = new TickRateManager();
         lvl.worldBorder = new WorldBorder();
         lvl.brightnessMap = new HashMap<>();
+        lvl.blocks = new HashMap<>();
         lvl.defaultBrightness = 15;
         lvl.dimType = overworldDimType;
         lvl.chunkBiomes = new HashMap<>();
@@ -399,18 +436,54 @@ public final class VanillaCameraParityOracle {
         var ab = new Abilities();
         ab.mayBuild = true;
         field(Player.class, "abilities").set(p, ab);
+        var conn = make(ClientPacketListener.class);
+        field(ClientPacketListener.class, "playerInfoMap").set(conn, new HashMap<>());
+        field(LocalPlayer.class, "connection").set(p, conn);
         lvl.entities.put(id, p);
         return p;
     }
 
     static Entity spawnViaPacket(StubClientLevel lvl, String typeId, int id, double x, double y, double z, float yRot, float xRot, float yHeadRot) throws Exception {
+        return spawnViaPacketWithData(lvl, typeId, id, x, y, z, yRot, xRot, yHeadRot, 0);
+    }
+
+    static Entity spawnViaPacketWithData(StubClientLevel lvl, String typeId, int id, double x, double y, double z, float yRot, float xRot, float yHeadRot, int data) throws Exception {
         EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.parse(typeId));
         Entity e = type.create(lvl, EntitySpawnReason.LOAD);
         if (e == null) throw new IllegalStateException("Could not create entity " + typeId);
-        var pkt = new ClientboundAddEntityPacket(id, new UUID(0L, id), x, y, z, xRot, yRot, type, 0, Vec3.ZERO, yHeadRot);
+        var pkt = new ClientboundAddEntityPacket(id, new UUID(0L, id), x, y, z, xRot, yRot, type, data, Vec3.ZERO, yHeadRot);
         e.recreateFromPacket(pkt);
         lvl.entities.put(id, e);
         return e;
+    }
+
+    static RemotePlayer newRemotePlayer(StubClientLevel lvl, int id, double x, double y, double z, float yRot, float xRot, float yHeadRot) throws Exception {
+        var rp = new RemotePlayer(lvl, new GameProfile(new UUID(0L, id), "Remote" + id));
+        EntityType<?> playerType = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.parse("minecraft:player"));
+        var pkt = new ClientboundAddEntityPacket(id, new UUID(0L, id), x, y, z, xRot, yRot, playerType, 0, Vec3.ZERO, yHeadRot);
+        rp.recreateFromPacket(pkt);
+        lvl.entities.put(id, rp);
+        return rp;
+    }
+
+    @SuppressWarnings("unchecked")
+    static EntityDataAccessor<Optional<BlockPos>> sleepingPosAccessor() throws Exception {
+        return (EntityDataAccessor<Optional<BlockPos>>) field(LivingEntity.class, "SLEEPING_POS_ID").get(null);
+    }
+
+    @SuppressWarnings("unchecked")
+    static EntityDataAccessor<Byte> livingFlagsAccessor() throws Exception {
+        return (EntityDataAccessor<Byte>) field(LivingEntity.class, "DATA_LIVING_ENTITY_FLAGS").get(null);
+    }
+
+    @SuppressWarnings("unchecked")
+    static EntityDataAccessor<Float> livingHealthAccessor() throws Exception {
+        return (EntityDataAccessor<Float>) field(LivingEntity.class, "DATA_HEALTH_ID").get(null);
+    }
+
+    @SuppressWarnings("unchecked")
+    static EntityDataAccessor<Holder<PaintingVariant>> paintingVariantAccessor() throws Exception {
+        return (EntityDataAccessor<Holder<PaintingVariant>>) field(Painting.class, "DATA_PAINTING_VARIANT_ID").get(null);
     }
 
     @SuppressWarnings("unchecked")
@@ -1248,6 +1321,429 @@ public final class VanillaCameraParityOracle {
         return out;
     }
 
+    static JsonObject recordSleepingSpectatedCamera() throws Exception {
+        var out = new JsonObject();
+        var align = method(Camera.class, "alignWithEntity", float.class);
+        var extractVisible = method(
+            LevelExtractor.class, "extractVisibleEntities",
+            Camera.class, Frustum.class, DeltaTracker.class, LevelRenderState.class
+        );
+
+        record SleepCase(String name, String kind, BlockState block, boolean sleeping) {}
+        BlockPos bedPos = new BlockPos(10, 64, 10);
+        BlockState redBedHead = BuiltInRegistries.BLOCK.getValue(Identifier.parse("minecraft:red_bed"))
+            .defaultBlockState().setValue(BedBlock.PART, BedPart.HEAD);
+        List<SleepCase> cases = List.of(
+            new SleepCase("remote_player_bed_south", "minecraft:player",
+                redBedHead.setValue(BedBlock.FACING, Direction.SOUTH), true),
+            new SleepCase("remote_player_bed_west", "minecraft:player",
+                redBedHead.setValue(BedBlock.FACING, Direction.WEST), true),
+            new SleepCase("remote_player_bed_north", "minecraft:player",
+                redBedHead.setValue(BedBlock.FACING, Direction.NORTH), true),
+            new SleepCase("remote_player_bed_east", "minecraft:player",
+                redBedHead.setValue(BedBlock.FACING, Direction.EAST), true),
+            new SleepCase("remote_player_stone_non_bed", "minecraft:player",
+                Blocks.STONE.defaultBlockState(), true),
+            new SleepCase("remote_player_furnace_non_bed", "minecraft:player",
+                Blocks.FURNACE.defaultBlockState().setValue(FurnaceBlock.FACING, Direction.WEST), true),
+            new SleepCase("zombie_bed_west", "minecraft:zombie",
+                redBedHead.setValue(BedBlock.FACING, Direction.WEST), true),
+            new SleepCase("zombie_stone_non_bed", "minecraft:zombie",
+                Blocks.STONE.defaultBlockState(), true),
+            new SleepCase("remote_player_awake", "minecraft:player",
+                redBedHead.setValue(BedBlock.FACING, Direction.SOUTH), false)
+        );
+
+        var records = new JsonArray();
+        int nextId = 500;
+        for (SleepCase tc : cases) {
+            var lvl = newLevel();
+            lvl.blocks.put(bedPos, tc.block);
+            var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            minecraft.player = local;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.FIRST_PERSON);
+            options.fov().set(70);
+
+            int id = nextId++;
+            LivingEntity target;
+            if (tc.kind.equals("minecraft:player")) {
+                target = newRemotePlayer(lvl, id, 10.5, 64.6875, 10.5, 37.5F, -15.0F, 37.5F);
+            } else {
+                target = (LivingEntity) spawnViaPacket(lvl, tc.kind, id, 10.5, 64.6875, 10.5, 37.5F, -15.0F, 37.5F);
+            }
+            target.xo = target.getX();
+            target.yo = target.getY();
+            target.zo = target.getZ();
+            target.yRotO = target.getYRot();
+            target.xRotO = target.getXRot();
+            target.yHeadRotO = target.yHeadRot;
+
+            if (tc.sleeping) {
+                target.getEntityData().assignValues(List.of(
+                    SynchedEntityData.DataValue.create(entityPoseAccessor(), Pose.SLEEPING),
+                    SynchedEntityData.DataValue.create(sleepingPosAccessor(), Optional.of(bedPos))
+                ));
+            } else {
+                target.getEntityData().assignValues(List.of(
+                    SynchedEntityData.DataValue.create(entityPoseAccessor(), Pose.STANDING),
+                    SynchedEntityData.DataValue.create(sleepingPosAccessor(), Optional.empty())
+                ));
+            }
+
+            var cam = newCamera(lvl);
+            cam.setEntity(target);
+            cam.tick();
+            align.invoke(cam, 1.0F);
+            Vec3 posAfter1Tick = cam.position();
+
+            for (int t = 0; t < 40; t++) cam.tick();
+            align.invoke(cam, 1.0F);
+
+            var state = new CameraRenderState();
+            cam.extractRenderState(state, new FixedDelta(1.0F, 1.0F, 1.0F));
+
+            var dispatcher = make(StubEntityRenderDispatcher.class);
+            dispatcher.extractedIds = new HashSet<>();
+            var levelRenderer = make(LevelRenderer.class);
+            field(LevelRenderer.class, "entityRenderDispatcher").set(levelRenderer, dispatcher);
+            var extractor = make(StubLevelExtractor.class);
+            field(LevelExtractor.class, "minecraft").set(extractor, minecraft);
+            field(LevelExtractor.class, "level").set(extractor, lvl);
+            field(LevelExtractor.class, "levelRenderer").set(extractor, levelRenderer);
+            var lrs = new LevelRenderState();
+            extractVisible.invoke(extractor, cam, null, new FixedDelta(1.0F, 1.0F, 1.0F), lrs);
+            boolean hiddenInFirstPerson = !dispatcher.extractedIds.contains(id);
+
+            Direction orient = target.getBedOrientation();
+            var row = new JsonObject();
+            row.addProperty("name", tc.name);
+            row.addProperty("kind", tc.kind);
+            row.addProperty("sleeping", tc.sleeping);
+            row.addProperty("bed_orientation", orient == null ? null : orient.getName());
+            row.addProperty("entity_is_sleeping", target.isSleeping());
+            row.addProperty("state_is_sleeping", state.entityRenderState.isSleeping);
+            row.addProperty("eye_height_bits", fb(target.getEyeHeight()));
+            row.add("entity_pos_bits", vec3Bits(target.position()));
+            row.add("camera_pos_after_1_tick_bits", vec3Bits(posAfter1Tick));
+            row.add("camera_pos_settled_bits", vec3Bits(cam.position()));
+            row.addProperty("camera_yRot_bits", fb(cam.yRot()));
+            row.addProperty("camera_xRot_bits", fb(cam.xRot()));
+            row.add("camera_rotation_bits", quatBits(cam.rotation()));
+            row.addProperty("hidden_in_first_person", hiddenInFirstPerson);
+            records.add(row);
+        }
+        out.add("cases", records);
+        return out;
+    }
+
+    static StubCamera attachCamera(StubClientLevel lvl, Entity e) throws Exception {
+        var cam = newCamera(lvl);
+        var renderer = make(GameRenderer.class);
+        field(GameRenderer.class, "mainCamera").set(renderer, cam);
+        field(Minecraft.class, "gameRenderer").set(minecraft, renderer);
+        cam.setEntity(e);
+        return cam;
+    }
+
+    static JsonObject recordCameraPlayerFovModifier() throws Exception {
+        var out = new JsonObject();
+        var calcFov = method(Camera.class, "calculateFov", float.class);
+        var calcHudFov = method(Camera.class, "calculateHudFov", float.class);
+
+        var cases = new JsonArray();
+
+        // Case 1: spectated RemotePlayer sprinting (+30% ADD_MULTIPLIED_TOTAL on base 0.1 = 0.13), fovEffectScale=1.0
+        {
+            var lvl = newLevel();
+            var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            var rp = newRemotePlayer(lvl, 20, 5.5, 64.0, 5.5, 0.0F, 0.0F, 0.0F);
+            var speedAttr = rp.getAttribute(Attributes.MOVEMENT_SPEED);
+            speedAttr.setBaseValue(0.1);
+            speedAttr.addTransientModifier(new AttributeModifier(
+                Identifier.parse("minecraft:sprinting"), 0.3, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+            ));
+            minecraft.player = local;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.FIRST_PERSON);
+            options.fov().set(70);
+            options.fovEffectScale().set(1.0);
+
+            var cam = attachCamera(lvl, rp);
+            float mod = rp.getFieldOfViewModifier(true, 1.0F);
+            cam.tick();
+            float fov1_p1 = (float) calcFov.invoke(cam, 1.0F);
+            float fov1_p05 = (float) calcFov.invoke(cam, 0.5F);
+            float hud1_p1 = (float) calcHudFov.invoke(cam, 1.0F);
+            for (int t = 0; t < 39; t++) cam.tick();
+            float fovSettled = (float) calcFov.invoke(cam, 1.0F);
+            float hudSettled = (float) calcHudFov.invoke(cam, 1.0F);
+
+            var row = new JsonObject();
+            row.addProperty("name", "sprinting_speed_scale_1_0");
+            row.addProperty("movement_speed_bits", db(rp.getAttributeValue(Attributes.MOVEMENT_SPEED)));
+            row.addProperty("fov_effect_scale_bits", fb(1.0F));
+            row.addProperty("modifier_bits", fb(mod));
+            row.addProperty("fov_after_1_tick_p1_bits", fb(fov1_p1));
+            row.addProperty("fov_after_1_tick_p05_bits", fb(fov1_p05));
+            row.addProperty("hud_after_1_tick_p1_bits", fb(hud1_p1));
+            row.addProperty("fov_settled_bits", fb(fovSettled));
+            row.addProperty("hud_settled_bits", fb(hudSettled));
+            cases.add(row);
+        }
+
+        // Case 2: spectated RemotePlayer speed=0.2 with fovEffectScale=0.5
+        {
+            var lvl = newLevel();
+            var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            var rp = newRemotePlayer(lvl, 21, 5.5, 64.0, 5.5, 0.0F, 0.0F, 0.0F);
+            rp.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.2);
+            minecraft.player = local;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.FIRST_PERSON);
+            options.fov().set(70);
+            options.fovEffectScale().set(0.5);
+
+            var cam = attachCamera(lvl, rp);
+            float mod = rp.getFieldOfViewModifier(true, 0.5F);
+            for (int t = 0; t < 40; t++) cam.tick();
+            float fovSettled = (float) calcFov.invoke(cam, 1.0F);
+            float hudSettled = (float) calcHudFov.invoke(cam, 1.0F);
+
+            var row = new JsonObject();
+            row.addProperty("name", "speed_0_2_scale_0_5");
+            row.addProperty("movement_speed_bits", db(rp.getAttributeValue(Attributes.MOVEMENT_SPEED)));
+            row.addProperty("fov_effect_scale_bits", fb(0.5F));
+            row.addProperty("modifier_bits", fb(mod));
+            row.addProperty("fov_settled_bits", fb(fovSettled));
+            row.addProperty("hud_settled_bits", fb(hudSettled));
+            cases.add(row);
+        }
+
+        // Case 3: spectated RemotePlayer drawing a bow in main hand across ticks 0, 5, 10, 20, 25
+        {
+            var lvl = newLevel();
+            var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            var rp = newRemotePlayer(lvl, 22, 5.5, 64.0, 5.5, 0.0F, 0.0F, 0.0F);
+            rp.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+            rp.getEntityData().assignValues(List.of(
+                SynchedEntityData.DataValue.create(livingFlagsAccessor(), (byte) 1)
+            ));
+            minecraft.player = local;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.FIRST_PERSON);
+            options.fov().set(70);
+            options.fovEffectScale().set(1.0);
+
+            var samples = new JsonArray();
+            int[] probeTicks = { 0, 5, 10, 20, 25 };
+            int elapsed = 0;
+            for (int targetTick : probeTicks) {
+                while (elapsed < targetTick) {
+                    rp.tick();
+                    elapsed++;
+                }
+                var cam = attachCamera(lvl, rp);
+                float mod = rp.getFieldOfViewModifier(true, 1.0F);
+                for (int t = 0; t < 40; t++) cam.tick();
+                float fovSettled = (float) calcFov.invoke(cam, 1.0F);
+
+                var s = new JsonObject();
+                s.addProperty("elapsed_ticks", targetTick);
+                s.addProperty("ticks_using_item", rp.getTicksUsingItem());
+                s.addProperty("modifier_bits", fb(mod));
+                s.addProperty("fov_settled_bits", fb(fovSettled));
+                samples.add(s);
+            }
+
+            var row = new JsonObject();
+            row.addProperty("name", "bow_draw_mainhand");
+            row.add("samples", samples);
+            cases.add(row);
+        }
+
+        // Case 4 & 5: spectated RemotePlayer using spyglass in offhand (FIRST_PERSON vs THIRD_PERSON_BACK), fovEffectScale=0.5
+        for (CameraType ct : new CameraType[] { CameraType.FIRST_PERSON, CameraType.THIRD_PERSON_BACK }) {
+            var lvl = newLevel();
+            var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            var rp = newRemotePlayer(lvl, 23, 5.5, 64.0, 5.5, 0.0F, 0.0F, 0.0F);
+            rp.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SPYGLASS));
+            rp.getEntityData().assignValues(List.of(
+                SynchedEntityData.DataValue.create(livingFlagsAccessor(), (byte) 3)
+            ));
+            minecraft.player = local;
+            minecraft.level = lvl;
+            options.setCameraType(ct);
+            options.fov().set(70);
+            options.fovEffectScale().set(0.5);
+
+            var cam = attachCamera(lvl, rp);
+            float mod = rp.getFieldOfViewModifier(ct.isFirstPerson(), 0.5F);
+            for (int t = 0; t < 40; t++) cam.tick();
+            float fovSettled = (float) calcFov.invoke(cam, 1.0F);
+            float hudSettled = (float) calcHudFov.invoke(cam, 1.0F);
+
+            var row = new JsonObject();
+            row.addProperty("name", ct.isFirstPerson() ? "spyglass_offhand_first_person" : "spyglass_offhand_third_person");
+            row.addProperty("first_person", ct.isFirstPerson());
+            row.addProperty("fov_effect_scale_bits", fb(0.5F));
+            row.addProperty("modifier_bits", fb(mod));
+            row.addProperty("fov_settled_bits", fb(fovSettled));
+            row.addProperty("hud_settled_bits", fb(hudSettled));
+            cases.add(row);
+        }
+
+        // Case 6 & 7: local player dying/fast/scoping while spectating healthy RemotePlayer and healthy Creeper
+        for (String targetKind : new String[] { "minecraft:player", "minecraft:creeper" }) {
+            var lvl = newLevel();
+            var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            local.deathTime = 10;
+            Entity target = targetKind.equals("minecraft:player")
+                ? newRemotePlayer(lvl, 24, 5.5, 64.0, 5.5, 0.0F, 0.0F, 0.0F)
+                : spawnViaPacket(lvl, "minecraft:creeper", 25, 5.5, 64.0, 5.5, 0.0F, 0.0F, 0.0F);
+            minecraft.player = local;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.FIRST_PERSON);
+            options.fov().set(70);
+            options.fovEffectScale().set(1.0);
+
+            var cam = attachCamera(lvl, target);
+            for (int t = 0; t < 40; t++) cam.tick();
+            float fovSettled = (float) calcFov.invoke(cam, 0.5F);
+            float hudSettled = (float) calcHudFov.invoke(cam, 0.5F);
+
+            var row = new JsonObject();
+            row.addProperty("name", targetKind.equals("minecraft:player")
+                ? "local_dying_spectating_healthy_remote_player"
+                : "local_dying_spectating_healthy_creeper");
+            row.addProperty("fov_settled_bits", fb(fovSettled));
+            row.addProperty("hud_settled_bits", fb(hudSettled));
+            cases.add(row);
+        }
+
+        // Case 8: local player healthy while spectating dying + sprinting RemotePlayer (health=0, deathTime=10, speed=0.13)
+        {
+            var lvl = newLevel();
+            var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            var rp = newRemotePlayer(lvl, 26, 5.5, 64.0, 5.5, 0.0F, 0.0F, 0.0F);
+            var speedAttr = rp.getAttribute(Attributes.MOVEMENT_SPEED);
+            speedAttr.setBaseValue(0.1);
+            speedAttr.addTransientModifier(new AttributeModifier(
+                Identifier.parse("minecraft:sprinting"), 0.3, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+            ));
+            rp.getEntityData().assignValues(List.of(
+                SynchedEntityData.DataValue.create(livingHealthAccessor(), 0.0F)
+            ));
+            rp.deathTime = 10;
+            minecraft.player = local;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.FIRST_PERSON);
+            options.fov().set(70);
+            options.fovEffectScale().set(1.0);
+
+            var cam = attachCamera(lvl, rp);
+            for (int t = 0; t < 40; t++) cam.tick();
+            float fovP05 = (float) calcFov.invoke(cam, 0.5F);
+            float hudP05 = (float) calcHudFov.invoke(cam, 0.5F);
+            float fovP1 = (float) calcFov.invoke(cam, 1.0F);
+            float hudP1 = (float) calcHudFov.invoke(cam, 1.0F);
+
+            var row = new JsonObject();
+            row.addProperty("name", "local_healthy_spectating_dying_sprinting_remote_player");
+            row.addProperty("fov_p05_bits", fb(fovP05));
+            row.addProperty("hud_p05_bits", fb(hudP05));
+            row.addProperty("fov_p1_bits", fb(fovP1));
+            row.addProperty("hud_p1_bits", fb(hudP1));
+            cases.add(row);
+        }
+
+        out.add("cases", cases);
+        return out;
+    }
+
+    static JsonObject recordCameraPickExclusion() throws Exception {
+        var out = new JsonObject();
+        record PickCase(String name, String kind, double x, double y, double z, float yaw, float pitch, int data) {}
+        List<PickCase> cases = List.of(
+            new PickCase("oak_boat", "minecraft:oak_boat", 0.5, 64.0, 0.5, 0.0F, 0.0F, 0),
+            new PickCase("item_frame_south", "minecraft:item_frame", 0.0, 64.0, 0.0, 0.0F, 0.0F, 3),
+            new PickCase("item_frame_west", "minecraft:item_frame", 0.0, 64.0, 0.0, 0.0F, 0.0F, 4),
+            new PickCase("minecart", "minecraft:minecart", 0.5, 64.0, 0.5, 0.0F, 0.0F, 0),
+            new PickCase("tnt", "minecraft:tnt", 0.5, 64.0, 0.5, 0.0F, 0.0F, 0),
+            new PickCase("interaction", "minecraft:interaction", 0.5, 64.0, 0.5, 0.0F, 0.0F, 0),
+            new PickCase("end_crystal", "minecraft:end_crystal", 0.5, 64.0, 0.5, 0.0F, 0.0F, 0),
+            new PickCase("painting_south", "minecraft:painting", 0.0, 64.0, 0.0, 0.0F, 0.0F, 3),
+            new PickCase("painting_west", "minecraft:painting", 0.0, 64.0, 0.0, 0.0F, 0.0F, 4),
+            new PickCase("armor_stand", "minecraft:armor_stand", 0.5, 64.0, 0.5, 0.0F, 0.0F, 0),
+            new PickCase("creeper", "minecraft:creeper", 0.5, 64.0, 0.5, 0.0F, 0.0F, 0)
+        );
+
+        Holder<PaintingVariant> kebab = ParityData.access
+            .lookupOrThrow(Registries.PAINTING_VARIANT)
+            .getOrThrow(PaintingVariants.KEBAB);
+
+        var records = new JsonArray();
+        int nextId = 700;
+        double reach = 4.5;
+        for (PickCase tc : cases) {
+            var lvl = newLevel();
+            var local = newPlayer(lvl, 1, 50.5, 64.0, 50.5);
+            local.spectatorFlag = true;
+            minecraft.player = local;
+            minecraft.level = lvl;
+
+            int camId = nextId++;
+            Entity camEntity = spawnViaPacketWithData(lvl, tc.kind, camId, tc.x, tc.y, tc.z, tc.yaw, tc.pitch, tc.yaw, tc.data);
+            if (camEntity instanceof Painting p) {
+                p.getEntityData().assignValues(List.of(
+                    SynchedEntityData.DataValue.create(paintingVariantAccessor(), kebab)
+                ));
+            }
+            if (camEntity instanceof Interaction) {
+                camEntity.getEntityData().assignValues(List.of(
+                    SynchedEntityData.DataValue.create(interactionWidthAccessor(), 1.0F),
+                    SynchedEntityData.DataValue.create(interactionHeightAccessor(), 1.0F)
+                ));
+            }
+
+            Vec3 eye = camEntity.getEyePosition(1.0F);
+            Vec3 look = camEntity.getViewVector(1.0F);
+            Vec3 end = eye.add(look.scale(reach));
+            AABB search = camEntity.getBoundingBox().expandTowards(look.scale(reach)).inflate(1.0, 1.0, 1.0);
+            EntityHitResult withoutTarget = ProjectileUtil.getEntityHitResult(
+                camEntity, eye, end, search, e -> !e.isSpectator() && e.isPickable(), reach * reach
+            );
+
+            Vec3 targetCenter = eye.add(look.scale(2.5));
+            Vec3 targetFeet = new Vec3(targetCenter.x, targetCenter.y - 0.85, targetCenter.z);
+            spawnViaPacket(lvl, "minecraft:creeper", 900, targetFeet.x, targetFeet.y, targetFeet.z, 0.0F, 0.0F, 0.0F);
+            EntityHitResult withTarget = ProjectileUtil.getEntityHitResult(
+                camEntity, eye, end, search, e -> !e.isSpectator() && e.isPickable(), reach * reach
+            );
+
+            var row = new JsonObject();
+            row.addProperty("name", tc.name);
+            row.addProperty("kind", tc.kind);
+            row.addProperty("data", tc.data);
+            row.add("spawn_pos_bits", vec3Bits(new Vec3(tc.x, tc.y, tc.z)));
+            row.add("camera_pos_bits", vec3Bits(camEntity.position()));
+            row.add("camera_eye_bits", vec3Bits(eye));
+            row.addProperty("camera_eye_height_bits", fb(camEntity.getEyeHeight()));
+            row.addProperty("camera_yRot_bits", fb(camEntity.getYRot()));
+            row.addProperty("camera_xRot_bits", fb(camEntity.getXRot()));
+            row.add("camera_look_bits", vec3Bits(look));
+            row.add("camera_box_bits", aabbBits(camEntity.getBoundingBox()));
+            row.addProperty("self_is_pickable", camEntity.isPickable());
+            row.addProperty("self_box_contains_eye", camEntity.getBoundingBox().contains(eye));
+            row.addProperty("hit_without_target_id", withoutTarget != null ? withoutTarget.getEntity().getId() : -1);
+            row.add("target_feet_bits", vec3Bits(targetFeet));
+            row.addProperty("hit_with_target_id", withTarget != null ? withTarget.getEntity().getId() : -1);
+            records.add(row);
+        }
+        out.add("cases", records);
+        return out;
+    }
+
     public static void main(String[] args) throws Exception {
         ParityData.init();
         var u = Class.forName("sun.misc.Unsafe");
@@ -1273,6 +1769,9 @@ public final class VanillaCameraParityOracle {
         root.add("camera_removal", recordCameraRemoval());
         root.add("camera_consumers", recordCameraConsumers());
         root.add("cull_frustum", recordCullFrustum());
+        root.add("sleeping_spectated_camera", recordSleepingSpectatedCamera());
+        root.add("camera_player_fov_modifier", recordCameraPlayerFovModifier());
+        root.add("camera_pick_exclusion", recordCameraPickExclusion());
 
         var gson = new GsonBuilder().setPrettyPrinting().serializeNulls().create();
         Files.writeString(Path.of(args[0]), gson.toJson(root) + "\n", StandardCharsets.UTF_8);

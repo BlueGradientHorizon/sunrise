@@ -14,13 +14,15 @@ use sunrise_client::{
     items::ItemStack,
     level_loading::Reason,
     motion::PlayerMotion,
+    options_file::V as OptV,
     screen_effects::Blend,
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
     buf::pack_degrees,
     connection::Pipe,
-    entity_data::Value as EntityDataValue,
+    entity_data::{Value as EntityDataValue, serializer},
+    item::Stack as WireStack,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 
@@ -1178,4 +1180,581 @@ fn culling_near_plane_uses_max_of_fov_and_option_fov_26_3() {
             "cull near plane must use max(fov, option_fov)=70 so stone_slab at x=1.0 is view-blocking"
         );
     });
+}
+
+fn add_entity_with_data(
+    game: &mut Game<'_>,
+    id: i32,
+    kind: &str,
+    position: [f64; 3],
+    yaw: f32,
+    pitch: f32,
+    data: i32,
+) {
+    let uuid = id as u128 + 1000;
+    if kind == "minecraft:player" {
+        let r = game.remote.as_mut().unwrap();
+        r.players.insert(uuid, format!("Remote{id}"));
+        r.level_players.insert(id, uuid);
+    }
+    let kind_id = entity_type_id(game, kind);
+    let y = pack_degrees(yaw);
+    let p = pack_degrees(pitch);
+    game.handle_packet(C::AddEntity(play::AddEntity {
+        id,
+        uuid,
+        kind: kind_id,
+        position,
+        velocity: [0.0; 3],
+        pitch: p,
+        yaw: y,
+        head_yaw: y,
+        data,
+    }))
+    .unwrap();
+}
+
+/// Parity #1: any spectated sleeping living entity (RemotePlayer or mob, on a real bed or a
+/// non-bed block) adopts the vanilla 26.3 bed view (`bed_yaw - 180` or `0`, pitch `0`, `+0.15`)
+/// and stays visible in first person (`LevelExtractor` does not hide a sleeping camera entity).
+#[test]
+#[ignore = "daily"]
+fn sleeping_spectated_living_entity_bed_view_and_visibility_26_3() {
+    let witness = parity_witness();
+    let cases = witness["sleeping_spectated_camera"]["cases"]
+        .as_array()
+        .unwrap();
+    assert_eq!(cases.len(), 9);
+
+    with_client_game(|game| {
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(make_chunk(0, 0, 0, 0xF0)));
+        let registry = game.pack.assets.registry;
+        let bed_block = |facing: &str| {
+            registry
+                .resolve(&sunrise_world::chunk::BlockState {
+                    name: "minecraft:red_bed".into(),
+                    properties: [("facing", facing), ("occupied", "false"), ("part", "head")]
+                        .into_iter()
+                        .map(|(k, v)| (k.into(), v.into()))
+                        .collect(),
+                })
+                .unwrap()
+        };
+        let furnace_west = registry
+            .resolve(&sunrise_world::chunk::BlockState {
+                name: "minecraft:furnace".into(),
+                properties: [("facing", "west"), ("lit", "false")]
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), v.into()))
+                    .collect(),
+            })
+            .unwrap();
+        let stone = registry.default_state("minecraft:stone").unwrap();
+
+        let mut next_id = 500;
+        for tc in cases {
+            let name = tc["name"].as_str().unwrap();
+            let kind = tc["kind"].as_str().unwrap();
+            let sleeping = tc["sleeping"].as_bool().unwrap();
+            let state = match name {
+                "remote_player_bed_south" | "remote_player_awake" => bed_block("south"),
+                "remote_player_bed_west" | "zombie_bed_west" => bed_block("west"),
+                "remote_player_bed_north" => bed_block("north"),
+                "remote_player_bed_east" => bed_block("east"),
+                "remote_player_furnace_non_bed" => furnace_west,
+                "remote_player_stone_non_bed" | "zombie_stone_non_bed" => stone,
+                other => panic!("unexpected sleeping case {other}"),
+            };
+            game.world.set(10, 64, 10, state).unwrap();
+
+            let id = next_id;
+            next_id += 1;
+            add_entity_with_data(game, id, kind, [10.5, 64.6875, 10.5], 37.5, -15.0, 0);
+            game.handle_packet(C::SetEntityData(play::SetEntityData {
+                id,
+                values: vec![
+                    (
+                        6,
+                        serializer::POSE,
+                        EntityDataValue::Id(if sleeping { 2 } else { 0 }),
+                    ),
+                    (
+                        14,
+                        serializer::OPTIONAL_BLOCK_POS,
+                        EntityDataValue::OptPos(sleeping.then_some([10, 64, 10])),
+                    ),
+                ],
+            }))
+            .unwrap();
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: id }))
+                .unwrap();
+
+            game.view = Default::default();
+            game.tick_fov();
+            let (pos1, _, _) = game.camera_view(1.0).expect("1-tick camera view");
+            assert_eq!(
+                pos1.to_array().map(f64::to_bits),
+                vec3_bits_expected(&tc["camera_pos_after_1_tick_bits"]),
+                "{name}: 1-tick camera_pos_bits"
+            );
+
+            for _ in 0..40 {
+                game.tick_fov();
+            }
+            let (pos, yaw, pitch) = game.camera_view(1.0).expect("settled camera view");
+            assert_eq!(
+                pos.to_array().map(f64::to_bits),
+                vec3_bits_expected(&tc["camera_pos_settled_bits"]),
+                "{name}: settled camera_pos_bits"
+            );
+            assert_eq!(
+                yaw.to_bits(),
+                hex_f32(&tc["camera_yRot_bits"]),
+                "{name}: camera_yRot_bits"
+            );
+            assert_eq!(
+                pitch.to_bits(),
+                hex_f32(&tc["camera_xRot_bits"]),
+                "{name}: camera_xRot_bits"
+            );
+            let q = game.view.rotation;
+            assert_eq!(
+                [q.x.to_bits(), q.y.to_bits(), q.z.to_bits(), q.w.to_bits()],
+                [
+                    hex_f32(&tc["camera_rotation_bits"][0]),
+                    hex_f32(&tc["camera_rotation_bits"][1]),
+                    hex_f32(&tc["camera_rotation_bits"][2]),
+                    hex_f32(&tc["camera_rotation_bits"][3]),
+                ],
+                "{name}: camera_rotation_bits"
+            );
+            let subject = game.camera_subject().expect("camera subject");
+            assert_eq!(
+                subject.is_sleeping,
+                tc["state_is_sleeping"].as_bool().unwrap(),
+                "{name}: subject.is_sleeping"
+            );
+            assert_eq!(
+                game.hides_as_camera(id as u32),
+                tc["hidden_in_first_person"].as_bool().unwrap(),
+                "{name}: hides_as_camera in first person"
+            );
+        }
+    });
+}
+
+/// Parity #3: `Camera.tickFov` reads the camera player's own `getFieldOfViewModifier` (movement
+/// speed, bow draw, offhand spyglass, `fovEffectScale`, first- vs third-person) and isolates the
+/// camera from the local player's death/speed/scoping while still applying the camera entity's own
+/// death squeeze.
+#[test]
+#[ignore = "daily"]
+fn camera_player_fov_modifier_and_death_isolation_26_3() {
+    let witness = parity_witness();
+    let cases = witness["camera_player_fov_modifier"]["cases"]
+        .as_array()
+        .unwrap();
+    let find_case = |name: &str| {
+        cases
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap_or_else(|| panic!("missing fov case {name}"))
+    };
+    let item_id = |game: &Game<'_>, name: &str| {
+        game.remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:item")
+            .unwrap()
+            .id(name)
+            .unwrap()
+    };
+    let speed_attr_id = |game: &Game<'_>| {
+        game.motion
+            .attributes
+            .id("minecraft:movement_speed")
+            .unwrap()
+            .registry_id()
+    };
+
+    // Case 1: sprinting speed (base 0.1 + 0.3 ADD_MULTIPLIED_TOTAL = 0.13), fovEffectScale = 1.0
+    {
+        let tc = find_case("sprinting_speed_scale_1_0");
+        with_client_game(|game| {
+            let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+            game.settings.file.set("fovEffectScale", OptV::Double(1.0));
+            add_entity_with_data(game, 20, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
+            let attr = speed_attr_id(game);
+            game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+                id: 20,
+                values: vec![play::AttributeSnapshot {
+                    attribute: attr,
+                    base: 0.1,
+                    modifiers: vec![play::AttributeModifier {
+                        id: "minecraft:sprinting".into(),
+                        amount: 0.3,
+                        operation: 2,
+                    }],
+                }],
+            }))
+            .unwrap();
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 20 }))
+                .unwrap();
+            game.view = Default::default();
+            game.tick_fov();
+            let cam_pos = [5.5, 65.62, 5.5];
+            assert_eq!(
+                game.fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["fov_after_1_tick_p1_bits"]),
+                "sprinting_speed_scale_1_0: 1-tick p=1.0 fov"
+            );
+            assert_eq!(
+                game.fov_degrees(0.5, cam_pos).to_bits(),
+                hex_f32(&tc["fov_after_1_tick_p05_bits"]),
+                "sprinting_speed_scale_1_0: 1-tick p=0.5 fov"
+            );
+            assert_eq!(
+                game.hud_fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["hud_after_1_tick_p1_bits"]),
+                "sprinting_speed_scale_1_0: 1-tick hud fov"
+            );
+            for _ in 0..39 {
+                game.tick_fov();
+            }
+            assert_eq!(
+                game.fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["fov_settled_bits"]),
+                "sprinting_speed_scale_1_0: settled fov"
+            );
+            assert_eq!(
+                game.hud_fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["hud_settled_bits"]),
+                "sprinting_speed_scale_1_0: settled hud fov"
+            );
+        });
+    }
+
+    // Case 2: speed = 0.2, fovEffectScale = 0.5
+    {
+        let tc = find_case("speed_0_2_scale_0_5");
+        with_client_game(|game| {
+            let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+            game.settings.file.set("fovEffectScale", OptV::Double(0.5));
+            add_entity_with_data(game, 21, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
+            let attr = speed_attr_id(game);
+            game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+                id: 21,
+                values: vec![play::AttributeSnapshot {
+                    attribute: attr,
+                    base: 0.2,
+                    modifiers: vec![],
+                }],
+            }))
+            .unwrap();
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 21 }))
+                .unwrap();
+            game.view = Default::default();
+            for _ in 0..40 {
+                game.tick_fov();
+            }
+            let cam_pos = [5.5, 65.62, 5.5];
+            assert_eq!(
+                game.fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["fov_settled_bits"]),
+                "speed_0_2_scale_0_5: settled fov"
+            );
+            assert_eq!(
+                game.hud_fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["hud_settled_bits"]),
+                "speed_0_2_scale_0_5: settled hud fov"
+            );
+        });
+    }
+
+    // Case 3: bow draw in main hand at 0, 5, 10, 20, 25 ticks
+    {
+        let tc = find_case("bow_draw_mainhand");
+        with_client_game(|game| {
+            let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+            game.settings.file.set("fovEffectScale", OptV::Double(1.0));
+            add_entity_with_data(game, 22, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
+            let bow = WireStack::new(item_id(game, "minecraft:bow"), 1);
+            game.handle_packet(C::SetEquipment(play::SetEquipment {
+                id: 22,
+                slots: vec![(0, Some(bow))],
+            }))
+            .unwrap();
+            game.handle_packet(C::SetEntityData(play::SetEntityData {
+                id: 22,
+                values: vec![(8, serializer::BYTE, EntityDataValue::Byte(1))],
+            }))
+            .unwrap();
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 22 }))
+                .unwrap();
+            let mut elapsed = 0i64;
+            for sample in tc["samples"].as_array().unwrap() {
+                let target_tick = sample["elapsed_ticks"].as_i64().unwrap();
+                while elapsed < target_tick {
+                    game.tick_remote_entities(true);
+                    elapsed += 1;
+                }
+                game.view = Default::default();
+                for _ in 0..40 {
+                    game.tick_fov();
+                }
+                assert_eq!(
+                    game.fov_degrees(1.0, [5.5, 65.62, 5.5]).to_bits(),
+                    hex_f32(&sample["fov_settled_bits"]),
+                    "bow_draw_mainhand at elapsed_ticks={target_tick}"
+                );
+            }
+        });
+    }
+
+    // Cases 4 & 5: spyglass in offhand (first person vs third person), fovEffectScale = 0.5
+    for (name, ct) in [
+        ("spyglass_offhand_first_person", CameraType::FirstPerson),
+        ("spyglass_offhand_third_person", CameraType::ThirdPersonBack),
+    ] {
+        let tc = find_case(name);
+        with_client_game(|game| {
+            let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+            game.settings.file.set("fovEffectScale", OptV::Double(0.5));
+            game.camera_type = ct;
+            add_entity_with_data(game, 23, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
+            let spyglass = WireStack::new(item_id(game, "minecraft:spyglass"), 1);
+            game.handle_packet(C::SetEquipment(play::SetEquipment {
+                id: 23,
+                slots: vec![(1, Some(spyglass))],
+            }))
+            .unwrap();
+            game.handle_packet(C::SetEntityData(play::SetEntityData {
+                id: 23,
+                values: vec![(8, serializer::BYTE, EntityDataValue::Byte(3))],
+            }))
+            .unwrap();
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 23 }))
+                .unwrap();
+            game.view = Default::default();
+            for _ in 0..40 {
+                game.tick_fov();
+            }
+            let cam_pos = [5.5, 65.62, 5.5];
+            assert_eq!(
+                game.fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["fov_settled_bits"]),
+                "{name}: settled fov"
+            );
+            assert_eq!(
+                game.hud_fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["hud_settled_bits"]),
+                "{name}: settled hud fov"
+            );
+        });
+    }
+
+    // Cases 6 & 7: local player dying + fast + scoping must not affect healthy spectated camera
+    for (name, kind, id) in [
+        (
+            "local_dying_spectating_healthy_remote_player",
+            "minecraft:player",
+            24,
+        ),
+        (
+            "local_dying_spectating_healthy_creeper",
+            "minecraft:creeper",
+            25,
+        ),
+    ] {
+        let tc = find_case(name);
+        with_client_game(|game| {
+            let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+            game.settings.file.set("fovEffectScale", OptV::Double(1.0));
+            let local = game.player.as_mut().unwrap();
+            local.set_health(0.0, false).unwrap();
+            local.speed = 0.3;
+            game.ui.death_time = 10;
+            game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
+            game.selected = 0;
+            game.using = Some((0, 5));
+
+            add_entity_with_data(game, id, kind, [5.5, 64.0, 5.5], 0.0, 0.0, 0);
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: id }))
+                .unwrap();
+            game.view = Default::default();
+            for _ in 0..40 {
+                game.tick_fov();
+            }
+            let cam_pos = [5.5, 65.62, 5.5];
+            assert_eq!(
+                game.fov_degrees(0.5, cam_pos).to_bits(),
+                hex_f32(&tc["fov_settled_bits"]),
+                "{name}: settled fov"
+            );
+            assert_eq!(
+                game.hud_fov_degrees(0.5, cam_pos).to_bits(),
+                hex_f32(&tc["hud_settled_bits"]),
+                "{name}: settled hud fov"
+            );
+        });
+    }
+
+    // Case 8: local player healthy, spectating dying + sprinting RemotePlayer
+    {
+        let tc = find_case("local_healthy_spectating_dying_sprinting_remote_player");
+        with_client_game(|game| {
+            let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+            game.settings.file.set("fovEffectScale", OptV::Double(1.0));
+            add_entity_with_data(game, 26, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
+            let attr = speed_attr_id(game);
+            game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+                id: 26,
+                values: vec![play::AttributeSnapshot {
+                    attribute: attr,
+                    base: 0.1,
+                    modifiers: vec![play::AttributeModifier {
+                        id: "minecraft:sprinting".into(),
+                        amount: 0.3,
+                        operation: 2,
+                    }],
+                }],
+            }))
+            .unwrap();
+            game.handle_packet(C::SetEntityData(play::SetEntityData {
+                id: 26,
+                values: vec![(9, serializer::FLOAT, EntityDataValue::Float(0.0))],
+            }))
+            .unwrap();
+            game.mobs
+                .iter_mut()
+                .find(|m| m.id == 26)
+                .unwrap()
+                .death_time = 10;
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 26 }))
+                .unwrap();
+            game.view = Default::default();
+            for _ in 0..40 {
+                game.tick_fov();
+            }
+            let cam_pos = [5.5, 65.62, 5.5];
+            assert_eq!(
+                game.fov_degrees(0.5, cam_pos).to_bits(),
+                hex_f32(&tc["fov_p05_bits"]),
+                "dying sprinting remote player p=0.5 fov"
+            );
+            assert_eq!(
+                game.hud_fov_degrees(0.5, cam_pos).to_bits(),
+                hex_f32(&tc["hud_p05_bits"]),
+                "dying sprinting remote player p=0.5 hud fov"
+            );
+            assert_eq!(
+                game.fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["fov_p1_bits"]),
+                "dying sprinting remote player p=1.0 fov"
+            );
+            assert_eq!(
+                game.hud_fov_degrees(1.0, cam_pos).to_bits(),
+                hex_f32(&tc["hud_p1_bits"]),
+                "dying sprinting remote player p=1.0 hud fov"
+            );
+        });
+    }
+}
+
+/// Parity #33: `Minecraft.pick` / `ProjectileUtil.getEntityHitResult` excludes the camera entity
+/// itself for every pickable entity family (boats, item frames, minecarts, TNT, interactions,
+/// end crystals, paintings, armor stands, mobs) and shoots from the camera entity's exact eye and
+/// view direction so a target ahead is picked instead of self.
+#[test]
+#[ignore = "daily"]
+fn camera_entity_excluded_from_pick_for_all_pickable_kinds_26_3() {
+    let witness = parity_witness();
+    let cases = witness["camera_pick_exclusion"]["cases"]
+        .as_array()
+        .unwrap();
+    assert_eq!(cases.len(), 11);
+
+    for (idx, tc) in cases.iter().enumerate() {
+        let name = tc["name"].as_str().unwrap();
+        let kind = tc["kind"].as_str().unwrap();
+        let data = tc["data"].as_i64().unwrap() as i32;
+        let spawn_pos = vec3_from_bits(&tc["spawn_pos_bits"]);
+        let target_feet = vec3_from_bits(&tc["target_feet_bits"]);
+        let cam_id = 700 + idx as i32;
+
+        with_client_game(|game| {
+            let _server = setup_remote_overworld(game, 1, [50.5, 64.0, 50.5], true);
+            game.handle_packet(C::GameEvent(play::GameEvent {
+                event: 3,
+                param: 3.0,
+            }))
+            .unwrap();
+            game.entity_reach = 4.5;
+
+            add_entity_with_data(game, cam_id, kind, spawn_pos, 0.0, 0.0, data);
+            if kind == "minecraft:interaction" {
+                sync_interaction_size(game, cam_id, 1.0, 1.0);
+            }
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: cam_id }))
+                .unwrap();
+
+            let snap = game
+                .spectated_camera_snapshot()
+                .unwrap_or_else(|| panic!("{name}: camera snapshot missing"));
+            assert_eq!(
+                snap.position.map(f64::to_bits),
+                vec3_bits_expected(&tc["camera_pos_bits"]),
+                "{name}: camera_pos_bits"
+            );
+            assert_eq!(
+                snap.eye_height.to_bits(),
+                hex_f32(&tc["camera_eye_height_bits"]),
+                "{name}: camera_eye_height_bits"
+            );
+            assert_eq!(
+                snap.y_rot.to_bits(),
+                hex_f32(&tc["camera_yRot_bits"]),
+                "{name}: camera_yRot_bits"
+            );
+            assert_eq!(
+                snap.x_rot.to_bits(),
+                hex_f32(&tc["camera_xRot_bits"]),
+                "{name}: camera_xRot_bits"
+            );
+
+            assert!(
+                game.native_lifecycle.epoch().is_some(),
+                "{name}: world epoch must be live for client pick"
+            );
+            game.refresh_client_pick(1.0);
+            assert_eq!(
+                game.crosshair_entity_id(),
+                None,
+                "{name}: camera entity must be excluded from crosshair_entity_id when alone"
+            );
+            assert_eq!(
+                game.spectator_click_target(),
+                None,
+                "{name}: camera entity must be excluded from spectator_click_target when alone"
+            );
+
+            add_entity_with_data(game, 900, "minecraft:creeper", target_feet, 0.0, 0.0, 0);
+            game.refresh_client_pick(1.0);
+            let want = tc["hit_with_target_id"].as_i64().unwrap() as i32;
+            assert_eq!(
+                game.crosshair_entity_id(),
+                Some(want),
+                "{name}: crosshair_entity_id must hit target past excluded camera entity"
+            );
+            assert_eq!(
+                game.spectator_click_target(),
+                Some(want),
+                "{name}: spectator_click_target must hit target past excluded camera entity"
+            );
+        });
+    }
 }
