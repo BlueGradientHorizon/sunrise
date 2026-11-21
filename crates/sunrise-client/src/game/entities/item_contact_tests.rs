@@ -444,7 +444,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 crate::game::api_values::install_parts(&mods).unwrap();
                 crate::game::native_hooks::install_block_contact_hooks();
-                let run = |game: &mut Game<'_>, client| {
+                let run = |game: &mut Game<'_>, client: bool| {
                     let registry = game.pack.assets.registry;
                     let stone = registry.default_state("minecraft:stone").unwrap();
                     let web = registry.default_state("minecraft:cobweb").unwrap();
@@ -469,7 +469,19 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                         game.dropped[0].clone()
                     };
                     let tick = |game: &mut Game<'_>, item: &mut ItemEntity, escape| {
-                        game.tick_item_with_block_contacts(item, escape, &[], client, &mut |_| {})
+                        sunrise_client::block_contact::in_level(
+                            sunrise_client::parallel::TickThread::mint(),
+                            Some("minecraft:overworld"),
+                            || {
+                                game.tick_item_with_block_contacts(
+                                    item,
+                                    escape,
+                                    &[],
+                                    client,
+                                    &mut |_| {},
+                                )
+                            },
+                        )
                     };
                     let clear_calls = || std::mem::take(&mut *part.calls.lock().unwrap());
                     let mut item = spawn(game, 2, 64.25);
