@@ -941,12 +941,7 @@ fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
                     Some(chest_stack.clone());
             }
             assert_eq!(
-                game.level_set_block(
-                    level,
-                    AT,
-                    glass,
-                    BlockUpdateFlags::KNOWN_SHAPE
-                ),
+                game.level_set_block(level, AT, glass, BlockUpdateFlags::KNOWN_SHAPE),
                 Ok(true)
             );
             assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));

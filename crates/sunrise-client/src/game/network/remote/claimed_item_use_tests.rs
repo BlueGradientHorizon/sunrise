@@ -357,7 +357,10 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
                 );
                 registries.registries.insert(
                     "minecraft:dialog".into(),
-                    vec![("test:quick".into(), Some(Tag::Compound(notice.into_iter().collect())))],
+                    vec![(
+                        "test:quick".into(),
+                        Some(Tag::Compound(notice.into_iter().collect())),
+                    )],
                 );
                 registries
                     .tags

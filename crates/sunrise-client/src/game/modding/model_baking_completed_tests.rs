@@ -259,9 +259,9 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
 fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
     use super::{Progress, packs::stage_pack};
     use mod_api::{
-        AddClientReloadListenersEvent, ClientReloadContext, ClientReloadListener, ClientReloadListenerContext,
-        FileToIdConverter, ProfessionDefinition, ProfessionKey, RegisterVillagerProfessionsEvent,
-        ReloadResourceError, VanillaClientListeners,
+        AddClientReloadListenersEvent, ClientReloadContext, ClientReloadListener,
+        ClientReloadListenerContext, FileToIdConverter, ProfessionDefinition, ProfessionKey,
+        RegisterVillagerProfessionsEvent, ReloadResourceError, VanillaClientListeners,
     };
 
     struct Listener {

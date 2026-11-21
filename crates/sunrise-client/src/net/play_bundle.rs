@@ -19,10 +19,8 @@ impl BundleMember {
     fn owned_heap_bytes(&self) -> usize {
         match self {
             Self::Packet(packet) => packet.owned_heap_bytes(),
-            Self::AttachmentSync(staged) => {
-                std::mem::size_of::<attachment_sync::StagedMessage>()
-                    .saturating_add(staged.owned_heap_bytes())
-            }
+            Self::AttachmentSync(staged) => std::mem::size_of::<attachment_sync::StagedMessage>()
+                .saturating_add(staged.owned_heap_bytes()),
         }
     }
 }
@@ -46,7 +44,10 @@ impl PlayBundle {
         self.0.is_some()
     }
 
-    pub(super) fn accept(&mut self, member: BundleMember) -> Result<Option<PlayTurn>, InvalidBundle> {
+    pub(super) fn accept(
+        &mut self,
+        member: BundleMember,
+    ) -> Result<Option<PlayTurn>, InvalidBundle> {
         if matches!(member, BundleMember::Packet(C::BundleDelimiter(_))) {
             return Ok(match self.0.take() {
                 Some(packets) => Some(PlayTurn::Bundle(packets)),

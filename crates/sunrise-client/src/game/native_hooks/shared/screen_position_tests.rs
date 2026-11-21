@@ -869,7 +869,10 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         game.world
                             .block_entities
                             .insert(pos, BlockEntity::Chest(vec![None; 5]));
-                        assert!(matches!(game.lan_open_container(1, pos), crate::game::lan_actions::MenuOpen::Opened));
+                        assert!(matches!(
+                            game.lan_open_container(1, pos),
+                            crate::game::lan_actions::MenuOpen::Opened
+                        ));
                         let hub = &game.lan.as_ref().unwrap().hub;
                         let menu = hub.guest(1).unwrap().menu.as_ref().unwrap();
                         assert_eq!((&*menu.registry_id, menu.slot_count()), (MENU, 41));
