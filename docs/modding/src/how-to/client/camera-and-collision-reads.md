@@ -25,9 +25,9 @@ its published sky light, even outside build height or in an unloaded column. See
 [Level hosts](../../concepts/hooks-and-the-host.md#level-hosts) for the boundary rules.
 
 `ClientHost::playing()` is true while the player is in the world with nothing over it: no screen, title, sign
-editor or book, so keys and zoom apply. To read held state, the current binding, or its Controls label
-from a HUD or screen hook, resolve a [live vanilla mapping](input.md#reading-live-vanilla-mappings)
-and use it with the shared client host.
+editor or book, so keys and zoom apply. A HUD or screen hook can read held state, the current binding,
+or its Controls label using a [live vanilla mapping](input.md#reading-live-vanilla-mappings) retained
+from `client_setup`.
 
 `ClientHost::select_hotbar_slot(slot)` chooses the local player's hotbar slot (0 to 8) as a number key
 does (`Inventory.setSelectedSlot`), and sends nothing itself. The game sends the carried-item packet

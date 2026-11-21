@@ -4,21 +4,10 @@ A client mod can press the player's vanilla gameplay mappings as their keys do: 
 it go, or click it. The game then acts through its own key handling, with every check it makes for the
 player's keys, so the server sees only the packets of a normal client, at the vanilla moments.
 
-Resolve each mapping once during `client_setup` and store its `VanillaKeyMappingRef`:
-
-```rust
-use mod_api::prelude::*;
-
-let sprint = host.vanilla_key_mapping("key.sprint")?;
-let attack = host.vanilla_key_mapping("key.attack")?;
-```
-
-In a world-phase callback, use those same handles to hold sprint and attack once:
-
-```rust
-sprint.set_down(host, true)?;
-attack.click(host)?;
-```
+During `client_setup`, resolve `host.vanilla_key_mapping("key.sprint")` and
+`host.vanilla_key_mapping("key.attack")`. Store each successful `VanillaKeyMappingRef` in your mod's
+client state. In a world-phase callback, call `sprint.set_down(host, true)` and `attack.click(host)`
+with those same handles; handle any refusal as described below.
 
 `mapping.set_down(host, down)` sets the held state (`KeyMapping.setDown`), without the click a
 press adds. For a hold-style mapping, `false` releases the mapping even if the player is holding
@@ -100,5 +89,11 @@ that is not a vanilla mapping. Reads return `Stale` if the handle belongs to a d
 - `mapping.translated_key_message(host)` builds the current Controls label when you need to display it.
   It returns `MappingError::Label` if the label cannot be represented as API `Text`.
 
+Use the borrowed name for comparisons within the callback, not a binding hash. If you need the
+name after the host borrow ends, copy it explicitly. To hand a hold-style mapping back to the
+player after a logical override, read `mapping.physical_down(host)`, then pass the successful value
+to `mapping.set_down(host, down)`.
+
 `ClientHost::is_key_down` still takes a physical key or mouse button name (`key.mouse.left`), rather
-than a mapping name.
+than a mapping name. For mappings your mod registers, see
+[Registered key mappings](../native-mods/13-runtime-packages-and-identity.md#registered-key-mappings).

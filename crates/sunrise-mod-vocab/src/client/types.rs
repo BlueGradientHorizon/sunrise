@@ -67,9 +67,10 @@ impl ClientModifiers {
 
 /// A resolved vanilla key mapping for one running client.
 ///
-/// Resolve it with `ClientHost::vanilla_key_mapping` and keep it across rebinding,
-/// options replacement, and screen or world changes. Resolve again for a new client.
-/// Persist the mapping name, not this handle.
+/// Resolve it with [`vanilla_key_mapping`](crate::prelude::ClientInputClientHost::vanilla_key_mapping)
+/// in `client_setup`. Keep it across rebinding, options replacement, and screen or world changes.
+/// A different client refuses it with [`MappingError::Stale`]; resolve the saved mapping name
+/// against that client. Persist the name, not this handle.
 // no wire: process-local client mapping handle
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -80,9 +81,10 @@ pub struct VanillaKeyMappingRef {
 
 /// A resolved mod key mapping in the current client's registration roster.
 ///
-/// Resolve it with `ClientHost::mod_key_mapping` after registration, usually in `client_setup`.
-/// Rebinding, resetting and changing screens do not invalidate it. If the client or its ordered
-/// registration roster is replaced, resolve again. Persist the owner and id, not this handle.
+/// Resolve it with [`mod_key_mapping`](crate::prelude::ClientInputClientHost::mod_key_mapping)
+/// after registration, usually in `client_setup`. Rebinding, resetting and changing screens do not
+/// invalidate it. If the client or its ordered registration roster is replaced, discard the stale
+/// handle and resolve again. Persist the owner and id, not this handle.
 // no wire: process-local registered key mapping handle
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]

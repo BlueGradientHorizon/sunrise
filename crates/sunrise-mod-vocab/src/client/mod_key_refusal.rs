@@ -9,7 +9,7 @@
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum ModKeyRefusal {
-    /// The mod has no registered mapping of that name.
+    /// Resolution found no registered mapping for the given owner and id.
     NotRegistered,
     /// A native mod asked for another mod's mapping: a mod rebinds only its own.
     NotOwner,
@@ -21,6 +21,7 @@ pub enum ModKeyRefusal {
     /// No client key mapping backend is available in this host or phase.
     Unavailable,
     /// The handle no longer identifies a row in this client's registration roster.
+    /// Resolve its owner and id again on the current client; a rebind or reset alone is not stale.
     Stale,
 }
 
