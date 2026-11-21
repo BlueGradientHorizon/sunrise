@@ -39,7 +39,7 @@ impl sunrise_client::hud_kit::icon::IconPainter for IconPainter<'_, '_> {
     fn item(&self, batch: &mut HudBatch, id: &str, [x, y, size]: [f32; 3]) -> bool {
         let start = batch.vertices.len();
         self.game
-            .draw_item_model(batch, &ItemStack::new(id, 1), x, y);
+            .draw_item_model(batch, &ItemStack::new(id, 1), x, y, 0);
         let scale = size / sunrise_client::hud_kit::icon::ITEM_SIZE;
         batch.scale_since(start, x, y, scale, scale);
         batch.vertices.len() > start
@@ -640,10 +640,17 @@ impl Game<'_> {
         }
         state
     }
-    /// `GuiGraphics.renderItem(player, level, stack, x, y, 0)`.
-    pub(super) fn draw_item_model(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
+    /// `GuiGraphicsExtractor.item(player, level, stack, x, y, seed)`.
+    pub(super) fn draw_item_model(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        x: f32,
+        y: f32,
+        seed: i32,
+    ) {
         let owner = self.player_owner(Some(stack));
-        let state = self.resolve_item(stack, DisplayContext::Gui, Some(&owner), 0);
+        let state = self.resolve_item(stack, DisplayContext::Gui, Some(&owner), seed);
         item_render::gui::draw(
             &state,
             &self.pack.item_renderer,

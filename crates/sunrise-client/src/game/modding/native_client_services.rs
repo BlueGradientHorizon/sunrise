@@ -110,7 +110,7 @@ impl Game<'_> {
         at: [f32; 2],
         text: Option<&str>,
     ) {
-        self.draw_item_model(batch, stack, at[0], at[1]);
+        self.draw_item_model(batch, stack, at[0], at[1], 0);
         self.draw_item_decorations(batch, stack, at[0], at[1], text.map(str::to_owned));
     }
     /// Whether a specific key is currently held down.

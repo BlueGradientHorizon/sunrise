@@ -9,7 +9,7 @@ impl Game<'_> {
     pub(super) fn draw_item(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
         // `GuiGraphics.renderItem`: the resolved item model (tints, foil and
         // special renderers included), then the decorations.
-        self.draw_item_model(batch, stack, x, y);
+        self.draw_item_model(batch, stack, x, y, 0);
         self.draw_item_decorations(batch, stack, x, y, None);
     }
     /// `extractSlot` of slot `slot` holding `stack` at (x, y): during a quick
@@ -39,7 +39,7 @@ impl Game<'_> {
             None => (stack.as_ref(), false),
         };
         if let Some(stack) = stack {
-            self.draw_item_model(batch, stack, x, y);
+            self.draw_item_model(batch, stack, x, y, 0);
             let text = capped.then(|| format!("\u{a7}e{}", stack.count));
             self.draw_item_decorations(batch, stack, x, y, text);
         } else if let Some(icon) = slot
