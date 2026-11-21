@@ -1,7 +1,7 @@
 //! Baking special model nodes at load and writing their layers atomically at draw time.
 use super::{
-    ItemDrawEnv, ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners, glam_matrix,
-    sprite_name,
+    ItemDrawEnv, ItemLayerOutput, ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners,
+    glam_matrix, sprite_name,
 };
 use glam::{Mat4, Vec3};
 use mod_api::{
@@ -61,9 +61,10 @@ pub fn install_special_model_factories(mut factories: SpecialModelFactories) -> 
     FACTORIES.set(factories).is_ok()
 }
 
-/// One baked `minecraft:special` node. Every resource load owns its own instances and failures.
-pub struct BakedSpecialModel {
-    pub kind: Box<str>,
+/// One baked `minecraft:special` node. The draw owner is shared by all bakes of the same
+/// winning registration, including across resource reloads.
+struct BakedSpecialModel {
+    kind: Box<str>,
     renderer: BakedSpecialModelRenderer,
     base: SpecialLayerBase,
     owner: CallbackOwner,
@@ -200,16 +201,14 @@ impl ItemRenderer {
     }
 
     /// Append one registered layer, with no committed writes until its callback succeeds.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn append_registered_special(
         &self,
-        layers: &mut Vec<LayerRender>,
+        output: &mut ItemLayerOutput,
         model: &RegisteredSpecialModel,
         (foil, outer_transform, display_transform): (FoilType, AssetMatrix, LayerTransform),
         ctx: &Context<'_>,
         env: &dyn ItemDrawEnv,
         ancestor: &StackAncestor<'_>,
-        remaining: &mut usize,
     ) -> ControlFlow<()> {
         let Some(model) = model.0.downcast_ref::<BakedSpecialModel>() else {
             return ControlFlow::Break(());
@@ -217,21 +216,29 @@ impl ItemRenderer {
         if !model.owner.is_enabled() {
             return ControlFlow::Break(());
         }
-        let Some(input) = env.special_model_input(model, ancestor.stack, ctx) else {
+        let report_refusal = |error: &str| {
+            log::warn!(
+                "mod {}: special model draw of {} using {} was refused: {error}",
+                model.owner.id(),
+                ancestor.stack.item,
+                model.kind,
+            );
+        };
+        let Some(input) = env.special_model_input(ancestor.stack, ctx) else {
+            report_refusal("the special model input is unavailable");
             return ControlFlow::Break(());
         };
         let components = self.models.components_view(ancestor.stack);
         let read_component = |id: &str| components.get(id).map(crate::scoreboard::json_to_tag);
         let stack = SpecialModelStack::new(input.item, input.count, &read_component);
         let mut writer = LayerWriter {
-            checkpoint: layers.len(),
-            layers,
+            checkpoint: output.layers.len(),
+            output,
             renderer: self,
             base: &model.base,
             ctx,
             env,
             ancestor,
-            remaining,
             foil,
             outer_transform,
             display_transform,
@@ -253,6 +260,7 @@ impl ItemRenderer {
                 )
             });
         let Ok(result) = result else {
+            // The owner already reported a phase refusal or a panic.
             return ControlFlow::Break(());
         };
         if let Some(error) = writer
@@ -260,11 +268,7 @@ impl ItemRenderer {
             .as_deref()
             .or_else(|| result.as_ref().err().map(String::as_str))
         {
-            log::warn!(
-                "mod {}: special model renderer {} refused its draw: {error}",
-                model.owner.id(),
-                model.kind
-            );
+            report_refusal(error);
             return ControlFlow::Break(());
         }
         writer.committed = true;
@@ -285,16 +289,16 @@ pub(super) struct StackAncestor<'a> {
 }
 
 /// Writes one special layer into the item state. Dropping without a commit rolls back every
-/// write, including the geometry of any children already submitted.
+/// write, including the geometry of any children already submitted. The budget still counts
+/// the work spent expanding those children.
 struct LayerWriter<'out, 'draw> {
-    layers: &'out mut Vec<LayerRender>,
+    output: &'out mut ItemLayerOutput,
     checkpoint: usize,
     renderer: &'draw ItemRenderer,
     base: &'draw SpecialLayerBase,
     ctx: &'draw Context<'draw>,
     env: &'draw dyn ItemDrawEnv,
     ancestor: &'draw StackAncestor<'draw>,
-    remaining: &'out mut usize,
     foil: FoilType,
     outer_transform: AssetMatrix,
     display_transform: LayerTransform,
@@ -305,7 +309,7 @@ struct LayerWriter<'out, 'draw> {
 impl Drop for LayerWriter<'_, '_> {
     fn drop(&mut self) {
         if !self.committed {
-            self.layers.truncate(self.checkpoint);
+            self.output.layers.truncate(self.checkpoint);
         }
     }
 }
@@ -380,7 +384,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             return Err(error.into());
         };
         let matrix = self.matrix();
-        self.layer.layers.push(LayerRender {
+        self.layer.output.layers.push(LayerRender {
             geometry: LayerGeometry::Quads(geometry.model.clone()),
             tints: LayerTints::Special(tints),
             foil: self.layer.foil,
@@ -407,7 +411,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             layer.failure = Some(error.into());
             return Err(error.into());
         };
-        if *layer.remaining == 0
+        if layer.output.remaining == 0
             || std::iter::successors(Some(layer.ancestor), |entry| entry.parent)
                 .any(|entry| *entry.stack == stack)
         {
@@ -415,7 +419,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             layer.failure = Some(error.into());
             return Err(error.into());
         }
-        *layer.remaining -= 1;
+        layer.output.remaining -= 1;
         let ancestor = StackAncestor {
             stack: &stack,
             parent: Some(layer.ancestor),
@@ -424,17 +428,10 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             display,
             ..*layer.ctx
         };
-        let start = layer.layers.len();
+        let start = layer.output.layers.len();
         if layer
             .renderer
-            .append_render_layers(
-                layer.layers,
-                &ancestor,
-                &ctx,
-                layer.env,
-                None,
-                layer.remaining,
-            )
+            .append_render_layers(layer.output, &ancestor, &ctx, layer.env, None)
             .is_break()
         {
             let error = "the nested special model refused its draw";
@@ -444,7 +441,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
         // Compose after resolving the child: preserve parent * (child * grandchild) order
         // as well as the child's own display, foil and tint state.
         let matrix = self.matrix();
-        for layer in &mut self.layer.layers[start..] {
+        for layer in &mut self.layer.output.layers[start..] {
             layer.matrix = matrix * layer.matrix;
         }
         Ok(())

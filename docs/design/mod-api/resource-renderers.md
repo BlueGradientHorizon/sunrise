@@ -32,10 +32,11 @@ which supersedes the proposal below.
   geometry, and a nested stack uses its own foil, tints and display transform. Packed light,
   overlay and outline stay on the ordinary item draw path. Extents come from the submitted
   geometry; the mod does not declare them. Tints are packed ARGB, not HDR colors.
-- **Draw failures.** An error, panic or invalid geometry or pose undoes the entire special layer
-  and disables the offending type until resource reload. Unreadable input or a nested refusal
-  undoes the enclosing layer without disabling the enclosing renderer. Only the outermost
-  refused layer draws the missing model; independent layers remain intact.
+- **Draw failures.** An error, panic or invalid geometry or pose undoes the entire special layer,
+  including its nested submissions. Ordinary refusals are reported each time without disabling
+  the renderer. A panic logs and shows an error toast naming the mod, and disables only that
+  registration's draw callback for the session, even across reloads. Only the outermost refused
+  layer draws the missing model; independent layers remain intact.
 - **Leases.** The bake context issues leases for the current resource load. Submit them only in
   that load. Once resolved, an item render state retains its baked geometry independently and
   can finish drawing after a reload without a separate retirement step.

@@ -104,6 +104,7 @@ impl SpecialModelRenderer for Pan {
             }
             4 => {
                 geometry(collector, &self.a)?;
+                stack(collector, 1, 1)?;
                 Err("the test renderer refuses this stack".into())
             }
             5 => collector.with_pose(DOUBLED, |pose| {
@@ -146,6 +147,7 @@ impl SpecialModelRenderer for Pan {
             }
             15 => {
                 geometry(collector, &self.a)?;
+                stack(collector, 1, 1)?;
                 panic!("the pan fell")
             }
             16 => {
@@ -200,7 +202,6 @@ impl ItemEnv for PanEnv {}
 impl ItemDrawEnv for PanEnv {
     fn special_model_input(
         &self,
-        _: &BakedSpecialModel,
         stack: &StackView,
         context: &Context<'_>,
     ) -> Option<SpecialModelInput<'_>> {
@@ -446,59 +447,116 @@ fn each_special_draw_reads_effective_components_and_current_context() {
     assert_eq!(draw(&pan, DisplayContext::Gui, 41), vec![u32::MAX; 6]);
 }
 
+fn is_missing_layer(renderer: &ItemRenderer, layer: &LayerRender) -> bool {
+    matches!(&layer.geometry, LayerGeometry::Quads(model)
+        if Arc::ptr_eq(model, &renderer.bake(MISSING_MODEL)))
+}
+
+fn assert_refused_special_between_siblings(renderer: &ItemRenderer, state: &ItemRenderState) {
+    let [_, replacement, _] = state.layers.as_slice() else {
+        panic!("the failed layer leaked geometry or erased a sibling");
+    };
+    assert!(is_missing_layer(renderer, replacement));
+    // The fixture atlas omits the missing sprite: only the two ordinary siblings draw.
+    let colors: Vec<_> = quads(renderer, state)
+        .into_iter()
+        .map(|quad| quad.color)
+        .collect();
+    assert_eq!(colors.len(), 18);
+    assert_eq!(colors[..6], [GREY as u32; 6]);
+    assert_eq!(colors[6..], [WHITE as u32; 12]);
+}
+
+fn special_draw_reports(level: log::Level) -> usize {
+    crate::test_log::records()
+        .into_iter()
+        .filter(|(record_level, message)| {
+            *record_level == level && message.contains("special_test")
+        })
+        .count()
+}
+
 #[test]
-fn a_failed_special_draw_rolls_back_but_only_a_panic_disables_its_type() {
+fn a_refused_special_draw_is_reported_each_time_without_disabling_the_renderer() {
     let root = tempfile::tempdir().unwrap();
     write_composite(root.path());
-    write(
-        root.path(),
-        "assets/spt/items/alias.json",
-        r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"spt:pan","handle":1}}}"#,
-    );
-    let factories = pan_factories(|_| {});
+    let renderer = renderer(root.path(), 2, 2, &pan_factories(|_| {}));
     let env = PanEnv(FakeHost::new());
-    let draw = |renderer: &ItemRenderer, stack: &StackView| {
-        renderer.resolve(stack, DisplayContext::None, None, None, 0, &env)
-    };
-    let is_missing_layer = |renderer: &ItemRenderer, layer: &LayerRender| {
-        matches!(&layer.geometry, LayerGeometry::Quads(model)
-            if Arc::ptr_eq(model, &renderer.bake(MISSING_MODEL)))
-    };
-    let is_missing = |renderer: &ItemRenderer, stack: &StackView| {
-        let state = draw(renderer, stack);
-        matches!(state.layers.as_slice(), [layer] if is_missing_layer(renderer, layer))
-    };
-    let working = stack("spt:alias", 1);
+    let draw =
+        |stack: &StackView| renderer.resolve(stack, DisplayContext::None, None, None, 0, &env);
     let mut unreadable = stack("spt:unreadable", 1);
     unreadable.patch.insert(
         "minecraft:item_model".into(),
-        Some(serde_json::json!("spt:pan")),
+        Some(serde_json::json!("spt:composite")),
     );
-    for count in [4, 16, 15] {
-        let generation = renderer(root.path(), 2, 2, &factories);
-        assert!(is_missing(&generation, &unreadable));
-        assert_eq!(quads(&generation, &draw(&generation, &working)).len(), 6);
-        // Err after a write, panic after a write, and an ignored non-finite composed pose.
-        let state = draw(&generation, &stack("spt:composite", count));
-        let [_, replacement, _] = state.layers.as_slice() else {
-            panic!("count {count}: the failed layer leaked geometry or erased a sibling");
-        };
-        assert!(is_missing_layer(&generation, replacement));
-        // The fixture atlas omits the missing sprite: only the two ordinary siblings draw.
-        let colors: Vec<_> = quads(&generation, &state)
-            .into_iter()
-            .map(|quad| quad.color)
-            .collect();
-        assert_eq!(colors.len(), 18);
-        assert_eq!(colors[..6], [GREY as u32; 6]);
-        assert_eq!(colors[6..], [WHITE as u32; 12]);
-        assert_eq!(is_missing(&generation, &working), count == 15);
+
+    crate::test_log::install();
+    for bad in [
+        stack("spt:composite", 4), // Err after submitting geometry, twice on the same baked node.
+        stack("spt:composite", 4),
+        stack("spt:composite", 16), // A collector refusal the callback didn't propagate.
+        unreadable.clone(),
+        unreadable,
+    ] {
+        crate::test_log::clear();
+        assert_refused_special_between_siblings(&renderer, &draw(&bad));
+        assert_eq!(special_draw_reports(log::Level::Warn), 1);
     }
-    let reloaded = renderer(root.path(), 2, 2, &factories);
-    assert!(
-        is_missing(&reloaded, &working),
-        "reload must not clear the draw panic"
+    let working = draw(&stack("spt:composite", 1));
+    assert_eq!(quads(&renderer, &working).len(), 24);
+}
+
+#[test]
+fn a_panicking_special_draw_disables_only_its_registration_across_reload() {
+    let root = tempfile::tempdir().unwrap();
+    write_composite(root.path());
+    for (item, kind) in [("alias", "pan"), ("fault", "fault")] {
+        write(
+            root.path(),
+            &format!("assets/spt/items/{item}.json"),
+            &format!(
+                r#"{{"model":{{"type":"minecraft:special","base":"spt:item/base","model":{{"type":"spt:{kind}","handle":1}}}}}}"#,
+            ),
+        );
+    }
+    let mut factories = pan_factories(|_| {});
+    factories.insert(
+        "spt:fault".into(),
+        owned_factory(|config| config.decode::<PanConfig>(), Pan::bake),
     );
+    let env = PanEnv(FakeHost::new());
+    let draw = |renderer: &ItemRenderer, item, count| {
+        renderer.resolve(
+            &stack(item, count),
+            DisplayContext::None,
+            None,
+            None,
+            0,
+            &env,
+        )
+    };
+    let first = renderer(root.path(), 2, 2, &factories);
+    assert_eq!(quads(&first, &draw(&first, "spt:alias", 1)).len(), 6);
+
+    crate::test_log::install();
+    crate::test_log::clear();
+    assert_refused_special_between_siblings(&first, &draw(&first, "spt:composite", 15));
+    assert_eq!(special_draw_reports(log::Level::Error), 1);
+
+    let reloaded = renderer(root.path(), 2, 2, &factories);
+    for generation in [&first, &reloaded] {
+        // Both nodes using the pan registration are disabled; another registration from the
+        // same mod can still draw. No new panic is reported for an already disabled callback.
+        assert_refused_special_between_siblings(generation, &draw(generation, "spt:composite", 1));
+        assert!(matches!(draw(generation, "spt:alias", 1).layers.as_slice(),
+            [layer] if is_missing_layer(generation, layer)));
+        assert_eq!(
+            quads(generation, &draw(generation, "spt:fault", 1)).len(),
+            6
+        );
+        assert_refused_special_between_siblings(generation, &draw(generation, "spt:composite", 15));
+        assert_eq!(special_draw_reports(log::Level::Error), 1);
+    }
 }
 
 fn sprites() -> HashMap<String, Rect> {

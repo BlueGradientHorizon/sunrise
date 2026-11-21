@@ -375,11 +375,14 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
         stack: &SpecialModelStack<'_>,
     ) -> Self::Argument;
 
-    /// Submit the geometry and stacks for this draw in order. A submission fault, including a
-    /// callback error, panic in either callback or invalid geometry or pose, discards the layer.
-    /// Only a panic disables the callback for the session, including across resource reloads.
-    /// Use `?` to propagate the collector's errors. Only the outermost refused layer draws a
-    /// missing model; unrelated layers are left intact.
+    /// Submit the geometry and stacks for this draw in order. A refusal discards all submissions
+    /// from this layer and its nested draws. The game reports an ordinary refusal on every failed
+    /// draw, without disabling the renderer. Use `?` to propagate collector errors.
+    ///
+    /// A panic in `extract_argument` or `submit` also discards the layer. The game logs the panic
+    /// and shows an error toast naming the registering mod. Only that registration's draw
+    /// callback is disabled, for all its baked nodes and across resource reloads. Other layers
+    /// are left intact; only the outermost refused layer draws the missing model.
     fn submit(
         &self,
         argument: &Self::Argument,

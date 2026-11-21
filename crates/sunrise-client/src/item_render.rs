@@ -29,7 +29,7 @@ use crate::{
 use glam::{Mat3, Mat4, Vec3};
 use mod_api::{ClientHost, ItemDisplayContext, ItemKey, SpecialModelContext, SpecialModelTints};
 pub use registered_special::{
-    BakedSpecialGeometry, BakedSpecialModel, OwnedSpecialModelFactory, SpecialModelFactories,
+    BakedSpecialGeometry, OwnedSpecialModelFactory, SpecialModelFactories,
     install_special_model_factories,
 };
 use registered_special::{FACTORIES, StackAncestor};
@@ -170,11 +170,10 @@ impl ItemSink for Vec<ItemQuad> {
 
 /// Client drawing services in addition to the asset resolver's host services.
 pub trait ItemDrawEnv: ItemEnv {
-    /// The host and validated input for a registered special draw. Unavailable input refuses
-    /// this layer only, not the renderer.
+    /// The host and validated input for a registered special draw. The resolver reports
+    /// unavailable input and refuses this layer only, not the renderer.
     fn special_model_input(
         &self,
-        _model: &BakedSpecialModel,
         _stack: &StackView,
         _context: &Context<'_>,
     ) -> Option<SpecialModelInput<'_>> {
@@ -286,6 +285,12 @@ pub struct ItemRenderState {
     pub hdr_light: u8,
     /// A third-person held-item submission's opaque ARGB multiplier, never cached with the model.
     held_tint: Option<u32>,
+}
+
+/// The layers and remaining nested-stack work budget for one item resolution.
+struct ItemLayerOutput {
+    layers: Vec<LayerRender>,
+    remaining: usize,
 }
 
 #[derive(Default)]
@@ -1052,11 +1057,13 @@ impl ItemRenderer {
             level,
             seed,
         };
-        let mut layers = Vec::new();
-        let mut remaining = mod_api::MAX_NESTED_STACK_PARTS;
+        let mut output = ItemLayerOutput {
+            layers: Vec::new(),
+            remaining: mod_api::MAX_NESTED_STACK_PARTS,
+        };
         let flags = self
             .append_render_layers(
-                &mut layers,
+                &mut output,
                 &StackAncestor {
                     stack,
                     parent: None,
@@ -1064,13 +1071,12 @@ impl ItemRenderer {
                 &ctx,
                 env,
                 rule,
-                &mut remaining,
             )
             .continue_value()
             .unwrap_or_default();
         ItemRenderState {
             display,
-            layers,
+            layers: output.layers,
             oversized_in_gui: flags.oversized_in_gui,
             animated: flags.animated,
             cit_glint: None,
@@ -1084,12 +1090,11 @@ impl ItemRenderer {
     /// unwind to the outer special layer's checkpoint; only that layer emits a missing model.
     fn append_render_layers(
         &self,
-        layers: &mut Vec<LayerRender>,
+        output: &mut ItemLayerOutput,
         ancestor: &StackAncestor<'_>,
         ctx: &Context<'_>,
         env: &dyn ItemDrawEnv,
         rule: Option<usize>,
-        remaining: &mut usize,
     ) -> ControlFlow<(), RenderLayerFlags> {
         let stack = ancestor.stack;
         let mut flags = RenderLayerFlags::default();
@@ -1147,13 +1152,12 @@ impl ItemRenderer {
                     };
                     if self
                         .append_registered_special(
-                            layers,
+                            output,
                             &model,
                             (layer.foil, layer.transform, layer.display_transform),
                             ctx,
                             env,
                             source,
-                            remaining,
                         )
                         .is_continue()
                     {
@@ -1166,7 +1170,7 @@ impl ItemRenderer {
                 }
             };
             flags.animated |= layer.foil != FoilType::None;
-            layers.push(LayerRender {
+            output.layers.push(LayerRender {
                 geometry,
                 tints: LayerTints::Owned(layer.tints),
                 foil: layer.foil,
