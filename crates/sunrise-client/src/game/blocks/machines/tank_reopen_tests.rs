@@ -162,7 +162,7 @@ fn a_committed_mod_tank_survives_a_world_save_close_and_reopen() {
                 assert_eq!(tanks.insert_at(host, tx, 0, &fluid(BRINE, 1), 500), 500);
                 Err::<(), _>("abort")
             }),
-            Err("abort")
+            Err(mod_api::TransactionError::Aborted("abort"))
         );
         assert_eq!(contents(game, level, pos), expected());
         // The integrated server's save: what the autosave and the pause menu run (`save-all` is a

@@ -369,11 +369,12 @@ fn observer_unload_reload_requires_explicit_reregistration_and_replacement_retir
             let observer = game.block_entity(level, OBSERVER).unwrap();
             observer.watch_contents(game, source_pos(), true).unwrap();
             // Removing an observer tentatively also journals its watch membership.
-            let seal = game.transaction_open();
-            game.journal_remove_block_entity((18, 64, 0));
-            notify(game, level, SOURCE);
-            assert!(take(&watcher).is_empty());
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                game.journal_remove_block_entity((18, 64, 0));
+                notify(game, level, SOURCE);
+                assert!(take(&watcher).is_empty());
+                ((), false)
+            });
             notify(game, level, SOURCE);
             assert_eq!(take(&watcher).len(), 2);
             // Source unload does not retire the observer's positional watch.

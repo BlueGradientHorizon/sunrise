@@ -319,11 +319,12 @@ fn cauldron_outer_abort_discards_effects_and_drops() {
         for slot in game.inventory.iter_mut().skip(1) {
             *slot = Some(ItemStack::new("minecraft:stone", 64));
         }
-        let seal = game.transaction_open();
-        assert!(game.use_on_cauldron(POS).unwrap());
-        assert_eq!(events(), 0);
-        assert_eq!(game.audio.capture.as_ref().unwrap().len(), 0);
-        game.transaction_close(&seal, false);
+        game.storage_scope(|game, _| {
+            assert!(game.use_on_cauldron(POS).unwrap());
+            assert_eq!(events(), 0);
+            assert_eq!(game.audio.capture.as_ref().unwrap().len(), 0);
+            ((), false)
+        });
         unchanged(game, seen);
         assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 0);
         assert_eq!(game.stats.get("used", "test:syrup_bottle"), 0);

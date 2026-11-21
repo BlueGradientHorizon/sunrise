@@ -902,6 +902,7 @@ mod tests {
     use super::*;
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
+    use mod_api::TransactionError;
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, containers::ModBlockEntityFields, lan::menu::Slots};
     use sunrise_world::registry::BlockStateId;
@@ -1062,7 +1063,7 @@ mod tests {
             });
             assert_eq!(original.set_data_slots(game, vec![7]), Ok(true));
             let mut tentative = None;
-            let _: Result<(), ()> = game.transaction(|game, _| {
+            let _: Result<(), ()> = game.storage_transaction(|game, _| {
                 game.journal_block_entity(pos);
                 game.world
                     .block_entities
@@ -1627,17 +1628,17 @@ mod tests {
 
             // An abort puts back data and name; a commit keeps them.
             let host: &mut dyn ServerHost = game;
-            let aborted: Result<(), ()> = host.transaction(|host, _| {
+            let aborted: Result<(), TransactionError<()>> = host.transaction(|host, _| {
                 assert!(chest.merge_data(host, compound(stick)).unwrap());
                 assert!(chest.set_name(host, Some("Gone")).unwrap());
                 assert!(chest.set_changed(host).unwrap());
                 Err(())
             });
-            assert_eq!(aborted, Err(()));
+            assert_eq!(aborted, Err(TransactionError::Aborted(())));
             assert_eq!((slot3(game), chest.name(game)), (None, None));
             assert!(game.transactions.is_empty());
             let host: &mut dyn ServerHost = game;
-            let committed: Result<(), ()> = host.transaction(|host, _| {
+            let committed: Result<(), TransactionError<()>> = host.transaction(|host, _| {
                 assert!(chest.merge_data(host, compound(stick)).unwrap());
                 assert!(chest.set_name(host, Some("Kept")).unwrap());
                 Ok(())
@@ -1649,11 +1650,12 @@ mod tests {
             );
 
             // Replacement uses the same journal and restores the original payload on abort.
-            let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, _| {
-                assert!(chest.replace_data(host, compound("{}")).unwrap());
-                Err(())
-            });
-            assert_eq!(aborted, Err(()));
+            let aborted: Result<(), TransactionError<()>> = (game as &mut dyn ServerHost)
+                .transaction(|host, _| {
+                    assert!(chest.replace_data(host, compound("{}")).unwrap());
+                    Err(())
+                });
+            assert_eq!(aborted, Err(TransactionError::Aborted(())));
             assert_eq!(
                 (slot3(game), chest.name(game)),
                 (Some(3), Some("Kept".to_owned()))
@@ -1717,7 +1719,7 @@ mod tests {
             let before = game.world.block_entity_extras(key);
 
             let host: &mut dyn ServerHost = game;
-            let aborted: Result<(), ()> = host.transaction(|host, _| {
+            let aborted: Result<(), TransactionError<()>> = host.transaction(|host, _| {
                 assert!(
                     chest
                         .set_lock(host, Some(compound("{items:\"minecraft:stick\"}")))
@@ -1726,12 +1728,12 @@ mod tests {
                 assert!(chest.merge_data(host, table.clone()).unwrap());
                 Err(())
             });
-            assert_eq!(aborted, Err(()));
+            assert_eq!(aborted, Err(TransactionError::Aborted(())));
             assert_eq!(game.world.block_entity_extras(key), before);
             assert!(game.world.block_lock(key).is_none());
 
             let host: &mut dyn ServerHost = game;
-            let committed: Result<(), ()> = host.transaction(|host, _| {
+            let committed: Result<(), TransactionError<()>> = host.transaction(|host, _| {
                 assert!(chest.merge_data(host, lock.clone()).unwrap());
                 assert!(chest.merge_data(host, table.clone()).unwrap());
                 Ok(())

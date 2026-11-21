@@ -49,14 +49,10 @@ impl IPayloadHandler for Reply {
         let reply = match bytes.0.as_slice() {
             [step @ (7 | 8)] => {
                 assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
-                // Open a child explicitly: the scoped reply context needs its own mutable
-                // borrow to finish, so it cannot be used inside the host's closure guard.
-                let child = context.server_host().unwrap().transaction_open();
-                context.finish_configuration_task(first).unwrap();
-                context
-                    .server_host()
-                    .unwrap()
-                    .transaction_close(&child, *step == 8);
+                let _ = context.transaction(|context, _| {
+                    context.finish_configuration_task(first).unwrap();
+                    (*step == 8).then_some(()).ok_or(())
+                });
                 *step + 1
             }
             [10] => {
@@ -213,11 +209,10 @@ impl ConfigurationTask for Task {
             _ => context.finish(),
         }
     }
-    fn tick(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>) {
+    fn tick(&mut self, _host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>) {
         assert_eq!(std::thread::current().name(), Some("Server thread"));
         if self.waiting {
             self.waiting = false;
-            let _abandoned = host.transaction_open();
             context.finish();
             context.finish();
         }

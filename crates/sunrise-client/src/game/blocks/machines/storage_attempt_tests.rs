@@ -98,7 +98,8 @@ impl ResourceHandler<ItemResource> for Storage {
         amount: u32,
     ) -> Result<u32, Overanswered> {
         assert_eq!(amount, 1);
-        assert_eq!(host.transaction_depth(tx), Some(0));
+        assert_eq!(tx.depth(), 0);
+        assert!(host.transaction_matches(Some(tx)));
         let item = mod_api::__private::item_key_id(resource.as_stack().item()).unwrap();
         self.probe
             .trace
@@ -147,7 +148,8 @@ impl ResourceHandler<ItemResource> for Storage {
         amount: u32,
     ) -> u32 {
         assert_eq!(amount, 1);
-        assert_eq!(host.transaction_depth(tx), Some(0));
+        assert_eq!(tx.depth(), 0);
+        assert!(host.transaction_matches(Some(tx)));
         self.probe
             .trace
             .lock()

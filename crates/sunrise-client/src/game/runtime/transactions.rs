@@ -2208,7 +2208,7 @@ mod tests {
     use mod_api::ServerHost;
     use mod_api::{
         Authority, BlockSide, BlockUpdateFlags, FLUIDS, FluidStack, ITEMS, ItemResource,
-        TransactionContext,
+        TransactionContext, TransactionError,
     };
     use std::{sync::Arc, time::Instant};
     use sunrise_client::{chunk::Chunk, items::ItemStack};
@@ -2507,7 +2507,7 @@ mod tests {
             *game.native_menu_storage(menu, 1).unwrap() = Some(stone.clone());
             let place = mod_api::ItemPlace::MenuSlot { menu, slot: 1 };
             let resource = ItemResource::of(&stone.try_into_api().unwrap());
-            let aborted: Result<(), ()> = game.transaction(|game, tx| {
+            let aborted: Result<(), ()> = game.storage_transaction(|game, tx| {
                 assert_eq!(place.insert(game, tx, &resource, 2), 2);
                 assert_eq!(place.insert(game, tx, &resource, 3), 3);
                 let journal = &game.transactions.last().unwrap().menus;
@@ -2628,11 +2628,12 @@ mod tests {
                 host.transaction(|host, tx| {
                     assert!(handler.set_max_stack_size(host, tx, 4));
                     Ok::<_, ()>(())
-                })?;
+                })
+                .unwrap();
                 assert_eq!(handler.capacity(host, 0, Some(&stick)), 4);
                 Err::<(), ()>(())
             });
-            assert_eq!(aborted, Err(()));
+            assert_eq!(aborted, Err(TransactionError::Aborted(())));
             assert_eq!(handler.capacity(host, 0, Some(&stick)), 64);
             assert_eq!(handler.capacity(host, 0, Some(&large)), 99);
             assert_eq!(handler.amount(host, 0), 0);
@@ -2660,7 +2661,7 @@ mod tests {
             .unwrap_err();
 
             let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let _: Result<(), ()> = host.transaction(|host, tx| {
+                let _: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
                     assert!(handler.set_max_stack_size(host, tx, 10));
                     assert_eq!(handler.insert_at(host, tx, 0, &stick, 64), 10);
                     panic!("abort container writes");
@@ -2857,7 +2858,7 @@ mod tests {
 
         // Five in, then a committed child takes two and an aborted one adds three: the
         // outer abort puts all of it back, the cauldron's water too.
-        let refused: Result<(), ()> = host.transaction(|host, tx| {
+        let refused: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
             assert!(insert(host, on([0, 64, 0], None), 0, sticks(5), tx).is_none());
             let taken = host
                 .transaction(|host, tx| Ok::<_, ()>(extract(host, on([0, 64, 0], None), 0, 2, tx)));
@@ -2870,14 +2871,14 @@ mod tests {
             assert_eq!(water.map(|w| w.amount), Some(1000));
             Err(())
         });
-        assert_eq!(refused, Err(()));
+        assert_eq!(refused, Err(TransactionError::Aborted(())));
         assert_eq!(chest_items(&game), []);
         assert_eq!(game.world.block(2, 64, 0), full);
         assert!(game.transactions.is_empty());
 
         // The same, committed: what the children left stands, the cauldron is set for good.
         let host: &mut dyn ServerHost = &mut game;
-        let done: Result<(), ()> = host.transaction(|host, tx| {
+        let done: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
             insert(host, on([0, 64, 0], None), 0, sticks(5), tx);
             let _ = host.transaction(|host, tx| {
                 extract(host, on([0, 64, 0], None), 0, 2, tx);
@@ -2917,55 +2918,53 @@ mod tests {
         assert_eq!(chest_items(&game), [(0, 3)]);
         assert!(game.transactions.is_empty());
 
-        // A transaction decoded from bytes, which the game never handed out, names no open
-        // transaction (#2424): a write given it changes nothing, and a close given it ends
-        // nothing, so the game's own transaction still puts back everything at its abort.
-        let forged: mod_api::TransactionContext =
-            mod_api::wire::Reader::decode(&0u64.to_le_bytes()).unwrap();
+        // `transaction_matches` checks the exact innermost open frame only, and passing an
+        // outer/ancestor `TransactionContext` to a write inside a nested transaction panics
+        // cleanly without modifying state.
         let host: &mut dyn ServerHost = &mut game;
-        assert!(insert(host, on([0, 64, 0], None), 0, sticks(1), &forged).is_some());
-        assert_eq!(chest_items(&game), [(0, 3)]);
-        assert_eq!(chest_items(&game), [(0, 3)]);
-
-        // A capability handler is lent the game's own transaction (a hopper's move,
-        // `put_into_part`): it writes in it and tries every seal it can build from what it
-        // knows, the write token and guesses, then the move fails after it. Its writes all go
-        // back with the game's abort, which no close of the handler's got ahead of.
-        let handler = |host: &mut dyn ServerHost, tx: &TransactionContext| {
-            assert!(insert(host, on([0, 64, 0], None), 0, sticks(1), tx).is_none());
-            let token = mod_api::__private::transaction_token(tx);
-            for close in [0, 1, token, !token, u64::MAX] {
-                let mut bytes = token.to_le_bytes().to_vec();
-                bytes.extend(close.to_le_bytes());
-                let seal: mod_api::TransactionSeal = mod_api::wire::Reader::decode(&bytes).unwrap();
-                host.transaction_close(&seal, true);
-            }
-            assert!(insert(host, on([0, 64, 0], None), 0, sticks(1), tx).is_none());
-        };
-        let host: &mut dyn ServerHost = &mut game;
-        let failed: Result<(), ()> = host.transaction(|host, tx| {
-            handler(host, tx);
-            Err(())
+        assert!(host.transaction_matches(None));
+        let ancestor_check: Result<(), TransactionError<()>> = host.transaction(|host, outer| {
+            assert!(!host.transaction_matches(None));
+            assert!(host.transaction_matches(Some(outer)));
+            let inner_ok: Result<(), TransactionError<()>> = host.transaction(|host, inner| {
+                assert!(!host.transaction_matches(None));
+                assert!(!host.transaction_matches(Some(outer)));
+                assert!(host.transaction_matches(Some(inner)));
+                let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    insert(host, on([0, 64, 0], None), 0, sticks(1), outer)
+                }));
+                assert!(panicked.is_err());
+                Ok(())
+            });
+            assert_eq!(inner_ok, Ok(()));
+            assert!(host.transaction_matches(Some(outer)));
+            Ok(())
         });
-        assert_eq!(failed, Err(()));
+        assert_eq!(ancestor_check, Ok(()));
+        assert!(game.transaction_matches(None));
         assert_eq!(chest_items(&game), [(0, 3)]);
         assert!(game.transactions.is_empty());
 
-        // A handler that opens a transaction of its own, writes in it and leaves it open does
-        // not strand the game's: the failed move aborts both at once, not at the next tick.
-        let host: &mut dyn ServerHost = &mut game;
-        let failed: Result<(), ()> = host.transaction(|host, _| {
-            let left_open = host.transaction_open();
-            let inner = left_open.transaction();
-            assert!(insert(host, on([0, 64, 0], None), 0, sticks(1), inner).is_none());
+        // A panic inside a nested `storage_transaction` rolls back only the inner frame;
+        // the outer frame stays open and keeps its own writes until it closes.
+        let outer_aborted: Result<(), ()> = game.storage_transaction(|game, outer| {
+            assert!(insert(game, on([0, 64, 0], None), 0, sticks(1), outer).is_none());
+            assert_eq!(chest_items(game), [(0, 4)]);
+            let inner_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _: Result<(), ()> = game.storage_transaction(|game, inner| {
+                    assert!(insert(game, on([0, 64, 0], None), 0, sticks(2), inner).is_none());
+                    assert_eq!(chest_items(game), [(0, 6)]);
+                    panic!("nested storage panic");
+                });
+            }));
+            assert!(inner_panic.is_err());
+            assert!(game.transaction_matches(Some(outer)));
+            assert_eq!(chest_items(game), [(0, 4)]);
             Err(())
         });
-        assert_eq!(failed, Err(()));
+        assert_eq!(outer_aborted, Err(()));
         assert_eq!(chest_items(&game), [(0, 3)]);
-        assert!(
-            game.transactions.is_empty(),
-            "both closed before the next tick"
-        );
+        assert!(game.transactions.is_empty());
 
         // An attachment map a write made inside an aborted transaction is gone with it.
         let chest_holder = mod_api::Holder::BlockEntity([0, 64, 0]);
@@ -3177,9 +3176,11 @@ mod tests {
                     assert!(place.with_stack(host, |_| ()).is_none());
                     assert_eq!(place.insert(host, tx, &stick, 1), 1);
                     Ok::<_, ()>(())
-                })?;
+                })
+                .unwrap();
                 Ok::<_, ()>(())
-            })?;
+            })
+            .unwrap();
             Err::<(), ()>(())
         });
         assert!(result.is_err());
@@ -3479,7 +3480,8 @@ mod mod_capability_tests {
                 ENERGY.set(host, stand, 250)?;
                 ENERGY.set(host, player, 90)?;
                 ENERGY.set(host, fresh, 7)?;
-                host.transaction(|host, _| ENERGY.set(host, stand, 300))?;
+                host.transaction(|host, _| ENERGY.set(host, stand, 300))
+                    .unwrap();
                 assert_eq!(energy(host, stand), Some(300));
                 Err(mod_api::AttachmentError::MissingHolder)
             });

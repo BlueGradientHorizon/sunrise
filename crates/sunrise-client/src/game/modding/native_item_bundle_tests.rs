@@ -112,7 +112,7 @@ fn bundle_items_place_handler_reads_and_rolls_back() {
             assert_eq!(handler.extract_at(host, tx, 0, &pearl, 2), 2);
             Err::<(), _>(())
         });
-        assert_eq!(result, Err(()));
+        assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
         assert_eq!(
             game.lan.as_ref().unwrap().hub.guests[0].inventory[0],
             Some(bundle)
@@ -171,7 +171,7 @@ fn stacked_bundle_insertion_splits_one_and_restores_inventory_on_abort() {
                 assert_eq!(handler.insert_at(host, tx, 0, &arrow, 3), 3);
                 Err::<(), _>(())
             }),
-            Err(())
+            Err(mod_api::TransactionError::Aborted(()))
         );
         assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].inventory, original);
         assert_eq!(

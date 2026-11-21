@@ -2060,27 +2060,29 @@ mod tests {
             *game.world.random = active_before.clone();
             *game.levels.parked_world_mut_of(other.id()).unwrap().random = parked_before.clone();
 
-            let outer = game.transaction_open();
-            parked
-                .with_random(game, |random| random.next_gaussian())
-                .unwrap();
+            game.storage_scope(|game, _| {
+                parked
+                    .with_random(game, |random| random.next_gaussian())
+                    .unwrap();
 
-            // Simulate a nested operation with a different level temporarily in place.
-            game.enter_level(other).unwrap();
-            let child = game.transaction_open();
-            parked
-                .with_random(game, |random| random.next_long())
-                .unwrap();
-            active
-                .with_random(game, |random| random.next_gaussian())
-                .unwrap();
-            game.transaction_close(&child, true);
-            game.enter_level(here).unwrap();
+                // Simulate a nested operation with a different level temporarily in place.
+                game.enter_level(other).unwrap();
+                game.storage_scope(|game, _| {
+                    parked
+                        .with_random(game, |random| random.next_long())
+                        .unwrap();
+                    active
+                        .with_random(game, |random| random.next_gaussian())
+                        .unwrap();
+                    ((), true)
+                });
+                game.enter_level(here).unwrap();
 
-            active
-                .with_random(game, |random| random.next_long())
-                .unwrap();
-            game.transaction_close(&outer, false);
+                active
+                    .with_random(game, |random| random.next_long())
+                    .unwrap();
+                ((), false)
+            });
             for (level, mut expected) in [(active, active_before), (parked, parked_before)] {
                 assert_eq!(
                     level.with_random(game, |random| (
@@ -2166,52 +2168,55 @@ mod tests {
                 (rng.next_gaussian().to_bits(), rng.next_long())
             };
 
-            let outer = game.transaction_open();
-            {
-                let mut writer = JournalLevelWrite::new(game, active).unwrap();
-                let host: &mut dyn mod_api::LevelWriteHost = &mut writer;
+            game.storage_scope(|game, _| {
+                {
+                    let mut writer = JournalLevelWrite::new(game, active).unwrap();
+                    let host: &mut dyn mod_api::LevelWriteHost = &mut writer;
+                    assert_eq!(
+                        host.with_random(draw),
+                        Some((
+                            expected_active.next_gaussian().to_bits(),
+                            expected_active.next_long()
+                        )),
+                    );
+                }
+                let after_outer = [level_random_state(&expected_active), initial[1]];
+                assert_eq!(states(game), after_outer, "outer draw");
+
+                game.storage_scope(|game, _| {
+                    active.with_random(game, draw).unwrap();
+                    parked.with_random(game, draw).unwrap();
+                    let [child_active, child_parked] = states(game);
+                    assert_ne!(child_active, after_outer[0]);
+                    assert_ne!(child_parked, after_outer[1]);
+                    ((), false)
+                });
+                assert_eq!(states(game), after_outer, "child abort");
+
+                // Only the committing child has a before-image for the parked stream.
+                game.storage_scope(|game, _| {
+                    for (level, expected) in [
+                        (active, &mut expected_active),
+                        (parked, &mut expected_parked),
+                    ] {
+                        assert_eq!(
+                            level.with_random(game, draw),
+                            Some((expected.next_gaussian().to_bits(), expected.next_long())),
+                        );
+                    }
+                    ((), true)
+                });
                 assert_eq!(
-                    host.with_random(draw),
-                    Some((
-                        expected_active.next_gaussian().to_bits(),
-                        expected_active.next_long()
-                    )),
+                    states(game),
+                    [
+                        level_random_state(&expected_active),
+                        level_random_state(&expected_parked),
+                    ],
+                    "child commit",
                 );
-            }
-            let after_outer = [level_random_state(&expected_active), initial[1]];
-            assert_eq!(states(game), after_outer, "outer draw");
 
-            let child = game.transaction_open();
-            active.with_random(game, draw).unwrap();
-            parked.with_random(game, draw).unwrap();
-            let [child_active, child_parked] = states(game);
-            assert_ne!(child_active, after_outer[0]);
-            assert_ne!(child_parked, after_outer[1]);
-            game.transaction_close(&child, false);
-            assert_eq!(states(game), after_outer, "child abort");
-
-            // Only the committing child has a before-image for the parked stream.
-            let child = game.transaction_open();
-            for (level, expected) in [
-                (active, &mut expected_active),
-                (parked, &mut expected_parked),
-            ] {
-                assert_eq!(
-                    level.with_random(game, draw),
-                    Some((expected.next_gaussian().to_bits(), expected.next_long())),
-                );
-            }
-            game.transaction_close(&child, true);
-            assert_eq!(
-                states(game),
-                [
-                    level_random_state(&expected_active),
-                    level_random_state(&expected_parked),
-                ],
-                "child commit",
-            );
-
-            game.transaction_close(&outer, false);
+                ((), false)
+            });
             assert_eq!(states(game), initial, "outer abort");
         });
     }
