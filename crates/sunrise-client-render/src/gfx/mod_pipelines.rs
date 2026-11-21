@@ -392,11 +392,14 @@ impl ModPipelines {
         Ok(())
     }
 
-    fn prepare_geometry(
+    /// Upload the frame's quads and return the number of indices needed for its largest page.
+    pub fn prepare(
         &mut self,
         device: &wgpu::Device,
         upload: Upload<'_>,
         batch: &Batch<'_>,
+        view_proj: Mat4,
+        viewport: [u32; 2],
     ) -> u32 {
         self.runs.clear();
         if batch
@@ -434,22 +437,6 @@ impl ModPipelines {
             4 * std::mem::size_of::<PipelineVertex>() as u64,
             0,
         );
-        self.vertices.index_quads(quads)
-    }
-
-    /// Upload the frame's quads and return the number of indices needed for its largest page.
-    pub fn prepare(
-        &mut self,
-        device: &wgpu::Device,
-        upload: Upload<'_>,
-        batch: &Batch<'_>,
-        view_proj: Mat4,
-        viewport: [u32; 2],
-    ) -> u32 {
-        let quads = self.prepare_geometry(device, upload, batch);
-        if quads == 0 {
-            return 0;
-        }
         upload(&self.view, bytemuck::cast_slice(&view_proj.to_cols_array()));
         upload(
             &self.frame,
@@ -459,7 +446,7 @@ impl ModPipelines {
                 _pad: 0.0,
             }),
         );
-        quads
+        self.vertices.index_quads(quads)
     }
 
     /// Draws the prepared runs of stages `first..=last` in the order queued, with `indices`

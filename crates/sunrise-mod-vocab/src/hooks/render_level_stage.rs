@@ -38,7 +38,8 @@ world primitives drawn at the end of the world pass), then `AfterSky` (when the 
 then `Hooks::prepare_render_buffers` (before primitive, entity, prepared-instance, and glyph
 uploads so group updates apply to this frame), then each active pass-bearing stage in
 `RenderLevelStage::frame_order` at its real render-pass boundary, and finally `AfterLevel` after
-the world pass finishes and before the hand. Never fires on title or connect screens.
+the world pass finishes and before the engine's first-person hand overlay. Never fires on title
+or connect screens.
 
 `event.context` is a `RenderLevelStageContext`: `AfterSky` and `AfterLevel` return
 `StagePass::None` (`has_render_pass() == false`); standard pass stages return

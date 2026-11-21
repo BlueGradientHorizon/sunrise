@@ -16,8 +16,9 @@ pub trait Hooks {
     #[notes = r#"## Preparing render buffers
 
 `Hooks::prepare_render_buffers` is the client counterpart of NeoForge 26.3's
-`PrepareRenderBuffersEvent`. It fires once per world view, after `RenderLevelStage::AfterSky`
-and before any pass-bearing world render stages execute, and never on title or connect screens.
+`PrepareRenderBuffersEvent`. It fires once per world view before any pass-bearing world render
+stages execute, and after `RenderLevelStage::AfterSky` when that stage runs. It never fires on
+title or connect screens.
 
 Use `event.context.lines(stage, lines)`, `.quads(stage, quads)`, or
 `.pipeline_quads(stage, pipeline, quads)` to prepare a batch for a pass-bearing stage. Keep the
