@@ -38,7 +38,7 @@ impl Game<'_> {
             }
             return;
         }
-        // An item a mod claims: its use is the mod's, and the server never hears of it.
+        // A registered client item behavior consumes the click before target handling.
         if self.start_client_item_use() {
             return;
         }

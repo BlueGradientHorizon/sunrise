@@ -1922,6 +1922,18 @@ pub mod tests {
     mod_api::impl_server_host_areas!(HeldItem);
 }
 
+impl PartRegistrar {
+    fn requested_item_id(&mut self, item: crate::ItemKey) -> Option<Box<str>> {
+        let slot = mod_vocab::__private::parts_installation::item_key_slot(item);
+        let id = self.registry_keys.borrow().items.id(slot).map(Box::from);
+        if id.is_none() {
+            self.refused
+                .push(format!("mod {}: invalid item key slot {slot}", self.mod_id));
+        }
+        id
+    }
+}
+
 impl ItemsRegistrar for PartRegistrar {
     fn item_key(&mut self, id: &str) -> crate::ItemKey {
         match self
@@ -1938,29 +1950,45 @@ impl ItemsRegistrar for PartRegistrar {
         }
     }
 
+    fn register_client_item_use(
+        &mut self,
+        item: crate::ItemKey,
+        behavior: Arc<dyn crate::ClientItemUseBehavior>,
+    ) {
+        use std::collections::hash_map::Entry;
+
+        let Some(id) = self.requested_item_id(item) else {
+            return;
+        };
+        match self.parts.client_item_uses.entry(id) {
+            Entry::Occupied(entry) => self.refused.push(format!(
+                "client item use for {} is registered twice, by {} and {}",
+                entry.key(),
+                entry.get().mod_id,
+                self.mod_id,
+            )),
+            Entry::Vacant(entry) => {
+                self.registered += 1;
+                entry.insert(Attached {
+                    mod_id: self.mod_id,
+                    mod_index: self.mod_index,
+                    order: self.registered,
+                    type_name: "ClientItemUseBehavior",
+                    part: behavior,
+                });
+            }
+        }
+    }
+
     fn attach_item_part(
         &mut self,
         item: crate::ItemKey,
         kind: &'static str,
         part: Arc<dyn ItemPart>,
     ) {
-        let id = self
-            .registry_keys
-            .borrow()
-            .items
-            .id(mod_vocab::__private::parts_installation::item_key_slot(
-                item,
-            ))
-            .map(str::to_owned);
-        let Some(id) = id else {
-            self.refused.push(format!(
-                "mod {}: invalid item key slot {}",
-                self.mod_id,
-                mod_vocab::__private::parts_installation::item_key_slot(item)
-            ));
-            return;
-        };
-        self.attach(|p| &mut p.items, kind, &id, part);
+        if let Some(id) = self.requested_item_id(item) {
+            self.attach(|p| &mut p.items, kind, &id, part);
+        }
     }
 
     fn attach_item_part_tag(&mut self, tag: &str, kind: &'static str, part: Arc<dyn ItemPart>) {

@@ -21,7 +21,7 @@ impl Game<'_> {
     /// to skip the action: a cancelled use also skips the other hand. A cancelled
     /// attack or use still swings `hand` unless the mod clears `swing_hand` (it
     /// starts true). A window client only, including single player. The main-hand
-    /// hook runs before claimed-item interception; a cancel prevents interception.
+    /// hook runs before item input interception; a cancel prevents interception.
     /// Uncancelled attacks and uses also honour false by suppressing natural swings.
     /// Pick only vetoes its packet and never swings.
     pub(in crate::game) fn native_interaction_key_mapping_triggered(

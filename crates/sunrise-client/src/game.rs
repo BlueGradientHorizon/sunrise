@@ -1719,7 +1719,6 @@ struct Game<'a> {
     panel: native_panel::Panel,
     /// Sunrise's own shader pack, while one is picked (`game/modding/native_shaders.rs`).
     native_shaders: native_shaders::NativeShaders,
-    /// Native client mods' claimed items and unpolled events (game/modding/native_claimed_items.rs).
     /// Main-hand input captured by a client mod, independent of living-item use.
     client_item_use: Option<native_claimed_items::ActiveClientItemUse>,
     /// Native client mods' key mappings (game/modding/native_key_mappings.rs).
@@ -9708,6 +9707,7 @@ impl Game<'_> {
                             self.sync_toggle(1);
                             self.left = false;
                             self.right = false;
+                            self.reset_client_item_use();
                             self.capture(false);
                         }
                         self.regrab_on_refocus = held;

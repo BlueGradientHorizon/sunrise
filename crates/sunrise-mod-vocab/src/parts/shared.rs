@@ -68,6 +68,8 @@ pub struct Parts {
     /// (`block_entity_tick`): its type id need not be its block's id.
     pub(crate) block_entity_kinds: HashMap<Box<str>, Vec<Attached<dyn BlockEntityPart>>>,
     pub(crate) items: HashMap<Box<str>, Vec<Attached<dyn ItemPart>>>,
+    /// The sole owner of main-hand client input for an item, independent of item hooks.
+    pub(crate) client_item_uses: HashMap<Box<str>, Attached<dyn crate::ClientItemUseBehavior>>,
     pub(crate) menus: HashMap<Box<str>, Vec<Attached<dyn MenuPart>>>,
     pub(crate) effects: HashMap<Box<str>, Vec<Attached<dyn MobEffectPart>>>,
     pub(crate) fluids: HashMap<Box<str>, Vec<Attached<dyn FluidPart>>>,

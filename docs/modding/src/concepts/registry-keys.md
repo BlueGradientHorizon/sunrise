@@ -168,8 +168,9 @@ Resolve item and block keys during load and keep them for tick and menu calls.
 and GUI `item` / `item_model` take `ItemKey`. `block_item`, `fluid_bucket` and
 `screen_hovered_item` return item keys. `level.block`, `lit_block_name` and
 `Hit.block` return block keys; `BlockEntityDrawContext::block` takes one.
-`HeldItemSlot.id` (including use-start/stop events) and `Stack.item`
-carry item keys, not names. Unknown incoming slots are refused at the boundary.
+`ItemStack::item()` carries an item key, not a name, including on the original stack lent to a
+[`ClientItemUseBehavior`](../how-to/items/item-stack-values.md#intercept-main-hand-client-input).
+Unknown incoming slots are refused at the boundary.
 `block_sprites` takes API-owned `BlockState` values, preserving properties without
 parsing state strings or exposing numeric engine state IDs. The pre-change block event carries resolved `from` / `to`
 states and does not allocate their names. Property names and values in

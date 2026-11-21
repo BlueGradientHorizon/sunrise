@@ -105,6 +105,30 @@ Item-model callbacks receive the owned stack and a separate `bundle_selected` nu
 means none). Runtime selection is not a persistent component. Drawing receives the API-owned
 `ItemDisplayContext`, not the renderer's enum.
 
+## Intercept main-hand client input
+
+A client mod can bind one `ClientItemUseBehavior` to an item. In `Hooks::register`, request
+its key with `r.item_key("mymod:remote")` and pass it to
+`r.register_client_item_use(key, Arc::new(behavior))`. Vanilla and other mods' items can be
+requested too. A missing item or a second registration for the same item refuses the load.
+
+An enabled owner consumes the main-hand use input before the crosshair target. The server
+gets neither a use nor a release packet. This is not `ItemPart` or normal item use: it does
+not handle off-hand use or change what either side does for a normal `Item.use`.
+
+Implement `use_item(&self, host: &mut dyn ClientHost, stack: &ItemStack, slot: u32)` for the
+start. The optional `release_using` and `on_stop_using` take those same arguments plus
+`ticks_held: u32`. Use `release_using` for an actual release with the same item kind still
+selected in the original slot. Use `on_stop_using` for cleanup: it runs after a valid release,
+and alone on reset (for example, the player changed slots, died or disconnected). Disabled
+owners receive no callbacks.
+
+The slot is the original hotbar slot, and `stack` is the original typed snapshot in every
+phase, even if an item of that kind has since changed components. Read its identity with
+`stack.item()` and its count with `stack.count()`. Read typed components with
+`stack.get(&descriptor)`, or use `stack.components().map(|patch| patch.as_nbt())` for typed
+NBT such as the `minecraft:custom_data` compound. No SNBT parsing or polling is needed.
+
 ## A stack's name
 
 `host.hover_name(&stack)` is `ItemStack.getHoverName()` as a component, on both sides: the custom

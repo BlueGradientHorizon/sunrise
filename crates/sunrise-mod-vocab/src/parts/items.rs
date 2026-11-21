@@ -1,4 +1,45 @@
 use super::*;
+use crate::{ClientHost, ItemStack};
+
+// no wire: in-process behavior called with a borrowed stack and client host.
+/// Client-only main-hand input, separate from normal item use on either side.
+/// Register one owner for an item with [`ItemsRegistrar::register_client_item_use`].
+/// Every callback receives the original stack and its hotbar slot (0–8), never a replacement.
+pub trait ClientItemUseBehavior: Send + Sync + 'static {
+    /// Consume a main-hand use input before the client handles the crosshair target.
+    fn use_item(&self, host: &mut dyn ClientHost, stack: &ItemStack, slot: u32);
+
+    /// Run only on input release while the player can still use the same item kind in the
+    /// original slot. `ticks_held` counts elapsed held ticks.
+    fn release_using(
+        &self,
+        _host: &mut dyn ClientHost,
+        _stack: &ItemStack,
+        _slot: u32,
+        _ticks_held: u32,
+    ) {
+    }
+
+    /// Run after [`Self::release_using`] on a valid release, or alone when use is reset,
+    /// while the owner is enabled. `ticks_held` counts elapsed held ticks.
+    fn on_stop_using(
+        &self,
+        _host: &mut dyn ClientHost,
+        _stack: &ItemStack,
+        _slot: u32,
+        _ticks_held: u32,
+    ) {
+    }
+}
+
+/// The bound owner of client input for a canonical item id, if registered.
+pub fn client_item_use(
+    item: &str,
+) -> Option<(usize, &'static str, Arc<dyn ClientItemUseBehavior>)> {
+    let attached = installed()?.keys.client_item_uses.get(item)?;
+    Some((attached.mod_index, attached.mod_id, attached.part.clone()))
+}
+
 #[derive(Clone)]
 pub(crate) struct PlaceProviderPart {
     pub(crate) mod_id: &'static str,
@@ -170,6 +211,16 @@ pub fn item_listens(hook: HookId, id: &str) -> bool {
 pub trait ItemsRegistrar {
     /// Request an item by registry id, validated after all declarations.
     fn item_key(&mut self, id: &str) -> crate::ItemKey;
+
+    /// Register the sole client input behavior for `item` in [`crate::Hooks::register`]. An
+    /// enabled owner consumes main-hand use input before crosshair handling, without sending a
+    /// use or release packet. This does not affect off-hand input or normal item use on either
+    /// side. Any registered item may be used; two registrations for one item refuse the load.
+    fn register_client_item_use(
+        &mut self,
+        item: crate::ItemKey,
+        behavior: Arc<dyn ClientItemUseBehavior>,
+    );
 
     /// Attach `part`, of kind `kind`, to item `item`.
     fn attach_item_part(
