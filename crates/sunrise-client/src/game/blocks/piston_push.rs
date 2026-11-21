@@ -1383,7 +1383,11 @@ impl Game<'_> {
                     || (None, sunrise_world::collision_context::CollisionContext::empty(false)),
                     |(subject, context)| (Some(subject), context),
                 );
-                let effect = if let Some(ground) = entity.ground_state() {
+                // Mobs outside the dedicated restitution path did not refresh
+                // ground for this push. Resolve contact from the move, not that state.
+                let effect = if let Some(ground) = entity.ground_state()
+                    && !matches!(handle, EntityHandle::Mob(_))
+                {
                     motion.legacy_contact(entity.position(), ground)
                 } else {
                     motion.effect_block(
