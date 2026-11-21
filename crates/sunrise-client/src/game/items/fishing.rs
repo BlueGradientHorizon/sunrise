@@ -2798,3 +2798,7 @@ mod fishing_catch_tests;
 #[cfg(test)]
 #[path = "fishing_tests/fishing_medium_tests.rs"]
 mod fishing_medium_tests;
+
+#[cfg(test)]
+#[path = "fishing_tests/fishing_targets_tests.rs"]
+mod fishing_targets_tests;
