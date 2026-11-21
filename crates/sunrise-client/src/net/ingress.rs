@@ -76,17 +76,7 @@ impl<T> Producer<T> {
     /// Reserve before reporting acceptance. Allocation traversal occurs before
     /// taking the channel lock, and all failure values leave that lock intact.
     pub fn prepare(&self, value: T) -> Result<Prepared<T>, Refused<T>> {
-        self.prepare_with(value, false)
-    }
-
-    fn prepare_with(&self, value: T, ordered: bool) -> Result<Prepared<T>, Refused<T>> {
-        let charge = (self.charge)(&value);
-        let permit = if ordered {
-            self.sender.reserve_ordered(charge)
-        } else {
-            self.sender.reserve(charge)
-        };
-        match permit {
+        match self.sender.reserve((self.charge)(&value)) {
             Ok(permit) => Ok(Prepared { value, permit }),
             Err(error) => Err(Refused {
                 reason: match error {
@@ -100,10 +90,25 @@ impl<T> Producer<T> {
     pub fn send(&self, value: T) -> Result<(), Refused<T>> {
         self.prepare(value)?.publish()
     }
-    /// A terminal notice or the one in-flight bundle, in the same FIFO and
-    /// with full accounting even beyond the ordinary watermark.
+    /// Protocol records share the FIFO and retain their charge, but do not
+    /// reduce the capacity reserved for ordinary packets.
     pub(crate) fn send_ordered(&self, value: T) -> Result<(), Refused<T>> {
-        self.prepare_with(value, true)?.publish()
+        let charge = (self.charge)(&value);
+        self.sender
+            .try_send_ordered(value, charge)
+            .map_err(|error| {
+                use byte_channel::TrySendError;
+                match error {
+                    TrySendError::Full(value) => Refused {
+                        value,
+                        reason: Refusal::Pressure,
+                    },
+                    TrySendError::Disconnected(value) => Refused {
+                        value,
+                        reason: Refusal::Closed,
+                    },
+                }
+            })
     }
 
     pub fn stats(&self) -> Stats {

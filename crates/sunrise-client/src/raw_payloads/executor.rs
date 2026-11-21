@@ -39,18 +39,12 @@ pub fn dispatch(incoming: Incoming, endpoint: Endpoint, main: MainQueue) {
     }
 }
 
-/// A bundle invokes only one payload at a time, at its position on the main
-/// processor. Return main work to that turn instead of publishing a second event.
-pub(crate) fn dispatch_bundle(incoming: Incoming, endpoint: &Endpoint) -> Vec<Incoming> {
-    let Some(connection) = endpoint.transport().connection.as_ref() else {
-        return Vec::new();
-    };
+/// `ClientNetworkRegistry.handleModdedPayload` invokes NETWORK listeners on
+/// the caller, which is already main inside a bundle. The bundle is itself the
+/// ordered main turn; don't enqueue these roots behind work received later.
+pub fn dispatch_bundle(incoming: Incoming, endpoint: &Endpoint) -> Vec<Incoming> {
     let work = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let main = MainQueue::ClientBundle(work.clone());
-    if let Some(incoming) = connection.queue_payload(incoming) {
-        execute(incoming, endpoint, &main);
-    }
-    dispatch_pending(endpoint, &main);
+    execute(incoming, endpoint, &MainQueue::ClientBundle(work.clone()));
     let mut pending = work.lock().unwrap();
     std::mem::take(&mut *pending)
 }

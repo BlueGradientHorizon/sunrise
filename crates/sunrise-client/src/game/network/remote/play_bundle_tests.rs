@@ -41,20 +41,17 @@ impl IPayloadHandler for Handler {
         ctx: &mut dyn IPayloadContext,
     ) -> Result<(), PayloadHandleError> {
         if self.network {
-            assert_ne!(thread::current().id(), self.witness.main);
+            assert_eq!(thread::current().id(), self.witness.main);
             assert!(matches!(
                 ctx.client_host(),
                 Err(PayloadContextError::WrongThread)
             ));
-            if bytes.0 == [3] {
-                let mut order = self.witness.order.lock().unwrap();
-                assert_eq!(*order, ["main", "network", "work"]);
-                order.push("close");
-                ctx.disconnect(mod_api::Text::literal("bundle probe done"));
-                return Ok(());
-            }
             {
                 let mut order = self.witness.order.lock().unwrap();
+                if bytes.0 == [3] {
+                    order.push("network after close");
+                    return Ok(());
+                }
                 assert_eq!(*order, ["main"]);
                 order.push("network");
             }
@@ -105,6 +102,21 @@ impl Hooks for Probe {
                 .play_bidirectional(PayloadId(id.into()), handler.clone(), Some(handler));
         }
     }
+}
+
+fn wait_for_bundle(game: &mut crate::game::Game<'_>) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let remote = game.remote.as_mut().unwrap();
+    let mut backlog = std::mem::take(&mut remote.backlog);
+    loop {
+        remote.receive_credited_backlog(&mut backlog);
+        if matches!(backlog.back(), Some(Received::Event(Event::Bundle(_), _))) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "bundle did not reach main");
+        thread::yield_now();
+    }
+    remote.backlog = backlog;
 }
 
 #[test]
@@ -164,8 +176,7 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
                     block(3),
                     payload(MAIN, 1),
                     payload(NETWORK, 2),
-                    payload(NETWORK, 3),
-                    delimiter,
+                    delimiter.clone(),
                 ] {
                     writer
                         .send(
@@ -176,32 +187,17 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
                         .unwrap();
                 }
 
-                // Take receipts into their actual backlog, without letting the game
-                // run until the whole bundle is present. No callback or column is
-                // visible at this point, even to the network executor.
-                let deadline = Instant::now() + Duration::from_secs(5);
-                let remote = game.remote.as_mut().unwrap();
-                let mut backlog = std::mem::take(&mut remote.backlog);
-                loop {
-                    remote.receive_credited_backlog(&mut backlog);
-                    if matches!(backlog.back(), Some(Received::Event(Event::Bundle(_), _))) {
-                        break;
-                    }
-                    assert!(Instant::now() < deadline, "bundle did not reach main");
-                    thread::yield_now();
-                }
+                // Receiving the completed turn alone applies neither the column
+                // nor any payload handler on the network thread.
+                wait_for_bundle(game);
                 assert!(witness.order.lock().unwrap().is_empty());
-                assert!(!game.world.loaded(3, 5));
-                remote.backlog = backlog;
+                assert!(!game.world.loaded(0, 0));
                 game.poll_remote_events(true).unwrap();
                 assert_eq!(
                     [game.world.block(3, 70, 5), game.world.block(3, 71, 5)],
                     expected
                 );
-                assert_eq!(
-                    *witness.order.lock().unwrap(),
-                    ["main", "network", "work", "close"]
-                );
+                assert_eq!(*witness.order.lock().unwrap(), ["main", "network", "work"]);
                 for (channel, value) in [(MAIN, 1), (NETWORK, 2), (NETWORK, 9)] {
                     loop {
                         let (id, body) = reader.recv().unwrap();
@@ -216,6 +212,39 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
                         }
                     }
                 }
+
+                // A Disconnect member closes the connection, not the iteration.
+                // A cookie and a typed handler still run before the listener is removed.
+                let cookies = game.remote.as_ref().unwrap().session.cookies.clone();
+                let cookie = "bundle_probe:after_close";
+                for packet in [
+                    delimiter.clone(),
+                    C::Disconnect(cfg::Disconnect {
+                        reason: sunrise_core::nbt::Tag::String("bundle closed".into()),
+                    }),
+                    C::StoreCookie(cfg::StoreCookie {
+                        key: cookie.into(),
+                        payload: vec![17],
+                    }),
+                    payload(NETWORK, 3),
+                    delimiter,
+                ] {
+                    writer
+                        .send(
+                            &packet
+                                .try_encode_with_payload_codecs(&local.codecs)
+                                .unwrap(),
+                        )
+                        .unwrap();
+                }
+                wait_for_bundle(game);
+                game.poll_remote_events(true).unwrap();
+                assert!(game.remote.is_none());
+                assert_eq!(cookies.lock().unwrap().get(cookie), Some(&vec![17]));
+                assert_eq!(
+                    witness.order.lock().unwrap().last(),
+                    Some(&"network after close")
+                );
             })
         },
     );

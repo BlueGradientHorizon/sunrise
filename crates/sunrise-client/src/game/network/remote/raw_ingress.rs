@@ -123,29 +123,54 @@ impl Game<'_> {
     /// the chunk decoder/frame quota cannot split a bundle at a column packet.
     fn handle_play_bundle(&mut self, bundle: sunrise_client::net::CompletedBundle) -> Result<bool> {
         use sunrise_client::net::BundleStep;
-        let sunrise_client::net::CompletedBundle { packets, driver } = bundle;
+        use sunrise_client::raw_payloads::{Classified, Incoming, dispatch_bundle};
+        use sunrise_protocol::payload_negotiation::Phase;
+        let sunrise_client::net::CompletedBundle { packets, io } = bundle;
+        let Some(remote) = self.remote.as_ref() else {
+            return Ok(false);
+        };
+        if !io.accepts_bundle() {
+            return Ok(true);
+        }
+        let endpoint = remote.session.payload_endpoint();
+        let mut end = None;
         for packet in packets {
-            match driver.step(packet) {
+            match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
-                    let transfer = matches!(event, Event::Transfer { .. });
-                    if !self.handle_remote_event(event)? || self.remote.is_none() {
-                        return Ok(false);
-                    }
-                    if transfer {
-                        break;
-                    }
+                    self.handle_remote_event(event)?;
                 }
-                BundleStep::Main(work) => {
-                    for incoming in work {
-                        self.run_payload(driver.endpoint().clone(), incoming);
-                        if driver.closing() {
-                            return Ok(true);
+                BundleStep::Payload(payload) => {
+                    match Incoming::classify(endpoint.transport(), Phase::Play, payload) {
+                        Ok(Classified::Application(incoming)) => {
+                            for task in dispatch_bundle(incoming, &endpoint) {
+                                self.run_payload(endpoint.clone(), task);
+                            }
+                        }
+                        Ok(Classified::Other(payload)) => {
+                            self.handle_remote_event(Event::Packet(Box::new(C::CustomPayload(
+                                payload,
+                            ))))?;
+                        }
+                        Ok(Classified::Raw(_)) => {}
+                        Err(error) => {
+                            log::warn!("Sunrise: bundle payload refused: {error}");
+                            return self.handle_remote_event(io.invalid_bundle_payload());
                         }
                     }
                 }
+                BundleStep::Close { transfer, notice } => {
+                    if let Some(transfer) = transfer {
+                        self.handle_remote_event(transfer)?;
+                    }
+                    // Closing the writer is immediate. Dispose of the listener only
+                    // after the rest of this bundle has invoked its handlers.
+                    end.get_or_insert(notice);
+                }
                 BundleStep::Continue => {}
-                BundleStep::Stop => break,
             }
+        }
+        if let Some(end) = end {
+            return self.handle_remote_event(end);
         }
         Ok(true)
     }
@@ -202,7 +227,13 @@ impl Game<'_> {
                     remote.far_terrain = Some(offer);
                 }
             }
-            Event::Reconfiguring => {
+            Event::PlayCookie(cookie) => {
+                let (receiver, cookie) = *cookie;
+                if receiver.accepts_bundle() {
+                    receiver.handle_cookie(cookie);
+                }
+            }
+            Event::Reconfiguring(resume) => {
                 self.reset_book_view();
                 // handleConfigurationStart: the held-back chat shows, then
                 // clearClientLevel opens ServerReconfigScreen over no level.
@@ -240,6 +271,7 @@ impl Game<'_> {
                     r.reconfiguring = Some(ticks);
                     r.chat_tree_received = false;
                 }
+                let _ = resume.send(());
             }
             Event::Reconfigured(registries) => {
                 // handleConfigurationStart → clearClientLevel, and the next
@@ -325,7 +357,9 @@ impl Game<'_> {
             }
             Event::Bundle(bundle) => return self.handle_play_bundle(*bundle),
             Event::RawPayload(incoming) => {
-                if let Some(remote) = self.remote.as_ref() {
+                if let Some(remote) = self.remote.as_ref()
+                    && remote.session.connected()
+                {
                     self.run_payload(remote.session.payload_endpoint(), *incoming);
                 }
             }

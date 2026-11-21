@@ -1,13 +1,8 @@
-//! PacketBundlePacker assembles on receive; ClientPacketListener runs the completed
-//! packet in one main turn. The receiver parks until that turn ends, serving only
-//! the typed payload callbacks that need its NETWORK executor, in member order.
-use super::{Event, PlayIo, PlayIoAction, Reason, brand_event, ingress};
-use crate::raw_payloads::{Classified, Endpoint, Incoming, dispatch_bundle};
-use std::sync::{Arc, Mutex, mpsc};
-use sunrise_protocol::{
-    packets::{custom_payload::CustomPayload, play::Clientbound as C},
-    payload_negotiation::Phase,
-};
+//! PacketBundlePacker assembles on receive; ClientPacketListener handles the
+//! completed bundle in one ordinary main-thread task.
+use super::{Event, PlayCookie, PlayIo, PlayIoAction, Reason, brand_event};
+use std::sync::Arc;
+use sunrise_protocol::packets::{custom_payload::CustomPayload, play::Clientbound as C};
 
 #[derive(Default)]
 pub(super) struct PlayBundle(Option<Vec<C>>);
@@ -52,52 +47,9 @@ impl PlayBundle {
     }
 }
 
-pub(super) enum BundleEnd {
-    Transfer,
-    Server(sunrise_core::nbt::Tag),
-    Mod(String),
-    InvalidPayload,
-}
-
-/// Once the close member (or a mod disconnect) is reached, no later root runs.
-#[derive(Clone, Default)]
-pub(crate) struct BundleClose(Arc<Mutex<Option<BundleEnd>>>);
-impl BundleClose {
-    fn set(&self, reason: BundleEnd) {
-        self.0.lock().unwrap().get_or_insert(reason);
-    }
-
-    pub(crate) fn mod_disconnect(&self, reason: String) {
-        self.set(BundleEnd::Mod(reason));
-    }
-
-    fn requested(&self) -> bool {
-        self.0.lock().unwrap().is_some()
-    }
-}
-
-struct PayloadRequest {
-    payload: CustomPayload,
-    reply: mpsc::SyncSender<BundleStep>,
-}
-
-pub struct BundleDriver {
-    io: Arc<PlayIo>,
-    close: BundleClose,
-    endpoint: Endpoint,
-    requests: mpsc::Sender<PayloadRequest>,
-}
-
-pub enum BundleStep {
-    Event(Event),
-    Main(Vec<Incoming>),
-    Continue,
-    Stop,
-}
-
 pub struct CompletedBundle {
     pub packets: Vec<C>,
-    pub driver: BundleDriver,
+    pub io: Arc<PlayIo>,
 }
 
 impl CompletedBundle {
@@ -108,37 +60,58 @@ impl CompletedBundle {
     }
 }
 
-impl BundleDriver {
-    pub fn endpoint(&self) -> &Endpoint {
-        &self.endpoint
+pub enum BundleStep {
+    Event(Event),
+    Payload(CustomPayload),
+    Close {
+        transfer: Option<Event>,
+        notice: Event,
+    },
+    Continue,
+}
+
+impl PlayIo {
+    /// Vanilla checks whether the listener can handle the outer packet. It
+    /// does not re-check eligibility between handlers once the loop starts.
+    pub fn accepts_bundle(&self) -> bool {
+        self.writer
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(super::QueuedWriter::accepts_packets)
     }
 
-    pub fn closing(&self) -> bool {
-        self.close.requested()
+    pub fn invalid_bundle_payload(&self) -> Event {
+        self.close_after_pending();
+        Reason::keyed("multiplayer.disconnect.invalid_packet", &self.lang).ended(false)
     }
 
-    /// A single member's vanilla effect or main payload root. Only a typed
-    /// payload crosses to the receiving executor; ordinary packets stay here.
-    pub fn step(&self, packet: C) -> BundleStep {
+    pub fn bundle_member(&self, packet: C) -> BundleStep {
         let action = match packet {
             C::KeepAlive(p) => PlayIoAction::KeepAlive(p),
             C::ChunkBatchStart(_) => PlayIoAction::ChunkBatchStart,
             C::ChunkBatchFinished(p) => PlayIoAction::ChunkBatchFinished(p.size),
-            C::CookieRequest(p) => PlayIoAction::CookieRequest(p),
-            C::StoreCookie(p) => PlayIoAction::StoreCookie(p),
+            C::CookieRequest(p) => PlayIoAction::Cookie(PlayCookie::Request(p)),
+            C::StoreCookie(p) => PlayIoAction::Cookie(PlayCookie::Store(p)),
             C::ResourcePackPush(p) => return BundleStep::Event(Event::PackPush(p)),
             C::ResourcePackPop(p) => return BundleStep::Event(Event::PackPop(p.id)),
             C::ServerLinks(p) => return BundleStep::Event(Event::ServerLinks(p.links)),
             C::Transfer(p) => {
-                self.close.set(BundleEnd::Transfer);
-                return BundleStep::Event(Event::Transfer {
-                    host: p.host,
-                    port: p.port,
-                });
+                self.close_after_pending();
+                return BundleStep::Close {
+                    transfer: Some(Event::Transfer {
+                        host: p.host,
+                        port: p.port,
+                    }),
+                    notice: Reason::keyed("disconnect.transfer", &self.lang).ended(true),
+                };
             }
             C::Disconnect(p) => {
-                self.close.set(BundleEnd::Server(p.reason));
-                return BundleStep::Stop;
+                self.close_after_pending();
+                return BundleStep::Close {
+                    transfer: None,
+                    notice: Reason::tag(&p.reason, &self.lang).ended(true),
+                };
             }
             C::CustomPayload(p) if p.channel == "minecraft:brand" => {
                 return brand_event(&p).map_or(BundleStep::Continue, BundleStep::Event);
@@ -146,71 +119,10 @@ impl BundleDriver {
             C::CustomPayload(p) if p.channel == crate::lod_net::CHANNEL => {
                 PlayIoAction::FarTile(p.data)
             }
-            C::CustomPayload(payload) => {
-                let (reply, response) = mpsc::sync_channel(0);
-                if self
-                    .requests
-                    .send(PayloadRequest { payload, reply })
-                    .is_err()
-                {
-                    return BundleStep::Stop;
-                }
-                return response.recv().unwrap_or(BundleStep::Stop);
-            }
+            C::CustomPayload(payload) => return BundleStep::Payload(payload),
             other => return BundleStep::Event(Event::Packet(Box::new(other))),
         };
-        self.io.handle(action);
+        self.handle(action);
         BundleStep::Continue
     }
-}
-
-/// The whole count-bounded record has ordinary ingress accounting, irrespective
-/// of the watermark. Only one can be queued or running: the receiver waits here
-/// until the main driver is dropped. Dropping the session also drops the driver.
-pub(super) fn deliver(
-    packets: Vec<C>,
-    io: Arc<PlayIo>,
-    endpoint: Endpoint,
-    events: &ingress::Producer<Event>,
-) -> Result<Option<BundleEnd>, Reason> {
-    let close = BundleClose::default();
-    let endpoint = endpoint.in_bundle(close.clone());
-    let (requests, receive) = mpsc::channel::<PayloadRequest>();
-    events
-        .send_ordered(Event::Bundle(Box::new(CompletedBundle {
-            packets,
-            driver: BundleDriver {
-                io,
-                close: close.clone(),
-                endpoint: endpoint.clone(),
-                requests,
-            },
-        })))
-        .map_err(|_| Reason::plain("Disconnected"))?;
-    for PayloadRequest { payload, reply } in receive {
-        let step = match Incoming::classify(endpoint.transport(), Phase::Play, payload) {
-            Ok(Classified::Other(payload)) => {
-                BundleStep::Event(Event::Packet(Box::new(C::CustomPayload(payload))))
-            }
-            Ok(Classified::Application(incoming)) => {
-                let work = dispatch_bundle(incoming, &endpoint);
-                if close.requested() {
-                    BundleStep::Stop
-                } else {
-                    BundleStep::Main(work)
-                }
-            }
-            Ok(Classified::Raw(_)) => BundleStep::Continue,
-            Err(error) => {
-                log::warn!("Sunrise: bundle payload refused: {error}");
-                close.set(BundleEnd::InvalidPayload);
-                BundleStep::Stop
-            }
-        };
-        if reply.send(step).is_err() {
-            break;
-        }
-    }
-    let reason = close.0.lock().unwrap().take();
-    Ok(reason)
 }

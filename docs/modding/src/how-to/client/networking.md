@@ -22,8 +22,10 @@ and drops the unsent tail.
 Disconnect, a protocol incarnation change, or an aborted dimension crossing discards the hold;
 its id then returns `Unknown`. Starting without a joined physical play connection returns `NoWorld`.
 Keep-alives, chunk batch acknowledgements, configuration packets, cookies and resource-pack
-answers bypass holds. Outside a bundle, the receiver answers each chunk batch as it arrives.
-Inside a bundle, control packets run in member order on the main thread. In either case,
+answers bypass holds. Standalone cookies run on the main thread; the receiver answers standalone
+keep-alives and chunk batches without waiting for a queued bundle. Inside a bundle, each handler
+runs inline on the main thread in member order, including registered NETWORK payload handlers.
+Those handlers still cannot borrow a host directly; use queued work for that. In either case,
 `client_packet` hears neither the batch's start nor its finish (it does hear the chunks between
 them), and `client_packet_send` neither sees nor can cancel the acknowledgement.
 No packet inspection or editing beyond the existing `ClientPacket` view is provided.
