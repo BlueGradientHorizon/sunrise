@@ -2043,6 +2043,7 @@ mod tests {
             ChunkDataSaveEvent, ChunkDiskContext, ChunkDiskHost, ChunkDiskKind, ChunkDiskPhase,
             Hooks, Identifier, ModEntry,
         };
+        use std::path::PathBuf;
         use std::sync::Mutex;
         use sunrise_client::chunk::Chunk;
 
