@@ -329,6 +329,128 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn failed_preset_editor_paint_leaves_stock_frame_and_post() {
+        struct PaintFailure;
+        impl PresetEditor for PaintFailure {
+            fn render(
+                &mut self,
+                draw: &mut dyn DrawContext,
+                _rect: [f32; 4],
+                _draft: &mut PresetEditorDraft<'_>,
+            ) {
+                draw.push_clip([8.0, 20.0, 32.0, 24.0]).unwrap();
+                draw.fill([12.0, 24.0, 10.0, 10.0], 0xFFFF00FF);
+                panic!("preset editor failed after painting");
+            }
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for PaintFailure {
+            fn register_preset_editors(
+                &self,
+                _: &mod_api::RegistrationContext,
+                event: &mut RegisterPresetEditorsEvent<'_>,
+            ) {
+                event.register(Identifier::parse("minecraft:flat").unwrap(), |_| {
+                    Ok(Box::new(PaintFailure))
+                });
+            }
+        }
+
+        struct PostPainter;
+        #[mod_api::__subscriptions]
+        impl Hooks for PostPainter {
+            fn screen_render_post(
+                &self,
+                _: &dyn mod_api::ClientHost,
+                event: &mut ScreenRenderPostEvent<'_>,
+            ) {
+                if event.screen.id == "world_preset_editor" {
+                    event.draw.fill([56.0, 24.0, 10.0, 10.0], 0xFF00FF00);
+                }
+            }
+        }
+
+        use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
+        use mod_api::__private::game::RegistrationContextNew;
+        use sunrise_client::title::preset_editors::PresetEditorFactories;
+
+        // The real-game resource fixture also initializes process-wide engine tables.
+        const TEST: &str = "game::native_hooks::register_preset_editors::tests::failed_preset_editor_paint_leaves_stock_frame_and_post";
+        in_own_process(TEST, || {
+            let mods = vec![
+                ModEntry::new("editor_paint_failure", Box::new(PaintFailure)),
+                ModEntry::new("editor_post_painter", Box::new(PostPainter)),
+            ];
+            mod_platform::testing::with_mods(mods.into(), || {
+                with_client_game(|game| {
+                    let mut editors = Vec::new();
+                    Game::native_register_preset_editors(
+                        &mod_api::RegistrationContext::new(),
+                        &mut editors,
+                    );
+                    let mut title = game.new_title(game.save.root.join("editor-saves"));
+                    title.set_preset_editor_factories(PresetEditorFactories::bind(editors));
+                    title.set_preset_data_source(game.pack.data_changes.clone());
+                    title.set_mode(Mode::Create {
+                        name: "Test".into(),
+                        seed: "1".into(),
+                        creative: false,
+                        focus: 0,
+                        options: WorldOptions {
+                            world_type: sunrise_client::save::WorldPreset::Flat,
+                            tab: 1,
+                            ..Default::default()
+                        },
+                    });
+                    title.focused_button = Some(26);
+                    title.confirm_key_size((320.0, 240.0));
+                    assert_eq!(title.mode.id(), "world_preset_editor");
+
+                    let size = [640, 480];
+                    let mut stock = HudBatch::new(size, game.settings.gui_scale_inputs());
+                    title.draw(
+                        &game.gui.atlas,
+                        &mut stock,
+                        game.cursor,
+                        false,
+                        &mut |_, _| {},
+                    );
+                    assert!(!stock.vertices.is_empty());
+                    game.title = Some(title);
+                    game.screen = Screen::Playing;
+                    let frame = game.hud_layers(size);
+                    let (prefix, later) = frame.vertices.split_at(stock.vertices.len());
+                    assert!(
+                        prefix
+                            .iter()
+                            .zip(&stock.vertices)
+                            .all(|(a, b)| a.pos == b.pos && a.uv == b.uv && a.color == b.color),
+                        "stock screen paint changed"
+                    );
+                    assert!(frame.vertices.iter().all(|v| v.color != 0xFFFF00FF));
+                    assert!(
+                        later
+                            .iter()
+                            .any(|v| v.color == 0xFF00FF00 && v.pos == [56.0, 24.0]),
+                        "Render.Post did not paint outside the failed editor's clip"
+                    );
+                    assert!(
+                        mod_api::__private::game::take_callback_panic_notices()
+                            .iter()
+                            .any(|notice| notice.mod_id == "editor_paint_failure"
+                                && notice.operation == "render"
+                                && notice
+                                    .message
+                                    .contains("preset editor failed after painting"))
+                    );
+                });
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn preset_editor_test_mod_draws_and_edits_through_real_client_hooks() {
         struct NoopLoop;
         impl crate::game::event_loop::EventLoopCtl for NoopLoop {

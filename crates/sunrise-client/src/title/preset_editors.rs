@@ -218,9 +218,10 @@ impl PresetEditorSession {
         }
     }
 
-    /// Render the bound editor into `draw` inside `rect`.
-    pub fn render(&self, draw: &mut dyn DrawContext, rect: [f32; 4]) {
-        self.with_editor("render", |editor, draft| editor.render(draw, rect, draft));
+    /// Render the bound editor into `draw` inside `rect`, returning whether the call succeeded.
+    pub fn render(&self, draw: &mut dyn DrawContext, rect: [f32; 4]) -> bool {
+        self.with_editor("render", |editor, draft| editor.render(draw, rect, draft))
+            .is_some()
     }
 
     /// Forward a mouse press (`button`: GLFW index) and its double-click flag to the bound editor.

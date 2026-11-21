@@ -2,17 +2,14 @@
 // catalog-order: 0093
 
 pub trait Hooks {
-    /// A mouse button went down over the open screen
-    /// (`ScreenEvent.MouseButtonPressed.Pre`, vanilla's
-    /// `Screen.mouseClicked`): `screen` is the screen it is, `screen.mouse`
-    /// where the pointer is (so there is no position of its own), `button` the
-    /// button's GLFW index (0 left, 1 right, 2 middle, 3 back, 4 forward; a
-    /// button past those is the platform's own number, which differs between
-    /// systems), and `modifiers` GLFW's bits (shift 1, control 2,
-    /// alt 4, super 8). `double_click` means the last handled press was of the
-    /// same button on this screen instance less than 250 ms ago. Cancel to
-    /// skip the screen handler, Post, and gameplay mappings; the press still
-    /// counts as handled for double-click detection.
+    /// A press about to go to `Screen.mouseClicked` (`ScreenEvent.MouseButtonPressed.Pre`).
+    /// `screen` is the receiving screen and `screen.mouse` is the pointer position.
+    /// `button` is the GLFW index (0 left, 1 right, 2 middle, 3 back, 4 forward; beyond those,
+    /// the platform's own number). `modifiers` are GLFW bits (shift 1, control 2, alt 4, super 8).
+    /// The receiver and press Post get the same `double_click`: true for a real press when
+    /// the last handled real press was of this button on this screen instance less than 250 ms
+    /// ago. Cancel to skip the screen handler, Post and gameplay mappings; a cancelled real
+    /// press still counts as handled for double-click detection.
     ///
     /// It fires before anything the screen does with the press, on the window
     /// only, and while a screen of the game's or the title's is open (Options

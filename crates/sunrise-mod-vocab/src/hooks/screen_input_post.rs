@@ -1,7 +1,15 @@
 //! The `screen_input_post` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// A mouse press after the receiving screen handled or declined it (`ScreenEvent.MouseButtonPressed.Post`). Fires only if Pre did not cancel. `screen`, `button`, `modifiers` and `double_click` are the original Pre values, even if the press opened or closed a screen. Every listener sees the original `was_click_handled`. Listeners share `result`: `Default` preserves the original answer, `True` forces handled and `False` forces unhandled. The final answer controls whether this press counts for double-click detection and whether it can reach gameplay mappings if no screen remains open.
+    /// A mouse press after the receiving screen handled or declined it
+    /// (`ScreenEvent.MouseButtonPressed.Post`). The matching Pre must not have cancelled.
+    /// `screen`, `button`, `modifiers` and `double_click` are the press Pre values, even if
+    /// the press closed or replaced that screen. Every listener sees `was_click_handled`,
+    /// the screen handler's original answer.
+    ///
+    /// Listeners share `result`: `TriState::Default` keeps that answer, `TriState::True` forces
+    /// handled and `TriState::False` forces unhandled. The final answer controls double-click
+    /// history and whether the press can reach gameplay mappings if no screen remains open.
     #[hook(
         receiver = "read",
         dispatch = "flat",
@@ -21,7 +29,15 @@ pub trait Hooks {
         was_click_handled: bool,
         result: &mut TriState,
     );
-    /// A mouse release after the receiving screen handled or declined it (`ScreenEvent.MouseButtonReleased.Post`). Fires only if the release's Pre did not cancel. `screen`, `button` and `modifiers` are the release's Pre values, not the press's. Every listener sees the original `was_release_handled`. Listeners share `result`: `Default` preserves the original answer, `True` forces handled and `False` forces unhandled. An unhandled release can reach gameplay mappings if no screen remains open.
+    /// A mouse release after the receiving screen handled or declined it
+    /// (`ScreenEvent.MouseButtonReleased.Post`). The matching Pre must not have cancelled.
+    /// `screen`, `button` and `modifiers` come from the release's Pre, not the earlier press
+    /// or a screen the release opened. Every listener sees `was_release_handled`, the screen
+    /// handler's original answer.
+    ///
+    /// Listeners share `result`: `TriState::Default` keeps that answer, `TriState::True` forces
+    /// handled and `TriState::False` forces unhandled. An unhandled release can reach gameplay
+    /// mappings if no screen remains open.
     #[hook(
         receiver = "read",
         dispatch = "flat",

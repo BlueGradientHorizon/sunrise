@@ -79,8 +79,10 @@ pub trait PresetEditor: Send + 'static {
         None
     }
 
-    /// Draw the editor's custom UI inside `rect` (`[x, y, width, height]` in scaled GUI pixels)
-    /// before `screen_render_post`.
+    /// Draw the editor's custom UI inside `rect` (`[x, y, width, height]` in scaled GUI pixels),
+    /// after the stock editor frame and before `screen_render_post`. If the call fails, its paint
+    /// and draft edits are discarded; the stock frame and later render phases are kept. A panic
+    /// disables the bound editor callbacks for the session and is reported with the mod's name.
     fn render(
         &mut self,
         _draw: &mut dyn DrawContext,
@@ -89,11 +91,14 @@ pub trait PresetEditor: Send + 'static {
     ) {
     }
 
-    /// Handle a mouse press at GUI coordinates `(x, y)` (`button`: the same GLFW index as the
-    /// screen mouse hooks, 0 left, 1 right, 2 middle). `double_click` is true for a real second
-    /// press of the same button on this screen instance less than 250 ms after a handled press.
-    /// Synthetic clicks pass false. Return `true` if the editor handled the click; the screen's
-    /// mouse press Post receives that answer and may override it for subsequent input handling.
+    /// Handle a press at GUI coordinates `(x, y)` after mouse button Pre allows it and the stock
+    /// Done and Cancel buttons have had first chance at a left click. `button` is the same GLFW
+    /// index as in the screen hooks, including platform button numbers beyond the usual buttons.
+    /// `double_click` is true when the last handled real press was of this button on this screen
+    /// instance less than 250 ms ago; synthetic clicks pass `false`.
+    ///
+    /// Return `true` to report the click handled. The mouse button Post gets this original answer
+    /// even when it is `true` and may override it for subsequent input handling.
     fn mouse_clicked(
         &mut self,
         _x: f32,
