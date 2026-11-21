@@ -17,7 +17,9 @@ impl Game<'_> {
         item: ItemEntityRef,
         hint: Option<usize>,
     ) -> Option<usize> {
-        let (Target::Item(_), location) = self.native_entity_resident(item.entity())? else {
+        let (Target::Item(_), Some(location)) =
+            self.native_entity_target_with_location(item.entity())?
+        else {
             return None;
         };
         hint.filter(|&i| {

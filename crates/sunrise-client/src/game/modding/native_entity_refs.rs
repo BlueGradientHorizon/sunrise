@@ -91,12 +91,15 @@ impl Game<'_> {
 
     /// What a handle names now, or None for a stale or foreign one.
     pub(super) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
-        self.native_entity_resident(entity)
+        self.native_entity_target_with_location(entity)
             .map(|(target, _)| target)
     }
 
-    /// Resolve the handle and retain the stable owner location for a caller that lends storage.
-    pub(super) fn native_entity_resident(&self, entity: EntityRef) -> Option<(Target, Location)> {
+    /// Resolve the handle and return its resident location, if admitted to the level.
+    pub(super) fn native_entity_target_with_location(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(Target, Option<Location>)> {
         if self.held_out.contains(&entity.id())
             || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
@@ -113,18 +116,18 @@ impl Game<'_> {
                 .rev()
                 .find(|&&(_, _, id)| id == entity.id())?;
             return if self.lan_acting == Some(conn) {
-                Some(Target::Player)
+                Some((Target::Player, None))
             } else if self.lan_guest_swaps.contains(&conn) {
                 None
             } else {
-                Some(Target::Guest(conn))
+                Some((Target::Guest(conn), None))
             };
         };
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
         (matches!(value, Target::Player | Target::Guest(_))
             || location.owner.dimension == self.dim.key())
-        .then_some((value, location))
+        .then_some((value, Some(location)))
     }
     /// What a handle names on a client: the local player, or an entity the
     /// server told this client of (`ClientLevel.getEntity`, whose entities are
