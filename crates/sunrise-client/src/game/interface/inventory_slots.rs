@@ -99,9 +99,9 @@ impl Game<'_> {
         });
         accepts
     }
-    /// `GuiGraphicsExtractor.itemDecorations`: the count (or `count_text`)
-    /// and damage bar.
-    pub(super) fn draw_item_decorations(
+    /// `GuiGraphicsExtractor.itemDecorations` (vanilla bar, cooldown shade and count),
+    /// without custom item decorators.
+    pub(super) fn draw_vanilla_item_decorations(
         &self,
         batch: &mut HudBatch,
         stack: &ItemStack,
@@ -147,7 +147,27 @@ impl Game<'_> {
         ));
         draws.push(hud_layout::GuiDraw::Pop);
         hud_layout::paint(batch, &self.gui.atlas, &draws);
-        self.native_item_decorations(stack, x, y, batch);
+    }
+    /// `GuiGraphicsExtractor.itemDecorations`: the count (or `count_text`),
+    /// damage bar, cooldown shade and custom item decorators.
+    pub(super) fn draw_item_decorations(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        x: f32,
+        y: f32,
+        count_text: Option<String>,
+    ) {
+        self.draw_vanilla_item_decorations(batch, stack, x, y, count_text);
+        let _ = crate::game::host::draw::GameGuiCanvas::draw(
+            batch,
+            &self.gui.atlas,
+            Some(self),
+            &mut |canvas| {
+                self.native_item_decorations(stack, x, y, canvas);
+                Ok(())
+            },
+        );
     }
     /// The open container screen's player-inventory origin (`getXOrigin`/
     /// `getYOrigin`): the build's, or the frame's own arithmetic with no

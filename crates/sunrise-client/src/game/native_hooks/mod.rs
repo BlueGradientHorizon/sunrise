@@ -88,7 +88,6 @@ use sunrise_client::{
         Victim,
     },
     hud::{HudBatch, rgba},
-    hud_layout::GuiDraw,
     items::ItemStack,
     keybinds,
     merchant::MerchantOffer,

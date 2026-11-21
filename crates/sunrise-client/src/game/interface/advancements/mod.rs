@@ -2513,8 +2513,8 @@ impl Game<'_> {
             }
         }
     }
-    /// The slots held by shown advancement, recipe, pack and narrator toasts,
-    /// as bits.
+    /// The slots held by shown advancement, recipe, pack, narrator and mod-error
+    /// toasts, as bits.
     pub(super) fn toast_slots_used(&self) -> u32 {
         let packs = self.server_packs.toast_slots();
         self.adv
@@ -2523,6 +2523,7 @@ impl Game<'_> {
             .filter_map(|t| t.slot)
             .chain(packs)
             .chain(self.narrator_toast.as_ref().and_then(|t| t.slot))
+            .chain(self.mod_error_toasts.iter().filter_map(|t| t.slot))
             .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
     }
     pub(super) fn add_advancement_toast(&mut self, mut toast: Toast) {

@@ -565,6 +565,29 @@ impl Game<'_> {
                 toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
             }
         }
+        let atlas = &self.gui.atlas;
+        let audio = &mut self.audio;
+        self.mod_error_toasts.retain_mut(|toast| {
+            if toast.slot.is_none() {
+                let Some(slot) = (0..Self::TOAST_SLOTS).find(|s| used & (1 << s) == 0) else {
+                    return true;
+                };
+                used |= 1 << slot;
+                toast.slot = Some(slot);
+            }
+            let (sound, finished) = toast.update(multiplier);
+            if let Some(show) = sound {
+                let event = if show { "ui.toast.in" } else { "ui.toast.out" };
+                audio.play(&format!("minecraft:{event}"), None, 1.0, 1.0);
+            }
+            if finished {
+                return false;
+            }
+            if let (false, Some(slot)) = (hidden, toast.slot) {
+                toast.draw(atlas, batch, 32.0 * slot as f32);
+            }
+            true
+        });
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.

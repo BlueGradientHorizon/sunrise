@@ -616,6 +616,9 @@ mod golems;
 mod grindstone_decisions_tests;
 #[path = "game/blocks/growth.rs"]
 mod growth;
+#[cfg(test)]
+#[path = "game/modding/gui_canvas_items_tests.rs"]
+mod gui_canvas_items_tests;
 #[path = "game/modding/gui_clips.rs"]
 mod gui_clips;
 #[path = "game/interface/gui_entity.rs"]
@@ -626,13 +629,6 @@ mod gui_gradient_tests;
 #[cfg(test)]
 #[path = "game/modding/gui_layer_tests.rs"]
 mod gui_layer_tests;
-#[path = "game/modding/gui_paint_items.rs"]
-mod gui_paint_items;
-#[cfg(test)]
-#[path = "game/modding/gui_paint_items_tests.rs"]
-mod gui_paint_items_tests;
-#[path = "game/modding/gui_pose.rs"]
-mod gui_pose;
 #[path = "game/items/hand.rs"]
 mod hand;
 #[cfg(test)]
@@ -643,6 +639,9 @@ mod hand_part_tests;
 mod hanging_refind_tests;
 #[path = "game/runtime/headless.rs"]
 mod headless;
+#[cfg(test)]
+#[path = "game/modding/health_hud_tests.rs"]
+mod health_hud_tests;
 #[path = "game/items/held_items.rs"]
 mod held_items;
 #[cfg(test)]
@@ -659,6 +658,8 @@ mod hook_meddler_tests;
 mod host;
 #[path = "game/runtime/hot_paths/mod.rs"]
 mod hot_paths;
+#[path = "game/modding/hotbar_items.rs"]
+mod hotbar_items;
 #[path = "game/interface/hud_editor.rs"]
 mod hud_editor;
 #[path = "game/interface/hud_render.rs"]
@@ -3681,6 +3682,8 @@ struct Game<'a> {
     tutorial_toasts: Vec<tutorial::HintToast>,
     /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
     narrator_toast: Option<sunrise_client::toasts::SystemToast>,
+    /// System error toasts reported when a mod callback panics and is disabled for the session.
+    pub(super) mod_error_toasts: Vec<sunrise_client::toasts::SystemToast>,
     /// The open screen's narration (`Screen`'s narration state and timing).
     narration: sunrise_client::screen_narrator::ScreenNarrator,
     /// Where the options screen returns: true = title, false = pause menu.
@@ -7293,8 +7296,8 @@ impl Game<'_> {
                         attack: (indicator == 2).then_some(strength),
                     };
                     let draws = hud_layout::hotbar(wi, hi, &inputs);
-                    // `extractSlot` for each item, in order, on the path `gui_paint` takes.
-                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g };
+                    // `extractSlot` for each item, in order.
+                    let mut items = crate::game::hotbar_items::HotbarItems { game: g };
                     hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
                 }
             });
@@ -7362,22 +7365,21 @@ impl Game<'_> {
                     vehicle_hearts,
                 };
                 let at = [p.position.x, p.position.y, p.position.z];
-                // The native mods' health HUD (`native_health_hud`): a mod
-                // that answers draws every row instead.
-                let mut native_health_hud = None;
-                self.native_health_hud(&inputs, wi, hi, &mut native_health_hud);
-                let draws = match native_health_hud {
-                    Some(draws) => draws,
-                    None => self.health_hud.layout(&inputs, wi, hi),
-                };
-                self.keep_status_rows(&draws, wi, hi);
                 // The rows draw in one pass here, so a mod's `player_health`
                 // layer stands for the armor, food and air rows too.
                 self.gui_layer(
                     VanillaGuiLayer::PlayerHealth,
                     &mut batch,
                     &mut |g, batch| {
-                        hud_layout::paint(batch, &g.gui.atlas, &draws);
+                        let mut chosen = None;
+                        g.native_health_hud(&inputs, wi, hi, &mut chosen);
+                        if let Some(chosen) = chosen {
+                            g.invoke_health_hud_replacement(batch, &inputs, chosen);
+                        } else {
+                            let draws = g.health_hud.layout(&inputs, wi, hi);
+                            g.keep_status_rows(&draws, wi, hi);
+                            hud_layout::paint(batch, &g.gui.atlas, &draws);
+                        }
                     },
                 );
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
@@ -7599,6 +7601,73 @@ impl Game<'_> {
             self.draw_pad_guide(&mut batch, guide_from);
         }
         batch
+    }
+
+    /// Report a panic in a mod callback loudly (error log plus long red system toast) after
+    /// disabling that mod's callback for the session.
+    pub(in crate::game) fn report_mod_callback_panic(
+        &mut self,
+        mod_id: &'static str,
+        hook: &'static str,
+    ) {
+        log::error!("mod {mod_id} callback for {hook} panicked; disabled for this session");
+        let toast = sunrise_client::toasts::SystemToast::new(
+            sunrise_client::text::Text::tr("sunrise.mod.callback_panicked.title", &[&mod_id]),
+            Some(sunrise_client::text::Text::tr(
+                "sunrise.mod.callback_panicked.body",
+                &[&hook],
+            )),
+        )
+        .with_title_color(rgba(255, 85, 85, 255))
+        .with_display_time(sunrise_client::toasts::SystemToast::LONG_DISPLAY_TIME);
+        if let Some(toast) = self.add_system_toast(toast) {
+            self.mod_error_toasts.push(toast);
+        }
+    }
+
+    /// Run a mod's chosen `health_hud` replacement directly on the `minecraft:player_health`
+    /// layer, containing phase refusals and panics at the hook boundary without rolling back
+    /// prior draws or falling back to vanilla health rows.
+    pub(in crate::game) fn invoke_health_hud_replacement(
+        &mut self,
+        batch: &mut HudBatch,
+        inputs: &hud_layout::HealthInputs,
+        chosen: mod_api::Answered<mod_api::HealthHudReplacement>,
+    ) {
+        use mod_api::__private::contain_outside_world;
+        use mod_api::DrawContext as _;
+        use mod_api::content::crash::{ModCall, enter_native_mod};
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let mod_id = chosen.mod_id;
+        let outcome = {
+            let _guard = enter_native_mod(ModCall {
+                id: mod_id,
+                hook: "health_hud",
+                part: None,
+            });
+            let game: &Game<'_> = &*self;
+            let mut draw = crate::game::host::draw::GameDrawContext::new(game, batch);
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                contain_outside_world(|| {
+                    draw.draw_gui(&mut |canvas| chosen.answer.invoke(game, inputs, canvas))
+                })
+            }));
+            if let Ok(Err(refusal)) = &outcome {
+                refusal.report();
+            }
+            outcome
+        };
+        match outcome {
+            Ok(Ok(Ok(()))) | Ok(Err(_)) => {}
+            Ok(Ok(Err(err))) => {
+                log::warn!("mod {mod_id} health_hud draw failed: {err}");
+            }
+            Err(_) => {
+                mod_api::__private::poison_hook(mod_api::HookId::HealthHud, mod_id);
+                self.report_mod_callback_panic(mod_id, "health_hud");
+            }
+        }
     }
 
     pub(super) fn close_container(&mut self) {
@@ -13408,6 +13477,7 @@ impl<'a> Game<'a> {
             tutorial,
             tutorial_toasts: Vec::new(),
             narrator_toast: None,
+            mod_error_toasts: Vec::new(),
             narration: Default::default(),
             options_from_title: false,
             dragging: false,

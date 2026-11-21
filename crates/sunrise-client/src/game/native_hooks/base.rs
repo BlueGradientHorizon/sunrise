@@ -701,13 +701,13 @@ impl Game<'_> {
         self.fire_player_tick_post(call);
     }
     pub(in crate::game) fn native_health_hud(
-        &mut self,
+        &self,
         inputs: &mod_api::client::hud_layout::HealthInputs,
         wi: i32,
         hi: i32,
-        draws: &mut Option<Vec<GuiDraw>>,
+        replacement: &mut Option<mod_api::Answered<mod_api::HealthHudReplacement>>,
     ) {
-        self.fire_health_hud(inputs, wi, hi, draws);
+        self.fire_health_hud(inputs, wi, hi, replacement);
     }
     /// Raw mouse button input on any screen, before dispatch; cancel skips dispatch and Post.
     /// Button/modifiers use the same GLFW encoding as screen hooks. Synthetic clicks skip it.
@@ -3125,7 +3125,7 @@ impl Game<'_> {
         stack: &ItemStack,
         x: f32,
         y: f32,
-        draw: &mut HudBatch,
+        draw: &mut dyn mod_api::GuiCanvas,
     ) {
         self.fire_item_decorations(stack, x, y, draw);
     }
