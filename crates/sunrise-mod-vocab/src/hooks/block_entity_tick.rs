@@ -23,10 +23,7 @@ pub trait Hooks {
         scope = "block_entity",
         key = "kind",
         neoforge = "none (vanilla BlockEntityTicker; NeoForge adds no event or extension for it)",
-        version = 2
+        version = 3
     )]
-    fn block_entity_tick(
-        kind: mod_api::BlockEntityTypeKey,
-        subject: mod_api::BlockEntityTickScope<'_>,
-    );
+    fn block_entity_tick(kind: mod_api::BlockEntityTypeKey, subject: mod_api::BlockEntityScope<'_>);
 }

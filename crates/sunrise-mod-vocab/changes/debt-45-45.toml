@@ -1,0 +1,15 @@
+ids = [
+    "hook:block_entity_tick",
+    "hook:block_entity_tick.subject",
+    "type:BlockEntityTickEvent.subject",
+    "type:BlockEntityTickScope",
+    "handle:BlockEntityTickScope::with_view",
+    "handle:BlockEntityTickScope::host",
+    "handle:BlockEntityTickScope::transaction",
+    "type:BlockEntityScope",
+    "handle:BlockEntityScope::with_view",
+    "handle:BlockEntityScope::host",
+    "handle:BlockEntityScope::transaction",
+]
+why = "Generalized BlockEntityTickScope to BlockEntityScope so block_entity_tick and resident menu hooks share one in-place loan mechanism matching vanilla BlockEntityTicker.tick, BlockEntity.setChanged, and AbstractContainerMenu.clickMenuButton/quickMoveStack. When no live resident mod block entity backs a call (such as a blockless menu or after removal/replacement), with_view returns None while host() and transaction(...) stay usable."
+migrate = "Replace any explicit type annotation or import of `BlockEntityTickScope` with `BlockEntityScope`. Listener signatures taking `&mut BlockEntityTickEvent<'_>` and calls to `event.subject.with_view`, `event.subject.host()`, and `event.subject.transaction(...)` keep the same names; if your manifest pins `block_entity_tick`, update `hook_version = 3`."

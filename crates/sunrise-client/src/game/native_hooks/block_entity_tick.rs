@@ -5,8 +5,8 @@ use crate::game::{
     transactions::OpenTransactions,
 };
 use mod_api::{
-    BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockEntityTickAccess,
-    BlockEntityTickScope, BlockEntityView, ResidentBlockEntity, ServerHost,
+    BlockEntityAccess, BlockEntityDataError, BlockEntityItemError, BlockEntityRef,
+    BlockEntityScope, BlockEntityView, ResidentBlockEntity, ServerHost, Transaction,
 };
 use std::collections::HashMap;
 use sunrise_client::{
@@ -21,6 +21,25 @@ use sunrise_items::items::Items;
 mod tests;
 
 impl Game<'_> {
+    /// Resolve the handle and block state for a live resident mod block entity at `pos`.
+    pub(in crate::game) fn resident_block_entity_target(
+        &self,
+        pos: Pos,
+    ) -> Option<(BlockEntityRef, BlockStateId)> {
+        if !self.world.loaded(pos.0, pos.2) {
+            return None;
+        }
+        let Some(BlockEntity::Mod(_)) = self.world.block_entities.get(&pos) else {
+            return None;
+        };
+        let level = self.level(self.dim.id())?;
+        let generation = self.world.block_entities.generation(&pos)?;
+        let state = self.world.block(pos.0, pos.1, pos.2);
+        let handle =
+            mod_api::__private::game::block_entity_ref(level, [pos.0, pos.1, pos.2], generation);
+        Some((handle, state))
+    }
+
     /// The tick of the resident mod block entity at `pos`.
     pub(in crate::game) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) {
         let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
@@ -29,57 +48,78 @@ impl Game<'_> {
         let Some(kind) = entity.tick_kind() else {
             return;
         };
-        let Some(level) = self.level(self.dim.id()) else {
+        let Some((handle, state)) = self.resident_block_entity_target(pos) else {
             return;
         };
-        let Some(generation) = self.world.block_entities.generation(&pos) else {
-            return;
-        };
-        let state = self.world.block(pos.0, pos.1, pos.2);
-        let subject =
-            mod_api::__private::game::block_entity_ref(level, [pos.0, pos.1, pos.2], generation);
-        let mut access = TickAccess {
-            game: self,
-            subject,
-            state,
-        };
-        Self::native_block_entity_tick(kind, BlockEntityTickScope::new(&mut access));
+        let mut access = ResidentBlockEntityAccess::for_handle(self, handle, state);
+        Self::native_block_entity_tick(kind, BlockEntityScope::new(&mut access));
     }
 
     /// Dispatch the one resident server ticker; the scope owns access to the Host.
     pub(in crate::game) fn native_block_entity_tick(
         kind: mod_api::BlockEntityTypeKey,
-        subject: mod_api::BlockEntityTickScope<'_>,
+        subject: mod_api::BlockEntityScope<'_>,
     ) {
         Self::fire_block_entity_tick(kind, subject);
     }
 }
 
-struct TickAccess<'g, 'w> {
-    game: &'g mut Game<'w>,
-    subject: BlockEntityRef,
-    state: BlockStateId,
+pub(in crate::game) struct ResidentBlockEntityAccess<'a, 'g> {
+    game: &'a mut Game<'g>,
+    target: Option<(BlockEntityRef, BlockStateId)>,
+    items_changed: bool,
 }
 
-impl BlockEntityTickAccess for TickAccess<'_, '_> {
+impl<'a, 'g> ResidentBlockEntityAccess<'a, 'g> {
+    pub(in crate::game) fn for_handle(
+        game: &'a mut Game<'g>,
+        handle: BlockEntityRef,
+        state: BlockStateId,
+    ) -> Self {
+        Self {
+            game,
+            target: Some((handle, state)),
+            items_changed: false,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(in crate::game) fn blockless(game: &'a mut Game<'g>) -> Self {
+        Self {
+            game,
+            target: None,
+            items_changed: false,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(in crate::game) fn items_changed(&self) -> bool {
+        self.items_changed
+    }
+}
+
+impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
     fn with_view(&mut self, call: &mut dyn FnMut(BlockEntityView<'_>)) {
         use mod_api::__private::game::Fields;
-        let target = self.subject.fields();
+        let Some((handle, state_id)) = self.target else {
+            return;
+        };
+        let target = handle.fields();
         let [x, y, z] = target.position;
         if !self.game.level_in_place(target.level)
             || !self.game.world.loaded(x, z)
-            || self.game.world.block(x, y, z) != self.state
+            || self.game.world.block(x, y, z) != state_id
         {
             return;
         }
-        let Ok(state) = self.state.try_into_api() else {
+        let Ok(state) = state_id.try_into_api() else {
             return;
         };
         let slot_count = self
             .game
             .world
             .block_entities
-            .mod_container(self.state.0)
+            .mod_container(state_id.0)
             .map_or(0, |c| c.slots);
         let pos = (x, y, z);
         let Some(loan) = self
@@ -90,7 +130,7 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
         else {
             return;
         };
-        let mut data = TickData {
+        let mut data = ResidentBlockEntityData {
             pos,
             dim: self.game.dim,
             loan,
@@ -101,17 +141,40 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
             chunks: &self.game.world.chunks,
             names: &self.game.world.block_names,
             hoppers: &self.game.hoppers,
+            items_changed: &mut self.items_changed,
             dirty: false,
         };
-        call(BlockEntityView::new(self.subject, state, &mut data));
+        call(BlockEntityView::new(handle, state, &mut data));
     }
 
     fn host(&mut self) -> &mut dyn ServerHost {
         self.game
     }
+
+    fn transaction(
+        &mut self,
+        call: &mut dyn FnMut(&mut dyn BlockEntityAccess, &Transaction) -> bool,
+    ) {
+        let target = self.target;
+        let committed = mod_api::run_transaction(self.game, |game, tx| {
+            let mut child = ResidentBlockEntityAccess {
+                game,
+                target,
+                items_changed: false,
+            };
+            if call(&mut child, tx) {
+                Ok(child.items_changed)
+            } else {
+                Err(())
+            }
+        });
+        if let Ok(changed) = committed {
+            self.items_changed |= changed;
+        }
+    }
 }
 
-struct TickData<'a> {
+struct ResidentBlockEntityData<'a> {
     pos: Pos,
     dim: Dim,
     loan: BlockEntityLoan<'a>,
@@ -122,10 +185,11 @@ struct TickData<'a> {
     chunks: &'a ChunkMap,
     names: &'a FxHashMap<Pos, Tag>,
     hoppers: &'a HashMap<Pos, super::super::machines::HopperState>,
+    items_changed: &'a mut bool,
     dirty: bool,
 }
 
-impl TickData<'_> {
+impl ResidentBlockEntityData<'_> {
     fn entity(&self) -> &EngineBlockEntity {
         self.loan.entity
     }
@@ -143,7 +207,7 @@ impl TickData<'_> {
     }
 }
 
-impl Drop for TickData<'_> {
+impl Drop for ResidentBlockEntityData<'_> {
     fn drop(&mut self) {
         if self.dirty {
             self.journal
@@ -152,7 +216,7 @@ impl Drop for TickData<'_> {
     }
 }
 
-impl ResidentBlockEntity for TickData<'_> {
+impl ResidentBlockEntity for ResidentBlockEntityData<'_> {
     fn id(&self) -> &str {
         self.entity().id()
     }
@@ -277,6 +341,7 @@ impl ResidentBlockEntity for TickData<'_> {
         if let Some(dest) = entity.item_slot_mut(index) {
             *dest = stack;
         }
+        *self.items_changed = true;
         Ok(true)
     }
 

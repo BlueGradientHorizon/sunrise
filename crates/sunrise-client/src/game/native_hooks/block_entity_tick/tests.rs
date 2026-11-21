@@ -41,13 +41,12 @@ fn place_subject(game: &mut Game<'_>, kind: &str) -> BlockEntityRef {
     game.block_entity(level, [POS.0, POS.1, POS.2]).unwrap()
 }
 
-fn access<'a, 'g>(game: &'a mut Game<'g>, subject: BlockEntityRef) -> TickAccess<'a, 'g> {
+fn access<'a, 'g>(
+    game: &'a mut Game<'g>,
+    subject: BlockEntityRef,
+) -> ResidentBlockEntityAccess<'a, 'g> {
     let state = game.world.block(POS.0, POS.1, POS.2);
-    TickAccess {
-        game,
-        subject,
-        state,
-    }
+    ResidentBlockEntityAccess::for_handle(game, subject, state)
 }
 
 #[test]
@@ -55,8 +54,9 @@ fn access<'a, 'g>(game: &'a mut Game<'g>, subject: BlockEntityRef) -> TickAccess
 fn retaking_the_view_checks_the_instance_and_state() {
     with_game(|game| {
         let subject = place_subject(game, KIND);
-        let mut access = access(game, subject);
-        let mut scope = BlockEntityTickScope::new(&mut access);
+        let original_state = game.world.block(POS.0, POS.1, POS.2);
+        let mut access = ResidentBlockEntityAccess::for_handle(game, subject, original_state);
+        let mut scope = BlockEntityScope::new(&mut access);
         assert_eq!(scope.with_view(|view| view.data_slots()[0]), Some(23));
         let host = scope.host();
         let level = subject.level(host).unwrap();
@@ -74,29 +74,20 @@ fn retaking_the_view_checks_the_instance_and_state() {
             .set(pos[0], pos[1], pos[2], glass)
             .unwrap();
         assert_eq!(access.game.block_entity(level, pos), Some(subject));
-        assert_eq!(
-            BlockEntityTickScope::new(&mut access).with_view(|_| ()),
-            None
-        );
+        assert_eq!(BlockEntityScope::new(&mut access).with_view(|_| ()), None);
         access
             .game
             .world
-            .set(pos[0], pos[1], pos[2], access.state)
+            .set(pos[0], pos[1], pos[2], original_state)
             .unwrap();
         assert_eq!(
-            BlockEntityTickScope::new(&mut access).with_view(|_| ()),
+            BlockEntityScope::new(&mut access).with_view(|_| ()),
             Some(())
         );
         access.game.world.block_entities.remove(&POS);
-        assert_eq!(
-            BlockEntityTickScope::new(&mut access).with_view(|_| ()),
-            None
-        );
+        assert_eq!(BlockEntityScope::new(&mut access).with_view(|_| ()), None);
         access.game.world.block_entities.insert(POS, row(KIND, 99));
-        assert_eq!(
-            BlockEntityTickScope::new(&mut access).with_view(|_| ()),
-            None
-        );
+        assert_eq!(BlockEntityScope::new(&mut access).with_view(|_| ()), None);
     });
 }
 
@@ -107,7 +98,7 @@ fn read_only_and_noop_loans_do_not_journal_or_dirty() {
         let subject = place_subject(game, KIND);
         let result: Result<(), ()> = game.transaction(|game, _| {
             let mut access = access(game, subject);
-            BlockEntityTickScope::new(&mut access)
+            BlockEntityScope::new(&mut access)
                 .with_view(|mut view| {
                     assert_eq!(view.data_slots(), [23]);
                     assert!(!view.set_data_slot(0, 23));
@@ -138,7 +129,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
         let count = item.with_stack(game, |stack| stack.count()).unwrap();
         game.world.modified.clear();
         let mut access = access(game, subject);
-        let mut scope = BlockEntityTickScope::new(&mut access);
+        let mut scope = BlockEntityScope::new(&mut access);
         let result: Result<(), ()> = scope.transaction(|scope, _| {
             scope
                 .with_view(|mut view| {
@@ -271,5 +262,101 @@ fn a_registered_type_without_a_tick_part_is_not_woken_or_changed() {
         assert!(game.world.block_entities.is_asleep(&POS));
         assert!(game.world.modified.is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn blockless_scope_returns_none_for_view_and_keeps_host_and_transaction_working() {
+    with_game(|game| {
+        let subject = place_subject(game, KIND);
+        let mut access = ResidentBlockEntityAccess::blockless(game);
+        let mut scope = BlockEntityScope::new(&mut access);
+        assert_eq!(scope.with_view(|_| 1u32), None);
+        let aborted: Result<(), ()> = scope.transaction(|scope, _| {
+            assert_eq!(scope.with_view(|_| 1u32), None);
+            assert!(subject.set_data_slot(scope.host(), 0, 50).unwrap());
+            Err(())
+        });
+        assert_eq!(aborted, Err(()));
+        assert_eq!(subject.data_slots(scope.host()).unwrap(), [23]);
+        let committed: Result<(), ()> = scope.transaction(|scope, _| {
+            assert!(subject.set_data_slot(scope.host(), 0, 55).unwrap());
+            Ok(())
+        });
+        assert_eq!(committed, Ok(()));
+        assert_eq!(subject.data_slots(scope.host()).unwrap(), [55]);
+        assert!(!access.items_changed());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transactions() {
+    with_game(|game| {
+        let subject = place_subject(game, KIND);
+        let (handle, state) = game.resident_block_entity_target(POS).unwrap();
+        assert_eq!(handle, subject);
+        game.world.block_entities.set_mod_containers(
+            [(
+                state.0,
+                Arc::new(sunrise_client::containers::ModContainer {
+                    slots: 2,
+                    ..Default::default()
+                }),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let stone = sunrise_client::items::ItemStack::new("minecraft:stone", 1)
+            .try_into_api()
+            .unwrap();
+        let mut access = ResidentBlockEntityAccess::for_handle(game, handle, state);
+        {
+            let mut scope = BlockEntityScope::new(&mut access);
+            assert_eq!(
+                scope
+                    .with_view(|mut view| view.set_item_slot(0, None))
+                    .unwrap(),
+                Ok(false)
+            );
+        }
+        assert!(!access.items_changed());
+
+        {
+            let mut scope = BlockEntityScope::new(&mut access);
+            let aborted: Result<(), ()> = scope.transaction(|scope, _| {
+                assert_eq!(
+                    scope
+                        .with_view(|mut view| view.set_item_slot(0, Some(stone.clone())))
+                        .unwrap(),
+                    Ok(true)
+                );
+                Err(())
+            });
+            assert_eq!(aborted, Err(()));
+        }
+        assert!(!access.items_changed());
+
+        {
+            let mut scope = BlockEntityScope::new(&mut access);
+            let committed: Result<(), ()> = scope.transaction(|scope, _| {
+                assert_eq!(
+                    scope
+                        .with_view(|mut view| view.set_item_slot(0, Some(stone.clone())))
+                        .unwrap(),
+                    Ok(true)
+                );
+                Ok(())
+            });
+            assert_eq!(committed, Ok(()));
+            assert_eq!(
+                scope
+                    .with_view(|view| view.item_slot(0).map(|s| s.count()))
+                    .unwrap(),
+                Some(1)
+            );
+        }
+        assert!(access.items_changed());
     });
 }

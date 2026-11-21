@@ -1,10 +1,10 @@
-//! The resident server ticker's two sequential loans: its subject and the world.
+//! Sequential loans to a live resident mod block entity and the server Host.
 use crate::{
     BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey,
     ItemStack, JavaString, LevelRef, ServerHost, Tag, Transaction,
 };
 
-/// The block entity this server ticker is running. Its storage stays in the level.
+/// A live resident mod block entity. Its storage stays in the level.
 /// Keep a [`BlockEntityRef`] from [`Self::handle`] if you need to find it after the call.
 // exhaustive: only the engine constructs a view.
 // no wire: an exclusive loan, not a payload.
@@ -33,7 +33,7 @@ impl<'a> BlockEntityView<'a> {
     pub fn position(&self) -> [i32; 3] {
         self.subject.position
     }
-    /// The level the entity is ticking in.
+    /// The level the entity resides in.
     pub fn level(&self) -> LevelRef {
         self.subject.level
     }
@@ -45,7 +45,7 @@ impl<'a> BlockEntityView<'a> {
     pub fn id(&self) -> &str {
         self.data.id()
     }
-    /// A generation-bound handle to keep after this tick.
+    /// A generation-bound handle to keep after this call.
     pub fn handle(&self) -> BlockEntityRef {
         self.subject
     }
@@ -131,7 +131,7 @@ impl BlockEntityStackView<'_> {
     }
 }
 
-/// Sequential access to the ticking block entity and the server Host.
+/// Sequential access to a live resident mod block entity (when present) and the server Host.
 ///
 /// ```compile_fail,E0501
 /// use mod_vocab::BlockEntityTickEvent;
@@ -144,18 +144,20 @@ impl BlockEntityStackView<'_> {
 /// ```
 // exhaustive: the engine constructs this scope around a single dispatch.
 // no wire: the sequential loans cannot escape their call.
-pub struct BlockEntityTickScope<'a>(&'a mut dyn BlockEntityTickAccess);
+pub struct BlockEntityScope<'a>(&'a mut dyn BlockEntityAccess);
 
-impl<'a> BlockEntityTickScope<'a> {
-    // hidden: the engine supplies the loan backend for this one ticker dispatch.
+impl<'a> BlockEntityScope<'a> {
+    // hidden: the engine supplies the loan backend for this dispatch.
     #[doc(hidden)]
-    pub fn new(access: &'a mut dyn BlockEntityTickAccess) -> Self {
+    pub fn new(access: &'a mut dyn BlockEntityAccess) -> Self {
         Self(access)
     }
 
-    /// Lend the original subject for `f`. Once `f` returns, you can use the Host
-    /// and then ask for the view again. Each loan checks the level, block state and
-    /// generation; removal or replacement returns `None` without running `f`.
+    /// Lend the live resident mod block entity for `f`. Once `f` returns, you can use
+    /// the Host and then ask for the view again. Returns `None` without running `f` when
+    /// no live resident mod block entity backs the call (such as a blockless menu) or
+    /// when the level, block state or generation no longer matches after removal or
+    /// replacement.
     ///
     /// Successful storage edits dirty the chunk once per loan (at commit in a
     /// transaction) and are visible to subsequent loans and listeners. Menu data
@@ -173,33 +175,43 @@ impl<'a> BlockEntityTickScope<'a> {
 
     /// Borrow the Host for other objects or world operations. No view is live while
     /// this borrow is held. Reborrow the view afterwards to re-check the subject.
+    /// Remains usable even when `with_view` returns `None`.
     pub fn host(&mut self) -> &mut dyn ServerHost {
         self.0.host()
     }
 
-    /// Run an atomic operation spanning the subject and other world storage. The
-    /// callback can alternate between view and Host, under one explicit transaction.
-    /// `Err` or unwind rolls back its journaled edits. Ordinary loans join an already
-    /// open transaction and never open a savepoint by themselves.
+    /// Run an atomic operation spanning the subject (when present) and other world
+    /// storage. The callback can alternate between view and Host, under one explicit
+    /// transaction. `Err` or unwind rolls back its journaled edits. Ordinary loans join
+    /// an already open transaction and never open a savepoint by themselves.
+    /// Remains usable even when `with_view` returns `None`.
     pub fn transaction<T, E>(
         &mut self,
-        f: impl FnOnce(&mut Self, &Transaction) -> Result<T, E>,
+        f: impl FnOnce(&mut BlockEntityScope<'_>, &Transaction) -> Result<T, E>,
     ) -> Result<T, E> {
-        crate::item::transaction::run_transaction_on(
-            self,
-            |scope| scope.0.host().transaction_open(),
-            |scope, seal, commit| scope.0.host().transaction_close(seal, commit),
-            f,
-        )
+        let mut f = Some(f);
+        let mut result = None;
+        self.0.transaction(&mut |access, tx| {
+            let Some(f) = f.take() else {
+                return false;
+            };
+            let mut scope = BlockEntityScope::new(access);
+            let out = f(&mut scope, tx);
+            let commit = out.is_ok();
+            result = Some(out);
+            commit
+        });
+        result.expect("BlockEntityAccess::transaction invokes its callback once")
     }
 }
 
 /// Engine backing for the sequential loans.
-// hidden: the engine owns the alternating view and Host loans; listeners receive BlockEntityTickScope.
+// hidden: the engine owns the alternating view and Host loans; listeners receive BlockEntityScope.
 #[doc(hidden)]
-pub trait BlockEntityTickAccess {
+pub trait BlockEntityAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(BlockEntityView<'_>));
     fn host(&mut self) -> &mut dyn ServerHost;
+    fn transaction(&mut self, f: &mut dyn FnMut(&mut dyn BlockEntityAccess, &Transaction) -> bool);
 }
 
 /// Engine backing for a checked, journaled row loan.
