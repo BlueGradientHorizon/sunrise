@@ -1,11 +1,13 @@
-ids = ["hook:menu_button", "hook:contents_changed"]
+ids = ["hook:menu_button", "hook:contents_changed", "hook:render_gui_pre"]
 why = """
 Check the detached menu result before writing it back, at vanilla 26.3's AbstractContainerMenu.clickMenuButton and quickMoveStack. Run each contents notice Part in the existing nested journal: NeoForge transfer Transaction.open(parent) lets a committed child merge into its parent without becoming final, and Container.setChanged / BlockEntity.setChanged remain the vanilla backing notification sites. Sunrise isolates a panicking Part's work instead of undoing the backing write that triggered it.
 
+Vanilla 26.3 IntegratedServer.reportChunkLoadFailure and reportChunkSaveFailure send red SystemToast diagnostics through ToastManager.update and extractRenderState. NeoForge RenderGuiEvent.Pre cancels HUD layers, not ToastManager presentation, and ToastAddEvent controls ordinary admissions. Sunrise keeps mandatory mod-error toasts outside both mod vetoes while retaining the existing slots, timers and player presentation settings.
 """
 migrate = """
 Keep implementing menu_button and editing event.entity and event.carried. Update a pinned menu_button hook_version from 2 to 3. A panicking button callback publishes neither detached output, including any one-shot update fields. menu_quick_move keeps its version 3 and signature: a panic already refuses the whole quick move, so do not count a proposed slot, remainder or handled change as a committed move.
 
 Keep implementing contents_changed and using host.transaction for storage writes; update a pinned hook_version from 3 to 4. Each Part runs in a journal frame. Its successful nested transactions merge into that frame, so a panic rolls them back too. The original backing write is not rolled back by a Part panic, and same-position notifications still do not re-enter.
 
+Keep returning Flow::Cancel from render_gui_pre to hide the ordinary HUD and toasts; update a pinned hook_version from 1 to 2. A mandatory mod-error toast can still be drawn while the hook vetoes the HUD. It never fires toast_add and the player's F1 still hides it.
 """

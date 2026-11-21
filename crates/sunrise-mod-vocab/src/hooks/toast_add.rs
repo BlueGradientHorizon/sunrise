@@ -9,6 +9,7 @@ pub trait Hooks {
     /// the advancement name. Existing recipe/system toasts updated in place
     /// do not fire another add event. Client-lib and title producers prepare
     /// candidates for the game to admit with a `ClientHost` before applying.
+    /// Mandatory mod-error toasts are not candidates for this hook.
     #[hook(
         receiver = "read",
         dispatch = "flat",
