@@ -39,10 +39,6 @@ fn content_golden() {
         });
     }
 
-    if let Some(path) = env::var_os("SUNRISE_CONTENT_GOLDEN_REPORT") {
-        let path = Path::new(&path);
-        fs::write(path, mismatches.concat()).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    }
     assert!(!entries.is_empty(), "{CORPUS} is empty");
     assert!(
         orphans.is_empty(),

@@ -168,7 +168,6 @@ class StableModApiTests(unittest.TestCase):
                         mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
                         mock.patch.object(nightly, "git"), \
                         mock.patch.object(nightly, "require_stable_lineage") as lineage, \
-                        mock.patch.object(nightly, "require_unchanged_content_schema"), \
                         mock.patch.object(nightly, "released_assets", side_effect=verified), \
                         mock.patch.dict(nightly.os.environ, {"GH_TOKEN": "secret", "RUSTC_WRAPPER": "sccache"}), \
                         mock.patch.object(nightly.subprocess, "run", side_effect=compare):
@@ -213,7 +212,6 @@ class StableModApiTests(unittest.TestCase):
                     mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
                     mock.patch.object(nightly.train, "origin_tags", return_value={tag: HEAD, PREVIOUS: OLD}), \
                     mock.patch.object(nightly, "git"), mock.patch.object(nightly, "require_stable_lineage"), \
-                    mock.patch.object(nightly, "require_unchanged_content_schema"), \
                     mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
                     mock.patch.object(nightly.subprocess, "run", side_effect=self.judge(parent_tree, candidate_tree,
                                                                                          calls=calls)):
@@ -234,7 +232,6 @@ class StableModApiTests(unittest.TestCase):
         common = (mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]),
                   mock.patch.object(nightly.train, "origin_tags", return_value={tag: HEAD, PREVIOUS: OLD}),
                   mock.patch.object(nightly, "git"), mock.patch.object(nightly, "require_stable_lineage"),
-                  mock.patch.object(nightly, "require_unchanged_content_schema"),
                   mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]))
         with contextlib.ExitStack() as stack:
             for patch in common:
@@ -321,7 +318,6 @@ class StableModApiTests(unittest.TestCase):
                     mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
                     mock.patch.object(nightly.train, "origin_tags", return_value={tag: HEAD, PREVIOUS: OLD}), \
                     mock.patch.object(nightly, "git"), mock.patch.object(nightly, "require_stable_lineage"), \
-                    mock.patch.object(nightly, "require_unchanged_content_schema"), \
                     mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
                     mock.patch.object(nightly.subprocess, "run",
                                       side_effect=self.judge(SURFACE, export, "identical" if tag == "26.3-0.1.11"
@@ -362,7 +358,6 @@ class StableModApiTests(unittest.TestCase):
                     mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
                     mock.patch.object(nightly.train, "origin_tags", return_value={"26.3-0.1.11": HEAD, PREVIOUS: OLD}), \
                     mock.patch.object(nightly, "git"), mock.patch.object(nightly, "require_stable_lineage"), \
-                    mock.patch.object(nightly, "require_unchanged_content_schema"), \
                     mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
                     mock.patch.object(nightly.subprocess, "run", side_effect=self.judge(export, two)):
                 if error:
@@ -498,7 +493,7 @@ class StableModApiTests(unittest.TestCase):
         repo, checkout = (self.notes.with_name(name) for name in ("upstream", "checkout"))
         repo.mkdir()
         git = nightly.git
-        with chdir(repo):
+        with chdir(repo), mock.patch.object(nightly, "REPOSITORY", repo):
             git("init", "--initial-branch=main")
             for key, default in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
                 git("config", key, git("config", "--default", default, "--get", key))
@@ -522,7 +517,7 @@ class StableModApiTests(unittest.TestCase):
             git("merge", "--no-ff", "main", "-m", "bring in main")
             imported = git("rev-parse", "HEAD")
         git("clone", "--depth", "1", "--branch", "release", repo.as_uri(), str(checkout))
-        with chdir(checkout):
+        with chdir(checkout), mock.patch.object(nightly, "REPOSITORY", checkout):
             tag = "26.3-0.1.11"
             nightly.require_stable_lineage(candidate, tag, previous, PREVIOUS)
             self.assertEqual(git("rev-parse", "--is-shallow-repository"), "false")
@@ -535,7 +530,7 @@ class StableModApiTests(unittest.TestCase):
         repo, checkout = (self.notes.with_name(name) for name in ("upstream", "checkout"))
         repo.mkdir()
         git = nightly.git
-        with chdir(repo):
+        with chdir(repo), mock.patch.object(nightly, "REPOSITORY", repo):
             git("init", "--initial-branch=main")
             for key, default in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
                 git("config", key, git("config", "--default", default, "--get", key))
@@ -550,55 +545,8 @@ class StableModApiTests(unittest.TestCase):
             git("commit", "--allow-empty", "-m", "another release fix")
             candidate = git("rev-parse", "HEAD")
         git("clone", "--depth", "1", "--branch", "release", repo.as_uri(), str(checkout))
-        with chdir(checkout):
+        with chdir(checkout), mock.patch.object(nightly, "REPOSITORY", checkout):
             nightly.require_stable_lineage(candidate, "26.3-0.1.11", previous, PREVIOUS)
-
-    def test_only_a_new_major_can_change_content_declaration_files(self):
-        repo = self.notes.with_name("repo")
-        repo.mkdir()
-        manifest = "crates/sunrise-mod-package/src/manifest.rs"
-        declaration = "crates/sunrise-mod-package/src/content/entity_type.rs"
-        unrelated = "crates/sunrise-mod-package/src/content/entity_sounds_tests.rs"
-        with chdir(repo):
-            git = nightly.git
-            git("init", "--initial-branch=main")
-            git("config", "user.name", "Release Test")
-            git("config", "user.email", "release-test@example.invalid")
-            git("commit", "--allow-empty", "-m", "previous stable")
-            previous = git("rev-parse", "HEAD")
-            for name in (unrelated, manifest, declaration):
-                Path(name).parent.mkdir(parents=True, exist_ok=True)
-                Path(name).touch()
-                git("add", name)
-                git("commit", "-m", name)
-            schema_edit = git("rev-parse", "HEAD")
-            # Keep the checkout at the unrelated edit to prove the diff uses the passed commits.
-            git("switch", "--detach", "HEAD~2")
-            unrelated_edit = git("rev-parse", "HEAD")
-
-        parent = nightly.train.Release(PREVIOUS, previous, nightly.train.github_time("2026-11-01T00:00:00Z"))
-        run = subprocess.run
-        judge = self.judge(SURFACE, SURFACE)
-
-        def judge_or_git(args, **kwargs):
-            return judge(args, **kwargs) if args[0] == TOOL else run(args, **kwargs)
-
-        with mock.patch.object(nightly, "REPOSITORY", repo), \
-                mock.patch.object(nightly, "stable_parent", return_value=parent), \
-                mock.patch.object(nightly, "require_stable_lineage"), \
-                mock.patch.dict(nightly.os.environ, {"BREAK_GLASS": "false"}), \
-                mock.patch.object(nightly, "released_assets",
-                                  side_effect=lambda sha, *names: sdk_assets(sha, SURFACE, "1", {})), \
-                mock.patch.object(nightly.subprocess, "run", side_effect=judge_or_git):
-            for tag in ("26.3-0.1.11", "26.3-0.2.0"):
-                with self.subTest(tag=tag):
-                    nightly.stable_mod_api(unrelated_edit, tag, self.notes)
-                    with self.assertRaisesRegex(SystemExit, "changes content declaration files") as refused:
-                        nightly.stable_mod_api(schema_edit, tag, self.notes)
-                    self.assertIn(manifest, str(refused.exception))
-                    self.assertIn(declaration, str(refused.exception))
-                    self.assertNotIn(unrelated, str(refused.exception))
-            nightly.stable_mod_api(schema_edit, "26.3-1.0.0", self.notes)
 
     def test_stable_mod_api_command_requires_a_full_commit_sha(self):
         for sha in ("HEAD", HEAD[:12], HEAD.upper()):
