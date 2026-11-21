@@ -133,12 +133,38 @@ pub enum Frame {
 /// fragmentation limits are part of `schema()` independently.
 const PROTOCOL: u64 = 2;
 
-/// Encode the remote display projection of already validated native declarations.
-pub fn encode_catalogue(declarations: &[mod_api::RecipeBookCategory]) -> Result<Vec<u8>, Refusal> {
-    let categories: Vec<_> = declarations.iter().map(catalogue::Category::from).collect();
+/// Borrowed category view with concretized displays, avoiding deep copies of
+/// `PlacementInfo` trees before wire depth and size limits are enforced.
+pub struct BorrowedCategory<'a> {
+    pub category: &'a mod_api::RecipeBookCategory,
+    pub displays: Vec<BorrowedDisplayEntry<'a>>,
+}
+
+/// One borrowed entry inside a [`BorrowedCategory`].
+pub struct BorrowedDisplayEntry<'a> {
+    pub recipe: &'a str,
+    pub displays: Vec<mod_api::RecipeBookDisplay>,
+    pub placement: Option<&'a mod_api::PlacementInfo>,
+}
+
+/// Encode the remote display projection directly from borrowed declarations.
+pub fn encode_borrowed_catalogue(
+    declarations: &[BorrowedCategory<'_>],
+) -> Result<Vec<u8>, Refusal> {
     let mut writer = mod_api::wire::Writer::new();
     writer.limit(MAX_CATALOG_BYTES);
-    writer.put(&categories);
+    catalogue::write_borrowed_categories(&mut writer, declarations);
+    if writer.error().is_some() {
+        return Err(Refusal::TooLarge);
+    }
+    Ok(writer.into_bytes())
+}
+
+/// Encode the remote display projection of already validated native declarations.
+pub fn encode_catalogue(declarations: &[mod_api::RecipeBookCategory]) -> Result<Vec<u8>, Refusal> {
+    let mut writer = mod_api::wire::Writer::new();
+    writer.limit(MAX_CATALOG_BYTES);
+    catalogue::write_categories(&mut writer, declarations);
     if writer.error().is_some() {
         return Err(Refusal::TooLarge);
     }

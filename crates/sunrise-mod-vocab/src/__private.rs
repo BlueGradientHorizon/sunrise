@@ -84,6 +84,8 @@ pub fn mod_index_on(index: usize) -> bool {
     crate::mod_index_on(index)
 }
 
+pub use crate::runtime::retained::{RetainedCallback, RetainedFailure};
+
 /// Marks the thread as inside mod `id`'s `call` until the guard drops, as a hook's dispatch does,
 /// so a panic in it names both.
 pub fn enter(id: &'static str, call: &'static str) -> crate::content::crash::ModGuard {

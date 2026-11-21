@@ -11,9 +11,11 @@ pub trait RecipesHost {
     /// the content mods (`.smod`) and the world's data packs, in file order: each
     /// one typed (`Recipe`: its ingredients, results, group, cooking time and
     /// experience, or its stonecutting, smithing or special crafting rule),
-    /// together with the original recipe JSON. Bound ingredient predicates are kept in
-    /// the resolved ingredients, not written into the JSON or sent to clients. The file's
-    /// type field names its serializer; this can differ from the reported recipe kind. Dynamic rules are not fixed
+    /// together with its JSON. Locally loaded recipes give the original recipe JSON;
+    /// synced vanilla serializers give the server's resolved item lists, and synced mod
+    /// serializers give the data written by that serializer. Bound native predicates
+    /// aren't written into the JSON or sent to clients. The `type` field names the
+    /// serializer; this can differ from the reported recipe kind. Dynamic rules are not fixed
     /// outputs; use `LevelRef::recipe_for` for engine-matchable recipe types.
     /// Registered crafting kinds match through LevelRef::recipe_for. Cache other mod-owned
     /// types once per load/reload and match those in mod memory; those return

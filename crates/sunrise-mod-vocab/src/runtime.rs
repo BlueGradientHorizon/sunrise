@@ -81,6 +81,7 @@ pub(crate) struct Installed {
     poison_free: std::sync::atomic::AtomicBool,
     /// Session poison for named callbacks rebuilt with resources or a connection.
     named_poison: std::sync::Mutex<NamedPoison>,
+    retained_poisons: RetainedPoisons,
     /// Hook-listener panic reports queued for this installed set's client error toast.
     hook_panics: std::sync::Mutex<Vec<HookPanicReport>>,
     has_hook_panics: std::sync::atomic::AtomicBool,
@@ -140,6 +141,7 @@ impl Installed {
             poisons: std::sync::Mutex::new(None),
             poison_free: std::sync::atomic::AtomicBool::new(true),
             named_poison: Default::default(),
+            retained_poisons: RetainedPoisons::default(),
             hook_panics: std::sync::Mutex::new(Vec::new()),
             has_hook_panics: std::sync::atomic::AtomicBool::new(false),
         }
@@ -424,6 +426,11 @@ pub(crate) fn without_callback_scope<T>(call: impl FnOnce() -> T) -> T {
     let _scope = DispatchPanicScope(HOOK_DISPATCH_DEPTH.replace(0));
     call()
 }
+
+#[path = "runtime/retained.rs"]
+pub(crate) mod retained;
+pub(crate) use retained::RetainedCallback;
+use retained::RetainedPoisons;
 
 // A mod's panic payload may itself panic on drop. Stay in DispatchPanicScope and do not
 // recursively destroy a secondary payload that may repeat the same panic.

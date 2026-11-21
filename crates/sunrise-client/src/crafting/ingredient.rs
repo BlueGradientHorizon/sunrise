@@ -27,13 +27,16 @@ pub(super) fn ingredient_kind(o: &serde_json::Map<String, Value>) -> Option<&str
 
 /// A set of accepted items (expanded from an item, list or tag), and the
 /// items in its `HolderSet` order, with built-in component and display rules.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 // exhaustive: the game builds it with a literal; mods only read it
 pub struct Ingredient {
     /// Full candidate set; a non-simple predicate tests each concrete stack.
     pub items: HashSet<String>,
     /// Default-stack display/simple-match order; may be empty for non-simple kinds.
     pub order: Vec<String>,
+    /// Original `#tag` name (without `#`) when the ingredient JSON was a tag reference,
+    /// preserved for vanilla `HolderSet::Tag` / `TagSlotDisplay` wire encoding.
+    pub tag: Option<String>,
     /// The predicate bound to this occurrence by the mod that defined it.
     pub custom: Option<IngredientPredicate>,
     /// NeoForge's shapes, with their children parsed: matching a concrete
@@ -53,10 +56,6 @@ pub struct Ingredient {
         std::sync::Arc<std::collections::HashMap<String, sunrise_core::nbt::Compound>>,
 }
 impl Ingredient {
-    /// Reject malformed component patches before any part of a recipe is published.
-    pub fn validate_recipe(value: &Value, items: &Items) -> Result<(), String> {
-        components::validate_recipe(value, items)
-    }
     pub(crate) fn validate_persistence(value: &Value, recipe: &str) -> bool {
         if let Err(error) = components::persistent_recipe(value) {
             let recipe = sunrise_items::recipe_sources::qualified(recipe);
@@ -67,16 +66,21 @@ impl Ingredient {
     }
     /// Decode built-in rules and materialize display stacks at a load boundary.
     pub fn prepare_components(&mut self, items: &Items) -> Option<()> {
+        self.prepare_components_checked(items).ok()
+    }
+    fn prepare_components_checked(&mut self, items: &Items) -> Result<(), String> {
         if let Some(rule) = &self.rule {
-            let compiled = std::sync::Arc::new(
-                components::ComponentPredicate::compile(rule, &self.items, items).ok()?,
-            );
+            let compiled = std::sync::Arc::new(components::ComponentPredicate::compile(
+                rule,
+                &self.items,
+                items,
+            )?);
             if self.display.is_none() {
                 self.shown = Some(compiled.shown(&self.order));
             }
             self.compiled = Some(compiled);
         }
-        Some(())
+        Ok(())
     }
     fn default_matches(&self, stack: &ItemStack) -> bool {
         match &self.children {
@@ -106,12 +110,16 @@ impl Ingredient {
 
     /// Whether item membership fully determines shapeless matching.
     pub fn is_simple(&self) -> bool {
-        self.rule.is_none()
-            && self.custom.is_none()
-            && self
-                .children
-                .as_ref()
-                .is_none_or(|(_, kids)| kids.iter().all(Self::is_simple))
+        let mut pending = vec![self];
+        while let Some(node) = pending.pop() {
+            if node.rule.is_some() || node.custom.is_some() {
+                return false;
+            }
+            if let Some((_, kids)) = &node.children {
+                pending.extend(kids);
+            }
+        }
+        true
     }
 
     /// The items of a list, in order.
@@ -119,6 +127,7 @@ impl Ingredient {
         Self {
             items: items.iter().cloned().collect(),
             order: items,
+            tag: None,
             custom: None,
             children: None,
             rule: None,
@@ -138,7 +147,16 @@ impl Ingredient {
         items: &Items,
         custom: CustomIds<'_, IngredientPredicate>,
     ) -> Option<Self> {
-        let walked = WalkedIngredient::walk(
+        Self::parse_with_error(v, items, custom).ok()
+    }
+
+    pub(super) fn parse_with_error(
+        v: &Value,
+        items: &Items,
+        custom: CustomIds<'_, IngredientPredicate>,
+    ) -> Result<Self, String> {
+        let component_error = std::cell::RefCell::new(None::<String>);
+        let walked = WalkedIngredient::walk_with_components(
             v,
             &items.item_tag_order,
             &|tag| {
@@ -160,35 +178,60 @@ impl Ingredient {
                 )
             },
             custom,
+            &|data| match components::convert_component_patch(data, items) {
+                Ok(patch) => Some(patch),
+                Err(error) => {
+                    let mut slot = component_error.borrow_mut();
+                    if slot.is_none() {
+                        *slot = Some(error);
+                    }
+                    None
+                }
+            },
             &components::json_patch,
         );
-        let walked = walked?;
+        if let Some(error) = component_error.into_inner() {
+            return Err(error);
+        }
+        let walked = walked.ok_or_else(|| format!("invalid ingredient: {v}"))?;
         // A mod kind's empty answer is warned about at load, with its recipe file.
         if walked.order.is_empty() && walked.custom.is_none() {
             log::warn!(
                 "recipes: ingredient has no placement candidates; recipe cannot be placed: {v}"
             );
         }
-        Self::of_walked(walked, items)
+        let tag = v
+            .as_str()
+            .and_then(|s| s.strip_prefix('#'))
+            .map(str::to_owned);
+        Self::of_walked(walked, items, tag)
     }
     /// Preserve the standard shapes and the predicate bound to each custom leaf.
-    fn of_walked(walked: WalkedIngredient<IngredientPredicate>, items: &Items) -> Option<Self> {
+    fn of_walked(
+        walked: WalkedIngredient<IngredientPredicate>,
+        items: &Items,
+        tag: Option<String>,
+    ) -> Result<Self, String> {
         let children = match walked.children {
             Some((shape, kids)) => Some((
                 shape,
                 kids.into_iter()
-                    .map(|kid| Self::of_walked(kid, items))
-                    .collect::<Option<_>>()?,
+                    .map(|kid| Self::of_walked(kid, items, None))
+                    .collect::<Result<Vec<_>, _>>()?,
             )),
             None => None,
         };
         let shown = match &walked.display {
-            Some(display) => Some(display_stacks(display, items)?),
+            Some(display) => Some(
+                display_stacks(display, items)
+                    .ok_or_else(|| "invalid custom display slot".to_owned())?,
+            ),
             None => None,
         };
         let mut ingredient = Self {
             items: walked.set,
             order: walked.order,
+            tag,
             custom: walked.custom,
             rule: walked.rule,
             compiled: None,
@@ -197,7 +240,7 @@ impl Ingredient {
             component_defaults: items.component_defaults.clone(),
             children,
         };
-        ingredient.prepare_components(items)?;
+        ingredient.prepare_components_checked(items)?;
         let order: Vec<String> = match &ingredient.children {
             Some((Shape::Difference, kids)) => ingredient
                 .order
@@ -211,13 +254,78 @@ impl Ingredient {
                 .filter(|id| ingredient.default_matches(&ItemStack::new(id, 1)))
                 .cloned()
                 .collect(),
-            _ => return Some(ingredient),
+            _ => return Ok(ingredient),
         };
         if ingredient.is_simple() {
             ingredient.items = order.iter().cloned().collect();
         }
         ingredient.order = order;
-        Some(ingredient)
+        Ok(ingredient)
+    }
+}
+impl Clone for Ingredient {
+    fn clone(&self) -> Self {
+        let clone_leaf = |node: &Self| Self {
+            items: node.items.clone(),
+            order: node.order.clone(),
+            tag: node.tag.clone(),
+            custom: node.custom.clone(),
+            children: None,
+            rule: node.rule.clone(),
+            compiled: node.compiled.clone(),
+            display: node.display.clone(),
+            shown: node.shown.clone(),
+            component_defaults: node.component_defaults.clone(),
+        };
+        let Some((root_shape, root_kids)) = &self.children else {
+            return clone_leaf(self);
+        };
+        let mut stack: Vec<(&Self, Shape, std::slice::Iter<'_, Self>, Vec<Self>)> = vec![(
+            self,
+            root_shape.clone(),
+            root_kids.iter(),
+            Vec::with_capacity(root_kids.len()),
+        )];
+        loop {
+            let next = stack.last_mut().expect("non-empty clone stack").2.next();
+            if let Some(child) = next {
+                if let Some((shape, kids)) = &child.children {
+                    stack.push((
+                        child,
+                        shape.clone(),
+                        kids.iter(),
+                        Vec::with_capacity(kids.len()),
+                    ));
+                } else {
+                    stack
+                        .last_mut()
+                        .expect("non-empty clone stack")
+                        .3
+                        .push(clone_leaf(child));
+                }
+            } else {
+                let (node, shape, _, children) = stack.pop().expect("non-empty clone stack");
+                let mut cloned = clone_leaf(node);
+                cloned.children = Some((shape, children));
+                if let Some(parent) = stack.last_mut() {
+                    parent.3.push(cloned);
+                } else {
+                    return cloned;
+                }
+            }
+        }
+    }
+}
+impl Drop for Ingredient {
+    fn drop(&mut self) {
+        let Some((_, mut stack)) = self.children.take() else {
+            return;
+        };
+        while let Some(mut node) = stack.pop() {
+            if let Some((_, mut kids)) = node.children.take() {
+                stack.append(&mut kids);
+            }
+        }
     }
 }
 

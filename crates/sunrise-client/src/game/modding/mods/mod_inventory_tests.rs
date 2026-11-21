@@ -224,6 +224,7 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     crate::game::lan::sync::server_sources(
                         &game.options.resources,
                         &game.res.core.item_data,
+                        game.items(),
                         &game.pack_files(),
                     )
                     .unwrap()

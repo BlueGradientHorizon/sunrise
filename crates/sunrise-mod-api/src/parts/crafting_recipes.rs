@@ -37,6 +37,7 @@ impl RecipeSerializersRegistrar for PartRegistrar {
             ));
             return;
         }
+        let handler = handler.bind(self.mod_id, self.mod_index, id.as_str());
         self.parts
             .recipe_serializers
             .insert(id.into(), (self.mod_index, recipe_type.into(), handler));
@@ -156,7 +157,7 @@ mod tests {
         let out = loaded.assemble(&Context, grid.clone()).unwrap();
         assert_eq!(out.count(), 3);
         assert_eq!(out.item(), key);
-        assert_eq!(loaded.write().unwrap(), r#"{"count":3}"#);
+        assert_eq!(loaded.write().unwrap().as_deref(), Some(r#"{"count":3}"#));
         let mut expected = vec![None; 9];
         expected[4] = crate::ItemStack::new(key, 1);
         assert_eq!(

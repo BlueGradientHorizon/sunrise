@@ -154,6 +154,95 @@ fn with_literal_kind(shape: Option<(u32, u32)>, f: impl FnOnce(Calls, &AtomicUsi
 }
 
 #[test]
+fn recipe_sync_panic_disables_just_that_writer_across_loads() {
+    struct Writer;
+    impl mod_api::RecipeSerializer for Writer {
+        type Value = String;
+        fn decode(&self, json: &str) -> Result<String, String> {
+            Ok(json.to_owned())
+        }
+        fn write(&self, json: &String) -> Result<String, String> {
+            match serde_json::from_str::<Value>(json).unwrap()["mode"].as_str() {
+                Some("panic") => panic!("recipe writer regression panic"),
+                Some("reject") => Err("recipe writer rejected input".into()),
+                _ => Ok(json.clone()),
+            }
+        }
+    }
+    struct Writers;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Writers {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            r.register_recipe_type("sync");
+            for writer in ["panicking", "healthy"] {
+                r.register_read_only_recipe_serializer(writer, "writer_owner:sync", Writer);
+            }
+        }
+    }
+    let entry = || mod_api::ModEntry::new("writer_owner", Box::new(Writers));
+    crate::test_log::install();
+    mod_platform::testing::with_mods(vec![entry()].into(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&[entry()]).unwrap();
+        let data = crate::test_resources::server_load();
+        let items = Items::empty();
+        let root = tempfile::tempdir().unwrap();
+        let types = ["writer_owner:sync".to_owned()];
+        let load = |first_mode| {
+            Recipes::from_sources(
+                root.path(),
+                &items,
+                &PackOverlay::NONE,
+                [
+                    ("fixture:first", "writer_owner:panicking", first_mode),
+                    ("fixture:rejected", "writer_owner:healthy", "reject"),
+                    ("fixture:sent", "writer_owner:healthy", "keep"),
+                ]
+                .map(|(id, serializer, mode)| {
+                    (
+                        id.into(),
+                        serde_json::json!({"type":serializer, "mode":mode}),
+                    )
+                })
+                .into(),
+                &data,
+            )
+            .unwrap()
+        };
+        crate::test_log::clear();
+        let expected = [(
+            "fixture:sent".to_owned(),
+            serde_json::json!({"type":"writer_owner:healthy", "mode":"keep"}),
+        )];
+        assert_eq!(load("panic").recipe_content(&types), expected);
+        assert_eq!(load("keep").recipe_content(&types), expected);
+        let logs = crate::test_log::records();
+        assert_eq!(
+            logs.iter()
+                .filter(|(level, text)| *level == log::Level::Error
+                    && text.contains("writer_owner")
+                    && text.contains("recipe writer regression panic"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            logs.iter()
+                .filter(|(level, text)| *level == log::Level::Error
+                    && text.contains("fixture:rejected")
+                    && text.contains("recipe writer rejected input"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            mod_api::__private::take_hook_panics(),
+            [mod_api::__private::HookPanicReport {
+                mod_id: "writer_owner",
+                hook: "recipe_serializer_write",
+            }]
+        );
+    });
+}
+
+#[test]
 fn custom_recipes_decode_once_per_source_generation() {
     with_literal_kind(None, |_, decodes| {
         let id = "test:literal";
@@ -173,6 +262,7 @@ fn custom_recipes_decode_once_per_source_generation() {
                         serde_json::json!({"type":"test:literal", "rest":rest}),
                     ),
                 ],
+                &items,
                 &load,
             )
             .unwrap()
@@ -184,7 +274,7 @@ fn custom_recipes_decode_once_per_source_generation() {
             let Some(Recipe::Mod(recipe)) = recipes.recipe(id) else {
                 panic!("missing registered recipe");
             };
-            recipe.written().unwrap()
+            recipe.written().unwrap().unwrap()
         };
         let mut grid = [const { None }; 9];
         grid[0] = Some(ItemStack::new("test:input", 1));
@@ -313,7 +403,7 @@ fn registered_kind_written_value_syncs_only_to_sunrise_clients() {
         let Recipe::Mod(recipe) = &recipes.crafting[0].1 else {
             panic!("registered kind");
         };
-        assert_eq!(recipe.written().unwrap(), r#"{"rest":2}"#);
+        assert_eq!(recipe.written().unwrap().as_deref(), Some(r#"{"rest":2}"#));
         let sources = vec![(
             "test:literal".into(),
             serde_json::json!({"type":"test:literal", "rest":2}),

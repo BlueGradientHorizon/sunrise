@@ -100,8 +100,9 @@ For custom decode/write logic, implement `RecipeSerializer` and use
 `register_read_only_recipe_serializer(serializer_id, recipe_type_id, serializer)`.
 Like a crafting kind, it supplies `Value`, `decode` and `write` for JSON; the
 loader keeps its typed value with the owning serializer for the generation.
-The mod still reads the recipe's source JSON through `recipes_of_type`, not the
-serializer's native `Value`. Raw registration still bounds the compact JSON
+The mod reads JSON through `recipes_of_type`, not the serializer's native
+`Value`: the source on the loading side and the serializer's output on a
+receiving client. Raw registration still bounds the compact JSON
 object without `type` to 1 MiB minus four bytes. Type declarations may be forward
 references; startup validates them after all mods register.
 
@@ -117,10 +118,17 @@ the existing skip-one-file behavior; changing that is a separate task.
 
 Reload decodes a fresh generation and preserves startup registration. Joining
 Sunrise clients receive serializer-written JSON under the existing recipe-content
-packet limits and decode it into their own generation. Vanilla clients receive
-no custom kind. `datapack_sync.recipe_types` selects actual recipe type IDs; the
-engine resolves each file's serializer to its recipe type for filtering and
-replacement, including all serializers producing the same type. An empty
+packet limits and decode it into their own generation. A writer returning `Err`
+omits that recipe from the payload and reports the error each time. A writer panic
+is logged with the mod's name, queues an error toast on a local client and disables
+only that serializer's writer for the session, including across reloads. Recipes
+that need that writer are not sent; other serializers continue. Vanilla clients
+receive no custom kind. `datapack_sync.recipe_types` selects actual recipe type IDs; the
+engine selects the published recipes of each type, including all serializers
+producing that type. Vanilla serializers send the server's resolved candidate
+item IDs for each ingredient; the client doesn't bind those ingredients again.
+This client view does not replace authoritative matching on the server. Types
+not sent keep the client's already-loaded recipes. An empty
 registered crafting serializer still participates in sync so removing its last
 recipe clears stale client data. Recipe placement and recipe-book sync keep
 their existing [transport](concepts/wire-types.md), including vanilla's display
