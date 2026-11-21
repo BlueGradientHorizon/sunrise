@@ -106,17 +106,20 @@ These correspond to NeoForge's other `ItemAccess` factories:
 ## Editing the whole stack
 
 To change components on the **whole stack**, use `place.edit(host, tx, |stack| { ... })`
-with a server host. A player's slot (including the armour and off-hand slots supplied
+with a server host. The callback receives an `ItemComponentEditor`: it can read the item
+and count but not change them. A player's slot (including the armour and off-hand slots supplied
 by `inventory_tick`), hand, and a mob's or armour stand's `ItemPlace::Equipment` update
 only the changed components in place: no equip sound, equip event or immediate attribute
 reapplication. The usual slot sync sends the changed stack. `Strict` keeps this behavior.
 Cursors, `OneByOne` and `InfiniteMaterials` return `ItemPlaceEditError::UnsupportedPlace`
 instead of editing a partial, virtual or unsynced stack. Other places use their exchange rules.
-`ItemPlaceEditError::NotHeld`, `ItemChanged` and `CountChanged` name refusals that leave
-the place unchanged. Successful edits are part of the current transaction and roll back
-with it. `stack.set` and `stack.remove` edit typed overrides; `get` then
-`set` covers `update`. `stack.apply_components(&patch)` merges values and `!id`
-removals without losing unrelated components, refusing malformed damage atomically.
+`ItemPlaceEditError::NotHeld` means no stack was available to edit; `Stack(error)` means
+validation refused the component edits. A refusal leaves the place unchanged. Successful edits
+are part of the current transaction and roll back with it. `stack.set` and `stack.remove` edit
+typed overrides; `get` sees earlier edits in the same callback. Use `stack.original().project()`
+if you need an owned copy of the stack as it was before the edits.
+`stack.apply_components(&patch)` merges values and `!id` removals without losing unrelated
+components, refusing malformed or conflicting damage atomically.
 `stack.copy_component_from(&other, id)` copies an own value or removal; when `other`
 inherits that component, it clears the target's override rather than recording removal.
 

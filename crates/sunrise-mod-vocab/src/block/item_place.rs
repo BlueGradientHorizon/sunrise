@@ -9,11 +9,12 @@
 //! it is, journaled: an abort puts it back, at every level of an item inside an item. A handler
 //! answering more than it was asked is a mod bug, named once, and the write aborts.
 use crate::HostTransaction;
-use crate::item::item_stack::read_stack_view;
+use crate::item::item_stack::{component_edits::edit_item_components, read_stack_view};
 use crate::{
-    BundleItems, Capability, Direction, ENTITY_ITEMS, EquipmentSlot, Hand, ITEMS, ItemKey,
-    ItemResource, ItemStack, ItemStackView, LevelRef, MenuRef, MenuSlotBacking, ResourceHandler,
-    ServerHost, StackWriteError, Transaction, backend_mut_of, backend_of,
+    BundleItems, Capability, Direction, ENTITY_ITEMS, EquipmentSlot, Hand, ITEMS,
+    ItemComponentEditor, ItemKey, ItemResource, ItemStack, ItemStackView, LevelRef, MenuRef,
+    MenuSlotBacking, ResourceHandler, ServerHost, StackWriteError, Transaction, backend_mut_of,
+    backend_of,
 };
 use std::{fmt::Debug, marker::PhantomData, num::NonZeroU32};
 
@@ -280,10 +281,6 @@ impl Drop for ItemPlace {
 pub enum ItemPlaceEditError {
     /// The place is empty or cannot be reached.
     NotHeld,
-    /// The editor changed the item. Use a slot write to replace it.
-    ItemChanged,
-    /// The editor changed the count. Use a slot write to change it.
-    CountChanged,
     /// The place has no whole-stack edit (a cursor or a virtual transfer wrapper).
     UnsupportedPlace,
     /// The backend, transaction or storage refused the write.
@@ -662,9 +659,10 @@ impl ItemPlace {
             .game_on_crafted_by(self, tx, amount)
     }
 
-    /// Edit the components of the whole stack here, keeping its item and count. Player
-    /// slots (including armour and the off hand), hands, and a mob's or armour stand's equipment
-    /// update only the changed components in place, like `ItemStack.set`: no equip effects or
+    /// Edit the components of the whole stack here, keeping its item and count. The editor
+    /// reads staged overrides and never lends the host. Player slots (including armour and the
+    /// off hand), hands, and a mob's or armour stand's equipment update only the changed
+    /// components in place, like `ItemStack.set`: no equip effects or
     /// attribute reapplication. The usual slot sync sends the new stack. `Strict` preserves this
     /// contract. Cursors, `OneByOne` and `InfiniteMaterials` refuse the edit because they do not
     /// provide a synced whole-stack write. Other places use their usual exchange rules. A refusal
@@ -673,7 +671,7 @@ impl ItemPlace {
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
-        edit: impl FnOnce(&mut ItemStack),
+        edit: impl FnOnce(&mut ItemComponentEditor<'_>),
     ) -> Result<(), ItemPlaceEditError> {
         let mut place = self;
         while let Self::Strict(inner) = place {
@@ -689,14 +687,10 @@ impl ItemPlace {
             .with_stack(host, |stack| stack.project())
             .flatten()
             .ok_or(ItemPlaceEditError::NotHeld)?;
+        let read_override = |id: &str| before.component_value(id).cloned();
+        let edits = edit_item_components(ItemStackView::from_stack(&before), &read_override, edit);
         let mut stack = before.clone();
-        edit(&mut stack);
-        if stack.item() != before.item() {
-            return Err(ItemPlaceEditError::ItemChanged);
-        }
-        if stack.count() != before.count() {
-            return Err(ItemPlaceEditError::CountChanged);
-        }
+        edits.apply_to(&mut stack);
         if stack == before {
             return Ok(());
         }
@@ -704,6 +698,7 @@ impl ItemPlace {
             place,
             Self::PlayerSlot { .. } | Self::PlayerHand { .. } | Self::Equipment { .. }
         ) {
+            // The native bridge still takes a projected stack and its changed component names.
             let old = before.components().map(crate::Components::as_nbt);
             let new = stack.components().map(crate::Components::as_nbt);
             let mut changed: Vec<_> = old

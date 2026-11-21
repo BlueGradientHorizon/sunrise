@@ -895,8 +895,8 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn whole_stack_component_edit_preserves_slot_and_refuses_item_or_count_changes() {
-        use mod_api::Tag;
+    fn whole_stack_component_edit_preserves_slot_and_refuses_invalid_components() {
+        use mod_api::{StackWriteError, Tag};
         with_game(|game| {
             open_to_lan(game);
             let mut player = guest(1);
@@ -929,25 +929,48 @@ pub(super) mod tests {
             );
             assert_eq!(game.inventory, host_before);
 
-            // Refusing the edit must not need an outer abort to keep the slot intact.
-            assert_eq!(
-                game.transaction(|host, tx| {
-                    Ok::<_, ()>(slot.edit(host, tx, |stack| stack.set_count(15).unwrap()))
-                }),
-                Ok(Err(ItemPlaceEditError::CountChanged))
-            );
-            assert_eq!(inventory(game), expected);
-            let stone = ItemStack::new("minecraft:stone", 16)
-                .try_into_api()
-                .unwrap();
-            assert_eq!(
-                game.transaction(|host, tx| {
-                    Ok::<_, ()>(slot.edit(host, tx, |stack| *stack = stone))
-                }),
-                Ok(Err(ItemPlaceEditError::ItemChanged))
-            );
-            assert_eq!(inventory(game), expected);
-            assert_eq!(game.inventory, host_before);
+            let invalid_consume = Tag::compound([(
+                "on_consume_effects",
+                Tag::List(vec![Tag::compound([
+                    ("type", Tag::String("example:charge".into())),
+                    ("bad", Tag::Double(f64::NAN.to_bits())),
+                ])]),
+            )]);
+            for (id, invalid, refusal) in [
+                (
+                    "minecraft:max_stack_size",
+                    Tag::Int(1),
+                    StackWriteError::CountExceeded { maximum: 1 },
+                ),
+                (
+                    "minecraft:consumable",
+                    invalid_consume,
+                    StackWriteError::InvalidEffectPayload,
+                ),
+            ] {
+                // The parent commits even when the edit is refused; neither component sticks.
+                assert_eq!(
+                    game.transaction(|host, tx| {
+                        Ok::<_, ()>(slot.edit(host, tx, |stack| {
+                            stack
+                                .apply_components(
+                                    &[
+                                        (
+                                            "minecraft:custom_name".into(),
+                                            Tag::String("refused rename".into()),
+                                        ),
+                                        (id.into(), invalid),
+                                    ]
+                                    .into(),
+                                )
+                                .unwrap();
+                        }))
+                    }),
+                    Ok(Err(ItemPlaceEditError::Stack(refusal)))
+                );
+                assert_eq!(inventory(game), expected);
+                assert_eq!(game.inventory, host_before);
+            }
 
             let empty = ItemPlace::PlayerSlot {
                 player: 123,

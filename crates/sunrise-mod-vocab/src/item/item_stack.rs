@@ -1,5 +1,6 @@
 //! Owned and borrowed item values. Registry-dependent validation belongs to the game's write boundary.
 use crate::ItemKey;
+use component_edits::{ComponentEdit, ItemComponentEdits};
 use std::num::NonZeroU32;
 use std::ops::Range;
 use std::sync::Arc;
@@ -145,6 +146,213 @@ impl<'a> ItemStackView<'a> {
         };
         stack.count = self.metadata.1;
         Some(stack)
+    }
+}
+
+/// A scoped editor for the component overrides of a stack at an [`ItemPlace`](crate::ItemPlace).
+/// Reads see staged changes. The item and count cannot be changed; the game validates and
+/// commits the edits together after the callback returns.
+// no wire: the editor borrows the addressed stack for one callback.
+// exhaustive: its private fields prevent construction outside the game bridge.
+pub struct ItemComponentEditor<'a> {
+    original: ItemStackView<'a>,
+    read_override: &'a dyn Fn(&str) -> Option<Tag>,
+    edits: ItemComponentEdits,
+}
+
+impl<'a> ItemComponentEditor<'a> {
+    /// The process-local identity of the item.
+    pub fn item(&self) -> ItemKey {
+        self.original.item()
+    }
+
+    /// The nonzero item count.
+    pub fn count(&self) -> u32 {
+        self.original.count()
+    }
+
+    /// Stored damage after staged edits, or zero when no numeric override is present.
+    pub fn damage(&self) -> u32 {
+        self.damage_component().unwrap_or(0)
+    }
+
+    /// The staged or original numeric damage override. `Some(0)` is explicit zero;
+    /// `None` means no numeric override, whether inherited or explicitly removed.
+    pub fn damage_component(&self) -> Option<u32> {
+        match self.edits.damage {
+            Some(ComponentEdit::Value(damage)) => Some(damage),
+            Some(ComponentEdit::Remove | ComponentEdit::Inherit) => None,
+            None => self.original.damage_component(),
+        }
+    }
+
+    /// Read the stack before any edits. Call [`ItemStackView::project`] on this view to
+    /// request an owned snapshot of the original stack.
+    pub fn original(&self) -> &ItemStackView<'a> {
+        &self.original
+    }
+
+    /// Read a staged or original override with its typed descriptor, without consulting
+    /// item defaults or projecting the entire stack.
+    pub fn get<C: Component>(&self, component: &C) -> Option<C::Value> {
+        let id = component.id();
+        if id == "minecraft:damage" {
+            return component.decode(&unsigned_tag(self.damage_component()?));
+        }
+        match self.edits.components.get(id) {
+            Some(ComponentEdit::Value(value)) => component.decode(value),
+            Some(ComponentEdit::Remove | ComponentEdit::Inherit) => None,
+            None => component.decode(&(self.read_override)(id)?),
+        }
+    }
+
+    /// Stage a component value. An invalid damage value leaves earlier edits intact.
+    pub fn set<C: Component>(&mut self, component: &C, value: C::Value) -> Result<(), StackError> {
+        let id = component.id();
+        let value = component.encode(value);
+        if id == "minecraft:damage" {
+            self.set_damage(damage_value(&value)?);
+        } else if let Some(id) = id.strip_prefix('!') {
+            if id == "minecraft:damage" {
+                validate_damage_removal(&value)?;
+                if self.damage_component().is_some() {
+                    return Err(StackError::ConflictingDamage);
+                }
+                self.clear_damage();
+            } else {
+                self.edits
+                    .components
+                    .insert(id.into(), ComponentEdit::Remove);
+            }
+        } else {
+            self.edits
+                .components
+                .insert(id.into(), ComponentEdit::Value(value));
+        }
+        Ok(())
+    }
+
+    /// Clear a component override so the stack inherits its item default.
+    pub fn remove<C: Component>(&mut self, component: &C) {
+        let id = component.id();
+        if id == "minecraft:damage" {
+            self.edits.damage = Some(ComponentEdit::Inherit);
+        } else {
+            self.edits
+                .components
+                .insert(id.into(), ComponentEdit::Inherit);
+        }
+    }
+
+    /// Stage an explicit numeric damage override. The game checks the effective maximum.
+    pub fn set_damage(&mut self, damage: u32) {
+        self.edits.damage = Some(ComponentEdit::Value(damage));
+    }
+
+    /// Stage explicit removal of the damage component, including an inherited default.
+    pub fn clear_damage(&mut self) {
+        self.edits.damage = Some(ComponentEdit::Remove);
+    }
+
+    /// Merge a patch into the staged edits, leaving other components alone. A removal wins
+    /// over an ordinary value in the same patch. Malformed or conflicting damage refuses
+    /// the entire patch without disturbing earlier edits.
+    pub fn apply_components(&mut self, patch: &Compound) -> Result<(), StackError> {
+        visit_component_patch(patch, |edit| match edit {
+            PatchEdit::Component(id, edit) => {
+                self.edits
+                    .components
+                    .insert(id.into(), edit.map(Tag::clone));
+            }
+            PatchEdit::Damage(edit) => self.edits.damage = Some(edit),
+        })
+    }
+
+    /// Stage the source's own value or explicit removal, or inherit when it has neither.
+    /// An id that is not a namespaced component id changes nothing.
+    pub fn copy_component_from(&mut self, other: &ItemStack, id: &str) {
+        if id == "minecraft:damage" {
+            self.edits.damage = Some(other.damage_override());
+        } else if crate::ComponentId::new(id).is_some() {
+            self.edits
+                .components
+                .insert(id.into(), other.component_override(id).map(Tag::clone));
+        }
+    }
+}
+
+pub(crate) mod component_edits {
+    use super::{ItemComponentEditor, ItemStack, ItemStackView, Tag};
+    use std::collections::BTreeMap;
+
+    /// One staged operation on an override; removal and inheritance are distinct.
+    #[derive(Clone, Copy)]
+    pub enum ComponentEdit<T> {
+        /// Replace the override with this value.
+        Value(T),
+        /// Explicitly remove the component, even if the item supplies a default.
+        Remove,
+        /// Erase the override and let the item's default apply.
+        Inherit,
+    }
+
+    impl<T> ComponentEdit<T> {
+        pub(super) fn map<U>(self, f: impl FnOnce(T) -> U) -> ComponentEdit<U> {
+            match self {
+                Self::Value(value) => ComponentEdit::Value(f(value)),
+                Self::Remove => ComponentEdit::Remove,
+                Self::Inherit => ComponentEdit::Inherit,
+            }
+        }
+    }
+
+    /// A callback's normalized writes: one operation per bare component name, with damage inline.
+    pub struct ItemComponentEdits {
+        pub(super) components: BTreeMap<String, ComponentEdit<Tag>>,
+        pub(super) damage: Option<ComponentEdit<u32>>,
+    }
+
+    impl ItemComponentEdits {
+        /// The damage operation, or `None` when the editor left damage alone.
+        pub fn damage(&self) -> Option<ComponentEdit<u32>> {
+            self.damage
+        }
+
+        /// Take the ordinary component operations, keyed by bare namespaced id.
+        pub fn into_components(self) -> impl Iterator<Item = (String, ComponentEdit<Tag>)> {
+            self.components.into_iter()
+        }
+
+        /// Apply the batch to an owned stack for a place whose write goes through exchange.
+        pub(crate) fn apply_to(self, stack: &mut ItemStack) {
+            let damage = self.damage();
+            for (id, edit) in self.into_components() {
+                stack.apply_component_edit(&id, edit);
+            }
+            if let Some(edit) = damage {
+                stack.apply_damage_edit(edit);
+            }
+        }
+    }
+
+    /// Lend the resolved stack to an edit callback and take its staged changes. The override
+    /// reader returns one original ordinary value at its bare id; damage comes from the view.
+    /// The game owns validation and publication of the returned batch after this scope ends.
+    pub fn edit_item_components<'a>(
+        view: ItemStackView<'a>,
+        read_override: &'a dyn Fn(&str) -> Option<Tag>,
+        edit: impl FnOnce(&mut ItemComponentEditor<'a>),
+    ) -> ItemComponentEdits {
+        let mut editor = ItemComponentEditor {
+            original: view,
+            read_override,
+            edits: ItemComponentEdits {
+                components: BTreeMap::new(),
+                damage: None,
+            },
+        };
+        edit(&mut editor);
+        editor.edits
     }
 }
 
@@ -438,12 +646,10 @@ impl ItemStack {
                 .damage
                 .and_then(|damage| component.decode(&unsigned_tag(damage)));
         }
-        component.decode(
-            self.components
-                .as_ref()?
-                .patch
-                .get(&JavaString::from(component.id()))?,
-        )
+        component.decode(self.component_value(component.id())?)
+    }
+    pub(crate) fn component_value(&self, id: &str) -> Option<&Tag> {
+        self.components()?.patch.get(&JavaString::from(id))
     }
     /// Replace a component value. Only stacks with a patch allocate component storage.
     pub fn set<C: Component>(&mut self, component: &C, value: C::Value) -> Result<(), StackError> {
@@ -455,17 +661,32 @@ impl ItemStack {
             return Ok(());
         }
         if id == "!minecraft:damage" {
-            if !matches!(&value, Tag::Compound(value) if value.is_empty()) {
-                return Err(StackError::InvalidDamage);
-            }
+            validate_damage_removal(&value)?;
             if self.damage.is_some() {
                 return Err(StackError::ConflictingDamage);
             }
         }
+        self.put_component_value(id, value);
+        Ok(())
+    }
+    fn put_component_value(&mut self, id: &str, value: Tag) {
         let patch = &mut Arc::make_mut(self.components.get_or_insert_with(Default::default)).patch;
         patch.remove(&JavaString::from(format!("!{id}").as_str()));
         patch.insert(JavaString::from(id), value);
-        Ok(())
+    }
+    fn apply_component_edit(&mut self, id: &str, edit: ComponentEdit<Tag>) {
+        match edit {
+            ComponentEdit::Value(value) => self.put_component_value(id, value),
+            ComponentEdit::Remove => self.remove_component_value(id, true),
+            ComponentEdit::Inherit => self.remove_component_value(id, false),
+        }
+    }
+    fn apply_damage_edit(&mut self, edit: ComponentEdit<u32>) {
+        match edit {
+            ComponentEdit::Value(damage) => self.set_damage(damage),
+            ComponentEdit::Remove => self.clear_damage(),
+            ComponentEdit::Inherit => self.remove_component_value("minecraft:damage", false),
+        }
     }
     /// Remove an override, releasing the patch allocation when its last entry is removed.
     pub fn remove<C: Component>(&mut self, component: &C) {
@@ -511,46 +732,41 @@ impl ItemStack {
     /// are supplied for one component, removal wins (conflicting damage is refused).
     /// Damage is normalized before any write; a malformed patch leaves this stack unchanged.
     pub fn apply_components(&mut self, patch: &Compound) -> Result<(), StackError> {
-        let damage = patch_damage(patch)?;
-        for (id, value) in patch {
-            let id = id.to_string_lossy();
-            if id == "minecraft:damage" {
-                continue;
-            }
-            if let Some(id) = id.strip_prefix('!') {
-                self.remove_component_value(id, true);
-            } else if !patch.contains_key(&JavaString::from(format!("!{id}").as_str())) {
-                self.set_component_value(&id, value.clone())?;
-            }
-        }
-        if let Some(damage) = damage {
-            self.set_damage(damage);
-        }
-        Ok(())
+        visit_component_patch(patch, |edit| match edit {
+            PatchEdit::Component(id, edit) => self.apply_component_edit(id, edit.map(Tag::clone)),
+            PatchEdit::Damage(edit) => self.apply_damage_edit(edit),
+        })
     }
     /// Copy this component's own value or explicit removal from `other`, without
     /// consulting item defaults. If `other` inherits it, clear this stack's override too.
     /// An `id` that is not a namespaced component id (`Damage`, or a removal marker such as
     /// `!minecraft:damage`) changes nothing.
     pub fn copy_component_from(&mut self, other: &Self, id: &str) {
-        if crate::ComponentId::new(id).is_none() {
-            return;
+        if id == "minecraft:damage" {
+            self.apply_damage_edit(other.damage_override());
+        } else if crate::ComponentId::new(id).is_some() {
+            self.apply_component_edit(id, other.component_override(id).map(Tag::clone));
         }
-        if id == "minecraft:damage"
-            && let Some(damage) = other.damage
-        {
-            self.set_damage(damage);
-            return;
-        }
-        let patch = other.components().map(Components::as_nbt);
-        let removed = JavaString::from(format!("!{id}").as_str());
-        if patch.is_some_and(|patch| patch.contains_key(&removed)) {
-            self.remove_component_value(id, true);
-        } else if let Some(value) = patch.and_then(|patch| patch.get(&JavaString::from(id))) {
-            self.set_component_value(id, value.clone())
-                .expect("stored component is normalized");
+    }
+    fn component_override(&self, id: &str) -> ComponentEdit<&Tag> {
+        let Some(patch) = self.components().map(Components::as_nbt) else {
+            return ComponentEdit::Inherit;
+        };
+        if patch.contains_key(&JavaString::from(format!("!{id}").as_str())) {
+            ComponentEdit::Remove
         } else {
-            self.remove_component_value(id, false);
+            patch
+                .get(&JavaString::from(id))
+                .map_or(ComponentEdit::Inherit, ComponentEdit::Value)
+        }
+    }
+    fn damage_override(&self) -> ComponentEdit<u32> {
+        if let Some(damage) = self.damage {
+            ComponentEdit::Value(damage)
+        } else if self.component_value("!minecraft:damage").is_some() {
+            ComponentEdit::Remove
+        } else {
+            ComponentEdit::Inherit
         }
     }
     /// Replace the component patch at an NBT conversion boundary.
@@ -631,12 +847,52 @@ fn damage_value(value: &Tag) -> Result<u32, StackError> {
     u32::try_from(value).map_err(|_| StackError::InvalidDamage)
 }
 
+enum PatchEdit<'a> {
+    Component(&'a str, ComponentEdit<&'a Tag>),
+    Damage(ComponentEdit<u32>),
+}
+
+/// Walk normalized edits in patch order once damage has been admitted. Ordinary removals
+/// win over values. Numeric damage lives outside the patch and is set at the end.
+fn visit_component_patch(
+    patch: &Compound,
+    mut visit: impl FnMut(PatchEdit<'_>),
+) -> Result<(), StackError> {
+    let damage = patch_damage(patch)?;
+    for (id, value) in patch {
+        let id = id.to_string_lossy();
+        match id.as_str() {
+            "minecraft:damage" => (),
+            "!minecraft:damage" => visit(PatchEdit::Damage(ComponentEdit::Remove)),
+            id => {
+                if let Some(id) = id.strip_prefix('!') {
+                    visit(PatchEdit::Component(id, ComponentEdit::Remove));
+                } else if !patch.contains_key(&JavaString::from(format!("!{id}").as_str())) {
+                    visit(PatchEdit::Component(id, ComponentEdit::Value(value)));
+                }
+            }
+        }
+    }
+    if let Some(value) = damage {
+        visit(PatchEdit::Damage(ComponentEdit::Value(value)));
+    }
+    Ok(())
+}
+
+fn validate_damage_removal(value: &Tag) -> Result<(), StackError> {
+    if matches!(value, Tag::Compound(value) if value.is_empty()) {
+        Ok(())
+    } else {
+        Err(StackError::InvalidDamage)
+    }
+}
+
 /// Validate the raw damage entries before either a replacement or a merge mutates a stack.
 fn patch_damage(patch: &Compound) -> Result<Option<u32>, StackError> {
     let damage = patch.get(&JavaString::from("minecraft:damage"));
     let removal = patch.get(&JavaString::from("!minecraft:damage"));
-    if removal.is_some_and(|value| !matches!(value, Tag::Compound(value) if value.is_empty())) {
-        return Err(StackError::InvalidDamage);
+    if let Some(removal) = removal {
+        validate_damage_removal(removal)?;
     }
     let damage = damage.map(damage_value).transpose()?;
     if damage.is_some() && removal.is_some() {
@@ -646,6 +902,7 @@ fn patch_damage(patch: &Compound) -> Result<Option<u32>, StackError> {
 }
 #[cfg(test)]
 mod tests {
+    use super::component_edits::edit_item_components;
     use super::*;
 
     include!("item_stack_damage_tests.rs");
@@ -666,6 +923,99 @@ mod tests {
         fn encode(&self, value: i32) -> Tag {
             Tag::Int(value)
         }
+    }
+
+    #[test]
+    fn scoped_component_editor_reads_staged_overrides_without_projecting() {
+        struct Field(&'static str);
+        impl Component for Field {
+            type Value = i32;
+            fn id(&self) -> &str {
+                self.0
+            }
+            fn decode(&self, value: &Tag) -> Option<i32> {
+                Number.decode(value)
+            }
+            fn encode(&self, value: i32) -> Tag {
+                Number.encode(value)
+            }
+        }
+
+        let removed = Field("test:removed");
+        let inherited = Field("test:inherited");
+        let damage = Field("minecraft:damage");
+        let mut before = ItemStack::new(ItemKey(3), 16).unwrap();
+        before.set(&Number, 12).unwrap();
+        before.set(&removed, 23).unwrap();
+        before.set(&inherited, 34).unwrap();
+        before.set(&Other, 45).unwrap();
+        before.set_damage(7);
+        let source = ItemStack::of(ItemKey(5));
+        let reads = std::cell::RefCell::new(Vec::new());
+        let read_override = |id: &str| {
+            reads.borrow_mut().push(id.to_owned());
+            before.component_value(id).cloned()
+        };
+        let view = ItemStackView::resident(before.read_metadata(), &|_| {
+            panic!("component reads must not project the stack")
+        });
+        let edits = edit_item_components(view, &read_override, |stack| {
+            assert_eq!(stack.item(), ItemKey(3));
+            assert_eq!(stack.count(), 16);
+            assert_eq!(stack.get(&Number), Some(12));
+            assert_eq!(stack.get(&damage), Some(7));
+
+            stack.remove(&Number);
+            assert_eq!(stack.get(&Number), None);
+            stack.set(&Number, 41).unwrap();
+            assert_eq!(stack.get(&Number), Some(41));
+            stack
+                .apply_components(
+                    &[
+                        ("test:removed".into(), Tag::Int(42)),
+                        ("!test:removed".into(), Tag::Compound(Compound::new())),
+                    ]
+                    .into(),
+                )
+                .unwrap();
+            assert_eq!(stack.get(&removed), None);
+            stack.copy_component_from(&source, "test:inherited");
+            assert_eq!(stack.get(&inherited), None);
+            assert_eq!(stack.get(&Other), Some(45));
+
+            stack.set_damage(0);
+            assert_eq!(stack.damage_component(), Some(0));
+            assert_eq!(stack.get(&damage), Some(0));
+            assert_eq!(stack.original().damage(), 7);
+            let invalid = [
+                ("test:number".into(), Tag::Int(99)),
+                ("minecraft:damage".into(), Tag::Int(-1)),
+            ]
+            .into();
+            assert_eq!(
+                stack.apply_components(&invalid),
+                Err(StackError::InvalidDamage)
+            );
+            assert_eq!(stack.get(&Number), Some(41));
+            assert_eq!(stack.damage_component(), Some(0));
+
+            stack.clear_damage();
+            assert_eq!(stack.damage(), 0);
+            assert_eq!(stack.damage_component(), None);
+            assert_eq!(stack.get(&damage), None);
+        });
+        assert_eq!(*reads.borrow(), ["test:number", "test:other"]);
+
+        edits.apply_to(&mut before);
+        let expected: Compound = [
+            ("test:number".into(), Tag::Int(41)),
+            ("test:other".into(), Tag::Int(45)),
+            ("!test:removed".into(), Tag::Compound(Compound::new())),
+            ("!minecraft:damage".into(), Tag::Compound(Compound::new())),
+        ]
+        .into();
+        assert_eq!(before.components().unwrap().as_nbt(), &expected);
+        assert_eq!(before.damage_component(), None);
     }
 
     #[test]

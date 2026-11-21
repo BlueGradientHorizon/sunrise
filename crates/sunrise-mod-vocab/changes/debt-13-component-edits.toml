@@ -1,0 +1,25 @@
+ids = [
+    "handle:ItemPlace::edit",
+    "type:ItemPlaceEditError",
+    "type:ItemPlaceEditError.ItemChanged",
+    "type:ItemPlaceEditError.CountChanged",
+    "type:item::item_stack::ItemComponentEditor",
+    "handle:item::item_stack::ItemComponentEditor::item",
+    "handle:item::item_stack::ItemComponentEditor::count",
+    "handle:item::item_stack::ItemComponentEditor::damage",
+    "handle:item::item_stack::ItemComponentEditor::damage_component",
+    "handle:item::item_stack::ItemComponentEditor::original",
+    "handle:item::item_stack::ItemComponentEditor::get",
+    "handle:item::item_stack::ItemComponentEditor::set",
+    "handle:item::item_stack::ItemComponentEditor::remove",
+    "handle:item::item_stack::ItemComponentEditor::set_damage",
+    "handle:item::item_stack::ItemComponentEditor::clear_damage",
+    "handle:item::item_stack::ItemComponentEditor::apply_components",
+    "handle:item::item_stack::ItemComponentEditor::copy_component_from",
+]
+why = "ItemPlace::edit now lends a component-only editor instead of a mutable owned stack. It can read and stage overrides in the same callback, but cannot replace the item or change its count. The game validates the edits together before publishing them, without replaying equip effects."
+migrate = '''
+- `place.edit(host, tx, |stack: &mut ItemStack| { ... })` -> `place.edit(host, tx, |stack: &mut ItemComponentEditor<'_>| { ... })`; an untyped callback that only edits components need not change. Use the same `get`, `set`, `remove`, `set_damage`, `clear_damage`, `apply_components` and `copy_component_from` calls. The editor's `item`, `count`, `damage` and `damage_component` give scalars; `get` sees earlier edits in the callback. `remove(&descriptor)` means inherit, not explicit removal; for an explicit removal use a patch with `!id`, or `clear_damage()` for damage.
+- To inspect the original patch or keep an owned copy, replace `stack.components()` or `stack.clone()` with `stack.original().project()` and handle `None` if the original cannot be projected. That copy is the original stack, not the staged edits. Pass an owned stack as the source of `copy_component_from` as before. Replace `stack.set_components(patch)` in an edit callback with `stack.remove(&descriptor)` for overrides you intend to clear and `stack.apply_components(&patch)` for the new values and explicit removals. The owned `ItemStack` methods are unchanged outside the editor.
+- Remove the `ItemPlaceEditError::ItemChanged` and `ItemPlaceEditError::CountChanged` match arms. For item or count changes use a slot write or `ItemPlace::insert`, `extract` or `exchange` in the transaction rather than assigning to `*stack` or calling `stack.set_count(...)` inside the editor. The remaining refusals are `NotHeld`, `UnsupportedPlace`, `Unavailable` and `Stack(error)`.
+'''
