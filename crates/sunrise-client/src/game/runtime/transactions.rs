@@ -18,10 +18,11 @@
 //! whole on its first write, from wherever the player's state lives then: the acting fields
 //! or a parked guest's record. On abort, the journal follows that storage through guest turns.
 //! An item a write drops from a player waits for
-//! the root commit too. An item entity's stack is kept on its first write; one emptied stays,
-//! empty, until the root commit removes it. A guest's menu storage (ender chest, crafting grid,
-//! a mod's chest menu) is kept whole on its first write through a menu slot; a crafting grid
-//! changed by the transaction has its result made again at the root commit.
+//! the root commit too. Item entities keep their stack, pickup delay, target and velocity on
+//! first write; one emptied stays, empty, until the root commit removes it. General entity views
+//! keep velocity, rotation and fall distance on first write. A guest's menu storage (ender chest,
+//! crafting grid, a mod's chest menu) is kept whole on its first write through a menu slot; a
+//! crafting grid changed by the transaction has its result made again at the root commit.
 //! `LivingRef::set_health` keeps the player's synced float storage and unpublished update
 //! events, or the mob's health and sync dirtiness. This does not journal other health,
 //! damage, death or attribute operations. Mob effect writes keep their effect lists, dirty bit,
@@ -40,7 +41,7 @@ use sunrise_client::{
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
     world::{BlockEntityExtras, World},
 };
-use sunrise_core::position::BlockPos;
+use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_items::equipment::Equipment;
 use sunrise_mod_runtime::attachments::{AttachmentQueryScopes, Attachments, Holder};
 use sunrise_world::level::flags;
@@ -183,6 +184,14 @@ impl OpenTransactions {
         }
     }
 
+    /// Keep the first write to each field of a live general-entity subject.
+    pub(super) fn journal_general_entity(
+        &mut self,
+        join: crate::join_seq::JoinSeq,
+    ) -> Option<&mut KeptGeneralEntity> {
+        Some(self.last_mut()?.general_entities.entry(join).or_default())
+    }
+
     /// The journaled-write epoch.
     pub(in crate::game) fn writes(&self) -> u64 {
         self.writes
@@ -258,6 +267,14 @@ fn merge_block_update_flags(earlier: i32, later: i32) -> i32 {
         | (later & !(REQUESTED | SUPPRESSED))
 }
 
+/// Before-images of the fields a general-entity scope wrote, at one depth.
+#[derive(Default)]
+pub(super) struct KeptGeneralEntity {
+    pub(super) velocity: Option<Vec3>,
+    pub(super) rotation: Option<[f32; 2]>,
+    pub(super) fall_distance: Option<f64>,
+}
+
 /// One open transaction.
 #[derive(Default)]
 pub(super) struct Level {
@@ -312,8 +329,10 @@ pub(super) struct Level {
     /// Each chested mob's item list's length before `entity_slots` first grew it to its slots
     /// in this transaction.
     mob_lengths: HashMap<u32, usize>,
-    /// Each item entity's stack before this transaction first wrote it.
-    item_entities: HashMap<u32, ItemStack>,
+    /// Each item entity's changed fields before this transaction first wrote them.
+    item_entities: HashMap<crate::join_seq::JoinSeq, KeptItemEntity>,
+    /// Each general entity subject's changed fields before the first write.
+    general_entities: HashMap<crate::join_seq::JoinSeq, KeptGeneralEntity>,
     /// The merge fields of resident experience orbs before the first award touched them.
     orbs: HashMap<crate::join_seq::JoinSeq, (i32, u32, i32)>,
     /// Each detached station before the first click wrote it, by connection and owner.
@@ -930,8 +949,14 @@ impl Game<'_> {
                 if outer.board.is_none() {
                     outer.board = level.board;
                 }
-                for (id, kept) in level.item_entities {
-                    outer.item_entities.entry(id).or_insert(kept);
+                for (join, kept) in level.item_entities {
+                    outer.item_entities.entry(join).or_default().merge(kept);
+                }
+                for (join, kept) in level.general_entities {
+                    let first = outer.general_entities.entry(join).or_default();
+                    first.velocity = first.velocity.or(kept.velocity);
+                    first.rotation = first.rotation.or(kept.rotation);
+                    first.fall_distance = first.fall_distance.or(kept.fall_distance);
                 }
                 for (join, kept) in level.orbs {
                     outer.orbs.entry(join).or_insert(kept);
@@ -2204,9 +2229,24 @@ impl Game<'_> {
                 m.extra.items.truncate(len);
             }
         }
-        for (id, kept) in level.item_entities {
-            if let Some(e) = self.dropped.iter_mut().find(|e| e.id == id) {
-                e.stack = kept;
+        for (join, kept) in level.item_entities {
+            if let Some(index) = self.dropped.locate(join) {
+                kept.restore(&mut self.dropped[index]);
+            }
+        }
+        let general = &mut self.resident_entities.general.rows;
+        for (join, kept) in level.general_entities {
+            if let Some(index) = general.locate(join) {
+                let row = &mut general[index];
+                if let Some(velocity) = kept.velocity {
+                    row.velocity = velocity;
+                }
+                if let Some(rotation) = kept.rotation {
+                    row.rotation = rotation;
+                }
+                if let Some(fall_distance) = kept.fall_distance {
+                    row.fall_distance = fall_distance;
+                }
             }
         }
         for (join, kept) in level.orbs {

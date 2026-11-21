@@ -316,6 +316,9 @@ pub(super) fn emit<'a>(
                     "EntityClientScope < '_ >" if table == "entity" => {
                         format!("entity(|| {key}.route_kind())")
                     }
+                    "ItemEntityServerScope < '_ >" if table == "item" => {
+                        format!("item(|| Some({key}.route_item()))")
+                    }
                     other => return Err(format!("key {key} of {name} has type {other}")),
                 };
                 Some((part_trait, lookup))

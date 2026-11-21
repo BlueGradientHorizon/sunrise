@@ -45,6 +45,21 @@ removal can still tick as a root if it is eligible, has not ticked, and its join
 The pass does not revisit an earlier slot. Canceling an entity's Pre does not by itself skip its passengers'
 ticks, though a listener can separately change the riding graph.
 
+`general_entity_tick` and `on_entity_item_update` lend the live server subject
+through `event.subject.with_view`. Use `event.subject.host()` between view
+borrows for other objects; a later view borrow returns `None` if the subject is
+no longer resident. Use `event.subject.transaction(|scope, tx| ...)` to commit
+subject writes together with other journaled Host writes. Returning `Err`
+restores those writes. This covers velocity, rotation and fall distance on a
+general entity, and the stack, pickup delay, pickup target and velocity on a
+dropped item. Client scopes have no `transaction` method.
+
+`on_entity_item_update` dispatches to the parts for the item ID held when
+that hook starts. Read the current stack with
+`event.subject.with_view(|item| item.with_stack(|stack| stack.count())).flatten()`.
+Call `stack.project()` inside that loan only when you need components or an
+owned copy.
+
 ## Explosion membership
 
 `explosion_detonate` version 2 exposes mutable `blocks` and `entities` lists

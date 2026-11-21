@@ -67,7 +67,7 @@ pub trait ItemEntitiesBackendMut {
         stack: ItemStack,
     ) -> Result<bool, StackWriteError>;
     /// Side: server.
-    /// `ItemEntity.setPickUpDelay`.
+    /// `ItemEntity.setPickUpDelay`. An open transaction restores the previous delay on abort.
     #[access(WorldOnly)]
     fn item_entity_set_pickup_delay(&mut self, item: ItemEntityRef, ticks: i32) -> bool;
     /// Side: server.
@@ -84,6 +84,7 @@ pub trait ItemEntitiesBackendMut {
     fn item_entity_set_never_pickup(&mut self, item: ItemEntityRef) -> bool;
     /// Side: server.
     /// `ItemEntity.setTarget`; None allows any player to pick it up.
+    /// An open transaction restores the previous target on abort.
     #[access(WorldOnly)]
     fn item_entity_set_target(&mut self, item: ItemEntityRef, target: Option<u128>) -> bool;
 }

@@ -724,8 +724,6 @@ fn an_item_update_reaches_only_the_parts_of_the_ticked_item_and_cancels_for_its_
     })
     .unwrap();
     let mut host = FakeHost::new();
-    let stone = crate::__private::part_tests::stack("minecraft:stone", 1, 0);
-    let diamond = crate::__private::part_tests::stack("minecraft:diamond", 1, 0);
     let entity = |id| EntityRef::new(WorldEpoch::new(1), id);
     struct TestItemData;
     impl crate::ResidentItemEntity for TestItemData {
@@ -774,23 +772,22 @@ fn an_item_update_reaches_only_the_parts_of_the_ticked_item_and_cancels_for_its_
             self.host
         }
     }
-    let mut update = |stack: &ItemStack, id| {
+    let mut update = |item_id: &str, id| {
         let mut canceled = false;
         let mut access = TestItemAccess {
             host: &mut host,
             subject: ItemEntityRef::new(entity(id)),
         };
         dispatch_on_entity_item_update(crate::__private::OnEntityItemUpdateCall {
-            stack,
-            subject: crate::ItemEntityServerScope::new(&mut access),
+            subject: crate::ItemEntityServerScope::new(&mut access, item_id),
             canceled: &mut canceled,
         });
         canceled
     };
-    assert!(update(&stick(), 11));
-    assert!(!update(&stone, 12));
-    assert!(!update(&diamond, 13));
-    assert!(update(&stick(), 14));
+    assert!(update("minecraft:stick", 11));
+    assert!(!update("minecraft:stone", 12));
+    assert!(!update("minecraft:diamond", 13));
+    assert!(update("minecraft:stick", 14));
     assert_eq!(*sticks.0.lock().unwrap(), [entity(11), entity(14)]);
     assert_eq!(*stones.0.lock().unwrap(), [entity(12)]);
     assert!(crate::__private::item_listens(
@@ -1487,7 +1484,7 @@ fn scoped_views_reborrow_and_invalidate_after_removal() {
             owner: entity_handle,
         },
     };
-    let mut item_scope = crate::ItemEntityServerScope::new(&mut item_access);
+    let mut item_scope = crate::ItemEntityServerScope::new(&mut item_access, "minecraft:stick");
     let delay = item_scope.with_view(|mut view| {
         assert_eq!(view.handle(), item_handle);
         assert_eq!(view.age(), 12);
