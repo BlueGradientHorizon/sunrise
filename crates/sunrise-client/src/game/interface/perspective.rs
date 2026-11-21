@@ -201,7 +201,7 @@ fn load_player_type(models: &sunrise_client::mobs::EntityModelDocument) -> Optio
             eye_height: 1.62,
             category: "misc".into(),
             max_health: 20.0,
-            speed: 0.1,
+            speed: f64::from(0.1_f32), // Player.createAttributes' MOVEMENT_SPEED
             flying_speed: 0.02,
             attack_damage: 1.0,
             attack_knockback: 0.0,

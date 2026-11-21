@@ -6,6 +6,22 @@ ids = [
     "hook:player_turn",
     "method:Hooks::player_turn",
     "type:PlayerTurnEvent",
+    "hook:compute_fov_modifier",
+    "method:Hooks::compute_fov_modifier",
+    "type:ComputeFovModifierEvent",
+    "hook:compute_fov",
+    "method:Hooks::compute_fov",
+    "type:ComputeFovEvent",
 ]
-why = "Removed the mod-specific client replace hook `zoom` (`Hooks::zoom`, `ZoomEvent`, `Zoom`) and its synthetic engine clamps (`1..=10` factor, `0.05..=1.0` turn scale) in favor of general FOV and turn primitives matching vanilla `Camera.tickFov` / `Camera.calculateFov` (`ComputeFovModifierEvent`, `ViewportEvent.ComputeFov`), `MouseHandler.turnPlayer` (`CalculatePlayerTurnEvent`), and `Entity.turn`. Added the device-neutral client listen hook `player_turn` (`Hooks::player_turn`, `PlayerTurnEvent`) at `Entity.turn` so mouse, controller, and keyboard relative look deltas can be scaled or adjusted without mislabeling controller turns as mouse-only `calculate_player_turn`. Also fixed `Camera.tickFov` dispatch order so spectating a non-player entity skips `compute_fov_modifier` as vanilla `Camera.tickFov` checks `cameraEntity instanceof AbstractClientPlayer`."
-migrate = "Remove `Hooks::zoom` and `Zoom`. Compose zoom from general client primitives: check `host.playing()`, your registered key mapping (`mod_key_mapping_is_down`), and optionally `host.local_item_use()` (to yield to a spyglass); narrow the view in `Hooks::compute_fov_modifier` (eased by vanilla `Camera.tickFov`) or `Hooks::compute_fov` (immediate, in degrees); and slow or adjust look speed across mouse, controller, and keyboard in `Hooks::player_turn` by scaling `event.x` and `event.y` (in `Entity.turn` units where 1.0 = 0.15 degrees), or use `Hooks::calculate_player_turn` when specifically adjusting mouse sensitivity or cinematic camera smoothing."
+why = """
+The dedicated zoom hook, its types and its zoom-factor and turn-scale caps are gone. Compose zoom from regular client input and camera hooks instead.
+Vanilla Camera.tickFov calls AbstractClientPlayer.getFieldOfViewModifier on the actual camera player (including RemotePlayer); NeoForge patches that method for ComputeFovModifierEvent. Sunrise now uses that player's movement attribute and item use, and skips the hook for a non-player camera instead of calling it on the local spectator.
+Following Camera.calculateFov and NeoForge's ViewportEvent.ComputeFov, the world projection hook gets the calculated angle without a separate engine zoom pass.
+The new player_turn adjusts the relative Entity.turn input from any device; NeoForge's CalculatePlayerTurnEvent remains specific to MouseHandler.turnPlayer.
+"""
+migrate = """
+Remove Hooks::zoom, ZoomEvent and Zoom. Read your key with host.mod_key_mapping_is_down(mapping) while host.playing(), and keep the held and animation state in your mod.
+Replace Zoom.factor and Zoom.smooth with event.modifier /= factor in Hooks::compute_fov_modifier for vanilla camera easing, or event.degrees /= factor in Hooks::compute_fov for an immediate angle change. compute_fov no longer receives an engine-prezoomed angle; apply your zoom in one place.
+compute_fov_modifier's event.player now describes the effective camera player, not always the local player. Move state updates that must also run while spectating a non-player to Hooks::client_tick_pre or Hooks::client_tick_post. To let a first-person spyglass take precedence, check host.camera_type().is_first_person() and event.player.using for Some((UseItem::Spyglass, _)). In a hook without this modifier event, for the local player read host.local_item_use() for its hand and inspect that stack with LivingRef::with_hand_item; ItemUse alone does not identify the item.
+Replace Zoom.turn with event.x *= turn_scale and event.y *= turn_scale in Hooks::player_turn (Entity.turn units; 1.0 is 0.15 degrees). Use Hooks::calculate_player_turn only for mouse sensitivity or cinematic smoothing.
+"""

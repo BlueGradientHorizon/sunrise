@@ -1,9 +1,10 @@
 //! The `compute_fov_modifier` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// Player FOV scale, once per client tick while the camera is the local
-    /// player, after vanilla effects and before easing (skipped when spectating
-    /// another entity).
+    /// Player FOV scale for the effective camera player (local or spectated),
+    /// after vanilla effects and before camera easing. The hook doesn't fire for
+    /// a non-player camera. `player.using` reports the camera player's item use,
+    /// not the local player's when those differ.
     /// Invalid values or values outside 0.01..=10 revert to base.
     #[hook(
         receiver = "read",
@@ -11,7 +12,8 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         neoforge = "ComputeFovModifierEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn compute_fov_modifier(
         player: &mod_api::client::camera::FovPlayer,
