@@ -526,4 +526,103 @@ impl Game<'_> {
             }));
         }
     }
+
+    /// The local player's share of every touching entity's
+    /// `LivingEntity.pushEntities`, and of the boats' pushes: on a client
+    /// `EntitySelector.pushableBy` lets entities push only the local player,
+    /// so the server never sends these pushes. `doPush(player)` is
+    /// `player.push(entity)`. `before_player`: the mobs and boats that tick
+    /// before the player (`ticked_before_player`), else those that tick after
+    /// it.
+    pub(super) fn remote_pushes(&self, before_player: bool) -> Vec3 {
+        let (Some(p), Some(r)) = (self.player.as_ref(), self.remote.as_ref()) else {
+            return Vec3::ZERO;
+        };
+        // LivingEntity.isPushable: alive, no spectator, off ladders.
+        let feet = [
+            p.position.x.floor() as i32,
+            p.position.y.floor() as i32,
+            p.position.z.floor() as i32,
+        ];
+        if self.screen == Screen::Dead
+            || p.spectator
+            || self.named_block_in_tag("minecraft:climbable", &self.block_name(feet))
+        {
+            return Vec3::ZERO;
+        }
+        let bounds = p.bounds();
+        let teams = self.mob_teams();
+        // `Entity.getTeam` is `Scoreboard.getPlayersTeam(getScoreboardName())`:
+        // a player's score holder is its profile name, every other entity's
+        // its UUID text. `mob_teams` keys by UUID and names the local player
+        // `PLAYER_NAME`, which misses a server's teams for players.
+        let board = &self.score.board;
+        let player_team = board.players_team(&r.profile_name);
+        let mut push = Vec3::ZERO;
+        let order = |id: u32| r.ticked_before_player.contains(&id) == before_player;
+        for m in self.mobs.iter().filter(|m| order(m.id)) {
+            // Bats never push, nor passengers of one vehicle, nor a spectator; the
+            // box test comes before the lookups that far mobs never need (#14053).
+            if !m.alive()
+                || m.species() == sunrise_client::mobs::Species::Bat
+                || self
+                    .riding
+                    .is_some_and(|v| v == m.id || m.extra.mount == Some(v))
+                || !m.bounds().intersects(bounds)
+            {
+                continue;
+            }
+            let listed = r
+                .level_players
+                .get(&(m.id as i32))
+                .and_then(|uuid| r.tab_players.get(uuid));
+            let mob_team =
+                listed.map_or_else(|| teams.of(Who::Mob(m.id)), |t| board.players_team(&t.name));
+            if listed.is_some_and(|t| t.game_mode == SPECTATOR)
+                || !sunrise_client::scoreboard::pushable_by(mob_team, player_team, true)
+            {
+                continue;
+            }
+            // Entity.push(Entity), `this` the player.
+            let (mut xa, mut za) = (m.position.x - p.position.x, m.position.z - p.position.z);
+            let mut dd = xa.abs().max(za.abs());
+            if dd < f64::from(0.01_f32) {
+                continue;
+            }
+            dd = dd.sqrt();
+            xa /= dd;
+            za /= dd;
+            let pow = (1.0 / dd).min(1.0);
+            xa *= pow;
+            za *= pow;
+            xa *= f64::from(0.05_f32);
+            za *= f64::from(0.05_f32);
+            push = Vec3::new(push.x - xa, push.y, push.z - za);
+        }
+        // AbstractBoat.push(player) from the boat's own tick (its box grown
+        // by 0.2 sideways) and from the player's pushEntities (its box).
+        let area = Vec3::new(f64::from(0.2_f32), f64::from(-0.01_f32), f64::from(0.2_f32));
+        // A boat pushes from its own tick, in the same order as the mobs.
+        for b in self
+            .boats
+            .iter()
+            .filter(|b| order(b.id) && self.riding != Some(b.id))
+        {
+            let bb = b.bounds();
+            let times = usize::from(
+                bounds.intersects(bb.inflate(area))
+                    && sunrise_client::scoreboard::pushable_by(None, player_team, true),
+            ) + usize::from(
+                bounds.intersects(bb)
+                    && sunrise_client::scoreboard::pushable_by(player_team, None, true),
+            );
+            if times > 0
+                && crate::game::boat_passengers::boat_pushes(bb, bounds, false)
+                && let Some(v) = crate::game::boat_passengers::push_impulse(b.position, p.position)
+            {
+                push = push.add_vector(v.scale(times as f64));
+            }
+        }
+        push
+    }
 }

@@ -264,4 +264,69 @@ impl Game<'_> {
             h.cancel();
         }
     }
+
+    /// `Entity.lerpMotion` (and `recreateFromPacket`'s motion) for the
+    /// entities whose own tick moves them on a client: dropped items, experience
+    /// orbs, falling blocks and primed TNT.
+    pub(super) fn remote_motion(&mut self, id: i32, velocity: [f64; 3]) {
+        self.remote_dragon_motion(id, velocity);
+        let v = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        // `falling` and `tnts` are searched from the back: AddEntity calls this right after
+        // appending the block or TNT, so a spawn doesn't walk the whole list.
+        if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id as u32) {
+            // Squid.aiStep derives its body pitch and roll from network motion.
+            m.velocity = v;
+        } else if let Some(d) = self.dropped.iter_mut().find(|d| d.id == id as u32) {
+            d.velocity = v;
+        } else if let Some(i) = self.falling.iter().rposition(|f| f.id == id as u32) {
+            self.falling.update(i, |f| f.velocity = v);
+        } else if let Some(t) = self.tnts.iter_mut().rev().find(|t| t.id == id as u32) {
+            t.velocity = v;
+        } else if let Some(o) = self.orbs.iter_mut().find(|o| o.id == id as u32) {
+            o.velocity = v;
+        } else if let Some(i) = self.carts.iter().position(|c| c.id == id as u32) {
+            self.carts.update(i, |c| c.velocity = v);
+        } else if let Some(i) = self.boats.iter().position(|b| b.id == id as u32) {
+            // Entity.lerpMotion: the boat the player drives floats on from the server's motion
+            // (`tick_remote_boat_bubbles` drops it again on a boat nobody here drives).
+            self.boats.update(i, |b| b.velocity = v);
+        } else if let Some(i) = self
+            .creatures
+            .projectiles
+            .iter()
+            .position(|p| p.id == id as u32)
+        {
+            self.creatures.projectiles.update(i, |p| {
+                p.velocity = v;
+                // AbstractArrow.lerpMotion: the stuck timer restarts, and an
+                // arrow the server set moving leaves the block it was stuck in.
+                if let Some(st) = p.arrow.as_mut() {
+                    st.life = 0;
+                    if st.in_ground && v.length_squared() > 0.0 {
+                        st.in_ground = false;
+                        p.stuck = false;
+                    }
+                }
+            });
+        } else if let Some(t) = self.tridents.iter_mut().find(|t| t.id == id as u32) {
+            t.velocity = v;
+            // AbstractArrow.lerpMotion (ThrownTrident keeps it): `life`
+            // restarts, and a trident set moving leaves its block.
+            t.in_ground_time = 0;
+            if t.in_ground && v.length_squared() > 0.0 {
+                t.in_ground = false;
+            }
+        } else if let Some(r) = self.rockets.iter_mut().find(|r| r.id == id as u32) {
+            r.velocity = v;
+        } else if self.remote_hook_motion(id as u32, v) {
+        } else if let Some(p) = self
+            .remote
+            .as_mut()
+            .and_then(|r| r.pending_items.get_mut(&id))
+        {
+            p.1 = v;
+        } else if !self.potions.remote_thrown_motion(id as u32, v) {
+            self.end.remote_eye_motion(id as u32, velocity);
+        }
+    }
 }
