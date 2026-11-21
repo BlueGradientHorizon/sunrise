@@ -1,6 +1,9 @@
 //! Canonical values to the pinned stream codec, with explicit registry lookup.
 use super::{Ids, builtin_component_id, component_name, is_native_component};
-use crate::item::{Component, Stack};
+use crate::item::{
+    Component, Stack,
+    component::{BUNDLE_CONTENTS, CHARGED_PROJECTILES},
+};
 use crate::{Error, Result, buf::Reader};
 use sunrise_core::{
     nbt::{self, Tag},
@@ -248,46 +251,93 @@ fn template_from_parts_at_depth(
     count: i32,
     patch: &[(String, Option<Value>)],
     ids: &dyn Ids,
-    depth: u32,
+    mut depth: u32,
 ) -> Result<Stack> {
+    struct PendingList<'a, P> {
+        parent: Stack,
+        patch: P,
+        kind: i32,
+        remaining: std::slice::Iter<'a, Value>,
+        children: Vec<Stack>,
+    }
+
+    // Typed stack lists need the caller's registry, not a structural stream read with
+    // default IDs. Suspend the parent on the heap while building each child in order.
+    // Each suspended list adds one enclosing component, shared by all its children.
+    let mut parents = Vec::new();
+    let mut stack = Stack::new(template_item_id(item, count, ids)?, count);
+    let mut patch = effective_patch(patch);
+    loop {
+        let child = if let Some((name, value)) = patch.next() {
+            let kind = patch_kind(name, ids)?;
+            let Some(value) = value else {
+                stack.removed.push(kind);
+                continue;
+            };
+            if !matches!(kind, CHARGED_PROJECTILES | BUNDLE_CONTENTS) {
+                let component = component_from_stream_value(kind, value, ids, depth)?;
+                stack.added.push((kind, component));
+                continue;
+            }
+            let mut remaining = stack_list(value, depth)?.iter();
+            let Some(first) = remaining.next() else {
+                stack.added.push((kind, Component::Stacks(Vec::new())));
+                continue;
+            };
+            parents.push(PendingList {
+                parent: stack,
+                patch,
+                kind,
+                remaining,
+                children: Vec::new(),
+            });
+            depth += 1;
+            first
+        } else {
+            let Some(mut pending) = parents.pop() else {
+                return Ok(stack);
+            };
+            pending.children.push(stack);
+            if let Some(next) = pending.remaining.next() {
+                parents.push(pending);
+                next
+            } else {
+                stack = pending.parent;
+                patch = pending.patch;
+                stack
+                    .added
+                    .push((pending.kind, Component::Stacks(pending.children)));
+                depth -= 1;
+                continue;
+            }
+        };
+        let t = canonical_template(child)?;
+        stack = Stack::new(template_item_id(&t.item, t.count, ids)?, t.count);
+        patch = effective_patch(&t.patch);
+    }
+}
+
+fn template_item_id(item: &str, count: i32, ids: &dyn Ids) -> Result<i32> {
     if count == 0 || item == "minecraft:air" {
         return Err(err("empty native template"));
     }
-    let item = ids
-        .id("minecraft:item", item)
+    ids.id("minecraft:item", item)
         .filter(|id| *id > 0)
-        .ok_or_else(|| err(format!("unknown or empty item {item}")))?;
-    let mut stack = Stack::new(item, count);
-    for (name, value) in effective_patch(patch) {
-        let kind = patch_kind(name, ids)?;
-        if let Some(value) = value {
-            stack.added.push((
-                kind,
-                component_from_value_at_depth(kind, value, ids, depth)?,
-            ));
-        } else {
-            stack.removed.push(kind);
-        }
+        .ok_or_else(|| err(format!("unknown or empty item {item}")))
+}
+fn canonical_template(v: &Value) -> Result<&Template> {
+    match v {
+        Value::Template(t) => Ok(t),
+        _ => Err(err("expected canonical template")),
     }
-    Ok(stack)
 }
 fn template(w: &mut Writer, v: &Value, ids: &dyn Ids, depth: u32) -> Result<()> {
-    let Value::Template(t) = v else {
-        return Err(err("expected canonical template"));
-    };
-    template_body(w, t, ids, depth)
+    template_body(w, canonical_template(v)?, ids, depth)
 }
 /// `depth` counts the components enclosing this template, as the stream reader counts them:
 /// a component inside the template is encoded at the same depth and is the one that adds a level.
 fn template_body(w: &mut Writer, t: &Template, ids: &dyn Ids, depth: u32) -> Result<()> {
-    if t.count == 0 || t.item == "minecraft:air" {
-        return Err(err("empty native template"));
-    }
-    let item = ids
-        .id("minecraft:item", &t.item)
-        .filter(|id| *id > 0)
-        .ok_or_else(|| err(format!("unknown or empty item {}", t.item)))?;
-    w.varint(item);
+    w.varint(template_item_id(&t.item, t.count, ids)?);
     w.varint(t.count);
     let (added, removed) = effective_patch(&t.patch).fold((0, 0), |(added, removed), (_, v)| {
         if v.is_some() {
@@ -345,36 +395,36 @@ pub fn component_from_admitted_tag(
 
 pub fn component_from_value(kind: i32, value: &Value, ids: &dyn Ids) -> Result<Component> {
     let name = component_name(kind).ok_or_else(|| err(format!("unknown component type {kind}")))?;
-    component_from_value_at_depth(kind, value, ids, 0)
-        .map_err(|error| err(format!("{name}: {error}")))
+    let result = if matches!(kind, CHARGED_PROJECTILES | BUNDLE_CONTENTS) {
+        stack_list(value, 0).and_then(|entries| {
+            let mut stacks = Vec::new();
+            for entry in entries {
+                let t = canonical_template(entry)?;
+                stacks.push(template_from_parts_at_depth(
+                    &t.item, t.count, &t.patch, ids, 1,
+                )?);
+            }
+            Ok(Component::Stacks(stacks))
+        })
+    } else {
+        component_from_stream_value(kind, value, ids, 0)
+    };
+    result.map_err(|error| err(format!("{name}: {error}")))
 }
-fn component_from_value_at_depth(
+
+fn stack_list(value: &Value, depth: u32) -> Result<&[Value]> {
+    check_component_depth(depth)?;
+    list(value)
+}
+
+fn component_from_stream_value(
     kind: i32,
     value: &Value,
     ids: &dyn Ids,
     depth: u32,
 ) -> Result<Component> {
-    if matches!(
-        kind,
-        crate::item::component::CHARGED_PROJECTILES | crate::item::component::BUNDLE_CONTENTS
-    ) {
-        if depth >= crate::item::MAX_NESTING {
-            return Err(err("item component nesting too deep"));
-        }
-        // Construct the typed children directly. Their streams already use the peer's IDs,
-        // which a registry-free structural read would interpret as local defaults.
-        let stacks = list(value)?
-            .iter()
-            .map(|entry| {
-                let Value::Template(t) = entry else {
-                    return Err(err("expected canonical template"));
-                };
-                template_from_parts_at_depth(&t.item, t.count, &t.patch, ids, depth + 1)
-            })
-            .collect::<Result<_>>()?;
-        return Ok(Component::Stacks(stacks));
-    }
     if let Some(name) = crate::item::custom::name(kind) {
+        check_component_depth(depth)?;
         patch_kind(name, ids)?;
         return Ok(Component::Nbt(value.to_tag().map_err(err)?));
     }
@@ -601,13 +651,17 @@ fn predicate(w: &mut Writer, v: &Value, ids: &dyn Ids, depth: u32) -> Result<()>
     }
     Ok(())
 }
-fn encode(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids, depth: u32) -> Result<()> {
+fn check_component_depth(depth: u32) -> Result<()> {
     if depth >= crate::item::MAX_NESTING {
         return Err(err(format!(
             "component nesting exceeds {}",
             crate::item::MAX_NESTING
         )));
     }
+    Ok(())
+}
+fn encode(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids, depth: u32) -> Result<()> {
+    check_component_depth(depth)?;
     if let Some(name) = crate::item::custom::name(kind) {
         patch_kind(name, ids)?;
         return nbt(w, v);
