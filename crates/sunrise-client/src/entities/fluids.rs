@@ -566,6 +566,7 @@ mod tests {
             None,
             &fluids,
             crate::test_resources::server_loop_context(),
+            None,
             sunrise_client::motion::dry_side(),
             &mut |_, _| {},
         ));
@@ -583,6 +584,7 @@ mod tests {
             None,
             &fluids,
             crate::test_resources::server_loop_context(),
+            None,
             sunrise_client::motion::dry_side(),
             &mut |_, _| {},
         ));
@@ -603,6 +605,7 @@ mod tests {
                 None,
                 &fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |_, _| {},
             );
@@ -671,6 +674,7 @@ mod tests {
             None,
             &fluids,
             crate::test_resources::server_loop_context(),
+            None,
             sunrise_client::motion::dry_side(),
             &mut |_, _| {},
         ));

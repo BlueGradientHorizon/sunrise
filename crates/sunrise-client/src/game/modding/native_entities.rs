@@ -257,7 +257,7 @@ impl Game<'_> {
             }
             while let Some((slot, id, seq)) = self.next_unannounced(mark, &[], None) {
                 mark = seq;
-                let kind = self.slot_kind_and_position(slot).0;
+                let kind = self.slot_kind_and_position(slot).0.into_owned();
                 self.construct_joining(id, &kind);
             }
             return true;
@@ -270,6 +270,7 @@ impl Game<'_> {
         {
             self.persist.joined_seq = seq;
             let (kind, at) = self.slot_kind_and_position(slot);
+            let kind = kind.into_owned();
             let mut canceled = false;
             let dimension = self.dim.id();
             self.construct_joining(id, &kind);
@@ -295,7 +296,7 @@ impl Game<'_> {
                 self.discard_slot(slot);
                 kept &= id != watch;
             } else {
-                self.remember_join(id, kind.into_owned());
+                self.remember_join(id, kind);
                 // `addEntity` files it under its section, untold.
                 self.entity_section_joined(id, [at.x, at.y, at.z]);
                 if let Some((id, item, count, position)) = spawn {
@@ -441,7 +442,7 @@ impl Game<'_> {
                 (kind.into(), block(f.pos))
             }
             Slot::Apart(Apart::Other(i)) => {
-                (self.others[i].kind.clone().into(), self.others[i].position)
+                (self.others[i].kind.as_str().into(), self.others[i].position)
             }
             Slot::Apart(Apart::Dragon) => (
                 "minecraft:ender_dragon".into(),
