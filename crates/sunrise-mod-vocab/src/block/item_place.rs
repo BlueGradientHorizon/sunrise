@@ -1097,3 +1097,7 @@ impl ItemPlace {
 #[cfg(test)]
 #[path = "item_place_wrapper_tests.rs"]
 mod wrapper_tests;
+
+#[cfg(test)]
+#[path = "item_place_scratch_tests.rs"]
+mod scratch_tests;
