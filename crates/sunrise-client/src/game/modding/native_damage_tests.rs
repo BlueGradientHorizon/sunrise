@@ -78,6 +78,11 @@ impl Hooks for Probe {
         if event.entity == 225001 {
             event.container.set_new_damage(4.0).unwrap();
         }
+        if event.entity == 225033 {
+            event
+                .container
+                .add_reduction_modifier(Reduction::Armor, |_, _| -1.0e38);
+        }
         mod_api::Flow::Continue
     }
     fn living_shield_block(&self, _: &mut dyn HitHost, event: &mut LivingShieldBlockEvent<'_>) {
@@ -93,6 +98,11 @@ impl Hooks for Probe {
         }
         if event.entity == 225010 {
             level.with_random(|random| random.next_int()).unwrap();
+        }
+        if event.entity == 225033 {
+            assert_eq!(container.new_damage(), 1.0e38);
+            assert_eq!(container.reduction(Reduction::MobEffects), 0.0);
+            container.set_new_damage(1.0).unwrap();
         }
         let heard = (
             event.entity,
@@ -347,7 +357,7 @@ fn post_fires_once_for_a_killing_blow_on_a_mob() {
     assert_eq!(heard.post, [(225016, 100.0)]);
 }
 
-/// What a killing blow tells a mod, in order: `("death", entity)` then `("post", entity)`.
+/// Damage and death hooks in the order the engine invokes them.
 #[derive(Default)]
 struct DeathOrder {
     heard: Mutex<Vec<(&'static str, i64)>>,
@@ -358,9 +368,40 @@ struct DeathProbe(Arc<DeathOrder>);
 
 #[mod_api::__subscriptions]
 impl Hooks for DeathProbe {
+    fn living_incoming_damage(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut LivingIncomingDamageEvent<'_>,
+    ) -> mod_api::Flow {
+        self.0
+            .heard
+            .lock()
+            .unwrap()
+            .push(("incoming", i64::from(event.entity)));
+        mod_api::Flow::Continue
+    }
+    fn living_damage_pre(&self, _: &mut dyn HitHost, event: &mut LivingDamagePreEvent<'_>) {
+        self.0
+            .heard
+            .lock()
+            .unwrap()
+            .push(("pre", i64::from(event.entity)));
+    }
     fn living_damage_post(&self, _: &mut dyn HitHost, event: &mut LivingDamagePostEvent<'_>) {
         let entity = i64::from(event.entity);
         self.0.heard.lock().unwrap().push(("post", entity));
+    }
+    fn living_use_totem(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut mod_api::LivingUseTotemEvent<'_>,
+    ) -> mod_api::Flow {
+        self.0
+            .heard
+            .lock()
+            .unwrap()
+            .push(("totem", i64::from(event.entity)));
+        mod_api::Flow::Continue
     }
     fn living_death_post(
         &self,
@@ -430,7 +471,13 @@ fn a_killing_blows_post_fires_once_after_the_death_hooks() {
     assert_eq!(
         killing_blow(false),
         (
-            vec![("death", 225017), ("death-tail", 225017), ("post", 225017)],
+            vec![
+                ("incoming", 225017),
+                ("pre", 225017),
+                ("death", 225017),
+                ("death-tail", 225017),
+                ("post", 225017)
+            ],
             0.0
         )
     );
@@ -443,13 +490,21 @@ fn a_killing_blows_post_fires_once_after_the_death_hooks() {
 fn a_cancelled_deaths_post_fires_once_after_the_death_hooks() {
     assert_eq!(
         killing_blow(true),
-        (vec![("death", 225017), ("post", 225017)], 0.0)
+        (
+            vec![
+                ("incoming", 225017),
+                ("pre", 225017),
+                ("death", 225017),
+                ("post", 225017)
+            ],
+            0.0
+        )
     );
 }
 
 #[test]
 #[ignore = "daily"]
-fn guest_damage_post_waits_for_the_authoritative_death() {
+fn guest_strike_posts_before_returning_from_the_authoritative_death() {
     use crate::game::native_player_death::tests::add_guest;
     let trace = Arc::new(DeathOrder::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -468,20 +523,125 @@ fn guest_damage_post_waits_for_the_authoritative_death() {
                 .update(0, |guest| guest.load_timeout = 0);
             let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
             assert!(
-                game.as_guest(1, |game| {
+                game.guest_struck_by(1, |game| {
                     game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false)
                 })
                 .unwrap()
             );
-            assert!(trace.heard.lock().unwrap().is_empty());
-            game.guest_die(0, 1);
+            assert!(game.lan.as_ref().unwrap().hub.guests[0].dead);
             game.guest_die(0, 1);
             assert_eq!(
                 *trace.heard.lock().unwrap(),
-                [("death", entity), ("death-tail", entity), ("post", entity)]
+                [
+                    ("incoming", entity),
+                    ("pre", entity),
+                    ("death", entity),
+                    ("death-tail", entity),
+                    ("post", entity)
+                ]
             );
         });
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_sweep_finishes_its_lethal_hit_before_the_next_hit() {
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+            player.entity_id = 7;
+            game.player = Some(player);
+            game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
+            let mut first = mob(game, 225031, "minecraft:pig");
+            first.health = 0.5;
+            let second = mob(game, 225032, "minecraft:pig");
+            game.mobs.push(first);
+            game.mobs.push(second);
+            let area = sunrise_core::geometry::Aabb::new(
+                Vec3::new(-1.0, -1.0, -1.0),
+                Vec3::new(1.0, 2.0, 2.0),
+            );
+            game.sweep_damage(area, super::mace::Spared::Nothing, 1.0);
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", 225031),
+                    ("pre", 225031),
+                    ("death", 225031),
+                    ("death-tail", 225031),
+                    ("post", 225031),
+                    ("incoming", 225032),
+                    ("pre", 225032),
+                    ("post", 225032),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
+    use crate::game::native_player_death::tests::add_guest;
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            add_guest(game);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.load_timeout = 0;
+                guest.inventory[guest.selected] =
+                    Some(ItemStack::new("minecraft:totem_of_undying", 1));
+            });
+            let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            game.guest_struck_by(1, |game| {
+                assert!(game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false));
+                assert!(game.inventory[game.selected].is_none());
+                assert_eq!(game.player.as_ref().unwrap().health.health(), 1.0);
+                assert_eq!(
+                    *trace.heard.lock().unwrap(),
+                    [
+                        ("incoming", entity),
+                        ("pre", entity),
+                        ("totem", entity),
+                        ("post", entity)
+                    ]
+                );
+            })
+            .unwrap();
+            assert!(!game.lan.as_ref().unwrap().hub.guests[0].dead);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn player_pre_keeps_live_damage_when_resistance_does_not_record_a_reduction() {
+    let heard = heard(|game| {
+        let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+        player.entity_id = 225033;
+        player.status.resistance = Some(4);
+        game.player = Some(player);
+        game.set_game_mode(GameMode::Survival);
+        assert!(game.hurt_player_from(10.0, None, "minecraft:magic", Some(None), false));
+        assert_eq!(game.player.as_ref().unwrap().health.health(), 19.0);
+    });
+    assert_eq!(heard.post, [(225033, 1.0)]);
 }
 
 #[test]

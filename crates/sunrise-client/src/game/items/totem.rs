@@ -73,8 +73,8 @@ impl Game<'_> {
     }
     /// The server's half once a totem fired: use it up (main hand first),
     /// count it, set health to 1, then clear and apply its effects. Returns
-    /// the player's body, for entity event 35, which the caller broadcasts,
-    /// with the protector copy the activation animation shows.
+    /// the player's body with the protector copy the activation animation shows.
+    /// A server guest's entity event is broadcast before the hit's Post.
     pub(super) fn apply_totem(&mut self) -> Option<Body> {
         let p = self.player.as_mut()?;
         if !p.health.totem_used {
@@ -125,6 +125,12 @@ impl Game<'_> {
         for effect in self.death_effects(&protector) {
             self.apply_consume_effect(&protector, &effect, None, user);
         }
+        self.update_totem_ready();
+        if self.lan_acting.is_some()
+            && let Some(host) = &self.lan
+        {
+            host.hub.entity_event(entity, TOTEM_EVENT);
+        }
         if let Some(post) = post {
             self.finish_damage_post(entity, "minecraft:player", &post);
         }
@@ -133,6 +139,22 @@ impl Game<'_> {
             ..body
         })
     }
+    /// Finish a guest's protected hit while the guest and the hit's level are still in place.
+    pub(in crate::game) fn finish_guest_damage_totem(&mut self) {
+        let Some(entity) = self
+            .lan_acting
+            .and_then(|_| self.player.as_ref().map(|p| p.entity_id))
+        else {
+            return;
+        };
+        let Some(body) = self.apply_totem() else {
+            return;
+        };
+        if self.serving.is_none() && !self.is_dedicated_server() {
+            self.totem_event(TrackingTarget::Entity(entity), body);
+        }
+    }
+
     /// The window's player's totem: the server's half, then the event to
     /// the guests and to this window's own client.
     pub(super) fn tick_totem(&mut self) {

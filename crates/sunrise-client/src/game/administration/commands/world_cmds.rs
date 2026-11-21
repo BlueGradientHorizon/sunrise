@@ -522,6 +522,9 @@ impl Game<'_> {
             }
             if health_changed {
                 self.mob_damage_event(id);
+                if let Some(index) = self.mob_index.find(&self.mobs, id) {
+                    self.finish_mob_damage_at(index);
+                }
             }
         }
         for (mob, target) in reinforcements {

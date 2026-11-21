@@ -698,10 +698,13 @@ impl Game<'_> {
             };
             let alive = g.mobs[index].alive();
             if g.hurt_by_player(index, damage, source) {
-                if alive && !g.mobs[index].alive() {
-                    g.native_kill_event(index);
-                }
                 g.remember_mob_player_credit(attacker);
+                if alive && !g.mobs[index].alive() {
+                    g.finish_mob_damage_at(index);
+                    if let Some(index) = g.mob_index.find(&g.mobs, attacker) {
+                        g.native_kill_event(index);
+                    }
+                }
             }
         });
     }

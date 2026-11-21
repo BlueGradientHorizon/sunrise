@@ -302,10 +302,18 @@ impl Game<'_> {
             Some(f) => self.attack_source(f),
             None => sunrise_client::mobs::Damage::of(sunrise_client::mobs::DamageKind::Generic),
         };
+        let id = self.mobs[index].id;
         let landed = self.hurt_by_player(index, amount, source);
-        if landed && old_health > 0.0 && !self.mobs[index].alive() {
+        let index = if landed && old_health > 0.0 && !self.mobs[index].alive() {
+            self.finish_mob_damage_at(index);
+            let Some(index) = self.mob_index.find(&self.mobs, id) else {
+                return;
+            };
             self.native_kill_event(index);
-        }
+            index
+        } else {
+            index
+        };
         if landed {
             let victim = self.mob_entity(&self.mobs[index]);
             self.player_hit(

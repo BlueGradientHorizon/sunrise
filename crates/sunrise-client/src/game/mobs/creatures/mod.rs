@@ -1724,6 +1724,25 @@ impl Game<'_> {
             self.particles.add(&options, [x, y, z], [xa, ya, za]);
         }
     }
+    /// Settle a killing hit while its damage owner still has the level in place.
+    pub(in crate::game) fn finish_mob_damage_at(&mut self, index: usize) {
+        let Some(mob) = self.mobs.get_mut(index) else {
+            return;
+        };
+        let Some(post) = mob.pending_damage_post.take() else {
+            return;
+        };
+        let id = mob.id;
+        let kind = mob.kind.clone();
+        if self.died.insert(id) {
+            // The death hooks may remove or revive the body. Do not hold a row borrow
+            // across them or recover the hit state from the body afterward.
+            let death = mob.clone();
+            self.mob_die(&death);
+        }
+        self.finish_damage_post(id as i32, &kind.id, &post);
+    }
+
     /// LivingEntity.die / dropAllDeathLoot.
     pub(super) fn mob_died(&mut self, m: &Mob) {
         self.mob_die(m);
@@ -2142,8 +2161,13 @@ impl Game<'_> {
                 1.0,
             );
         }
-        if killed && let Some(Who::Mob(killer)) = source.attacker {
-            self.zombie_killed(killer, target);
+        if killed {
+            if let Some(index) = self.mob_index.find(&self.mobs, target) {
+                self.finish_mob_damage_at(index);
+            }
+            if let Some(Who::Mob(killer)) = source.attacker {
+                self.zombie_killed(killer, target);
+            }
         }
         hurt
     }
@@ -4461,6 +4485,7 @@ impl Game<'_> {
                 r.knockback = Some([p.velocity.x, p.velocity.y, p.velocity.z]);
             }
         }
+        self.finish_guest_damage_totem();
         outcome.hurt
     }
     /// A status effect from a mob, arrow or splash potion (`addEffect`).
@@ -4502,6 +4527,7 @@ impl Game<'_> {
             canceled = o.canceled;
         }
         self.combat.forget_noted(canceled);
+        self.finish_guest_damage_totem();
     }
     /// `Player.aiStep` touching arrows in its box grown by (1, 0.5, 1):
     /// `AbstractArrow.playerTouch`, then `Player.take`'s pickup sound at the

@@ -608,6 +608,11 @@ impl Game<'_> {
                 (None, Some(payload))
             }
         };
+        // The killing hit belongs to this turn, not to the guest's stored body.
+        let death_post = self
+            .player
+            .as_mut()
+            .and_then(|p| Some((p.entity_id, p.health.pending_damage_post.take()?)));
         let GuestSwap {
             attachments,
             conn,
@@ -1029,11 +1034,9 @@ impl Game<'_> {
                 g.send(&g.abilities_packet());
             }
         });
-        // LivingEntity.checkTotemDeathProtection's entity event, to every
-        // client tracking the guest and its own; this window draws it too.
+        // This window draws the guest's totem event; apply_totem broadcast it.
         if let Some(body) = totem {
             let id = host.hub.guests[i].entity_id;
-            host.hub.entity_event(id, crate::game::totem::TOTEM_EVENT);
             if self.player.is_some() {
                 self.totem_event(sunrise_client::particles::TrackingTarget::Entity(id), body);
             }
@@ -1115,6 +1118,13 @@ impl Game<'_> {
         }
         if !already_recorded {
             self.interrupted_turns.retain(|&c| c != conn);
+        }
+        // A killing hit in this turn owns its death continuation. At put-back
+        // the death routine can see the guest's authoritative health, inventory
+        // and combat state, and can enter that guest again to settle the kill.
+        if let Some((entity, post)) = death_post {
+            self.guest_die(i, conn);
+            self.finish_damage_post(entity, "minecraft:player", &post);
         }
     }
 
