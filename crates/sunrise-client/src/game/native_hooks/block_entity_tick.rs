@@ -14,7 +14,10 @@ impl Game<'_> {
 
     /// The tick of the mod block entity at `pos`.
     pub(in crate::game) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) {
-        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) else {
+        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut_if(
+            &pos,
+            |entity| matches!(entity, BlockEntity::Mod(m) if m.has_tick_part()),
+        ) else {
             return;
         };
         let mut taken = std::mem::take(&mut **m);

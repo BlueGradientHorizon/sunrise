@@ -26,11 +26,11 @@ class ReleaseSnapshotTests(unittest.TestCase):
 
     def test_only_main_without_dry_run_publishes(self):
         mode = self.jobs["decide"]["steps"][1]
-        self.assertEqual(mode["run"],
-                         "echo \"dry_run=${{ inputs.dry_run || github.ref != 'refs/heads/main' }}\" >> \"$GITHUB_OUTPUT\"")
+        self.assertEqual(mode["run"], 'python3 tools/release_train.py authorize --publish-kind "$KIND" --dry-run "$DRY_INPUT"')
+        self.assertEqual(mode["env"], {"KIND": "${{ inputs.kind }}", "DRY_INPUT": "${{ inputs.dry_run }}"})
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["dry_run"]["default"], "true")
         publish = self.snapshot["snapshot-sdk-publish"]
-        self.assertEqual(publish["with"]["publish"], "${{ needs.decide.outputs.dry_run != 'true' }}")
+        self.assertEqual(publish["with"]["publish"], "${{ needs.decide.outputs.publish == 'true' }}")
         self.assertEqual(publish["uses"], "./.github/workflows/sdk-publish.yml")
         # The game is built by `nightly build`, which publishes only when its own dry_run is false: it gets ours.
         run = self.snapshot["snapshot"]["steps"][0]["run"]
@@ -53,7 +53,7 @@ class ReleaseSnapshotTests(unittest.TestCase):
         self.assertEqual(self.snapshot["snapshot-sdk"]["with"], {"commit": "${{ needs.decide.outputs.head }}"})
         self.assertEqual(self.snapshot["snapshot-sdk-publish"]["with"],
                          {"commit": "${{ needs.decide.outputs.head }}",
-                          "publish": "${{ needs.decide.outputs.dry_run != 'true' }}"})
+                          "publish": "${{ needs.decide.outputs.publish == 'true' }}"})
         game = self.snapshot["snapshot"]
         self.assertEqual(game["needs"], ["decide", "snapshot-sdk", "snapshot-sdk-publish"])
         self.assertIn("needs.snapshot-sdk.result == 'success'", game["if"])
@@ -74,7 +74,7 @@ class NightlyBuildSnapshotTests(unittest.TestCase):
         snapshot_step = self.steps["Publish as the snapshot-<date>-<short> pre-release"]
         self.assertIn("inputs.kind == 'nightly'", nightly_step["if"])
         self.assertIn("inputs.kind == 'snapshot'", snapshot_step["if"])
-        self.assertIn("needs.pick.outputs.dry_run != 'true'", snapshot_step["if"])
+        self.assertIn("needs.pick.outputs.publish == 'true'", snapshot_step["if"])
         run = snapshot_step["run"]
         self.assertIn('gh release create "$TAG"', run)
         for never in ("rotate", "keep-source", "daily-green", "release create nightly", "prune --days", "release edit"):
@@ -85,11 +85,12 @@ class NightlyBuildSnapshotTests(unittest.TestCase):
     def test_the_channel_signed_and_checked_is_the_kind(self):
         sign = self.workflow["jobs"]["sign"]["steps"][2]
         self.assertEqual(sign["env"]["KIND"], "${{ inputs.kind }}")
-        self.assertEqual(sign["env"]["ALSO_FOR"],
-                         "${{ inputs.kind }}-${{ needs.pick.outputs.date }}-${{ needs.pick.outputs.short }}")
+        self.assertEqual(sign["env"]["ALSO_FOR"], "${{ inputs.kind == 'stable' && needs.pick.outputs.tag || "
+                         "format('{0}-{1}-{2}', inputs.kind, needs.pick.outputs.date, needs.pick.outputs.short) }}")
         verify = self.steps["The signatures, checked as launchers check them"]["run"]
-        self.assertIn('--tag "$KIND" --publishing', verify)
-        self.assertIn('--tag "${KIND}-${DATE}-${SHORT}"', verify)
+        self.assertIn('--tag "$SIGN_FOR" --publishing', verify)
+        self.assertIn('version="${KIND}-${DATE}-${SHORT}"', verify)
+        self.assertIn('--tag "$version"', verify)
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["kind"]["default"], "nightly")
 
     def test_optional_platforms_follow_repository_and_channel(self):
@@ -118,8 +119,8 @@ class NightlyBuildSnapshotTests(unittest.TestCase):
         complete = self.workflow["jobs"]["complete"]
         self.assertEqual(complete["steps"][0]["with"]["name"], "build-complete")
         self.assertEqual(complete["outputs"]["complete"], "${{ steps.marker.outcome == 'success' }}")
-        self.assertEqual(self.workflow["jobs"]["sign"]["needs"], ["pick", "build", "complete"])
-        self.assertEqual(self.workflow["jobs"]["publish"]["needs"], ["pick", "build", "complete", "sign"])
+        self.assertEqual(self.workflow["jobs"]["sign"]["needs"], ["pick", "build", "complete", "break-glass"])
+        self.assertEqual(self.workflow["jobs"]["publish"]["needs"], ["pick", "build", "complete", "sign", "break-glass"])
         for job in ("sign", "publish"):
             self.assertIn("needs.complete.outputs.complete == 'true'", self.workflow["jobs"][job]["if"])
 
@@ -178,7 +179,8 @@ class SnapshotToolsTests(unittest.TestCase):
             back = os.getcwd()
             os.chdir(folder)
             try:
-                env = {"GITHUB_REPOSITORY": "sunrise-org/sunrise", "GITHUB_OUTPUT": str(out), "NIGHTLY_BASE": sha}
+                env = {"GITHUB_REPOSITORY": "sunrise-org/sunrise", "GITHUB_OUTPUT": str(out), "NIGHTLY_BASE": sha,
+                       "GITHUB_REF": "refs/heads/main"}
                 with mock.patch.dict(os.environ, env), mock.patch.object(nightly, "git"), \
                         mock.patch.object(nightly.train, "channel_head", return_value=sha) as gate, \
                         mock.patch.object(nightly, "sdk_ready", return_value=True), \

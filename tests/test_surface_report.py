@@ -87,6 +87,37 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(self.calls(shallow=False, present=False), [("fetch", "-q", "--no-tags", "origin", "abcd")])
 
 
+class ArchiveTests(unittest.TestCase):
+    def test_a_base_archive_keeps_sources_for_members_outside_crates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, base = Path(directory, "repo"), Path(directory, "base")
+            base.mkdir()
+            member = "docs/examples"
+            workspace = f'[workspace]\nmembers = ["{member}"]\n'
+            manifest = '[package]\nname = "example-package"\n[lib]\nname = "example_library"\n'
+            for name, content in {
+                "Cargo.toml": workspace,
+                f"{member}/Cargo.toml": manifest,
+                f"{member}/src/lib.rs": "pub struct Example;\n",
+                f"{member}/src/nested.rs": "pub struct Nested;\n",
+                "crates/game/src/lib.rs": "",
+                "tools/layering/config.toml": "",
+            }.items():
+                file = repo / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text(content)
+            with mock.patch.object(surface_report, "ROOT", repo):
+                surface_report.git("init", "-q")
+                surface_report.git("add", ".")
+                surface_report.git("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                                   "-c", "commit.gpgsign=false", "commit", "-qm", "archive fixture")
+                surface_report.unpack("HEAD", base)
+            self.assertEqual((base / "Cargo.toml").read_text(), workspace)
+            self.assertEqual((base / member / "Cargo.toml").read_text(), manifest)
+            self.assertEqual((base / member / "src/lib.rs").read_text(), "pub struct Example;\n")
+            self.assertEqual((base / member / "src/nested.rs").read_text(), "pub struct Nested;\n")
+
+
 @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
 class ReportTests(unittest.TestCase):
     """report() against a stub sunrise-stage whose behaviour each test sets."""

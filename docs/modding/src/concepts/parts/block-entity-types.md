@@ -58,7 +58,8 @@ A `side = "server"` package whose Part on such a type listens to a client hook i
 client-side Part.
 
 The Part's state (`block_entity_part_with_state`) is a key the attaching package declared with
-`register_attachment_type`, which accepts only that package's own namespace. It is saved in the block entity's
+`register_attachment_type`, which accepts any namespace that package owns (its manifest namespaces
+or a content package it serves via `served_by`). It is saved in the block entity's
 attachment compound under that package's id, not under the owner's. A Part reaches the owner's state only through an
 attachment the owner declared (the public attachment API); a key nobody declared is refused at load, naming the
 package. When the attaching package is removed, what it saved stays in the block entity, unread (the saved
@@ -147,8 +148,10 @@ let done = Press::edit_state(host, entity, |_, progress| {
 
 Implement `BlockEntityPart::block_entity_save_additional` to serialize live mod state when the server
 captures this type's data. `event.tag` starts with the stored payload. Change that copy to write the
-value that goes into a chunk, a command read, or a copy into an item, loot or a structure. This does
-not update the live entity, change the stored inventory, or affect the separate client update tag.
+value that goes into a chunk, a command read, or a copy into an item, loot or a structure. For a
+holder without declared slots, this copy includes any saved `Items`, and the listener can replace
+or remove that field. For a declared container, the game writes its inventory instead. Neither path
+changes the live entity or the separate client update tag.
 Malformed payloads, including names or strings too long for NBT, are refused before any copy uses
 that output. If the region writer cannot encode or admit the complete chunk
 record, it retries with the stored block-entity payloads from the same snapshot. Other changes in

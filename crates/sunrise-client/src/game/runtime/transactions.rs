@@ -27,15 +27,16 @@
 //! health and absorption, and the attribute modifier rows the effects own.
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
-use super::{BlockEntity, BlockStateId, Game, machines::HopperState, maps::MapData};
+use super::{BlockEntity, BlockStateId, Dim, Game, machines::HopperState, maps::MapData};
 use mod_api::{Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
     effects::EffectInstance,
+    fast_hash::FxHashSet,
     items::ItemStack,
     living_attributes::ModifierChanges,
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo},
-    world::BlockEntityExtras,
+    world::{BlockEntityExtras, World},
 };
 use sunrise_core::position::BlockPos;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
@@ -50,6 +51,8 @@ pub(in crate::game) use entities::{Announcement, ArrivalRollback};
 mod scratch;
 
 type Pos = (i32, i32, i32);
+/// The last pending value at this depth for a connection, menu generation and data index.
+type MenuDataJournal = BTreeMap<(u32, u64, u16), i32>;
 type ComposterRandoms =
     HashMap<(mod_api::DimensionKey, (i32, i32)), HashMap<Pos, sunrise_core::random::LegacyRandom>>;
 
@@ -101,6 +104,36 @@ impl OpenTransactions {
         }
     }
 
+    /// Positions with a connection-group restore baseline for the level being edited.
+    pub(super) fn journaled_connection_group_positions(&self, dim: Dim) -> FxHashSet<Pos> {
+        self.iter()
+            .flat_map(|level| level.connection_groups.keys())
+            .filter_map(|&(owner, pos)| (owner == dim).then_some(pos))
+            .collect()
+    }
+
+    /// A permanent bulk edit invalidated these groups. Update the restore baseline and drop
+    /// older group writes at those cells throughout the enclosing transactions, in this level only.
+    pub(super) fn reconcile_bulk_connection_group_clears(
+        &mut self,
+        dim: Dim,
+        cleared: &FxHashSet<Pos>,
+    ) {
+        if cleared.is_empty() {
+            return;
+        }
+        for level in self.iter_mut() {
+            for &pos in cleared {
+                if let Some(was) = level.connection_groups.get_mut(&(dim, pos)) {
+                    *was = None;
+                }
+            }
+            level.after.retain(|after| {
+                !matches!(after, After::ConnectionGroup(owner, pos, _) if *owner == dim && cleared.contains(pos))
+            });
+        }
+    }
+
     /// The journaled-write epoch.
     pub(in crate::game) fn writes(&self) -> u64 {
         self.writes
@@ -147,6 +180,10 @@ struct KeptBlock {
     /// A level-host write only hid the entity from other reads. At commit
     /// the real Level.setBlock still has to run its removal side effects.
     replay_removal: bool,
+    /// Any tentative write at this position replaced the block with one that does not keep
+    /// connection groups (`!Behaviours::keeps_block_entity`), even if a later write returned
+    /// it to a compatible block.
+    clear_connection_group: bool,
 }
 
 /// Preserve requested updates, and suppress an effect only if every write
@@ -186,6 +223,9 @@ pub(super) struct Level {
     slots: HashMap<(Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
     blocks: HashMap<Pos, KeptBlock>,
+    /// Each cell's original connection group before this transaction first changed it, used for
+    /// silent rollback on abort and pre-replay restoration on root commit.
+    connection_groups: HashMap<(Dim, Pos), Option<u64>>,
     /// Level.random before the first transactional level write drew from it.
     level_random: Option<sunrise_core::random::LegacyRandom>,
     /// Composter-local random streams before this depth first evaluated their layers.
@@ -220,8 +260,14 @@ pub(super) struct Level {
     orbs: HashMap<crate::join_seq::JoinSeq, (i32, u32, i32)>,
     /// Each detached station before the first click wrote it, by connection and owner.
     stations: HashMap<(u32, decision::MenuId), super::lan_stations::GuestStation>,
-    /// Each guest's menu storage before this transaction first wrote it, by connection.
+    /// Each guest's inventory crafting grid before the first write, by connection.
     menus: HashMap<u32, KeptMenus>,
+    /// Drag, machine and preview state before a scoped default click.
+    menu_clicks: HashMap<u64, KeptClick>,
+    pub(super) menu_click_active: Option<u32>,
+    /// Each native window's slots before the first write, by menu generation.
+    native_menu_slots: HashMap<u64, Vec<Option<ItemStack>>>,
+    menu_data: MenuDataJournal,
     /// The scoreboard before this transaction first wrote it (`journal_scoreboard`), whole.
     board: Option<sunrise_client::scoreboard::Scoreboard>,
     /// Each entity's, player's, chunk's and the level's attachment map before this transaction
@@ -247,6 +293,7 @@ pub(super) struct Level {
     /// Merchant takes keep their session, mob, statistics and criterion progress together.
     pub(in crate::game) trades: super::lan_trade_decisions::Journal,
     pub(in crate::game) packets: Option<sunrise_client::lan::conn::transaction_packets::Scope>,
+    captured_packets: Vec<sunrise_client::lan::conn::transaction_packets::Packets>,
     action: Option<decision::ActiveAction>,
     /// The scratch stacks (`ItemPlace::Scratch`), live: kept by the outermost transaction only.
     scratch: HashMap<u64, scratch::Scratch>,
@@ -354,10 +401,18 @@ enum KeptEquipment {
     Stand(Vec<Option<ItemStack>>),
 }
 
+struct KeptClick {
+    conn: u32,
+    drag: Option<(u8, Vec<usize>)>,
+    craft: Option<sunrise_client::lan::menu::ModCraft>,
+    owned: Option<(u64, Box<sunrise_client::menu::Menu>)>,
+    machine: Option<(i32, Box<sunrise_client::menu::Menu>)>,
+    places: Option<super::native_menu_places::MenuSlotPlaces>,
+}
+
 #[derive(Clone)]
 struct KeptMenus {
     craft_grid: [Option<ItemStack>; 4],
-    native_menu: Vec<Option<ItemStack>>,
 }
 
 /// What a write tells the world, at the root commit.
@@ -378,14 +433,28 @@ pub(super) enum After {
     FluidEffects(Box<super::world_fluids::FluidEffects>),
     /// `BlockEntity.setChanged`.
     Changed(Pos),
+    /// Detached mod entity state (not necessarily items) was edited.
+    DirtyBlockEntity(Pos),
+    /// A detached menu listener removed its holder; spill any unreturned contents only on commit.
+    LostMenuContents(Pos, Box<sunrise_client::containers::ModBlockEntity>),
+    GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
+    MenuClick(Box<super::lan_menus::MenuClickReply>),
+    MenuPlacesNotice(u32, u128, i32),
+    FurnaceMenu(Box<super::lan_crafting::FurnaceMenuEffects>),
+    StoreCartItems(Pos),
+    BackedMenuClick(u32, u128, mod_api::MenuRef, i32),
     /// A provider's answer changed here (`level_invalidate_capabilities`): the capability
     /// generation moves on.
     Capabilities(Pos),
 
     /// `ServerLevel.destroyBlockProgress`: breaker id, position, stage. Sent once, at the root commit.
     BreakProgress(i32, [i32; 3], i32),
-    /// The block's final state, set with the combined update flags.
-    Block(Pos),
+    /// The block's final state, set with the combined update flags; the bool records whether this
+    /// write replaced the block with one that clears connection groups.
+    Block(Pos, bool),
+    /// An explicit `LevelRef::set_connection_group` write, replayed in order with block writes at
+    /// the root commit so cross-position cascades (e.g. popping a supported block) clear it.
+    ConnectionGroup(Dim, Pos, Option<u64>),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
     BlockGameEvent(
@@ -606,9 +675,7 @@ impl Game<'_> {
             && commit
             && let Some(packets) = scope.finish()
         {
-            level.after.push(After::Trade(Box::new(
-                super::lan_trade_decisions::Effect::Packets(packets),
-            )));
+            level.captured_packets.push(packets);
         }
         let mut merchant_corrections = std::mem::take(&mut level.trades.refused_clicks);
         if !commit {
@@ -653,8 +720,12 @@ impl Game<'_> {
                             kept.flags = merge_block_update_flags(kept.flags, block.flags);
                             kept.level_host = block.level_host;
                             kept.replay_removal |= block.replay_removal;
+                            kept.clear_connection_group |= block.clear_connection_group;
                         })
                         .or_insert(block);
+                }
+                for (pos, was) in level.connection_groups {
+                    outer.connection_groups.entry(pos).or_insert(was);
                 }
                 if outer.level_random.is_none() {
                     outer.level_random = level.level_random;
@@ -711,6 +782,14 @@ impl Game<'_> {
                 for (conn, kept) in level.menus {
                     outer.menus.entry(conn).or_insert(kept);
                 }
+                for (generation, kept) in level.menu_clicks {
+                    outer.menu_clicks.entry(generation).or_insert(kept);
+                }
+                for (generation, kept) in level.native_menu_slots {
+                    outer.native_menu_slots.entry(generation).or_insert(kept);
+                }
+                outer.menu_data.extend(level.menu_data);
+                outer.captured_packets.extend(level.captured_packets);
                 for (holder, kept) in level.attachments {
                     outer.attachments.entry(holder).or_insert(kept);
                 }
@@ -1097,7 +1176,16 @@ impl Game<'_> {
             return;
         };
         let conn = g.conn;
-        if level.menus.contains_key(&conn) {
+        let grid = (!level.menus.contains_key(&conn)).then(|| KeptMenus {
+            craft_grid: g.craft_grid.clone(),
+        });
+        let native = (g
+            .menu
+            .as_ref()
+            .is_some_and(|menu| menu.slots == sunrise_client::lan::menu::Slots::Native)
+            && !level.native_menu_slots.contains_key(&g.menu_generation))
+        .then(|| (g.menu_generation, g.native_menu.clone()));
+        if grid.is_none() && native.is_none() {
             return;
         }
         let uuid = player.uuid();
@@ -1108,17 +1196,47 @@ impl Game<'_> {
                 g.ender_items.clone()
             }
         });
-        let kept = KeptMenus {
-            craft_grid: g.craft_grid.clone(),
-            native_menu: g.native_menu.clone(),
-        };
         if let Some(level) = self.transactions.last_mut() {
-            level.menus.insert(conn, kept);
+            if let Some(grid) = grid {
+                level.menus.insert(conn, grid);
+            }
+            if let Some((generation, slots)) = native {
+                level.native_menu_slots.insert(generation, slots);
+            }
             if let Some(ender) = ender {
                 level.ender_items.insert(uuid, ender);
             }
         }
     }
+    pub(super) fn journal_menu_click(&mut self, conn: u32) {
+        let Some(level) = self.transactions.last_mut() else {
+            return;
+        };
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let Some(guest) = host.hub.guest(conn) else {
+            return;
+        };
+        let Some(menu) = guest.menu.as_ref() else {
+            return;
+        };
+        level
+            .menu_clicks
+            .entry(guest.menu_generation)
+            .or_insert_with(|| {
+                let owner = host.menus.get(&conn);
+                KeptClick {
+                    conn,
+                    drag: menu.drag.clone(),
+                    craft: menu.craft.clone(),
+                    owned: owner.and_then(|owner| owner.owned_menu.clone()),
+                    machine: owner.and_then(|owner| owner.crafting.machine.as_ref().cloned()),
+                    places: owner.and_then(|owner| owner.slot_places.clone()),
+                }
+            });
+    }
+
     /// Keeps entity `id`'s inventory as it is, if a transaction is open and hasn't yet.
     pub(super) fn journal_entity(&mut self, id: u32) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
@@ -1172,6 +1290,32 @@ impl Game<'_> {
             }
         }
     }
+    /// Set or clear a connection group at `pos`. Inside an open Host transaction, writes
+    /// storage quietly, records the prior group so abort restores it silently, and defers
+    /// remesh + client sync to root commit. Returns `false` if unloaded, out of height, or
+    /// unchanged.
+    pub(super) fn journal_set_connection_group(
+        &mut self,
+        pos: [i32; 3],
+        group: Option<u64>,
+    ) -> bool {
+        let dim = self.dim;
+        let Some(level) = entities::open_in(&mut self.transactions, dim) else {
+            return self
+                .world
+                .set_connection_group(pos[0], pos[1], pos[2], group, true);
+        };
+        let key = (pos[0], pos[1], pos[2]);
+        let old = self.world.connection_group(pos[0], pos[1], pos[2]);
+        let changed = self
+            .world
+            .set_connection_group_stored(pos[0], pos[1], pos[2], group);
+        if changed {
+            level.connection_groups.entry((dim, key)).or_insert(old);
+            level.after.push(After::ConnectionGroup(dim, key, group));
+        }
+        changed
+    }
     /// Sets the block at `pos` to `state`. In a transaction, stored only, keeping the old
     /// state, and set with its updates at the root commit; otherwise at once
     /// (`Level.setBlock`).
@@ -1186,27 +1330,53 @@ impl Game<'_> {
         flags: i32,
         level_host: bool,
     ) -> bool {
-        let Some(level) = self.transactions.last_mut() else {
+        if self.transactions.is_empty() {
             return self.level_set_with_flags(pos, state, flags).is_ok();
-        };
+        }
         let key = (pos[0], pos[1], pos[2]);
         let old = self.world.block(pos[0], pos[1], pos[2]);
-        level
-            .blocks
-            .entry(key)
-            .and_modify(|kept| {
-                kept.flags = merge_block_update_flags(kept.flags, flags);
-                kept.level_host = level_host;
-            })
-            .or_insert(KeptBlock {
-                state: old,
-                flags,
-                level_host,
-                replay_removal: false,
-            });
-        level.after.push(After::Block(key));
+        let clears_group = !self.res.behaviours().keeps_block_entity(old, state);
+        if let Some(level) = self.transactions.last_mut() {
+            level
+                .blocks
+                .entry(key)
+                .and_modify(|kept| {
+                    kept.flags = merge_block_update_flags(kept.flags, flags);
+                    kept.level_host = level_host;
+                })
+                .or_insert(KeptBlock {
+                    state: old,
+                    flags,
+                    level_host,
+                    replay_removal: false,
+                    clear_connection_group: false,
+                });
+            level.after.push(After::Block(key, clears_group));
+        }
         if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
             return false;
+        }
+        // Mirror live `chunk_set_block_state`: replacing the block with one that does not keep
+        // connection groups clears any tentative group at `pos`, while compatible state changes
+        // preserve it.
+        if clears_group {
+            let old_group = self.world.connection_group(pos[0], pos[1], pos[2]);
+            if let Some(level) = self.transactions.last_mut() {
+                if let Some(kept) = level.blocks.get_mut(&key) {
+                    kept.clear_connection_group = true;
+                }
+                if old_group.is_some() {
+                    level
+                        .connection_groups
+                        .entry((self.dim, key))
+                        .or_insert(old_group);
+                }
+            }
+            if old_group.is_some() {
+                let _ = self
+                    .world
+                    .set_connection_group_stored(pos[0], pos[1], pos[2], None);
+            }
         }
         self.transactions.block_writes = self.transactions.block_writes.wrapping_add(1);
         true
@@ -1298,6 +1468,20 @@ impl Game<'_> {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => self.container_changed(pos),
+            After::DirtyBlockEntity(pos) => {
+                self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
+            }
+            After::LostMenuContents(pos, taken) => self.drop_unreturned_mod_contents(pos, *taken),
+            After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
+            After::MenuClick(reply) => self.publish_menu_click(*reply),
+            After::MenuPlacesNotice(conn, uuid, window) => {
+                self.queue_menu_places_notice(conn, uuid, window);
+            }
+            After::FurnaceMenu(effects) => self.publish_furnace_menu_effects(*effects),
+            After::StoreCartItems(pos) => self.store_cart_items(pos),
+            After::BackedMenuClick(conn, uuid, menu, window) => {
+                self.publish_backed_menu_click(conn, uuid, menu, window);
+            }
             After::Capabilities(pos) => self.world.capability_generations.invalidate(pos),
 
             After::BreakProgress(breaker, pos, progress) => {
@@ -1329,8 +1513,8 @@ impl Game<'_> {
                     pitch,
                 } => self.audio.play(sound, Some(at), volume, pitch),
             },
-            // Only reached through a root commit, which sets the block itself.
-            After::Block(_) => {}
+            // Only reached through a root commit, which replays blocks and connection groups in order.
+            After::Block(_, _) | After::ConnectionGroup(_, _, _) => {}
             After::Drop(pos, stack) => {
                 self.spawn_item(stack, pos.map(|p| f64::from(p) + 0.5), [0.0; 3], 10);
             }
@@ -1428,6 +1612,40 @@ impl Game<'_> {
             }
         }
     }
+    fn connection_group_world_mut(&mut self, dim: Dim) -> Option<&mut World> {
+        if dim == self.dim {
+            Some(&mut self.world)
+        } else {
+            self.levels.parked_mut(dim).map(|level| &mut level.world)
+        }
+    }
+
+    pub(in crate::game) fn pending_menu_data(&self, key: (u32, u64, u16)) -> Option<i32> {
+        self.transactions
+            .iter()
+            .rev()
+            .find_map(|level| level.menu_data.get(&key).copied())
+    }
+
+    pub(in crate::game) fn journal_menu_data(&mut self, key: (u32, u64, u16), value: i32) -> bool {
+        let Some(level) = self.transactions.last_mut() else {
+            return false;
+        };
+        level.menu_data.insert(key, value);
+        true
+    }
+
+    fn commit_menu_data(&mut self, journal: MenuDataJournal) {
+        let Some(host) = &mut self.lan else { return };
+        for ((conn, generation, index), value) in journal {
+            host.hub.update_guest(conn, |guest| {
+                if guest.menu_generation == generation {
+                    guest.set_menu_data(index, value);
+                }
+            });
+        }
+    }
+
     fn root_commit(&mut self, level: Level) {
         // Storage is final. Publish save marks before any callback can unwind or start a save.
         for (dim, chunk) in level.save_chunks {
@@ -1440,37 +1658,93 @@ impl Game<'_> {
                 world.modified.insert(chunk);
             }
         }
-        // A deferred listener may read a new map or create one of its own.
+        // Captured packets and deferred listeners can refer to a new map.
         for (id, data) in level.new_maps {
             self.publish_map(id, data);
         }
+        // Publish captured opens and resends before the final menu deltas, so a
+        // snapshot taken before commit cannot overwrite a newer value.
+        for packets in level.captured_packets {
+            packets.publish();
+        }
+        self.commit_menu_data(level.menu_data);
+        // A menu callback removed its detached block entity. Its accepted remainder is
+        // spilled separately; replaying removal with the rollback copy would duplicate items.
+        let detached: std::collections::HashSet<_> = level
+            .after
+            .iter()
+            .filter_map(|after| match after {
+                After::LostMenuContents(pos, _) => Some(*pos),
+                _ => None,
+            })
+            .collect();
+        // Replay from the old group so committed callbacks see writes in order. A fresh
+        // publication entry survives only if the final group differs from that baseline.
+        let mut clean_groups = Vec::new();
+        for ((dim, (x, y, z)), was) in level.connection_groups {
+            if let Some(world) = self.connection_group_world_mut(dim) {
+                world.set_connection_group_stored(x, y, z, was);
+                if world
+                    .connection_group_log
+                    .as_ref()
+                    .is_some_and(|log| !log.contains(&(x, y, z)))
+                {
+                    clean_groups.push((dim, (x, y, z), was));
+                }
+            }
+        }
         let mut told = std::collections::HashSet::new();
+        let mut explicit_group_since_block = std::collections::HashSet::new();
         let mut biome_columns = std::collections::HashSet::new();
         for after in level.after {
             match after {
                 // Each storage tells the world once, after every write.
-                After::Changed(pos) if !told.insert(Ok(pos)) => {}
-                After::Block(pos) => {
-                    if !told.insert(Err(pos)) {
-                        continue;
+                After::Changed(pos) if detached.contains(&pos) || !told.insert(Ok(pos)) => {}
+                After::ConnectionGroup(dim, pos, group) => {
+                    if let Some(world) = self.connection_group_world_mut(dim) {
+                        world.set_connection_group(pos.0, pos.1, pos.2, group, true);
                     }
-                    let now = self.world.block(pos.0, pos.1, pos.2);
+                    if dim == self.dim {
+                        explicit_group_since_block.insert(pos);
+                    }
+                }
+                After::Block(pos, clears_group) => {
                     let KeptBlock {
                         state: was,
                         flags,
                         level_host,
                         replay_removal,
+                        clear_connection_group,
                     } = level.blocks[&pos];
+                    if !told.insert(Err(pos)) {
+                        // A later replacement ends the lifetime of a group published
+                        // between writes, even though the block's final state is already stored.
+                        if clears_group && explicit_group_since_block.remove(&pos) {
+                            self.world.invalidate_replaced_group(pos);
+                        }
+                        continue;
+                    }
+                    explicit_group_since_block.remove(&pos);
+                    let now = self.world.block(pos.0, pos.1, pos.2);
                     // Restore an entity that the real write must remove with its side effects,
                     // or that survives because a later write returned it to the old block kind.
                     let b = self.res.behaviours();
+                    let net_keeps_group = b.keeps_block_entity(was, now);
                     if level.removed_block_entities.contains(&pos)
+                        && !detached.contains(&pos)
                         && (replay_removal || b.block(now) == b.block(was))
                         && let Some(kept) = level.block_entities.get(&pos)
                     {
                         self.restore_removed_block_entity(pos, kept);
                     }
                     if now != was {
+                        // If an intermediate replacement cleared the group even though `was -> now`
+                        // preserves groups (e.g. `oak_log[y] -> stone -> oak_log[x]`), clear it
+                        // before replaying the block write so any hook on the replay can still set
+                        // a new group.
+                        if clear_connection_group && net_keeps_group {
+                            self.world.invalidate_replaced_group(pos);
+                        }
                         // The stored state back, so the one real write sees the change.
                         self.world.set_stored(pos.0, pos.1, pos.2, was);
                         let pos = [pos.0, pos.1, pos.2];
@@ -1482,10 +1756,23 @@ impl Game<'_> {
                         } else {
                             let _ = self.level_set_with_flags(pos, now, flags);
                         }
+                    } else if clear_connection_group {
+                        // A round trip that preserves the block state can still end the
+                        // group's lifetime. Its group-only publication sends the current
+                        // block to negotiated holders without notifying vanilla peers.
+                        self.world.invalidate_replaced_group(pos);
                     }
                 }
                 After::Biome(key) if !biome_columns.insert(key) => {}
                 after => self.run_after(after),
+            }
+        }
+        for (dim, (x, y, z), was) in clean_groups {
+            if let Some(world) = self.connection_group_world_mut(dim)
+                && world.connection_group(x, y, z) == was
+                && let Some(log) = world.connection_group_log.as_mut()
+            {
+                log.remove(&(x, y, z));
             }
         }
         // A crafting grid the transaction changed has its result made again, once for each
@@ -1654,6 +1941,11 @@ impl Game<'_> {
         for (pos, block) in level.blocks {
             self.world.set_stored(pos.0, pos.1, pos.2, block.state);
         }
+        for ((dim, (x, y, z)), group) in level.connection_groups {
+            if let Some(world) = self.connection_group_world_mut(dim) {
+                world.set_connection_group_stored(x, y, z, group);
+            }
+        }
         if let Some(random) = level.level_random {
             *self.world.random = random;
         }
@@ -1709,10 +2001,48 @@ impl Game<'_> {
                     menus.station.restore(Some(kept));
                 }
             }
+            for (generation, kept) in level.menu_clicks {
+                if let Some(i) = host.hub.guests.connection_index(kept.conn)
+                    && host.hub.guests[i].menu_generation == generation
+                    && host.hub.guests[i].menu.is_some()
+                {
+                    host.hub.guests.update(i, |g| {
+                        let menu = g.menu.as_mut().unwrap();
+                        menu.drag = kept.drag;
+                        menu.craft = kept.craft;
+                    });
+                    let owner = host.menus.entry(kept.conn).or_default();
+                    owner.owned_menu = kept.owned;
+                    owner.crafting.machine.restore(kept.machine);
+                    owner.slot_places = kept.places;
+                }
+            }
+            // A removed window's snapshot is now held by its pending close notice, not
+            // by the player. Never restore that window's stacks into a replacement.
+            use sunrise_client::lan::menu::NativeMenuEvent;
+            if !level.native_menu_slots.is_empty() {
+                for event in &mut host.hub.native_menu_events {
+                    if let NativeMenuEvent::Closed {
+                        generation,
+                        owned_slots,
+                        ..
+                    } = event
+                        && !owned_slots.is_empty()
+                        && let Some(before) = level.native_menu_slots.remove(generation)
+                    {
+                        *owned_slots = before;
+                    }
+                }
+            }
             host.hub.guests.update_all(|g| {
                 if let Some(kept) = level.menus.get(&g.conn).filter(|_| g.placed) {
                     g.craft_grid.clone_from(&kept.craft_grid);
-                    g.native_menu.clone_from(&kept.native_menu);
+                }
+                if g.placed
+                    && g.menu.is_some()
+                    && let Some(before) = level.native_menu_slots.remove(&g.menu_generation)
+                {
+                    g.native_menu = before;
                 }
             });
         }

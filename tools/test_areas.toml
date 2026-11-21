@@ -116,7 +116,7 @@ harnesses = [
   "trading", "trade_components", "merchant_*", "warden_owned_memories", "wolf_anger_writes", "zombie_cure_sound",
   "noai_*", "nautilus_memory", "pet_owner_teleport", "enderman_placement", "loaded_pig_tags", "ageable_integer_load",
   "bed_poi", "peaceful_summon", "return_to_sender", "hostile_sound_categories", "ominous_warning_sound",
-  "command_reinforcements", "last_hurt_by_mob", "spell_ticks", "gateway_cooldown",
+  "command_reinforcements", "last_hurt_by_mob", "spell_ticks", "gateway_cooldown", "damage_source_entities",
 ]
 lan = [
   "mobs", "barter", "piglin_offspring", "sleep-villager", "trials", "villagers", "hero-trading", "cure-discount",
@@ -201,7 +201,7 @@ cargo = [
 harnesses = [
   "save_roundtrip", "world_reopen", "world", "datafix", "*_save_reload", "*_save", "*_load", "*_saved_*",
   "saved_empty_tags", "player_save_fields", "display_save", "trident_save", "stand_fall_save", "dedicated_crash_save",
-  "save_kill", "save_corruption", "structure_start_nbt", "entity_nbt_boolean", "nbt_path_reader", "snbt_unicode", "java_*",
+  "save_kill", "save_corruption", "structure_start_nbt", "entity_nbt_boolean", "nbt_path_reader", "snbt_unicode", "java_*", "string_hash",
 ]
 lan = ["sleep-reload", "leash_reload", "reopen_player"]
 
@@ -222,7 +222,7 @@ cargo = [
 ]
 harnesses = [
   "*motion*", "*move*", "*collision*", "collision", "climbing", "swimming", "auto_jump", "boat_*", "*vehicle*",
-  "mount_*", "passenger_relation", "player_travel", "world_movement", "world_ray", "registry_fall_ray",
+  "mount_*", "passenger_relation", "mob_removal_order", "player_travel", "world_movement", "world_ray", "registry_fall_ray",
   "edge_backoff", "world_edge_backoff", "restitution", "stepped_interpolation", "view_direction", "projectile_*",
   "arrow*", "client_arrow", "bounced_projectile_tick_order", "frame_projectile", "pearl_*", "trident",
   "lunge_motion", "fall_damage", "living_fall", "living_landing", "block_landing", "free_space", "entity_fluid*",
@@ -286,6 +286,7 @@ cargo = [
   { package = "sunrise-world", target = "lib", filter = "nbt_path::" },
   { package = "sunrise-client", target = "lib", filter = "game::commands::" },
   { package = "sunrise-client", target = "lib", filter = "game::server_reload::" },
+  { package = "sunrise-client", target = "lib", filter = "game::mob_discard_tests::" },
 ]
 harnesses = [
   "command_*", "function_*", "tick_function_time", "macro_source_type", "scoreboard", "entity_scores", "selector_*",
@@ -316,7 +317,7 @@ cargo = [
   { package = "sunrise-client", target = "lib", filter = "game::extras::mouse_tweaks::" },
 ]
 harnesses = [
-  "menu_click", "container_*", "storage_menu", "vehicle_container", "carrier_inventory", "simple_container",
+  "menu_click", "anvil_name", "container_*", "storage_menu", "vehicle_container", "carrier_inventory", "simple_container",
   "recipe*", "ghost_recipe", "place_recipe", "machine_recipe_placement", "crafting_priority", "merchant_crafted",
   "enchanting", "screen_layout", "hotbar",
 ]

@@ -485,6 +485,20 @@ impl Game<'_> {
         }
         Ok(self.native_set_block(level.dimension_id(), pos, state, flags.bits()))
     }
+    /// Set or clear the mod-published connection group at `pos`.
+    /// Returns `Ok(true)` if changed, `Ok(false)` if unchanged, unloaded, out of height, or
+    /// fenced, and `Err(LevelWriteError::Stale | Unavailable)` for stale or non-writable levels.
+    pub(super) fn level_set_connection_group(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        group: Option<u64>,
+    ) -> Result<bool, mod_api::LevelWriteError> {
+        if !self.native_level_write_position(level, pos)? {
+            return Ok(false);
+        }
+        Ok(self.journal_set_connection_group(pos, group))
+    }
     /// `Block.updateFromNeighbourShapes` for `state` at `pos`, nothing written: the state
     /// fitted to the loaded blocks around it. A position that is not loaded or outside the
     /// world gives `state` back.
@@ -1236,10 +1250,10 @@ pub(super) mod tests {
         for z in center.z - 2..=center.z + 2 {
             for x in center.x - 2..=center.x + 2 {
                 if !game.world.chunks.contains_key(&(x, z)) {
-                    game.world.chunks.insert(
-                        (x, z),
-                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, z)),
-                    );
+                    let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                    // A ticking column is lit (`ChunkMap.prepareTickingChunk`); `forceload` waits for it.
+                    chunk.lit = true;
+                    game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
                     game.block_ticks
                         .add_empty_chunk(sunrise_core::position::ChunkPos::new(x, z))
                         .unwrap();

@@ -21,11 +21,14 @@ and drops the unsent tail.
 
 Disconnect, a protocol incarnation change, or an aborted dimension crossing discards the hold;
 its id then returns `Unknown`. Starting without a joined physical play connection returns `NoWorld`.
-Network-thread keep-alives, chunk batch acknowledgements, configuration packets, cookies and
-resource-pack answers bypass holds. The network thread answers each chunk batch as it arrives, as
-vanilla's `ClientPacketListener` does, so `client_packet` hears neither the batch's start nor its
-finish (it does hear the chunks between them), and `client_packet_send` neither sees nor can cancel
-the acknowledgement.
+Keep-alives, chunk batch acknowledgements, configuration packets, cookies and resource-pack
+answers bypass holds. Standalone cookies and transfers run on the main thread. While the receive
+queue has room, the receiver answers standalone keep-alives and chunk batches without waiting for
+queued bundle handlers. Inside a bundle, each handler runs inline on the main thread in member
+order, including registered NETWORK payload handlers.
+Those handlers still cannot borrow a host directly; use queued work for that. In either case,
+`client_packet` hears neither the batch's start nor its finish (it does hear the chunks between
+them), and `client_packet_send` neither sees nor can cancel the acknowledgement.
 No packet inspection or editing beyond the existing `ClientPacket` view is provided.
 
 ## Configuration tasks before play
@@ -138,8 +141,7 @@ fn register(r: &mut dyn Registrar) {
   handler does not run. A handler that panics is disabled: its transaction rolls back, nothing it
   staged is sent, the session closes, and it is not called again.
 - **Raw channel failures stay local.** A raw channel (`play_raw`) carries bytes from any client,
-  so a declaring mod's handler that returns `Failed`, or stays busy past its deadline, does not
-  close the session: the game logs the mod and the channel, rolls back that delivery's staged
+  so a declaring mod's handler that returns `Failed` does not close the session: the game logs the mod and the channel, rolls back that delivery's staged
   work (a staged disconnect included), and still delivers the other declaring mods' copies. A
   handler that succeeds and asks to disconnect still disconnects, and so does a refusal by the
   main thread's work queue. A typed payload's failure closes the session as above.

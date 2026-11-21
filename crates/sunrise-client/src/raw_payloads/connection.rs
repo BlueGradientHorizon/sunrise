@@ -9,7 +9,6 @@ use std::sync::{
     Arc, Condvar, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use std::time::{Duration, Instant};
 use sunrise_mod_runtime::byte_channel;
 use sunrise_protocol::payload_negotiation::{Entry, Phase};
 
@@ -100,16 +99,6 @@ struct Current {
 pub struct IngressLease {
     _permit: byte_channel::Permit<()>,
     pub(super) owned_bytes: usize,
-    received: Instant,
-}
-pub(super) const PAYLOAD_DEADLINE: Duration =
-    Duration::from_millis(2 * sunrise_mod_runtime::MAX_GUEST_CALL_BUDGET_MILLIS);
-impl IngressLease {
-    /// A retained payload may wait longer than the VM's largest (30 s) load call,
-    /// but never extend its deadline by moving between receiving queues.
-    pub(super) fn expired(&self, now: Instant) -> bool {
-        now.saturating_duration_since(self.received) >= PAYLOAD_DEADLINE
-    }
 }
 // Four slots cover Vec's initial growth and later geometric staging. Provider
 // queue storage is separately charged by the typed ingress channel. This charge
@@ -205,7 +194,6 @@ impl Connection {
             .map(|permit| IngressLease {
                 _permit: permit,
                 owned_bytes,
-                received: Instant::now(),
             })
             .map_err(|e| match e {
                 byte_channel::ReserveError::Full => PayloadSendError::Backpressure,
@@ -252,7 +240,7 @@ impl Connection {
             queue.clear();
         }
     }
-    pub fn accept(&self, entries: &[Entry]) -> Result<(), String> {
+    pub(super) fn accept(&self, entries: &[Entry]) -> Result<Arc<Epoch>, String> {
         let mut peer = self.local.freeze(entries, self.side)?;
         let bytes = peer.owned_snapshot_bytes();
         let physical = self
@@ -271,29 +259,33 @@ impl Connection {
         if current.closed {
             return Err("payload connection disconnected".into());
         }
-        if let Some(old) = current
-            .epoch
-            .replace(Epoch::new(peer, Phase::Configuration))
-        {
+        let epoch = Epoch::new(peer, Phase::Configuration);
+        if let Some(old) = current.epoch.replace(epoch.clone()) {
             old.invalidate();
         }
-        Ok(())
+        Ok(epoch)
     }
     /// No configuration acknowledgement overtakes a queued main-thread handler or its replies.
     /// Never hold the connection-state or writer lock while waiting for gameplay.
     pub fn finish_configuration(&self) -> Result<(), String> {
-        self.finish_configuration_with(|| Ok(()))
+        self.commit_play(self.wait_for_configuration()?, || Ok(()))
     }
-    /// Publish the phase-transition acknowledgement after invalidating old replies,
-    /// before exposing the new Play epoch. The closure only queues engine bytes.
-    pub fn finish_configuration_with(
-        &self,
-        publish: impl FnOnce() -> Result<(), String>,
-    ) -> Result<(), String> {
+
+    pub(super) fn wait_for_configuration(&self) -> Result<Arc<Epoch>, String> {
         let old = self.epoch().ok_or("payload negotiation is not complete")?;
         if !old.wait_main() {
             return Err("payload configuration epoch ended".into());
         }
+        Ok(old)
+    }
+
+    /// Publish the acknowledgement after invalidating old replies, before
+    /// exposing the new Play epoch. The closure only queues engine bytes.
+    pub(super) fn commit_play(
+        &self,
+        old: Arc<Epoch>,
+        publish: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
         let mut current = self.current.lock().unwrap();
         if current.closed {
             return Err("payload connection disconnected".into());

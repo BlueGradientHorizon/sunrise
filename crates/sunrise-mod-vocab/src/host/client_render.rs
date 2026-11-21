@@ -37,9 +37,12 @@ pub trait ClientRenderClientHost {
     fn item_uses_block_light(&self, stack: &ItemStack, context: ItemDisplayContext) -> bool;
     /// Side: client.
     /// Asks `block_render_visibility` again for every state and, when the answers differ
-    /// from those in use, remeshes every loaded section with them. Call it when your answer changes (a toggle key, a scan
-    /// finishing) and once when the player joins, not every frame: a rebuild takes the workers a
-    /// few seconds. With no part answering, nothing is asked and the mesher keeps its no-mod path.
+    /// from those in use, remeshes every loaded section with them. While a mod listens to
+    /// `section_visibility`, rebuilds meshes in the player's current level and asks about them
+    /// again, except for a first all-air compile with no section geometry contributors. Other
+    /// viewed levels do not call that hook; no NeoForge counterpart has been verified. Call it
+    /// when a decision changes (a toggle key, a scan finishing), not every frame. With no part
+    /// answering or listener, the mesher keeps its no-mod path.
     #[access(WorldOnly)]
     fn refresh_render_visibility(&mut self);
     /// Side: client.
@@ -65,7 +68,8 @@ pub trait ClientRenderClientHost {
     ///
     /// Refused by name, with nothing changed and nothing allocated, as [`DynamicTextureError`]
     /// lists: `Unavailable` when the atlas has no pool, `NotOwned` for an id outside the mod's
-    /// namespace, `BadSize` for a side of 0 or pixels that are not `width * height * 4` bytes,
+    /// owned namespaces (its manifest namespaces or a content package it serves via `served_by`),
+    /// `BadSize` for a side of 0 or pixels that are not `width * height * 4` bytes,
     /// `TooLarge` for a side past [`DYNAMIC_TEXTURE_MAX_SIDE`], `NameTaken` for an id that
     /// already names an image or a GUI sprite, `OverBudget` past the mod's
     /// [`DYNAMIC_TEXTURE_MOD_IMAGES`] images or [`DYNAMIC_TEXTURE_MOD_BYTES`] of pixels, and

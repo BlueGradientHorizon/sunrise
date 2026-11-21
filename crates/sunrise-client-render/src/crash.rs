@@ -546,7 +546,7 @@ fn deliver(home: &Path, report: Report) -> Option<PathBuf> {
         return None;
     }
     // The panic is on stderr already: the stack goes to the log only.
-    crate::logging::write_only(
+    crate::logging::write_current(
         log::Level::Error,
         &format!(
             "Sunrise crashed: {}\n{}",
@@ -558,6 +558,7 @@ fn deliver(home: &Path, report: Report) -> Option<PathBuf> {
                 .collect::<Vec<_>>()
                 .join("\n")
         ),
+        false,
     );
     crate::logging::flush();
     for hook in REPORT_HOOKS

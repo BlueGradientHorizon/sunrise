@@ -183,6 +183,7 @@ impl Game<'_> {
             let mut pause = None;
             let mut air_answer = None;
             let mut retry_rider = None;
+            let mut removing_vehicle = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -216,6 +217,7 @@ impl Game<'_> {
                     Some(&self.pack.block_registries),
                     &self.damage_hooks,
                 )
+                .with_player_resolver(crate::game::entity::player_resolver!(self))
                 .with_effects(crate::game::entity::hit_effects_of!(
                     self,
                     None,
@@ -250,14 +252,6 @@ impl Game<'_> {
                     // Its checks ran before its Pre was told: they don't run again.
                     let resuming = resume.is_some();
                     let checked = resuming || told_at == Some(slot);
-                    if blocked.contains(&m.id) {
-                        cursor += 1;
-                        resume = None;
-                        trample = None;
-                        resume_selection = None;
-                        resume_sampled = None;
-                        continue;
-                    }
                     if m.removed && !resuming {
                         keep[slot] = false;
                         gone_rows = true;
@@ -266,6 +260,14 @@ impl Game<'_> {
                         // that is still in the level keeps resolving (#795).
                         snapshot[slot].removed = true;
                         cursor += 1;
+                        continue;
+                    }
+                    if blocked.contains(&m.id) {
+                        cursor += 1;
+                        resume = None;
+                        trample = None;
+                        resume_selection = None;
+                        resume_sampled = None;
                         continue;
                     }
                     let (bx, bz) = (m.position.x.floor() as i32, m.position.z.floor() as i32);
@@ -295,6 +297,14 @@ impl Game<'_> {
                         keep[slot] = !m.hostile() || m.persistent;
                         gone_rows |= !keep[slot];
                         cursor += 1;
+                        let id = m.id;
+                        if !keep[slot]
+                            && (m.extra.mount.is_some()
+                                || self.has_seated_passengers_with_lent_mobs(id, &mobs))
+                        {
+                            removing_vehicle = Some(id);
+                            break;
+                        }
                         continue;
                     }
                     // ServerLevel.tick walks the entity tick list, which holds only the
@@ -386,6 +396,14 @@ impl Game<'_> {
                         keep[slot] = kept;
                         gone_rows |= !kept;
                         cursor += 1;
+                        let id = m.id;
+                        if !kept
+                            && (m.extra.mount.is_some()
+                                || self.has_seated_passengers_with_lent_mobs(id, &mobs))
+                        {
+                            removing_vehicle = Some(id);
+                            break;
+                        }
                         continue;
                     }
                     let controlling_player_movement = sunrise_client::mobs::equine::controlled(m)
@@ -445,6 +463,7 @@ impl Game<'_> {
                             &mut m.extra.equipment,
                         );
                     }
+                    let was_removed = m.removed;
                     let from = if resuming { resume_from } else { events.len() };
                     // The guest's view is lent to the mob for its tick, not copied:
                     // the tick only reads it (`&MobWorld`), and it goes back to the
@@ -747,6 +766,7 @@ impl Game<'_> {
                     snapshot[slot].alive &= kept;
                     snapshot[slot].removed |= !kept;
                     grid.update(slot, snapshot[slot].bounds);
+                    let id = m.id;
                     sunrise_client::mobs::apply_brain_events(
                         &mut mobs,
                         &mut level,
@@ -754,6 +774,14 @@ impl Game<'_> {
                         from,
                     );
                     cursor += 1;
+                    if !kept
+                        && !was_removed
+                        && (mobs[i].extra.mount.is_some()
+                            || self.has_seated_passengers_with_lent_mobs(id, &mobs))
+                    {
+                        removing_vehicle = Some(id);
+                        break;
+                    }
                     if section_yield || tell_post.is_some() {
                         break;
                     }
@@ -762,6 +790,7 @@ impl Game<'_> {
             self.creatures.lan_sounds.append(&mut hit_sounds);
             if pause.is_none()
                 && retry_rider.is_none()
+                && removing_vehicle.is_none()
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
@@ -776,7 +805,7 @@ impl Game<'_> {
             // can read or replace another actor's velocity. A section-only
             // or a told-alone yield must not change the normal end-of-pass
             // push ordering.
-            if pause.is_some() || retry_rider.is_some() {
+            if pause.is_some() || retry_rider.is_some() || removing_vehicle.is_some() {
                 for m in &mut mobs {
                     sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
                 }
@@ -786,15 +815,21 @@ impl Game<'_> {
             // any) and is taken again as it is, so the loop's views of it (snapshot, grid,
             // index, places) stay valid unless the call wrote a mob or added one. The list's
             // write stamp says whether it did: any mutable access moves it.
-            let told_only = pause.is_none() && retry_rider.is_none() && !section_yield;
+            let told_only = pause.is_none()
+                && retry_rider.is_none()
+                && removing_vehicle.is_none()
+                && !section_yield;
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 mobs.retain(|m| {
-                    index
-                        .get(&m.id)
-                        .and_then(|&slot| keep.get(slot as usize))
-                        .copied()
-                        .unwrap_or(true)
+                    // Give the departing vehicle back for its pre-removal effects
+                    // and for marking it removed before the dismount hooks.
+                    removing_vehicle == Some(m.id)
+                        || index
+                            .get(&m.id)
+                            .and_then(|&slot| keep.get(slot as usize))
+                            .copied()
+                            .unwrap_or(true)
                 });
                 gone_rows = false;
             }
@@ -842,6 +877,26 @@ impl Game<'_> {
                         }
                     }
                 }
+                if let Some(id) = removing_vehicle {
+                    // LivingEntity.tickDeath broadcasts event 60 before remove;
+                    // cube splitting and the killed effects also precede setRemoved.
+                    let animation = gone.pop_if(|death| death.0 == id);
+                    let animate = |game: &mut Self| {
+                        if let Some((_, at, width, height, split)) = animation {
+                            game.finish_mob_death_animation(id, at, width, height, split);
+                        }
+                    };
+                    let killed_effects = corpses.pop_if(|mob| mob.id == id).is_some();
+                    if self.mob_object(id).is_some_and(|mob| mob.removed) {
+                        animate(self);
+                        self.finish_mob_removal(id);
+                    } else {
+                        self.remove_mob_after(id, killed_effects, animate);
+                    }
+                    if let Some(index) = self.mobs.iter().position(|mob| mob.id == id) {
+                        self.mobs.remove(index);
+                    }
+                }
                 if let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);
                 }
@@ -866,7 +921,7 @@ impl Game<'_> {
             if tell_pre.is_some() {
                 told_at = Some(cursor);
             }
-            if retry_rider.is_some() {
+            if retry_rider.is_some() || removing_vehicle.is_some() {
                 blocked = std::borrow::Cow::Owned(self.mobs_below_off_level());
             }
             mobs = self.mobs.lift();
@@ -941,27 +996,6 @@ impl Game<'_> {
         }
         laps.lap("creature_loop");
         if dispatch_panic.is_none() {
-            if !self.persist.off_level.is_empty() {
-                let mounted: std::collections::HashSet<_> = mobs
-                    .iter()
-                    .chain(self.mob_objects())
-                    .filter_map(|passenger| passenger.extra.mount)
-                    .collect();
-                for mob in &mobs {
-                    let kept = index
-                        .get(&mob.id)
-                        .and_then(|&slot| keep.get(slot as usize))
-                        .copied()
-                        .unwrap_or(true);
-                    if !kept && mounted.contains(&mob.id) {
-                        let mut removed = mob.clone();
-                        removed.removed = true;
-                        self.persist
-                            .off_level
-                            .insert(mob.id, crate::game::persist::OffLevel::Mob(removed));
-                    }
-                }
-            }
             if positions.is_none() {
                 let mut flags = keep.into_iter();
                 mobs.retain(|_| flags.next().unwrap_or(true));

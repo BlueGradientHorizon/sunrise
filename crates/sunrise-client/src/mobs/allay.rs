@@ -506,10 +506,9 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<bool, super::living::TravelTrample> {
+) -> Result<(), super::living::TravelTrample> {
     let speed = m.ai.speed;
-    m.travel_flying_speeds(w, level, input, events, 0.02, 0.02, speed, pause)?;
-    Ok(true)
+    m.travel_flying_speeds(w, level, input, events, 0.02, 0.02, speed, pause)
 }
 /// `Allay.aiStep` / `tick`: pause the Brain's memory clocks, not passive work.
 pub fn ai_step(m: &mut Mob, w: &MobWorld) {

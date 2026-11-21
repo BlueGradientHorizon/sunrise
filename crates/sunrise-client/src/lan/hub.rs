@@ -40,7 +40,7 @@ use {
 
 /// GameEvent types (ClientboundGameEventPacket).
 pub mod advancements;
-mod block_changes;
+pub(in crate::lan) mod block_changes;
 mod carried_check;
 pub mod chat;
 mod fake_kicks;
@@ -57,7 +57,7 @@ mod tracking_pass;
 use advancements::AdvancementOwners;
 use chat::yellow_names;
 pub use pending_move::{Accepted, Hearing, PendingMove};
-use raw_inbox::{DeferredPayload, PacketDrain, yield_raw};
+use raw_inbox::{PacketDrain, yield_raw};
 pub mod game_event {
     pub const NO_RESPAWN_BLOCK_AVAILABLE: u8 = 0;
     pub const START_RAINING: u8 = 1;
@@ -334,7 +334,6 @@ fn take_tracking(
 
 pub struct Hub {
     packet_drain: Option<PacketDrain>,
-    deferred_payloads: std::collections::HashMap<Option<u32>, DeferredPayload>,
     /// Main-thread world identity used to bind typed network-context player handles.
     pub payload_player_epoch: Option<mod_api::WorldEpoch>,
     /// Clicks on and closings of native mods' menus, for the game.
@@ -818,7 +817,6 @@ impl Hub {
             native_menu_events: Vec::new(),
             chunk_watches: ChunkWatchLog::default(),
             packet_drain: None,
-            deferred_payloads: Default::default(),
             pending_kicks: Vec::new(),
             moves_listened: false,
             transfers: None,
@@ -873,7 +871,8 @@ impl Hub {
         id
     }
     pub fn stack(&mut self, s: &Option<ItemStack>) -> Option<sunrise_protocol::item::Stack> {
-        let item = s.as_ref()?.item.clone();
+        let source = s.as_ref()?;
+        let item = source.item.clone();
         let id = self.item_id(&item);
         let sync = self.sync.clone();
         // The stacks inside it (a bundle's contents, a crossbow's projectiles)
@@ -887,7 +886,14 @@ impl Hub {
                 .and_then(|i| i.id(name))
                 .unwrap_or(0)
         };
-        stack_to_network(item_id, |registry, name| sync.id(registry, name), s)
+        let mut wire = stack_to_network(item_id, |registry, name| sync.id(registry, name), s)?;
+        super::guest::canonicalize_stack_patch(
+            &mut wire,
+            source,
+            &self.encoder.items,
+            &sync.builtin,
+        );
+        Some(wire)
     }
 
     /// `PlayerList.broadcastAll`: send a packet to every placed player.
@@ -2039,19 +2045,30 @@ impl Hub {
         self.teleport_relative(i, Some(position), relatives, [0.0; 3]);
     }
 
-    /// A rider's own teleport when its vehicle is teleported
-    /// (`Entity.teleportSameDimension`'s passenger transition): the position,
-    /// the rotation the vehicle turned it by (absolute, as
-    /// `ServerPlayer.teleport` sends it), and its motion kept
-    /// (`Relative.DELTA`).
-    pub fn teleport_rider(&mut self, i: usize, position: [f64; 3]) {
+    /// A rider's own teleport when its vehicle is teleported (`Entity.teleportSameDimension`'s passenger transition): a `delta` axis keeps its motion, `keep_look` the look.
+    pub fn teleport_rider(
+        &mut self,
+        i: usize,
+        position: [f64; 3],
+        delta: [bool; 3],
+        keep_look: bool,
+    ) {
         {
             let value = 0;
             self.guests
                 .update(i, |guest| guest.above_ground_ticks = value);
         }
-        use play::relative::{DELTA_X, DELTA_Y, DELTA_Z};
-        self.teleport_relative(i, Some(position), DELTA_X | DELTA_Y | DELTA_Z, [0.0; 3]);
+        use play::relative::{DELTA_X, DELTA_Y, DELTA_Z, X_ROT, Y_ROT};
+        let mut relatives = 0;
+        for (flag, bit) in delta.into_iter().zip([DELTA_X, DELTA_Y, DELTA_Z]) {
+            if flag {
+                relatives |= bit;
+            }
+        }
+        if keep_look {
+            relatives |= Y_ROT | X_ROT;
+        }
+        self.teleport_relative(i, Some(position), relatives, [0.0; 3]);
     }
 
     /// A displacement of the player by `by` to `target`, made on its server copy by the caller
@@ -2119,6 +2136,17 @@ impl Hub {
         relatives: i32,
         shift: [f64; 3],
     ) {
+        self.send_position_correction(i, position, relatives, shift, None);
+    }
+
+    fn send_position_correction(
+        &mut self,
+        i: usize,
+        position: Option<[f64; 3]>,
+        relatives: i32,
+        shift: [f64; 3],
+        travel_velocity: Option<[f64; 3]>,
+    ) {
         let ticks = self.ticks;
         self.guests.update(i, |g| {
             g.teleport_tick = ticks;
@@ -2134,6 +2162,7 @@ impl Hub {
             g.teleport_counter = (g.teleport_counter + 1) & 0x7FFF_FFFF;
             let id = g.teleport_counter;
             g.awaiting_teleport = Some((id, g.position));
+            g.pending_travel_velocity = travel_velocity;
             let turn = relatives & (play::relative::Y_ROT | play::relative::X_ROT) != 0;
             // A relative axis (X, Y, Z: bits 0 to 2) goes as its shift: none for a rotation or
             // motion alone (`follow_passage`), the displacement for a move.
@@ -2142,12 +2171,64 @@ impl Hub {
             g.send(&C::PlayerPosition(play::PlayerPosition {
                 teleport: id,
                 position: at,
-                delta: [0.0; 3],
+                delta: travel_velocity.unwrap_or([0.0; 3]),
                 yaw: if turn { 0.0 } else { g.yaw },
                 pitch: if turn { 0.0 } else { g.pitch },
                 relatives,
             }));
         });
+    }
+
+    /// Publish the server's travel decision at the end of this player's body
+    /// tick. A separate teleport during the tick owns the new position instead.
+    /// Returns whether a travel correction already sent the body's velocity.
+    pub fn apply_server_travel(
+        &mut self,
+        conn: u32,
+        teleport_counter: i32,
+        decision: crate::motion::ServerTravel,
+    ) -> bool {
+        use crate::motion::ServerTravel;
+        let Some(i) = self.guests.connection_index(conn) else {
+            return false;
+        };
+        let g = &self.guests[i];
+        let eligible = g.teleport_counter == teleport_counter
+            && g.client_loaded()
+            && !g.dead
+            && !g.spectator()
+            && !g.sleeping
+            && g.vehicle.is_none();
+        let veto = eligible && matches!(decision, ServerTravel::Veto);
+        if self.guests[i].travel_vetoed != veto {
+            self.guests.update(i, |g| g.travel_vetoed = veto);
+        }
+        let g = &self.guests[i];
+        // The in-flight target and its velocity belong to the ordinary
+        // acknowledgement and resend path. No travel result publishes over it.
+        if !eligible || g.awaiting_teleport.is_some() {
+            return false;
+        }
+        let ServerTravel::Replace {
+            position,
+            on_ground,
+        } = decision
+        else {
+            return false;
+        };
+        let Some(velocity) = g.motion.as_ref().map(|b| b.velocity.components()) else {
+            return false;
+        };
+        let position = position.components();
+        let carried = g.on_collider;
+        self.guests.update(i, |g| {
+            g.on_ground = on_ground;
+            g.moved = true;
+            g.known_movement = [0, 1, 2].map(|axis| position[axis] - g.position[axis]);
+        });
+        self.send_position_correction(i, Some(position), 0, [0.0; 3], Some(velocity));
+        self.keep_carried_at(i, carried, position);
+        true
     }
 
     /// ClientboundSetDefaultSpawnPositionPacket for the world's respawn data:
@@ -2286,19 +2367,12 @@ impl Hub {
     }
     pub fn send_inventory(&mut self, i: usize) {
         let items: Vec<Option<ItemStack>> = (0..46).map(|s| self.guests[i].menu_slot(s)).collect();
-        let net: Vec<_> = items.iter().map(|s| self.stack(s)).collect();
-        let carried = self.guests[i].carried.clone();
-        let carried = self.stack(&carried);
-        self.guests.update(i, |g| {
+        let state = self.guests.update(i, |g| {
             g.menu_state = (g.menu_state + 1) & 0x7FFF;
-            g.send(&C::ContainerSetContent(play::ContainerSetContent {
-                container: 0,
-                state: g.menu_state,
-                items: net,
-                carried,
-            }));
-            g.menu_sent = items;
-        })
+            g.menu_state
+        });
+        self.send_menu_snapshot(i, 0, state, &items);
+        self.guests.update(i, |g| g.menu_sent = items);
     }
 
     // ---- per tick ------------------------------------------------------
@@ -2329,7 +2403,7 @@ impl Hub {
     /// packets queued for its own level's pass.
     pub fn poll(&mut self, ctx: &mut TickCtx) -> Vec<HostEvent> {
         self.ticks += 1;
-        let mut events = self.begin_payload_poll();
+        let mut events = std::mem::take(&mut self.pending_kicks);
         self.finish_fake_kicks(&mut events);
         self.expire_arrivals(&mut events);
         let mut credits = Vec::new();
@@ -2488,6 +2562,7 @@ impl Hub {
                 .any(|g| g.participates_online() && g.dimension == self.config.dimension)
             {
                 let _ = ctx.world.block_log.take();
+                ctx.world.connection_group_log = None;
                 let _ = ctx.world.light_log.take();
                 ctx.world.bulk_log.clear();
             }
@@ -2495,6 +2570,9 @@ impl Hub {
         }
         if ctx.world.block_log.is_none() {
             ctx.world.block_log = Some(Vec::new());
+        }
+        if ctx.world.connection_group_log.is_none() {
+            ctx.world.connection_group_log = Some(Default::default());
         }
         if ctx.world.light_log.is_none() {
             ctx.world.light_log = Some(Default::default());
@@ -2594,17 +2672,11 @@ impl Hub {
     pub(super) fn remove_guest(&mut self, i: usize, reason: &str) -> Guest {
         let mut g = self.guests.remove(i);
         super::chunk_watch::unwatch_all(&mut self.chunk_watches, &mut g);
-        if let Some(m) = g
+        let closed = g
             .menu
             .as_ref()
-            .filter(|m| m.slots == super::menu::Slots::Native)
-        {
-            self.native_menu_events
-                .push(super::menu::NativeMenuEvent::Closed {
-                    uuid: g.uuid,
-                    window: m.window,
-                });
-        }
+            .and_then(|menu| menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu));
+        self.native_menu_events.extend(closed);
         // A held player a proxy dropped keeps, in the log, how its connection really ended
         // (an unreadable packet, a reset): the drop says only that it was dropped.
         if g.held
@@ -2843,20 +2915,37 @@ impl Hub {
                 let size = batch.len();
                 // The single-player window shares the sections it is sent (handoff.rs).
                 let memory = g.address == super::conn::MEMORY_ADDRESS;
+                let sync_groups = g.negotiated_connection_groups();
                 if size > 0 {
                     g.batch_quota -= size as f32;
                     g.send(&C::ChunkBatchStart(sunrise_protocol::packets::Empty));
-                    g.sender.send_many(batch.into_iter().map(|j| {
+                    let grouped = sync_groups
+                        && batch
+                            .iter()
+                            .any(|&j| !chunks[j].connection_groups.is_empty());
+                    let bodies = batch.into_iter().flat_map(|j| {
+                        let chunk = chunks[j];
                         if memory {
-                            super::handoff::offer(chunks[j]);
+                            super::handoff::offer(chunk);
                         }
+                        let groups = if grouped && !chunk.connection_groups.is_empty() {
+                            block_changes::encode_chunk_connection_groups(chunk)
+                        } else {
+                            Vec::new()
+                        };
                         uses[j] -= 1;
-                        if uses[j] == 0 {
+                        let body = if uses[j] == 0 {
                             std::mem::take(&mut encoded[j])
                         } else {
                             encoded[j].clone()
-                        }
-                    }));
+                        };
+                        block_changes::group_bundle(body, groups)
+                    });
+                    if grouped {
+                        g.sender.send_batch(bodies);
+                    } else {
+                        g.sender.send_many(bodies);
+                    }
                     g.send(&C::ChunkBatchFinished(play::ChunkBatchFinished {
                         size: size as i32,
                     }));
@@ -2888,7 +2977,9 @@ impl Hub {
                         seen.iter().map(|&(x, z)| Holder::Chunk([x, z])),
                     );
                 }
-                g.sent_chunks.extend(seen);
+                for key in seen {
+                    g.sent_chunks.insert(key);
+                }
             });
         }
     }
@@ -3598,6 +3689,11 @@ impl Hub {
                 g.menu_sent[slot] = now;
             });
         }
+        // Hub-owned open menus broadcast their cursor after their own slots.
+        // Menus owned by Game also use the guest's cursor, so cover them here.
+        if self.guests[i].menu.is_none() {
+            self.sync_carried(i, None);
+        }
     }
 
     /// `ServerRecipeBook.sendInitialRecipeBook`: each book's open and
@@ -4032,6 +4128,7 @@ impl Hub {
                         self.guests.update(i, |g| {
                             g.position = at;
                             g.awaiting_teleport = None;
+                            g.pending_travel_velocity = None;
                         });
                         // The confirmation is then an ordinary report of where the client
                         // is: its own position goes through the speed test, the collided
@@ -4368,7 +4465,7 @@ impl Hub {
         // teleport, which is sent again after 20 ticks without an answer.
         if let Some((_, at)) = g.awaiting_teleport {
             if self.ticks - g.teleport_tick > 20 {
-                self.resend_teleport(i, Some(at));
+                self.send_position_correction(i, Some(at), 0, [0.0; 3], g.pending_travel_velocity);
             }
             // The awaiting check applies the report's rotation and drops its position, its
             // ground flag and its collision flag. Nothing is counted against the player.
@@ -4474,6 +4571,17 @@ impl Hub {
                 return;
             }
         };
+        // A veto applies from the last server travel onward, not to reports
+        // already committed before it. Do not correct a report that stays put.
+        let g = &self.guests[i];
+        if g.travel_vetoed && to != start && !g.spectator() {
+            let velocity = g.motion.as_ref().map(|body| body.velocity.components());
+            let carried = g.on_collider;
+            self.guests.update(i, |g| (g.yaw, g.pitch) = (yaw, pitch));
+            self.send_position_correction(i, Some(start), 0, [0.0; 3], velocity);
+            self.keep_carried(i, carried, Some(start));
+            return;
+        }
         // The confirmation of a teleport (a carried player's correction included) is committed in
         // place against the world as it stands.
         let (wrongly, refused, stands) = if hearing == Hearing::Confirmation {
@@ -4600,17 +4708,11 @@ impl Hub {
             }
         }
         for pos @ [x, y, z] in positions {
-            let state = ctx.world.block(x, y, z);
-            self.send_to(
-                conn,
-                &C::BlockUpdate(play::BlockUpdate {
-                    pos,
-                    state: state.0 as i32,
-                }),
-            );
+            self.send_authoritative_block(conn, ctx.world, pos);
             let Some(entity) = ctx.world.block_entities.get(&(x, y, z)) else {
                 continue;
             };
+            let state = ctx.world.block(x, y, z);
             let Some(tag) = self.encoder.update_tag((x, y, z), state.0, entity) else {
                 continue;
             };
@@ -4946,6 +5048,7 @@ impl Hub {
             self.guests.update(i, |g| {
                 g.landing = true;
                 g.awaiting_teleport = None;
+                g.pending_travel_velocity = None;
                 g.teleport_counter = (g.teleport_counter + 1) & 0x7FFF_FFFF;
             });
         } else {
@@ -5162,6 +5265,7 @@ mod tests {
     mod cave_air_tests;
     mod collision_exclusion_tests;
     mod collision_part_tests;
+    mod connection_group_sync_tests;
     mod displace_tests;
     mod effect_meta_tests;
     mod entity_move_check_tests;
@@ -6095,8 +6199,11 @@ mod tests {
         let mod_type: &'static crate::containers::ModMenuType =
             Box::leak(Box::new(crate::containers::ModMenuType {
                 id: "test:kept",
+                owner: "test",
                 slots: 27,
+                player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: vec![],
                 inputs: Vec::new(),
                 links: None,
@@ -6140,12 +6247,14 @@ mod tests {
                     sent: Vec::new(),
                     drag: None,
                     sent_data: Vec::new(),
+                    blockless_data: Vec::new(),
                     hidden: Vec::new(),
                     mod_type: Some(mod_type),
                     registry_id: "test:kept".into(),
                     craft: None,
                     links: Vec::new(),
                     asks_still_valid: true,
+                    opening_item: None,
                 });
             });
         };

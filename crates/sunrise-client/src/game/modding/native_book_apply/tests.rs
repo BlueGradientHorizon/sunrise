@@ -14,8 +14,11 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
     let pos = (3, 64, 5);
     let kind = Box::leak(Box::new(ModMenuType {
         id: "review:menu",
+        owner: "review",
         slots: 3,
+        player_inventory: true,
         data_slots: 0,
+        owned_slots: None,
         results: vec![2],
         inputs: Vec::new(),
         crafting: None,
@@ -55,11 +58,13 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
             sent: vec![],
             drag: None,
             sent_data: vec![],
+            blockless_data: Vec::new(),
             hidden: vec![],
             mod_type: Some(kind),
             craft: None,
             links: vec![],
             asks_still_valid: false,
+            opening_item: None,
         });
     });
     let before = game.mod_book_menu_snapshot(12, 1, "review:menu").unwrap();
@@ -265,7 +270,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         super::super::native_guest_turn_tests::with_guests(|game| {
-            let (_, _, selection) = open_mod_menu(game);
+            let (_, opened, selection) = open_mod_menu(game);
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 let open = g.menu.as_mut().unwrap();
                 open.slots = Slots::Native;
@@ -280,8 +285,8 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                     3,
                 ));
             });
-            game.player_menu_opening(12);
-            let menu = game.menu(123, 1).unwrap();
+            game.player_menu_opening(opened.conn);
+            let menu = game.menu(opened.uuid, opened.window).unwrap();
             let places = (0..3)
                 .map(|slot| MenuSlotPlace::HeldItem {
                     hand: Hand::Main,

@@ -2,9 +2,10 @@
 
 `mod_api::wire::{Wire, Reader, Writer, WireError}` defines the codec used by
 [typed payload tokens](../how-to/client/networking.md#typed-payloads) and
-[recipe placement and recipe-book sync](../crafting-recipe-kinds.md). Derive `mod_api::Wire` explicitly on a type
-that needs this encoding. The build never adds the derive. Every field of a derived type must also
-implement `Wire`.
+[recipe placement and recipe-book sync](../crafting-recipe-kinds.md). Typed payload bodies
+use `PayloadCodec`, not `Wire`. Derive `mod_api::Wire` explicitly on a type that needs
+this encoding. The build never adds the derive. Every field of a derived type must
+also implement `Wire`.
 
 ```rust,ignore
 #[derive(mod_api::Wire)]
@@ -42,10 +43,11 @@ named-child-tuple containers, so one part can consume several JSON levels.
 Hand-written recursive `Wire` implementations must enforce their own stack contract; the
 reader cannot police code outside its codec.
 
-Wire does not own a borrowed value's destructor. Constructing an arbitrarily deep
-Rust tree and then dropping it can overflow a thread independently of Wire.
-Use explicit work stacks when disposing of hostile trees (`discard_tag` for NBT),
-and do not transfer arbitrarily deep owned Rust trees to an encoder.
+Encoding borrows the input (`writer.put(&value)`); the caller still owns it.
+Constructing an arbitrarily deep Rust tree and then dropping it can overflow a
+thread independently of Wire. To dispose of deeply nested NBT, pop tags from
+an explicit work stack. Push the children of each `Tag::List` and the values
+from `Compound::into_values()` for each `Tag::Compound`; drop leaf tags as you go.
 
 ## Checked representations
 

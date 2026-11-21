@@ -86,6 +86,7 @@ fn version_files(hashes: impl Serialize, algorithm: &str) -> Result<Value, Strin
 
 fn post(url: &str, body: &Value) -> Result<Value, String> {
     let response = crate::net::agent(url)
+        .map_err(|e| format!("{url}: {e}"))?
         .post(url)
         .set("User-Agent", AGENT)
         .set("Content-Type", "application/json")
@@ -96,6 +97,7 @@ fn post(url: &str, body: &Value) -> Result<Value, String> {
 
 fn get(url: &str) -> Result<Value, String> {
     let response = crate::net::agent(url)
+        .map_err(|e| format!("{url}: {e}"))?
         .get(url)
         .set("User-Agent", AGENT)
         .call()

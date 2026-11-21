@@ -124,10 +124,17 @@ pub struct Hook {
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.
     pub inert: Option<String>,
-    /// A global cancel hook whose dispatch runs every listener inside `catch_unwind`: one that
-    /// unwinds is switched off for this hook for the session, and the outputs it had written roll
-    /// back to what the game requested (#2414 ruling).
+    /// A global cancel hook, or a global collect hook answered by mod, whose dispatch runs every
+    /// listener inside `catch_unwind`: one that unwinds is switched off for this hook for the
+    /// session. A cancel hook rolls outputs back to the requested values and stops (#2414).
+    /// A collector receives at most one returned value per registration, and later listeners
+    /// still run after a failure.
     pub isolate: bool,
+    /// An isolated cancel hook's per-listener check of the outputs it wrote: a path to
+    /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
+    /// vector/scalar outputs in declaration order and naming the first refused one. A refused
+    /// result, including its cancellation, rolls back; later listeners still run.
+    pub output_validator: Option<String>,
     pub scope: Option<PartScope>,
     pub host: Option<HostAccess>,
     pub context: Option<PhaseContext>,
@@ -176,7 +183,6 @@ pub enum CatalogError {
     ScopeNeedsKey(String),
     NoHooks,
     Retired(String),
-    InvalidModule(String),
 }
 
 impl fmt::Display for CatalogError {
@@ -189,7 +195,6 @@ impl fmt::Display for CatalogError {
                 "{path}: hooks are declared in Rust now, in {DECLARATIONS}/<area>.rs; move the entry there as a \
                  `#[hook(...)]` declaration (the old keys are the attribute's arguments) and delete this file"
             ),
-            Self::InvalidModule(name) => write!(f, "invalid hook declaration filename {name}"),
             Self::NamelessHook => f.write_str("hook name missing"),
             Self::DuplicateHook(name) => write!(f, "duplicate hook {name}"),
             Self::InvalidHook { hook, error } => write!(f, "hook {hook}: {error}"),
@@ -287,6 +292,7 @@ struct ModApiEntry {
     owner: Option<String>,
     collect_validator: Option<String>,
     isolate: Option<bool>,
+    output_validator: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -377,13 +383,29 @@ impl Hook {
         {
             return Err(CatalogError::InvalidContract(name));
         }
-        // Isolation is the cancel loop's own: a listener that unwinds rolls the outputs back
-        // to the requested ones and is skipped for the hook for the session (#2414 ruling).
+        // A listener that unwinds is disabled for this hook. Cancellation rolls back and
+        // stops dispatch (#2414); an answered collector has no output until its listener returns.
         let isolate = api.isolate.unwrap_or(false);
-        if isolate && (api.contract != Contract::Cancel || scope.is_some()) {
+        if isolate
+            && (scope.is_some()
+                || !(api.contract == Contract::Cancel
+                    || api.contract == Contract::Collect && answered_by_mod))
+        {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "isolate is for a global cancel hook".into(),
+                error:
+                    "isolate is for a global cancel hook or a global collect hook answered by mod"
+                        .into(),
+            });
+        }
+        if let Some(validator) = &api.output_validator
+            && (!isolate
+                || api.contract != Contract::Cancel
+                || syn::parse_str::<syn::Path>(validator).is_err())
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name.clone(),
+                error: "output_validator is a path on an isolated cancel hook".into(),
             });
         }
         let counterparts = Counterparts {
@@ -404,6 +426,7 @@ impl Hook {
             collect_validator: api.collect_validator,
             inert: entry.inert,
             isolate,
+            output_validator: api.output_validator,
             scope,
             host: entry.host,
             context: entry.context,
@@ -664,6 +687,7 @@ impl Declared {
                             "owner",
                             "collect_validator",
                             "isolate",
+                            "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
                                 api.insert(key.into(), value);
@@ -740,18 +764,12 @@ impl Catalog {
             path: path.display().to_string(),
             error: e.to_string(),
         };
-        let mut modules = fs::read_dir(dir)
-            .map_err(|e| read_error(dir, e))?
-            .map(|entry| entry.map_err(|e| read_error(dir, e)))
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter_map(|entry| {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                name.strip_suffix(".rs")
-                    .filter(|module| *module != "mod")
-                    .map(str::to_string)
-            })
-            .collect::<Vec<_>>();
+        // The one enumerator of source modules, shared with the static inventories.
+        let mut modules =
+            sunrise_game_discovery::module_files(dir).map_err(|error| CatalogError::Read {
+                path: dir.display().to_string(),
+                error,
+            })?;
         // Split declarations retain their original HookId positions in per-item metadata.
         // Unnumbered additions are discovered alphabetically, without a shared registry.
         let mut order = std::collections::HashMap::new();
@@ -784,11 +802,6 @@ impl Catalog {
                 b,
             ))
         });
-        for module in &modules {
-            if syn::parse_str::<syn::Ident>(module).is_err() {
-                return Err(CatalogError::InvalidModule(module.clone()));
-            }
-        }
         Ok(modules)
     }
 
@@ -847,6 +860,7 @@ impl Hook {
             collect_validator: None,
             inert: None,
             isolate: false,
+            output_validator: None,
             scope: None,
             host: None,
             context: None,
@@ -929,6 +943,34 @@ mod tests {
     const HOOK: &str = "pub trait Hooks { /// Doc.\n #[hook(side = \"server\", contract = \"listen\")] fn one(); }";
 
     #[test]
+    fn metadata_generators_need_only_the_hook_declarations() {
+        let root = checkout(&[(
+            &format!("{DECLARATIONS}/base.rs"),
+            r###"
+            pub trait Hooks {
+                /// Example hook.
+                #[hook(side = "server", contract = "listen", neoforge = "ExampleEvent")]
+                #[notes = "## Example\n\nA hook note."]
+                fn example();
+            }
+        "###,
+        )]);
+        let json = crate::neoforge_catalog(&root);
+        let notes = crate::generate_hook_notes(&root);
+        fs::remove_dir_all(root).unwrap();
+
+        let actual: serde_json::Value = serde_json::from_str(&json.unwrap()).unwrap();
+        let expected: serde_json::Value =
+            serde_json::from_str(r#"{"hooks":[{"name":"example","neoforge":"ExampleEvent"}]}"#)
+                .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(
+            notes.unwrap(),
+            "# Hook notes\n\n## Example\n\nA hook note.\n"
+        );
+    }
+
+    #[test]
     fn the_retired_json_catalog_is_refused_wherever_it_is() {
         let base = format!("{DECLARATIONS}/base.rs");
         let index = format!("{DECLARATIONS}/mod.rs");
@@ -966,7 +1008,7 @@ mod tests {
             Catalog::load_declarations(&root)
                 .unwrap_err()
                 .to_string()
-                .contains("invalid hook declaration filename")
+                .contains("not-valid.rs")
         );
         fs::remove_dir_all(root).unwrap();
     }

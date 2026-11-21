@@ -9,6 +9,8 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 
 #[path = "tests/fall_reset.rs"]
 mod fall_reset;
+#[path = "tests/travel.rs"]
+mod travel;
 
 fn guest(entity_id: i32) -> Guest {
     let (sender, _) = mpsc::channel();
@@ -139,6 +141,30 @@ fn accepted_hit_moves_through_teleport_restore_but_not_respawn() {
             assert!(restored.is_none());
         }
     }
+}
+
+#[test]
+#[ignore = "daily"]
+fn entity_tick_count_moves_through_teleport_bodies_but_respawn_starts_at_zero() {
+    let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+    let assets = Assets::load(&root).unwrap();
+    let resources = MotionResources::load(&root, &assets).unwrap();
+
+    let mut guest = guest(2);
+    assert!(initialize(&resources, &mut guest));
+    guest.motion.as_mut().unwrap().health.tick_count = 123;
+    guest.new_body(true);
+    assert_eq!(guest.carried_tick_count, Some(123));
+    assert!(initialize(&resources, &mut guest));
+    assert_eq!(guest.motion.as_ref().unwrap().health.tick_count, 123);
+
+    guest.new_body(true);
+    assert_eq!(guest.carried_tick_count, Some(123));
+    assert!(guest.motion.is_none());
+    guest.new_body(false);
+    assert_eq!(guest.carried_tick_count, None);
+    assert!(initialize(&resources, &mut guest));
+    assert_eq!(guest.motion.as_ref().unwrap().health.tick_count, 0);
 }
 
 #[test]

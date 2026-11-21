@@ -266,12 +266,6 @@ static TABLE: LazyLock<Vec<Def>> = LazyLock::new(|| {
     t
 });
 
-/// Mth.floor for doubles.
-fn floor_int(v: f64) -> i32 {
-    let i = v as i32;
-    if v < f64::from(i) { i - 1 } else { i }
-}
-
 fn number(json: &Json) -> Option<&str> {
     match json {
         Json::Number(n) => Some(n),
@@ -369,7 +363,7 @@ impl Spec {
             }
             (Spec::Fov, V::Int(x)) => (30..=110).contains(x).then(|| v.clone()),
             (Spec::WheelSensitivity, V::Double(x)) => {
-                let i = floor_int(sunrise_core::jmath::log10(*x) * 100.0);
+                let i = sunrise_core::mth::floor(sunrise_core::jmath::log10(*x) * 100.0);
                 (-200..=100).contains(&i).then(|| V::Double(log_mouse(i)))
             }
             (Spec::Unit, V::Double(x)) => (*x >= 0.0 && *x <= 1.0).then(|| v.clone()),

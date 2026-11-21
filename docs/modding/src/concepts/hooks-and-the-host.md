@@ -40,9 +40,10 @@ Whether a call represents one entity or a family depends on the tick route and t
 registration. Keep cancellations within the current Pre call. The player connection body remains
 separate from the server-side entity tick, and the local client avatar is not observed by these hooks.
 
-Removing a general entity in Pre skips its tick and Post. A passenger dismounted by that removal can
-still tick as a root if it is eligible, has not ticked, and its join-order slot is still ahead. The pass
-does not revisit an earlier slot. Canceling an entity's Pre without removing it does not skip its passengers.
+Removing a general entity during its own Pre skips its tick and Post. A passenger dismounted by that
+removal can still tick as a root if it is eligible, has not ticked, and its join-order slot is still ahead.
+The pass does not revisit an earlier slot. Canceling an entity's Pre does not by itself skip its passengers'
+ticks, though a listener can separately change the riding graph.
 
 ## Explosion membership
 
@@ -241,7 +242,7 @@ tag and fluid questions without a `Host`: `block_in_tag(block_key, tag)`, `fluid
 (`getFluidState`, `None` where the block read is),
 `state_fluid_state(state)` and `fluid_in_tag(fluid_name, tag)`. Fluid reads return `FluidState` with a
 `FluidKey`, amount, falling flag and engine-derived source flag; `is_empty()` and `is_source()` report
-those states without a registry lookup. `block_state_id(name)` parses a block and properties, and `block_state_default(block)` gives a block's default state, as on `Host`; both return `None` for invalid input or unavailable context. Tag reads are `None` when authoritative tags are unavailable, including on a client before its server's tags are applied. For item membership and member lists, use `Host::tags()`: resolve a `TagKey` with `Tags::key`, then call `Tags::is_in_tag`, `Tags::items` or `Tags::fluids`. Membership reads return `None` on clients until server-sent tags are applied, which `tags_updated` announces; they never substitute local resource-pack tags.
+those states without a registry lookup. `block_state_id(name)` parses a block and properties, and `block_state_default(block)` gives a block's default state, as on `Host`; both return `None` for invalid input or unavailable context. For tag reads, use `Host::tags()`: resolve a `TagKey` with `Tags::key`, then call `Tags::is_in_tag` for item membership or `Tags::items`, `Tags::blocks` or `Tags::fluids` for ordered member lists. The list methods return `TagMembers::Missing` for an absent tag and `TagMembers::Members(keys)` for a loaded tag, even if `keys` is empty. They return `TagMembers::Unavailable` until that registry's authoritative tags have been applied or if a member key cannot be resolved. On clients `tags_updated` announces the applied server tags; the query never substitutes local resource-pack tags.
 `default_components_bound` precedes `tags_updated` after item defaults are published and readable.
 Both notices carry `TagsUpdateCause`: `ServerDataLoad { reload }` for the server's initial data
 load or reload, and `ClientPacketReceived { integrated_server }` for a client's applied tags.
@@ -286,8 +287,8 @@ A signal read never asks `state_for_placement` or `can_survive`, so it cannot re
 On a client (its placement prediction and its own shape updates ask `state_for_placement`, `can_survive`,
 `may_place_on` and `can_sustain_plant` too) these reads answer from the client's loaded copy of the level, and the
 reads above that refuse clients return `None`, as do `block_in_tag` and `fluid_in_tag`. `tags()` still returns a
-service: `Tags::key` can resolve a key, but membership (`is_in_tag`) and member lists (`items`, `fluids`, `blocks`)
-return `None` in this view. `BlockEntityPartState::state_in` gives its default there. Never answer from those as if
+service: `Tags::key` can resolve a key, but `is_in_tag` returns `None` and `items`, `fluids` and `blocks` return
+`TagMembers::Unavailable` in this view. `BlockEntityPartState::state_in` gives its default there. Never answer from those as if
 they were the server's: a client's own shape update that refuses a block removes it on that client.
 `LevelTicksHost`'s signal reads moved here and now return `Option`.
 

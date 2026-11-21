@@ -352,6 +352,7 @@ fn render(
         &[],
         &mut |_, _, _, _| {},
         &std::sync::atomic::AtomicBool::new(false),
+        super::super::in_flight::poll_live,
     )
     .unwrap();
     encoder.copy_texture_to_buffer(
@@ -445,6 +446,7 @@ fn frame(hud: &HudBatch) -> Frame<'_> {
         see_through: &[],
         world_primitives: Default::default(),
         celestial: &[],
+        celestial_bodies: &[],
         stars: None,
         hand: &[],
         hand_items: &[],

@@ -263,6 +263,7 @@ impl Game<'_> {
         attacker: i32,
         direct: Option<Target>,
     ) -> sunrise_client::health::Attack {
+        use sunrise_client::health::DirectEntity;
         let mut attack = self.attack_of(attacker);
         attack.direct = Some(
             direct
@@ -278,13 +279,42 @@ impl Game<'_> {
             Some(Target::Trident(id)) => {
                 if let Some(shot) = self.tridents.iter().find(|shot| shot.id == id) {
                     attack.projectile = Some(id as i32);
-                    attack.projectile_is_arrow = true;
+                    attack.projectile_kind = DirectEntity::Arrow;
                     Self::set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
             _ => {}
         }
+        attack.direct_kind = Some(Self::target_direct_entity(
+            direct,
+            &self.creatures.projectiles,
+        ));
         attack
+    }
+    /// Classify an explicit `/damage` or `EntityRef::hurt` direct entity target.
+    pub(in crate::game) fn target_direct_entity(
+        direct: Option<Target>,
+        projectiles: &[sunrise_client::projectiles::Projectile],
+    ) -> sunrise_client::health::DirectEntity {
+        use sunrise_client::health::DirectEntity;
+        match direct {
+            Some(
+                Target::Player
+                | Target::Guest(_)
+                | Target::Mob(_)
+                | Target::Dragon(_)
+                | Target::Stand(_),
+            ) => DirectEntity::Living,
+            Some(Target::Projectile(id)) => projectiles
+                .iter()
+                .find(|shot| shot.id == id)
+                .map_or(DirectEntity::Projectile, |shot| {
+                    Self::projectile_direct_entity(&shot.kind)
+                }),
+            Some(Target::Trident(_)) => DirectEntity::Arrow,
+            Some(Target::Rocket(_) | Target::Hook(_)) => DirectEntity::Projectile,
+            _ => DirectEntity::Other,
+        }
     }
 
     fn hurt_target_from_source(
@@ -341,7 +371,7 @@ impl Game<'_> {
             Target::Mob(id) => {
                 let attacker = cause.or(by).and_then(|t| match t {
                     Target::Player | Target::Guest(_) => Some(Who::Player),
-                    Target::Mob(i) => Some(Who::Mob(i)),
+                    Target::Mob(i) | Target::Dragon(i) | Target::Stand(i) => Some(Who::Mob(i)),
                     _ => None,
                 });
                 let attacker_species = match attacker {
@@ -527,6 +557,8 @@ impl Game<'_> {
         for (mob, target) in reinforcements {
             self.call_reinforcements(mob, target);
         }
+        // Warden.hurtServer's anger and target update, refused hit or not, before return.
+        self.settle_warden_hurt(id);
         // Enderman.hurtServer's teleport, refused hit or not, before the command returns.
         if let Err(e) = self.settle_hurt_teleports() {
             log::warn!("Sunrise: /damage: enderman teleport: {e}");
@@ -1752,11 +1784,11 @@ impl Game<'_> {
         removed_y: Option<f64>,
         notified: bool,
     ) {
-        let Some(v) = self
-            .mob_object(rider)
-            .filter(|mob| !mob.removed)
-            .and_then(|mob| mob.extra.mount)
-        else {
+        let Some(mob) = self.mob_object(rider) else {
+            return;
+        };
+        let removing_rider = mob.removed;
+        let Some(v) = mob.extra.mount else {
             return;
         };
         if cart.is_some_and(|cart| cart.id != v) {
@@ -1768,7 +1800,7 @@ impl Game<'_> {
         // A callback can remove or remount the rider. Do not overwrite its decision.
         if self
             .mob_object(rider)
-            .is_none_or(|mob| mob.removed || mob.extra.mount != Some(v))
+            .is_none_or(|mob| mob.removed != removing_rider || mob.extra.mount != Some(v))
         {
             return;
         }
@@ -1782,6 +1814,14 @@ impl Game<'_> {
             .map(|m| m.id);
         if let Some(vehicle) = self.mob_object_mut(v) {
             vehicle.extra.rider = remaining;
+        }
+        // LivingEntity.dismountVehicle leaves a removed rider at its own position.
+        if removing_rider {
+            if let Some(mob) = self.mob_object_mut(rider) {
+                mob.extra.passenger = false;
+            }
+            self.release_removed_vehicle(v);
+            return;
         }
         let at = if let Some(y) = removed_y {
             self.mob_object(rider).map(|mob| {

@@ -33,6 +33,7 @@ mod bundle;
 pub mod container_items;
 pub use container_items::fits_inside_container_items;
 mod click;
+pub use click::{ClickContinuation, SlotTake};
 mod storage;
 pub use storage::{MutationStamp, Snapshot};
 mod asked;
@@ -570,7 +571,9 @@ impl Menu {
                         },
                     },
                 }));
-                player(&mut slots);
+                if t.player_inventory {
+                    player(&mut slots);
+                }
             }
             Kind::Crafter | Kind::CrafterBlock => {
                 containers[MAIN] = vec![None; 9];
@@ -819,6 +822,7 @@ impl Menu {
                 item_smelted: Vec::new(),
                 item_smithed_hook: false,
                 item_smithed: Vec::new(),
+                takes: None,
                 output_removed: 0,
                 equipped: Vec::new(),
                 merchant: None,
@@ -950,7 +954,7 @@ impl Menu {
     /// Container slot `slot` of a mod menu type is left out by its screen.
     pub fn hide_slot(&mut self, slot: usize) {
         self.touch();
-        if matches!(self.state.kind, Kind::Mod(_)) && slot < self.state.slots.len() - 36 {
+        if matches!(self.state.kind, Kind::Mod(kind) if slot < kind.slots) {
             self.state.slots[slot].role = Role::Hidden;
         }
     }
@@ -1431,10 +1435,7 @@ impl Menu {
     pub fn rename(&mut self, env: &Env, name: &str) -> bool {
         self.touch();
         // StringUtil.filterText, then validateName's length limit.
-        let name: String = name
-            .chars()
-            .filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
-            .collect();
+        let name = crate::clipboard::filter_text(name, false);
         if self.state.kind != Kind::Anvil
             || name.encode_utf16().count() > 50
             || self.state.anvil.name.as_deref() == Some(&name)
@@ -1442,7 +1443,7 @@ impl Menu {
             return false;
         }
         if let Some(result) = self.state.containers[RESULT][0].as_mut() {
-            result.data_mut().custom_name = (!name.trim().is_empty())
+            result.data_mut().custom_name = (!sunrise_core::java_character::is_blank(&name))
                 .then(|| sunrise_core::nbt::Tag::String(name.as_str().into()));
             result.tidy();
         }
@@ -1581,7 +1582,7 @@ impl Menu {
     pub fn load_container(&mut self, env: &Env, items: &[Option<ItemStack>]) {
         self.touch();
         let result = self.mod_crafting().map(|c| c.result);
-        for (k, stack) in items.iter().enumerate().take(self.state.slots.len() - 36) {
+        for (k, stack) in items.iter().enumerate().take(self.container_slot_count()) {
             if Some(k) != result {
                 self.put(env, k, stack.clone());
             }
@@ -1593,9 +1594,16 @@ impl Menu {
     /// crafting result's left empty.
     pub fn container_items(&self) -> Vec<Option<ItemStack>> {
         let result = self.mod_crafting().map(|c| c.result);
-        (0..self.state.slots.len() - 36)
+        (0..self.container_slot_count())
             .map(|k| (Some(k) != result).then(|| self.slot(k).cloned()).flatten())
             .collect()
+    }
+
+    fn container_slot_count(&self) -> usize {
+        match self.state.kind {
+            Kind::Mod(kind) => kind.slots,
+            _ => self.state.slots.len() - 36,
+        }
     }
 
     pub fn player_item(&self, i: usize) -> Option<&ItemStack> {
@@ -3727,6 +3735,29 @@ pub(crate) mod tests {
         });
     }
 
+    #[test]
+    fn an_anvil_rename_uses_vanillas_definition_of_blank() {
+        bare_env(|env| {
+            let renamed = |name| {
+                let mut menu = Menu::new(Kind::Anvil);
+                menu.set_slot(env, 0, stack("iron_sword", 1));
+                menu.anvil_created();
+                assert!(menu.rename(env, name));
+                menu
+            };
+            let menu = renamed("\u{85}");
+            assert_eq!(
+                menu.slot(2).unwrap().custom_name().as_deref(),
+                Some("\u{85}")
+            );
+            assert_eq!(menu.data[0], 1);
+
+            let menu = renamed("\u{a0}\u{2007}\u{202f}");
+            assert!(menu.slot(2).is_none());
+            assert_eq!(menu.data[0], 0);
+        });
+    }
+
     /// A rename beside a right input the anvil can't use changes neither
     /// the (empty) result nor the cost, but `createResult` ran: the mods
     /// are asked, and their output is the result.
@@ -4138,8 +4169,11 @@ pub(crate) mod tests {
     fn slot_rules_are_told_the_player_the_block_and_the_other_slots() {
         let kind = Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:context",
+            owner: "test",
             slots: 2,
+            player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
             inputs: Vec::new(),
             links: None,
@@ -4174,8 +4208,11 @@ pub(crate) mod tests {
         STILL_VALID_ASKED.set(0);
         let kind = Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:rules",
+            owner: "test",
             slots: 1,
+            player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
             inputs: Vec::new(),
             links: None,
@@ -4456,8 +4493,11 @@ pub(crate) mod tests {
         let mod_type: &'static crate::containers::ModMenuType =
             Box::leak(Box::new(crate::containers::ModMenuType {
                 id: "test:rules",
+                owner: "test",
                 slots: 27,
+                player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: vec![],
                 inputs: Vec::new(),
                 links: None,
@@ -4485,12 +4525,14 @@ pub(crate) mod tests {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
+                blockless_data: Vec::new(),
                 hidden: Vec::new(),
                 mod_type,
                 registry_id: registry_id.into(),
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: crate::lan::menu::asks_still_valid(mod_type, registry_id),
+                opening_item: None,
             };
             menu.still_valid(context, &world, &guest)
         };
@@ -4552,12 +4594,14 @@ pub(crate) mod tests {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
+                blockless_data: Vec::new(),
                 hidden: Vec::new(),
                 mod_type: Some(mod_type),
                 registry_id: "test:rules".into(),
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: crate::lan::menu::asks_still_valid(Some(mod_type), "test:rules"),
+                opening_item: None,
             };
             menu.still_valid(context, &world, &guest)
         };
@@ -4655,8 +4699,11 @@ pub(crate) mod tests {
     fn mod_menu() -> Kind {
         Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:press",
+            owner: "test",
             slots: 4,
+            player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![3],
             inputs: Vec::new(),
             links: None,
@@ -4763,8 +4810,11 @@ pub(crate) mod tests {
     pub(crate) fn mod_crafting_table() -> Kind {
         Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:station",
+            owner: "test",
             slots: 10,
+            player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
             inputs: Vec::new(),
             links: None,

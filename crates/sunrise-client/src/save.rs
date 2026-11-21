@@ -1311,15 +1311,26 @@ fn encode_full(
         };
         let Some(section) = section else { continue };
         let layers = if chunk.lit {
-            chunk.stored_light_layers(b).unwrap_or_else(|| {
-                if !shape.has_section(y) {
-                    return [false; 2];
+            if let Some(stored) = chunk.stored_light() {
+                let [sky, block] = stored.presence(b);
+                if let Some([sky_array, block_array]) = stored.saved_arrays(b) {
+                    // `SerializableChunkData.copyOf`: omit empty layers restored from
+                    // section status, but keep materialized arrays, including zero arrays.
+                    [
+                        sky && (sky_array || section.light.any(0xF0)),
+                        block && (block_array || section.light.any(15)),
+                    ]
+                } else {
+                    [sky, block]
                 }
+            } else if shape.has_section(y) {
                 [
                     top_sky.is_some_and(|top| b <= top + 2),
                     section.light.any(15),
                 ]
-            })
+            } else {
+                [false; 2]
+            }
         } else {
             [false; 2]
         };
@@ -1434,7 +1445,7 @@ fn encode_full(
                     hopper_cooldown,
                 },
                 items,
-                |_, _| {
+                |_| {
                     if apply_block_entity_edits {
                         extras?.block_entity_save_edits.as_ref()?.get(p).cloned()
                     } else {
@@ -1471,7 +1482,7 @@ fn encode_full(
                                     hopper_cooldown,
                                 },
                                 items,
-                                |_, _| None,
+                                |_| None,
                             )
                         },
                     );
@@ -1923,11 +1934,12 @@ pub fn decode_proto(
     })
 }
 
-/// Read the stored `SkyLight`/`BlockLight` layers of a chunk saved with
-/// `isLightOn` (`SerializableChunkData.read` + `ThreadedLevelLightEngine`),
-/// so it needs no relighting. A missing sky layer repeats the bottom layer of
-/// the section above it (15 above the highest stored one); a missing block
-/// layer is dark.
+/// Read the `SkyLight`/`BlockLight` byte arrays of a chunk saved with
+/// `isLightOn` (`SerializableChunkData.read`, which queues the arrays via
+/// `ThreadedLevelLightEngine.queueSectionData`). The render cache inherits missing
+/// sky light from the bottom row of the next stored layer above, or gets full
+/// sky above all stored layers. Empty layers omitted by NBT are restored from
+/// published section status when the chunk's light is initialized.
 pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
     if tag.get("isLightOn") != Some(&Tag::Byte(1)) {
         return;
@@ -1954,7 +1966,7 @@ pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
         };
         *slot = (layer("SkyLight"), layer("BlockLight"));
     }
-    crate::light::light_from_layers(chunk, &layers, sky_light);
+    crate::light::light_from_saved_layers(chunk, &layers, sky_light);
 }
 
 type RegionCache = Mutex<RegionFiles>;
@@ -2032,7 +2044,7 @@ fn cached_region(
     };
     let region = match region {
         Ok(r) => Some(Arc::new(Mutex::new(r))),
-        Err(_) if !create => None,
+        Err(e) if !create && e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(e.into()),
     };
     cache.regions.insert(key, (region.clone(), now));
@@ -2338,6 +2350,8 @@ pub struct SaveDir {
     items: Option<Arc<crate::items::Items>>,
     regions: Arc<RegionCache>,
     entity_regions: Arc<RegionCache>,
+    /// `PersistentEntitySectionManager` leaves a failed read pending for the life of the level.
+    failed_entity_reads: Mutex<HashSet<(i32, i32)>>,
     poi_regions: Arc<RegionCache>,
     pending: Arc<PendingWrites>,
     sequence: AtomicU64,
@@ -2511,6 +2525,7 @@ impl SaveDir {
             items,
             regions: Default::default(),
             entity_regions: Default::default(),
+            failed_entity_reads: Default::default(),
             poi_regions: Default::default(),
             pending: Default::default(),
             sequence: AtomicU64::new(0),
@@ -2771,22 +2786,22 @@ impl SaveDir {
     /// A record as saved: the pending write first, then the region file.
     fn read_record_raw(&self, folder: &str, x: i32, z: i32) -> Option<NamedTag> {
         self.try_read_record_raw(folder, x, z, Record::tag_for_metadata)
+            .inspect_err(|e| crate::chunk_io::report_load_failure(&self.root, x, z, e))
             .ok()
             .flatten()
     }
-    /// `read_record_raw`, telling a record that isn't there (`Ok(None)`) from a read that failed
-    /// (`Err`, already reported): the second may succeed on a later read.
+    /// `read_record_raw`, telling a record that isn't there (`Ok(None)`) from a read that failed.
     fn try_read_record_raw(
         &self,
         folder: &str,
         x: i32,
         z: i32,
         read_pending: fn(&Record) -> Option<Arc<NamedTag>>,
-    ) -> std::result::Result<Option<NamedTag>, ()> {
+    ) -> Result<Option<NamedTag>> {
         let pending = self
             .pending
             .lock()
-            .map_err(|_| ())?
+            .map_err(|_| "pending writes poisoned")?
             .get(&(Folder::of(folder), x, z))
             .map(|(_, r)| r.clone());
         if let Some(record) = pending {
@@ -2797,18 +2812,14 @@ impl SaveDir {
             Folder::Entities => &self.entity_regions,
             Folder::Poi => &self.poi_regions,
         };
-        read_region_record(&self.root, cache, folder, x, z)
-            .inspect(|record| {
-                if self.trusted_fluid_load
-                    && folder == "region"
-                    && let Some(root) = record
-                {
-                    intern_saved_fluids(root);
-                }
-            })
-            .map_err(|e| {
-                crate::chunk_io::report_load_failure(&self.root, x, z, &e);
-            })
+        read_region_record(&self.root, cache, folder, x, z).inspect(|record| {
+            if self.trusted_fluid_load
+                && folder == "region"
+                && let Some(root) = record
+            {
+                intern_saved_fluids(root);
+            }
+        })
     }
     /// A record brought to the current version (`upgrade_record`); `Err` when that failed.
     fn try_read_record(
@@ -2817,21 +2828,17 @@ impl SaveDir {
         x: i32,
         z: i32,
         read_pending: fn(&Record) -> Option<Arc<NamedTag>>,
-    ) -> std::result::Result<Option<NamedTag>, ()> {
+    ) -> Result<Option<NamedTag>> {
         let Some(mut record) = self.try_read_record_raw(folder, x, z, read_pending)? else {
             return Ok(None);
         };
-        match self.upgrade_record(Folder::of(folder), &mut record) {
-            Ok(()) => Ok(Some(record)),
-            Err(e) => {
-                crate::chunk_io::report_load_failure(&self.root, x, z, &e);
-                Err(())
-            }
-        }
+        self.upgrade_record(Folder::of(folder), &mut record)?;
+        Ok(Some(record))
     }
     /// A record brought to the current version (`upgrade_record`).
     fn read_record(&self, folder: &str, x: i32, z: i32) -> Option<NamedTag> {
         self.try_read_record(folder, x, z, Record::tag_for_metadata)
+            .inspect_err(|e| crate::chunk_io::report_load_failure(&self.root, x, z, e))
             .ok()
             .flatten()
     }
@@ -2854,7 +2861,10 @@ impl SaveDir {
         registry: &BlockRegistry,
         biomes: &Biomes,
     ) -> std::result::Result<Option<Chunk>, ()> {
-        let Some(root) = self.try_read_record("region", x, z, Record::tag)? else {
+        let Some(root) = self
+            .try_read_record("region", x, z, Record::tag)
+            .map_err(|e| crate::chunk_io::report_load_failure(&self.root, x, z, &e))?
+        else {
             return Ok(None);
         };
         let tables = self.tables.get().map(|t| &**t);
@@ -2910,15 +2920,26 @@ impl SaveDir {
             .collect();
         self.queue(Folder::Region, records, false)
     }
-    /// Entities saved for a chunk in `entities/` (an old chunk's own list: [`Self::load`]).
-    pub fn load_entities(&self, x: i32, z: i32) -> Vec<Tag> {
+    /// `EntityStorage.loadEntities`: read `entities/` separately from the terrain.
+    /// An absent record is empty; a failed read leaves the entity chunk pending until the level closes.
+    pub fn load_entities(&self, x: i32, z: i32) -> Result<Vec<Tag>> {
+        if self.failed_entity_reads.lock().unwrap().contains(&(x, z)) {
+            return Err("an earlier entity chunk read failed".into());
+        }
+        let record = self
+            .try_read_record("entities", x, z, Record::tag_for_metadata)
+            .inspect_err(|e| {
+                self.failed_entity_reads.lock().unwrap().insert((x, z));
+                log::error!("Failed to load entity chunk {x},{z}: {e}");
+                crate::chunk_io::report_load_failure(&self.root, x, z, e);
+            })?;
         let mut out = Vec::new();
-        if let Some(root) = self.read_record("entities", x, z)
+        if let Some(root) = record
             && let Some(Tag::List(list)) = root.tag.get("Entities")
         {
             out.extend(list.iter().cloned());
         }
-        out
+        Ok(out)
     }
     /// Write `chunks` into their region files and wait until they are on disk.
     pub fn save(
@@ -3006,7 +3027,14 @@ impl SaveDir {
     pub fn save_entities_later(&self, chunks: Vec<((i32, i32), Vec<Tag>)>) -> Result<()> {
         self.write_entities(chunks, false)
     }
-    fn write_entities(&self, chunks: Vec<((i32, i32), Vec<Tag>)>, wait: bool) -> Result<()> {
+    /// `PersistentEntitySectionManager.storeChunkSections`: never store a pending entity chunk.
+    fn write_entities(&self, mut chunks: Vec<((i32, i32), Vec<Tag>)>, wait: bool) -> Result<()> {
+        {
+            let failed = self.failed_entity_reads.lock().unwrap();
+            if !failed.is_empty() {
+                chunks.retain(|(key, _)| !failed.contains(key));
+            }
+        }
         let records = chunks
             .into_iter()
             .map(|((x, z), entities)| {
@@ -5173,7 +5201,9 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
         for s in &mut chunk.sections {
             Arc::make_mut(s).compact();
         }
-        chunk.entities.extend(self.save.load_entities(x, z));
+        if let Ok(entities) = self.save.load_entities(x, z) {
+            chunk.entities.extend(entities);
+        }
         Some(chunk)
     }
     fn lod_surface(
@@ -6985,7 +7015,7 @@ mod tests {
         save.flush().unwrap();
         assert!(save.entity_regions.lock().unwrap().open() <= super::MAX_OPEN_REGIONS);
         for i in [0, 1, 150, 299] {
-            assert_eq!(save.load_entities(i * 32, 0), vec![entity(i)]);
+            assert_eq!(save.load_entities(i * 32, 0).unwrap(), vec![entity(i)]);
         }
         drop(held);
         let _ = std::fs::remove_dir_all(&dir);
@@ -7023,7 +7053,7 @@ mod tests {
             .unwrap();
         // The writer is blocked above: two chunk records in ONE queued batch.
         assert_eq!(save.active_chunk_writes(), 2);
-        assert_eq!(save.load_entities(1, 2), vec![entity(2)]);
+        assert_eq!(save.load_entities(1, 2).unwrap(), vec![entity(2)]);
         assert!(super::SessionLock::acquire(&dir).is_err());
         drop(blocked);
         save.flush().unwrap();
@@ -7031,16 +7061,51 @@ mod tests {
         assert_eq!(save.active_chunk_writes(), 0);
         let reopened =
             super::SaveDir::new(dir.clone(), LevelShape::OVERWORLD, Some(Default::default()));
-        assert_eq!(reopened.load_entities(1, 2), vec![entity(2)]);
+        assert_eq!(reopened.load_entities(1, 2).unwrap(), vec![entity(2)]);
         save.save_entities_later(vec![((1, 2), vec![])]).unwrap();
         save.flush().unwrap();
         assert!(
             super::SaveDir::new(dir.clone(), LevelShape::OVERWORLD, None)
                 .load_entities(1, 2)
+                .unwrap()
                 .is_empty()
         );
         drop((reopened, save, lock));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_failed_entity_read_does_not_clear_the_stored_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let save = super::SaveDir::new(dir.path().to_owned(), LevelShape::OVERWORLD, None);
+        let entity = Tag::compound([("id", Tag::String("minecraft:pig".into()))]);
+        // Put matching records in two different regions.
+        save.save_entities(vec![
+            ((0, 0), vec![entity.clone()]),
+            ((32, 0), vec![entity.clone()]),
+        ])
+        .unwrap();
+        let region_b = save.region_path("entities", 1, 0);
+        let saved = std::fs::read(&region_b).unwrap();
+        let mut broken = saved.clone();
+        let sector = u32::from_be_bytes(saved[..4].try_into().unwrap()) >> 8;
+        // Fail decompression without changing the slot or its record length.
+        broken[sector as usize * 4096 + 5] = 0;
+        std::fs::write(&region_b, &broken).unwrap();
+        assert_eq!(save.load_entities(0, 0).unwrap(), vec![entity.clone()]);
+        assert!(save.load_entities(32, 0).is_err());
+        assert!(save.load_entities(64, 0).unwrap().is_empty());
+        std::fs::write(&region_b, &saved).unwrap();
+
+        // Leaving and returning to the chunk does not restart the failed entity load.
+        assert!(save.load_entities(32, 0).is_err());
+        // The same save pass can clear a healthy chunk and must leave B alone.
+        save.save_entities(vec![((0, 0), vec![]), ((32, 0), vec![])])
+            .unwrap();
+        drop(save);
+        let reopened = super::SaveDir::new(dir.path().to_owned(), LevelShape::OVERWORLD, None);
+        assert!(reopened.load_entities(0, 0).unwrap().is_empty());
+        assert_eq!(reopened.load_entities(32, 0).unwrap(), vec![entity]);
     }
 
     #[test]
@@ -7155,7 +7220,7 @@ mod tests {
             .unwrap();
         assert!(save.flush().is_err());
         assert!(save.writes_finished().is_err());
-        assert_eq!(save.load_entities(0, 0), vec![entity]);
+        assert_eq!(save.load_entities(0, 0).unwrap(), vec![entity]);
         // The failure stays visible on subsequent barriers too.
         assert!(save.flush().is_err());
         drop(save);
@@ -10036,7 +10101,7 @@ mod tests {
                 ),
             ]),
         );
-        let entities = save.load_entities(0, 0);
+        let entities = save.load_entities(0, 0).unwrap();
         let item = entities[0].get("Item").expect("the item stack");
         assert_eq!(item.get("count"), Some(&Tag::Int(3)));
         assert!(item.get("Count").is_none());
@@ -10238,7 +10303,7 @@ mod tests {
         let ids: Vec<_> = chunk.entities.iter().map(id).collect();
         assert_eq!(ids, [Some("minecraft:minecart".to_owned())]);
         // There is no `entities/` record for it: these are all it has.
-        assert!(save.load_entities(0, 0).is_empty());
+        assert!(save.load_entities(0, 0).unwrap().is_empty());
         let _ = std::fs::remove_dir_all(&world);
     }
 }

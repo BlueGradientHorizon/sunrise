@@ -44,7 +44,7 @@ mod missing_mods;
 pub(crate) use missing_mods::is_missing_mods_refusal;
 pub(super) mod events;
 mod management;
-mod predicate_graph;
+use sunrise_gameplay::dedicated::predicate_graph;
 pub(super) mod report;
 mod status;
 mod transfer;
@@ -239,7 +239,7 @@ fn log_from(thread: &str, level: &str, message: &str) {
         "ERROR" => ::log::Level::Error,
         _ => ::log::Level::Info,
     };
-    sunrise_client::logging::write_as(thread, file_level, message);
+    sunrise_client::logging::write_mirrored_as(thread, file_level, message);
     CAPTURE.with_borrow_mut(|lines| {
         if let Some(lines) = lines {
             lines.push(message.to_owned());
@@ -1470,7 +1470,7 @@ impl Game<'_> {
                 .loading_chunks(|g| super::game_mode::loads_chunks(rule, g.spectator()))
                 .next()
         });
-        if self.is_dedicated_server() {
+        if self.is_dedicated_server() || self.dim != super::Dim::Overworld || guest.is_some() {
             self.streaming.radius = if guest.is_some() {
                 self.settings.render_distance
             } else {

@@ -717,8 +717,6 @@ sunrise-client game::general::save_load_tests::unknown_minecraft_kind_keeps_its_
 sunrise-client game::general::save_load_tests::unknown_rider_type_hands_the_tree_back lib daily resources
 sunrise-client game::general::tick_tests::a_canceled_passenger_still_follows_and_his_passengers_tick lib daily resources
 sunrise-client game::general::tick_tests::a_canceled_vehicle_pre_still_ticks_its_passengers lib daily resources
-sunrise-client game::general::tick_tests::a_discarded_riders_passenger_ticks_at_its_later_root_slot lib daily resources
-sunrise-client game::general::tick_tests::a_discarded_riders_passenger_waits_if_its_root_slot_passed lib daily resources
 sunrise-client game::general::tick_tests::a_listener_discarded_row_gets_no_callback lib daily resources
 sunrise-client game::general::tick_tests::a_listener_dismounted_rider_walks_as_a_root_after lib daily resources
 sunrise-client game::general::tick_tests::a_panicking_row_rolls_back_and_the_next_tick_proceeds lib daily resources
@@ -727,8 +725,6 @@ sunrise-client game::general::tick_tests::a_reloaded_row_reenters_ticking_behind
 sunrise-client game::general::tick_tests::a_reloaded_row_resumes_the_counter_and_refuses_its_old_handle lib daily resources
 sunrise-client game::general::tick_tests::a_removed_last_rider_leaves_no_stale_index_link lib daily resources
 sunrise-client game::general::tick_tests::a_removed_only_rider_leaves_no_stale_index_link lib daily resources
-sunrise-client game::general::tick_tests::a_riders_removal_in_canceled_pre_leaves_its_passengers_later_root_tick lib daily resources
-sunrise-client game::general::tick_tests::a_riders_removal_in_pre_leaves_its_passengers_later_root_tick lib daily resources
 sunrise-client game::general::tick_tests::a_row_discarded_from_an_earlier_pre_ticks_nothing lib daily resources
 sunrise-client game::general::tick_tests::a_row_joined_during_the_tick_span_ticks_the_next_phase lib daily resources
 sunrise-client game::general::tick_tests::counter_advances_one_per_tick lib daily resources
@@ -1294,7 +1290,7 @@ sunrise-client game::native_entity_refs::tests::shearing_llama_and_happy_ghast_r
 sunrise-client game::native_entity_refs::tests::side_guards_agree_across_integrated_dedicated_and_client lib daily resources
 sunrise-client game::native_entity_refs::tests::sulfur_cube_absorbs_one_complete_stack_by_hand_and_pickup lib daily resources
 sunrise-client game::native_entity_refs::tests::typed_uuid_and_nbt_reads_follow_the_entity_level lib daily resources
-sunrise-client game::native_entity_remove::tests::destroying_a_cart_spills_all_slots_after_the_removal_flush lib daily resources
+sunrise-client game::native_entity_remove::tests::destroying_a_cart_spills_all_slots_before_removing_its_row lib daily resources
 sunrise-client game::native_entity_remove::tests::discard_mob_and_refuse_players_and_stale_handles lib daily resources
 sunrise-client game::native_entity_remove::tests::discard_other_clears_nbt_and_saved_entity lib daily resources
 sunrise-client game::native_entity_remove::tests::kill_command_forgets_other_entity_data lib daily resources
@@ -1461,7 +1457,7 @@ sunrise-client game::native_hooks::block_entity_on_load_routes_tests::tests::blo
 sunrise-client game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_shared_type_replacement_has_fresh_handle lib daily resources
 sunrise-client game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_stale_queued_identity_is_skipped lib daily resources
 sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_client_instance_reads_received_fields lib daily resources
-sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_saved_data_placement_rewrite_and_reload lib daily resources
+sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_saved_data_placement_rewrite_and_reload lib daily child-process
 sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_without_listener_preserves_data_and_never_queues lib daily resources
 sunrise-client game::native_hooks::block_landing::landing_crossing_tests::landing_crossing_refuses_invalid_writes_and_sibling_damage lib daily resources
 sunrise-client game::native_hooks::book_screen::lifecycle_tests::authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen lib daily resources

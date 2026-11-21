@@ -648,6 +648,27 @@ impl ColumnCensus {
             + self.column_bytes
     }
 }
+/// Sparse sky and block DataLayer presence, indexed from the column's lower pad.
+#[derive(Clone, Copy)]
+pub struct StoredLight {
+    pub(crate) masks: [crate::section_mask::SectionMask; 2],
+    /// Materialized arrays in a save-backed snapshot, including all-zero arrays.
+    pub(crate) saved_arrays: Option<[crate::section_mask::SectionMask; 2]>,
+}
+
+impl StoredLight {
+    pub fn presence(&self, b: usize) -> [bool; 2] {
+        let [sky, block] = &self.masks;
+        [sky.contains(b), block.contains(b)]
+    }
+
+    /// Saved byte arrays are data layers even if every byte is zero.
+    pub fn saved_arrays(&self, b: usize) -> Option<[bool; 2]> {
+        let [sky, block] = self.saved_arrays.as_ref()?;
+        Some([sky.contains(b), block.contains(b)])
+    }
+}
+
 #[derive(Clone)]
 pub struct Chunk {
     pub x: i32,
@@ -657,12 +678,12 @@ pub struct Chunk {
     pub sections: Vec<Arc<Section>>,
     /// The light section one below the column and the one above it, as the server or save stored
     /// them (`LevelLightEngine.getMinLightSection`): an all-air section holding only light. `None`
-    /// is a section vanilla's light storage keeps nothing for (see [`Self::section_at`]).
+    /// has no explicit light data (see [`Self::section_at`]).
     pub pad_below: Option<Arc<Section>>,
     pub pad_above: Option<Arc<Section>>,
     /// Packet/save DataLayer presence, indexed from the lower pad. Computed light is dense
     /// inside the column and has no computed pads yet.
-    pub(crate) light_layers: Option<[crate::section_mask::SectionMask; 2]>,
+    pub(crate) light_layers: Option<StoredLight>,
     pub(crate) light_sky: bool,
     /// Padded light sections kept by this column's published non-air sections.
     pub(crate) light_support: crate::section_mask::SectionMask,
@@ -707,6 +728,11 @@ pub struct Chunk {
     /// The chunk came in holding a `dynamic_light` state and its cells are not asked yet: no light
     /// job reads it until they are (`streaming::light_region_ready`).
     pub dynamic_pending: bool,
+    /// Mod-published per-position connection groups (`LevelRef::set_connection_group`), by
+    /// [`Self::dynamic_cell`]. Read by the mesher when evaluating rules with `connect_group`;
+    /// synced to Sunrise clients over `sunrise:connection_groups`; dropped with the chunk and
+    /// never saved to disk.
+    pub connection_groups: crate::fast_hash::FxHashMap<u32, u64>,
 }
 impl Chunk {
     /// An all-air chunk in the current `layout`.
@@ -743,12 +769,58 @@ impl Chunk {
             entities: Vec::new(),
             dynamic_emission: Default::default(),
             dynamic_pending: false,
+            connection_groups: Default::default(),
         }
     }
-    /// The [`Self::dynamic_emission`] key of the cell at `y` (chunk-local `x`, `z`):
-    /// `section << 12 | y << 8 | z << 4 | x`; `None` outside the column.
+    /// The [`Self::dynamic_emission`] / [`Self::connection_groups`] key of the cell at `y`
+    /// (chunk-local `x`, `z`): `section << 12 | y << 8 | z << 4 | x`; `None` outside the column.
     pub fn dynamic_cell(&self, x: i32, y: i32, z: i32) -> Option<u32> {
         Some((self.section_index(y)? as u32) << 12 | index(x, y, z) as u32)
+    }
+    /// Inverse of [`Self::dynamic_cell`]: `(local_x 0..16, world_y, local_z 0..16)`.
+    pub fn dynamic_cell_coords(&self, cell: u32) -> (u8, i32, u8) {
+        let s = (cell >> 12) as i32;
+        let idx = (cell & 0xFFF) as i32;
+        let local_x = (idx & 15) as u8;
+        let local_z = ((idx >> 4) & 15) as u8;
+        let local_y = (idx >> 8) & 15;
+        (local_x, self.min_y + s * 16 + local_y, local_z)
+    }
+    /// Read the mod-published connection group at chunk-local `(x, z)` and world `y`.
+    #[inline]
+    pub fn connection_group(&self, x: i32, y: i32, z: i32) -> Option<u64> {
+        if self.connection_groups.is_empty() {
+            return None;
+        }
+        let cell = self.dynamic_cell(x, y, z)?;
+        self.connection_groups.get(&cell).copied()
+    }
+    /// Set or clear the connection group at chunk-local `(x, z)` and world `y`.
+    /// Returns `None` if `y` is outside the column, else `Some(changed)`.
+    pub fn set_connection_group(
+        &mut self,
+        x: i32,
+        y: i32,
+        z: i32,
+        group: Option<u64>,
+    ) -> Option<bool> {
+        let cell = self.dynamic_cell(x, y, z)?;
+        Some(self.write_group(cell, group))
+    }
+
+    pub(crate) fn write_group(&mut self, cell: u32, group: Option<u64>) -> bool {
+        if let Some(group) = group {
+            self.connection_groups.insert(cell, group) != Some(group)
+        } else if self.connection_groups.remove(&cell).is_some() {
+            if self.connection_groups.is_empty() {
+                self.connection_groups = Default::default();
+            } else if self.connection_groups.len() * 4 < self.connection_groups.capacity() {
+                self.connection_groups.shrink_to_fit();
+            }
+            true
+        } else {
+            false
+        }
     }
     /// The original `structures.starts`, including starts with unknown pieces.
     pub fn saved_structure_starts(&self) -> Option<&sunrise_core::nbt::Compound> {
@@ -968,8 +1040,12 @@ impl Chunk {
     /// Stored sky and block presence for a hydrated light section `b` (0 is the lower pad).
     /// Computed columns have no sparse DataLayer map.
     pub fn stored_light_layers(&self, b: usize) -> Option<[bool; 2]> {
+        self.stored_light().map(|light| light.presence(b))
+    }
+
+    /// Stored layers of a save or packet. Computed columns have no sparse DataLayer map.
+    pub fn stored_light(&self) -> Option<StoredLight> {
         self.light_layers
-            .map(|[sky, block]| [sky.contains(b), block.contains(b)])
     }
 
     pub(crate) fn light_section(&self, b: usize) -> Option<&Arc<Section>> {
@@ -1125,8 +1201,8 @@ impl PendingContainerLoot {
 pub struct ChunkExtras {
     /// Server-owned mod data attached to this chunk.
     pub attachments: sunrise_mod_runtime::attachments::Attachments,
-    /// Live serializer edits on a save snapshot only. The snapshot's block entities
-    /// hold their stored compounds, so a refused record can omit just these edits.
+    /// Edited mod payloads, including their final `Items` fields, on a save snapshot
+    /// only. The block entities retain their stored data for a save without edits.
     pub block_entity_save_edits: Option<Arc<std::collections::BTreeMap<(i32, i32, i32), Compound>>>,
     /// Attachment maps of the chunk's block entities, on a save snapshot.
     pub block_entity_attachments: Vec<(

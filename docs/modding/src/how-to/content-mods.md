@@ -65,7 +65,9 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
 - `check <file>` runs what the registry runs: the file's size and SHA-256, its manifest and content, and a signature
   with `--key <public key> --signature <file>.minisig`. It reads `.smod`, `.spack`, resource pack `.zip`
   and `.sshader` files.
-- `registry build|review|check|list|release|page` is the registry repository's CI ([the registry index](../reference/registry-index.md)).
+- `registry build|review|check|list|release|releases|page` supports the registry repository's CI
+  ([the registry index](../reference/registry-index.md)). `registry releases --out releases.json` discovers stable
+  release tags and commits. The workflow verifies the signed SDK separately.
 - `use-jar <path>` records and caches an original Java jar as an external asset/data source, without copying it into the mod
   ([Java jars as external assets](#java-jars-as-external-assets)).
 
@@ -86,17 +88,36 @@ server Parts.
 
 ## Declare content in code
 
+For a complete example with Rust and resource files, see
+[Register a block with a model](world/register-a-block.md).
+
 Code mods declare content through `BlocksEvent` and `ItemsEvent`, using API-owned
 `mod_api::Block` and `mod_api::Item` records. Start with `Block::new(id, template)` or
-`Item::new(id, template)`, passing identifier strings, then set the overrides. These records are unvalidated; admission reports malformed values with the content loader's refusal messages.
-These are load-time declarations, not live registry entries. The game admits them
-with the content-file checks, atomically for each namespace, before resources load.
-A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none. Each mod receives its own declaration
-batch. New identifiers from code—including block entity types and other registrar
-declarations—may use any namespace owned by that mod's manifest. Bare names use
-the mod ID; an explicit owned namespace stays unchanged. An unowned namespace
-refuses registration with a diagnostic naming both the mod and namespace. Attaching a Part to an existing vanilla or
-foreign block or item is a reference, not a new declaration, and remains allowed.
+`Item::new(id, template)`, passing identifier strings, then set the overrides and call
+`event.register(declaration)`. Invalid IDs return a typed `DeclarationError`; the remaining checks
+run before resources load. These are load-time declarations, not live registry entries. The game
+admits them with the content-file checks, atomically for each owner.
+A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none.
+New identifiers from code across every namespace-owned registration—including
+blocks, items, block entity types, fluids, general entity types, attributes,
+custom stats, game rules, recipe types and serializers, recipe book types, menu
+recipe books, menu screen dispatch, mob-effect tick ownership (`MobEffectPart`),
+recipe property sets, render pipelines, armour models, arm poses, attachment
+types, biome modifiers, datapack registries, client dynamic textures, and
+runtime levels—may use any namespace owned by that mod's manifest, or any
+namespace of an installed content package that delegates to it via `served_by`
+(when the native host opts in with `[native] serves_content = true`; see
+[Manifest reference](../reference/manifest.md#sunrise-modtoml)). Only filesystem
+paths keyed strictly by package ID (such as `config/<mod_id>.toml`) stay scoped
+to the host's own ID. Bare names use the mod ID; an
+explicit owned namespace stays unchanged. An unowned namespace refuses
+registration with a diagnostic naming both the mod and namespace. A host cannot
+re-declare a block or item ID that its served content package already declares,
+and opting in with `serves_content = true` grants delegation to any installed
+content package that names the host—so a host runtime must inspect
+`context.mods()` and serve only packages it recognizes or generated. Attaching a
+Part to an existing vanilla or foreign block or item is a reference, not a new
+declaration, and remains allowed.
 
 Code declarations carry component patches as `Vec<(String, Option<Tag>)>`:
 `Some(tag)` sets the named component and `None` removes it (without a `!` prefix).
@@ -136,6 +157,7 @@ homepage = "https://..."     # optional: the Mods screen's Homepage button
 issues = "https://..."       # optional: the Mods screen's Issues button
 side = "both"
 namespaces = []              # optional: more namespaces the mod's files use (below)
+served_by = "my_runtime"     # optional (content only): native runtime mod with serves_content = true
 
 [properties]                 # optional: values other mods read (reference/manifest.md)
 tier = 3
@@ -263,6 +285,14 @@ Pick-block takes the block's item by default. `"pick_item": "<item id>"` names a
 `block_item`: vanilla's `getCloneItemStack`, which lets a mature crop pick its seed while `Block.asItem` stays what it
 is (air for `"item": false`). It is an item of the mod or a vanilla one, and the load fails naming the block when no
 such item exists. A sign's wall form picks its sign's item through `wall_block`, so it declares no `pick_item`.
+
+`"suspicious_stew_effects": [{"id": "minecraft:night_vision", "duration": 100}]` makes the block a suspicious stew
+source. Entries are applied in order; duration is in ticks and defaults to 160 when omitted. An unknown mob effect is
+reported when content loads. Native `Block` declarations give the same list as `(effect ID, duration in ticks)` pairs.
+Food & Drinks and Search show one stew for each distinct list, and feeding the block's item to a brown mooshroom
+lets you milk it into that stew. The item must place the block: neither `block_item` nor `pick_item` makes an item
+place it. This does not add a crafting recipe. To craft the stew, supply a `minecraft:crafting_shapeless` recipe with
+the block's item, a bowl and two `#minecraft:mushrooms`, and set `minecraft:suspicious_stew_effects` on the result.
 
 `push_reaction` sets vanilla's `BlockBehaviour.Properties.pushReaction` to `"PUSH_PULL"`, `"PUSH"`, `"POPPED"`, `"IMMOVEABLE"`, or `"IGNORE_ENTITY"`.
 
@@ -702,8 +732,12 @@ round-trip through saved NBT; negative zero is not supported. A key such as
 
 `crafting_remainder` names what the item leaves in the crafting grid when a
 recipe uses it, as a milk bucket leaves a bucket (vanilla's
-`Item.Properties.craftRemainder`, not a data component): a vanilla item or
-one of the mod's own, refused at load otherwise. It holds on the crafting
+`Item.Properties.craftRemainder`, not a data component): a vanilla item, one
+of the mod's own, or, across a `served_by` delegation (see
+[Declare content in code](#declare-content-in-code)), an item or item-bearing block the other
+side declares: a served package's file may name one its serving runtime declares in that
+package's namespaces, and the runtime may name one from a package it serves. Anything else
+is refused at load. It holds on the crafting
 table, the inventory grid, the crafter and as furnace fuel (the last of the stack leaves it in
 the fuel slot, a stack with more left drops it), not in a brewing stand. What the item leaves once eaten
 or drunk is the `minecraft:use_remainder` component instead:
@@ -862,6 +896,12 @@ admission errors name the file. Radius 0 disables its shadow. Radius follows `mi
 baby age scaling and the template's extra baby factors; cube sizes, pufferfish and dragon retain
 their renderer rules. The usual visibility, 32-block radius cap and distance fade still apply.
 
+A living type can set `allowed_in_peaceful` to `false` to prevent summons and spawns
+in Peaceful and to have existing mobs of that type despawn there. Its spawn egg
+shows the disabled-in-Peaceful line. Set it to `true` to allow the type in Peaceful
+without changing the template's other spawn rules or AI. If omitted, the type
+inherits its template's setting. Thrown types cannot set this key.
+
 A living type copies a mob, the way NeoForge's `EntityType.Builder.of(Zombie::new, ...)` makes a type of a vanilla
 class: `minecraft:zombie`, `minecraft:skeleton`, `minecraft:drowned`, `minecraft:villager`,
 `minecraft:wandering_trader`, or one of the tameable mobs
@@ -950,13 +990,13 @@ world load.
 
 A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
 fields)` (NeoForge's `DataPackRegistryEvent.NewRegistry`).
-`path` lands in the mod's namespace (`spell` of `example` is `example:spell`), and `fields` is a flat record
+`path` lands in a namespace the mod owns (`spell` of `example` is `example:spell`; explicit IDs may use extra manifest namespaces or a content package served via `served_by`), and `fields` is a flat record
 schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
 each required or given a default. Entry `addon:fire` is `data/addon/example/spell/fire.json`
 (`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded
 registries have it. The game decodes entries against the schema without running mod code: an undeclared key, a missing required key, a wrong type or an out-of-range value fails
 the entry, and a default never stands in for invalid data. The engine adds no entry-size or field-count limit
-of its own. Only both-side packages may declare registries. The game loads entries from mod content and enabled data packs.
+of its own. Only both-side packages (and both-side served namespace suppliers) may declare registries. The game loads entries from mod content and enabled data packs.
 
 Use the host's `level_datapack_entries(level, registry)` to list sorted entry IDs,
 `level_datapack_handle(level, registry, entry)` to obtain a `DatapackHandle`, and
@@ -995,6 +1035,10 @@ template's, with `template` added and its attributes in place of the template's.
 a client mod registers a renderer for it ([entity renderers](client/entity-renderers.md)); the content declaration
 inherits the template's goals.
 
+Daylight burning follows the type's own id, not its template. To make a type burn in sunlight,
+add its id to `data/minecraft/tags/entity_type/burn_in_daylight.json`. Leaving it out does not
+make it immune to ordinary fire.
+
 #### Block entity containers
 
 A code mod declares a block entity's `ModContainer` with `Registrar::block_container`. The
@@ -1003,7 +1047,10 @@ Per-slot `insert_rules` provide static admission, with missing entries treated a
 
 For state-dependent admission, implement `BlockEntityPart::can_place_item`
 (vanilla's `Container.canPlaceItem`). Its `CanPlaceItemEvent` gives the server part the block
-entity's saved data and current slots, the queried slot index and the offered stack. Returning
+entity's own `pos` and current block `state`, its saved data and slots, the queried slot index,
+and the offered stack. Parts shared by several blocks can branch on `state.block()`. To filter
+by a property without a Host in this query, resolve matching `BlockState` values in a hook with
+block metadata and keep them for comparison here. Returning
 `Some(true)` or `Some(false)` replaces the declared rule for that slot; `None` keeps it. Face
 and input-slot rules and stack limits still apply. Hoppers and hopper minecarts, droppers,
 default `ITEMS` and `STORAGE` insertion, and nonempty offers from `/loot insert` and
@@ -1013,21 +1060,35 @@ physical room after face and input checks. An actual insert asks with its remain
 before applying the stack limit.
 
 The query has no Host and may run for a slot that is never written. Seed a filter from the
-accepted write, not from the query. Default capability writes to mod-owned storage are
-silent: they do not emit `contents_changed` on their own. Use an explicit `set_changed`
-notice or seed in a provider that owns the accepted write. Menu clicks and quick-move
-still use the declared rules and `menu_slot_rules` (vanilla's `Slot.mayPlace`); they do not
-ask the block entity part.
+accepted write, not from the query. Default `ITEMS` and `STORAGE` writes to these slots emit
+`contents_changed` once per backing block at root commit. If your provider writes directly
+to storage it owns, issue `set_changed` explicitly or seed the filter in the provider. Menu
+clicks and quick-move still use the declared rules and `menu_slot_rules` (vanilla's
+`Slot.mayPlace`); they do not ask the block entity part.
 
 #### Menu types
 
 A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(1 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
+(0 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
 from (`results`, as a furnace's result slot):
 
 ```json
 { "slots": 9, "data_slots": 2, "results": [7, 8], "inputs": [0, 1] }
 ```
+
+A status or control screen that has no item slots at all can omit the player inventory group too:
+
+```json
+{ "slots": 0, "player_inventory": false, "data_slots": 2 }
+```
+
+`player_inventory` defaults to `true`. Result, crafting, linked-slot and recipe-book mappings name declared
+container slots, never the optional player group. A mapping to an absent slot is refused at load.
+
+For blockless opens, an optional `owned_slots` array declares [transient menu storage](../concepts/capabilities/menu-slots.md#menu-owned-slots).
+It must contain exactly `slots` entries, each the maximum stack size (1–99) of that slot.
+Types declaring `owned_slots` are blockless-only and cannot declare `results` or `crafting`.
+A block container cannot bind an owned-slot type as its menu.
 
 The optional menu `inputs` list marks machine feeds, including fuel, as `Input`
 in [`MenuRef::slot_kinds`](../concepts/capabilities/menu-slots.md). Indices start at zero and
@@ -1038,10 +1099,11 @@ a slot accepts or how clicks and item transfers work.
 
 It is the menu type `<id>:<name>`, with its network id after vanilla's. A mod block's container opens it when its
 `menu` names it with as many slots ([native mods](native-mods.md), `r.block_container(&block, container)`). The menu holds
-its slots, then the player's 36. A shift-click from the inventory goes to the first slots with room, never a result
+its slots, then the player's 36 if `player_inventory` is on. A shift-click from the inventory goes to the first slots with room, never a result
 slot, and one on the container goes to the inventory, as a chest's does. `results` fence players only: hoppers follow the
-block entity container's faces and insertion rules, not the menu's `inputs` list. The data slots are the block entity's `data`
-(16-bit on the network, as vanilla's), all sent when it opens, then each change. A Sunrise client shows it through the
+block entity container's faces and insertion rules, not the menu's `inputs` list. A block-backed menu syncs the block entity's
+`data` (16-bit on the network, as vanilla's). A [blockless menu](world/machine-menu-data.md#blockless-status-menus)
+gets its initial data from its opener and syncs subsequent signed `i32` changes without reopening. A Sunrise client shows it through the
 mod's own screen (`screen`); without one it closes again. `player.open_mod_menu` can open the same type without a
 block, and a registered recipe-book screen applies to either opening. Clients join a server only with the same mods' menu
 types, as with its blocks, and a client that isn't Sunrise's is never sent one: the block opens nothing for it. Its
@@ -1295,7 +1357,7 @@ A code mod declares the same modifiers without a file: `Registrar::declare_biome
 `AddSpawnCosts`, `RemoveSpawnCosts`, `AddCarvers`, `RemoveCarvers` or `ModifyBiome`, whose `Option` fields are the
 values above). `BiomeModifier::json` renders it as the file above, so a declared modifier and
 a shipped one are applied by the same code, in the same order (additions first, then removals, then modifications, mods in dispatch
-order, declarations in registration order). An id outside the mod's namespace or that is not a file path, a repeated
+order, declarations in registration order). An id outside the mod's owned namespaces (or `minecraft`) or that is not a file path, a repeated
 id, an empty list, a name that is not namespaced, an unknown generation step, a spawner of weight 0 or with its
 smallest group above its largest, a spawn cost that is not finite, a climate number that is not finite, a colour above
 0xFFFFFF and a temperature modifier other than `none` or `frozen` refuse the mods at startup, naming the mod.
