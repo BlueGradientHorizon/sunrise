@@ -753,7 +753,8 @@ fn level_queries_take_their_hosts(
     shooter: EntityRef,
     tool: &ItemStack,
 ) {
-    let _: Option<Vec<PlayerRef>> = level.online_players(read);
+    let _: Result<core::ops::ControlFlow<()>, LevelReadError> =
+        level.visit_online_players(read, &mut |_: PlayerRef| core::ops::ControlFlow::Break(()));
     let _: Option<Vec<PlayerRef>> = chunk.watchers(read);
     let _: Option<StructureSearchResult> = level.find_nearest_structure(
         read,
@@ -769,6 +770,14 @@ fn level_queries_take_their_hosts(
     let _: Option<bool> = level.has_collisions(read, [0.0, 64.0, 0.0, 1.0, 65.0, 1.0]);
     let _: Option<Vec<EntityRayHit>> =
         level.ray_trace_entities(read, [0.0; 3], [8.0, 0.0, 0.0], 0.3, Some(shooter));
+    let _: Result<Option<EntityRayHit>, LevelReadError> = level.ray_trace_nearest_entity(
+        read,
+        [0.0; 3],
+        [8.0, 0.0, 0.0],
+        0.3,
+        Some(shooter),
+        &mut |hit: EntityRayHit| hit.entity != shooter,
+    );
     let _: Result<Option<Vec<ItemStack>>, StackWriteError> =
         level.block_drops(server, [0, 64, 0], Some(tool), Some(shooter));
     let _: Result<Option<Vec<ItemStack>>, StackWriteError> = level.roll_loot(

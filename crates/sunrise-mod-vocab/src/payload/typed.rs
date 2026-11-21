@@ -11,6 +11,7 @@ use crate::{
     ChunkRef, ClientHost, EntityRef, LevelRef, PAYLOAD_DECODE_BUDGET, PlayerRef, ServerHost,
     decode_payload, encode_payload, payload_schema,
 };
+use core::ops::ControlFlow;
 use std::{marker::PhantomData, sync::Arc};
 
 /// What a typed registration claims: the declaration's slot in this load's frozen table, the
@@ -213,9 +214,11 @@ impl<T: Wire> ToClient<T> {
         Ok(self.deliver(host, players, body))
     }
 
-    /// Send `value` to the players in `level` (`level_online_players`), like NeoForge's
-    /// `PacketDistributor.sendToPlayersInDimension`. Returns how many sends were accepted; a
-    /// stale level has no players, so it is `Ok(0)`.
+    /// Send `value` to the players visited by [`LevelRef::visit_online_players`], like
+    /// NeoForge's `PacketDistributor.sendToPlayersInDimension`. Returns how many sends were
+    /// accepted. Encoding runs first; after a successful encode, an empty visit or a
+    /// stale or unavailable level returns `Ok(0)`. Recipients are collected with a
+    /// shared host read before taking mutable host access to queue the sends.
     ///
     /// Encoding and per-player refusals follow [`send_to_all`](Self::send_to_all).
     pub fn send_in_level(
@@ -225,14 +228,25 @@ impl<T: Wire> ToClient<T> {
         value: &T,
     ) -> Result<u32, PayloadSendError> {
         let body = self.encode(host, value)?;
-        let players = level.online_players(host).unwrap_or_default();
+        let mut players = Vec::new();
+        if level
+            .visit_online_players(host, &mut |player| {
+                players.push(player);
+                ControlFlow::Continue(())
+            })
+            .is_err()
+        {
+            return Ok(0);
+        }
         Ok(self.deliver(host, players, body))
     }
 
     /// Send `value` to the players in `level`, other than `except`, whose squared distance from
     /// `pos` is below `radius` squared, like NeoForge's `PacketDistributor.sendToPlayersNear`
     /// (vanilla's `PlayerList.broadcast`). A player on the radius itself is not reached. Returns
-    /// how many sends were accepted.
+    /// how many sends were accepted. After a successful encode, no matches or a stale
+    /// or unavailable level returns `Ok(0)`. The distance checks are shared reads during
+    /// the player visit; sends start after the visit has finished.
     ///
     /// Encoding and per-player refusals follow [`send_to_all`](Self::send_to_all).
     pub fn send_near(
@@ -245,18 +259,24 @@ impl<T: Wire> ToClient<T> {
         value: &T,
     ) -> Result<u32, PayloadSendError> {
         let body = self.encode(host, value)?;
-        let near: Vec<PlayerRef> = level
-            .online_players(host)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|player| Some(*player) != except)
-            .filter(|player| {
-                player.entity().position(host).is_some_and(|at| {
-                    let [dx, dy, dz] = [at[0] - pos[0], at[1] - pos[1], at[2] - pos[2]];
-                    dx * dx + dy * dy + dz * dz < radius * radius
-                })
+        let mut near = Vec::new();
+        let radius_squared = radius * radius;
+        if level
+            .visit_online_players(host, &mut |player| {
+                if Some(player) != except
+                    && player.entity().position(host).is_some_and(|at| {
+                        let [dx, dy, dz] = [at[0] - pos[0], at[1] - pos[1], at[2] - pos[2]];
+                        dx * dx + dy * dy + dz * dz < radius_squared
+                    })
+                {
+                    near.push(player);
+                }
+                ControlFlow::Continue(())
             })
-            .collect();
+            .is_err()
+        {
+            return Ok(0);
+        }
         Ok(self.deliver(host, near, body))
     }
 

@@ -1181,8 +1181,8 @@ pub struct MapState {
     pub colors: Vec<u8>,
 }
 
-/// One entity a level ray passes through (`LevelRef::ray_trace_entities`): what
-/// `ProjectileUtil.getEntityHitResult` tests for each candidate.
+/// One entity a level ray passes through, as tested by `ProjectileUtil.getEntityHitResult`.
+/// Returned by [`LevelRef::ray_trace_entities`] and [`LevelRef::ray_trace_nearest_entity`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -1868,7 +1868,8 @@ pub struct ObjectiveRef {
 /// One of the scoreboard's teams of an open server world (vanilla's `PlayerTeam`). It holds the
 /// world's epoch and an identity the board gave the team when it was added, so a team that was
 /// removed (even if its name was added again) or a handle from an earlier open reads as stale:
-/// reads answer `None` or [`TeamError::Stale`] and writes change nothing.
+/// reads answer `None`, [`TeamError::Stale`] or [`TeamMembersReadError::Stale`], and writes
+/// change nothing.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct TeamRef {

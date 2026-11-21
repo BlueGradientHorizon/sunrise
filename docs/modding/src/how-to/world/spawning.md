@@ -89,26 +89,89 @@ notifies once with `loaded_from_disk = true`. The normal join cancellation and
 transaction rules apply to these entities too.
 
 `entity_leave_level` (hook version 3) reports the same additional kinds when they leave.
-On the server, `level.entities_in(host, min, max)` additionally returns readable `EntityRef`
-handles for block, item and text displays, markers and interactions. Eyes of ender,
-leash knots and other unmodeled kinds are not returned yet. The returned entities'
-kind, position, saved data and tags can be inspected without command selectors. The query uses physical boxes, not rendering/culling boxes:
-displays and markers have zero-sized boxes at their positions; interactions use their
-saved width and height. Face-only contact does not intersect. A handle expires when its
-entity unloads, so find it again when the saved entity rejoins.
+On the server, `LevelRef::visit_entities_in` also visits block, item and text displays,
+markers and interactions. Eyes of ender, leash knots and other unmodeled kinds are
+not visited yet. The query uses physical boxes, not rendering bounds: displays
+and markers have zero-sized boxes at their positions; interactions use their saved
+width and height. A handle expires when its entity unloads, so find it again when
+the saved entity rejoins.
 
-`level_entities_in(level, min, max)` lists item frames and paintings whose boxes meet the box too, with
-handles that resolve, after the ordinary entities and before the players.
+## Visiting entities in a box
+
+`level.visit_entities_in(host, min, max, &mut visit)` visits readable `EntityRef`s
+whose boxes intersect the given box. Face-only contact does not intersect, and
+inverted bounds are swapped on each axis. Ordinary entities come first, then item
+frames and paintings in join order (frames first on ties), then the dragon's body. The server then visits
+displays, markers, interactions, fishing hooks and placed non-spectator guests.
+On a client the walk sees the server-tracked entities, including tracked players,
+and visits the window's own player after the dragon's body unless spectating.
+Intersecting dragon parts come last on both sides.
+
+The visitor can read the entity or run another shared query through the same host:
+no residency guard is held during the callback. Return `ControlFlow::Continue(())`
+to keep walking or `ControlFlow::Break(())` to stop before checking later matches.
+For example, find the first entity of a type without building a list:
+
+```rust,ignore
+use core::ops::ControlFlow::{Break, Continue};
+
+let mut first = None;
+let _ = level.visit_entities_in(host, min, max, &mut |entity| {
+    if entity.kind(host) == Some(wanted_kind) {
+        first = Some(entity);
+        Break(())
+    } else {
+        Continue(())
+    }
+})?;
+```
+
+The call returns `Ok(Continue(()))` on completion, including a valid empty query,
+or `Ok(Break(()))` if the visitor stopped it. `Err(LevelReadError::Stale)` means
+the level is stale; `Err(LevelReadError::Unavailable)` means the bounds are not
+finite, the level is parked or undisplayed, or world access is unavailable.
+Neither refusal runs the visitor. If you need to mutate multiple entities, push
+just the handles you need into your own list and use the mutable host after the
+visit returns.
+
+## Finding the nearest entity hit
+
+Use `level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut accept)`
+when you need just one hit. It visits the same kinds of entities as the box query,
+grows their boxes by `margin`, and clips them to the segment. It skips `exclude`
+(such as the shooter) and boxes the ray starts inside.
+
+The predicate runs once per geometric hit, in spatial traversal order rather than
+nearest-first order, even if a nearer hit has already been accepted. It can read
+`hit.entity` through the same host. Return `true` to consider a hit. The smallest
+squared distance from `from` wins; exact squared-distance ties keep the first
+visited hit. The query doesn't allocate a hit list. It returns `Ok(Some(hit))` on
+success and `Ok(None)` if nothing is accepted. A stale level returns
+`Err(LevelReadError::Stale)`; invalid ray geometry or unavailable world access
+returns `Err(LevelReadError::Unavailable)`. Neither refusal runs the predicate.
+
+Keep using `level.ray_trace_entities(host, from, to, margin, exclude)` when you need
+all hits or depend on processing them nearest first. That call returns `Some` with
+an empty list on a valid miss and `None` if refused.
 
 ## Walking every entity in a level
 
-`host.level_all_entities(level)` returns the authoritative level's available
-`EntityRef`s without an AABB filter, including spectator players. Unlike
-`level_entities_in`, it does not append the dragon's parts: vanilla's
-`ServerLevel.getAllEntities` iterates the entity lookup, not multipart hit boxes.
-A remote client, stale handle or parked level returns `None`, never a partial
-client-side list. Outside a scoped hook query, an unavailable lookup member makes the query return `None`.
-Inside a scoped hook query, unavailable members are omitted.
+`level.visit_all_entities(host, &mut visit)` visits the authoritative level's
+`EntityRef`s without an AABB filter, including spectator players. Vehicles being
+removed are skipped. Unlike `level.visit_entities_in`, it does not append the dragon's
+parts: vanilla's `ServerLevel.getAllEntities` iterates the entity lookup, not
+multipart hit boxes. The visitor can read the entity through the same host.
+
+Return `ControlFlow::Continue(())` to visit the next entity or
+`ControlFlow::Break(())` to stop. The call returns `Ok(ControlFlow::Continue(()))`
+on completion (including an empty level), or `Ok(ControlFlow::Break(()))` if the
+visitor stopped it. A stale handle returns `LevelReadError::Stale`. A remote client,
+a parked level, or an unavailable lookup member returns `LevelReadError::Unavailable`
+before the visitor runs. Outside the block-entity item-tick view, the walk checks
+that every eligible lookup member resolves before calling the visitor. This preserves
+the all-or-nothing read even if the visitor would stop at the first entity. An early
+stop saves the rest of the second pass, not the preflight. The item-tick view instead
+skips members it cannot resolve as it visits.
 
 The walk preserves lookup admission order across storage families, including
 removal and re-admission at the end. An entity spawned during play, such as a
@@ -135,9 +198,8 @@ entity was to where it ended (mobs and players are told per write). A block
 piston's push is recorded only while a mod listens to `entity_entering_section`.
 Entities that the engine keeps outside the residency families, such as lingering
 potion clouds, lightning bolts and eyes of ender, are not lookup members at all.
-The call allocates buffers for the result and sorts admission keys; it does not
-allocate an object per entity. Cache the result when doing several passes in one
-hook rather than repeatedly crossing the host boundary.
+The walk uses the existing admission order without allocating a result list. If
+you need a list after the call, collect the handles you need in your visitor.
 
 ## Checking a spawn
 

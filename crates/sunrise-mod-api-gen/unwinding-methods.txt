@@ -553,10 +553,7 @@ level_effects::level_global_level_event
 level_effects::level_level_event
 level_effects::level_play_sound
 level_effects::level_send_particles
-level_entities::level_all_entities
 level_entities::level_award_experience
-level_entities::level_entities_in
-level_entities::level_online_players
 level_entities::level_pop_resource
 level_entities::level_ray_trace_entities
 level_entities::level_spawn_item
@@ -1079,7 +1076,6 @@ scoreboard::team_display_name
 scoreboard::team_friendly_fire
 scoreboard::team_join
 scoreboard::team_leave
-scoreboard::team_members
 scoreboard::team_name
 scoreboard::team_name_tag_visibility
 scoreboard::team_prefix

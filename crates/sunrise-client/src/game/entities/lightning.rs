@@ -892,6 +892,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::native_entity_refs::tests::collect_entities_in;
     use mod_api::{self, ServerHost};
     use std::sync::Arc;
     use sunrise_client::mobs::{Anim, Brain, Mob, MobType, Part, Species};
@@ -1068,7 +1069,7 @@ mod tests {
                 let mushrooms = host
                     .level("minecraft:overworld")
                     .and_then(|level| {
-                        level.entities_in(host, [-10.0, 60.0, -10.0], [20.0, 70.0, 20.0])
+                        collect_entities_in(host, level, [-10.0, 60.0, -10.0], [20.0, 70.0, 20.0])
                     })
                     .unwrap()
                     .into_iter()

@@ -1,7 +1,7 @@
 //! `item_picked_up_post` on whole and partial pickups through the game's own pickup
 //! paths, the host's player (`tick_dropped_items`) and a LAN guest (`guest_pickups`),
 //! with literal counts.
-use crate::game::Game;
+use crate::game::{Game, native_entity_refs::tests::collect_all_entities};
 use mod_api::{Hooks, ItemPickedUpEvent, ItemPickedUpPostEvent, ModEntry, ServerHost, TriState};
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
@@ -82,7 +82,7 @@ impl Probe {
             // the level sweeps out of its list later.
             let _ = host.commands().run_command("kill @e[type=minecraft:item]");
             let level = host.level("minecraft:overworld").unwrap();
-            for entity in level.all_entities(host).unwrap_or_default() {
+            for entity in collect_all_entities(host, level).unwrap_or_default() {
                 let _ = entity.discard(host);
             }
         }
