@@ -84,7 +84,7 @@ def own_sdk_daily_runs(root, row):
     if (call.get("uses") != f"./{OWN_SDK_WORKFLOW}"
             or call.get("with", {}).get("own_sdk") != "true"
             or call.get("with", {}).get("commit") != "${{ needs.resolve.outputs.commit }}"
-            or call.get("if", "").strip() in ("false", "${{ false }}")):
+            or re.sub(r"^\$\{\{(.*)\}\}$", r"\1", call.get("if", "").strip()).strip() == "false"):
         return False
     enabled = (None, "true", "${{ true }}")
     quickstart = yaml.load(quickstart_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader) or {}

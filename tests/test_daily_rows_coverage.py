@@ -74,7 +74,8 @@ class DailyRowsCoverage(unittest.TestCase):
             workflows.mkdir(parents=True)
             (workflows / "book-quickstart.yml").write_bytes(
                 (ROOT / ".github/workflows/book-quickstart.yml").read_bytes())
-            for condition, runs in [("", True), ("if: false", False), ("if: ${{ false }}", False)]:
+            for condition, runs in [("", True), ("if: false", False), ("if: ${{ false }}", False),
+                                     ("if: ${{false}}", False), ("if: ${{  false  }}", False)]:
                 (workflows / "daily.yml").write_text(textwrap.dedent(f"""\
                     jobs:
                       book-quickstart:
