@@ -166,7 +166,11 @@ fn cancelled_split_spawns_nothing_but_keeps_the_construction_draws() {
             let next_id = game.next_entity;
             game.split_cube_children(&mut dying);
             assert!(game.mobs.is_empty(), "a cancelled split spawns no child");
-            assert_eq!(game.next_entity, next_id, "and issues no entity number");
+            assert_eq!(
+                game.next_entity,
+                next_id + 3,
+                "all proposals were constructed"
+            );
             // The count and the three yaw draws were spent before the callback.
             assert_eq!(dying.random.next_int(), NEXT_INT);
         },
@@ -333,11 +337,11 @@ fn edit_remove_push_commits_a_c_d_once() {
             assert!(near(kids[1].position.x, AT[0] - 0.52));
             assert!(near(kids[1].position.z, AT[2] + 0.52));
             assert_eq!(kids[1].yaw, YAWS[2]);
-            assert_eq!(kids[1].id, first + 1);
+            assert_eq!(kids[1].id, first + 2);
             assert_eq!(kids[2].position.x, 3.0);
             assert_eq!(kids[2].position.y, 70.0);
             assert_eq!(kids[2].yaw, 12.0);
-            assert_eq!(kids[2].id, first + 2);
+            assert_eq!(kids[2].id, first + 3);
             assert_eq!(kids[2].extra.size, 2);
         },
     );
@@ -513,7 +517,11 @@ fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
             }));
             assert!(unwound.is_err());
             assert!(game.mobs.is_empty(), "no child joined");
-            assert_eq!(game.next_entity, next_id, "no entity number was issued");
+            assert_eq!(
+                game.next_entity,
+                next_id + 3,
+                "all proposals were constructed"
+            );
             // Pre-callback effects stay: the construction draws were spent.
             assert_eq!(dying.random.next_int(), NEXT_INT);
             // Subsequent splits work cleanly from a fresh stack frame.
@@ -598,16 +606,16 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
                 event.child.is_present(),
                 event.child.get().unwrap().kind().unwrap().to_string(),
             ));
-            let mut pig_spec = PendingMobSpec::new(
-                mod_api::Identifier::parse("minecraft:pig").unwrap(),
-                mod_api::Identifier::parse(event.dimension).unwrap(),
-                [0.5, 64.0, 0.0],
-                0.0,
-                true,
-            );
-            pig_spec.size = None;
-            let mut pig = event.child.construct(pig_spec).unwrap();
-            assert_eq!(pig.set_baby(false), Err(UnspawnedMobError::Invalid));
+            let mut pig = event
+                .child
+                .construct(PendingMobSpec::new(
+                    mod_api::Identifier::parse("minecraft:pig").unwrap(),
+                    mod_api::Identifier::parse(event.dimension).unwrap(),
+                    [0.5, 64.0, 0.0],
+                    0.0,
+                    false,
+                ))
+                .unwrap();
             pig.set_yaw(15.0).unwrap();
             pig.add_tag("replaced_pig").unwrap();
             let replaced = event
@@ -628,10 +636,9 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
                     true,
                 ))
                 .unwrap();
-            assert_eq!(
-                event.child.get_mut().unwrap().set_baby(false),
-                Err(UnspawnedMobError::Invalid)
-            );
+            let mut pig = event.child.get_mut().unwrap();
+            pig.set_baby(true).unwrap();
+            pig.set_baby(false).unwrap();
             Flow::Continue
         },
         |game| {
@@ -639,7 +646,10 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
             let live_parent = find(game, parent);
             let child = find(game, child.expect("a baby joined"));
             assert_eq!(child.kind.id, "minecraft:pig");
-            assert!(child.extra.age < 0, "a baby has a negative age");
+            assert_eq!(
+                child.extra.age, -24000,
+                "the adult replacement joins as a baby"
+            );
             // Post-event snap places the selected child at the parent's position with yaw/pitch 0.
             assert_eq!(child.position, live_parent.position);
             assert_eq!(child.yaw, 0.0);
@@ -708,26 +718,68 @@ fn breeding_veto_leaves_no_baby_orb_or_statistic_and_the_parents_resting() {
 #[test]
 #[ignore = "daily"]
 fn clearing_the_baby_without_cancel_leaves_parents_and_credit_untouched() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use sunrise_client::mobs::goals::Breed;
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
     with_baby(
-        |_, event| {
-            let taken = event.child.take();
-            assert!(taken.is_some());
-            assert!(event.child.is_empty());
+        move |host, event| {
+            seen.fetch_add(1, Ordering::Relaxed);
+            for (id, love) in [(event.parent, 599), (event.partner, 600)] {
+                let nbt = host.entity(id).unwrap().nbt(host).unwrap();
+                assert_eq!(nbt.get(&"Age".into()), Some(&mod_api::Tag::Int(0)));
+                // The initiating cow has just ticked; the partner has not ticked yet and
+                // must not be cooled down by the pre-dispatch pass.
+                assert_eq!(nbt.get(&"InLove".into()), Some(&mod_api::Tag::Int(love)));
+            }
+            assert!(event.child.take().is_some());
             Flow::Continue
         },
         |game| {
-            let (parent, partner, child) = breed_pair_credited(game, "minecraft:cow", true);
-            assert_eq!(child, None);
-            assert_eq!(animals_bred(game), 0);
-            assert!(
-                game.love_cause.contains_key(&parent),
-                "clearing without cancel must not consume breeding credit"
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            assert!(game.entity_ticking_area()(1, 0));
+            assert!(game.entity_tick_listed_area()(1, 0));
+            let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
+            let parent = game.next_entity + 1;
+            game.next_entity += 2;
+            for (id, x) in [(parent, 0.5), (parent + 1, 1.5)] {
+                let mut mob = Mob::new(id, kind.clone(), Vec3::new(x, 80.0, 0.5), 0.0);
+                mob.persistent = true;
+                mob.no_gravity = true;
+                mob.ai.goals.clear();
+                mob.ai.targets.clear();
+                if id == parent {
+                    mob.ai.goals.add(2, Breed::new(1.0));
+                }
+                game.mobs.push(mob);
+            }
+            game.native_joins_skip();
+            game.love_cause.insert(parent, None);
+            for _ in 0..100 {
+                for (i, mob) in game.mobs.iter_mut().enumerate() {
+                    mob.position = Vec3::new(0.5 + i as f64, 80.0, 0.5);
+                    mob.velocity = Vec3::ZERO;
+                    mob.extra.in_love = 600;
+                }
+                game.tick_creature_entities().unwrap();
+                if calls.load(Ordering::Relaxed) != 0 {
+                    break;
+                }
+            }
+            assert_eq!(
+                calls.load(Ordering::Relaxed),
+                1,
+                "the actual goal must breed"
             );
-            assert!(game.mobs.iter().all(|m| m.extra.age >= 0));
-            for id in [parent, partner] {
-                let p = find(game, id);
-                assert_eq!(p.extra.age, 0);
-                assert_eq!(p.extra.in_love, 600);
+            assert_eq!(animals_bred(game), 0);
+            assert!(game.love_cause.contains_key(&parent));
+            assert_eq!(game.mobs.len(), 2, "only the parents remain");
+            for mob in &game.mobs {
+                assert_eq!(mob.extra.age, 0);
+                assert_eq!(mob.extra.in_love, 599);
             }
         },
     );
@@ -858,7 +910,7 @@ fn fox_breeding_rejects_non_fox_and_trusts_breeders_on_replaced_fox() {
                     mod_api::Identifier::parse(event.dimension).unwrap(),
                     [5.0, 70.0, 5.0],
                     42.0,
-                    true,
+                    false,
                 ))
                 .unwrap();
             kit.add_tag("custom_kit").unwrap();
@@ -869,8 +921,37 @@ fn fox_breeding_rejects_non_fox_and_trusts_breeders_on_replaced_fox() {
         |game| {
             game.player =
                 Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            use sunrise_client::advancements::{Advancement, Criterion, Rewards, Tree};
+            let mut tree = Tree::default();
+            tree.list.push(Advancement {
+                id: "test:fox_born".into(),
+                parent: None,
+                display: None,
+                criteria: vec![Criterion {
+                    name: "pre_snap".into(),
+                    trigger: "minecraft:bred_animals".into(),
+                    conditions: serde_json::json!({
+                        "child": {
+                            "minecraft:flags": {"is_baby": false},
+                            "minecraft:location": {"position": {"x": 5.0, "y": 70.0, "z": 5.0}}
+                        }
+                    })
+                    .into(),
+                }],
+                requirements: vec![vec!["pre_snap".into()]],
+                rewards: Rewards::default(),
+            });
+            tree.by_id.insert("test:fox_born".into(), 0);
+            tree.by_trigger
+                .insert("minecraft:bred_animals".into(), vec![(0, 0)]);
+            game.adv.tree = Arc::new(tree);
+            game.adv.loaded = true;
             let feeder = sunrise_client::lan::playerdata::uuid_ints(game.native_acting_id());
             let (parent, partner, child) = breed_pair_credited(game, "minecraft:fox", true);
+            assert!(
+                game.adv.progress.has("test:fox_born", "pre_snap"),
+                "the advancement must see the adult replacement at its pre-snap position"
+            );
             let live_parent = find(game, parent);
             let kit = find(game, child.expect("replaced fox kit should join"));
             assert_eq!(kit.kind.id, "minecraft:fox");
@@ -1061,6 +1142,78 @@ fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
             assert!(game.mobs.iter().all(|m| m.extra.age >= 0), "no baby joined");
         },
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_breeding_constructor_retires_only_the_unpublished_child() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    const MARKER: AttachmentType<i32> = AttachmentType {
+        namespace: "pending_birth_constructor",
+        name: "marker",
+        default: || 0,
+        codec: None,
+        copy_on_death: false,
+        sync: false,
+    };
+    struct Constructor(Arc<AtomicBool>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Constructor {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            r.register_attachment_type("pending_birth_constructor:marker", false)
+                .unwrap();
+        }
+
+        fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
+            if event.kind == "minecraft:cow"
+                && let HostSide::Server(host) = host
+            {
+                MARKER.set(host, event.holder, 7).unwrap();
+                MARKER.set(host, Holder::Level, 41).unwrap();
+                panic!("breeding constructor");
+            }
+        }
+
+        fn baby_entity_spawn(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &mut BabyEntitySpawnEvent<'_>,
+        ) -> Flow {
+            self.0.store(true, Ordering::Relaxed);
+            Flow::Continue
+        }
+    }
+    let baby_hook_ran = Arc::new(AtomicBool::new(false));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "pending_birth_constructor",
+        Box::new(Constructor(baby_hook_ran.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let proposed_id = game.next_entity + 3;
+            let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                breed_pair(game, "minecraft:cow")
+            }));
+            assert_eq!(
+                unwind.unwrap_err().downcast_ref::<&str>(),
+                Some(&"breeding constructor")
+            );
+            assert!(!baby_hook_ran.load(Ordering::Relaxed));
+            assert_eq!(game.mobs.len(), 2);
+            assert!(!game.persist.uuids.contains_key(&proposed_id));
+            assert!(!game.entity_attachments.contains_key(&proposed_id));
+            assert!(
+                !game
+                    .entity_initialization
+                    .initialized
+                    .contains(&Holder::Entity(proposed_id))
+            );
+            assert!(game.entity_initialization.active.is_none());
+            assert_eq!(MARKER.get(game, Holder::Level), Ok(41));
+        });
+    });
 }
 
 /// Touching a parent via `host` during dispatch no longer aborts the birth, and cancelling
@@ -1292,16 +1445,15 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
         sync: false,
     };
     #[derive(Clone, Copy, PartialEq, Eq)]
-    enum PanicAt {
-        None,
-        SecondConstruct,
-        SecondJoin,
+    enum Mode {
+        RemoveSecond,
+        Cancel,
+        PanicSecondConstruct,
+        PanicSecondJoin,
     }
     struct OrderMod {
         trace: Arc<Mutex<Vec<(&'static str, u32)>>>,
-        panic_at: Arc<Mutex<PanicAt>>,
-        constructs: Arc<Mutex<usize>>,
-        joins: Arc<Mutex<usize>>,
+        mode: Arc<Mutex<Mode>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for OrderMod {
@@ -1309,18 +1461,37 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             r.register_attachment_type("pending_split:marker", false)
                 .unwrap();
         }
-        fn mob_split(&self, _: &mut dyn ServerHost, _: &mut MobSplitEvent<'_>) -> Flow {
-            Flow::Continue
+        fn mob_split(&self, _: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
+            let mode = *self.mode.lock().unwrap();
+            let mut trace = self.trace.lock().unwrap();
+            assert_eq!(trace.len(), 3, "all proposals constructed before the event");
+            assert!(trace.iter().all(|(step, _)| *step == "construct"));
+            match mode {
+                Mode::Cancel => {
+                    trace.push(("cancel", event.parent));
+                    Flow::Cancel
+                }
+                mode => {
+                    trace.push(("split", event.parent));
+                    if mode == Mode::RemoveSecond {
+                        drop(event.children.remove(1).unwrap());
+                    }
+                    Flow::Continue
+                }
+            }
         }
         fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
             if let Holder::Entity(id) = event.holder {
-                self.trace.lock().unwrap().push(("construct", id));
+                let count = {
+                    let mut trace = self.trace.lock().unwrap();
+                    trace.push(("construct", id));
+                    trace.len()
+                };
                 if let HostSide::Server(host) = host {
                     SPLIT_MARKER.set(host, event.holder, 7).unwrap();
+                    SPLIT_MARKER.set(host, Holder::Level, 23).unwrap();
                 }
-                let mut count = self.constructs.lock().unwrap();
-                *count += 1;
-                if *self.panic_at.lock().unwrap() == PanicAt::SecondConstruct && *count == 2 {
+                if *self.mode.lock().unwrap() == Mode::PanicSecondConstruct && count == 2 {
                     panic!("construct unwind on second split child");
                 }
             }
@@ -1330,10 +1501,12 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             _: &mut dyn ServerHost,
             event: &mut EntityJoinLevelEvent<'_>,
         ) -> Flow {
-            self.trace.lock().unwrap().push(("join", event.entity));
-            let mut count = self.joins.lock().unwrap();
-            *count += 1;
-            if *self.panic_at.lock().unwrap() == PanicAt::SecondJoin && *count == 2 {
+            let count = {
+                let mut trace = self.trace.lock().unwrap();
+                trace.push(("join", event.entity));
+                trace.len()
+            };
+            if *self.mode.lock().unwrap() == Mode::PanicSecondJoin && count == 6 {
                 panic!("join unwind on second split child");
             }
             Flow::Continue
@@ -1341,45 +1514,62 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
     }
 
     let trace = Arc::new(Mutex::new(Vec::new()));
-    let panic_at = Arc::new(Mutex::new(PanicAt::None));
-    let constructs = Arc::new(Mutex::new(0));
-    let joins = Arc::new(Mutex::new(0));
+    let mode = Arc::new(Mutex::new(Mode::RemoveSecond));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "pending_split_order",
         Box::new(OrderMod {
             trace: trace.clone(),
-            panic_at: panic_at.clone(),
-            constructs: constructs.clone(),
-            joins: joins.clone(),
+            mode: mode.clone(),
         }),
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            // 1. Normal split: all 3 children construct in order before the first joins.
+            // Even the removed proposal constructs before the split event. Only the first
+            // and last proposal join, keeping their existing constructor attachment.
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let first = game.next_entity + 1;
             game.split_cube_children(&mut dying);
-            assert_eq!(game.mobs.len(), 3);
+            assert_eq!(game.mobs.len(), 2);
             assert_eq!(
                 *trace.lock().unwrap(),
                 vec![
                     ("construct", first),
                     ("construct", first + 1),
                     ("construct", first + 2),
+                    ("split", dying.id),
                     ("join", first),
-                    ("join", first + 1),
                     ("join", first + 2),
                 ]
             );
+            assert_eq!(SPLIT_MARKER.get(game, Holder::Entity(first)), Ok(7));
+            assert!(!game.entity_attachments.contains_key(&(first + 1)));
 
-            // 2. Panic during 2nd child's entity_constructing: zero children join,
-            // active construction holder is restored, and unjoined children's state is cleaned up.
             game.mobs.clear();
             trace.lock().unwrap().clear();
-            *constructs.lock().unwrap() = 0;
-            *joins.lock().unwrap() = 0;
-            *panic_at.lock().unwrap() = PanicAt::SecondConstruct;
+            *mode.lock().unwrap() = Mode::Cancel;
+            SPLIT_MARKER.set(game, Holder::Level, 0).unwrap();
+            let mut dying = cube(game, "minecraft:slime", 4, SEED);
+            let first = game.next_entity + 1;
+            game.split_cube_children(&mut dying);
+            assert!(game.mobs.is_empty());
+            assert_eq!(
+                *trace.lock().unwrap(),
+                vec![
+                    ("construct", first),
+                    ("construct", first + 1),
+                    ("construct", first + 2),
+                    ("cancel", dying.id),
+                ]
+            );
+            for id in first..=first + 2 {
+                assert!(!game.entity_attachments.contains_key(&id));
+            }
+            assert_eq!(SPLIT_MARKER.get(game, Holder::Level), Ok(23));
+
+            // A panic in a constructor leaves neither the previous proposal's state nor its own.
+            trace.lock().unwrap().clear();
+            *mode.lock().unwrap() = Mode::PanicSecondConstruct;
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let before = game.next_entity;
             let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1403,9 +1593,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             // and the 3rd (unjoined) child's issued state is cleaned up.
             game.mobs.clear();
             trace.lock().unwrap().clear();
-            *constructs.lock().unwrap() = 0;
-            *joins.lock().unwrap() = 0;
-            *panic_at.lock().unwrap() = PanicAt::SecondJoin;
+            *mode.lock().unwrap() = Mode::PanicSecondJoin;
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let first = game.next_entity + 1;
             let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

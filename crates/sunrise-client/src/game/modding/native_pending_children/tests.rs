@@ -18,11 +18,6 @@ fn initial(game: &Game<'_>, id: u32, breeding: bool) -> PendingMob {
         dimension: game.dim,
         resources: game.res.clone(),
         attributes: game.motion.attributes.clone(),
-        constraint: if breeding {
-            ChildConstraint::BreedingAgeable
-        } else {
-            ChildConstraint::Split
-        },
     }
 }
 
@@ -249,11 +244,6 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
                 },
                 {
                     let mut s = valid.clone();
-                    s.baby = false;
-                    s
-                },
-                {
-                    let mut s = valid.clone();
                     s.size = Some(2);
                     s
                 },
@@ -311,7 +301,6 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
                     child.set_yaw(f32::INFINITY),
                     Err(UnspawnedMobError::Invalid)
                 );
-                assert_eq!(child.set_baby(false), Err(UnspawnedMobError::Invalid));
                 assert_eq!(child.set_size(2), Err(UnspawnedMobError::Invalid));
             }
             assert!(baby.is_present());

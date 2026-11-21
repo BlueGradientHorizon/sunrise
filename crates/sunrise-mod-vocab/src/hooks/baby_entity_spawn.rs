@@ -12,18 +12,18 @@ pub trait Hooks {
     /// the single optional breeding slot `child` (`BabyEntitySpawnChild<'_>`). If
     /// breeding produced no initial child, the hook still fires with an empty slot
     /// that a listener may populate.
-    /// Inspect the slot (`event.child.get()`), edit the baby in place
-    /// (`event.child.get_mut()`), construct a replacement baby
-    /// (`event.child.construct(spec)?`) and swap it in (`event.child.replace(baby)?`),
+    /// Inspect the slot (`event.child.get()`), edit the child in place
+    /// (`event.child.get_mut()`), construct a replacement
+    /// (`event.child.construct(spec)?`) and swap it in (`event.child.replace(child)?`),
     /// or remove it (`event.child.take()` / `event.child.clear()`). Any detached
     /// [`UnspawnedMob`] not left in the slot is cleanly discarded when dropped.
-    /// Replacements must be baby `AgeableMob` species (and must be a baby `minecraft:fox`
-    /// for fox breeding, matching NeoForge's `Fox.FoxBreedGoal.breed`).
-    /// After the hook returns without cancel and with a child in the slot, breeding
-    /// applies baby state, snaps the child to the live initiating parent's position
-    /// with zero yaw and pitch (so listener position/yaw edits are overwritten by
-    /// breeding's post-event snap), grants fox breeder trust when breeding foxes,
-    /// finalizes breeding, and inserts the child once.
+    /// A replacement must be an `AgeableMob` (`minecraft:fox` for fox breeding), but need
+    /// not start as a baby. This hook runs before either parent's breeding cooldown.
+    /// On acceptance, ordinary animals set the child's baby age and snap it to the
+    /// initiating parent's live position with zero yaw and pitch before awarding credit.
+    /// Foxes grant breeder trust and award credit using the child's pre-snap age and position,
+    /// then reset the parents before setting baby age and snapping the child. Both paths
+    /// insert the selected child once.
     /// Set `cancel` (or return `Flow::Cancel`) to abort breeding: matching NeoForge's
     /// `Animal.spawnChildFromBreeding` and `Fox.FoxBreedGoal.breed`, both parents are
     /// reset to age 6000 and in-love 0, breeding credit is cleared, and there is no
@@ -37,9 +37,9 @@ pub trait Hooks {
     /// posting site; a rejected villager join instead leaves the child's bed free. On the server.
     #[notes = r#"## Baby entity spawn
 
-- **`baby_entity_spawn(dimension, parent, partner, player, player_entity_id, child, cancel)`** (NeoForge's `BabyEntitySpawnEvent`, version 3): fires after breeding has attempted to construct the baby (`Animal.spawnChildFromBreeding` / `Fox.FoxBreedGoal.breed`) and before breeding snaps the baby, finalizes breeding, and inserts it. Even when no initial baby was constructed, the hook fires with an empty slot. `child` (`BabyEntitySpawnChild<'_>`) lends the single optional breeding slot directly on the stack: inspect the current baby with `event.child.get()`, edit it in place with `event.child.get_mut()`, construct a new baby with `event.child.construct(PendingMobSpec::new(kind, dimension, position, yaw, true))?` and swap it in with `event.child.replace(baby)?`, or clear the slot with `event.child.take()` / `event.child.clear()`. Any unattached `UnspawnedMob` value is cleaned up on normal Rust drop with no arena or sweep; replacements must be baby `AgeableMob` species (or a baby `minecraft:fox` for fox breeding), and invalid replacements answer `Invalid`.
+- **`baby_entity_spawn(dimension, parent, partner, player, player_entity_id, child, cancel)`** (NeoForge's `BabyEntitySpawnEvent`, version 3): fires after breeding has attempted to construct the baby (`Animal.spawnChildFromBreeding` / `Fox.FoxBreedGoal.breed`) and before breeding snaps the baby, finalizes breeding, and inserts it. Even when no initial baby was constructed, the hook fires with an empty slot. `child` (`BabyEntitySpawnChild<'_>`) lends the single optional breeding slot directly on the stack: inspect the current baby with `event.child.get()`, edit it in place with `event.child.get_mut()`, construct a new baby with `event.child.construct(PendingMobSpec::new(kind, dimension, position, yaw, true))?` and swap it in with `event.child.replace(baby)?`, or clear the slot with `event.child.take()` / `event.child.clear()`. Any unattached `UnspawnedMob` is cleaned up on drop. A replacement must be an `AgeableMob` (`minecraft:fox` in fox breeding), but may start as an adult. Invalid replacements answer `Invalid`. The event runs before either parent's breeding cooldown.
 - Cancelling (`Flow::Cancel`) resets both `parent` and `partner` to age 6000 and love 0, clears breeding credit, and spawns no baby, experience, `animals_bred` statistic, advancement or hearts. Returning `Flow::Continue` with an empty slot spawns no baby and skips breeding finalization without resetting the parents or consuming credit (matching NeoForge's `Animal.spawnChildFromBreeding` and `Fox.FoxBreedGoal.breed`). The inheritance draws already made stay spent.
-- When accepted with a child, breeding applies baby state, snaps the selected child to the live initiating parent's position with zero yaw and pitch (matching vanilla's `setBaby(true)` and `snapTo(parent.x, parent.y, parent.z, 0.0, 0.0)`), grants fox breeder trust for fox breeding, runs breeding finalization, and inserts the child once.
+- On acceptance, ordinary animals set the child's baby age and snap it to the initiating parent's live position with zero yaw and pitch before awarding credit. Foxes grant breeder trust and award credit using the child's pre-snap age and position, then reset the parents before setting baby age and snapping the child. Both paths insert the selected child once.
 - Turtle and frog breeding, sniffer egg laying and turtle hatching make eggs, not babies, and do not fire it. Armadillos breed through the ordinary animal path and do. Villagers breed through their own behavior and do not (a separate moment)."#]
     #[hook(
         dispatch = "api_carrier",

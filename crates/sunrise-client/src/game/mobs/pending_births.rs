@@ -11,9 +11,8 @@ use mod_api::{BabyEntitySpawnChild, MobSplitChildren};
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::atomic::{AtomicU64, Ordering};
 use sunrise_client::mobs::Mob;
-use sunrise_mod_runtime::attachments::Attachments;
 
-static NEXT_BREEDING_ACTION: AtomicU64 = AtomicU64::new(1);
+static NEXT_CHILD_ACTION: AtomicU64 = AtomicU64::new(1);
 
 /// Result of dispatching `baby_entity_spawn`: distinguishes cancellation (which resets both
 /// parents per NeoForge's `Animal.spawnChildFromBreeding` / `Fox.FoxBreedGoal.breed`) from
@@ -24,13 +23,49 @@ pub(super) enum BreedOutcome {
 }
 
 impl Game<'_> {
+    /// Run construction with the holder reachable, but retire only this unpublished mob's
+    /// metadata if dispatch unwinds. Unrelated Host writes stay in the level.
+    pub(super) fn initialize_unpublished_mob(&mut self, id: u32, kind: &str) {
+        let run = catch_unwind(AssertUnwindSafe(|| {
+            self.initialize_entity(mod_api::Holder::Entity(id), kind);
+        }));
+        if let Err(panic) = run {
+            self.forget_entity(id);
+            resume_unwind(panic);
+        }
+    }
+
+    /// Move constructor state out of the level before lending a proposed child. Dropping
+    /// the owned value now discards just this child's unpublished data.
+    fn stash_pending_child(&mut self, mut mob: Mob, action: u64) -> PendingMob {
+        let id = std::mem::replace(&mut mob.id, 0);
+        let uuid = self.persist.uuids.remove(&id);
+        let mut attachments = self.entity_attachments.remove(&id).unwrap_or_default();
+        attachments.unbind_index();
+        let initialized = self
+            .entity_initialization
+            .initialized
+            .remove(&mod_api::Holder::Entity(id));
+        self.forget_entity(id);
+        PendingMob {
+            mob,
+            uuid,
+            attachments,
+            initialized,
+            origin_reservation: Some((action, id)),
+            dimension: self.dim,
+            resources: self.res.clone(),
+            attributes: self.motion.attributes.clone(),
+        }
+    }
+
     /// Publish one pending child's unpublished state under an entity ID belonging to this world
     /// and complete `EntityConstructing` if it has not already run.
     ///
     /// If `EntityConstructing` unwinds, the child's unpublished ID metadata (UUID, attachments,
     /// initialization marker) is cleaned up via `forget_entity` before resuming the unwind;
     /// listener `Host` writes are not rolled back.
-    fn issue_pending_child(&mut self, child: PendingMob, breeding_action: Option<u64>) -> Mob {
+    fn issue_pending_child(&mut self, child: PendingMob, action: u64) -> Mob {
         let PendingMob {
             mut mob,
             uuid,
@@ -39,20 +74,16 @@ impl Game<'_> {
             origin_reservation,
             ..
         } = child;
-        // Reuse a pre-allocated breeding ID only for the exact originating action when free;
-        // every other child (newly constructed, split, or detached/reattached across dispatches
-        // or worlds) gets a fresh entity ID belonging to the destination world.
-        let reused = breeding_action.and_then(|action| {
-            origin_reservation
-                .filter(|&(origin, id)| {
-                    origin == action
-                        && id != 0
-                        && !self.persist.uuids.contains_key(&id)
-                        && !self.entity_attachments.contains_key(&id)
-                        && !self.mobs.iter().any(|m| m.id == id)
-                })
-                .map(|(_, id)| id)
-        });
+        // Reuse the ID only in its originating action. Detached children reattached to a
+        // different action or world get an ID belonging to that destination.
+        let reused = origin_reservation
+            .filter(|&(origin, id)| {
+                origin == action
+                    && !self.persist.uuids.contains_key(&id)
+                    && !self.entity_attachments.contains_key(&id)
+                    && !self.mobs.iter().any(|m| m.id == id)
+            })
+            .map(|(_, id)| id);
         mob.id = match reused {
             Some(id) => id,
             None => {
@@ -76,13 +107,7 @@ impl Game<'_> {
                 .insert(mod_api::Holder::Entity(id));
         } else {
             let kind = super::native_hooks::mob_kind(&mob);
-            let run = catch_unwind(AssertUnwindSafe(|| {
-                self.initialize_entity(mod_api::Holder::Entity(id), &kind);
-            }));
-            if let Err(panic) = run {
-                self.forget_entity(id);
-                resume_unwind(panic);
-            }
+            self.initialize_unpublished_mob(id, &kind);
         }
         mob
     }
@@ -108,32 +133,22 @@ impl Game<'_> {
         let dimension = self.dim;
         let resources = self.res.clone();
         let attributes = self.motion.attributes.clone();
-        // The numbers are issued when the children commit, so a listener's own spawns cannot
-        // collide; the constructor still seeds from the number the child would have.
-        let first = self.next_entity + 1;
-        let mut pending: Vec<PendingMob> = (0..drawn)
-            .map(|i| {
-                let mut child = Mob::new(first + i, dying.kind.clone(), dying.position, 0.0);
-                sunrise_client::mobs::cube::split_child(dying, &mut child, i);
-                child.id = 0;
-                PendingMob {
-                    mob: child,
-                    uuid: None,
-                    attachments: Attachments::default(),
-                    initialized: false,
-                    origin_reservation: None,
-                    dimension,
-                    resources: resources.clone(),
-                    attributes: attributes.clone(),
-                    constraint: ChildConstraint::Split,
-                }
-            })
-            .collect();
+        let action = NEXT_CHILD_ACTION.fetch_add(1, Ordering::Relaxed);
         let (parent, kind, size) = (
             dying.id,
             super::native_hooks::mob_kind(dying),
             dying.extra.size,
         );
+        let mut pending = Vec::with_capacity(drawn as usize);
+        for i in 0..drawn {
+            self.next_entity += 1;
+            let mut child = Mob::new(self.next_entity, dying.kind.clone(), dying.position, 0.0);
+            // The conversion constructs each proposal even if the split event will later
+            // remove it. The constructor runs before this child's split setup draws its yaw.
+            self.initialize_unpublished_mob(child.id, &kind);
+            sunrise_client::mobs::cube::split_child(dying, &mut child, i);
+            pending.push(self.stash_pending_child(child, action));
+        }
         let mut cancel = false;
         {
             let mut editor = SplitChildList {
@@ -155,12 +170,11 @@ impl Game<'_> {
         if cancel {
             return;
         }
-        // Complete construction for every surviving child before joining the first, matching
-        // NeoForge's `AbstractCubeMob.remove`. On unwind, clean up every issued child that has
-        // not yet entered `self.mobs` without rolling back already-joined children or Host writes.
+        // Issue survivors in order, completing construction for mod-made replacements that
+        // have not been told yet. On unwind retire only issued children that have not joined.
         let mut issued = Vec::with_capacity(pending.len());
         for child in pending {
-            let run = catch_unwind(AssertUnwindSafe(|| self.issue_pending_child(child, None)));
+            let run = catch_unwind(AssertUnwindSafe(|| self.issue_pending_child(child, action)));
             match run {
                 Ok(mob) => issued.push(mob),
                 Err(panic) => {
@@ -200,39 +214,8 @@ impl Game<'_> {
         let dimension = self.dim;
         let resources = self.res.clone();
         let attributes = self.motion.attributes.clone();
-        let action_token = NEXT_BREEDING_ACTION.fetch_add(1, Ordering::Relaxed);
-        // Move all unpublished state (UUID, populated constructor attachments, initialization
-        // marker) out of Game onto the owned PendingMob before lending it, so taking, dropping,
-        // unwinding, or reattaching in another dispatch/world leaves zero leaked state and
-        // preserves every constructor attachment without double construction or ID collision.
-        let mut slot = baby.map(|mut baby| {
-            let reserved_id = (baby.id != 0).then_some(baby.id);
-            let uuid = reserved_id.and_then(|id| self.persist.uuids.remove(&id));
-            let mut attachments = reserved_id
-                .and_then(|id| self.entity_attachments.remove(&id))
-                .unwrap_or_default();
-            attachments.unbind_index();
-            let initialized = reserved_id.is_some_and(|id| {
-                self.entity_initialization
-                    .initialized
-                    .remove(&mod_api::Holder::Entity(id))
-            });
-            if let Some(id) = reserved_id {
-                self.forget_entity(id);
-            }
-            baby.id = 0;
-            PendingMob {
-                mob: baby,
-                uuid,
-                attachments,
-                initialized,
-                origin_reservation: reserved_id.map(|id| (action_token, id)),
-                dimension,
-                resources: resources.clone(),
-                attributes: attributes.clone(),
-                constraint,
-            }
-        });
+        let action = NEXT_CHILD_ACTION.fetch_add(1, Ordering::Relaxed);
+        let mut slot = baby.map(|baby| self.stash_pending_child(baby, action));
         let mut cancel = false;
         {
             let mut editor = BabyChildSlot {
@@ -255,11 +238,6 @@ impl Game<'_> {
         if cancel {
             return BreedOutcome::Cancelled;
         }
-        match slot.take() {
-            Some(kept) => {
-                BreedOutcome::Accepted(Some(self.issue_pending_child(kept, Some(action_token))))
-            }
-            None => BreedOutcome::Accepted(None),
-        }
+        BreedOutcome::Accepted(slot.map(|kept| self.issue_pending_child(kept, action)))
     }
 }

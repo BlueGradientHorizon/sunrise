@@ -2,6 +2,38 @@
 use super::*;
 
 impl Game<'_> {
+    /// Deliver the breed event either at the listened mob's tick boundary or in the normal batch.
+    pub(super) fn deliver_breed(&mut self, event: MobEvent, at_tick_boundary: bool) {
+        let MobEvent::Breed {
+            parent,
+            partner,
+            equine,
+            parent_variant,
+            wolf_voice,
+            experience,
+        } = event
+        else {
+            unreachable!("only the breed event is delivered here");
+        };
+        let child = self.breed(
+            parent,
+            partner,
+            equine,
+            parent_variant,
+            wolf_voice,
+            experience,
+        );
+        if at_tick_boundary {
+            // AnimalMakeLove clears the memories after spawning (even when there is no child).
+            for (id, other) in [(parent, partner), (partner, parent)] {
+                if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) {
+                    sunrise_client::mobs::animal_brain::forget_breed_target(mob, other);
+                }
+            }
+        }
+        self.native_entity_breed(parent, partner, child);
+    }
+
     /// `Animal.finalizeSpawnChildFromBreeding` before the experience orb.
     pub(super) fn finalize_breeding(
         &mut self,

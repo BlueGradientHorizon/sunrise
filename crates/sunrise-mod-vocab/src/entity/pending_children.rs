@@ -19,7 +19,8 @@ pub struct PendingMobSpec {
     pub position: [f64; 3],
     /// Finite yaw, in degrees.
     pub yaw: f32,
-    /// Whether to initialize the species' baby state. Breeding requires a baby.
+    /// Whether to initialize the species' baby state. Breeding applies baby age to the
+    /// accepted child after the event, regardless of this starting state.
     pub baby: bool,
     /// Explicit size for a sized species; absent for other species.
     pub size: Option<u32>,
@@ -194,7 +195,8 @@ impl UnspawnedMob {
         self.inner.set_yaw(yaw)
     }
 
-    /// Set a supported species' baby state. A breeding child must remain a baby.
+    /// Set a supported species' baby state. If accepted for breeding, the child becomes
+    /// a baby after the event.
     pub fn set_baby(&mut self, baby: bool) -> Result<(), UnspawnedMobError> {
         self.inner.set_baby(baby)
     }
@@ -330,7 +332,8 @@ impl<'a> PendingChildEditor<'a> {
         self.inner.set_yaw(yaw)
     }
 
-    /// Set a supported species' baby state. A breeding child must remain a baby.
+    /// Set a supported species' baby state. If accepted for breeding, the child becomes
+    /// a baby after the event.
     pub fn set_baby(&mut self, baby: bool) -> Result<(), UnspawnedMobError> {
         self.inner.set_baby(baby)
     }
@@ -358,10 +361,11 @@ pub trait BabyEntitySpawnSlot {
 ///
 /// The slot starts holding the vanilla-constructed baby (with its inheritance already drawn), or
 /// empty if breeding produced no initial child. Listeners may inspect it ([`Self::get`]), edit it
-/// in place ([`Self::get_mut`]), construct a new baby `AgeableMob` (or `minecraft:fox` for fox
+/// in place ([`Self::get_mut`]), construct a new `AgeableMob` (or `minecraft:fox` for fox
 /// breeding) ([`Self::construct`]) and swap it in ([`Self::replace`]), or remove it
-/// ([`Self::take`] / [`Self::clear`]). Any [`UnspawnedMob`] not left in the slot is cleanly
-/// discarded when dropped.
+/// ([`Self::take`] / [`Self::clear`]). A replacement can start at any age; breeding sets
+/// the accepted child's baby age after the event. Any [`UnspawnedMob`] not left in the slot
+/// is cleanly discarded when dropped.
 // exhaustive: only the engine constructs a breeding slot editor.
 // no wire: an exclusive scoped loan, not a payload.
 pub struct BabyEntitySpawnChild<'a> {
@@ -405,9 +409,9 @@ impl<'a> BabyEntitySpawnChild<'a> {
 
     /// Put `child` into the breeding slot, returning any child that was previously there.
     ///
-    /// Validates that `child` satisfies the breeding invariants (registered kind, action's
-    /// dimension, spawnable position, finite yaw, baby state, valid size) before mutating
-    /// the slot.
+    /// Requires a registered `AgeableMob` (`minecraft:fox` for fox breeding), in the action's
+    /// dimension, with a spawnable position, finite yaw and valid size and state for its kind.
+    /// The child need not be a baby.
     pub fn replace(
         &mut self,
         child: UnspawnedMob,

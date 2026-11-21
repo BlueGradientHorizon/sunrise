@@ -729,7 +729,6 @@ impl Game<'_> {
         // Entity.random first supplies the UUID, then LivingEntity's initial
         // yaw; species constructor draws continue from that same stream.
         let (own, uuid) = sunrise_client::mobs::living_random();
-        self.persist.uuids.insert(self.next_entity, uuid);
         let mut mob = Mob::with_random(
             self.next_entity,
             t,
@@ -738,7 +737,8 @@ impl Game<'_> {
             own,
         );
         // `EntityType.create`: the mob is constructed before `finalizeSpawn`.
-        self.initialize_entity(mod_api::Holder::Entity(mob.id), &kind);
+        self.persist.uuids.insert(mob.id, uuid);
+        self.initialize_unpublished_mob(mob.id, &kind);
         mob.persistent = persistent;
         match site {
             SpawnSite::Raw => return Some(mob),
@@ -3549,24 +3549,7 @@ impl Game<'_> {
                     self.ignite_entity(target, seconds)?
                 }
                 MobEvent::ZombieIgnite(..) => {}
-                MobEvent::Breed {
-                    parent,
-                    partner,
-                    equine,
-                    parent_variant,
-                    wolf_voice,
-                    experience,
-                } => {
-                    let child = self.breed(
-                        parent,
-                        partner,
-                        equine,
-                        parent_variant,
-                        wolf_voice,
-                        experience,
-                    );
-                    self.native_entity_breed(parent, partner, child);
-                }
+                MobEvent::Breed { .. } => self.deliver_breed(e, false),
                 MobEvent::LockGaze { mob, partner } => {
                     if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
                         sunrise_client::mobs::animal_brain::lock_gaze(m, partner);
@@ -3988,7 +3971,8 @@ impl Game<'_> {
         );
         if let Some(child) = child.as_mut() {
             'offspring: {
-                sunrise_client::mobs::finalize::set_baby(child, true);
+                // getBreedOffspring supplies inheritance; the accepted child gets baby age
+                // later in Animal.spawnChildFromBreeding or Fox.FoxBreedGoal.breed.
                 // No Mob.finalizeSpawn either: no follow range bonus, right-handed.
                 spawning::bred_offspring(child);
                 // getBreedOffspring creates the baby without finalizeSpawn: it keeps
@@ -4162,8 +4146,15 @@ impl Game<'_> {
             .find(|m| m.id == parent)
             .cloned()
             .unwrap_or(p);
-        // Fox.FoxBreedGoal.breed: the selected fox baby trusts the players who fed its parents.
-        if live_parent.species() == Species::Fox && child.species() == Species::Fox {
+        let fox = live_parent.species() == Species::Fox;
+        let order = if sunrise_client::mobs::orb_after_child(live_parent.species()) {
+            OrbOrder::AfterChild
+        } else {
+            OrbOrder::BeforeChild
+        };
+        // Fox.FoxBreedGoal.breed grants trust, then credits breeding and cools the parents
+        // while the selected fox still has its pre-snap age and position.
+        if fox {
             let parent_cause = self
                 .love_cause
                 .get(&parent)
@@ -4179,6 +4170,7 @@ impl Game<'_> {
                 parent_cause.map(sunrise_client::lan::playerdata::uuid_ints),
                 partner_cause.map(sunrise_client::lan::playerdata::uuid_ints),
             );
+            self.finalize_breeding(&live_parent, partner, Some(&child), order, listened);
         }
         sunrise_client::mobs::finalize::set_baby(&mut child, true);
         sunrise_client::mobs::living::teleports::snap_to(&mut child, live_parent.position);
@@ -4190,12 +4182,10 @@ impl Game<'_> {
         child.previous_head_yaw = 0.0;
         child.head_pitch = 0.0;
         child.previous_head_pitch = 0.0;
-        let order = if sunrise_client::mobs::orb_after_child(live_parent.species()) {
-            OrbOrder::AfterChild
-        } else {
-            OrbOrder::BeforeChild
-        };
-        self.finalize_breeding(&live_parent, partner, Some(&child), order, listened);
+        // Animal.spawnChildFromBreeding credits the child after setting its baby age and pose.
+        if !fox {
+            self.finalize_breeding(&live_parent, partner, Some(&child), order, listened);
+        }
         let at = [
             live_parent.position.x,
             live_parent.position.y,

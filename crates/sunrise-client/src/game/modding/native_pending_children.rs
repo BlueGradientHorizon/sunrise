@@ -27,10 +27,6 @@ pub(super) enum ChildConstraint {
 }
 
 impl ChildConstraint {
-    pub(super) fn is_breeding(self) -> bool {
-        !matches!(self, Self::Split)
-    }
-
     fn allows_species(self, species: Species) -> bool {
         match self {
             Self::Split => true,
@@ -51,13 +47,11 @@ pub(super) struct PendingMob {
     pub(super) attachments: Attachments,
     /// Whether `EntityConstructing` has already run for this mob.
     pub(super) initialized: bool,
-    /// Pre-allocated breeding ID reservation `(action_token, reserved_id)`, valid only for
-    /// the originating breeding dispatch when unused in the destination world.
+    /// Constructor ID reservation `(action, id)`, valid only in the originating action.
     pub(super) origin_reservation: Option<(u64, u32)>,
     pub(super) dimension: super::Dim,
     pub(super) resources: Arc<super::Resources>,
     pub(super) attributes: Arc<Catalog>,
-    pub(super) constraint: ChildConstraint,
 }
 
 impl UnspawnedMobRead for PendingMob {
@@ -184,9 +178,7 @@ impl PendingChildWrite for PendingMob {
     }
 
     fn set_baby(&mut self, baby: bool) -> Result<(), UnspawnedMobError> {
-        if (self.constraint.is_breeding() && !baby)
-            || (baby && !finalize::supports_baby(self.mob.species()))
-        {
+        if baby && !finalize::supports_baby(self.mob.species()) {
             return Err(UnspawnedMobError::Invalid);
         }
         finalize::set_baby(&mut self.mob, baby);
@@ -218,7 +210,6 @@ pub(super) fn construct_pending_mob(
     if spec.dimension.to_string() != dimension.id()
         || !super::native_mobs::spawnable(spec.position)
         || !spec.yaw.is_finite()
-        || (constraint.is_breeding() && !spec.baby)
     {
         return Err(UnspawnedMobError::Invalid);
     }
@@ -256,7 +247,6 @@ pub(super) fn construct_pending_mob(
         dimension,
         resources: resources.clone(),
         attributes: attributes.clone(),
-        constraint,
     })
 }
 
@@ -301,7 +291,6 @@ impl BabyEntitySpawnSlot for BabyChildSlot<'_> {
         if !valid_child(&self.resources, self.dimension, self.constraint, &pending) {
             return Err(UnspawnedMobError::Invalid);
         }
-        pending.constraint = self.constraint;
         pending.resources = self.resources.clone();
         pending.attributes = self.attributes.clone();
         Ok(self
@@ -362,7 +351,6 @@ impl MobSplitChildList for SplitChildList<'_> {
         ) {
             return Err(UnspawnedMobError::Invalid);
         }
-        pending.constraint = ChildConstraint::Split;
         pending.resources = self.resources.clone();
         pending.attributes = self.attributes.clone();
         self.children.push(*pending);
@@ -385,7 +373,6 @@ impl MobSplitChildList for SplitChildList<'_> {
         ) {
             return Err(UnspawnedMobError::Invalid);
         }
-        pending.constraint = ChildConstraint::Split;
         pending.resources = self.resources.clone();
         pending.attributes = self.attributes.clone();
         self.children.insert(index, *pending);
@@ -412,7 +399,6 @@ impl MobSplitChildList for SplitChildList<'_> {
         ) {
             return Err(UnspawnedMobError::Invalid);
         }
-        pending.constraint = ChildConstraint::Split;
         pending.resources = self.resources.clone();
         pending.attributes = self.attributes.clone();
         let prev = std::mem::replace(&mut self.children[index], *pending);
@@ -434,7 +420,7 @@ impl MobSplitChildList for SplitChildList<'_> {
 
 /// Whether a final child satisfies every object invariant: a registered kind allowed by
 /// `constraint`, the action's dimension, a finite spawnable position and yaw, baby state the
-/// species supports (a breeding child must be one) and a size the species allows.
+/// species supports and a size the species allows.
 fn valid_child(
     resources: &super::Resources,
     dimension: super::Dim,
@@ -457,7 +443,6 @@ fn valid_child(
         .into_iter()
         .all(f32::is_finite)
         && constraint.allows_species(species)
-        && (!constraint.is_breeding() || mob.is_baby())
         && (!mob.is_baby() || finalize::supports_baby(species))
         && match species {
             Species::Slime | Species::MagmaCube | Species::SulfurCube | Species::Phantom => {

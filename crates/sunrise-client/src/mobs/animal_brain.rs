@@ -1661,11 +1661,8 @@ impl B {
                     // initiating parent's cooldown until Game::breed so an uncanceled empty
                     // slot does not leave the parent cooled down.
                     let Who::Mob(id) = partner else { return };
-                    let live_baby = !matches!(
-                        m.species(),
-                        Species::Turtle | Species::Frog | Species::Sniffer
-                    );
-                    if !(cx.w.asks_baby_spawn && live_baby) {
+                    let listened_birth = cx.w.asks_live_birth(m.species());
+                    if !listened_birth {
                         m.extra.in_love = 0;
                         super::finalize::set_age(m, 6000, Some(cx.w));
                     }
@@ -1691,7 +1688,10 @@ impl B {
                         cx.events
                             .push(MobEvent::Sound("block.sniffer_egg.plop", at, 1.0, pitch));
                     }
-                    mem(m).breed_target.clear();
+                    // AnimalMakeLove clears both memories after the breeding action returns.
+                    if !listened_birth {
+                        mem(m).breed_target.clear();
+                    }
                 }
             }
             B::FollowTemptation {

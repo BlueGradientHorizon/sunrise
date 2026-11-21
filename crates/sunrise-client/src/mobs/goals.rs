@@ -2620,8 +2620,7 @@ impl Goal for Breed {
             // when a baby_entity_spawn listener is present on a live-baby route, defer the
             // initiating parent's cooldown until Game::breed so an uncanceled empty slot does
             // not leave the parent cooled down.
-            let live_baby = !matches!(m.species(), Species::Turtle | Species::Frog);
-            if !(cx.w.asks_baby_spawn && live_baby) {
+            if !cx.w.asks_live_birth(m.species()) {
                 m.extra.in_love = 0;
                 super::finalize::set_age(m, 6000, Some(cx.w));
             }

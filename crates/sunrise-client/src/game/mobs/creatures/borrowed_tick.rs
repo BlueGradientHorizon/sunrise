@@ -183,6 +183,7 @@ impl Game<'_> {
             let mut pause = None;
             let mut air_answer = None;
             let mut retry_rider = None;
+            let mut breed = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -747,6 +748,16 @@ impl Game<'_> {
                     snapshot[slot].alive &= kept;
                     snapshot[slot].removed |= !kept;
                     grid.update(slot, snapshot[slot].bounds);
+                    // The listened birth needs the real Game and must run before the
+                    // next mob ticks. Take it out before the normal brain-event pass
+                    // can cool the partner or erase its breeding target.
+                    if base.asks_live_birth(m.species())
+                        && let Some(index) = events[from..]
+                            .iter()
+                            .position(|event| matches!(event, MobEvent::Breed { .. }))
+                    {
+                        breed = Some(events.remove(from + index));
+                    }
                     sunrise_client::mobs::apply_brain_events(
                         &mut mobs,
                         &mut level,
@@ -754,7 +765,7 @@ impl Game<'_> {
                         from,
                     );
                     cursor += 1;
-                    if section_yield || tell_post.is_some() {
+                    if section_yield || tell_post.is_some() || breed.is_some() {
                         break;
                     }
                 }
@@ -765,6 +776,7 @@ impl Game<'_> {
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
+                && breed.is_none()
             {
                 break;
             }
@@ -809,11 +821,11 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
-            // The lift is a position write made by the owning game, not by
-            // the borrowed mob. Give it the live section table as well.
+            // A lift or birth can write positions and join entities through the owning game.
+            // Give these actions the live section table and take it back even on unwind.
             let trampling = matches!(pause, Some(Pause::Trample));
-            let trample_sections = section_table.as_ref().filter(|_| trampling);
-            if let Some(sections) = trample_sections {
+            let mut sections_in_game = section_table.as_ref().filter(|_| trampling);
+            if let Some(sections) = sections_in_game {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
@@ -842,6 +854,18 @@ impl Game<'_> {
                         }
                     }
                 }
+                if let Some(event) = breed {
+                    if sections_in_game.is_none()
+                        && let Some(sections) = section_table.as_ref()
+                    {
+                        std::mem::swap(
+                            &mut self.native_lifecycle.entity_sections,
+                            &mut sections.borrow_mut(),
+                        );
+                        sections_in_game = Some(sections);
+                    }
+                    self.deliver_breed(event, true);
+                }
                 if let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);
                 }
@@ -856,7 +880,7 @@ impl Game<'_> {
                 }
             }))
             .err();
-            if let Some(sections) = trample_sections {
+            if let Some(sections) = sections_in_game {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
