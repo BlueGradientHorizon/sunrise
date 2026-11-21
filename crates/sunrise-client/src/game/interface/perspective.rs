@@ -499,6 +499,10 @@ impl Game<'_> {
     /// Keep the player's model in step with the player (`LivingEntity.tick`
     /// body turning, `WalkAnimationState`, the swing and the pose).
     pub(super) fn tick_player_model(&mut self) {
+        self.tick_player_model_with_rider_movement(None);
+    }
+
+    pub(super) fn tick_player_model_with_rider_movement(&mut self, rider_movement: Option<Vec3>) {
         let (scale, nameplate) = self.player.as_mut().map_or_else(
             || (1.0, NameplateDistances::default()),
             |p| {
@@ -563,10 +567,6 @@ impl Game<'_> {
         let boat_yaw = self
             .riding
             .and_then(|id| self.boats.iter().find(|b| b.id == id).map(|b| b.yaw));
-        let vehicle_body = self.riding.and_then(|id| {
-            let mount = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-            Some((id, mount.previous_body_yaw, mount.body_yaw))
-        });
         let blocking = boat_yaw.is_none() && self.player_blocking_component().is_some();
         let Some(m) = self.player_model.as_mut() else {
             return;
@@ -579,7 +579,13 @@ impl Game<'_> {
             player_model_positions(previous_position, position, m.extra.crouching, crouching);
         m.previous = from;
         m.position = at;
-        let (dx, dz) = (at.x - m.previous.x, at.z - m.previous.z);
+        // The rider's own tick turns its body before the vehicle positions it
+        // (Entity.rideTick). Seat displacement only updates the drawn position.
+        let turn_movement = if riding {
+            rider_movement.unwrap_or(Vec3::ZERO)
+        } else {
+            at.subtract(from)
+        };
         let walked = player_walk_distance(m.previous, at);
         m.previous_yaw = m.yaw;
         m.previous_body_yaw = m.body_yaw;
@@ -594,14 +600,12 @@ impl Game<'_> {
             sunrise_client::mobs::living::player_body_yaw(
                 m.body_yaw,
                 yaw,
-                dx,
-                dz,
+                turn_movement.x,
+                turn_movement.z,
                 attack.1 > 0.0,
                 blocking,
             )
         });
-        m.extra.mount = self.riding;
-        m.extra.vehicle_body = vehicle_body;
         if riding {
             // LivingEntity.calculateEntityAnimation: a passenger stops the
             // walk animation (WalkAnimationState.stop), so the seat moving with
@@ -768,6 +772,25 @@ impl Game<'_> {
     pub(super) fn own_body_visible(&self) -> bool {
         body_visible(self.own_invisible(), self.own_team())
     }
+    /// LivingEntityRenderer.solveBodyRot uses the current vehicle, even when a passenger
+    /// packet arrived between ticks. These pose inputs do not change the live body angle.
+    pub(super) fn extract_local_player_vehicle(&mut self) {
+        if self.player_model.is_none() {
+            return;
+        }
+        let vehicle_body = self.riding.and_then(|id| {
+            if let Some(mob) = self.mob_object(id).filter(|mob| !mob.removed) {
+                return Some((id, mob.previous_body_yaw, mob.body_yaw));
+            }
+            let stand = self.armor_stands.iter().find(|stand| stand.id == id)?;
+            Some((id, stand.previous_yaw, stand.body_yaw))
+        });
+        if let Some(model) = self.player_model.as_mut() {
+            model.extra.mount = self.riding;
+            model.extra.vehicle_body = vehicle_body;
+        }
+    }
+
     /// The local player's body in the ordered entity pass.
     pub(super) fn local_player_geometry(
         &self,

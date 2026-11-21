@@ -4614,6 +4614,9 @@ impl Game<'_> {
         let yaw = self.world.random.next_float() * 360.0;
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(Vec3::new(0.0, 128.0, 0.0), yaw, seed);
+        // The fight's snapTo sets only the view yaw, not the new living angles.
+        dragon.body_yaw = 0.0;
+        dragon.head_yaw = 0.0;
         dragon.join = sunrise_client::join_seq::JoinSeq::next();
         dragon.id = self.next_entity + 1;
         dragon.phase = Phase::Holding {
@@ -6486,12 +6489,15 @@ mod tests {
     #[ignore = "daily"]
     fn a_stationary_no_ai_dragon_runs_its_living_body_turn() {
         super::super::native_entity_refs::tests::with_game(|game| {
-            let mut dragon = Dragon::new(Vec3::ZERO, 35.0, 0);
-            dragon.id = 100;
+            game.create_new_dragon();
+            let dragon = game.dragon.as_mut().unwrap();
+            assert_ne!(dragon.yaw, 0.0);
+            assert_eq!((dragon.body_yaw, dragon.head_yaw), (0.0, 0.0));
+            dragon.yaw = 35.0;
             dragon.no_ai = true;
             dragon.head_yaw = 90.0;
-            game.dragon.replace(dragon);
-            let entity = game.entity(100).unwrap();
+            let id = dragon.id;
+            let entity = game.entity(id).unwrap();
             assert_eq!(entity.set_body_yaw(game, 0.0), Ok(true));
             game.tick_dragon();
             // The changed head is 90 degrees off the raw body. With a 75

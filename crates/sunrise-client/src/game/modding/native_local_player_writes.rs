@@ -214,24 +214,61 @@ mod tests {
                     (15.0, 15.0, 15.0, 0.0)
                 );
 
-                let at = game.player.as_ref().unwrap().position;
-                let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                let mut mount = sunrise_client::mobs::Mob::new(43, kind, at, 55.0);
+                use sunrise_protocol::packets::play::{Clientbound, SetPassengers};
+                let set_passengers = |game: &mut crate::game::Game<'_>, vehicle, passengers| {
+                    game.handle_packet(Clientbound::SetPassengers(SetPassengers {
+                        vehicle,
+                        passengers,
+                    }))
+                    .unwrap();
+                };
+                game.spawn_entity(43, "minecraft:pig", [0.5, 64.0, 0.5], [55.0, 0.0, 55.0]);
+                let mount = game.mob_object_mut(43).unwrap();
                 mount.previous_body_yaw = 35.0;
-                game.mobs.push(mount);
-                game.riding = Some(43);
-                game.tick_player_model();
-                assert_eq!(old.entity().body_yaw(game), Some(65.0));
+                mount.body_yaw = 55.0;
+                set_passengers(game, 43, vec![42]);
+                // The packet changed the vehicle, but the player hasn't ticked.
+                game.prepare_entity_culling();
                 game.player_model_geometry(camera, 0.5, &mut Vec::new());
+                assert_eq!(old.entity().body_yaw(game), Some(75.0));
                 assert_eq!(*turns.lock().unwrap(), [37.5, 45.0]);
+                game.tick_remote_player(false, false).unwrap();
 
+                assert_eq!(old.set_body_yaw(game, 75.0), Ok(true));
+                let before = game.player.as_ref().unwrap().position.z;
+                game.mob_object_mut(43).unwrap().position.z += 3.0;
+                game.tick_remote_player(false, false).unwrap();
+                assert_eq!(game.player.as_ref().unwrap().position.z, before + 3.0);
+                // No horizontal movement in the rider's own tick. A turn toward the
+                // seat delta would instead blend toward its south-facing course.
+                assert_eq!(old.entity().body_yaw(game), Some(65.0));
+                set_passengers(game, 43, Vec::new());
+                game.prepare_entity_culling();
+                game.player_model_geometry(camera, 1.0, &mut Vec::new());
+                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 65.0]);
+
+                game.spawn_entity(45, "minecraft:armor_stand", [0.5, 64.0, 3.5], [0.0; 3]);
+                let stand = game
+                    .armor_stands
+                    .iter_mut()
+                    .find(|stand| stand.id == 45)
+                    .unwrap();
+                stand.previous_yaw = 25.0;
+                stand.body_yaw = 45.0;
+                set_passengers(game, 45, vec![42]);
+                game.prepare_entity_culling();
+                game.player_model_geometry(camera, 0.5, &mut Vec::new());
+                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 65.0, 35.0]);
+
+                let at = game.player.as_ref().unwrap().position;
                 game.boats
                     .push(crate::game::boats::Boat::new(44, "oak".into(), at, 385.0));
                 game.riding = Some(44);
                 game.tick_player_model();
                 assert_eq!(old.entity().body_yaw(game), Some(385.0));
+                game.prepare_entity_culling();
                 game.player_model_geometry(camera, 1.0, &mut Vec::new());
-                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 25.0]);
+                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 65.0, 35.0, 25.0]);
                 assert_eq!(old.set_body_yaw(game, 50.0), Ok(true));
                 game.turn_player(1.0, 0.0);
                 assert_eq!(old.entity().body_yaw(game), Some(385.0));
