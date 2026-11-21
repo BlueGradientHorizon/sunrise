@@ -8272,7 +8272,6 @@ impl Game<'_> {
         alpha: f64,
         out: &mut Vec<Vertex>,
     ) {
-        self.general_entity_geometry(camera, alpha, out);
         self.elder_apparition_geometry(alpha, out);
         self.spawner_geometry(camera, alpha, out);
         let live = self.creatures.projectiles.iter().map(|a| {
