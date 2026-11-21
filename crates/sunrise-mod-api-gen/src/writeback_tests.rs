@@ -26,13 +26,14 @@ fn untouched_writeback_runtime_and_mutants() {
     );
     let api_values = include_str!("../../sunrise-client/src/game/modding/api_values.rs");
     let quick_move = include_str!("../../sunrise-client/src/game/modding/native_quick_move.rs");
+    let shared_hooks = include_str!("../../sunrise-client/src/game/native_hooks/shared.rs");
     let mut methods =
         format!("fn generated(&mut self, stack: &mut Stack, handled: &mut bool) {{ {generated} }}");
     for (name, source, adapter) in [
         ("anvil_update", api_values, "fn api_anvil_update("),
         ("grindstone_place", api_values, "fn api_grindstone_place("),
         ("grindstone_take", api_values, "fn api_grindstone_take("),
-        ("menu_button", api_values, "fn api_menu_button("),
+        ("menu_button", shared_hooks, "fn apply_menu_button_cursor("),
         ("menu_quick_move", quick_move, "fn menu_quick_move_checked("),
     ] {
         let start = source.find(adapter).unwrap();
@@ -58,7 +59,7 @@ fn untouched_writeback_runtime_and_mutants() {
         };
         let entity_binding = match name {
             "menu_button" => {
-                "let entity = Some(entity); let menu = \"test:menu\"; let block = None::<&str>;"
+                "let items = self.items(); let mut cursor = carried.try_into_api().unwrap(); let original = cursor.clone(); self.native_menu_button(\"test:menu\", None, context, &mut cursor); let (original, cursor) = (&original, &cursor);"
             }
             "menu_quick_move" => "",
             _ => "let entity = 0;",
@@ -117,7 +118,7 @@ impl Game {
     fn native_anvil_update(&mut self, _: u128, _: i32, _: [i32; 3], stack: &mut Stack, _: &mut bool) { if self.change { stack.0 = 252; } }
     fn native_grindstone_place(&mut self, a: u128, b: i32, c: [i32; 3], d: &mut Stack, e: &mut bool) { self.native_anvil_update(a,b,c,d,e); }
     fn native_grindstone_take(&mut self, a: u128, b: i32, c: [i32; 3], d: &mut Stack, e: &mut bool) { self.native_anvil_update(a,b,c,d,e); }
-    fn native_menu_button(&mut self, _: &str, _: Option<&str>, _: &(), _: Option<&mut Stack>, stack: &mut Option<Stack>) { if self.change { *stack = Some(Stack(252)); } }
+    fn native_menu_button(&mut self, _: &str, _: Option<&str>, _: &(), stack: &mut Option<Stack>) { if self.change { *stack = Some(Stack(252)); } }
     fn native_menu_quick_move(&mut self, _: [i32; 3], _: &mut Stack, _: usize, _: usize, stack: &mut Option<Stack>, handled: &mut bool) { if self.change { *stack = Some(Stack(252)); } *handled = true; }
     METHODS
 }

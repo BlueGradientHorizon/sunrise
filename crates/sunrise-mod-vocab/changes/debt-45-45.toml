@@ -10,6 +10,12 @@ ids = [
     "handle:BlockEntityScope::with_view",
     "handle:BlockEntityScope::host",
     "handle:BlockEntityScope::transaction",
+    "hook:menu_button",
+    "hook:menu_button.entity",
+    "hook:menu_button.subject",
+    "method:MenuPart::menu_button",
+    "type:MenuButtonEvent.entity",
+    "type:MenuButtonEvent.subject",
 ]
-why = "Generalized BlockEntityTickScope to BlockEntityScope so block_entity_tick and resident menu hooks share one in-place loan mechanism matching vanilla BlockEntityTicker.tick, BlockEntity.setChanged, and AbstractContainerMenu.clickMenuButton/quickMoveStack. When no live resident mod block entity backs a call (such as a blockless menu or after removal/replacement), with_view returns None while host() and transaction(...) stay usable."
-migrate = "Replace any explicit type annotation or import of `BlockEntityTickScope` with `BlockEntityScope`. Listener signatures taking `&mut BlockEntityTickEvent<'_>` and calls to `event.subject.with_view`, `event.subject.host()`, and `event.subject.transaction(...)` keep the same names; if your manifest pins `block_entity_tick`, update `hook_version = 3`."
+why = "Generalized BlockEntityTickScope to BlockEntityScope and migrated menu_button from a detached ModBlockEntity snapshot plus separate ServerHost to live resident BlockEntityScope, matching vanilla BlockEntityTicker.tick, BlockEntity.setChanged, and AbstractContainerMenu.clickMenuButton. When no live resident mod block entity backs a call (such as a blockless menu or after removal/replacement), with_view returns None while host() and transaction(...) stay usable; individual writes validate at the boundary and panicking listeners are contained."
+migrate = "Replace any explicit type annotation or import of `BlockEntityTickScope` with `BlockEntityScope`, and update `block_entity_tick` pins to `hook_version = 3`. For `MenuPart::menu_button`, drop the `host: &mut dyn ServerHost` parameter (`fn menu_button(&self, event: &mut MenuButtonEvent<'_>)`), replace `event.entity` reads/edits with `event.subject.with_view(|mut entity| ...)` (`None` on blockless menus or after removal/replacement), use `event.subject.host()` and `event.subject.transaction(...)` for Host/world operations, and update `menu_button` pins to `hook_version = 4`."

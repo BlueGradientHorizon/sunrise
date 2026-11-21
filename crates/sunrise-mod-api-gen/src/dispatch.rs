@@ -454,11 +454,22 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
+            let block_entity_scope = matches!(
+                ty,
+                Type::Path(path)
+                    if path
+                        .path
+                        .segments
+                        .last()
+                        .is_some_and(|segment| segment.ident == "BlockEntityScope")
+            );
             if let Some((_, stage, signature)) = staged
                 .as_ref()
                 .filter(|(field, _, _)| field.as_str() == name.as_str())
             {
                 dispatch_params.push(format!("mut {stage}: {signature}"));
+            } else if block_entity_scope {
+                dispatch_params.push(format!("mut {name}: {}", ty.to_token_stream()));
             } else {
                 dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
             }
@@ -554,6 +565,8 @@ pub(super) fn emit<'a>(
                 inits.push(format!("{name}: ModBlockEntityView::new({name})"));
             } else if optional_mutable_entity {
                 inits.push(format!("{name}: {name}.map(ModBlockEntityView::new)"));
+            } else if block_entity_scope {
+                inits.push(format!("{name}: {name}.reborrow()"));
             } else if batch_entry.is_some() {
                 inits.push(format!("{name}: &mut {batch}"));
             } else if hook.event_per_listener

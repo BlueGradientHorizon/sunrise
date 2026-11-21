@@ -83,7 +83,6 @@ impl<'a, 'g> ResidentBlockEntityAccess<'a, 'g> {
         }
     }
 
-    #[allow(dead_code)]
     pub(in crate::game) fn blockless(game: &'a mut Game<'g>) -> Self {
         Self {
             game,
@@ -92,7 +91,6 @@ impl<'a, 'g> ResidentBlockEntityAccess<'a, 'g> {
         }
     }
 
-    #[allow(dead_code)]
     pub(in crate::game) fn items_changed(&self) -> bool {
         self.items_changed
     }

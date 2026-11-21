@@ -153,6 +153,12 @@ impl<'a> BlockEntityScope<'a> {
         Self(access)
     }
 
+    // hidden: dispatch reborrows the scope so its lifetime unifies with the event's other borrows.
+    #[doc(hidden)]
+    pub fn reborrow(&mut self) -> BlockEntityScope<'_> {
+        BlockEntityScope(&mut *self.0)
+    }
+
     /// Lend the live resident mod block entity for `f`. Once `f` returns, you can use
     /// the Host and then ask for the view again. Returns `None` without running `f` when
     /// no live resident mod block entity backs the call (such as a blockless menu) or

@@ -40,7 +40,11 @@ struct Script {
     change_cursor: bool,
     /// `menu_button`: consume the player's carried stack.
     clear_cursor: bool,
-    /// Put a one-shot update in the detached entity (and edit a slot for `menu_button`).
+    /// `menu_button`: attempt an over-limit `set_data_slots` write and assert boundary refusal.
+    invalid_data_slots: bool,
+    /// `menu_button`: edit subject and world storage inside `subject.transaction(...)`, then panic.
+    transactional_panic: bool,
+    /// Put a one-shot update in the block entity (and edit data slots for `menu_button` or slots for `menu_quick_move`).
     write_update: bool,
 }
 
@@ -167,9 +171,9 @@ impl mod_api::MenuPart for Part {
         }
     }
 
-    fn menu_button(&self, host: &mut dyn ServerHost, event: &mut MenuButtonEvent<'_>) {
+    fn menu_button(&self, event: &mut MenuButtonEvent<'_>) {
         BUTTONS.set(BUTTONS.get() + 1);
-        if event.entity.is_some() {
+        if event.subject.with_view(|_| ()).is_some() {
             BUTTON_ENTITIES.set(BUTTON_ENTITIES.get() + 1);
         }
         BUTTON_POSITIONS.with(|positions| positions.borrow_mut().push(event.context.pos));
@@ -186,28 +190,70 @@ impl mod_api::MenuPart for Part {
                 .unwrap(),
             );
         }
+        if script.invalid_data_slots {
+            let too_many = vec![1; usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS) + 1];
+            let err = event
+                .subject
+                .with_view(|mut entity| entity.set_data_slots(&too_many))
+                .expect("live resident block entity")
+                .expect_err("over-limit data slots must be refused at the boundary");
+            assert!(matches!(
+                err,
+                mod_api::BlockEntityDataError::TooManySlots { .. }
+            ));
+        }
+        if script.transactional_panic {
+            let _: Result<(), ()> = event.subject.transaction(|scope, tx| {
+                scope
+                    .with_view(|mut entity| {
+                        assert_eq!(entity.set_data_slots(&[77]), Ok(true));
+                        entity.set_client_update_fields(mod_api::Compound::from([(
+                            "panic_fixture".into(),
+                            mod_api::Tag::Int(2),
+                        )]));
+                    })
+                    .expect("live resident block entity");
+                let key = mod_api::__private::item_key("minecraft:dirt").unwrap();
+                let dirt = mod_api::ItemStack::new(key, 1).unwrap();
+                let place = ItemPlace::PlayerSlot {
+                    player: 12,
+                    slot: 20,
+                };
+                assert_eq!(
+                    place.insert(scope.host(), tx, &ItemResource::of(&dirt), 2),
+                    2
+                );
+                panic!("menu button panicked inside subject.transaction");
+            });
+        }
         if script.write_update {
-            let entity = event.entity.as_mut().unwrap();
-            let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
-            entity.items[1] = Some(mod_api::ItemStack::new(stone, 4).unwrap());
-            entity.set_client_update_fields(mod_api::Compound::from([(
-                "panic_fixture".into(),
-                mod_api::Tag::Int(2),
-            )]));
+            event
+                .subject
+                .with_view(|mut entity| {
+                    assert_eq!(entity.set_data_slots(&[42]), Ok(true));
+                    entity.set_client_update_fields(mod_api::Compound::from([(
+                        "panic_fixture".into(),
+                        mod_api::Tag::Int(2),
+                    )]));
+                })
+                .expect("live resident block entity");
         }
         if script.panic {
             panic!("menu button failed after editing the entity and cursor");
         }
         if script.replace_menu {
-            host.open_menu(
-                event.context.player,
-                1,
-                mod_api::Text::literal("opened by menu_button"),
-                Vec::new(),
-                mod_api::MenuReplace::InPlace,
-            )
-            .unwrap()
-            .expect("the menu button's player is online");
+            event
+                .subject
+                .host()
+                .open_menu(
+                    event.context.player,
+                    1,
+                    mod_api::Text::literal("opened by menu_button"),
+                    Vec::new(),
+                    mod_api::MenuReplace::InPlace,
+                )
+                .unwrap()
+                .expect("the menu button's player is online");
         }
     }
 }
@@ -591,34 +637,109 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
 
 #[test]
 #[ignore = "daily"]
-fn a_panicking_menu_button_cannot_publish_edits_to_the_detached_block_entity() {
+fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entity() {
     with_publication_mods(|| {
         with_guests(|game| {
-            let context = mod_api::item::menu::MenuButtonContext {
+            open_depot(game);
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            let cobble = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:cobblestone")
+                .unwrap();
+            game.world.set(POS.0, POS.1, POS.2, stone).unwrap();
+            game.world
+                .set(SECOND.0, SECOND.1, SECOND.2, cobble)
+                .unwrap();
+            game.world.block_entities.set_mod_containers(
+                [
+                    (
+                        stone.0,
+                        Arc::new(ModContainer {
+                            slots: 9,
+                            menu: Some(DEPOT_MENU.into()),
+                            ..Default::default()
+                        }),
+                    ),
+                    (
+                        cobble.0,
+                        Arc::new(ModContainer {
+                            slots: 9,
+                            menu: Some(HEALTHY_MENU.into()),
+                            ..Default::default()
+                        }),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            );
+            game.world.block_entities.insert(
+                POS,
+                BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                    "movemod:depot".into(),
+                    ModBlockEntityFields {
+                        items: vec![None; 9],
+                        data: vec![7],
+                        ..Default::default()
+                    },
+                ))),
+            );
+            game.world.block_entities.insert(
+                SECOND,
+                BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                    "healthy_menu:depot".into(),
+                    ModBlockEntityFields {
+                        items: vec![None; 9],
+                        data: vec![11],
+                        ..Default::default()
+                    },
+                ))),
+            );
+            let context_at = |pos: (i32, i32, i32)| mod_api::item::menu::MenuButtonContext {
                 player: 12,
                 player_entity_id: 1,
-                pos: Some([POS.0, POS.1, POS.2]),
+                pos: Some([pos.0, pos.1, pos.2]),
                 id: 3,
             };
-            let mut entity = detached_depot("movemod:depot");
-            let before = entity.revision();
-            let mut carried = Some(ItemStack::new("minecraft:stick", 3));
-            let edits = Script {
-                change_cursor: true,
-                write_update: true,
-                ..Script::default()
+            let entity_at = |game: &crate::game::Game<'_>, pos: (i32, i32, i32)| {
+                let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos) else {
+                    panic!("live resident block entity missing at {pos:?}");
+                };
+                entity
             };
-            script(Script {
-                panic: true,
-                ..edits.clone()
-            });
+            let mut carried = Some(ItemStack::new("minecraft:stick", 3));
             BUTTONS.set(0);
-            game.api_menu_button(DEPOT_MENU, None, &context, Some(&mut entity), &mut carried);
+
+            // Invalid boundary write (`set_data_slots` > 256) returns Err without mutating storage.
+            script(Script {
+                invalid_data_slots: true,
+                ..Script::default()
+            });
+            game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
             assert_eq!(BUTTONS.get(), 1);
-            assert_eq!(entity.revision(), before);
-            assert!(entity.items[1].is_none());
-            // The one-shot packet fields must never enter the block-update queue.
-            assert!(!entity.has_client_update_fields());
+            assert_eq!(entity_at(game, POS).data, [7]);
+            assert!(!entity_at(game, POS).has_client_update_fields());
+            assert_eq!(carried, Some(ItemStack::new("minecraft:stick", 3)));
+
+            // A panic inside `event.subject.transaction(...)` rolls back subject + world edits
+            // together, restores `carried`, and records the hook panic.
+            script(Script {
+                change_cursor: true,
+                transactional_panic: true,
+                ..Script::default()
+            });
+            game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
+            assert_eq!(BUTTONS.get(), 2);
+            assert_eq!(entity_at(game, POS).data, [7]);
+            assert!(!entity_at(game, POS).has_client_update_fields());
+            assert_eq!(inventory(game, 20), 0);
+            assert!(game.transactions.is_empty());
             assert_eq!(carried, Some(ItemStack::new("minecraft:stick", 3)));
             assert_eq!(
                 mod_api::__private::take_hook_panics(),
@@ -628,21 +749,26 @@ fn a_panicking_menu_button_cannot_publish_edits_to_the_detached_block_entity() {
                 }]
             );
 
-            // Identical edits complete for the other owner, but the failed owner isn't re-entered.
-            script(edits);
-            game.api_menu_button(DEPOT_MENU, None, &context, Some(&mut entity), &mut carried);
-            assert_eq!(BUTTONS.get(), 1);
-            let mut healthy = detached_depot("healthy_menu:depot");
-            game.api_menu_button(
+            // The failed owner is disabled for subsequent button presses; a healthy owner still
+            // updates data slots, `client_update_fields`, and `carried` on its live resident entity.
+            script(Script {
+                change_cursor: true,
+                write_update: true,
+                ..Script::default()
+            });
+            game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
+            assert_eq!(BUTTONS.get(), 2);
+            assert_eq!(entity_at(game, POS).data, [7]);
+            game.mod_menu_button(
                 HEALTHY_MENU,
+                context_at(SECOND),
                 None,
-                &context,
-                Some(&mut healthy),
+                Some(SECOND),
                 &mut carried,
             );
-            assert_eq!(BUTTONS.get(), 2);
-            assert_eq!(healthy.items[1], Some(ItemStack::new("minecraft:stone", 4)));
-            assert!(healthy.has_client_update_fields());
+            assert_eq!(BUTTONS.get(), 3);
+            assert_eq!(entity_at(game, SECOND).data, [42]);
+            assert!(entity_at(game, SECOND).has_client_update_fields());
             assert_eq!(carried, Some(ItemStack::new("minecraft:gold_ingot", 1)));
         });
     });

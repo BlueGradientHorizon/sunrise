@@ -198,11 +198,10 @@ fn menu_button_mutates_entity_and_cursor_once() {
     let mut entity = ModBlockEntity::new("machine");
     let mut carried = None;
     dispatch_menu_button(
-        &mut TestHost,
         "test:menu",
         None,
         &context,
-        Some(&mut entity),
+        generated::mod_api::BlockEntityScope(Some(&mut entity)),
         &mut carried,
     );
     assert_eq!(entity.id(), "machine");
@@ -225,11 +224,10 @@ fn menu_button_reaches_a_blockless_menu() {
     };
     let mut carried = None;
     dispatch_menu_button(
-        &mut TestHost,
         "test:menu",
         None,
         &context,
-        None,
+        generated::mod_api::BlockEntityScope(None),
         &mut carried,
     );
     assert_eq!(carried.unwrap().item.as_ref(), "bucket");

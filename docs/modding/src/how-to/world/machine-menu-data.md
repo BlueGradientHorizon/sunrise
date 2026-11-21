@@ -422,11 +422,14 @@ hide it locally instead.
 A click callback returns `None` to leave the press alone or `Some(id)` to consume it and
 send that button to the server. The active menu's server `MenuPart` handles accepted IDs
 in `menu_button` after the normal window and menu checks and `menu_button_valid`. Do not use a client hit test or
-opening data as authority. A block-backed menu also supplies its backing block entity;
-a menu opened without a block supplies `None` for both `event.entity` and `event.context.pos`.
-Write proposed button changes through `event.entity` and `event.carried`. A panicking button
-callback publishes neither the detached block entity (including one-shot update fields) nor
-cursor edits. A panic in the block's [`menu_quick_move`](../../concepts/capabilities/menu-slots.md#writing-slot-storage)
+opening data as authority. `event.subject` is a live `BlockEntityScope`: call
+`event.subject.with_view(...)` to read or edit the backing resident block entity in place
+(it returns `None` on a blockless menu, where `event.context.pos` is also `None`, or after
+removal/replacement), `event.subject.host()` for server Host operations, and
+`event.subject.transaction(...)` for atomic edits across the subject and world storage.
+Write cursor changes through `event.carried`; each write validates at the boundary, and a
+panicking button callback is contained (discarding its carried-stack edit and rolling back
+any open transaction) and disabled for `menu_button` for the rest of the session. A panic in the block's [`menu_quick_move`](../../concepts/capabilities/menu-slots.md#writing-slot-storage)
 also refuses the move before publishing any detached slot, remainder or queued update.
 A [bound recipe book](../items/recipe-book-categories.md#binding-a-book-to-a-menu) works for
 blockless menus when its recipe slots have native slot backing. The declaring mod supplies the

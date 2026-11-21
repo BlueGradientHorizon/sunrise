@@ -1273,18 +1273,18 @@ impl Game<'_> {
         self.fire_screen_char_typed_pre(screen, c, modifiers, field, canceled);
     }
     /// A player pressed a mod menu's button (`clickMenuButton`), on the
-    /// server. The block entity is out of the world during the call when the
-    /// menu has one; blockless menus pass None. Mods may change it and the
-    /// clicking player's carried stack.
+    /// server. `subject` lends sequential access to the live resident block
+    /// entity (when present) and the server `Host`; blockless menus lend no
+    /// view while keeping `host()` and `transaction(...)` usable. Mods may
+    /// change the block entity in place and the clicking player's carried stack.
     pub(in crate::game) fn native_menu_button(
-        &mut self,
         menu: &str,
         block: Option<&str>,
         context: &mod_api::item::menu::MenuButtonContext,
-        entity: Option<&mut ModBlockEntity>,
+        subject: mod_api::BlockEntityScope<'_>,
         carried: &mut Option<mod_api::ItemStack>,
     ) {
-        self.fire_menu_button(menu, block, context, entity, carried);
+        Self::fire_menu_button(menu, block, context, subject, carried);
     }
     /// Whether the owner of this menu accepts button `id`. The active menu's owner
     /// decides its own IDs; the game does not impose a shared numeric range.

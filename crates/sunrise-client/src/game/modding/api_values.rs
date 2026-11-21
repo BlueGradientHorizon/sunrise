@@ -1942,58 +1942,6 @@ impl super::Game<'_> {
             player_entity_id,
         })
     }
-
-    pub(in crate::game) fn api_menu_button(
-        &mut self,
-        menu: &str,
-        block: Option<&str>,
-        context: &mod_api::item::menu::MenuButtonContext,
-        entity: Option<&mut crate::containers::ModBlockEntity>,
-        carried: &mut Option<EngineStack>,
-    ) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuButton) {
-            return;
-        }
-        let mut api_entity = match entity.as_deref().map(TryIntoApi::try_into_api).transpose() {
-            Ok(entity) => entity,
-            Err(_) => return,
-        };
-        let Ok(mut cursor) = carried.try_into_api() else {
-            return;
-        };
-        let revision = api_entity.as_ref().map(|entity| entity.revision());
-        let original = cursor.clone();
-        let failures = mod_api::runtime::isolated_failures();
-        self.native_menu_button(menu, block, context, api_entity.as_mut(), &mut cursor);
-        if mod_api::runtime::isolated_failures() != failures {
-            return;
-        }
-        // The outer Option means whether the callback changed the cursor; the inner one is its
-        // new value. `Some(None)` is an explicit consume, while `None` leaves it untouched.
-        let cursor: Result<Option<Option<EngineStack>>, BlockEntitySnapshotError> =
-            if cursor == original {
-                Ok(None)
-            } else {
-                cursor
-                    .try_into_engine(self.items())
-                    .map(Some)
-                    .map_err(|_| BlockEntitySnapshotError::InvalidStack)
-            };
-        if let (Some(entity), Some(api), Some(revision)) = (entity, api_entity.as_ref(), revision) {
-            if let Ok(Some(cursor)) = finish_block_entity_writeback(
-                entity,
-                api,
-                revision,
-                self.items(),
-                "menu_button",
-                cursor,
-            ) {
-                *carried = cursor;
-            }
-        } else if let Ok(Some(cursor)) = cursor {
-            *carried = cursor;
-        }
-    }
 }
 impl super::GameLevel<'_> {
     pub(in crate::game) fn api_pre_remove_side_effects(
@@ -2040,10 +1988,6 @@ impl super::GameLevel<'_> {
 #[cfg(test)]
 mod block_entity_snapshot_tests {
     use super::*;
-    #[test]
-    fn rejected_writebacks_invalidate_menu_button() {
-        assert_rejected_writeback("menu_button");
-    }
     #[test]
     fn rejected_writebacks_invalidate_menu_quick_move() {
         assert_rejected_writeback("menu_quick_move");

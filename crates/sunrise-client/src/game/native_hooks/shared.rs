@@ -61,6 +61,21 @@ impl Drop for ContentsChangedGuard<'_, '_> {
     }
 }
 
+/// Write back a `menu_button` cursor edit without revalidating an untouched stack.
+fn apply_menu_button_cursor(
+    items: &sunrise_client::items::Items,
+    original: &Option<mod_api::ItemStack>,
+    cursor: &Option<mod_api::ItemStack>,
+    carried: &mut Option<ItemStack>,
+) {
+    if cursor == original {
+        return;
+    }
+    if let Ok(updated) = cursor.try_into_engine(items) {
+        *carried = updated;
+    }
+}
+
 #[path = "shared/screen_view.rs"]
 mod screen_view;
 use screen_view::screen_view_with_id;
@@ -2837,7 +2852,9 @@ impl Game<'_> {
     }
     /// Menu button `id` on a mod menu (`clickMenuButton`), with the acting
     /// player's cursor stack (`carried`, read and written). A block-backed
-    /// menu lends its block entity; a blockless menu lends none.
+    /// menu lends its live resident block entity through `BlockEntityScope`;
+    /// a blockless menu lends no view while keeping `host()` and
+    /// `transaction(...)` usable.
     pub(super) fn mod_menu_button(
         &mut self,
         menu: &str,
@@ -2846,22 +2863,34 @@ impl Game<'_> {
         backing: Option<(i32, i32, i32)>,
         carried: &mut Option<ItemStack>,
     ) {
-        let Some(pos) = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu)) else {
-            self.api_menu_button(menu, block, &context, None, carried);
-            return;
-        };
-        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) else {
-            self.api_menu_button(menu, block, &context, None, carried);
-            return;
-        };
-        if m.id().is_empty() {
-            self.api_menu_button(menu, block, &context, None, carried);
+        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuButton) {
             return;
         }
-        let mut taken = std::mem::take(&mut **m);
-        let items = taken.items.clone();
-        self.api_menu_button(menu, block, &context, Some(&mut taken), carried);
-        self.put_back_mod_block_entity(pos, taken, &items);
+        let Ok(mut api_cursor) = carried.try_into_api() else {
+            return;
+        };
+        let original_api = api_cursor.clone();
+        let target_pos = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu));
+        let mut access = match target_pos.and_then(|pos| self.resident_block_entity_target(pos)) {
+            Some((handle, state)) => ResidentBlockEntityAccess::for_handle(self, handle, state),
+            None => ResidentBlockEntityAccess::blockless(self),
+        };
+        let failures = mod_api::runtime::isolated_failures();
+        Game::native_menu_button(
+            menu,
+            block,
+            &context,
+            mod_api::BlockEntityScope::new(&mut access),
+            &mut api_cursor,
+        );
+        let items_changed = access.items_changed();
+        drop(access);
+        if items_changed && let Some(pos) = target_pos {
+            self.after_commit(crate::game::transactions::After::Changed(pos));
+        }
+        if mod_api::runtime::isolated_failures() == failures {
+            apply_menu_button_cursor(self.items(), &original_api, &api_cursor, carried);
+        }
     }
     /// A press consumed by the shown screen goes to the server as a menu button click.
     pub(super) fn native_screen_press(&mut self, right: bool) -> bool {
