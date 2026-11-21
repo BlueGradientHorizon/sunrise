@@ -2488,8 +2488,10 @@ mod empty_ingredient_placement_tests {
             &self,
             _: &dyn mod_api::DataLoadContext,
             event: &mut mod_api::IngredientEvent<'_>,
-        ) {
-            assert_eq!(event.kind, "empty_fixture:predicate");
+        ) -> Option<mod_api::IngredientDefinition> {
+            let kind = event.kind;
+            (kind == "empty_fixture:predicate")
+                .then(|| mod_api::IngredientDefinition::new(vec![], |_, _| true))
         }
     }
 

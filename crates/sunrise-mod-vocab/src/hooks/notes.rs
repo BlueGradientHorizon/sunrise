@@ -21,37 +21,43 @@ A native server tick hook can call `native_server_block` with its context, a dim
 For mods that run where the world is simulated: a dedicated server, a LAN host, single player's server thread
 (`crates/sunrise-client/src/game/modding/native_server.rs`).
 
-- **`register_commands(commands)`**: push a `Command` per usage, asked once when a world opens to
-  players. A usage is words, then arguments `<name:kind>`, optional ones last in brackets:
-  `Command::new("pay <player:player> <amount:integer>")`, `Command::op("eco set <player:player>
-  <amount:integer>", 3)` for operators of level 3. Kinds: `word`, `text` (the rest of the line, last), `integer`,
+- **`register_commands(commands)`**: push a `CommandRegistration` per usage with
+  `Command::new(usage).executes(executor)` or `Command::op(usage, level).executes(executor)`.
+  The server asks when a world opens, reloads data packs, or refreshes its commands.
+  A usage is words, then arguments `<name:kind>`, optional ones last in brackets:
+  `pay <player:player> <amount:integer>` or `balance [player:player]`.
+  Kinds: `word`, `text` (the rest of the line, last), `integer`,
   `number`, `boolean`, `player`, `item`, `block_pos`, `vec3`, `id`, and any command argument type a mod registered
   (`Registrar::register_command_argument`): its namespaced id is the kind, as in
   `<machine:mymod:machine>`. A custom argument is one word (or the rest of the line when its type says
-  `Greedy`) and delivers its type's canonical value in `run_mod_command`. The usages of one command merge into
+  `Greedy`) and delivers its type's canonical value to the executor. The usages of one command merge into
   one tree, which every player receives after vanilla's (filtered by their level, as vanilla's is), so their
   chat box completes and colours it. A client that does not know a custom type still parses and completes it:
   the tree sends the argument as a Brigadier string and asks the server for its suggestions. Fabric sends
   the registered argument type's id instead, which an unmodded client cannot read; the string keeps its
   tree valid. The server also parses player and console invocations against that tree, including each
-  usage's permission and argument types, before calling a mod.
+  usage's permission and argument types, before calling the executor as the registering mod.
   Each executable usage keeps its own permission: an operator-only `foo` remains unavailable to ordinary players
   even if `foo bar` is public. Players can traverse the shared `foo` prefix to reach `bar`, but cannot execute
   `foo` itself. Optional arguments make their preceding prefixes executable at that usage's level; if several
-  usages execute at the same prefix, its lowest executable usage level wins. A rejected usage does not change
-  the permissions of accepted usages. When argument alternatives consume the same input without errors, an
+  usages execute at the same prefix, the lowest executable level wins, with the first registration at that level
+  supplying the executor. A rejected usage does not change the permissions of accepted usages.
+  Clients receive the accepted command tree, never its executor bindings. When argument alternatives consume the same input without errors, an
   executable alternative takes precedence over a denied one; equally valid alternatives keep registration order.
   A name vanilla has, or a usage that doesn't parse, is left out with a warning in the log.
 
-- **`run_mod_command`**: `event.command` is an owned `CommandInvocation` with its literal path, its `dimension` and
+- **Command executor**: the closure receives `(&mut dyn ServerHost, &CommandSource, &CommandInvocation)`.
+  The invocation has its literal path, its `dimension` and
   `position` after `execute in/at`, and named `CommandArgumentValue` values, not raw command text. Integer, number and boolean
   values retain the dispatcher's types; word and greedy text are strings. Player selectors resolve to a single live
   `PlayerRef`, items become component-bearing stacks of one, and block positions resolve source-relative/local
   coordinates without requiring loaded chunks. `mod_id` is a loaded package id as a string; `resource:<registry>`
   is `CommandArgumentValue::Id`, an id that registry holds. A custom argument is `CommandArgumentValue::Custom
   { kind, value }`: its registered type's id and what its parser returned. Missing optional arguments are absent.
-  Parsing, permission and resolution failures produce feedback without calling listeners. The console resolves from the world spawn's
-  block corner, in the level the spawn is in, with zero rotation and no source entity (`@s` fails). Return `Flow::Cancel` when handled.
+  Parsing, permission and resolution failures produce feedback without calling the executor. The console resolves from the world spawn's
+  block corner, in the level the spawn is in, with zero rotation and no source entity (`@s` fails).
+  Return `Some(n)` for success, including `Some(0)`: `execute store result` receives `n`. Return `None` for failure;
+  no other mod is asked. Clients get the command tree's display data, not the executors.
 - **`armor_stand_manipulate(player, name, stand_id, slot, cancel)`**: a player takes an item from an armor stand or
   puts one on it, heard after the stand's disabled-slot checks and before anything moves. `slot` is `mainhand`,
   `offhand`, `feet`, `legs`, `chest` or `head`. Set `cancel` and nothing changes (the click is spent). The player's
@@ -82,7 +88,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   (`from` and `to` are ids such as `minecraft:overworld` and `minecraft:the_nether`), heard when the move has ended:
   the portal's exit is found and the player stands there, a command's teleport has landed, or a respawn in another
   level than the death's is placed for good. `to` is the level in place and the player's state is swapped in (as in
-  `run_mod_command`), so `host.players().acting_player` and `PlayerRef::tell` reach them. Heard for Nether and End portals
+  a command executor), so `host.players().acting_player` and `PlayerRef::tell` reach them. Heard for Nether and End portals
   (also riding, and leaving the End as its winner), `/execute in ... run tp` and any command teleporting into another
   level, and death respawns, on dedicated and integrated servers (single player and LAN), where the world is simulated.
   Not heard by a remote client window, for a move within a level (`/tp`, an End gateway), for a player who leaves before the move ends, or for a move ending where it started (a respawn in the death's level).
@@ -141,8 +147,6 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   (a quiet batch drops them). The player's state is not swapped in, and `PlayerRef::tell` and the other helpers that take a
   UUID reach nobody inside this hook: answer through `replies`. Commands may carry secrets (`/msg`, a login plugin's
   password), so don't log them carelessly.
-- **`run_mod_command(source, command, ran)`**: executes a registered command with typed origin and
-  permission. Feedback honours silence and track-output; set `ran` when handled, otherwise execution fails.
 - **`player_respawned(player, name)`**: a dead player came back, once per respawn, on a server: after
   `PlayerList.respawn` reset their health, food and experience and placed them at their bed, anchor or the world spawn
   (NeoForge's `PlayerRespawnEvent`). The player's state is swapped in for the call, as for their other actions, so
@@ -403,7 +407,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   (`checkTotemDeathProtection`), heard just before it is used up. Listen only: the health state machine decides before a
   mod is asked, so a mod cannot veto it. The player's state is swapped in, so `host.players().acting_player`, `PlayerRef::tell` and the
   item helpers reach them. Not heard: the host of a LAN world.
-- `host.players().acting_player()`, the player whose state is swapped in (inside `run_mod_command`,
+- `host.players().acting_player()`, the player whose state is swapped in (inside a command executor,
   `right_click_block`, `native_use_on`, `break_block`...; None elsewhere);
   `host.commands().run_command(line)`, a command run as the server's console (level 4, no output), including during a guest's
   turn. The acting player and other live guests are reachable; displaced outer players are excluded only on this
@@ -1423,7 +1427,7 @@ clicks already.
 `dyn LoopContext` is the read-only view for a hook fired inside a menu, recipe or
 player-list loop, where no game is at hand (a catalog entry names it with
 `"context": "loop"`; `player_name_format`,
-`player_tab_list_name_format`, `living_jump_power`, `living_speed`, `living_flying_speed`, `living_heal`, `living_drown`, `living_fall`, `living_jump`, `ender_entity_teleport`, `fluid_flow`, `player_stays_on_ground_surface`, `block_jump_factor`, `block_speed_factor`, `friction`, `ingredient_test` and the sound hooks below take it). `side()` is `LoopSide::Server` or
+`player_tab_list_name_format`, `living_jump_power`, `living_speed`, `living_flying_speed`, `living_heal`, `living_drown`, `living_fall`, `living_jump`, `ender_entity_teleport`, `fluid_flow`, `player_stays_on_ground_surface`, `block_jump_factor`, `block_speed_factor`, `friction` and the sound hooks below take it). `side()` is `LoopSide::Server` or
 `LoopSide::Client`, `registry(name)` borrows names in registry ID order,
 `setting(mod_id, key)` returns a loaded mod's setting captured when the context was
 built, and `mods()` is the `LoadedMods` view of registration. It has no game Host,
@@ -1439,7 +1443,7 @@ displayname)` and `player_tab_list_name_format(context, player, name, display_na
 commands (both sides) and for the Tab list (server). The name hooks are contract version `2`: a mod written for `1` takes the
 context as a new first argument of the `Hooks` method, and reads the side from it instead of `event.side`.
 
-`ingredient_test(context, kind, data, stack, accept)` is the match-time half of a mod's own ingredient kind: it runs when recipe matching tests a concrete stack against the kind, with `accept` already true. `context` is the loop context of the side that matches: the server's for the server's crafting grids, furnaces, stations and recipe tables, the client's for the client's own grid prediction, recipe book and ghost recipes. It fires inside recipe matching, so it takes no `Host` (a deferred call would reorder matching). Matching passes the context explicitly from the game or menu environment that holds it; there is no global. A mod reads an ingredient with `Ingredient::test(host, stack)` (`&dyn Host`, as handle reads do): the game answers with its own loop context, a mod never builds one, and the old `test(stack)` is gone. `Ingredient` is plain data. `ingredient` (load, `DataLoadContext`) and `ingredient_test` stay separate hooks and the load path is unchanged. Contract version `2`: a mod written for `1` takes the context as a new first argument of the `Hooks` method. With no listener the cost is one `listened` branch per test; the context is one pointer, with no allocation. Recipe matching tests every slot change on both sides (per tick for a furnace) and on each click.
+The predicate supplied by `IngredientDefinition` takes the matching side's read-only loop context and an `IngredientStack` borrowed for that call. `Ingredient::test(host, stack)` uses the host's loop context. There is no hook dispatch during matching: the predicate runs as the mod that defined it, or rejects the stack without running if that mod is disabled.
 
 ### Sound hooks
 
@@ -1878,7 +1882,7 @@ still go on each event or registrar.
 - Giving a whole stack (damage, name, enchantments kept) to any player from a server hook: `insert` into
   the player's [`ENTITY_ITEMS`](../concepts/capabilities/entity-items.md) handler places it as `Inventory.add` does, and answers how many went.
 
-- Registered mod commands from every source use `run_mod_command(source, command, ran)`. Players retain their swapped-in state; the console has no acting player. Functions are silent, and block/cart feedback follows track-output. Unhandled invocations fail as unknown commands.
+- A mod's command executor handles every source of its registered usage. Players retain their swapped-in state; the console has no acting player. Functions are silent, and block/cart feedback follows track-output. Returning `None` fails as an unknown command.
 
 - Player-use drops to `loot_drops`: shears on a sheep, a mooshroom, a snow golem or a bogged, a brush on an
   armadillo or a suspicious block, carving a pumpkin, picking sweet berries or cave vines, and a player taking an item frame or
@@ -2356,7 +2360,7 @@ registration path.
 
 - The helper `native_physical_window_size()`, which returns the window's width and height in physical pixels, independent of GUI scale. It returns no size on a server or when no window exists.
 
-- A recipe ingredient of a mod's own kind. The ingredient entry that names a type in a namespace outside minecraft: reaches ingredient(context, kind, data, items) at load time. Fill items with the item ids the ingredient matches (item ids only: components are checked by the separate `ingredient_test` hook at match time). Duplicates are removed keeping first-seen order. The hook gets the `DataLoadContext` of the load that parses the recipes and hears each occurrence of the kind once per load, nested ones and ones under any slot a recipe reads an ingredient from included, before the load's tables parse the recipes: the client's own recipe load has `origin()` `ClientPreload`, the server's `ServerDataLoad`. A server loads its recipes once however many tables and copies read them (its recipe tables, the stations and the copy synchronised to guests, on a dedicated server too), and a `/reload` asks again once; a client that only joins a remote server is never told `ServerDataLoad`. The answer must be the same every time. An unclaimed kind leaves the list empty and the recipe fails.
+- A recipe ingredient of a mod's own kind asks `ingredient(context, event)` once per occurrence in the owning recipe load, including nested occurrences and slots outside `ingredients`. The first `Some(IngredientDefinition::new(items, test))` wins. The candidate list is deduplicated in first-seen order and kept with the predicate, apart from recipe JSON. No answer refuses the recipe with its file and kind; an answered empty list keeps manual matching without supplying placement candidates. A reload asks again; a remote client does not perform `ServerDataLoad`.
 
 - A frame's two moments, as NeoForge's `RenderFrameEvent.Pre` and `.Post`: `render_frame_pre(host, event)` runs once a frame (in a world or not) after Sunrise's extras and just before the frame is rendered, and `render_frame_post` right after it was rendered; both carry the frame's time as `event.elapsed`, `world_partial_tick` (captured world interpolation, held while paused or frozen), and `partial_tick` (advancing window interpolation). Outside a world both use the window clock. Pre reports the value about to be drawn; post retains the same snapshot even if a listener changes the clock or screen. Client side; a frame with no listener costs one branch.
 - Items a mod's own recipe type takes in a station slot. `recipe_property_sets(context, additions)` is asked once per load, after the recipes are resolved, with the `DataLoadContext` of the load that owns them (`origin()` `ServerDataLoad` on a server, `ClientPreload` on a client's own load), and again after `/reload`. Push one `RecipePropertyAddition::new(set, items)` per set to add to (`minecraft:furnace_input`, `blast_furnace_input`, `smoker_input`, `campfire_input`, `smithing_template`, `smithing_base`, `smithing_addition`, `brewing_input`, `brewing_reagent`); the vanilla recipes' items stay in. The furnace shift-click, the smithing and brewing slots and the set a client is sent read the one answer, so the client predicts what the server accepts. A new key in the listener's manifest-owned namespaces creates a custom set, synchronized to clients alongside vanilla sets. Later listeners may extend an existing set. `Host::mod_recipe_property_contains` and the same `LoopContext` query take the set key and an `ItemKey`; a mod menu's `menu_slot_rules` reads that generation for both server acceptance and client prediction. These queries cover mod-created sets only, returning false for unknown or vanilla keys. Invalid keys, new foreign keys, unknown vanilla keys and air are logged and skipped; an item the registry does not know is ignored. The answer must be the same every time.
