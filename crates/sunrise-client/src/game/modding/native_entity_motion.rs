@@ -279,9 +279,8 @@ impl Game<'_> {
         let [yaw, pitch] = self.entity_rotation(entity)?;
         Some(turned_view_vector(yaw, pitch, -90.0))
     }
-    /// `Entity.mainSupportingBlockPos` of an entity on the ground: the player's own, kept
-    /// as it moved, or the one `Entity.checkSupportingBlock` finds under the box of any
-    /// other that stands.
+    /// `Entity.mainSupportingBlockPos`, retained by bodies with a shared ground state.
+    /// Families that have not moved onto that state still use their existing support read.
     fn native_supporting_block(&self, entity: EntityRef, t: Target) -> Option<BlockPos> {
         match t {
             Target::Player => return self.player.as_ref()?.ground.supporting_block,
@@ -295,10 +294,14 @@ impl Game<'_> {
             }
             _ => {}
         }
+        let handle = self.native_walk_entity(entity.id())?;
+        if let Some(ground) = with_entity!(self, handle, e => e.ground_state()) {
+            return ground.supporting_block;
+        }
         if !self.entity_on_ground(entity)? {
             return None;
         }
-        let (position, bounds) = with_entity!(self, self.native_walk_entity(entity.id())?, e => (e.position(), e.bounds()));
+        let (position, bounds) = with_entity!(self, handle, e => (e.position(), e.bounds()));
         self.supporting_block(position, bounds)
     }
     /// The block the entity stands on (`Entity.getOnPos`). API 379.

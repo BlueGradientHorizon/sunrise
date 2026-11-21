@@ -701,6 +701,7 @@ impl Game<'_> {
                     border,
                     &self.res.motion().fluids,
                     &self.loop_context,
+                    Some(&self.res.motion().blocks),
                     &side,
                     &mut |_, _| {},
                 );

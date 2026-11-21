@@ -364,7 +364,7 @@ impl Game<'_> {
             has_been_shot: false,
             owner_uuid: Some(owner_uuid),
             no_gravity: false,
-            on_ground: false,
+            ground: Default::default(),
             fire_ticks: 0,
             fall_distance: 0.0,
             sound_event: sunrise_client::entity_nbt::TRIDENT_HIT_GROUND.to_owned(),
