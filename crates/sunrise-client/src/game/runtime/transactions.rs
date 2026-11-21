@@ -2380,7 +2380,12 @@ impl Game<'_> {
                 Some(name) => self.world.block_names.insert(pos, name),
                 None => self.world.block_names.remove(&pos),
             };
+            // Restoring saved metadata is not a new write. The ordinary storage
+            // setter marks its chunk unsaved, including when the extras are empty.
+            let chunk = (pos.0 >> 4, pos.2 >> 4);
+            let mark = self.world.modified.mark(chunk);
             self.world.set_block_entity_extras(pos, kept.extras);
+            self.world.modified.restore(chunk, mark);
             if let Some(observer) = self.world.block_entities.identity(pos)
                 && Some(observer.generation) == kept.generation
             {
