@@ -147,7 +147,7 @@ pub fn dispatch_mob_effect_tick<'a>(
             amplifier,
             apply: false,
         };
-        match crate::runtime::invoke(
+        crate::runtime::invoke(
             HookId::ShouldApplyEffectTickThisTick,
             "should_apply_effect_tick_this_tick",
             mod_id,
@@ -155,10 +155,8 @@ pub fn dispatch_mob_effect_tick<'a>(
                 part.should_apply_effect_tick_this_tick(host, &mut should);
                 should.apply
             },
-        ) {
-            Some(apply) => apply,
-            None => false,
-        }
+        )
+        .unwrap_or_default()
     });
     let Some(first) = due.next() else {
         return;

@@ -1164,8 +1164,22 @@ pub(super) fn emit<'a>(
                         on_abort: &str,
                         extra_restore: &str,
                         expression: &str| {
+            let invocation = format!(
+                "super::runtime::invoke(HookId::{hook_id}, \"{name}\", {mod_id_expr}, || {expression})"
+            );
+            if restore_statement.is_empty()
+                && clear_batch.is_empty()
+                && stack_restore.is_empty()
+                && extra_restore.is_empty()
+            {
+                match on_abort {
+                    "false" => return format!("{invocation}.unwrap_or_default()"),
+                    "" => return format!("let _ = {invocation}"),
+                    _ => {}
+                }
+            }
             format!(
-                "match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {mod_id_expr}, || {expression}) {{ Some(answer) => answer, None => {{ {restore_statement}{clear_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
+                "match {invocation} {{ Some(answer) => answer, None => {{ {restore_statement}{clear_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
             )
         };
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
@@ -1361,7 +1375,7 @@ pub(super) fn emit<'a>(
                 ),
                 format!(
                     "let mut {entered} = super::runtime::ListenerScope::new(); let {mod_item} = {entered}.enter(owner, \"{name}\"); {}",
-                    call(&mod_item, "owner.id", "return;", ""),
+                    call(&mod_item, "owner.id", "", ""),
                 ),
             ),
             None if hook.owner.is_some() => {

@@ -226,7 +226,7 @@ pub enum PipelineDrawError {
 pub(crate) fn validate_render_pipelines(
     owner: &str,
     previous: &[RenderPipeline],
-    pipelines: &mut Vec<RenderPipeline>,
+    pipelines: &mut [RenderPipeline],
 ) {
     let start = previous.len().min(pipelines.len());
     for pipeline in &mut pipelines[start..] {
