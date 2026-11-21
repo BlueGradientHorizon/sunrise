@@ -479,7 +479,7 @@ impl StreamPool {
             positional: AtomicBool::new(view.positional),
             position: view.at.map(|at| AtomicU64::new(at.to_bits())),
         });
-        if let Err(job) = worker.admit(PullJob::new(control.clone(), demand, ring.clone(), source))
+        if let Some(job) = worker.admit(PullJob::new(control.clone(), demand, ring.clone(), source))
         {
             drop(state);
             drop(job);

@@ -101,15 +101,15 @@ impl Worker {
         }
     }
 
-    /// Returns ownership on admission failure so the caller can drop the source after
-    /// releasing its guard.
-    pub(super) fn admit(&self, job: PullJob) -> Result<(), PullJob> {
+    /// Returns the unadmitted job, if any, so the caller can release its guard
+    /// before dropping the source.
+    pub(super) fn admit(&self, job: PullJob) -> Option<PullJob> {
         match self.sender.try_send(job) {
             Ok(()) => {
                 self.wake();
-                Ok(())
+                None
             }
-            Err(TrySendError::Full(job) | TrySendError::Disconnected(job)) => Err(job),
+            Err(TrySendError::Full(job) | TrySendError::Disconnected(job)) => Some(job),
         }
     }
 
