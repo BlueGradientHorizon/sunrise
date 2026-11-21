@@ -3,7 +3,7 @@
 //! part poses before the model is drawn.
 use super::{Mob, Part, keyframes::AnimationState, living::wrap, render::BakedFrameModel};
 use crate::fast_hash::{FxHashMap, FxHashSet};
-use mod_api::{HumanoidPart, HumanoidPose};
+use mod_api::HumanoidPart;
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_6, PI};
 use std::sync::{Arc, LazyLock};
@@ -137,6 +137,15 @@ struct PoseEntry {
     base_hidden: bool,
 }
 
+impl PoseEntry {
+    fn new(pose: [f32; 9]) -> Self {
+        Self {
+            pose,
+            base_hidden: false,
+        }
+    }
+}
+
 /// Part poses for one draw, keyed by part name.
 #[derive(Clone, Default)]
 pub struct Poses {
@@ -238,10 +247,7 @@ impl Poses {
     pub(super) fn reset_animation(&mut self, model: &Part) {
         fn walk(p: &Part, map: &mut FxHashMap<u64, PoseEntry>) {
             // ModelPart.createPartLookup fills its map with putIfAbsent: the first part keeps a name.
-            map.entry(key(&p.name)).or_insert(PoseEntry {
-                pose: p.pose,
-                base_hidden: false,
-            });
+            map.entry(key(&p.name)).or_insert(PoseEntry::new(p.pose));
             for c in &p.children {
                 walk(c, map);
             }
@@ -273,13 +279,13 @@ impl Poses {
     }
     /// Lend the pose for a mod callback only when its base parts have finite
     /// positions and rotations. Missing parts and noneditable fields are not exposed.
-    pub fn humanoid_pose(&mut self) -> Option<&mut dyn HumanoidPose> {
+    pub fn humanoid_pose(&mut self) -> Option<&mut dyn mod_api::HumanoidPose> {
         HUMANOID_POSE_KEYS
             .iter()
             .flatten()
             .filter_map(|key| self.map.get(key))
             .all(|entry| entry.pose[..6].iter().all(|value| value.is_finite()))
-            .then_some(self as &mut dyn HumanoidPose)
+            .then_some(self as &mut dyn mod_api::HumanoidPose)
     }
     fn set_humanoid_vector(&mut self, part: HumanoidPart, start: usize, values: [f32; 3]) -> bool {
         let Some(entry) = HUMANOID_POSE_KEYS[part as usize].and_then(|key| self.map.get_mut(&key))
@@ -396,7 +402,7 @@ impl Poses {
     }
 }
 
-impl HumanoidPose for Poses {
+impl mod_api::HumanoidPose for Poses {
     fn get(&self, part: HumanoidPart) -> Option<[[f32; 3]; 2]> {
         let key = HUMANOID_POSE_KEYS[part as usize]?;
         let [x, y, z, x_rot, y_rot, z_rot, ..] = self.map.get(&key)?.pose;
@@ -1324,7 +1330,7 @@ mod humanoid_pose_tests {
                 ("jacket", [0.0, 1.0, 2.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0]),
             ]
             .into_iter()
-            .map(|(name, pose)| (key(name), PoseEntry { pose }))
+            .map(|(name, pose)| (key(name), PoseEntry::new(pose)))
             .collect(),
             ..Default::default()
         };
@@ -1404,22 +1410,19 @@ mod flight_pose_tests {
                 "left_leg",
             ]
             .into_iter()
-            .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+            .map(|n| (key(n), PoseEntry::new([0.0; 9])))
             .collect(),
-            dummy: [0.0; 9],
-            skipped: Default::default(),
-            hidden: Default::default(),
-            version: 0,
+            ..Default::default()
         };
         player_model_visibility(&mut p, 0, true);
         for part in ["body", "right_arm", "left_arm", "right_leg", "left_leg"] {
-            assert!(p.hidden.contains(&key(part)), "{part}");
+            assert!(p.is_hidden_named(part), "{part}");
         }
-        assert!(!p.hidden.contains(&key("head")) && !p.hidden.contains(&key("hat")));
+        assert!(!p.is_hidden_named("head") && !p.is_hidden_named("hat"));
         // Back in another mode they all show, but for the layers the player hid.
         player_model_visibility(&mut p, 1 << 6, false);
-        assert!(!p.hidden.contains(&key("body")) && !p.hidden.contains(&key("left_leg")));
-        assert!(p.hidden.contains(&key("hat")));
+        assert!(!p.is_hidden_named("body") && !p.is_hidden_named("left_leg"));
+        assert!(p.is_hidden_named("hat"));
     }
     #[test]
     fn blocking_arm_follows_the_head_with_limits_in_both_hands() {
@@ -1432,12 +1435,9 @@ mod flight_pose_tests {
                 let mut p = Poses {
                     map: ["head", "right_arm", "left_arm"]
                         .into_iter()
-                        .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+                        .map(|n| (key(n), PoseEntry::new([0.0; 9])))
                         .collect(),
-                    dummy: [0.0; 9],
-                    skipped: Default::default(),
-                    hidden: Default::default(),
-                    version: 0,
+                    ..Default::default()
                 };
                 let arm = if right { "right_arm" } else { "left_arm" };
                 p.xrot("head", pitch);
@@ -1472,12 +1472,9 @@ mod flight_pose_tests {
                 let mut p = Poses {
                     map: ["head", "right_arm", "left_arm"]
                         .into_iter()
-                        .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+                        .map(|n| (key(n), PoseEntry::new([0.0; 9])))
                         .collect(),
-                    dummy: [0.0; 9],
-                    skipped: Default::default(),
-                    hidden: Default::default(),
-                    version: 0,
+                    ..Default::default()
                 };
                 let arm = if right { "right_arm" } else { "left_arm" };
                 p.xrot("head", pitch);
@@ -1527,12 +1524,9 @@ mod flight_pose_tests {
                 "left_leg",
             ]
             .into_iter()
-            .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+            .map(|n| (key(n), PoseEntry::new([0.0; 9])))
             .collect(),
-            dummy: [0.0; 9],
-            skipped: Default::default(),
-            hidden: Default::default(),
-            version: 0,
+            ..Default::default()
         };
         enderman::anim(&seated, &state, &mut poses);
         let right = *poses.get("right_leg");
@@ -1584,12 +1578,9 @@ mod flight_pose_tests {
                 "body",
             ]
             .into_iter()
-            .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+            .map(|n| (key(n), PoseEntry::new([0.0; 9])))
             .collect(),
-            dummy: [0.0; 9],
-            skipped: Default::default(),
-            hidden: Default::default(),
-            version: 0,
+            ..Default::default()
         };
         let mut ground = make();
         let mut flight = make();
@@ -1627,12 +1618,9 @@ mod flight_pose_tests {
         let make = || Poses {
             map: ["head", "right_arm", "left_arm", "right_leg", "left_leg"]
                 .into_iter()
-                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+                .map(|n| (key(n), PoseEntry::new([0.0; 9])))
                 .collect(),
-            dummy: [0.0; 9],
-            skipped: Default::default(),
-            hidden: Default::default(),
-            version: 0,
+            ..Default::default()
         };
         let same_angle = |a: f32, b: f32| ((a - b + PI).rem_euclid(PI * 2.0) - PI).abs() < 1e-5;
         let mut h = Hum::new(ArmPose::Empty, ArmPose::Empty);
@@ -1735,12 +1723,9 @@ mod flight_pose_tests {
         let mut p = Poses {
             map: ["head", "right_arm", "left_arm"]
                 .into_iter()
-                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+                .map(|n| (key(n), PoseEntry::new([0.0; 9])))
                 .collect(),
-            dummy: [0.0; 9],
-            skipped: Default::default(),
-            hidden: Default::default(),
-            version: 0,
+            ..Default::default()
         };
         let mut m = player();
         m.extra.set_slot_id(
@@ -1763,12 +1748,9 @@ mod flight_pose_tests {
         let mut p = Poses {
             map: ["head", "right_arm", "left_arm"]
                 .into_iter()
-                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+                .map(|n| (key(n), PoseEntry::new([0.0; 9])))
                 .collect(),
-            dummy: [0.0; 9],
-            skipped: Default::default(),
-            hidden: Default::default(),
-            version: 0,
+            ..Default::default()
         };
         setup(&m, &state, &mut p, &HashMap::new());
         assert!((p.get("right_arm")[3] + PI / 10.0).abs() < 1e-6);
@@ -1793,12 +1775,9 @@ mod flight_pose_tests {
         let make = || Poses {
             map: ["head", "right_arm", "left_arm"]
                 .into_iter()
-                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+                .map(|n| (key(n), PoseEntry::new([0.0; 9])))
                 .collect(),
-            dummy: [0.0; 9],
-            skipped: Default::default(),
-            hidden: Default::default(),
-            version: 0,
+            ..Default::default()
         };
         let mut m = player();
         m.extra
@@ -1861,12 +1840,9 @@ mod flight_pose_tests {
         let make = || Poses {
             map: ["head", "right_arm", "left_arm", "right_leg", "left_leg"]
                 .into_iter()
-                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
+                .map(|n| (key(n), PoseEntry::new([0.0; 9])))
                 .collect(),
-            dummy: [0.0; 9],
-            skipped: Default::default(),
-            hidden: Default::default(),
-            version: 0,
+            ..Default::default()
         };
         let mut m = player();
         m.extra.set_slot_id(
@@ -1931,7 +1907,7 @@ mod flight_pose_tests {
                     "right_leg",
                     "left_leg",
                 ] {
-                    p.map.insert(key(part), [0.0; 9]);
+                    p.map.insert(key(part), PoseEntry::new([0.0; 9]));
                 }
                 setup(&m, &state, &mut p, &HashMap::new());
                 let arm = if left { "left_arm" } else { "right_arm" };
@@ -1977,9 +1953,10 @@ mod flight_pose_tests {
                 "right_leg",
                 "left_leg",
             ] {
-                poses
-                    .map
-                    .insert(key(name), [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+                poses.map.insert(
+                    key(name),
+                    PoseEntry::new([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]),
+                );
             }
             poses
         };
@@ -2013,7 +1990,10 @@ mod flight_pose_tests {
                         if !using {
                             let mut baseline = make();
                             setup(&mob, &state, &mut baseline, &HashMap::new());
-                            assert_eq!(poses.map, baseline.map);
+                            assert_eq!(poses.map.len(), baseline.map.len());
+                            for (&part, entry) in &baseline.map {
+                                assert_eq!(poses.pose_by_key(part), Some(&entry.pose));
+                            }
                         }
                     }
                 }
@@ -2051,9 +2031,10 @@ mod flight_pose_tests {
         mob.extra.swim.visually = true;
         let state = state(&mob, 0.5).observed(&mob, Some(&listener));
         let mut poses = Poses::default();
-        poses
-            .map
-            .insert(key("head"), [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+        poses.map.insert(
+            key("head"),
+            PoseEntry::new([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]),
+        );
         setup(&mob, &state, &mut poses, &HashMap::new());
         assert!(listener.0.get());
         assert!(poses.get("head")[3].is_finite());
@@ -2084,7 +2065,7 @@ mod flight_pose_tests {
                 "right_leg",
                 "left_leg",
             ] {
-                p.map.insert(key(part), [0.0; 9]);
+                p.map.insert(key(part), PoseEntry::new([0.0; 9]));
             }
             let state = State {
                 pos: 0.0,
