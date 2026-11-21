@@ -509,7 +509,10 @@ fn indexed(game: &Game<'_>, entity: BlockEntityRef) -> Option<i32> {
     let host: &dyn mod_api::Host = game;
     host.query(&PROGRESS)
         .unwrap()
-        .get(mod_api::AttachmentHolder::BlockEntity(entity))
+        .get(
+            game.attachment_frame_borrow(),
+            mod_api::AttachmentHolder::BlockEntity(entity),
+        )
         .ok()
         .flatten()
 }
