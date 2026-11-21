@@ -1,9 +1,9 @@
 //! Server-thread task queues and progress shared with each connection worker.
 use super::config_payloads::ConfigSender;
-use crate::raw_payloads::{Endpoint, Transport};
+use crate::raw_payloads::{Endpoint, Transport, connection::Epoch};
 use mod_api::{
     __private::RegisteredConfigurationTask, ConfigurationConnection, ConfigurationTaskError,
-    PayloadId,
+    PayloadId, PayloadSendError,
 };
 use std::{
     collections::BTreeMap,
@@ -297,8 +297,19 @@ impl Session {
                 .epoch()
                 .is_some_and(|epoch| epoch.peer.can_send(Phase::Configuration, channel).is_ok())
     }
-    pub fn endpoint(&self) -> Endpoint {
-        Endpoint::configuration(self.sender.clone(), None)
+    pub fn payload_target(&self) -> Result<(Endpoint, Arc<Epoch>), ConfigurationTaskError> {
+        // The retained session may still be in the game thread's task map
+        // after I/O publishes Play. Bind the send to this exact Configuration epoch.
+        let epoch = self
+            .transport()
+            .epoch()
+            .ok_or(ConfigurationTaskError::Payload(
+                PayloadSendError::NotNegotiated,
+            ))?;
+        if epoch.phase != Phase::Configuration {
+            return Err(ConfigurationTaskError::Disconnected);
+        }
+        Ok((Endpoint::configuration(self.sender.clone(), None), epoch))
     }
     pub fn transport(&self) -> &Arc<Transport> {
         self.sender.payload_transport()
@@ -323,6 +334,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn retained_configuration_session_refuses_the_play_epoch() {
+        use crate::raw_payloads::Side;
+        use mod_api::PayloadBytes;
+        use sunrise_protocol::attachment_sync;
+
+        let transport = Transport::capture(Side::Server).unwrap();
+        transport
+            .accept(transport.local.manifest.entries())
+            .unwrap();
+        let (sender, _peer) = ConfigSender::test_sender(transport.clone());
+        let session = Session::new(sender);
+        let (endpoint, configuring) = session.payload_target().unwrap();
+        assert_eq!(configuring.phase, Phase::Configuration);
+
+        // I/O closes the task session and advances the transport before the game
+        // removes the saved connection or the configuration writer is retired.
+        session.close();
+        transport.finish_configuration().unwrap();
+        let play = transport.epoch().unwrap();
+        assert_eq!(play.phase, Phase::Play);
+        let channel = PayloadId(attachment_sync::CHANNEL.into());
+        assert_eq!(play.peer.can_send(Phase::Play, &channel), Ok(()));
+        assert!(matches!(
+            session.payload_target(),
+            Err(ConfigurationTaskError::Disconnected)
+        ));
+        assert!(matches!(
+            endpoint.prepare(&configuring, &channel, PayloadBytes(vec![1])),
+            Err(PayloadSendError::StaleEpoch)
+        ));
+    }
+
+    #[test]
     fn finish_type_and_finish_current_match_only_the_active_task() {
         use crate::lan::config_payloads::ConfigIo;
         use sunrise_protocol::connection::{Connection, Pipe};
@@ -335,10 +379,6 @@ mod tests {
         let session = Session::new(io.task_sender(transport).unwrap());
         let first = mod_api::Identifier::parse("demo:first").unwrap();
         let second = mod_api::Identifier::parse("demo:second").unwrap();
-        assert_eq!(
-            session.require_any_running(),
-            Err(ConfigurationTaskError::NotRunning)
-        );
         assert_eq!(
             session.running_ordinal_for_type(&first),
             Err(ConfigurationTaskError::NotRunning)
@@ -372,10 +412,6 @@ mod tests {
 
         assert!(session.finish_type(&first).is_ok());
         assert!(session.finished());
-        assert_eq!(
-            session.require_any_running(),
-            Err(ConfigurationTaskError::NotRunning)
-        );
         assert_eq!(
             session.running_ordinal_for_type(&first),
             Err(ConfigurationTaskError::NotRunning)

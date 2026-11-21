@@ -14,7 +14,9 @@ pub trait ConfigurationTasksServerHost {
     ) -> bool;
     /// Side: server. Queue a send on the registered configuration channel for this
     /// connection while its configuration epoch is active, regardless of current
-    /// task state. Prefer [`ConfigurationTaskContext::send_payload`] in start and tick callbacks.
+    /// task state. A saved connection returns [`ConfigurationTaskError::Disconnected`]
+    /// after it moves to Play. Prefer [`ConfigurationTaskContext::send_payload`] in
+    /// start and tick callbacks.
     #[access(WorldOnly)]
     fn configuration_send_payload(
         &mut self,

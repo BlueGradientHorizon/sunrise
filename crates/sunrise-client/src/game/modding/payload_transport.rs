@@ -75,7 +75,7 @@ impl Game<'_> {
             .ok_or(PayloadSendError::NotNegotiated)?;
         self.queue_payload(endpoint, epoch, id, bytes)
     }
-    fn queue_payload(
+    pub(super) fn queue_payload(
         &mut self,
         endpoint: Endpoint,
         epoch: Arc<Epoch>,

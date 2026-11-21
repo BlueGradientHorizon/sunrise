@@ -202,11 +202,11 @@ impl Game<'_> {
         channel: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<(), ConfigurationTaskError> {
-        let session = self
+        let (endpoint, epoch) = self
             .configuration_session(connection)
-            .cloned()
-            .ok_or(ConfigurationTaskError::Disconnected)?;
-        self.queue_current_payload(session.endpoint(), channel, bytes)
+            .ok_or(ConfigurationTaskError::Disconnected)?
+            .payload_target()?;
+        self.queue_payload(endpoint, epoch, channel, bytes)
             .map(|_| ())
             .map_err(ConfigurationTaskError::Payload)
     }

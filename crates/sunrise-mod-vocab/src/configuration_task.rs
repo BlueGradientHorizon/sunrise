@@ -95,7 +95,8 @@ impl ConfigurationTaskContext<'_> {
     }
     /// Queue a payload in the current transaction on this connection's registered
     /// configuration channel. Another handler completing the task does not prevent
-    /// sends on a connection that is still configuring.
+    /// sends on a connection that is still configuring. Returns
+    /// [`ConfigurationTaskError::Disconnected`] if it has moved to Play.
     pub fn send_payload(
         &self,
         host: &mut dyn ServerHost,

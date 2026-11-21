@@ -95,7 +95,9 @@ task callback and closes that client with the configuration-error reason. A pani
 is logged for that peer and shown in a mod error toast if there is a local client.
 The next peer receives its own task instances. A send uses the live configuration
 connection, not the current task state: even after another handler completes the
-task, sends can still queue while the connection is configuring. Check the channel
+task, sends can still queue while the connection is configuring. After the peer enters
+Play, a saved `ConfigurationConnection` returns `Disconnected`, even for a channel
+negotiated for Play. Check the channel
 before sending to an optional or vanilla peer, then request completion or explain
 why it cannot join.
 
