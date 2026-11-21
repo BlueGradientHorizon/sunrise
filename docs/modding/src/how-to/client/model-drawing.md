@@ -331,14 +331,14 @@ draw.fluid_box(&tank.stack, [0.125, 0.0625, 0.125, 0.875, level, 0.875], options
 Each mob and player in view gets the render hook pair once a frame, NeoForge's
 `RenderLivingEvent` and `RenderPlayerEvent`:
 
-1. `render_player_pre(player, who, draw, hidden, canceled)`, for a player only (`who` is its
+1. `render_player_pre(player, who, draw, model, canceled)`, for a player only (`who` is its
    profile name and whether it is this window's own);
-2. `render_living_pre(entity, draw, hidden, canceled)`, before the entity's model;
+2. `render_living_pre(entity, draw, model, canceled)`, before the entity's model;
 3. the model and its vanilla layers, or in their place the renderer a mod registered for its type
    ([entity renderers](entity-renderers.md)), then the layers mods added to its type
    ([entity layers](entity-layers.md));
-4. `render_living_post(entity, parts, draw)`;
-5. `render_player_post(player, who, parts, draw)`, for a player only.
+4. `render_living_post(entity, model, draw)`;
+5. `render_player_post(player, who, model, draw)`, for a player only.
 
 The order today: the model and the layers are drawn before the post hooks; the entity's name tag, leash, flames
 and shadow are drawn in the frame's later passes, after them. The reference draws the leash and the name tag
@@ -346,33 +346,51 @@ before the post (and queues the flames and the shadow after it): tracked in #391
 renderer has the same order, the renderer in the model's place, so it changes with #3915 too.
 
 `draw` starts at the entity's feet, turned with its body (+z the way it faces, +x its left, +y up,
-in blocks), and keeps what each hook draws. Setting `canceled` in a pre hook skips everything else
-of that entity this frame: its model (or its type's registered renderer), its layers, its name tag,
-shadow, flames, leash and glowing outline, and the post hooks. A mod that draws one entity's model of
-its own draws it in `render_living_pre` and cancels; one that draws every entity of a type registers
-a renderer for the type instead; one that wants the name tag or the shadow then draws them itself, or doesn't cancel.
-Canceling only `render_living_pre` of a player still asks its `render_player_post`. An entity the
-frame culls gets neither hook. The game asks once a frame whether any mod listens to the four, and
-with none builds nothing for them.
+in blocks), and keeps what each hook draws. Setting `event.cancelled` in a Pre hook skips the
+entity's model (or its registered renderer), layers, name tag, shadow, flames, leash and outline.
+Canceling Player Pre skips all three remaining hooks. Canceling only Living Pre skips Living Post
+but still calls Player Post with `model: None`. A mod that replaces one entity's draw can submit
+its own model in Living Pre and cancel; to replace every entity of a type, register a renderer
+instead. A culled entity gets neither pair. The game checks once a frame whether any mod listens
+to the four hooks and builds nothing for them if no mod does.
 
-## A player's or humanoid's parts
+## Read the final body model
 
-`render_living_post` and `render_player_post` get a humanoid's parts as vanilla posed them this frame (`parts`,
-`HumanoidModel.setupAnim`), read-only, to attach geometry to an arm or the head without
-animating it again. Only `HumanoidMobRenderer`'s families have them (players, zombies and their
-kin, skeletons, piglins); every other mob gets `None`, a cow included, though its model has a
-head and a body. `PosedParts` is a fixed-size snapshot: `get(part)` or `iter()`. It is taken
-from the vanilla body's own draw, so a part `render_player_pre` hid (below) has `visible` false.
+A registered layer and both Post hooks get `Option<&dyn FrameModel>` for the callback. When
+present, it is the selected body's final pose after animation, with visibility after Skin
+Customization and Pre edits. It includes nonhumanoids, custom resource-pack models and a posed
+body that submitted only layers. `None` means no body pose was produced, for example when a
+registered replacement renderer drew instead.
 
-`render_player_pre` can hide single parts of the vanilla player model instead of replacing all of
-it: `hidden.hide(HumanoidPart::Head)`, as a mod drawing its own outer skin layer does.
-`render_living_pre` hides parts of any mob's vanilla model the same way, by their names in the model:
-`hidden.hide_named("nose")` leaves a villager's nose out, as a level of detail for a far crowd
-does. A frame holds at most `MAX_HIDDEN_PARTS` (8) names of at most `MAX_PART_NAME` (24) bytes;
-`hide_named` says `HideError::Full` or `HideError::BadName` past that. An unknown name refuses the draw at first use, reporting the mob type and part name.
-Typed humanoid parts have separate storage, so all twelve fit alongside the eight names.
+Use `model.part("head")` for the first exact depth-first name match, or start at `model.root()`
+and follow `first_child` and `next_sibling` with `model.part_at(index)` to walk the model. Names
+and links are resolved when the model is baked, but indices are local to this borrow: look up the
+part again on a later draw. A missing name or out-of-range index returns `None`. `part.pose()`
+gives a parent-relative `PartPose`: translation in texels, rotation in radians, and unitless scale.
+When attaching geometry, follow `parent` links and compose those transforms from the root down.
+Check `part.visible` to follow the body's visibility: it is false if the part or any ancestor is
+hidden. True permits traversal but doesn't guarantee any cubes were drawn.
 
-- Hiding happens after Skin Customization, for this frame only.
+## Hide parts before drawing
+
+`render_player_pre` and `render_living_pre` borrow the selected body as `event.model`, a
+`&mut dyn FrameModelEdit`. It has the same hierarchy lookups as [the final model](#read-the-final-body-model)
+but lends the bind pose, before animation and Skin Customization. Both Pre hooks share this
+view for the draw: Living Pre sees the hides made in Player Pre.
+
+Find a part by name (or follow the hierarchy) and pass its index to `hide`:
+
+```rust,ignore
+if let Some(index) = event.model.part("nose").map(|part| part.index) {
+    event.model.hide(index);
+}
+```
+
+This hides a villager's nose without replacing the model. Use `"head"` for the player's head or
+`part.model_name()` when starting from a `HumanoidPart`. A missing name returns `None`; an invalid
+index makes `hide` return `false` without changing anything. Neither refuses the draw.
+
+- The visibility edits apply after animation and Skin Customization, for this draw only.
 - A hidden part takes its children with it: the hat goes with the head, a sleeve with its arm.
 - The body loses the part, and so do the layers drawn on the body's own model, as vanilla's
   `getParentModel()` layers do: a villager's type, profession and level, a spider's eyes. The

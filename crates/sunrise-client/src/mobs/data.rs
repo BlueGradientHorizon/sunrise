@@ -185,6 +185,8 @@ pub struct MobData {
     /// Each entity type's `SpawnPlacements.getHeightmapType`.
     pub heightmaps: HashMap<String, Heightmap>,
     pub animations: HashMap<String, Animation>,
+    /// Baked vanilla frame layouts, empty for resources that do not draw.
+    pub frame_models: super::render::BakedFrameModels,
     /// Replaced when the resource packs change (the rest of `MobData` never is).
     pub villager_hats: std::sync::RwLock<super::villager_hats::VillagerHats>,
     /// The packs' custom entity models (OptiFine CEM); replaced when the resource packs change.
@@ -369,6 +371,7 @@ impl MobData {
             heightmaps,
             animations,
             villager_hats: Default::default(),
+            frame_models: Default::default(),
             cem: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
@@ -433,6 +436,7 @@ impl MobData {
             heightmaps: HashMap::new(),
             animations: HashMap::new(),
             villager_hats: Default::default(),
+            frame_models: Default::default(),
             cem: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),

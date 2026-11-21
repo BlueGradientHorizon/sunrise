@@ -276,8 +276,18 @@ pub(super) fn load_world_rest(
     // World staging checks conditions after the selected packs have supplied their winners.
     let (items, recipes, stations) = items?;
     let (animate, fog) = animate?;
-    let (mob_types, mob_data) = mobs?;
+    let (mob_types, mut mob_data) = mobs?;
     let (transformers, (player_type, player_arm, player_arm_slim, spin_attack)) = transformers?;
+    if draws {
+        mob_data.frame_models = startup::time("rest.frame_models", || {
+            sunrise_client::mobs::render::BakedFrameModels::bake(
+                mob_types
+                    .values()
+                    .chain(player_type.iter())
+                    .map(Arc::as_ref),
+            )
+        });
+    }
     let nether_environment = nether_environment?;
     let end_environment = end_environment?;
     log::info!(

@@ -376,12 +376,6 @@
       "canonical_path": "crate::client::hud_mode::HudMode"
     },
     {
-      "name": "HumanoidPart",
-      "path": "crate::client::posed_parts::HumanoidPart",
-      "hash": "e132abe5802f54d7",
-      "canonical_path": "crate::client::posed_parts::HumanoidPart"
-    },
-    {
       "name": "IngredientKeysError",
       "path": "crate::item::crafting::IngredientKeysError",
       "hash": "eb04a828ac673339",

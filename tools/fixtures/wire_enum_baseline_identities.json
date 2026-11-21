@@ -60,7 +60,6 @@
   "crate::world::structure_type::HeightmapType",
   "crate::generated::HookId",
   "crate::client::hud_mode::HudMode",
-  "crate::client::posed_parts::HumanoidPart",
   "crate::item::crafting::IngredientKeysError",
   "crate::item::types::InteractionAttempt",
   "crate::item::types::InteractionKey",

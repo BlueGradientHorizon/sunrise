@@ -77,8 +77,9 @@ reading `painting`), and item frames and glow item frames (`minecraft:item_frame
 are its current rotation, not interpolated (it has no previous rotation). A painting's `age` is its unsaved `tickCount` plus the partial tick; its yaw is
 `Direction.get2DDataValue * 90` and its pitch is 0 (it does not interpolate rotation). An item frame's `age` is its unsaved `tickCount` plus the partial tick; its yaw and
 pitch follow `ItemFrame.setDirection` and are not interpolated (it has no previous rotation). Around a living type's renderer everything else stays: `render_living_pre`
-(whose cancel skips it), the mods' layers (with no posed parts) and `render_living_post`, in the order
-the type's own model has, so it changes with #3915 and not before. Boats, displays and the other
+(whose cancel skips it), the mods' layers and `render_living_post`, in the order the type's own
+model has, so it changes with #3915 and not before. When the replacement succeeds, the layers and
+Post receive `model: None`. Boats, displays and the other
 projectiles come in follow-ups of #860. A renderer that returns an `Err` or panics is logged once with
 the error and asked no more until the next resource load resolves it again. What it drew that frame is
 dropped, and until then its type draws as it would without one."#]

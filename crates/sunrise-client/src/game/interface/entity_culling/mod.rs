@@ -335,6 +335,7 @@ mod precheck_envelope_tests {
             heightmaps: Default::default(),
             animations: MobData::load_animations(&root),
             villager_hats: Default::default(),
+            frame_models: Default::default(),
             cem: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
