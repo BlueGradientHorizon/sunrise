@@ -574,14 +574,9 @@ mod tests {
     #[mod_api::__subscriptions]
     impl Hooks for Observer {
         fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
-            // Second listener observes the first listener's mutations on the retained original
-            // without any of them leaking onto the replacement player.
-            assert_eq!(
-                event
-                    .original
-                    .with_decoded_attachment(&DEFAULTED, |value| value.copied()),
-                Ok(Some(41))
-            );
+            // The first listener read the default without storing it. Its explicit mutations
+            // are visible to the second listener only on the holder it wrote to.
+            assert_eq!(event.original.has_attachment(&DEFAULTED), Ok(false));
             assert_eq!(DEFAULTED.has(host, Holder::Player(event.player)), Ok(false));
             assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(100)));
             assert_eq!(VALUE.get(host, Holder::Player(event.player)), Ok(99));
