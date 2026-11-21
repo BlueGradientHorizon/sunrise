@@ -1523,6 +1523,9 @@ impl Streaming {
                 .remove(&(x + (i % 3) as i32 - 1, z + (i / 3) as i32 - 1));
         }
         self.decorated.insert((x, z));
+        for ([bx, by, bz], state) in writes.blocks {
+            let _ = world.set(bx, by, bz, sunrise_world::registry::BlockStateId(state));
+        }
         for (i, proto) in region.into_iter().enumerate() {
             // A final chunk keeps its own chunk: only what decoration wrote
             // into it goes there.
@@ -1533,11 +1536,9 @@ impl Streaming {
             self.light_views.remove(&key);
             self.protos.insert(key, Some(proto));
             self.written.insert(key);
+            // Features can change section occupancy in initialized neighbours too.
+            Self::publish_proto_light_support(world, key, self.proto_sections(key.0, key.1));
         }
-        for ([bx, by, bz], state) in writes.blocks {
-            let _ = world.set(bx, by, bz, sunrise_world::registry::BlockStateId(state));
-        }
-        Self::publish_proto_light_support(world, (x, z), self.proto_sections(x, z));
         // After the blocks: the write of a block with a block entity made a
         // default one, which the generated one replaces.
         for (pos, entity) in writes.block_entities {
@@ -3898,34 +3899,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checked_out_initialized_proto_supports_a_newly_loaded_saved_column() {
+    #[ignore = "daily"]
+    fn decoration_updates_saved_column_light_through_neighbour_checkout() {
         use crate::{chunk::MIN_Y, light::light_from_saved_layers};
-        use sunrise_world::registry::BlockStateId;
 
-        let key = (1, 0);
-        let proto: Proto = Box::new(SectionMask::single(0));
-        let mut protos = [(key, Some(proto))].into_iter().collect();
-        let initialized_sections = |protos: &FxHashMap<_, Option<Proto>>| {
-            protos[&key]
-                .as_ref()?
-                .downcast_ref::<SectionMask>()
-                .copied()
+        let (mut world, mut streaming) = decoration_fixture();
+        streaming.non_air_sections = Arc::new(|proto| proto.downcast_ref::<SectionMask>().copied());
+        let neighbour = (1, 0);
+        streaming.shared.done.send(Done::Proto(
+            neighbour.0,
+            neighbour.1,
+            Box::new(SectionMask::single(6)),
+            true,
+        ));
+        streaming.plan_update(&mut world);
+
+        // A decoration centred at (0, 0) leaves its already initialized east
+        // neighbour with section 0 occupied instead of section 6.
+        streaming.decorating = 1;
+        streaming.protos.insert(neighbour, None);
+        let mut region: [Proto; 9] = std::array::from_fn(|_| Box::new(SectionMask::EMPTY) as Proto);
+        region[5] = Box::new(SectionMask::single(0));
+        streaming.shared.done.send(Done::Decorated(
+            0,
+            0,
+            Box::new(region),
+            Vec::new(),
+            FinalWrites::default(),
+        ));
+        streaming.plan_update(&mut world);
+
+        let SaveStep::Protos(checked_out) =
+            streaming.prepare_save(&mut world, false, std::time::Instant::now())
+        else {
+            panic!("expected proto saves");
         };
-        let mut world = World::new(BlockStateId(0), 0);
-        Streaming::publish_proto_light_support(&mut world, key, initialized_sections(&protos));
+        assert!(checked_out.iter().any(|save| save.pos == neighbour));
+        assert_eq!(streaming.proto_sections(neighbour.0, neighbour.1), None);
 
-        let checked_out = checkout_protos(&mut protos, &mut Default::default(), [key]);
-        assert_eq!(checked_out.len(), 1);
-        // The arrival path cannot read the proto's sections while a save owns it.
-        Streaming::publish_proto_light_support(&mut world, key, initialized_sections(&protos));
-        let mut saved = Chunk::empty(0, 0);
+        // The arriving saved column touches the neighbour, but not the centre
+        // of decoration. It can only use the checked-out proto's published mask.
+        let mut saved = Chunk::empty(2, 0);
         light_from_saved_layers::<&[u8]>(&mut saved, &[], true);
-        world.install_light_column(saved);
-        assert_eq!(
-            world.chunks[&(0, 0)].stored_light_layers(0),
-            Some([true; 2])
-        );
-        assert_eq!(world.light(0, MIN_Y - 1, 0), 0);
+        streaming.shared.done.send(Done::Generated(saved));
+        streaming.plan_update(&mut world);
+        let column = &world.chunks[&(2, 0)];
+        for b in 0..world.layout().sections() + 2 {
+            assert_eq!(column.stored_light_layers(b), Some([b < 3; 2]), "layer {b}");
+        }
+        assert_eq!(world.light(32, MIN_Y - 1, 0), 0);
     }
 
     fn finish_jobs(streaming: &Streaming) -> usize {
