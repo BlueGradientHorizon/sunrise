@@ -210,35 +210,38 @@ fn spawn(id: i32, key: &str, at: [f64; 3]) -> C {
     })
 }
 
-/// The server's first snapshot of row `id`'s synced fields: `fuel`, or nothing synced.
-fn snapshot(id: u32, fuel: Option<i32>) -> C {
+/// The server's snapshot of row `id`'s synced fuel.
+fn snapshot(game: &mut Game<'_>, id: u32, fuel: i32) {
     use sunrise_mod_runtime::attachments::AttachmentSync;
-    let changes = fuel.map_or_else(Vec::new, |n| {
+    apply_attachment_snapshot(
+        game,
+        id,
         vec![AttachmentSync {
             namespace: "test".into(),
             name: "fuel".into(),
-            value: Some([("n".into(), Tag::Int(n))].into()),
-        }]
-    });
-    attachment_packet(id, true, changes)
+            value: Some([("n".into(), Tag::Int(fuel))].into()),
+        }],
+    );
 }
 
-fn attachment_packet(
+fn apply_attachment_snapshot(
+    game: &mut Game<'_>,
     id: u32,
-    replace: bool,
     changes: Vec<sunrise_mod_runtime::attachments::AttachmentSync>,
-) -> C {
+) {
     use sunrise_mod_runtime::attachments::Holder;
-    use sunrise_protocol::attachment_sync::{CHANNEL, Message, encode};
-    C::CustomPayload(sunrise_protocol::packets::configuration::CustomPayload {
+    use sunrise_protocol::attachment_sync::{CHANNEL, Message, decode_staged, encode};
+    let payload = sunrise_protocol::packets::configuration::CustomPayload {
         channel: CHANNEL.into(),
         data: encode(&Message {
             holder: Holder::Entity(id),
-            replace,
+            replace: true,
             changes,
         })
         .unwrap(),
-    })
+    };
+    // Attachment sync is staged at play ingress, not handled as a raw game packet.
+    game.apply_staged_attachment_sync(decode_staged(payload).unwrap());
 }
 
 /// One frame of the entity pass at `alpha`.
@@ -316,7 +319,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
                 game.handle_packet(spawn(id, key, [0.0, 321.0, 0.0]))
                     .unwrap();
             }
-            game.handle_packet(snapshot(5, Some(7))).unwrap();
+            snapshot(game, 5, 7);
             let row = game
                 .remote
                 .as_mut()
@@ -349,7 +352,7 @@ fn a_row_is_drawn_by_its_types_renderer_at_the_frames_pose_reading_its_synced_fi
                 (10, [0.0, 319.0, 0.0]),  // in build height, no compiled section
             ] {
                 game.handle_packet(spawn(id, "test:missile", at)).unwrap();
-                game.handle_packet(snapshot(id as u32, Some(99))).unwrap();
+                snapshot(game, id as u32, 99);
             }
             let out = frame(game, 0.25);
             assert_eq!(
@@ -377,9 +380,9 @@ fn a_synced_field_larger_than_the_old_render_cap_reaches_submit() {
     in_scene(
         "a_synced_field_larger_than_the_old_render_cap_reaches_submit",
         |game, scene| {
-            game.handle_packet(attachment_packet(
+            apply_attachment_snapshot(
+                game,
                 5,
-                true,
                 vec![AttachmentSync {
                     namespace: "test".into(),
                     name: "fuel".into(),
@@ -391,8 +394,7 @@ fn a_synced_field_larger_than_the_old_render_cap_reaches_submit() {
                         .into(),
                     ),
                 }],
-            ))
-            .unwrap();
+            );
             let out = frame(game, 1.0);
             assert_eq!(out.len(), 4);
             assert_eq!(
@@ -436,16 +438,16 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
                 spawn(12, "test:missile", [6.0, 321.0, 0.0]),
                 vanilla(42, "minecraft:zombie"),
                 spawn(8, "test:missile", [8.0, 321.0, 0.0]),
-                snapshot(8, Some(1)),
             ] {
                 game.handle_packet(packet).unwrap();
             }
+            snapshot(game, 8, 1);
             let submitted = |game: &mut Game<'_>| {
                 super::native_render_pair_tests::submitted_bodies(game, |game| frame(game, 1.0)).1
             };
-            assert_eq!(submitted(game), [5, 71, 42, 8]);
-            // Arrival of the snapshot reveals the row at its earlier spawn slot, not the tail.
-            game.handle_packet(snapshot(12, Some(1))).unwrap();
+            assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
+            // The row is drawable from spawn. Sync updates its fields without moving its slot.
+            snapshot(game, 12, 1);
             assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
             let own_type_spans = game
                 .entity_spans
@@ -470,7 +472,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
                 .unwrap();
             game.handle_packet(spawn(12, "test:missile", [6.0, 321.0, 0.0]))
                 .unwrap();
-            game.handle_packet(snapshot(12, Some(1))).unwrap();
+            snapshot(game, 12, 1);
             assert_eq!(submitted(game), [5, 71, 42, 8, 12]);
 
             game.handle_packet(C::Respawn(play::Respawn {
@@ -493,8 +495,8 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
             game.handle_packet(vanilla(42, "minecraft:zombie")).unwrap();
             game.handle_packet(spawn(12, "test:missile", [6.0, 321.0, 0.0]))
                 .unwrap();
-            assert_eq!(submitted(game), [42]);
-            game.handle_packet(snapshot(12, Some(1))).unwrap();
+            assert_eq!(submitted(game), [42, 12]);
+            snapshot(game, 12, 1);
             assert_eq!(submitted(game), [42, 12]);
         },
     );
