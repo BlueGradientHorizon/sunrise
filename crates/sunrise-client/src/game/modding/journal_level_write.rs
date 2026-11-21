@@ -61,7 +61,8 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
     }
 
     fn queue(&mut self, write: PendingWrite) -> bool {
-        self.game.after_commit(After::LevelWrite(Box::new(write)));
+        self.game
+            .after_commit(After::LevelWrite(self.game.dim, Box::new(write)));
         true
     }
 }

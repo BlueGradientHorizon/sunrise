@@ -139,8 +139,14 @@ first was emptied). When both slots remain populated, the final first slot stays
 dispenser's active slot and the second slot's remainder goes into the dispenser's other slots,
 else out of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
 While an enclosing transaction is open, the helper's fluid and slot changes are provisional.
-Block updates, fluid ticks, drops, sounds, and slot notices publish in the source level at the
-root commit. `ItemsServerHost::dispense_with_remainder` likewise returns a detached active-slot
+Block updates, fluid ticks, drops, sounds, game events, and slot notices publish in the
+**dispenser's level** at the root commit, even if the transaction opened in another level.
+This includes the pickup event from a `FLUIDS` transfer and both vanilla waterlogging ticks
+and ticks scheduled through `LevelWriteHost` by a `place_liquid` Part. An abort publishes none
+of them. If a fluid game-event listener opens another transaction during commit, it does not
+delay attachment retirement for block entities removed after the outermost close.
+
+`ItemsServerHost::dispense_with_remainder` likewise returns a detached active-slot
 remainder immediately, but any other slot it fills is provisional, and overflow drops, click
 and smoke wait for the root commit. Inserting the remainder into an empty slot notifies; growing
 a compatible stack does not. The detached active stack keeps its count until the dispenser

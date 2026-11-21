@@ -85,7 +85,8 @@ pub(super) struct OpenTransactions {
     /// Tentative block writes do not advance the world's published revision. This epoch does
     /// advance on those writes and never rolls back, even when the final state is unchanged.
     block_writes: u64,
-    /// Foreign levels with block entity attachment retirement deferred by the open journal.
+    /// Levels whose block entity attachment retirement is deferred until the outermost close,
+    /// including levels entered by commit callbacks.
     retiring_block_levels: std::collections::HashSet<super::Dim>,
     /// The root commits telling their joins and leaves, outermost first: a listener's command in
     /// another level can commit a transaction there while this level's commit is told.
@@ -484,8 +485,8 @@ pub(super) enum After {
     BreakProgress(i32, [i32; 3], i32),
     /// The block's final state, set with the combined update flags.
     Block(LevelPos),
-    /// A validated level write host effect; never published on abort.
-    LevelWrite(Box<super::journal_level_write::PendingWrite>),
+    /// A validated level write host effect in its owning level; never published on abort.
+    LevelWrite(super::Dim, Box<super::journal_level_write::PendingWrite>),
     BlockGameEvent(
         &'static str,
         [i32; 3],
@@ -714,7 +715,7 @@ impl Game<'_> {
     fn open_storage_transaction(&mut self) -> TransactionFrame {
         let frame = self.transactions.next_frame();
         if self.transactions.is_empty() {
-            self.world.block_entities.defer_retirement();
+            self.defer_block_retirements();
         }
         let lifetimes = self.entity_journal_open();
         let packets = sunrise_client::lan::conn::transaction_packets::Scope::nested();
@@ -1121,10 +1122,18 @@ impl Game<'_> {
         self.publish_block_retirements();
     }
 
+    fn defer_block_retirements(&mut self) {
+        if !self.world.block_entities.defers_retirement() {
+            self.world.block_entities.defer_retirement();
+            self.transactions.retiring_block_levels.insert(self.dim);
+        }
+    }
+
     fn publish_block_retirements(&mut self) {
-        self.world.block_entities.publish_retirement();
         for dim in self.transactions.retiring_block_levels.drain() {
-            if let Some(parked) = self.levels.parked_mut(dim) {
+            if dim == self.dim {
+                self.world.block_entities.publish_retirement();
+            } else if let Some(parked) = self.levels.parked_mut(dim) {
                 parked.world.block_entities.publish_retirement();
             }
         }
@@ -1229,10 +1238,7 @@ impl Game<'_> {
         self.journal_block_entity(pos);
         if let Some(level) = self.transactions.last_mut() {
             level.removed_block_entities.insert((self.dim, pos));
-            if !self.world.block_entities.defers_retirement() {
-                self.world.block_entities.defer_retirement();
-                self.transactions.retiring_block_levels.insert(self.dim);
-            }
+            self.defer_block_retirements();
         }
         self.world.block_entities.remove(&pos);
     }
@@ -1688,7 +1694,9 @@ impl Game<'_> {
             After::FluidEffects(dim, effects) => {
                 self.in_journal_level(dim, |game| game.commit_fluid_effects(*effects));
             }
-            After::LevelWrite(write) => self.commit_level_write(*write),
+            After::LevelWrite(dim, write) => {
+                self.in_journal_level(dim, |game| game.commit_level_write(*write));
+            }
             After::BlockGameEvent(id, pos, who, state) => {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }

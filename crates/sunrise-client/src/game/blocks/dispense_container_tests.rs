@@ -6,8 +6,8 @@ use crate::game::{Dim, Game, api_values::test_snapshot, dispense_fixture, transa
 use mod_api::{prelude::ItemsServerHost, *};
 use std::sync::{Arc, Mutex};
 use sunrise_client::{chunk::Chunk, items::ItemStack};
-use sunrise_core::{geometry::Direction, position::BlockPos};
-use sunrise_world::registry::BlockStateId;
+use sunrise_core::{geometry::Direction, position::BlockPos, ticks::TickTypeId};
+use sunrise_world::{fluid::FluidKind, registry::BlockStateId};
 
 /// The dispenser, facing east, and the block in front of it.
 const DISPENSER: [i32; 3] = [5, 64, 5];
@@ -51,12 +51,38 @@ impl ItemPart for DetachedReply {
 }
 
 #[derive(Clone, Default)]
-struct Notices(Arc<Mutex<Vec<DimensionKey>>>);
+struct Notices {
+    contents: Arc<Mutex<Vec<DimensionKey>>>,
+    fluids: Arc<Mutex<Vec<(String, String)>>>,
+    reopen_on_pickup: bool,
+}
 
 #[mod_api::sunrise_part]
 impl BlockPart for Notices {
     fn contents_changed(&self, _: &mut dyn ServerHost, event: &mut ContentsChangedEvent) {
-        self.0.lock().unwrap().push(event.level.dimension());
+        self.contents.lock().unwrap().push(event.level.dimension());
+    }
+}
+
+struct SchedulingLiquidContainer;
+
+#[mod_api::sunrise_part]
+impl BlockPart for SchedulingLiquidContainer {
+    fn can_place_liquid(&self, _: LevelSide<'_>, _: &mut CanPlaceLiquidEvent) -> Option<bool> {
+        Some(true)
+    }
+
+    fn place_liquid(
+        &self,
+        level: &mut dyn LevelWriteHost,
+        event: &mut PlaceLiquidEvent,
+    ) -> Option<bool> {
+        let pos = [event.pos.x, event.pos.y, event.pos.z];
+        let filled = level.block_state_id("minecraft:emerald_block").unwrap();
+        Some(
+            level.set_block(pos, filled, BlockUpdateFlags::CLIENTS)
+                && level.schedule_fluid_tick(pos, "minecraft:water", 5),
+        )
     }
 }
 
@@ -68,6 +94,8 @@ impl Hooks for Containers {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         let dispenser = r.block_key("minecraft:dispenser");
         r.block_part(dispenser, self.0.clone());
+        let dandelion = r.block_key("minecraft:dandelion");
+        r.block_part(dandelion, SchedulingLiquidContainer);
         let stick = r.item_key("minecraft:stick");
         r.item_part(stick, DetachedReply);
         for item in [
@@ -106,6 +134,27 @@ impl Hooks for Containers {
                     as Box<dyn ResourceHandler<FluidResource>>)
             },
         );
+    }
+
+    fn vanilla_game_event(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut VanillaGameEventEvent<'_>,
+    ) -> Flow {
+        if matches!(
+            event.event,
+            "minecraft:fluid_pickup" | "minecraft:fluid_place"
+        ) {
+            if self.0.reopen_on_pickup && event.event == "minecraft:fluid_pickup" {
+                host.transaction(|_, _| Ok::<_, ()>(())).unwrap();
+            }
+            self.0
+                .fluids
+                .lock()
+                .unwrap()
+                .push((event.event.to_owned(), event.dimension.to_owned()));
+        }
+        Flow::Continue
     }
 }
 
@@ -219,11 +268,10 @@ impl ResourceHandler<FluidResource> for MultiStepJug {
 /// A dedicated server with a chunk at the origin, a stone floor, an empty dispenser facing east
 /// and the containers' parts installed.
 fn with_dispenser(test: impl FnOnce(&mut Game<'_>, LevelRef)) {
-    with_dispenser_notices(|game, level, _| test(game, level));
+    with_dispenser_notices(Notices::default(), |game, level, _| test(game, level));
 }
 
-fn with_dispenser_notices(test: impl FnOnce(&mut Game<'_>, LevelRef, &Mutex<Vec<DimensionKey>>)) {
-    let notices = Notices::default();
+fn with_dispenser_notices(notices: Notices, test: impl FnOnce(&mut Game<'_>, LevelRef, &Notices)) {
     let mods: Mods = vec![ModEntry::new(
         "containers",
         Box::new(Containers(notices.clone())),
@@ -246,7 +294,7 @@ fn with_dispenser_notices(test: impl FnOnce(&mut Game<'_>, LevelRef, &Mutex<Vec<
             }
             let level = game.level("minecraft:overworld").unwrap();
             place_dispenser(game, level);
-            test(game, level, &notices.0);
+            test(game, level, &notices);
         });
     });
 }
@@ -280,6 +328,19 @@ fn dispense(game: &mut Game<'_>, stack: ItemStack) -> Option<ItemStack> {
         .unwrap()
         .continue_value()
         .unwrap()
+}
+
+/// Exercise the fluid helper through its ItemPart without the caller's click and smoke.
+fn dispense_part(game: &mut Game<'_>, input: &str) -> Dispensed {
+    let mut answer = None;
+    game.native_dispense_item(
+        game.dim.id(),
+        DISPENSER,
+        Direction::East,
+        &ItemStack::new(input, 1),
+        &mut answer,
+    );
+    answer.unwrap()
 }
 
 fn item(stack: &Option<ItemStack>) -> Option<(String, u32)> {
@@ -445,7 +506,8 @@ fn oversized_failed_transfer_runs_the_helpers_default_dispense() {
 #[test]
 #[ignore = "daily"]
 fn dispenser_remainder_merges_without_contents_changed() {
-    with_dispenser_notices(|game, _, notices| {
+    with_dispenser_notices(Notices::default(), |game, _, notices| {
+        let notices = &notices.contents;
         game.world
             .block_entities
             .get_mut(&SLOT_POS)
@@ -489,7 +551,8 @@ fn dispenser_remainder_merges_without_contents_changed() {
 #[test]
 #[ignore = "daily"]
 fn nested_dispense_settles_in_the_command_source_level() {
-    with_dispenser_notices(|game, _, notices| {
+    with_dispenser_notices(Notices::default(), |game, _, notices| {
+        let notices = &notices.contents;
         let marker = ItemStack::new("minecraft:stick", 10);
         game.world
             .block_entities
@@ -623,92 +686,200 @@ fn nested_dispense_settles_in_the_command_source_level() {
 #[test]
 #[ignore = "daily"]
 fn nested_dispense_container_publishes_fluid_changes_only_in_the_source_level() {
-    with_dispenser(|game, _| {
+    with_dispenser_notices(Notices::default(), |game, _, notices| {
         let overworld = game.server_source();
         let mut nether = overworld;
         nether.dimension = Dim::Nether;
-        for (input, before, after, output, drop, event) in [
+        let [x, y, z] = FRONT;
+        let pos = BlockPos::new(x, y, z);
+        let water_tick = |game: &Game<'_>| {
+            game.block_ticks
+                .fluids
+                .has_scheduled(pos, TickTypeId(FluidKind::Water.tick_id()))
+        };
+        game.with_source(nether, |game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.block_ticks.add_empty_chunk(pos.chunk()).unwrap();
+            set_front(game, "minecraft:netherrack");
+            game.world.block_log = Some(Vec::new());
+        });
+        let slab = state(game, "minecraft:stone_slab");
+        let waterlogged = game.with_props(slab, &[("waterlogged", "true")]).unwrap();
+        for (input, before, after, output, drop, event, schedules_tick) in [
             (
                 "minecraft:bucket",
-                "minecraft:water",
-                "minecraft:air",
+                state(game, "minecraft:water"),
+                state(game, "minecraft:air"),
                 "minecraft:water_bucket",
                 None,
                 "minecraft:fluid_pickup",
+                false,
+            ),
+            // A lava cauldron is not a BucketPickup; the helper drains it through FLUIDS.
+            (
+                "minecraft:bucket",
+                state(game, "minecraft:lava_cauldron"),
+                state(game, "minecraft:cauldron"),
+                "minecraft:lava_bucket",
+                None,
+                "minecraft:fluid_pickup",
+                false,
+            ),
+            // The Part, not the vanilla waterlogging path, stages this water tick.
+            (
+                "minecraft:water_bucket",
+                state(game, "minecraft:dandelion"),
+                state(game, "minecraft:emerald_block"),
+                "minecraft:bucket",
+                None,
+                "minecraft:fluid_place",
+                true,
             ),
             (
                 "minecraft:water_bucket",
-                "minecraft:poppy",
-                "minecraft:water",
+                slab,
+                waterlogged,
+                "minecraft:bucket",
+                None,
+                "minecraft:fluid_place",
+                true,
+            ),
+            (
+                "minecraft:water_bucket",
+                state(game, "minecraft:poppy"),
+                state(game, "minecraft:water"),
                 "minecraft:bucket",
                 Some("minecraft:poppy"),
                 "minecraft:fluid_place",
+                false,
             ),
         ] {
-            set_front(game, before);
+            game.world.set(x, y, z, before).unwrap();
             game.world.block_log = Some(Vec::new());
+            game.block_ticks.add_empty_chunk(pos.chunk()).unwrap();
             game.with_source(nether, |game| {
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                set_front(game, "minecraft:netherrack");
-                game.world.block_log = Some(Vec::new());
                 for commit in [false, true] {
                     dispense_fixture::start_recording();
                     let outcome = game.storage_transaction(|game, _| {
                         game.with_source(overworld, |game| {
-                            let mut answer = None;
-                            let stack = ItemStack::new(input, 1);
-                            game.native_dispense_item(
-                                Dim::Overworld.id(),
-                                DISPENSER,
-                                Direction::East,
-                                &stack,
-                                &mut answer,
-                            );
-                            let (left, _) = answer.unwrap();
+                            let (left, _) = dispense_part(game, input);
                             let expected = test_snapshot(&ItemStack::new(output, 1));
                             assert_eq!(left, Some(expected));
-                            assert_eq!(front(game), state(game, after));
+                            assert_eq!(front(game), after, "{input} on {before:?}");
                             assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                            assert!(!water_tick(game));
                             assert!(game.dropped.is_empty());
                         });
                         assert_eq!(game.dim, Dim::Nether);
+                        assert!(notices.fluids.lock().unwrap().is_empty());
                         commit.then_some(()).ok_or(())
                     });
                     assert_eq!(outcome, commit.then_some(()).ok_or(()));
                     let lines = dispense_fixture::stop_recording();
+                    let heard = std::mem::take(&mut *notices.fluids.lock().unwrap());
                     if commit {
-                        assert_eq!(
-                            lines.iter().filter(|line| line.ends_with(event)).count(),
-                            1,
-                            "{lines:?}"
-                        );
+                        assert_eq!(heard, [(event.to_owned(), Dim::Overworld.id().to_owned())]);
                     } else {
+                        assert!(heard.is_empty(), "{heard:?}");
                         assert!(lines.is_empty(), "{lines:?}");
                     }
                     assert_eq!(game.dim, Dim::Nether);
                     assert_eq!(front(game), state(game, "minecraft:netherrack"));
                     assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                    assert!(!water_tick(game));
                     assert!(game.dropped.is_empty());
                     game.with_source(overworld, |game| {
-                        let pos = (FRONT[0], FRONT[1], FRONT[2]);
-                        assert_eq!(
-                            front(game),
-                            state(game, if commit { after } else { before })
-                        );
+                        assert_eq!(front(game), if commit { after } else { before });
                         let log = game.world.block_log.as_ref().unwrap();
                         assert_eq!(
-                            log.iter().filter(|p| **p == pos).count(),
+                            log.iter().filter(|p| **p == (x, y, z)).count(),
                             usize::from(commit)
                         );
+                        if schedules_tick || !commit {
+                            assert_eq!(water_tick(game), commit, "{input} on {before:?}");
+                        }
                         let drops: Vec<_> =
                             game.dropped.iter().map(|item| &*item.stack.item).collect();
                         assert_eq!(drops, if commit { drop.as_slice() } else { &[] });
                     });
                 }
             });
+            let _ = game.block_ticks.remove_chunk(pos.chunk());
         }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_transaction_in_the_fluid_pickup_listener_does_not_delay_later_attachment_removal() {
+    use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
+
+    static VALUE: AttachmentType<i32> = AttachmentType {
+        namespace: "containers",
+        name: "retirement_witness",
+        default: || 0,
+        codec: None,
+        copy_on_death: false,
+        sync: false,
+    };
+    let notices = Notices {
+        reopen_on_pickup: true,
+        ..Notices::default()
+    };
+    with_dispenser_notices(notices, |game, level, notices| {
+        game.native_level_opened(Dim::Overworld);
+        let index = game.attachment_indexes[&Dim::Overworld].clone();
+        VALUE
+            .set(
+                game.world.block_entities.attachments_mut(SLOT_POS).unwrap(),
+                Holder::BlockEntity(DISPENSER),
+                7,
+            )
+            .unwrap();
+        set_front(game, "minecraft:water");
+        let overworld = game.server_source();
+        let mut nether = overworld;
+        nether.dimension = Dim::Nether;
+        game.with_source(nether, |game| {
+            game.storage_transaction(|game, _| {
+                game.with_source(overworld, |game| {
+                    let (left, _) = dispense_part(game, "minecraft:bucket");
+                    assert_eq!(
+                        left,
+                        Some(test_snapshot(&ItemStack::new("minecraft:water_bucket", 1)))
+                    );
+                });
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+            assert_eq!(game.dim, Dim::Nether);
+        });
+        assert_eq!(
+            *notices.fluids.lock().unwrap(),
+            [(
+                "minecraft:fluid_pickup".to_owned(),
+                Dim::Overworld.id().to_owned()
+            )]
+        );
+        let rows = || {
+            index
+                .lock()
+                .unwrap()
+                .snapshot_named(VALUE.namespace, VALUE.name)
+        };
+        assert_eq!(rows()[0].entry.read(&VALUE), Ok(&7));
+        // An ordinary block replacement after the Nether root has closed must retire
+        // this holder immediately, without a second Overworld transaction to flush it.
+        assert!(!game.has_open_transaction());
+        let air = state(game, "minecraft:air");
+        assert_eq!(
+            game.level_set_block(level, DISPENSER, air, BlockUpdateFlags::NONE),
+            Ok(true)
+        );
+        assert!(game.world.block_entities.get(&SLOT_POS).is_none());
+        assert!(rows().is_empty());
     });
 }
 

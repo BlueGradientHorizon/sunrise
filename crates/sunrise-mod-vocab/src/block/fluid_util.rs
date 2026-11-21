@@ -255,8 +255,11 @@ pub fn try_place_fluid(
 /// become a full one of another item. It picks up from the block in front first
 /// ([`try_pickup_fluid`], its `FLUIDS` reached from the dispenser's side), and places a bucket
 /// of what it holds there ([`try_place_fluid`], unvalidated, as a bucket) only where nothing
-/// was picked up. A transfer inside an enclosing transaction is provisional: block updates,
-/// fluid ticks, drops, sound, and game event publish in the dispenser's level at the root commit.
+/// was picked up. A transfer inside an enclosing transaction is provisional until the root
+/// commits; an abort publishes no effects. The dispenser's level owns the block updates, drops,
+/// sounds, and game events (including a pickup through `FLUIDS`), as well as the waterlogging
+/// tick and any ticks scheduled by a `place_liquid` Part through its
+/// [`LevelWriteHost`](crate::LevelWriteHost).
 /// Without an enclosing transaction, those effects publish before the dispenser's click and
 /// smoke. A single container is replaced in place (the first slot, else
 /// the second when the first was emptied); when both slots remain populated, the first slot
