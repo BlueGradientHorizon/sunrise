@@ -4,7 +4,7 @@ Sunrise's registry, [sunrise-org/sunrise-mods](https://github.com/sunrise-org/su
 resource packs and shader packs at [playsunrise.net/mods](https://playsunrise.net/mods). Every new or changed
 registry version row must name a stable Sunrise release in `sunrise`, so submit a version through
 [the stable source submission](#publishing-a-stable-source-version). The steps below show how to prepare and check
-a local draft, and what review and staging do with a submission.
+a local draft, and what review does with a submission.
 
 ## 1. Build and write the submission
 
@@ -47,7 +47,7 @@ cargo sunrise-mod check 'target/sunrise-mod/publish/my_mod-0.1.0.smod'
 ```
 
 This checks the new package and, for a signed project, its signature. `publish` also lists anything left to fill in
-on the entry or page. Registry CI checks the whole checkout and plans installations after staging, with all listed
+on the entry or page. Registry CI checks the whole checkout and plans installations with all listed
 files available. Your submission folder does not contain previously published packages or an existing project's images.
 
 For a first listing, you can also try an index containing just your project once the entry and icon are complete:
@@ -72,12 +72,11 @@ A row written without `--sunrise` is refused by review; give `publish` the flags
 3. Commit with `git commit -s`: every commit needs a `Signed-off-by:` line.
 4. Open the pull request with the text of `PULL_REQUEST.md`, after pasting the artifact URL into it.
 
-## 4. What review and staging do
+## 4. What review does
 
-- A maintainer copies your file from the artifact URL to the registry's `staging` release, named
-  `<sha256>.smod`. Nothing is fetched from an address in a pull request on its own, and you cannot stage a file yourself.
-- The `check` workflow then downloads each listed file, compares its SHA-256 with the entry's, and runs
-  `registry review`, `registry check` and `registry build` on the result.
+- The `check` workflow downloads each listed file, compares its SHA-256 with the entry's, and runs
+  `registry review`, `registry check` and `registry build` on the result. It fetches a new version from the
+  release asset its row names; nothing is staged by hand.
 - A reviewer reads the change and merges it. The `publish` workflow then releases the file as `<id>-<version>` and
   adds the project to the index.
 - The hash is checked again before any download reaches the game folder, so a file changed after
@@ -170,6 +169,11 @@ Upload only the author-release assets listed in `PULL_REQUEST.md`: the exact `.s
 Submit `mods/<id>.toml` to the registry with `icons/<id>.png` if an icon was staged. The `file` field already
 points to your release asset. Registry CI downloads it from there, verifies it and mirrors it after merge.
 For a new version of an existing listing, use `--registry <checkout>` instead of the page flags.
+
+An entry that still lists unsigned versions from before stable releases cannot take a key through
+`--registry`. Run `publish` without it for the signed package, then edit the entry in your checkout by hand:
+add the `key`, remove the unsigned rows and add the new row. Review notes each removed row and needs no
+takedown for it.
 
 ## Publishing native binaries
 

@@ -343,7 +343,8 @@ kept in the registry like any other project's.
 A `[[versions]]` row with `sunrise` must set `file` to the author's release asset, for example
 `https://github.com/you/example/releases/download/v0.1.0/example-0.1.0.smod`. Use the project's own
 GitHub repository (`source`, or `repo` if `source` is omitted), one plain tag segment, and the exact
-`<id>-<version>.smod` asset name using the full SemVer from the package. A bare filename is refused
+`<id>-<version>.<extension>` asset name, with the full SemVer from the package and the extension of
+the project's kind (`.smod`, `.spack`, `.zip`, `.sshader`). A bare filename is refused
 on a stable row. The URL is immutable after publication, just like the source pin and digest.
 The registry checks the bytes from `--files/<sha256>`; the generated index still points to the package
 on the registry's `<id>-<version>` mirror. Rows without `sunrise` still use a bare filename.
@@ -421,8 +422,8 @@ or execute the repository. `repo` and `path` always come from the entry.
 
 The registry's CI keeps every listed file in a folder named by hash, `files/<sha256>` (no extension), which
 `registry check` and `registry build` read with `--files`. For a stable source row, the workflow fetches
-from the URL in `file`. For a row with only a filename, a maintainer puts `<sha256>.<extension>` in the
-registry's `staging` release for the workflow to fetch. Either way, the merged package is published under
+from the URL in `file`. A row with only a filename is from before stable releases: its file is already in the
+registry's releases or its `staging` release. Either way, the merged package is published under
 `<id>-<version>` with its asset name. `cargo sunrise-mod publish` uses the same hash-named layout locally
 for the new file, but its output is not a complete checkout. `registry check` needs the full checkout and
 all listed files to plan installations.
