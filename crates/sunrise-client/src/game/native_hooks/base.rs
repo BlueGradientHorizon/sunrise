@@ -639,11 +639,12 @@ impl Game<'_> {
     pub(in crate::game) fn native_level_tick_post(&mut self, level: LevelRef) {
         self.fire_level_tick_post(level);
     }
-    /// Before a vanilla or registered HUD slot draws (`RenderGuiLayerEvent.Pre`).
-    /// Paint into `draw` below the layer, or set `canceled` to skip the installed body
-    /// and `native_gui_layer_post`, without skipping the layer's game logic. Replacing
-    /// or wrapping a slot keeps its ID, position and paint conditions. Focused chat still
-    /// draws from the chat screen, and a layer F1 hides fires neither hook.
+    /// Before a vanilla or registered HUD slot runs (`RenderGuiLayerEvent.Pre`), even under F1.
+    /// Paint into `draw` below the layer, or set `canceled` to skip the entire installed body
+    /// (including any side effects) and `native_gui_layer_post`. A replacement or wrapper
+    /// keeps the slot's ID and order, but does not inherit its visibility rules; those stay
+    /// in the original body. Focused chat paints separately in the chat screen, without
+    /// a layer dispatch.
     pub(in crate::game) fn native_gui_layer_pre(
         &self,
         layer: &str,

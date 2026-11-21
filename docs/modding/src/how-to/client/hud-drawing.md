@@ -43,24 +43,32 @@ it at registration.
 ```rust,ignore
 event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
     ctx.draw_previous();
-    ctx.with_draw(&mut |draw| {
-        let [w, h] = draw.size();
-        draw.fill([w / 2.0 - 91.0, h - 23.0, 182.0, 1.0], 0xFF80_80FF);
-    });
+    if ctx.host().hud_mode() == mod_api::HudMode::AllVisible {
+        ctx.with_draw(&mut |draw| {
+            let [w, h] = draw.size();
+            draw.fill([w / 2.0 - 91.0, h - 23.0, 182.0, 1.0], 0xFF80_80FF);
+        });
+    }
 }));
 ```
 
 `gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper, even if F1 hides the
-vanilla body or a wrapper omits it. If layer Pre cancels the slot, neither the installed body
-nor Post runs. `render_gui_pre` and `render_gui_post` surround the complete layer walk, including
-under F1. Cancel whole-HUD Pre to skip the layer walk and whole-HUD Post. For drawing above
-screens, use the independent foreground `gui_render_post` hook.
+vanilla body or a wrapper omits it. Canceling in layer Pre skips the entire installed body,
+including side effects (such as the air-bubble sound), and skips Post. There is no paint-only
+veto: to keep the side effects, allow the body to run with its paint.
+
+`render_gui_pre` and `render_gui_post` surround the complete HUD layer walk before the open
+screen, including under F1 and in in-world Options. Cancel whole-HUD Pre to skip the walk and
+whole-HUD Post; the screen still draws. `minecraft:chat` is a single HUD slot even when the chat
+screen is open. The screen draws focused chat separately, so changes to the HUD slot do not
+change focused chat. For drawing above screens, use the independent foreground `gui_render_post`
+hook.
 
 If a retained painter or wrapper panics or is refused, its paint is discarded. A wrapper's
 completed `draw_previous()` calls keep their paint in order, without being called again. A panic
-is logged and shown in an error toast naming the mod. It disables just the offending callback
-for the session; a disabled wrapper leaves the previous body to draw directly. Other failures
-are reported each time without disabling the callback.
+is logged and shown in an error toast naming the mod, even under F1. It disables only that
+callback for the session. A disabled wrapper leaves the previous body to draw directly.
+Other failures are reported each time without disabling the callback.
 
 ## Status rows and fixed text positions
 

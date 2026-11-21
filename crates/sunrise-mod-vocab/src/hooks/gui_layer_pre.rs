@@ -3,8 +3,9 @@
 
 pub trait Hooks {
     /// Before a vanilla or mod HUD layer (`RenderGuiLayerEvent.Pre`). Draw below the
-    /// layer through `event.draw`, or return `Flow::Cancel` to skip its entire body
-    /// and `gui_layer_post`. Fires even when the layer's vanilla drawing is hidden.
+    /// layer through `event.draw`, or return `Flow::Cancel` to skip its entire body,
+    /// including side effects like the air-bubble sound, and `gui_layer_post`.
+    /// Fires even when the layer's vanilla drawing is hidden.
     /// A wrapped or replaced layer fires this once, with the slot's original ID.
     /// To change a layer's body rather than veto the whole slot, wrap or replace it
     /// at startup in `register_gui_layers`.
@@ -16,8 +17,9 @@ pub trait Hooks {
     /// `selected_item_name`, `sleep_overlay`, `overlay_message` (action bar), `title`,
     /// `scoreboard_sidebar`, `subtitle_overlay`, `chat` and `tab_list`. Conditions like
     /// F1 or not riding a mount only skip the original vanilla drawing, not these hooks.
-    /// Focused chat still draws at the chat screen's paint site. Camera overlays and debug
-    /// screen are not HUD layers. The selected item name and action bar keep vanilla's
+    /// The HUD chat slot is visited once, even while the chat screen is open. Focused
+    /// chat draws separately in that screen, without another layer event. Camera overlays
+    /// and the debug screen are not HUD layers. The selected item name and action bar keep vanilla's
     /// fixed positions; adding bars doesn't move them. Cancel and redraw the
     /// corresponding layer if it needs to move.
     #[hook(

@@ -202,7 +202,11 @@ impl Game<'_> {
             self.ui.options.pack_configs = super::packs::pack_configs(&self.vanilla_root());
         }
     }
-    pub(super) fn draw_options(&mut self, batch: &mut HudBatch) {
+    pub(super) fn draw_options(&mut self, batch: &mut HudBatch, allowed: bool) {
+        if !allowed {
+            self.ui.options.discard_draw();
+            return;
+        }
         self.watch_pack_folder();
         let context = self.controller_settings_context();
         if self.ui.options.controller_open() {

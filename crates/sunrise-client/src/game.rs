@@ -7067,8 +7067,8 @@ impl Game<'_> {
         if let Some(pointer) = pointer {
             self.cursor = pointer.pixel();
         }
-        // Off a world (title, options, Win, a prompt before joining) the HUD shows nothing to
-        // keep clear of; `hud_layers` fills it in once the world's HUD draws.
+        // Off a world (title, title Options, Win, a prompt before joining) the HUD shows
+        // nothing to keep clear of; `hud_layers` fills it in once the world's HUD draws.
         let gui = HudBatch::new(size, self.settings.gui_scale_inputs());
         self.ui.room = sunrise_client::hud_kit::room::Room::new(gui.width, gui.height);
         // The pack prompt replaces the connecting screen (setScreen), but
@@ -7140,17 +7140,9 @@ impl Game<'_> {
             self.draw_screen_with_post_hook(&mut batch);
             return batch;
         }
-        if self.screen == Screen::Options {
-            if self.title.is_none() {
-                self.flush_skin_slots();
-                self.update_remote_skins();
-            }
+        if self.screen == Screen::Options && self.title.is_some() {
             let drawn = self.draw_screen_with_pre_hook(&mut batch);
-            if drawn {
-                self.draw_options(&mut batch);
-            } else {
-                self.ui.options.discard_draw();
-            }
+            self.draw_options(&mut batch, drawn);
             self.draw_screen_with_post_hook(&mut batch);
             self.draw_controller_notice(&mut batch);
             return batch;
@@ -7474,7 +7466,8 @@ impl Game<'_> {
                 }
             });
             self.gui_layer(VanillaGuiLayer::TabList, &mut batch, &mut |g, batch| {
-                if show_hud && g.screen != Screen::Chat {
+                // Options polls world skins separately, even if the HUD is hidden.
+                if show_hud && !matches!(g.screen, Screen::Chat | Screen::Options) {
                     g.draw_tab_list(batch);
                 }
             });
@@ -7492,8 +7485,13 @@ impl Game<'_> {
         } else {
             self.screen
         };
+        if screen == Screen::Options {
+            self.flush_skin_slots();
+            self.update_remote_skins();
+        }
         let drawn = self.draw_screen_with_pre_hook(&mut batch);
         match screen {
+            Screen::Options => self.draw_options(&mut batch, drawn),
             _ if !drawn => {}
             Screen::Paused if self.pause_menu => self.draw_pause_menu(&mut batch),
             // PauseScreen(false): only its title, at the top.
@@ -7546,7 +7544,7 @@ impl Game<'_> {
                 self.draw_pad_menu_guide(&mut batch, from);
             }
             Screen::Chat => self.draw_chat_screen(&mut batch),
-            Screen::Playing | Screen::Options | Screen::Win => {}
+            Screen::Playing | Screen::Win => {}
         }
         // ScreenEvent.Render.Post: the open screen has drawn itself and its
         // tooltips, so a native mod draws over it here. Never `Playing`: the

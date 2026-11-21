@@ -2513,8 +2513,8 @@ impl Game<'_> {
             }
         }
     }
-    /// Retained callback faults use system toasts but bypass `toast_add`: a mod
-    /// must not be able to hide the message naming the callback that failed.
+    /// Retained callback faults use system toasts but bypass `toast_add` and F1:
+    /// the player must see which callback failed even with the ordinary HUD hidden.
     pub(super) fn draw_mod_callback_toasts(&mut self, batch: &mut HudBatch) {
         use sunrise_client::toasts::SystemToast;
         for notice in mod_api::__private::game::take_callback_panic_notices() {
@@ -2542,7 +2542,7 @@ impl Game<'_> {
             };
             used |= 1 << slot;
             let (_, finished) = toast.update(multiplier);
-            if !finished && !self.ui.hide_gui {
+            if !finished {
                 toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
             }
             !finished
