@@ -310,12 +310,11 @@ fn the_text_background_opacity_sets_the_backdrop_and_the_faded_text() {
     });
 }
 
-/// A label refused for capacity after its layout rasterized a new glyph still uploads that
-/// glyph's pixels: a later accepted label with the glyph needs none of its own and samples
-/// atlas texels that are queued.
+/// A label submitted past the initial pre-reserved quad capacity still succeeds, uploads its
+/// newly rasterized hex glyphs, and draws glyph quads sampling those uploaded atlas texels.
 #[test]
 #[ignore = "daily"]
-fn glyphs_of_a_label_refused_for_capacity_still_upload() {
+fn a_label_past_initial_quad_capacity_uploads_glyphs_and_draws() {
     with_client_game(|game| {
         face_south(game);
         // The default font's runes are already packed bitmap glyphs, not runtime uploads, and
@@ -363,12 +362,11 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
         let mut draw = WorldGeometry::default();
         draw.reset(CAMERA, Mat4::IDENTITY, [0.5, 0.5]);
         let quad = mod_api::WorldQuad::new([[0.5, 70.5, 0.0]; 4], !0, mod_api::WorldDepth::Tested);
-        let capacity = draw.usage().quad_capacity as usize;
-        draw.quads(&vec![quad; capacity - 1]).unwrap();
+        let past_initial = sunrise_client::gfx::world_primitives::DEFAULT_CAPACITY as usize + 1;
+        draw.quads(&vec![quad; past_initial]).unwrap();
         game.text_patches.borrow_mut().clear();
-        let refused = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
-        assert_eq!(refused, Err(DrawError::CapacityExceeded));
-        assert!(draw.labels().iter().all(|label| label.is_empty()));
+        let accepted = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
+        assert_eq!(accepted, Ok(()));
         let queued: Vec<[u32; 4]> = game
             .text_patches
             .borrow()
@@ -377,16 +375,7 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
             .collect();
         assert!(
             !queued.is_empty(),
-            "the refused label's new glyphs still upload"
-        );
-
-        draw.reset(CAMERA, Mat4::IDENTITY, [0.5, 0.5]);
-        let accepted = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
-        assert_eq!(accepted, Ok(()));
-        assert_eq!(
-            game.text_patches.borrow().len(),
-            queued.len(),
-            "the glyphs were cached by the refused label"
+            "the label's newly rasterized hex glyphs must upload"
         );
         let size = [game.gui.atlas.width as f32, game.gui.atlas.height as f32];
         let glyphs: Vec<&[Vertex; 4]> = draw.labels()[0]

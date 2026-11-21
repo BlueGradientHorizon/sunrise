@@ -73,7 +73,7 @@ pub enum DrawError {
     NonFinite,
     /// A finite line width is zero or negative.
     InvalidWidth,
-    /// The batch would exceed this view's setup-time capacity.
+    /// The batch would exceed this view's fixed line capacity.
     CapacityExceeded,
     /// A label's text is deeper than 512 component nodes (`MAX_TEXT_DEPTH`).
     TextTooDeep,
@@ -194,10 +194,12 @@ impl WorldRenderView {
     }
 }
 
-/// Queued primitive counts and fixed capacities, shared across both depth modes.
+/// Queued primitive counts and remaining fixed capacities, shared across both depth modes.
 ///
-/// `instances_capacity` is the per-view budget of 16,384 model copies. It is reserved
-/// when the view's storage is created and is never grown during submission.
+/// `quads` counts all queued plain, pipeline, and label quads with no fixed per-view cap (GPU
+/// buffers grow dynamically). `line_capacity` and `instances_capacity` report the remaining
+/// fixed caps: `instances_capacity` is the per-view budget of 16,384 model copies, reserved
+/// when the view's storage is created and never grown during submission.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 // no wire: local client per-view world-draw usage counters.
@@ -206,10 +208,8 @@ pub struct WorldDrawUsage {
     pub lines: u32,
     /// Maximum lines per view.
     pub line_capacity: u32,
-    /// Quads queued for this view.
+    /// All queued plain, pipeline, and label quads for this view (no fixed per-view cap).
     pub quads: u32,
-    /// Maximum quads per view.
-    pub quad_capacity: u32,
     /// Model copies accepted for this view. Culled copies are not included.
     /// A call may pass at most [`instances_capacity`](Self::instances_capacity)
     /// copies; that bound is applied before culling.
@@ -218,12 +218,11 @@ pub struct WorldDrawUsage {
     pub instances_capacity: u32,
 }
 impl WorldDrawUsage {
-    /// Describe the current usage and setup-time limits.
+    /// Describe the current usage and remaining fixed limits.
     pub fn new(
         lines: u32,
         line_capacity: u32,
         quads: u32,
-        quad_capacity: u32,
         instances_used: u32,
         instances_capacity: u32,
     ) -> Self {
@@ -231,7 +230,6 @@ impl WorldDrawUsage {
             lines,
             line_capacity,
             quads,
-            quad_capacity,
             instances_used,
             instances_capacity,
         }

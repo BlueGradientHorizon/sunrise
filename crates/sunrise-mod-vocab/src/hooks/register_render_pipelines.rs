@@ -64,10 +64,11 @@ because its file is missing, refused or turned down by the GPU, the whole load f
 the game does not start, and a reload keeps the previous resources and handles, then drops the
 selected resource packs and tries again, as vanilla does with any failed reload. An optional
 pipeline that cannot be built is logged once with its id and resolves to `Invalid`, and the other
-pipelines draw. Pipeline quads share the view's 4,096 quads with `WorldDrawContext::quads`, and in each
-stage they draw after that stage's plain quads and lines, in the order submitted. Under a shader
-pack they follow the plain quads: a stage the pack draws itself is drawn with the next stage the
-game reaches."#]
+pipelines draw. Pipeline quads count toward `usage().quads` and grow dynamically into the GPU
+buffers with no fixed per-view cap (skipping any quad with non-finite coordinates or UVs
+individually); in each stage they draw after that stage's plain quads and lines, in the order
+submitted. Under a shader pack they follow the plain quads: a stage the pack draws itself is
+drawn with the next stage the game reaches."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

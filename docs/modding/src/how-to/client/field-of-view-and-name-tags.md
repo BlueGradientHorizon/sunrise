@@ -58,8 +58,8 @@ background opacity (0.25 when the background is for chat only), and the faded te
 (opacity + 0.75) / 2 and 0.5: 0x3F and 0x7F at the defaults. Labels are drawn with the world's name tags, far to near.
 
 A label is 0.025 blocks a font pixel, so it shrinks with distance; scale by distance yourself for a constant size.
-Its quads share the view's 4,096 with `quads`. A position that is not finite, text deeper than 512 component nodes
-and a label past the quads left are refused by name (`DrawError`) and draw nothing. The
+Its quads count toward `usage().quads` with no fixed per-view cap. A position that is not finite or text deeper
+than 512 component nodes is refused by name (`DrawError`) and draws nothing. The
 [hook notes](../../reference/hook-notes.md#custom-world-geometry) give the details.
 
 ## The client session

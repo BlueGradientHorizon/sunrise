@@ -556,7 +556,7 @@ pub trait CameraDrawContext {
         unimplemented!("CameraDrawContext::sprite")
     }
 }
-/// Per-view untextured geometry, cleared even without listeners; `usage` reports fixed setup-time limits shared across listeners and depth modes.
+/// Per-view untextured geometry, cleared even without listeners; `usage` reports queued counts and the remaining fixed limits shared across listeners and depth modes.
 pub trait WorldDrawContext {
     /// Draw a retained group once per view, with per-view culling and the batch route rules.
     /// Repeated submissions in one view are ignored. Only visible copies consume its budget.
@@ -567,19 +567,22 @@ pub trait WorldDrawContext {
         unimplemented!("WorldDrawContext::draw_instance_group")
     }
     /// Submit unlit ARGB world lines atomically. Invalid coordinates or widths,
-    /// or a batch exceeding the view's fixed capacity, leave the batch unchanged.
+    /// or a batch exceeding the view's fixed line capacity, leave the batch unchanged.
     fn lines(&mut self, lines: &[WorldLine]) -> Result<(), DrawError> {
         unimplemented!("WorldDrawContext::world_draw_lines")
     }
     /// Submit unlit, alpha-blended world quads atomically, using the white atlas texel.
+    /// Refuses non-finite coordinates ([`DrawError::NonFinite`]); quad storage grows
+    /// dynamically into the GPU buffers with no fixed per-view cap.
     fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
         unimplemented!("WorldDrawContext::world_draw_quads")
     }
-    /// Submit world quads drawn by the mod pipeline `pipeline`, atomically: its shader gets each
-    /// quad's texture coordinate and colour, and its blend and depth modes apply. The quads
-    /// count against the same per-view capacity as [`quads`](Self::quads), and within a stage
-    /// they draw after its plain quads and lines, in the order submitted. On `Err`, nothing
-    /// from this call is drawn.
+    /// Submit world quads drawn by the mod pipeline `pipeline`: its shader gets each
+    /// quad's texture coordinate and colour, and its blend and depth modes apply. Checks
+    /// `RenderPipelineRef` validity and staleness ([`PipelineDrawError::Pipeline`]), skips
+    /// any quad with non-finite coordinates or UVs individually without rejecting valid quads
+    /// in the same slice, and lets quad storage grow dynamically into the GPU buffers. Within
+    /// a stage, pipeline quads draw after its plain quads and lines, in the order submitted.
     fn pipeline_quads(
         &mut self,
         pipeline: RenderPipelineRef,
@@ -597,12 +600,10 @@ pub trait WorldDrawContext {
     /// 2, or exactly [`NameTagOptions::light`] with [`NameTagOptions::exact_light`]), and
     /// faded on the backdrop over everything, walls included, unlit. Labels draw with the
     /// world's name tags, far to near, whatever the stage. Each glyph and backdrop quad, both
-    /// copies counted, takes one of the view's 4,096 quads shared with
-    /// [`quads`](Self::quads) ([`usage`](Self::usage)).
+    /// copies counted, is counted in [`usage`](Self::usage)`.quads` with no fixed per-view cap.
     /// Refuses a non-finite `at` ([`DrawError::NonFinite`]), text deeper than 512 component
-    /// nodes ([`DrawError::TextTooDeep`]) or otherwise refused ([`DrawError::TextRefused`]),
-    /// and a label past the quads left ([`DrawError::CapacityExceeded`]); on `Err` nothing
-    /// is drawn.
+    /// nodes ([`DrawError::TextTooDeep`]) or otherwise refused ([`DrawError::TextRefused`]);
+    /// on `Err` nothing is drawn.
     fn name_tag(
         &mut self,
         at: [f64; 3],
@@ -611,8 +612,9 @@ pub trait WorldDrawContext {
     ) -> Result<(), DrawError> {
         unimplemented!("WorldDrawContext::name_tag")
     }
-    /// Queued counts and fixed capacities, shared by both depth modes and all listeners.
-    /// Capacity is allocated during setup, never grown during submission.
+    /// Queued counts and remaining fixed capacities (`line_capacity` and `instances_capacity`),
+    /// shared by both depth modes and all listeners. Quad storage grows dynamically into the
+    /// GPU buffers with no fixed per-view cap.
     fn usage(&self) -> WorldDrawUsage {
         unimplemented!("WorldDrawContext::world_draw_usage")
     }

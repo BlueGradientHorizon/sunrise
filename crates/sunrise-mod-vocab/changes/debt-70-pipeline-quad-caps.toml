@@ -1,0 +1,14 @@
+ids = [
+  "handle:WorldDrawUsage::new",
+  "type:PipelineDrawError.CapacityExceeded",
+  "type:PipelineDrawError.NonFinite",
+  "type:PipelineTextureError.NoSlot",
+  "type:PipelineTextureError.OverCap",
+  "type:WorldDrawUsage.quad_capacity",
+]
+why = "Remove the arbitrary 4,096 per-view quad cap, whole-batch rollback on `WorldDrawContext::pipeline_quads`, and dead 1024x1024 / atlas-pool `PipelineTextureError` variants (`OverCap`, `NoSlot`) to match vanilla 26.3 (`SubmitNodeCollection` / `LevelRenderer`) and NeoForge (`SubmitCustomGeometryEvent` / `RenderLevelStageEvent`), which collect submitted world quads and name tags dynamically without a fixed quad cap or batch rollback."
+migrate = """
+- Remove `PipelineTextureError::OverCap` and `PipelineTextureError::NoSlot` match arms; handle `NoSuchSprite`, `NotASpriteKey`, `NoSuchTextureFile`, and `Undecodable` (with `_` for `#[non_exhaustive]`).
+- Remove `PipelineDrawError::CapacityExceeded` and `PipelineDrawError::NonFinite` match arms; `WorldDrawContext::pipeline_quads` now fails only with `PipelineDrawError::Pipeline(RenderPipelineError)` on invalid or stale handles, skips individual quads with non-finite coordinates or UVs, and grows quad storage dynamically.
+- Remove `WorldDrawUsage.quad_capacity` reads and drop the fourth (`quad_capacity`) argument from `WorldDrawUsage::new(lines, line_capacity, quads, instances_used, instances_capacity)`. `WorldDrawContext::quads` and `name_tag` no longer return `DrawError::CapacityExceeded` (only `lines` still has `line_capacity`).
+"""

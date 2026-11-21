@@ -86,9 +86,7 @@ pub enum PipelineTexture {
     /// A sprite of the game's block or item atlas, by its texture id: `powah:block/energy_charge`
     /// is `assets/powah/textures/block/energy_charge.png` as the `minecraft:blocks` atlas holds
     /// it, `minecraft:item/diamond` an item sprite. An animated sprite animates. A sprite in
-    /// neither atlas refuses the pipeline ([`PipelineTextureError::NoSuchSprite`]). A texture
-    /// file of the mod's own, packed into the runtime atlas's slot pool (#4438) and drawn the
-    /// same way, follows once that pool exists.
+    /// neither atlas refuses the pipeline ([`PipelineTextureError::NoSuchSprite`]).
     Sprite(Identifier),
 }
 
@@ -103,12 +101,8 @@ pub enum PipelineTextureError {
     NoSuchTextureFile,
     /// The id names a file (a `textures/` path or a `.png` name), not a sprite key.
     NotASpriteKey,
-    /// A texture file over the pool's cap of 1024 x 1024 pixels.
-    OverCap,
     /// A texture file that isn't an image the game can decode.
     Undecodable,
-    /// No free atlas slot, or over the mod's image budget.
-    NoSlot,
 }
 
 impl std::fmt::Display for PipelineTextureError {
@@ -117,9 +111,7 @@ impl std::fmt::Display for PipelineTextureError {
             Self::NoSuchSprite => "no such sprite in the block or item atlas",
             Self::NoSuchTextureFile => "no such texture file",
             Self::NotASpriteKey => "the id names a file, not a sprite key",
-            Self::OverCap => "the texture file is over 1024 x 1024 pixels",
             Self::Undecodable => "the texture file cannot be decoded",
-            Self::NoSlot => "no free atlas slot, or over the mod's image budget",
         })
     }
 }
@@ -206,18 +198,16 @@ impl PipelineQuad {
     }
 }
 
-/// Why a whole pipeline batch was refused; nothing from that batch was appended.
+/// Why a pipeline draw call was refused; nothing from that call was appended.
+///
+/// Individual quads with non-finite coordinates or UVs are skipped without refusing valid quads
+/// in the same slice, and quad storage grows dynamically into the GPU buffers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 // no wire: refusal of a local client render-pipeline draw submission.
 pub enum PipelineDrawError {
     /// The handle is stale, or names no usable pipeline.
     Pipeline(RenderPipelineError),
-    /// A coordinate is not finite, or a camera-relative coordinate overflows f32.
-    NonFinite,
-    /// The batch would exceed this view's quad capacity, which pipeline quads share with
-    /// [`crate::WorldDrawContext::quads`].
-    CapacityExceeded,
 }
 
 /// What `owner` added to `pipelines` in `register_render_pipelines`, checked as it returns: a

@@ -119,8 +119,8 @@ impl Game<'_> {
     /// faded text on the backdrop over everything, unlit. Otherwise once, depth tested and
     /// translucent: the faded text on the backdrop in the caller's light. The faded text's alpha
     /// (unless `faded_alpha`) and the backdrop's follow the player's text background opacity.
-    /// Refused whole, before any layout, for a position that is not finite; glyphs a refused
-    /// label rasterized still upload.
+    /// Refused whole, before any layout, for a position that is not finite; any newly
+    /// rasterized glyphs are uploaded with the label.
     pub(super) fn native_world_name_tag(
         &self,
         draw: &mut WorldGeometry,
@@ -168,14 +168,12 @@ impl Game<'_> {
             let lit = sunrise_client::block_entity_render::vertex_light(light);
             quads(faded, backdrop, 0, lit, &mut world)
         };
-        // The layout cached any glyph it rasterized; its pixels upload even if the label is
-        // refused, or a later label using that glyph would sample an atlas never written.
-        let labelled = draw.label(from_camera.length_squared(), &world, &see_through);
+        draw.label(from_camera.length_squared(), &world, &see_through);
         self.text_patches.borrow_mut().append(&mut patches);
-        labelled
+        Ok(())
     }
     /// Submit unlit ARGB world lines atomically. Invalid coordinates or widths,
-    /// or a batch exceeding the view's fixed capacity, leave the batch unchanged.
+    /// or a batch exceeding the view's fixed line capacity, leave the batch unchanged.
     pub(super) fn native_world_draw_lines(
         &self,
         draw: &mut WorldGeometry,
@@ -184,6 +182,7 @@ impl Game<'_> {
         draw.lines(lines)
     }
     /// Submit unlit, alpha-blended world quads atomically, using the white atlas texel.
+    /// Refuses non-finite coordinates; quad storage grows dynamically into the GPU buffers.
     pub(super) fn native_world_draw_quads(
         &self,
         draw: &mut WorldGeometry,
@@ -191,8 +190,9 @@ impl Game<'_> {
     ) -> Result<(), DrawError> {
         draw.quads(quads)
     }
-    /// Submit quads drawn by a mod pipeline atomically: the handle is checked against the
-    /// published pipelines once, then the batch is validated and queued or refused whole.
+    /// Submit quads drawn by a mod pipeline: the handle is checked against the published
+    /// pipelines once, non-finite quads are skipped individually without rejecting valid quads
+    /// in the same slice, and quad storage grows dynamically into the GPU buffers.
     pub(super) fn native_world_draw_pipeline_quads(
         &self,
         draw: &mut WorldGeometry,
@@ -205,10 +205,12 @@ impl Game<'_> {
             .mod_pipelines
             .slot(pipeline)
             .map_err(PipelineDrawError::Pipeline)?;
-        draw.pipeline_quads(slot, quads)
+        draw.pipeline_quads(slot, quads);
+        Ok(())
     }
-    /// Queued counts and fixed capacities, shared by both depth modes and all listeners.
-    /// Capacity is allocated during setup, never grown during submission.
+    /// Queued counts and remaining fixed capacities (`line_capacity` and `instances_capacity`),
+    /// shared by both depth modes and all listeners. Quad storage grows dynamically into the
+    /// GPU buffers.
     pub(super) fn native_world_draw_usage(&self, draw: &WorldGeometry) -> WorldDrawUsage {
         draw.usage()
     }

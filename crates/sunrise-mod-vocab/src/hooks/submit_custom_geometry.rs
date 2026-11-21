@@ -14,9 +14,14 @@ pub trait Hooks {
 
 `Hooks::submit_custom_geometry` runs on the client after particles, before rendering. Its
 `WorldRenderView` holds camera, partial tick and game time; `WorldDrawContext::lines` and `quads`
-accept unlit world-space ARGB geometry with depth testing or through walls. Batches fail atomically
-for invalid inputs or overflow. `usage()` reports shared limits (4,096 of each by default);
-output clears every view. Submit extracted state, without world writes or resource loading.
+accept unlit world-space ARGB geometry with depth testing or through walls. `lines` and `quads`
+fail atomically for invalid inputs, and `lines` enforces a fixed per-view limit of 4,096
+(`usage().line_capacity`). `quads`, `pipeline_quads`, and `name_tag` count toward
+`usage().quads` and grow dynamically into the GPU buffers with no fixed per-view cap;
+`pipeline_quads` checks `RenderPipelineRef` validity and staleness
+(`PipelineDrawError::Pipeline`) and skips any quad with non-finite coordinates or UVs
+individually without rejecting valid quads in the same slice. Output clears every view. Submit
+extracted state, without world writes or resource loading.
 
 `WorldDrawContext::draw_model_instances` draws one batch of a resolved `ModelRef`. Each
 `ModelInstance` carries an f64 world origin, a row-major 3×4 local transform, an `0xAARRGGBB`
@@ -41,10 +46,9 @@ raised to at least 2, and faded on the backdrop over everything, walls included,
 backdrop's alpha is 255 times the text background opacity (0.25 when it is set for chat only), the
 faded text's 255 times the larger of (opacity + 0.75) / 2 and 0.5. Labels draw with the world's
 name tags whatever the stage, sorted far to near. Each glyph and backdrop quad, both copies
-counted, takes one of the 4,096 quads `quads` uses (`usage().quads`). A position that is not
+counted, is counted in `usage().quads` with no fixed per-view cap. A position that is not
 finite (`DrawError::NonFinite`), text deeper than 512 component nodes (`DrawError::TextTooDeep`)
-or otherwise refused (`DrawError::TextRefused`), and a label past the quads left
-(`DrawError::CapacityExceeded`) are refused whole: nothing is drawn. `see_through` can show a
+or otherwise refused (`DrawError::TextRefused`) is refused whole: nothing is drawn. `see_through` can show a
 label through any wall, which vanilla does only for the names its own renderers choose; the call
 sends nothing and reads nothing the client does not already hold."#]
     #[hook(
