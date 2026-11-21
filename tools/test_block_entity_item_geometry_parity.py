@@ -91,8 +91,7 @@ def cases():
                                 {'facing': FACINGS[i % 4], 'ominous': 'false', 'vault_state': 'active'}, pos, (13, 15),
                                 item=[item, count], spin=spin))
 
-    # The centre of this block is half a block below a chunk edge on both axes. From
-    # the positive side, measuring from its integer position loses the 63.75 draws.
+    # Exercise item submission on both sides of chunk boundaries and at the strict renderer reach.
     pos = (15, 64, -1)
     fixtures = [
         case('campfire', 'campfire', 'minecraft:campfire', {'facing': 'north', 'lit': 'false'},
