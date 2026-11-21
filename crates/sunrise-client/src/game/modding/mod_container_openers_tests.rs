@@ -1,7 +1,7 @@
 //! ContainerOpenersCounter timing, including lost openers.
 #[cfg(test)]
 mod tests {
-    use super::super::Game;
+    use super::super::{Game, lan_actions::MenuOpen, native_entity_refs::tests::run_fresh_cases};
     use mod_api::{
         BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates, MenuReplace,
         ModContainerViewersEvent, ModEntry, PlayerContainerOpenEvent, ServerHost, Text,
@@ -36,6 +36,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_replacement_reusing_the_block_menu_window_is_not_announced_twice() {
+        if run_fresh_cases(
+            "game::mod_container_openers_tests::tests::a_replacement_reusing_the_block_menu_window_is_not_announced_twice",
+            "SUNRISE_GUEST_MENU_REENTRY_CASE",
+            &["window_wrap"],
+        ) {
+            return;
+        }
         struct Replace(Arc<Mutex<Vec<String>>>);
         #[mod_api::__subscriptions]
         impl Hooks for Replace {
@@ -46,8 +53,8 @@ mod tests {
             ) -> Flow {
                 if event.event == "minecraft:container_open" {
                     let player = host.players().acting_player().unwrap();
-                    // Roll over the window ID so the final replacement's ID is the same
-                    // as the outer opening's, without reusing the menu's identity.
+                    // ServerPlayer.nextContainerCounter wraps 100 back to 1. Reuse the
+                    // outer opening's window ID without reusing its menu identity.
                     for window in (2..=100).chain([1]) {
                         assert_eq!(
                             host.open_menu(
@@ -74,7 +81,7 @@ mod tests {
         }
         let heard = Arc::new(Mutex::new(Vec::new()));
         with_container("minecraft:chest", |game| {
-            mod_platform::testing::with_mods(
+            let result = mod_platform::testing::with_mods(
                 vec![ModEntry::new(
                     "replace_menu",
                     Box::new(Replace(heard.clone())),
@@ -82,6 +89,7 @@ mod tests {
                 .into(),
                 || game.open_block_menu(12, POS),
             );
+            assert_eq!(result, MenuOpen::Opened);
             let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
             let menu = guest.menu.as_ref().unwrap();
             assert_eq!(menu.window, 1);
@@ -96,6 +104,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_shulker_close_sounds_at_its_centre_when_the_listener_replaces_it() {
+        if run_fresh_cases(
+            "game::mod_container_openers_tests::tests::a_shulker_close_sounds_at_its_centre_when_the_listener_replaces_it",
+            "SUNRISE_GUEST_MENU_REENTRY_CASE",
+            &["shulker_close"],
+        ) {
+            return;
+        }
         struct Replace;
         #[mod_api::__subscriptions]
         impl Hooks for Replace {
