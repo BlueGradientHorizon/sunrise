@@ -456,7 +456,7 @@ mod below_world_tests {
     use super::*;
     use crate::chunk::LevelShape;
 
-    /// The player's health after one `server_hazards_tick` at `y` in a level of `shape`.
+    /// The player's health after the server hazard steps at `y` in a level of `shape`.
     fn health_after_hazards(shape: LevelShape, y: f64) -> f32 {
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("SUNRISE_TEST_RESOURCES"),
