@@ -716,15 +716,15 @@ mod tests {
                             mob.ai.targets = Default::default();
                             mob.on_ground = walking;
                             mob.velocity = velocity;
-                            let mut trample = None;
+                            let mut movement = None;
                             let progress = ai::tick_until_consumption(
                                 &mut mob,
                                 &view,
                                 &mut level,
                                 &mut Vec::new(),
-                                &mut trample,
+                                &mut movement,
                             );
-                            assert!(trample.is_none());
+                            assert!(movement.is_none());
                             assert!(
                                 matches!(progress, ai::TickProgress::Complete(true)),
                                 "walking={walking}: {progress:?}"

@@ -163,7 +163,7 @@ impl Game<'_> {
         let mut resume = None;
         // Trample is uncommon. Keep its payload here rather than making every
         // mob's tick result and resume marker large enough to carry it.
-        let mut trample = None;
+        let mut movement = None;
         let mut resume_air_answer = None;
         let mut resume_selection = None;
         // An invalid removed vehicle is retried once at this rider's own
@@ -236,7 +236,7 @@ impl Game<'_> {
                                 // tick view must answer a removed handle with nothing.
                                 snapshot[slot].removed = true;
                                 resume = None;
-                                trample = None;
+                                movement = None;
                                 resume_selection = None;
                                 resume_sampled = None;
                                 cursor += 1;
@@ -253,7 +253,7 @@ impl Game<'_> {
                     if blocked.contains(&m.id) {
                         cursor += 1;
                         resume = None;
-                        trample = None;
+                        movement = None;
                         resume_selection = None;
                         resume_sampled = None;
                         continue;
@@ -551,7 +551,7 @@ impl Game<'_> {
                                 known_speed,
                                 resume_air_answer.take(),
                                 &mut events,
-                                &mut trample,
+                                &mut movement,
                             )
                         }
                         Some(Pause::AfterDamage(damage)) => {
@@ -562,15 +562,15 @@ impl Game<'_> {
                                 &mut level,
                                 damage,
                                 &mut events,
-                                &mut trample,
+                                &mut movement,
                             )
                         }
-                        Some(Pause::Trample) => sunrise_client::mobs::riders::resume_after_trample(
+                        Some(Pause::Trample) => sunrise_client::mobs::riders::resume_movement(
                             &mut mobs,
                             i,
                             &w,
                             &mut level,
-                            &mut trample,
+                            &mut movement,
                             &mut events,
                         ),
                         Some(Pause::Consumption { was_on_fire, .. }) => {
@@ -581,7 +581,7 @@ impl Game<'_> {
                                 &mut level,
                                 was_on_fire,
                                 &mut events,
-                                &mut trample,
+                                &mut movement,
                             )
                         }
                         None => sunrise_client::mobs::riders::tick_until_consumption(
@@ -590,7 +590,7 @@ impl Game<'_> {
                             &w,
                             &mut level,
                             &mut events,
-                            &mut trample,
+                            &mut movement,
                         ),
                     };
                     let progress =
@@ -856,7 +856,7 @@ impl Game<'_> {
                             }
                         }
                         Pause::Trample => {
-                            let trample = trample.as_ref().expect("the trample pause was stored");
+                            let trample = movement.as_ref().expect("the trample pause was stored");
                             self.trample_farmland(trample.mob, false, trample.decision());
                         }
                     }

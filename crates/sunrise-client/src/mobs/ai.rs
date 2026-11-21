@@ -1132,25 +1132,25 @@ enum BaseStage {
 }
 
 #[derive(Debug)]
-enum TramplePhase {
+enum MovementPhase {
     Goal(super::goals::GoalMovementPause),
     Travel(super::living::TravelPause),
 }
 
 /// A suspended mob's landing and the exact remainder of its tick.
 #[derive(Debug)]
-pub struct MobTrample {
-    phase: TramplePhase,
+pub struct MobMovement {
+    phase: MovementPhase,
     was_on_fire: bool,
     join: crate::join_seq::JoinSeq,
     pub mob: u32,
 }
 
-impl MobTrample {
+impl MobMovement {
     pub fn decision(&self) -> sunrise_world::block_landing::FarmlandTrample {
         match &self.phase {
-            TramplePhase::Goal(goal) => goal.movement.decision(),
-            TramplePhase::Travel(travel) => travel.decision(),
+            MovementPhase::Goal(goal) => goal.movement.decision(),
+            MovementPhase::Travel(travel) => travel.decision(),
         }
     }
 }
@@ -1240,9 +1240,9 @@ pub fn tick_until_consumption(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-    trample: &mut Option<MobTrample>,
+    movement: &mut Option<MobMovement>,
 ) -> TickProgress {
-    tick_until_pause(m, w, level, events, Some(trample))
+    tick_until_pause(m, w, level, events, Some(movement))
 }
 
 fn tick_until_pause(
@@ -1250,7 +1250,7 @@ fn tick_until_pause(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-    trample: Option<&mut Option<MobTrample>>,
+    movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
@@ -1294,7 +1294,7 @@ fn tick_until_pause(
         super::strider::pre_tick(m, w, events);
     }
     let progress = base_tick(m, w, level, events);
-    finish_base_progress(m, w, level, events, progress, known_speed, trample)
+    finish_base_progress(m, w, level, events, progress, known_speed, movement)
 }
 
 fn finish_base_progress(
@@ -1304,11 +1304,11 @@ fn finish_base_progress(
     events: &mut Vec<MobEvent>,
     progress: BaseTick,
     known_speed: Vec3,
-    trample: Option<&mut Option<MobTrample>>,
+    movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
     match progress {
         BaseTick::Done(was_on_fire) => {
-            after_base_tick(m, w, level, events, was_on_fire, known_speed, trample)
+            after_base_tick(m, w, level, events, was_on_fire, known_speed, movement)
         }
         BaseTick::Air(air) => TickProgress::Paused(Pause::Breathing { air, known_speed }),
         BaseTick::AfterDamage { contact, next } => {
@@ -1335,7 +1335,7 @@ pub fn resume_after_breathing(
     air: AirPause,
     known_speed: Vec3,
     breath: Option<Breath>,
-    trample: Option<&mut Option<MobTrample>>,
+    movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
@@ -1343,7 +1343,7 @@ pub fn resume_after_breathing(
     if let Some(breath) = breath {
         finish_air(m, w, level, events, air.step, air.damage, breath);
     }
-    let progress = if m.pending_damage_post.is_some() && trample.is_some() {
+    let progress = if m.pending_damage_post.is_some() && movement.is_some() {
         BaseTick::AfterDamage {
             contact: air.contact,
             next: BaseStage::Effects,
@@ -1351,7 +1351,7 @@ pub fn resume_after_breathing(
     } else {
         continue_base_tick(m, w, level, events, air.contact, BaseStage::Effects)
     };
-    finish_base_progress(m, w, level, events, progress, known_speed, trample)
+    finish_base_progress(m, w, level, events, progress, known_speed, movement)
 }
 
 /// Continue the exact tick site after the owning game settled the hit.
@@ -1361,7 +1361,7 @@ pub(super) fn resume_after_damage(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     resume: DamageResume,
-    trample: Option<&mut Option<MobTrample>>,
+    movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
@@ -1376,7 +1376,7 @@ pub(super) fn resume_after_damage(
             known_speed,
         } => {
             let progress = continue_base_tick(m, w, level, events, contact, next);
-            finish_base_progress(m, w, level, events, progress, known_speed, trample)
+            finish_base_progress(m, w, level, events, progress, known_speed, movement)
         }
         DamageTail::Ai {
             next,
@@ -1389,7 +1389,7 @@ pub(super) fn resume_after_damage(
             events,
             was_on_fire,
             no_ai,
-            trample.is_some(),
+            movement.is_some(),
             next,
         ),
     }
@@ -1403,7 +1403,7 @@ fn after_base_tick(
     events: &mut Vec<MobEvent>,
     was_on_fire: bool,
     known_speed: Vec3,
-    trample: Option<&mut Option<MobTrample>>,
+    movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
     if m.impulse_grace_time > 0 {
         m.impulse_grace_time -= 1;
@@ -1449,7 +1449,7 @@ fn after_base_tick(
             was_on_fire,
         });
     }
-    ai_and_finish_tick(m, w, level, was_on_fire, events, trample)
+    ai_and_finish_tick(m, w, level, was_on_fire, events, movement)
 }
 
 /// Resume a fox after its item effect, before the living AI/movement step.
@@ -1459,13 +1459,13 @@ pub fn resume_after_consumption(
     level: &mut DamageLevel<'_>,
     was_on_fire: bool,
     events: &mut Vec<MobEvent>,
-    trample: Option<&mut Option<MobTrample>>,
+    movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
     }
     super::fox::before_living_ai_step(m, w);
-    ai_and_finish_tick(m, w, level, was_on_fire, events, trample)
+    ai_and_finish_tick(m, w, level, was_on_fire, events, movement)
 }
 
 fn ai_and_finish_tick(
@@ -1474,9 +1474,9 @@ fn ai_and_finish_tick(
     level: &mut DamageLevel<'_>,
     was_on_fire: bool,
     events: &mut Vec<MobEvent>,
-    trample: Option<&mut Option<MobTrample>>,
+    movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
-    let pause_damage = trample.is_some();
+    let pause_damage = movement.is_some();
     if m.no_ai {
         update_fall_flying(m, w, events);
         reset_effect_fall_distance(m);
@@ -1505,8 +1505,8 @@ fn ai_and_finish_tick(
         // NoAI mob pushes what it overlaps (and is pushed back by its own
         // push).
         drop_tiny_motion(m);
-    } else if let Some(phase) = ai_step(m, w, level, events, trample.is_some()) {
-        *trample.expect("only a game-owned tick pauses a trample") = Some(MobTrample {
+    } else if let Some(phase) = ai_step(m, w, level, events, movement.is_some()) {
+        *movement.expect("only a game-owned tick pauses a trample") = Some(MobMovement {
             phase,
             was_on_fire,
             join: m.join,
@@ -1671,42 +1671,42 @@ fn continue_ai_tail(
 }
 
 /// Resume the exact move, then the remainder of `LivingEntity.aiStep` and the tick.
-pub(super) fn resume_after_trample(
+pub(super) fn resume_movement(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
-    trample: &mut Option<MobTrample>,
+    movement: &mut Option<MobMovement>,
     events: &mut Vec<MobEvent>,
 ) -> TickProgress {
-    let paused = trample.take().expect("the trample pause was stored");
+    let paused = movement.take().expect("the trample pause was stored");
     if m.removed || m.join != paused.join {
         return TickProgress::Complete(!m.removed);
     }
     let progress = match paused.phase {
-        TramplePhase::Travel(travel) => {
+        MovementPhase::Travel(travel) => {
             travel.resume(m, w, level, events);
             hurt_teleports(m, w, events);
             None
         }
-        TramplePhase::Goal(goal) => {
+        MovementPhase::Goal(goal) => {
             let paused = {
                 let BorrowedGoalSelectors { mob, goals, .. } = &mut BorrowedGoalSelectors::new(m);
                 goals.resume_movement(mob, &mut Cx { w, level, events }, goal)
             };
             if let Some(goal) = paused {
-                Some(TramplePhase::Goal(goal))
+                Some(MovementPhase::Goal(goal))
             } else {
                 finish_server_ai_step(m, w, level, events);
                 ai_step_after_goals(m, w, level, events, true)
                     .err()
-                    .map(TramplePhase::Travel)
+                    .map(MovementPhase::Travel)
             }
         }
     };
     match progress {
         None => start_ai_tail(m, w, level, events, paused.was_on_fire, true),
         Some(phase) => {
-            *trample = Some(MobTrample { phase, ..paused });
+            *movement = Some(MobMovement { phase, ..paused });
             TickProgress::Paused(Pause::Trample)
         }
     }
@@ -3082,8 +3082,8 @@ fn ai_step(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-    pause_trample: bool,
-) -> Option<TramplePhase> {
+    pause_movement: bool,
+) -> Option<MovementPhase> {
     if m.species() == Species::Parrot {
         super::parrot::ai_step(m, w, level.random(), events);
     }
@@ -3130,17 +3130,17 @@ fn ai_step(
         super::piglin::before_goals(m, w, level.random(), events);
     }
     if m.alive() && !immobile {
-        if let Some(paused) = server_ai_until_trample(m, w, level, events, pause_trample) {
-            return Some(TramplePhase::Goal(paused));
+        if let Some(paused) = server_ai_until_movement_pause(m, w, level, events, pause_movement) {
+            return Some(MovementPhase::Goal(paused));
         }
     } else {
         m.ai.jumping = false;
         m.ai.xxa = 0.0;
         m.ai.zza = 0.0;
     }
-    ai_step_after_goals(m, w, level, events, pause_trample)
+    ai_step_after_goals(m, w, level, events, pause_movement)
         .err()
-        .map(TramplePhase::Travel)
+        .map(MovementPhase::Travel)
 }
 
 fn ai_step_after_goals(
@@ -3148,7 +3148,7 @@ fn ai_step_after_goals(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-    pause_trample: bool,
+    pause_movement: bool,
 ) -> Result<(), super::living::TravelPause> {
     m.handle_jumping(w);
     let input = Vec3::new(
@@ -3164,7 +3164,7 @@ fn ai_step_after_goals(
         m.velocity = Vec3::ZERO;
     } else if !(m.species() == Species::Mannequin && m.extra.immovable) {
         // Mannequin.isEffectiveAi: an immovable one never travels.
-        m.travel_until_pause(w, level, input, events, pause_trample)?;
+        m.travel_until_pause(w, level, input, events, pause_movement)?;
         // A fall's hurt (checkFallDamage) teleports at once.
         hurt_teleports(m, w, events);
     }
@@ -3638,16 +3638,16 @@ pub(super) fn server_ai_step(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) {
-    server_ai_until_trample(m, w, level, events, false);
+    server_ai_until_movement_pause(m, w, level, events, false);
 }
 
 /// Mob.serverAiStep through the running goals, one of which may move the mob.
-fn server_ai_until_trample(
+fn server_ai_until_movement_pause(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-    pause_trample: bool,
+    pause_movement: bool,
 ) -> Option<super::goals::GoalMovementPause> {
     // A Java `int`: past `i32::MAX` it wraps, as there.
     m.ai.no_action_time = m.ai.no_action_time.wrapping_add(1);
@@ -3665,7 +3665,7 @@ fn server_ai_until_trample(
     let id_based = tick_count + i64::from(m.id);
     // Of the built-in goals, only the dolphin's rider-follow goal calls
     // `Entity.move` directly. Dynamic goals cannot install that native goal.
-    let pause_goals = pause_trample && m.species() == Species::Dolphin;
+    let pause_goals = pause_movement && m.species() == Species::Dolphin;
     {
         let BorrowedGoalSelectors {
             mob,
