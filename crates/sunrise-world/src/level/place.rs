@@ -1563,27 +1563,12 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
     }
 
-    /// The `Block.setPlacedBy` branches that write blocks. When capturing a
-    /// placement these run before dispatch, including any notifications they request.
-    fn set_placed_by_writes(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
-        let b = self.b;
+    /// `Block.setPlacedBy` for the blocks that place companions.
+    fn set_placed_by(&mut self, pos: BlockPos, state: BlockStateId) {
         if let Some((at, companion)) = self.placed_companion(pos, state) {
             self.set_block_and_update(at, companion);
-        } else if b.data(state).is(Class::TripWireHook) {
-            self.tripwire_hook_calculate(pos, state, false, false, -1, None);
-        } else if b.data(state).is(Class::MossyCarpet) {
-            let topper = self.mossy_carpet_topper(pos);
-            if !b.is_air(topper) {
-                self.set_block_and_update(above(pos), topper);
-            }
-        } else {
-            return false;
+            return;
         }
-        true
-    }
-
-    /// The `Block.setPlacedBy` branches that only schedule work or play a sound.
-    fn set_placed_by_effects(&mut self, pos: BlockPos, state: BlockStateId) {
         let b = self.b;
         let p = b.props;
         let data = b.data(state);
@@ -1606,12 +1591,13 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             self.sound(pos, &sound.into(), 1.0, 1.0);
         } else if data.is(Class::PistonBase) {
             self.piston_check_if_extend(pos, state);
-        }
-    }
-
-    fn set_placed_by(&mut self, pos: BlockPos, state: BlockStateId) {
-        if !self.set_placed_by_writes(pos, state) {
-            self.set_placed_by_effects(pos, state);
+        } else if data.is(Class::TripWireHook) {
+            self.tripwire_hook_calculate(pos, state, false, false, -1, None);
+        } else if data.is(Class::MossyCarpet) {
+            let topper = self.mossy_carpet_topper(pos);
+            if !b.is_air(topper) {
+                self.set_block_and_update(above(pos), topper);
+            }
         }
     }
     /// `MossyCarpetBlock.createTopperWithSideChance(level, pos, random::nextBoolean)`.
@@ -1905,24 +1891,20 @@ impl Behaviours {
     pub fn capture_set_placed_by<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
-        pos: BlockPos,
-        state: BlockStateId,
-    ) -> Vec<super::ticks::PlacementOperation> {
-        let mut ticks = Ticks::default();
-        ticks.placement = Some(Vec::new());
-        self.sim(level, &mut ticks).set_placed_by_writes(pos, state);
-        ticks.placement.unwrap()
-    }
-
-    /// Run the non-writing branches of `setPlacedBy` after its writes were staged.
-    pub fn set_placed_by_effects<L: LevelAccess + ?Sized>(
-        &self,
-        level: &mut L,
         ticks: &mut Ticks,
         pos: BlockPos,
         state: BlockStateId,
-    ) {
-        self.sim(level, ticks).set_placed_by_effects(pos, state);
+    ) -> Vec<super::ticks::PlacementOperation> {
+        struct Capture<'a>(&'a mut Ticks);
+        impl Drop for Capture<'_> {
+            fn drop(&mut self) {
+                self.0.placement = None;
+            }
+        }
+        let capture = Capture(ticks);
+        capture.0.placement = Some(Vec::new());
+        self.sim(level, capture.0).set_placed_by(pos, state);
+        capture.0.placement.take().unwrap()
     }
 
     /// Publish a captured callback effect. The caller has already accepted its writes.
@@ -1939,6 +1921,12 @@ impl Behaviours {
                 sim.update_neighbors_at_oriented(at, block, orientation);
             }
             PlacementEffect::LevelEvent(event) => sim.emit(event),
+            PlacementEffect::BlockEvent(event) => {
+                sim.ticks.queue_block_event(event);
+            }
+            PlacementEffect::BlockTick(at, block, delay, priority) => {
+                sim.schedule_tick_priority(at, block, delay, priority);
+            }
         }
     }
 

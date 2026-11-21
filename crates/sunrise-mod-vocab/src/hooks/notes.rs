@@ -2805,7 +2805,7 @@ registration path.
   `None` retains vanilla sampling. The subsequent `block_drops` event can edit the resulting experience or cancel
   the drops, and disabled block drops suppress both items and XP. `entity_place` (`EntityPlaceEvent`, `EntityMultiPlaceEvent`)
   vetoes ordinary item and mob placement before the write. With `PlayerRef::place_block`, it sees the staged
-  placement, companions and block entities. A veto cancels the whole placement and spends no item.
+  placement, including `Block.setPlacedBy` writes and block entities. A veto cancels the whole placement and spends no item.
   `placed_against` is opposite the placement face for a player and below the new block for a mob. A bed, door
   or tall plant arrives as one `Placement::Multi`. Silverfish infesting, turtle eggs and falling blocks are not placements.
 

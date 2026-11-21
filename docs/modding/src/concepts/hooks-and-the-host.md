@@ -321,8 +321,9 @@ survival hooks.
 
 `PlayerRef::place_block` offers a mod's chosen placement to the same veto without simulating an item
 use. Unlike ordinary item and mob placement, the hook sees the tentative block entities and states,
-including the writes made by `Block.setPlacedBy`. It reports the supplied player and the previous
-state opposite the supplied face; a change to that neighbour alone does not invalidate the placement.
+including every cell written by `Block.setPlacedBy`. It reports the supplied player and the staged
+state opposite the supplied face; changing that neighbour does not invalidate the placement unless
+it was itself written.
 The writes and their effects publish at the root commit. A raw `LevelRef::set_block` and a playerless
 `LevelRef::place_block` do not fire this hook.
 

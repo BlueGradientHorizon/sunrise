@@ -61,8 +61,8 @@ fn a_block_placed_as_a_player_runs_set_placed_by() {
 fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
     use super::native_entity_refs::tests::run_fresh_cases;
     use mod_api::{
-        BlockEntityRef, BlockState, BlockUpdateFlags, EntityPlaceEvent, Flow, Hooks, LivingRef,
-        ModEntry, Placement, ServerHost, run_transaction,
+        BlockEntityRef, BlockState, BlockUpdateFlags, EntityPlaceEvent, Flow, Hooks, ITEMS,
+        ItemResource, LivingRef, ModEntry, Placement, ServerHost, run_transaction,
     };
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
@@ -83,6 +83,8 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
             "chest-accept",
             "chest-veto",
             "chest-replace",
+            "chest-transfer",
+            "bed-head",
             "bed-veto",
             "bed-stale",
             "bed-against",
@@ -220,11 +222,44 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
             game.world.block_log = Some(Vec::new());
             let place = |game: &mut super::Game<'_>| {
                 game.as_guest(12, |game| {
-                    place_as.place_block(game, level, AT, chosen, BlockFace::East, false)
+                    let face = if case == "bed-head" {
+                        BlockFace::South
+                    } else {
+                        BlockFace::East
+                    };
+                    place_as.place_block(game, level, AT, chosen, face, false)
                 })
                 .unwrap()
             };
             let result = match case.as_str() {
+                "chest-transfer" => {
+                    assert_eq!(
+                        level.set_block(game, OUTER, barrel, BlockUpdateFlags::NONE),
+                        Ok(true)
+                    );
+                    game.world
+                        .block_entities
+                        .get_mut(&(5, 70, 2))
+                        .unwrap()
+                        .slots_mut()[0] = Some(ItemStack::new("minecraft:dirt", 17));
+                    let from = level.capability(game, &ITEMS, OUTER, None).unwrap();
+                    let dirt = ItemResource::of(&stack.clone().try_into_api().unwrap());
+                    run_transaction(game, |game, tx| {
+                        place(game)?;
+                        let to = level.capability(game, &ITEMS, AT, None).unwrap();
+                        assert_eq!(from.extract_at(game, tx, 0, &dirt, 12), 12);
+                        assert_eq!(to.insert_at(game, tx, 0, &dirt, 12), 12);
+                        assert_eq!(
+                            level.set_block(game, AT, stone, BlockUpdateFlags::NONE),
+                            Ok(true)
+                        );
+                        assert!(
+                            game.dropped.is_empty(),
+                            "removal is not published before commit"
+                        );
+                        Ok(())
+                    })
+                }
                 "bed-unwind" => run_transaction(game, |game, outer| {
                     assert_eq!(
                         level.set_block(game, OUTER, stone, BlockUpdateFlags::NONE),
@@ -260,7 +295,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     Some(place_as.entity()),
                     BlockPos::new(2, 70, 2),
                     chosen,
-                    stone
+                    if case == "bed-head" { head } else { stone }
                 )
             );
             if is_bed {
@@ -285,13 +320,28 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     .unwrap();
             }
             match case.as_str() {
-                "bed-death" | "bed-against" => {
+                "bed-death" | "bed-against" | "bed-head" => {
                     assert_eq!(result, Ok(()));
                     assert_eq!(level.block_state(game, AT), Some(foot));
                     assert_eq!(level.block_state(game, HEAD), Some(head));
                     assert_eq!(
                         level.block_state(game, AGAINST),
                         Some(if case == "bed-against" { air } else { stone })
+                    );
+                }
+                "chest-transfer" => {
+                    assert_eq!(result, Ok(()));
+                    assert_eq!(level.block_state(game, AT), Some(stone));
+                    assert!(game.block_entity(level, AT).is_none());
+                    let source = game.world.block_entities.get(&(5, 70, 2)).unwrap();
+                    assert_eq!(source.slots()[0].as_ref(), Some(&stack));
+                    assert_eq!(
+                        game.dropped
+                            .iter()
+                            .filter(|item| &*item.stack.item == "minecraft:dirt")
+                            .map(|item| item.stack.count)
+                            .sum::<u32>(),
+                        12
                     );
                 }
                 "chest-accept" | "chest-replace" => {
@@ -331,6 +381,163 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                 }
                 _ => unreachable!(),
             }
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn set_placed_by_writes_are_part_of_player_placement() {
+    use super::native_entity_refs::tests::run_fresh_cases;
+    use mod_api::{
+        BlockPart, BlockUpdateFlags, EntityPlaceEvent, Flow, Hooks, ModEntry, Placement, Registrar,
+        RegistrationContext, ServerHost, SetPlacedByEvent,
+    };
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use sunrise_core::position::BlockPos;
+
+    const TEST: &str =
+        "game::native_player_place_tests::set_placed_by_writes_are_part_of_player_placement";
+    const FLAG: &str = "SUNRISE_TEST_PLAYER_PLACE_WRITES";
+    const ORIGIN: [i32; 3] = [5, 72, 4];
+    const ABOVE: [i32; 3] = [5, 73, 4];
+    if run_fresh_cases(
+        TEST,
+        FLAG,
+        &["part-accept", "part-veto", "wither-accept", "wither-veto"],
+    ) {
+        return;
+    }
+
+    #[derive(Clone)]
+    struct Probe {
+        veto: bool,
+        placed_by: Arc<AtomicUsize>,
+        writes: Arc<Mutex<Vec<[i32; 3]>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Probe {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let wool = r.block_key("minecraft:white_wool");
+            r.block_part(wool, self.clone());
+        }
+        fn entity_place(&self, host: &mut dyn ServerHost, event: &mut EntityPlaceEvent) -> Flow {
+            let Placement::Multi(writes) = &event.placement else {
+                panic!("complete footprint")
+            };
+            assert_eq!(event.pos, BlockPos::new(5, 72, 4));
+            let level = host.level("minecraft:overworld").unwrap();
+            for write in writes {
+                let pos = [write.pos.x, write.pos.y, write.pos.z];
+                assert_eq!(level.block_state(host, pos), Some(write.state));
+                self.writes.lock().unwrap().push(pos);
+            }
+            if self.veto {
+                Flow::Cancel
+            } else {
+                Flow::Continue
+            }
+        }
+    }
+    #[mod_api::sunrise_part]
+    impl BlockPart for Probe {
+        fn set_placed_by(&self, host: &mut dyn ServerHost, event: &mut SetPlacedByEvent<'_>) {
+            assert_eq!(event.pos, ORIGIN);
+            self.placed_by.fetch_add(1, Ordering::Relaxed);
+            assert_eq!(
+                event
+                    .level
+                    .set_block(host, ABOVE, event.state, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+        }
+    }
+
+    let case = std::env::var(FLAG).unwrap();
+    let probe = Probe {
+        veto: case.ends_with("-veto"),
+        placed_by: Default::default(),
+        writes: Default::default(),
+    };
+    let mods: mod_api::Mods =
+        vec![ModEntry::new("placement_writes", Box::new(probe.clone()))].into();
+    crate::game::api_values::install_parts(&mods).unwrap();
+    mod_platform::testing::with_mods(mods, || {
+        with_guests(|game| {
+            loaded(game);
+            let level = game.level(game.dim.id()).unwrap();
+            let player = game.player(13).unwrap();
+            let air = api_state(game, "minecraft:air");
+            let wither = case.starts_with("wither-");
+            let skull = api_state(game, "minecraft:wither_skeleton_skull");
+            let soul = api_state(game, "minecraft:soul_sand");
+            let wool = api_state(game, "minecraft:white_wool");
+            let pattern = [
+                ([4, 72, 4], skull),
+                ([6, 72, 4], skull),
+                ([4, 71, 4], soul),
+                ([5, 71, 4], soul),
+                ([6, 71, 4], soul),
+                ([5, 70, 4], soul),
+            ];
+            if wither {
+                game.ui.difficulty = 2;
+                for (pos, state) in pattern {
+                    assert_eq!(
+                        level.set_block(game, pos, state, BlockUpdateFlags::NONE),
+                        Ok(true)
+                    );
+                }
+            }
+            let mob_count = game.mobs.len();
+            let result = player.place_block(
+                game,
+                level,
+                ORIGIN,
+                if wither { skull } else { wool },
+                BlockFace::Up,
+                false,
+            );
+            assert_eq!(
+                result,
+                if probe.veto {
+                    Err(Refusal::Canceled)
+                } else {
+                    Ok(())
+                }
+            );
+            let mut expected = vec![ORIGIN];
+            if wither {
+                expected.extend(pattern.iter().map(|&(pos, _)| pos));
+                assert_eq!(game.mobs.len(), mob_count + usize::from(!probe.veto));
+                assert_eq!(level.block_state(game, ORIGIN), Some(air));
+                for (pos, before) in pattern {
+                    assert_eq!(
+                        level.block_state(game, pos),
+                        Some(if probe.veto { before } else { air })
+                    );
+                }
+            } else {
+                expected.push(ABOVE);
+                assert_eq!(
+                    probe.placed_by.load(Ordering::Relaxed),
+                    1,
+                    "no replay of Part callback"
+                );
+                for pos in [ORIGIN, ABOVE] {
+                    assert_eq!(
+                        level.block_state(game, pos),
+                        Some(if probe.veto { air } else { wool })
+                    );
+                }
+            }
+            expected.sort_unstable();
+            let mut observed = probe.writes.lock().unwrap();
+            observed.sort_unstable();
+            assert_eq!(*observed, expected);
         })
     });
 }

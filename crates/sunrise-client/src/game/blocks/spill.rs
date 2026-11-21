@@ -822,6 +822,17 @@ impl GameLevel<'_> {
             self.positions.hoppers.remove(&key);
             return 0;
         }
+        self.remove_live_entity(pos, old, side_effects)
+    }
+
+    /// Removal of the live entity, without touching saved-only data at the cell.
+    pub(super) fn remove_live_entity(
+        &mut self,
+        pos: BlockPos,
+        old: BlockStateId,
+        side_effects: bool,
+    ) -> u8 {
+        let key = (pos.x, pos.y, pos.z);
         // Sculk blocks and creaking hearts notice their removal on their own tick.
         if matches!(
             self.world.block_entities.get(&key),

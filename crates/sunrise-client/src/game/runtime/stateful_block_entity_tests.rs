@@ -1,7 +1,8 @@
 #[test]
 #[ignore = "daily"]
 fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
-    use crate::game::native_entity_refs::tests::{record_key, run_fresh_cases, with_game_at};
+    use crate::game::native_entity_refs::tests::{record_key, run_fresh_cases};
+    use crate::game::native_guest_turn_tests::with_guests_at;
     use mod_api::{self, *};
     use std::sync::{Arc, Mutex, OnceLock};
     use sunrise_client::{chunk::Chunk, containers::BlockEntity};
@@ -21,11 +22,27 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
         populated: OnceLock<BlockState>,
         calls: Mutex<Vec<BlockState>>,
         kind: OnceLock<BlockEntityTypeKey>,
+        staged: OnceLock<BlockEntityRef>,
     }
     #[derive(Clone)]
     struct Factory(Arc<Observations>);
     #[mod_api::__subscriptions]
     impl Hooks for Factory {
+        fn entity_place(&self, host: &mut dyn ServerHost, event: &mut EntityPlaceEvent) -> Flow {
+            let level = host.level("minecraft:overworld").unwrap();
+            let pos = [event.pos.x, event.pos.y, event.pos.z];
+            let entity = host
+                .block_entity(level, pos)
+                .expect("entity at the staged property");
+            assert_eq!(entity.kind(host).as_ref(), self.0.kind.get());
+            assert_eq!(
+                entity.data(host).unwrap().get(&"progress".into()),
+                Some(&Tag::Int(37))
+            );
+            self.0.staged.set(entity).unwrap();
+            Flow::Continue
+        }
+
         fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
             let kind = registrar
                 .block_entity_type("machine")
@@ -73,7 +90,7 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
     crate::game::api_values::install_parts(&mods).unwrap();
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-    with_game_at(root.prepared().to_path_buf(), |game| {
+    with_guests_at(root.prepared().to_path_buf(), |game| {
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
@@ -144,6 +161,22 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
         assert!(game.world.block_entities.get(&(2, 64, 0)).is_none());
         assert!(game.block_entity(level, [2, 64, 0]).is_none());
 
+        // A chosen state of the same block can create its first entity. The
+        // veto sees it, and publication preserves that instance without asking again.
+        let player = game.player(13).unwrap();
+        assert_eq!(
+            player.place_block(game, level, [2, 64, 0], populated_api, BlockFace::Up, false),
+            Ok(())
+        );
+        assert_eq!(
+            game.block_entity(level, [2, 64, 0]).as_ref(),
+            observed.staged.get()
+        );
+        assert_eq!(
+            *observed.calls.lock().unwrap(),
+            [populated_api, empty_api, populated_api]
+        );
+
         // A hook's LevelWriteHost write takes the GameLevel path without the
         // outer Game write wrapper and still creates exactly one instance.
         let written = game.with_level(|_, level, ticks| {
@@ -157,7 +190,7 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
         assert!(written);
         assert_eq!(
             *observed.calls.lock().unwrap(),
-            [populated_api, empty_api, populated_api]
+            [populated_api, empty_api, populated_api, populated_api]
         );
         let second = game
             .block_entity(level, [3, 64, 0])

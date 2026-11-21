@@ -77,6 +77,8 @@ pub enum PlacementOperation {
 pub enum PlacementEffect {
     Neighbors(BlockPos, BlockId, Option<super::orientation::Orientation>),
     LevelEvent(super::LevelEvent),
+    BlockEvent(super::pistons::BlockEventData),
+    BlockTick(BlockPos, BlockId, i32, TickPriority),
 }
 
 /// A tick scheduled while `Ticks::capture` is set.
@@ -176,6 +178,12 @@ impl Ticks {
     /// `ServerLevel.blockEvent`'s dedupe: queue `event` at the back unless the
     /// same event is already queued. Returns whether it was queued.
     pub fn queue_block_event(&mut self, event: super::pistons::BlockEventData) -> bool {
+        if let Some(placement) = &mut self.placement {
+            placement.push(PlacementOperation::Effect(PlacementEffect::BlockEvent(
+                event,
+            )));
+            return true;
+        }
         if self.block_event_keys.insert(event) {
             self.block_events.push_back(event);
             true
@@ -218,6 +226,12 @@ impl Ticks {
         delay: i32,
         priority: TickPriority,
     ) -> ScheduleResult {
+        if let Some(placement) = &mut self.placement {
+            placement.push(PlacementOperation::Effect(PlacementEffect::BlockTick(
+                pos, block, delay, priority,
+            )));
+            return ScheduleResult::Added;
+        }
         if let Some(captured) = &mut self.capture {
             captured.push(CapturedTick {
                 fluid: false,

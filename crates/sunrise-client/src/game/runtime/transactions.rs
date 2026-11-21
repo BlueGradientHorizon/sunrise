@@ -180,8 +180,8 @@ struct KeptBlock {
     /// A level-host write only hid the entity from other reads. At commit
     /// the real Level.setBlock still has to run its removal side effects.
     replay_removal: bool,
-    /// A chosen placement installed a tentative block entity at this position.
-    staged_entity: bool,
+    /// Generation installed by the most recent tentative placement at this position.
+    staged_entity: Option<u64>,
     /// Any tentative write at this position replaced the block with one that does not keep
     /// connection groups (`!Behaviours::keeps_block_entity`), even if a later write returned
     /// it to a compatible block.
@@ -225,6 +225,8 @@ pub(super) struct Level {
     slots: HashMap<(Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
     blocks: HashMap<Pos, KeptBlock>,
+    /// This savepoint captures the writes of a chosen placement before its veto.
+    capture_placement: bool,
     /// Each cell's original connection group before this transaction first changed it, used for
     /// silent rollback on abort and pre-replay restoration on root commit.
     connection_groups: HashMap<(Dim, Pos), Option<u64>>,
@@ -377,15 +379,17 @@ impl PlacementEntity {
 
     pub(super) fn install(self, world: &mut World) {
         let Self(pos, _, staged) = self;
+        world.set_block_entity_extras(pos, staged.extras);
+        if let Some(name) = staged.name {
+            world.block_names.insert(pos, name);
+        } else {
+            world.block_names.remove(&pos);
+        }
         let Some(entity) = staged.entity else { return };
         world.block_entities.insert(pos, entity);
         if let Some(generation) = staged.generation {
             world.block_entities.restore_generation(pos, generation);
             world.block_entities.reattach_retired(pos, generation);
-        }
-        world.set_block_entity_extras(pos, staged.extras);
-        if let Some(name) = staged.name {
-            world.block_names.insert(pos, name);
         }
         if let Some(observer) = world.block_entities.identity(pos) {
             world
@@ -496,7 +500,9 @@ pub(super) enum After {
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
     /// `Block.setPlacedBy` effects after its writes have been accepted.
     PlacementEffect(Box<sunrise_world::level::ticks::PlacementEffect>),
-    PlacedBlock([i32; 3], BlockStateId),
+    /// A tentative block entity replaced again before its cell was published.
+    RemovePlacedBlockEntity(Box<PlacementEntity>, i32),
+    WitherPattern(sunrise_client::block_pattern::PatternMatch, Vec<[i32; 3]>),
     BlockGameEvent(
         &'static str,
         [i32; 3],
@@ -760,7 +766,7 @@ impl Game<'_> {
                             kept.flags = merge_block_update_flags(kept.flags, block.flags);
                             kept.level_host = block.level_host;
                             kept.replay_removal |= block.replay_removal;
-                            kept.staged_entity |= block.staged_entity;
+                            kept.staged_entity = block.staged_entity.or(kept.staged_entity);
                             kept.clear_connection_group |= block.clear_connection_group;
                         })
                         .or_insert(block);
@@ -1377,6 +1383,9 @@ impl Game<'_> {
         let key = (pos[0], pos[1], pos[2]);
         let old = self.world.block(pos[0], pos[1], pos[2]);
         let clears_group = !self.res.behaviours().keeps_block_entity(old, state);
+        if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
+            return false;
+        }
         if let Some(level) = self.transactions.last_mut() {
             level
                 .blocks
@@ -1390,13 +1399,10 @@ impl Game<'_> {
                     flags,
                     level_host,
                     replay_removal: false,
-                    staged_entity: false,
+                    staged_entity: None,
                     clear_connection_group: false,
                 });
             level.after.push(After::Block(key, clears_group));
-        }
-        if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
-            return false;
         }
         // Mirror live `chunk_set_block_state`: replacing the block with one that does not keep
         // connection groups clears any tentative group at `pos`, while compatible state changes
@@ -1426,40 +1432,129 @@ impl Game<'_> {
     /// Hide a replaced block entity from staged reads, without dropping its
     /// contents until the real write. Fluid pickup/pour instead rolls its own
     /// drops against the old entity before journalling the removal.
-    pub(super) fn journal_block_replacement(&mut self, pos: Pos) {
+    pub(super) fn journal_block_replacement(&mut self, pos: Pos, old: BlockStateId, flags: i32) {
+        let staged = self
+            .world
+            .block_entities
+            .generation(&pos)
+            .is_some_and(|generation| self.is_placement_entity(pos, generation));
+        if staged {
+            // The net block write never sees this intermediate entity. Preserve its contents
+            // at removal (not the rollback snapshot from before placement or transfer).
+            let removed = PlacementEntity(pos, old, Kept::capture(&self.world, &self.hoppers, pos));
+            self.after_commit(After::RemovePlacedBlockEntity(Box::new(removed), flags));
+        }
         self.journal_remove_block_entity(pos);
+        if staged {
+            self.world.block_names.remove(&pos);
+            self.world.forget_block_entity_source(pos);
+            self.hoppers.remove(&pos);
+        }
         if let Some(block) = self
             .transactions
             .last_mut()
             .and_then(|level| level.blocks.get_mut(&pos))
         {
-            block.replay_removal = true;
+            block.replay_removal |= !staged;
         }
     }
     pub(super) fn journal_stage_placement_entity(&mut self, pos: Pos, entity: BlockEntity) {
         self.journal_block_entity(pos);
-        let level = self
-            .transactions
-            .last_mut()
-            .expect("staged placement transaction");
-        level
-            .blocks
-            .get_mut(&pos)
-            .expect("staged placement block")
-            .staged_entity = true;
         self.world.block_names.remove(&pos);
         self.world.forget_block_entity_source(pos);
         self.world.block_entities.insert(pos, entity);
+        self.transactions
+            .last_mut()
+            .unwrap()
+            .blocks
+            .get_mut(&pos)
+            .unwrap()
+            .staged_entity = self.world.block_entities.generation(&pos);
+    }
+
+    pub(super) fn begin_placement_capture(&mut self) {
+        self.transactions.last_mut().unwrap().capture_placement = true;
+    }
+
+    pub(super) fn captures_placement(&self) -> bool {
+        self.transactions
+            .iter()
+            .any(|level| level.capture_placement)
+    }
+
+    /// Snapshot each cell in first-write order, with its state as the listener will see it.
+    pub(super) fn placement_footprint(&mut self) -> Vec<(BlockPos, BlockStateId)> {
+        let level = self.transactions.last_mut().unwrap();
+        level.capture_placement = false;
+        let mut seen = FxHashSet::default();
+        level
+            .after
+            .iter()
+            .filter_map(|after| match *after {
+                After::Block((x, y, z), _) if seen.insert((x, y, z)) => {
+                    Some((BlockPos::new(x, y, z), self.world.block(x, y, z)))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn is_placement_entity(&self, pos: Pos, generation: u64) -> bool {
+        self.transactions.iter().any(|level| {
+            level.blocks.get(&pos).and_then(|block| block.staged_entity) == Some(generation)
+        })
+    }
+
+    /// Run the normal removal path with the entity as it stood when replaced, then put the
+    /// final cell's entity back. The block itself already has its new state, just as in
+    /// `LevelChunk.setBlockState` when it calls `preRemoveSideEffects`.
+    fn publish_placed_entity_removal(&mut self, removed: PlacementEntity, flags: i32) {
+        struct FinalCell<'a, 'w> {
+            level: &'a mut super::GameLevel<'w>,
+            entity: Option<PlacementEntity>,
+        }
+        impl Drop for FinalCell<'_, '_> {
+            fn drop(&mut self) {
+                let entity = self.entity.take().unwrap();
+                let pos = entity.0;
+                // Some entities normally remove themselves on their next tick. An
+                // intermediate generation cannot remain in the published cell.
+                self.level.world.block_entities.remove(&pos);
+                if let Some(hopper) = entity.2.hopper {
+                    self.level.positions.hoppers.insert(pos, hopper);
+                }
+                entity.install(self.level.world);
+            }
+        }
+        let pos = removed.0;
+        let state = removed.1;
+        let at = BlockPos::new(pos.0, pos.1, pos.2);
+        let side_effects = flags & flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS == 0;
+        self.with_level(|b, level, ticks| {
+            let final_state = level.world.block(pos.0, pos.1, pos.2);
+            let kept = Kept::capture(level.world, level.positions.hoppers, pos);
+            let restore = FinalCell {
+                level,
+                entity: Some(PlacementEntity(pos, final_state, kept)),
+            };
+            restore.level.world.block_entities.remove(&pos);
+            removed.install(restore.level.world);
+            restore
+                .level
+                .unpack_loot(super::container_loot::LootTarget::Block(pos), None);
+            let updates = restore.level.remove_live_entity(at, state, side_effects);
+            drop(restore);
+            for _ in 0..updates {
+                b.update_neighbors_at(level, ticks, at, b.block(state));
+            }
+        });
+        let _ = self.process_level_events();
     }
 
     /// Block-entity edits to an unpublished placement must not send a block update yet.
     pub(super) fn defer_placed_block_entity_update(&mut self, pos: Pos) -> bool {
-        if self.transactions.iter().rev().any(|level| {
-            level
-                .blocks
-                .get(&pos)
-                .is_some_and(|block| block.staged_entity)
-        }) && let Some(generation) = self.world.block_entities.generation(&pos)
+        if let Some(generation) = self.world.block_entities.generation(&pos)
+            && self.is_placement_entity(pos, generation)
         {
             self.after_commit(After::UpdatePlacedBlockEntity(pos, generation));
             return true;
@@ -1538,7 +1633,12 @@ impl Game<'_> {
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
             After::LevelWrite(write) => self.commit_level_write(*write),
             After::PlacementEffect(effect) => self.publish_placement_effect(*effect),
-            After::PlacedBlock(pos, state) => self.publish_placed_block(pos, state),
+            After::RemovePlacedBlockEntity(entity, flags) => {
+                self.publish_placed_entity_removal(*entity, flags)
+            }
+            After::WitherPattern(found, cells) => {
+                let _ = self.finish_wither_pattern(found, &cells);
+            }
             After::BlockGameEvent(id, pos, who, state) => {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
@@ -1812,14 +1912,13 @@ impl Game<'_> {
                     let b = self.res.behaviours();
                     let net_keeps_group = b.keeps_block_entity(was, now);
                     let mut placement_entity = None;
-                    if staged_entity
+                    if staged_entity.is_some()
                         && let Some(kept) = level.block_entities.get(&pos)
-                        && kept.generation != self.world.block_entities.generation(&pos)
                         && !net_keeps_group
                     {
                         // The real replacement removes the original, not the newly staged entity.
                         // Supply the final placed entity to LevelChunk's creation step.
-                        if self.world.block_entities.contains_key(&pos) {
+                        if self.world.block_entities.generation(&pos) == staged_entity {
                             let staged = Kept::capture(&self.world, &self.hoppers, pos);
                             self.world.block_entities.remove(&pos);
                             placement_entity = Some(Box::new(PlacementEntity(pos, now, staged)));
@@ -1962,9 +2061,8 @@ impl Game<'_> {
             if level
                 .blocks
                 .get(&pos)
-                .is_some_and(|block| block.staged_entity)
-                && let Some(current) = self.world.block_entities.generation(&pos)
-                && Some(current) != kept.generation
+                .and_then(|block| block.staged_entity)
+                .is_some_and(|staged| self.world.block_entities.generation(&pos) == Some(staged))
             {
                 self.world.block_entities.remove(&pos);
             }

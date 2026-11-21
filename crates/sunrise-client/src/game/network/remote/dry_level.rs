@@ -65,9 +65,8 @@ impl<'w> DryLevel<'w> {
 }
 
 impl crate::game::Game<'_> {
-    /// Plan `setPlacedBy` from the actual staged state and its level. The journal
-    /// will apply its writes and RNG draw before the listener and publish the effects on commit.
-    pub(in crate::game) fn plan_chosen_placement(
+    /// Capture the simulation's portion of `setPlacedBy` on the staged level.
+    pub(in crate::game) fn capture_placed_by(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,
@@ -75,10 +74,10 @@ impl crate::game::Game<'_> {
         Vec<sunrise_world::level::ticks::PlacementOperation>,
         sunrise_core::random::LegacyRandom,
     ) {
-        self.with_placement_preview_level(|behaviours, level, _| {
+        self.with_level_access(true, |behaviours, level, ticks| {
             let mut dry = DryLevel::new(level);
             dry.random = (*level.world.random).clone();
-            let operations = behaviours.capture_set_placed_by(&mut dry, pos, state);
+            let operations = behaviours.capture_set_placed_by(&mut dry, ticks, pos, state);
             (operations, dry.random)
         })
     }

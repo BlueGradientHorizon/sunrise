@@ -148,8 +148,8 @@ pub trait PlayerInteractionBackendMut {
     /// it the neighbours' shapes update, so fences, walls and stairs connect), so the block entity
     /// follows that write's rules, and then `Block.setPlacedBy` (a bed places its head, a
     /// door its upper half). Before commit, `entity_place` sees the tentative placement,
-    /// including block entities and companion writes, this player as `placer`, and the
-    /// previous state adjacent to `pos` opposite `face`. A change to that against state
+    /// including block entities and every cell written by `Block.setPlacedBy`, this player
+    /// as `placer`, and the staged state adjacent to `pos` opposite `face`. A change to that against state
     /// alone does not invalidate the chosen placement. Cancel discards the tentative placement
     /// and journalled listener writes. An enclosing transaction owns the accepted writes and
     /// publishes their updates and placement effects at its root commit.

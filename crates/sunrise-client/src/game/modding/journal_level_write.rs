@@ -56,30 +56,18 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         if !b.keeps_block_entity(old, state)
             && self.game.world.block_entities.get(&(x, y, z)).is_some()
         {
-            self.game.journal_block_replacement((x, y, z));
+            self.game.journal_block_replacement((x, y, z), old, flags);
         }
-        true
-    }
-
-    /// Capturing a placement creates its block entity as part of the tentative
-    /// cell. It is the same instance (including listener edits) on publication.
-    pub(super) fn write_placement_block(
-        &mut self,
-        pos: [i32; 3],
-        state: BlockStateId,
-        flags: i32,
-    ) -> bool {
-        let [x, y, z] = pos;
-        let old = self.game.world.block(x, y, z);
-        if !self.write_block(pos, state, flags) {
-            return false;
-        }
-        let key = (x, y, z);
-        if !self.game.world.block_entities.contains_key(&key)
-            && self.game.res.behaviours().block(old) != self.game.res.behaviours().block(state)
-            && let Some(entity) = self.game.new_block_entity_for_state(state)
+        if self.game.captures_placement()
+            && !self.game.world.block_entities.contains_key(&(x, y, z))
         {
-            self.game.journal_stage_placement_entity(key, entity);
+            self.game.ensure_stateful_entity_table();
+            if let Some(entity) = self
+                .game
+                .with_placement_preview_level(|_, level, _| level.new_block_entity_for_state(state))
+            {
+                self.game.journal_stage_placement_entity((x, y, z), entity);
+            }
         }
         true
     }
