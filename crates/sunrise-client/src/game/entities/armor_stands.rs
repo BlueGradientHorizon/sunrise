@@ -525,6 +525,7 @@ impl Game<'_> {
             loaded.yaw = stand.yaw;
             loaded.body_yaw = stand.body_yaw;
             loaded.previous_yaw = stand.previous_yaw;
+            loaded.previous_body_yaw = stand.previous_body_yaw;
             loaded.pitch = 0.0;
             loaded.previous = loaded.position;
             stand = loaded;
@@ -1014,6 +1015,7 @@ impl Game<'_> {
             if !ticking(at.x.floor() as i32, at.z.floor() as i32) {
                 self.armor_stands[i].previous = at;
                 self.armor_stands[i].previous_yaw = self.armor_stands[i].yaw;
+                self.armor_stands[i].previous_body_yaw = self.armor_stands[i].previous_yaw;
                 continue;
             }
             self.armor_stands[i].first_tick = false;
@@ -1165,6 +1167,7 @@ impl Game<'_> {
             }
             // ArmorStand.tickHeadTurn copies the view angle to its body after aiStep.
             let stand = &mut self.armor_stands[i];
+            stand.previous_body_yaw = stand.previous_yaw;
             stand.body_yaw = stand.yaw;
             let (id, from, to) = section_step;
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);

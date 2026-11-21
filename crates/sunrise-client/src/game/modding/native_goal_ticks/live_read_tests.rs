@@ -173,6 +173,7 @@ fn body_yaw_targets_live_living_owners_and_respects_overrides() {
         assert_eq!(stand.rotation(game), Some([12.0, 0.0]));
         assert_eq!(stand.head_yaw(game), Some(-405.5));
         assert_eq!(game.armor_stands[0].previous_yaw, -405.5);
+        assert_eq!(game.armor_stands[0].previous_body_yaw, -405.5);
         assert_eq!(game.armor_stands[0].previous_head_yaw, -405.5);
         // EntityDataAccessor reloads the existing body rather than resetting it.
         game.armor_stands[0].body_yaw = 50.0;

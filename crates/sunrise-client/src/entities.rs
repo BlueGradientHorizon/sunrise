@@ -1819,8 +1819,10 @@ pub struct ArmorStand {
     /// `Entity.yRot`; `ArmorStand.tickHeadTurn` copies it to `yBodyRot`.
     pub yaw: f32,
     pub body_yaw: f32,
-    /// `yBodyRotO` and `yRotO`: ArmorStand keeps the two previous angles equal.
+    /// `Entity.yRotO`: previous view yaw.
     pub previous_yaw: f32,
+    /// `LivingEntity.yBodyRotO`; `tickHeadTurn` syncs it to `yRotO` after admission.
+    pub previous_body_yaw: f32,
     pub head_yaw: f32,
     pub previous_head_yaw: f32,
     /// Every `EquipmentSlot`, by ordinal: mainhand, offhand, feet, legs, chest,
@@ -2075,7 +2077,8 @@ impl ArmorStand {
     /// (`LivingEntityRenderer.solveBodyRot`: `Mth.rotLerp(partialTick,
     /// yBodyRotO, yBodyRot)`).
     pub fn render_yaw(&self, alpha: f32) -> f32 {
-        self.previous_yaw + alpha * crate::camera::wrap_degrees(self.body_yaw - self.previous_yaw)
+        self.previous_body_yaw
+            + alpha * crate::camera::wrap_degrees(self.body_yaw - self.previous_body_yaw)
     }
     /// A server's stand on its client, each tick:
     /// `setOldPosAndRot` (`ClientLevel.tickNonPassenger`), then the step of
@@ -2090,6 +2093,7 @@ impl ArmorStand {
             self.position = at;
             self.yaw += crate::camera::wrap_degrees(yaw - self.yaw);
         }
+        self.previous_body_yaw = self.previous_yaw;
         self.body_yaw = self.yaw;
     }
     /// Put there at once, with nothing to blend from
@@ -2100,6 +2104,7 @@ impl ArmorStand {
         self.yaw = yaw;
         self.body_yaw = yaw;
         self.previous_yaw = yaw;
+        self.previous_body_yaw = yaw;
     }
     pub fn new(id: u32, position: Vec3, yaw: f32) -> Self {
         Self {
@@ -2117,6 +2122,7 @@ impl ArmorStand {
             yaw,
             body_yaw: yaw,
             previous_yaw: yaw,
+            previous_body_yaw: yaw,
             head_yaw: yaw,
             previous_head_yaw: yaw,
             equipment: Default::default(),

@@ -783,7 +783,7 @@ impl Game<'_> {
                 return Some((id, mob.previous_body_yaw, mob.body_yaw));
             }
             let stand = self.armor_stands.iter().find(|stand| stand.id == id)?;
-            Some((id, stand.previous_yaw, stand.body_yaw))
+            Some((id, stand.previous_body_yaw, stand.body_yaw))
         });
         if let Some(model) = self.player_model.as_mut() {
             model.extra.mount = self.riding;

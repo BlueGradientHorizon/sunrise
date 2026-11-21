@@ -42,10 +42,9 @@ impl Game<'_> {
         id: i32,
         kind: &str,
         position: [f64; 3],
-        rotation: (f32, f32),
+        [yaw, pitch, head_yaw]: [f32; 3],
         data: i32,
     ) -> bool {
-        let (yaw, pitch) = rotation;
         let id = id as u32;
         let at = Vec3::new(position[0], position[1], position[2]);
         let block = position.map(|v| v.floor() as i32);
@@ -99,7 +98,14 @@ impl Game<'_> {
             }
             self.boats.push(b);
         } else if kind == "minecraft:armor_stand" {
-            self.armor_stands.push(ArmorStand::new(id, at, yaw));
+            // LivingEntity.recreateFromPacket seeds the body and head from
+            // the packet's head yaw, independently of the view yaw.
+            let mut stand = ArmorStand::new(id, at, yaw);
+            stand.body_yaw = head_yaw;
+            stand.previous_body_yaw = head_yaw;
+            stand.head_yaw = head_yaw;
+            stand.previous_head_yaw = head_yaw;
+            self.armor_stands.push(stand);
         } else if kind == "minecraft:item_frame" || kind == "minecraft:glow_item_frame" {
             self.item_frames.push(ItemFrame {
                 attachment_lifetime: Default::default(),

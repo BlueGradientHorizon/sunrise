@@ -264,21 +264,22 @@ mod tests {
                     velocity: [0.0; 3],
                     pitch: 0,
                     yaw: 0,
-                    head_yaw: 0,
+                    head_yaw: 32, // 45 degrees
                     data: 0,
                 }))
                 .unwrap();
-                let stand = game
-                    .armor_stands
-                    .iter_mut()
-                    .find(|stand| stand.id == 45)
-                    .unwrap();
-                stand.previous_yaw = 25.0;
-                stand.body_yaw = 45.0;
+                // The first frame uses the head-derived body samples, not either
+                // view sample; no tick has synchronized the stand's angles yet.
                 set_passengers(game, 45, vec![42]);
                 game.prepare_entity_culling();
                 game.player_model_geometry(camera, 0.5, &mut Vec::new());
-                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 65.0, 35.0]);
+                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 65.0, 45.0]);
+                let stand = game
+                    .armor_stands
+                    .iter()
+                    .find(|stand| stand.id == 45)
+                    .unwrap();
+                assert_eq!((stand.yaw, stand.previous_yaw), (0.0, 0.0));
 
                 let at = game.player.as_ref().unwrap().position;
                 game.boats
@@ -288,7 +289,7 @@ mod tests {
                 assert_eq!(old.entity().body_yaw(game), Some(385.0));
                 game.prepare_entity_culling();
                 game.player_model_geometry(camera, 1.0, &mut Vec::new());
-                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 65.0, 35.0, 25.0]);
+                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 65.0, 45.0, 25.0]);
                 assert_eq!(old.set_body_yaw(game, 50.0), Ok(true));
                 game.turn_player(1.0, 0.0);
                 assert_eq!(old.entity().body_yaw(game), Some(385.0));

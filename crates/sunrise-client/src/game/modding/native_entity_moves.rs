@@ -265,6 +265,7 @@ impl Game<'_> {
                     return Ok(false);
                 };
                 a.previous_yaw = yaw;
+                a.previous_body_yaw = yaw;
                 a.head_yaw = yaw;
                 a.previous_head_yaw = yaw;
                 true
