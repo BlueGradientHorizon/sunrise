@@ -1,6 +1,5 @@
 //! Frozen, per-entity attachment data for the submission pass.
 use crate::{AttachmentError, AttachmentType};
-use sunrise_core::nbt::Compound;
 use sunrise_mod_runtime::attachments::{Attachments, snapshot::SyncedAttachmentSnapshot};
 
 /// A general entity's synced fields as they were at render-state extraction.
@@ -9,15 +8,15 @@ use sunrise_mod_runtime::attachments::{Attachments, snapshot::SyncedAttachmentSn
 /// identity, compound iteration order, or which typed values have been read.
 // no wire: native render input; attachments keep their separate disk and sync codecs.
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct EntityRenderAttachments {
     data: SyncedAttachmentSnapshot,
 }
 
 impl EntityRenderAttachments {
     /// Borrows the synced value of `key`, or returns `Ok(None)` if the key is absent from this
-    /// generation. Never inserts a default or reads the live world. The first typed read may
-    /// allocate when it decodes the value using the key's codec.
+    /// generation. Never inserts a default or reads the live world. The first typed read of an
+    /// undecoded binding may allocate when it decodes the value using the key's codec.
     pub fn get<T: Send + Sync + 'static>(
         &self,
         key: &AttachmentType<T>,
@@ -27,14 +26,9 @@ impl EntityRenderAttachments {
     }
 }
 
-/// Capture the synced bindings at the engine's publication boundary, or refuse the whole
-/// generation if it exceeds the engine's retention budget.
-pub fn capture_entity_render_attachments(
-    attachments: &Attachments,
-    max_bytes: usize,
-    compound_heap_bytes: impl Fn(&Compound) -> usize,
-) -> Option<EntityRenderAttachments> {
-    Some(EntityRenderAttachments {
-        data: SyncedAttachmentSnapshot::capture(attachments, max_bytes, compound_heap_bytes)?,
-    })
+/// Capture the synced bindings at the engine's publication boundary.
+pub fn capture_entity_render_attachments(attachments: &Attachments) -> EntityRenderAttachments {
+    EntityRenderAttachments {
+        data: SyncedAttachmentSnapshot::capture(attachments),
+    }
 }

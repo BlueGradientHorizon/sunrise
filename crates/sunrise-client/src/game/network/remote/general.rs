@@ -10,14 +10,7 @@ use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
-use sunrise_protocol::{
-    general_entity::{self, Message},
-    retained::OwnedHeap,
-};
-
-// Bound retained native backing per complete generation, not packet size or individual fields.
-// This also covers a generation assembled from multiple deltas.
-const RENDER_SNAPSHOT_BYTES: usize = 64 << 20;
+use sunrise_protocol::general_entity::{self, Message};
 
 /// One general row the server shows the window.
 #[derive(Clone, Debug, PartialEq)]
@@ -42,10 +35,8 @@ pub(in crate::game) struct RemoteGeneral {
 impl RemoteGeneral {
     fn publish_attachments(&mut self, attachments: &Attachments) {
         self.shown = true;
-        self.render_attachments = mod_api::__private::game::capture_entity_render_attachments(
-            attachments,
-            RENDER_SNAPSHOT_BYTES,
-            OwnedHeap::owned_heap_bytes,
+        self.render_attachments = Some(
+            mod_api::__private::game::capture_entity_render_attachments(attachments),
         );
     }
 

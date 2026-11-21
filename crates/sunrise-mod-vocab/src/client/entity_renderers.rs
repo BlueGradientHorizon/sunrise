@@ -38,8 +38,7 @@ pub struct EntityRenderState {
     /// An item frame or glow item frame's own frame ([`ItemFrameRenderState`]); none for any
     /// other entity.
     pub item_frame: Option<ItemFrameRenderState>,
-    /// A general entity's immutable synced fields. `None` for other families or when the
-    /// whole attachment generation exceeds the render snapshot budget.
+    /// A general entity's immutable synced fields; `None` for other entity families.
     pub attachments: Option<crate::EntityRenderAttachments>,
 }
 

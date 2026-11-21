@@ -45,7 +45,7 @@ impl EntityRenderer for Bolt {
 | `orb_value` | An experience orb's value (`ExperienceOrb.DATA_VALUE`); none for any other entity. |
 | `painting` | A painting's own frame (`PaintingRenderState`, below); none for any other entity. |
 | `item_frame` | An item frame or glow item frame's own frame (`ItemFrameRenderState`, below); none for any other entity. |
-| `attachments` | A general entity's frozen synced attachments (below); none for other families or when the whole snapshot exceeds the render budget. |
+| `attachments` | A general entity's frozen synced attachments (below); none for other entity families. |
 
 The pose stack starts at the entity's interpolated position, in blocks, and is not turned. `draw`
 also has the partial tick, the game time and the entity's light. What `submit` draws replaces the
@@ -84,12 +84,11 @@ impl EntityRenderer for Missile {
 
 A row is eligible for extraction after its first whole attachment snapshot arrives, even if
 that snapshot is empty. The engine publishes a generation at spawn or sync, and a frame keeps
-that generation even if another update replaces or removes its values. If the generation is
-over the render budget, the engine submits the row with `attachments: None` rather than dropping
-individual fields or reusing stale ones. The next generation that fits is available normally.
-Use a draw default when the snapshot is absent or `get` returns `Ok(None)` for a missing key.
-The first typed read can allocate to decode the value. Two snapshots compare by key and canonical
-NBT value, not by their identity, compound iteration order, or decode cache.
+that generation even if another update replaces or removes its values. Use a draw default when
+`get` returns `Ok(None)` for a missing key. The first typed read of an undecoded binding can
+allocate to decode the value; already-decoded bindings are shared directly without re-running the
+codec. Two snapshots compare by key and canonical NBT value, not by their identity, compound
+iteration order, or decode cache.
 
 `EntityRenderState`, its family-specific state types, and `EntityRenderAttachments` are native
 render input, not `Wire` payloads. The attachment's save and sync codecs still apply. `yaw`,
