@@ -80,13 +80,12 @@ def own_sdk_daily_runs(root, row):
         return False
     daily = yaml.load(daily_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader) or {}
     call = daily.get("jobs", {}).get("book-quickstart", {})
-    enabled = (None, "true", "${{ true }}")
-    daily_condition = "${{ !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.skip == 'false' }}"
+    # The call's own condition (skips, leg selection) is the daily's routing, not this row's concern.
     if (call.get("uses") != f"./{OWN_SDK_WORKFLOW}"
             or call.get("with", {}).get("own_sdk") != "true"
-            or call.get("with", {}).get("commit") != "${{ needs.resolve.outputs.commit }}"
-            or call.get("if") not in (*enabled, daily_condition)):
+            or call.get("with", {}).get("commit") != "${{ needs.resolve.outputs.commit }}"):
         return False
+    enabled = (None, "true", "${{ true }}")
     quickstart = yaml.load(quickstart_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader) or {}
     job = quickstart.get("jobs", {}).get("quickstart", {})
     command = ["cargo", "test", "--locked", "-p", row.package, "--test", row.reference[5:],
