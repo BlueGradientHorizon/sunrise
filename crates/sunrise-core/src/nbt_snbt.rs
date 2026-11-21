@@ -78,6 +78,10 @@ pub fn snbt_suggestions(text: &str) -> (usize, Vec<String>) {
             // `ParseState.parseTopRule` discards errors strictly before a successful read.
             parser.record(parser.cursor, std::iter::empty());
         }
+        Err(Failure {
+            cursor,
+            reason: Reason::DepthLimit,
+        }) => return (cursor, Vec::new()),
         Err(error) => parser.defer(error),
     }
     (parser.suggestion_cursor, parser.suggestions)
@@ -89,8 +93,8 @@ pub fn snbt_whitespace(value: u32) -> bool {
         | 0x2008..=0x200a | 0x2028..=0x2029 | 0x205f | 0x3000)
 }
 
-// Resource bound shared by the UTF-8 and UTF-16 parsers. Not a limit on
-// materialized tags or the binary reader's separate quota.
+// Sunrise's resource bound protects downstream consumers on the game stack.
+// Vanilla's SNBT grammar has no explicit depth limit.
 const MAX_PARSE_DEPTH: usize = 512;
 
 struct Failure {
@@ -99,6 +103,8 @@ struct Failure {
 }
 
 enum Reason {
+    /// A resource refusal, not a recoverable grammar failure.
+    DepthLimit,
     /// The ASCII characters accepted by one `StringReaderTerms` terminal.
     Literal(&'static str),
     Key {
@@ -118,7 +124,7 @@ impl Reason {
         let (literal, words) = match self {
             Self::Literal(chars) => (*chars, &[][..]),
             Self::Key { suggestions, .. } => ("", *suggestions),
-            Self::IntegerRange { .. } => ("", &[][..]),
+            Self::DepthLimit | Self::IntegerRange { .. } => ("", &[][..]),
         };
         (0..literal.len())
             .map(move |i| &literal[i..i + 1])
@@ -161,12 +167,17 @@ impl<'a> Parser<'a> {
         match self.value() {
             Ok(value) => Ok((value, self.cursor)),
             Err(error) => {
-                let Failure { cursor, reason } = match self.deferred.take() {
-                    Some(kept) if kept.cursor >= error.cursor => kept,
-                    _ => error,
+                let Failure { cursor, reason } = if matches!(error.reason, Reason::DepthLimit) {
+                    error
+                } else {
+                    match self.deferred.take() {
+                        Some(kept) if kept.cursor >= error.cursor => kept,
+                        _ => error,
+                    }
                 };
                 let suggestions: Vec<_> = reason.suggestions().map(str::to_owned).collect();
                 let (key, arg) = match reason {
+                    Reason::DepthLimit => ("arguments.nbtpath.too_deep", None),
                     Reason::Literal(_) => {
                         ("argument.literal.incorrect", Some(suggestions.join("|")))
                     }
@@ -322,16 +333,37 @@ impl<'a> Parser<'a> {
         }
     }
     /// `Term.repeatedWithTrailingSeparator`: try an entry before the closer,
-    /// then a comma before each next entry. Failed probes still report errors.
-    fn entries(&mut self, mut entry: impl FnMut(&mut Self) -> Result<(), Failure>) {
-        while self.optional(&mut entry).is_some() && self.eat(",") {}
+    /// then a comma before each next entry. Only grammar failures backtrack.
+    fn entries(
+        &mut self,
+        mut entry: impl FnMut(&mut Self) -> Result<(), Failure>,
+    ) -> Result<(), Failure> {
+        loop {
+            let mark = self.cursor;
+            match entry(self) {
+                Ok(()) => {
+                    if !self.eat(",") {
+                        return Ok(());
+                    }
+                }
+                Err(error) if matches!(error.reason, Reason::DepthLimit) => return Err(error),
+                Err(error) => {
+                    self.defer(error);
+                    self.cursor = mark;
+                    return Ok(());
+                }
+            }
+        }
     }
     fn descend<T>(
         &mut self,
         parse: impl FnOnce(&mut Self) -> Result<T, Failure>,
     ) -> Result<T, Failure> {
         if self.depth >= MAX_PARSE_DEPTH {
-            return Err(self.error("arguments.nbtpath.too_deep"));
+            return Err(Failure {
+                cursor: self.cursor,
+                reason: Reason::DepthLimit,
+            });
         }
         self.depth += 1;
         let result = super::with_tree_stack(|| parse(self));
@@ -488,7 +520,7 @@ impl<'a> Parser<'a> {
     fn compound(&mut self) -> Result<Tag, Failure> {
         self.expect("{")?;
         let mut values = Compound::new();
-        self.entries(|parser| {
+        let entries = self.entries(|parser| {
             let key = match parser.optional(Self::quoted_string) {
                 Some(key) => key,
                 None => parser.unquoted()?.as_str().into(),
@@ -505,7 +537,7 @@ impl<'a> Parser<'a> {
             Ok(())
         });
         let tag = Tag::Compound(values);
-        if let Err(error) = self.expect("}") {
+        if let Err(error) = entries.and_then(|()| self.expect("}")) {
             super::discard_tag(tag);
             return Err(error);
         }
@@ -532,7 +564,7 @@ impl<'a> Parser<'a> {
             self.entries(|parser| {
                 values.push(parser.integer()?);
                 Ok(())
-            });
+            })?;
             self.expect("]")?;
             let values = values
                 .into_iter()
@@ -552,12 +584,12 @@ impl<'a> Parser<'a> {
             })
         } else {
             let mut values = Vec::new();
-            self.entries(|parser| {
+            let entries = self.entries(|parser| {
                 values.push(parser.value()?);
                 Ok(())
             });
             let tag = Tag::List(values);
-            if let Err(error) = self.expect("]") {
+            if let Err(error) = entries.and_then(|()| self.expect("]")) {
                 super::discard_tag(tag);
                 return Err(error);
             }
@@ -770,14 +802,16 @@ impl<'a> Parser<'a> {
     fn word(&mut self) -> Result<Tag, Failure> {
         let word = self.unquoted()?;
         let mark = self.cursor;
-        let arguments = self.optional(|parser| {
-            parser.expect("(")?;
-            parser.descend(|parser| {
+        let arguments = if self.eat("(") {
+            Some(self.descend(|parser| {
                 let mut arguments = Vec::new();
-                parser.entries(|parser| {
+                if let Err(error) = parser.entries(|parser| {
                     arguments.push(parser.value()?);
                     Ok(())
-                });
+                }) {
+                    super::discard_tag(Tag::List(arguments));
+                    return Err(error);
+                }
                 if let Err(error) = parser.expect(")") {
                     // The optional sequence rewinds the reader, but the named
                     // argument list is already in the enclosing rule's scope.
@@ -785,8 +819,10 @@ impl<'a> Parser<'a> {
                     parser.cursor = mark;
                 }
                 Ok(arguments)
-            })
-        });
+            })?)
+        } else {
+            None
+        };
         if matches!(word.as_bytes()[0], b'+' | b'-' | b'.' | b'0'..=b'9') {
             if let Some(arguments) = arguments {
                 super::discard_tag(Tag::List(arguments));
@@ -977,6 +1013,21 @@ mod tests {
             assert_eq!(error.key, "argument.literal.incorrect", "{source}");
             assert_eq!(error.args, [expected], "{source}");
             assert_eq!(error.cursor, cursor, "{source}");
+        }
+    }
+
+    #[test]
+    fn nesting_refusal_is_not_a_backtrackable_syntax_error() {
+        for (open, close, cursor) in [("[", "]", 512), ("{a:", "}", 1536), ("bool(", ")", 2565)] {
+            let source = format!("{}0{}", open.repeat(513), close.repeat(513));
+            let error = parse_snbt_argument(&source).unwrap_err();
+            assert_eq!(
+                (error.key, error.cursor),
+                ("arguments.nbtpath.too_deep", cursor)
+            );
+            let units: Vec<_> = source.encode_utf16().collect();
+            assert_eq!(parse_snbt_utf16(&units), Err(error));
+            assert_eq!(snbt_suggestions(&source), (cursor, Vec::new()));
         }
     }
 
