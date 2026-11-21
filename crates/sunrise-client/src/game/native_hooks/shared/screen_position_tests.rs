@@ -797,7 +797,10 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
         native_guest_turn_tests::register_test_menu,
         native_item_places::tests::{guest, open_to_lan},
     };
-    use sunrise_client::lan::{Out, PlayerSender};
+    use sunrise_client::{
+        containers::{ModBlockEntity, ModBlockEntityFields},
+        lan::{Out, PlayerSender},
+    };
     use sunrise_protocol::{
         buf::Reader, connection::Pipe, menu_extra, packets::play::Clientbound as C,
     };
@@ -866,13 +869,23 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                             .default_state("hopper_fixture:machine")
                             .unwrap();
                         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
-                        game.world
-                            .block_entities
-                            .insert(pos, BlockEntity::Chest(vec![None; 5]));
-                        assert!(matches!(
+                        let containers = game.native_containers();
+                        game.world.block_entities.set_mod_containers(containers);
+                        game.world.block_entities.insert(
+                            pos,
+                            BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                                "hopper_fixture:machine".into(),
+                                ModBlockEntityFields {
+                                    items: vec![None; 5],
+                                    ..Default::default()
+                                },
+                            ))),
+                        );
+                        assert_eq!(game.mod_menu_at(pos), Some(MENU));
+                        assert_eq!(
                             game.lan_open_container(1, pos),
                             crate::game::lan_actions::MenuOpen::Opened
-                        ));
+                        );
                         let hub = &game.lan.as_ref().unwrap().hub;
                         let menu = hub.guest(1).unwrap().menu.as_ref().unwrap();
                         assert_eq!((&*menu.registry_id, menu.slot_count()), (MENU, 41));
@@ -981,7 +994,8 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
             root.prepared().to_owned(),
             crate::game::execution_role::ExecutionRole::Client,
             |game| {
-                seed_native_menu(game, 1, "minecraft:generic_9x3");
+                const MENU: &str = "minecraft:generic_9x3";
+                let generation = seed_native_menu(game, 1, MENU);
                 let pos = (17, 63, -9);
                 game.world.chunks.insert(
                     (1, -1),
@@ -995,7 +1009,42 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
                     .unwrap();
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                 assert!(game.open_native_screen(pos, Some(pos), 27, None));
-                assert_eq!(seen.lock().unwrap().data_slots, [0]);
+                assert!(
+                    game.mod_screen.is_none(),
+                    "the stock menu has no mod factory"
+                );
+                // Stock screens cannot be replaced by registration. Stage a draw
+                // probe to inspect the data delivered by the stock packet handler.
+                let draw_seen = seen.clone();
+                game.mod_screen = Some(OpenNativeScreen {
+                    menu: OpenNativeMenu {
+                        key: pos,
+                        window: 1,
+                        generation,
+                        name: MENU.into(),
+                        block: None,
+                        pos: None,
+                        mod_type: None,
+                        data: Vec::new(),
+                    },
+                    slot_moves: Default::default(),
+                    layout_revision: 0,
+                    shown: false,
+                    screen: mod_api::__private::OwnedMenuScreen::new(
+                        "test",
+                        0,
+                        mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                            width: 176.0,
+                            height: 166.0,
+                            own_background: true,
+                            own_labels: true,
+                            ..Default::default()
+                        })
+                        .with_draw(move |_, frame, _| {
+                            draw_seen.lock().unwrap().data.push(frame.data.to_vec());
+                        }),
+                    ),
+                });
                 game.container = Some(pos);
                 game.set_screen(Screen::Inventory);
 
@@ -1063,7 +1112,7 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
                     blockless_data: Vec::new(),
 
                     mod_type: None,
-                    registry_id: "minecraft:generic_9x3".into(),
+                    registry_id: MENU.into(),
                     craft: None,
                     links: Vec::new(),
                     opening_item: None,

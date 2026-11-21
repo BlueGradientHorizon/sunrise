@@ -1236,16 +1236,25 @@ mod tests {
         assert_eq!(held_slot(1).amount(host), 64);
         assert_eq!(ItemPlace::MenuSlot { menu, slot: 1 }.amount(host), 64);
 
-        // A deliberate write through the menu handle still reaches its display-only backing.
+        // The menu slot obeys its rules even when addressed through a handle.
+        // The storage itself can still be stocked directly for display.
         let hidden = ItemPlace::MenuSlot { menu, slot: 0 };
         let stone = ItemPlace::MenuSlot { menu, slot: 1 }
             .resource(host)
             .unwrap();
         assert_eq!(
             host.transaction(|host, tx| Ok::<_, ()>(hidden.insert(host, tx, &stone, 5))),
+            Ok(0)
+        );
+        assert_eq!(
+            host.transaction(|host, tx| Ok::<_, ()>(held_slot(0).insert(host, tx, &stone, 5))),
             Ok(5)
         );
-        assert_eq!(held_slot(0).amount(host), 5);
+        assert_eq!(hidden.amount(host), 5);
+        assert_eq!(
+            host.transaction(|host, tx| Ok::<_, ()>(hidden.extract(host, tx, &stone, 5))),
+            Ok(0)
+        );
         let contents = |game: &mut Game<'_>| {
             (0..45)
                 .map(|slot| {
