@@ -191,6 +191,14 @@ impl<'a> Project<'a> {
 
     /// Parses the staged Cargo manifest, or one read by a caller with its own input bounds.
     pub fn parse(bundle: &'a Bundle, text: &str) -> Result<Self, ProjectError> {
+        Self::parse_with(bundle, text, |file| bundle.dir.join(file).exists())
+    }
+
+    pub(crate) fn parse_with(
+        bundle: &'a Bundle,
+        text: &str,
+        exists: impl Fn(&str) -> bool,
+    ) -> Result<Self, ProjectError> {
         let mod_id = || bundle.manifest.id.clone();
         let cargo: toml::Table = text.parse().map_err(|e| ProjectError::Cargo {
             mod_id: mod_id(),
@@ -205,7 +213,7 @@ impl<'a> Project<'a> {
             }
         }
         for config in [".cargo/config", ".cargo/config.toml"] {
-            if bundle.dir.join(config).exists() {
+            if exists(config) {
                 return Err(ProjectError::Cargo {
                     mod_id: mod_id(),
                     reason: format!(

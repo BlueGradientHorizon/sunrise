@@ -72,52 +72,83 @@ pub fn refusal(projects: &[api::Project<'_>]) -> Option<Refusal> {
 
 /// Why `project` alone can't build against the prebuilt game, or `None` when it can.
 pub fn project_refusal(project: &api::Project<'_>) -> Option<Refusal> {
-    {
-        let mod_id = || project.bundle.manifest.id.clone();
-        let cargo = &project.cargo;
-        let package = cargo.get("package");
-        let build = package.and_then(|p| p.get("build"));
-        let has_script = build.is_some_and(|value| value.as_bool() != Some(false))
-            || (build.and_then(toml::Value::as_bool) != Some(false)
-                && project.bundle.dir.join("build.rs").is_file())
-            || cargo
-                .get("build-dependencies")
-                .and_then(toml::Value::as_table)
-                .is_some_and(|t| !t.is_empty());
-        if has_script {
-            return Some(Refusal::BuildScript { mod_id: mod_id() });
-        }
-        if cargo
-            .get("features")
+    refusal_with_script(project, project.bundle.dir.join("build.rs").is_file())
+}
+
+fn refusal_with_script(project: &api::Project<'_>, build_script: bool) -> Option<Refusal> {
+    let mod_id = || project.bundle.manifest.id.clone();
+    let cargo = &project.cargo;
+    let package = cargo.get("package");
+    let build = package.and_then(|p| p.get("build"));
+    let has_script = build.is_some_and(|value| value.as_bool() != Some(false))
+        || (build.and_then(toml::Value::as_bool) != Some(false) && build_script)
+        || cargo
+            .get("build-dependencies")
             .and_then(toml::Value::as_table)
-            .is_some_and(|t| !t.is_empty())
-        {
-            return Some(Refusal::Features { mod_id: mod_id() });
-        }
-        for (_, dependencies) in native_route::dependency_tables(&project.cargo) {
-            for (key, value) in dependencies {
-                let krate = value
-                    .get("package")
-                    .and_then(toml::Value::as_str)
-                    .unwrap_or(key);
-                if !native_route::PACKAGES
-                    .iter()
-                    .any(|(package, _)| *package == krate)
-                {
-                    continue;
-                }
-                let own_features = value
-                    .get("features")
-                    .and_then(toml::Value::as_array)
-                    .is_some_and(|f| !f.is_empty())
-                    || value.get("default-features").and_then(toml::Value::as_bool) == Some(false);
-                if own_features {
-                    return Some(Refusal::Features { mod_id: mod_id() });
-                }
+            .is_some_and(|t| !t.is_empty());
+    if has_script {
+        return Some(Refusal::BuildScript { mod_id: mod_id() });
+    }
+    if cargo
+        .get("features")
+        .and_then(toml::Value::as_table)
+        .is_some_and(|t| !t.is_empty())
+    {
+        return Some(Refusal::Features { mod_id: mod_id() });
+    }
+    for (_, dependencies) in native_route::dependency_tables(&project.cargo) {
+        for (key, value) in dependencies {
+            let krate = value
+                .get("package")
+                .and_then(toml::Value::as_str)
+                .unwrap_or(key);
+            if !native_route::PACKAGES
+                .iter()
+                .any(|(package, _)| *package == krate)
+            {
+                continue;
+            }
+            let own_features = value
+                .get("features")
+                .and_then(toml::Value::as_array)
+                .is_some_and(|f| !f.is_empty())
+                || value.get("default-features").and_then(toml::Value::as_bool) == Some(false);
+            if own_features {
+                return Some(Refusal::Features { mod_id: mod_id() });
             }
         }
-        None
     }
+    None
+}
+
+/// A signed source package can accompany an independently built release library only if
+/// it can also use the API route on its own. This inspects the package; it never invokes Cargo.
+pub fn release_source(source: &sunrise_mod_package::index::native::Bundle) -> Result<(), String> {
+    let bundle = super::Bundle {
+        manifest: source.manifest.clone(),
+        dir: PathBuf::new(),
+    };
+    let cargo = source.files.get("Cargo.toml").ok_or("no Cargo.toml")?;
+    let cargo = std::str::from_utf8(cargo).map_err(|e| format!("Cargo.toml: {e}"))?;
+    let project = api::Project::parse_with(&bundle, cargo, |name| source.files.contains_key(name))
+        .map_err(|e| e.to_string())?;
+    if let Some(refusal) = refusal_with_script(&project, source.files.contains_key("build.rs")) {
+        return Err(refusal.to_string());
+    }
+    if !matches!(Route::of(&[project]), Route::Api) || !bundle.manifest.dependencies.is_empty() {
+        return Err(
+            "a release library requires a standalone prebuilt-api mod without mod dependencies"
+                .into(),
+        );
+    }
+    let lock = source
+        .files
+        .get("Cargo.lock")
+        .ok_or("the source package must carry Cargo.lock")?;
+    super::registry_lock::RegistryLock::parse(
+        std::str::from_utf8(lock).map_err(|e| format!("Cargo.lock: {e}"))?,
+    )?;
+    Ok(())
 }
 
 /// `name`'s sum in a `sha256sum` listing.
