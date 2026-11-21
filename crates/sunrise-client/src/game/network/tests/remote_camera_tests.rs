@@ -146,26 +146,34 @@ fn a_spectated_sleeping_villager_shows_the_bed_view() {
         .join("../../.local/sunrise-client")
         .join(sunrise_core::VANILLA_VERSION);
     let types = sunrise_client::mobs::MobTypes::load(&root).unwrap();
+    let player_kind = crate::game::perspective::player_type(&root).expect("player mob type");
     let bits = |v: &serde_json::Value| u64::from_str_radix(v.as_str().unwrap(), 16).unwrap();
     let mut checked = 0;
     for (case, frame) in cases.lines().zip(&frames) {
         let case: serde_json::Value = serde_json::from_str(case).unwrap();
         let ops = case["ops"].as_array().unwrap();
         let s = &ops[0][1];
-        // Only villagers track a bed today; the sleeping remote player stays a recorded lead.
-        if s["kind"] != "villager" {
-            continue;
-        }
         let f = |v: &serde_json::Value| f32::from_bits(bits(v) as u32);
         let d = |v: &serde_json::Value| f64::from_bits(bits(v));
         let v3 = |v: &serde_json::Value| Vec3::new(d(&v[0]), d(&v[1]), d(&v[2]));
-        let id = "minecraft:villager";
-        let mut mob = sunrise_client::mobs::Mob::new(1, std::sync::Arc::new(types.types[id].clone()), v3(&s["pos"]), 0.0);
+        let is_player = s["kind"] == "remote_player";
+        let (id, kind) = if is_player {
+            ("minecraft:player", player_kind.clone())
+        } else {
+            (
+                "minecraft:villager",
+                std::sync::Arc::new(types.types["minecraft:villager"].clone()),
+            )
+        };
+        let mut mob = sunrise_client::mobs::Mob::new(1, kind, v3(&s["pos"]), 0.0);
         mob.previous = v3(&s["prev"]);
         mob.head_pitch = f(&s["xr"]);
         mob.head_yaw = f(&s["yr"]);
         mob.previous_head_pitch = f(&s["xro"]);
         mob.previous_head_yaw = f(&s["yro"]);
+        if is_player {
+            mob.extra.avatar_pose = sunrise_client::pose::Pose::Sleeping;
+        }
         // Villager.sleeping: the bed's facing code (1 north, 2 south, 3 west, 4 east) from Direction.get2DDataValue.
         mob.extra.ints[1] = [2, 3, 1, 4][case["bed"][3].as_u64().unwrap() as usize];
         let entity = mob_camera_entity(&mob, (1.0, 4.0));
@@ -182,5 +190,5 @@ fn a_spectated_sleeping_villager_shows_the_bed_view() {
         assert_eq!(got, want.join(" "), "{id} bed {} case {checked}", case["bed"][3]);
         checked += 1;
     }
-    assert_eq!(checked, 20);
+    assert_eq!(checked, 40);
 }

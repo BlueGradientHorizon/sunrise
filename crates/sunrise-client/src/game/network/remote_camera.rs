@@ -14,8 +14,8 @@ mod camera_tests;
 use super::{Game, remote::Remote};
 use std::collections::HashMap;
 use sunrise_client::{
-    camera::{AvatarBob, CameraEntity, HurtBob, LivingCamera},
-    entities::{ArmorStand, ItemFrame},
+    camera::{AvatarBob, CameraEntity, FovPlayer, HurtBob, LivingCamera, UseItem},
+    entities::{ArmorStand, ItemFrame, Painting},
     mobs::{Mob, Species, render, villager},
     motion::PlayerMotion,
 };
@@ -55,6 +55,7 @@ pub(in crate::game) struct ResolvedCameraEntity {
     pub blocks_sky: bool,
     pub hurt: Option<CameraHurt>,
     pub avatar_bob: Option<AvatarBob>,
+    pub fov_player: Option<FovPlayer>,
     pub has_player_passenger: bool,
     pub collision_kind: EntityContextKind,
     pub post_effect: Option<&'static str>,
@@ -196,6 +197,25 @@ pub(super) fn frame_camera_entity(f: &ItemFrame) -> CameraEntity {
         x_rot_o: x_rot,
         y_rot_o: y_rot,
         eye_height: 0.0,
+        living: None,
+        mount: None,
+    }
+}
+/// `Camera.alignWithEntity`'s view of a painting: a hanging entity sits at the
+/// centre of its box (`HangingEntity.recalculateBoundingBox`), faces
+/// `get2DDataValue() * 90`, and keeps `EntityType.PAINTING`'s `0.425F` eyes.
+pub(super) fn painting_camera_entity(p: &Painting) -> CameraEntity {
+    let (lo, hi) = p.bounds();
+    let at = std::array::from_fn(|i| (lo[i] + hi[i]) * 0.5);
+    let y_rot = f32::from(p.facing & 3) * 90.0;
+    CameraEntity {
+        position: at,
+        previous: at,
+        x_rot: 0.0,
+        y_rot,
+        x_rot_o: 0.0,
+        y_rot_o: y_rot,
+        eye_height: 0.425,
         living: None,
         mount: None,
     }
@@ -380,6 +400,62 @@ impl Game<'_> {
             [x, y + f64::from(c.camera.eye_height), z]
         })
     }
+    /// `AbstractBedBlock.getBedOrientation` as its `toYRot`; `None` for any non-bed block.
+    fn bed_orientation_yaw(&self, head: [i32; 3]) -> Option<f32> {
+        let state = self.world.block(head[0], head[1], head[2]);
+        let entry = self.pack.assets.registry.state(state)?;
+        if !entry.name.ends_with("_bed") || !entry.properties.contains_key("part") {
+            return None;
+        }
+        match entry.properties.get("facing").map(String::as_str) {
+            Some("south") => Some(0.0),
+            Some("west") => Some(90.0),
+            Some("north") => Some(180.0),
+            Some("east") => Some(270.0),
+            _ => None,
+        }
+    }
+    /// `LivingEntity.isSleeping` + `getBedOrientation` for any live mob or remote player.
+    fn mob_sleeping_view(&self, m: &Mob) -> Option<Option<f32>> {
+        if let Some(head) = m.extra.sleeping_pos {
+            return Some(self.bed_orientation_yaw(head));
+        }
+        sleeping_view(m)
+    }
+    /// `AbstractClientPlayer.getFieldOfViewModifier` inputs for a spectated remote player.
+    fn remote_fov_player(&self, m: &Mob) -> FovPlayer {
+        let movement_speed = self
+            .motion
+            .attributes
+            .id("minecraft:movement_speed")
+            .and_then(|attr| self.remote_attribute(m.id as i32, attr))
+            .unwrap_or_else(|| {
+                if m.attrs.speed > 0.0 {
+                    m.attrs.speed
+                } else {
+                    0.1
+                }
+            });
+        let using = (m.extra.using_item > 0).then(|| {
+            let slot = if m.extra.using_off_hand {
+                sunrise_items::equipment::OFFHAND
+            } else {
+                sunrise_items::equipment::MAINHAND
+            };
+            let item = match m.slot_stack(slot).map(|s| &*s.item) {
+                Some("minecraft:bow") => UseItem::Bow,
+                Some("minecraft:spyglass") => UseItem::Spyglass,
+                _ => UseItem::Other,
+            };
+            (item, (m.extra.using_item - 1).max(0))
+        });
+        FovPlayer {
+            flying: false,
+            walking_speed: 0.1,
+            movement_speed,
+            using,
+        }
+    }
     fn local_player_camera_subject(&self) -> Option<ResolvedCameraEntity> {
         let p = self.player.as_ref()?;
         let scale = p
@@ -390,22 +466,7 @@ impl Game<'_> {
             .attributes
             .computed_value_of("minecraft:camera_distance")
             .unwrap_or(4.0);
-        let sleeping = self.sleeping.map(|head| {
-            let state = self.world.block(head[0], head[1], head[2]);
-            let props = self
-                .pack
-                .assets
-                .registry
-                .state(state)
-                .map(|s| &s.properties);
-            props.and_then(|props| match props.get("facing").map(String::as_str) {
-                Some("south") => Some(0.0),
-                Some("west") => Some(90.0),
-                Some("north") => Some(180.0),
-                Some("east") => Some(270.0),
-                _ => None,
-            })
-        });
+        let sleeping = self.sleeping.map(|head| self.bed_orientation_yaw(head));
         let mount = self
             .riding
             .and_then(|id| self.mobs.iter().find(|m| m.id == id))
@@ -460,6 +521,7 @@ impl Game<'_> {
                 death_time: dead,
             }),
             avatar_bob: Some(self.avatar),
+            fov_player: self.fov_player(),
             has_player_passenger: false,
             collision_kind: EntityContextKind::Player,
             post_effect: None,
@@ -501,6 +563,9 @@ impl Game<'_> {
         if let Some(m) = self.mobs.iter().find(|m| m.id == uid) {
             let is_player = &*m.kind.id == "minecraft:player";
             let mut camera = mob_camera_entity(m, self.living_camera_values(m));
+            if let Some(living) = &mut camera.living {
+                living.sleeping = self.mob_sleeping_view(m);
+            }
             camera.mount = mount;
             let is_sleeping = camera.living.is_some_and(|l| l.sleeping.is_some());
             let dead = camera.living.and_then(|l| l.dead);
@@ -521,6 +586,7 @@ impl Game<'_> {
                     death_time: dead,
                 }),
                 avatar_bob: is_player.then_some(m.extra.avatar),
+                fov_player: is_player.then(|| self.remote_fov_player(m)),
                 has_player_passenger,
                 collision_kind: if is_player {
                     EntityContextKind::Player
@@ -546,6 +612,7 @@ impl Game<'_> {
                 blocks_sky: false,
                 hurt: Some(CameraHurt::default()),
                 avatar_bob: None,
+                fov_player: None,
                 has_player_passenger,
                 collision_kind: EntityContextKind::Living,
                 post_effect: entity_post_effect("minecraft:armor_stand"),
@@ -576,6 +643,7 @@ impl Game<'_> {
                 blocks_sky: false,
                 hurt: None,
                 avatar_bob: None,
+                fov_player: None,
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect: entity_post_effect("minecraft:interaction"),
@@ -602,6 +670,7 @@ impl Game<'_> {
                 blocks_sky: false,
                 hurt: None,
                 avatar_bob: None,
+                fov_player: None,
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect,
@@ -637,6 +706,7 @@ impl Game<'_> {
                 blocks_sky: false,
                 hurt: None,
                 avatar_bob: None,
+                fov_player: None,
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect,
@@ -663,9 +733,32 @@ impl Game<'_> {
                 blocks_sky: false,
                 hurt: None,
                 avatar_bob: None,
+                fov_player: None,
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect: entity_post_effect(kind),
+                removed: false,
+            });
+        }
+        if let Some(p) = self.paintings.iter().find(|p| p.id == uid) {
+            let mut camera = painting_camera_entity(p);
+            camera.mount = mount;
+            return Some(ResolvedCameraEntity {
+                entity_id: uid,
+                kind: "minecraft:painting".to_owned(),
+                camera,
+                is_local_player: false,
+                is_player: false,
+                is_living: false,
+                is_spectator: false,
+                is_sleeping: false,
+                blocks_sky: false,
+                hurt: None,
+                avatar_bob: None,
+                fov_player: None,
+                has_player_passenger,
+                collision_kind: EntityContextKind::Other,
+                post_effect: entity_post_effect("minecraft:painting"),
                 removed: false,
             });
         }
@@ -684,6 +777,7 @@ impl Game<'_> {
                 blocks_sky: false,
                 hurt: None,
                 avatar_bob: None,
+                fov_player: None,
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect: entity_post_effect("minecraft:tnt"),
@@ -720,6 +814,7 @@ impl Game<'_> {
             blocks_sky: false,
             hurt: None,
             avatar_bob: None,
+            fov_player: None,
             has_player_passenger,
             collision_kind,
             post_effect,
@@ -811,7 +906,7 @@ impl Game<'_> {
             && !self
                 .mobs
                 .iter()
-                .any(|m| m.id == id && sunrise_client::mobs::villager::sleeping(m))
+                .any(|m| m.id == id && self.mob_sleeping_view(m).is_some())
     }
 }
 

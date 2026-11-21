@@ -23,7 +23,7 @@ impl PickAccumulator {
     }
 
     pub(super) fn consider(&mut self, game: &Game<'_>, id: u32, distance: f64) -> bool {
-        if game.pick_camera_id() == Some(id) {
+        if game.is_pick_camera(id) {
             return false;
         }
         // A ray that starts inside the box picks it only when `canBePickedFromInside`.
@@ -55,7 +55,7 @@ impl PickAccumulator {
         let candidates = self.candidates.take().unwrap_or_default();
         let camera = game.pick_camera_id();
         for &candidate in &candidates {
-            if game.pick_camera_id() == Some(candidate.id) {
+            if game.is_pick_camera(candidate.id) {
                 continue;
             }
             let same_vehicle = game.pick_shares_vehicle(candidate.id);
@@ -119,6 +119,14 @@ impl Game<'_> {
     pub(super) fn pick_camera_id(&self) -> Option<u32> {
         self.remote_camera_id()
             .or_else(|| self.remote.as_ref().map(|r| r.entity_id as u32))
+    }
+
+    /// True if `id` (or the wire entity behind a synthetic special-target id) is the camera entity.
+    pub(super) fn is_pick_camera(&self, id: u32) -> bool {
+        let Some(camera) = self.pick_camera_id() else {
+            return false;
+        };
+        id == camera || self.wire_entity_id(id) == Some(camera as i32)
     }
 
     fn pick_vehicle_root(&self, id: u32) -> Option<u32> {

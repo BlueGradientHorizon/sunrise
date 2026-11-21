@@ -65,7 +65,7 @@ impl Game<'_> {
         spinning_effect_matrix(intensity, fx.spinning_time + partial * fx.spinning_speed)
     }
     /// What `AbstractClientPlayer.getFieldOfViewModifier` reads.
-    fn fov_player(&self) -> Option<FovPlayer> {
+    pub(super) fn fov_player(&self) -> Option<FovPlayer> {
         let p = self.player.as_ref()?;
         let using = self.using.and_then(|(slot, ticks)| {
             let stack = self.stack_in(slot)?;
@@ -85,10 +85,18 @@ impl Game<'_> {
         })
     }
     /// `Camera.tick`: the eye height and the field-of-view modifier ease
-    /// halfway toward the player's each tick.
+    /// halfway toward the camera player's each tick.
     pub(super) fn tick_fov(&mut self) {
         let first_person = self.camera_type.is_first_person();
         let effect = self.fov_effect_scale();
+        if let Some(cam) = self.camera_subject().filter(|c| !c.is_local_player) {
+            let target = cam.fov_player.map_or(1.0, |player| {
+                field_of_view_modifier(&player, first_person, effect)
+            });
+            self.view
+                .tick(Some(cam.camera.eye_height), self.zoomed_fov_target(target));
+            return;
+        }
         let target = self.fov_player().map_or(1.0, |player| {
             let base = field_of_view_modifier(&player, first_person, effect);
             let mut modifier = base;
@@ -96,12 +104,6 @@ impl Game<'_> {
             valid_fov_modifier(modifier, base)
         });
         let target = self.zoomed_fov_target(target);
-        // Non-local camera entity: own eye height and modifier 1 (zoom still narrows it).
-        if let Some(cam) = self.camera_subject().filter(|c| !c.is_local_player) {
-            self.view
-                .tick(Some(cam.camera.eye_height), self.zoomed_fov_target(1.0));
-            return;
-        }
         let eye = self.player.as_ref().map(|p| {
             if self.sleeping.is_some() {
                 0.2
