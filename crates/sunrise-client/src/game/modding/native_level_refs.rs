@@ -2491,6 +2491,8 @@ mod tests {
     #[ignore = "daily"]
     fn mod_tickets_save_apart_from_vanillas_tickets_and_release_with_the_world() {
         use mod_api::TicketOwner::{Block, Entity};
+        use std::sync::Arc;
+        use sunrise_client::{streaming::Streaming, testgen::TestTerrain};
         with_machines(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let chunk = game.level_chunk_ref(level, [-9, 4]).unwrap();
@@ -2503,8 +2505,13 @@ mod tests {
             game.save_chunk_tickets().unwrap();
             let vanilla = game.save.load_forced_chunks();
             assert!(vanilla.is_empty(), "vanilla's file has no mod ticket");
-            // The world closes: its streaming goes, the next opening reads the file.
+            // A new level starts with no live tickets; only the saved tickets carry over.
             let reopen = |game: &mut super::super::Game<'_>, slot_of: fn(&str) -> Option<u32>| {
+                let terrain =
+                    TestTerrain::new(game.pack.assets.registry, game.res.biomes()).unwrap();
+                game.streaming = Streaming::new(Arc::new(terrain), game.worker_context(), 1);
+                game.streaming.mesh = false;
+                game.streaming.radius = 0;
                 game.streaming.load_forced(
                     game.save.load_forced_chunks(),
                     game.save.load_mod_tickets(slot_of),
