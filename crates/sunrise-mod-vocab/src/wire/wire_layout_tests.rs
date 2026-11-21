@@ -101,6 +101,16 @@ fn checked_records_have_declared_field_bytes() {
     );
     let map = serde_json::Map::from_iter([("b".to_owned(), serde_json::json!(2))]);
     fields(map, ("{\"b\":2}".to_owned(),));
+    let text = Text::translate("k", vec![Text::literal("a")]).append(Text::literal("c"));
+    fields(
+        text.clone(),
+        (
+            text.content.clone(),
+            text.style.clone(),
+            text.children.clone(),
+            text.metadata.clone(),
+        ),
+    );
 }
 
 #[test]

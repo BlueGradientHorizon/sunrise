@@ -228,7 +228,7 @@ fn arc_counts_are_charged_even_for_zero_width_values() {
 
 #[test]
 fn typed_forms_with_unmetered_conversions_are_refused() {
-    use crate::{MeshDefinition, ModelPart, PartPose, Text};
+    use crate::{MeshDefinition, ModelPart, PartPose};
 
     fn ordinary_only<T: Wire>(value: &T) {
         let mut writer = Writer::new();
@@ -246,7 +246,6 @@ fn typed_forms_with_unmetered_conversions_are_refused() {
     ordinary_only(&"test:static-value");
     ordinary_only(&MeshDefinition::new());
     ordinary_only(&ModelPart::new(Vec::new(), Vec::new(), PartPose::ZERO));
-    ordinary_only(&Text::literal("owned text"));
     ordinary_only(&serde_json::json!({"field": []}));
     ordinary_only(&serde_json::Map::<String, serde_json::Value>::new());
     ordinary_only(&crate::LegacyRandomSource::new(42)); // a #[wire(via = ...)] conversion
@@ -360,6 +359,60 @@ fn nbt_containers_share_the_remaining_typed_depth() {
     assert_eq!(encode_payload(&over, bytes.len()), Err(WireError::Depth));
     assert_eq!(decode_payload::<Box<Tag>>(&bytes), Err(WireError::Depth));
     assert!(Reader::decode::<Box<Tag>>(&bytes).is_ok());
+}
+
+#[test]
+fn text_trees_share_the_remaining_typed_depth_and_budget() {
+    use crate::{Tag, Text};
+
+    // An enclosing Box consumes one of the 64 levels, leaving 63 nested Text nodes.
+    let mut tree = Text::literal("leaf");
+    for _ in 1..usize::from(PAYLOAD_MAX_DEPTH - 1) {
+        tree = Text::literal("").append(tree);
+    }
+    let at_limit = Box::new(tree);
+    let bytes = encode_payload(&at_limit, PAYLOAD_DECODE_BUDGET).unwrap();
+    assert_eq!(decode_payload::<Box<Text>>(&bytes).as_ref(), Ok(&at_limit));
+
+    let over = Box::new(Text::literal("").append(*at_limit));
+    let mut ordinary = Writer::new();
+    ordinary.put(&over);
+    assert_eq!(ordinary.error(), None);
+    assert_eq!(
+        encode_payload(&over, PAYLOAD_DECODE_BUDGET),
+        Err(WireError::Depth)
+    );
+    assert_eq!(
+        decode_payload::<Box<Text>>(ordinary.bytes()),
+        Err(WireError::Depth)
+    );
+    assert!(Reader::decode::<Box<Text>>(ordinary.bytes()).is_ok());
+
+    // Malformed fields still report Invalid, distinct from Depth.
+    let mut bad = Text::literal("bad");
+    bad.metadata = Tag::Byte(1);
+    assert!(matches!(
+        encode_payload(&bad, PAYLOAD_DECODE_BUDGET),
+        Err(WireError::Invalid(_))
+    ));
+
+    // A wide component tree that fits the 8 MiB byte cap still trips the decode budget.
+    let mut branch = Text::literal("");
+    branch.children = vec![Text::literal(""); 20];
+    let mut wide = Text::literal("");
+    wide.children = vec![branch; 2000];
+    let mut wide_bytes = Writer::new();
+    wide_bytes.put(&wide);
+    assert_eq!(wide_bytes.error(), None);
+    assert!(wide_bytes.bytes().len() < PAYLOAD_DECODE_BUDGET);
+    assert_eq!(
+        encode_payload(&wide, PAYLOAD_DECODE_BUDGET),
+        Err(WireError::Budget)
+    );
+    assert_eq!(
+        decode_payload::<Text>(wide_bytes.bytes()),
+        Err(WireError::Budget)
+    );
 }
 
 #[test]

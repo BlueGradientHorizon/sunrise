@@ -49,9 +49,12 @@ fn layout_fields(tokens: proc_macro2::TokenStream) -> Option<Vec<(String, Type)>
         }
     }
     let fields = |input: syn::parse::ParseStream| {
-        // A contract prefix affects admission, not the ordinary encoded fields.
+        // A contract prefix affects admission or versioning, not the ordinary encoded fields.
         if input.peek(syn::Ident) {
             input.parse::<syn::Ident>()?;
+            input.parse::<syn::LitStr>()?;
+            input.parse::<syn::Token![;]>()?;
+        } else if input.peek(syn::LitStr) && input.peek2(syn::Token![;]) {
             input.parse::<syn::LitStr>()?;
             input.parse::<syn::Token![;]>()?;
         }

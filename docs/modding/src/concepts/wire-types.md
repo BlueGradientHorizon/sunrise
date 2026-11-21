@@ -44,8 +44,9 @@ charge `PAYLOAD_DECODE_BUDGET` for decoded storage, separately from the 8 MiB bo
 A failed encode is never queued.
 
 Ordinary Wire keeps the NBT `Tag` limit of **512** containers and the `Text` limit of
-**512** nested components. Build `Text` directly; ordinary Wire validates it and
-uses a private node-table encoding. `Text` is not admitted to typed payloads.
+**512** nested components. Both use stack-independent iterative codecs directly over
+their fields and are admitted to typed payloads, where they share `PAYLOAD_MAX_DEPTH`
+and `PAYLOAD_DECODE_BUDGET`.
 
 JSON-backed `serde_json::Value`, JSON maps and `ModelPart` also refuse beyond
 32 JSON containers. Their encoders preflight the in-memory tree iteratively
@@ -57,10 +58,10 @@ Hand-written recursive `Wire` implementations must enforce their own stack contr
 reader cannot police code outside its codec.
 
 Encoding borrows the input (`writer.put(&value)`); the caller still owns it.
-Constructing an arbitrarily deep Rust tree and then dropping it can overflow a
-thread independently of Wire. To dispose of deeply nested NBT, pop tags from
-an explicit work stack. Push the children of each `Tag::List` and the values
-from `Compound::into_values()` for each `Tag::Compound`; drop leaf tags as you go.
+`Text` drops iteratively, so dropping a deep component tree does not overflow the
+stack. For deeply nested raw NBT `Tag` trees, pop tags from an explicit work stack:
+push the children of each `Tag::List` and the values from `Compound::into_values()`
+for each `Tag::Compound`, dropping leaf tags as you go.
 
 ## Checked representations
 
