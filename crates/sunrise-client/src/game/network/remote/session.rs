@@ -714,7 +714,6 @@ impl Game<'_> {
         }
         // Minecraft.disconnect's updateLevelInEngines: the title changes with the screen, not a frame later.
         self.update_window_title();
-        super::super::lan::sync::forget_sync_data();
         self.gui.atlas.clear_object_skins();
         self.server_packs_disconnect();
         self.code_of_conduct = None;
@@ -728,14 +727,15 @@ impl Game<'_> {
         self.right = false;
         // The shared world is closing: its invite code ends with it.
         self.friends_lan_closed();
-        // Single player's server thread saves the world before the title shows.
-        let single_player = match self.integrated.take() {
-            Some(server) => {
-                server.stop()?;
-                true
-            }
-            None => false,
-        };
+        // Minecraft.disconnect waits for the integrated server before showing the title.
+        let stopped = self
+            .integrated
+            .take()
+            .map(|server| server.stop())
+            .transpose();
+        // Keep the server's registry snapshot until the thread has joined, even on error.
+        super::super::lan::sync::forget_sync_data();
+        let single_player = stopped?.is_some();
         mod_api::content::crash::clear_detail("Server");
         self.clock = Default::default();
         self.adv = Default::default();
