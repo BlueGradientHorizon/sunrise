@@ -265,7 +265,7 @@ with `CapReached`. Set another number under `[properties]` in `server.toml`:
 sunrise-max-runtime-levels = 128
 ```
 
-A level frees its place when its mod unloads or deletes it (a delete also removes its folder from `dimensions/`). After 300 ticks with nobody in it, it leaves memory, as any level does, but keeps its place: it opens again when someone enters it.
+A level frees its place when its mod unloads or deletes it (a delete also removes its folder from `dimensions/`). After 300 ticks with nobody in it, it leaves memory, as any custom level does, but keeps its place: it opens again when someone enters it.
 
 Already have a vanilla server? Run `sunrise-server init` in its folder, or `sunrise-server import
 server.properties` to write `server.toml` from it. The world, `ops.json`, `whitelist.json` and the ban lists
@@ -420,6 +420,20 @@ archive you have, such as your own build. A server still on a release from befor
 that 0.2 comes after the dated releases and says it is up to date: run `sunrise-server update --version v0.2.0`
 once ([versioning](versioning.md)). A stopped server is switched and starts on the new release next
 time. Set `SUNRISE_NO_UPDATE_CHECK=1` in the server's environment to turn the check off.
+
+Release checks and downloads, and the Discord webhook, use the first nonblank setting in this order:
+`HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`, `all_proxy` for HTTPS, or `HTTP_PROXY`, `http_proxy`,
+`ALL_PROXY`, `all_proxy` for HTTP. A proxy address without a scheme means HTTP. Supported schemes are
+`http://`, `socks4://`, `socks4a://`, `socks5://`, `socks5h://` and `socks://` (an alias for SOCKS5).
+An `https://` proxy address is not supported, even for HTTPS downloads. HTTP proxy credentials are sent
+only on HTTPS CONNECT, not for plain HTTP requests.
+
+Local addresses bypass the proxy. `NO_PROXY` (or `no_proxy` if `NO_PROXY` is unset) is a comma-separated
+list: `*` bypasses all hosts; a host or domain (`example.org`, `.example.org`, `*.example.org`) matches
+that name and its subdomains. The list accepts IP literals, including bare or bracketed IPv6, but not CIDR.
+An entry with a port (`example.org:8443` or `[2001:db8::1]:8443`) matches only that destination port,
+including the URL scheme's default port when no port is written. Release checks and downloads
+select the route again at each redirect.
 
 ## 6. Web panel
 

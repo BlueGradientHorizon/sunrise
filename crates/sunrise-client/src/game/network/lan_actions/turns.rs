@@ -1069,15 +1069,8 @@ impl Game<'_> {
             }
         }
         self.stat_criteria_changed(&name, stat_events);
-        if let Some(pos) = opened
-            && !self.lan_open_container(conn, pos)
-            && self
-                .lan
-                .as_ref()
-                .is_some_and(|host| !host.hub.guests[i].spectator())
-        {
-            // Nothing the guest can use opened: its lid closes again.
-            self.container_openers_changed(pos, false);
+        if let Some(pos) = opened {
+            self.lan_open_container(conn, pos);
         }
         if let Some(station) = opened_station {
             self.lan_station_opened(conn, station);

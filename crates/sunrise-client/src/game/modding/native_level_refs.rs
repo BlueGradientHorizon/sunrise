@@ -657,6 +657,23 @@ impl Game<'_> {
             .get(key)
             .cloned()
     }
+    /// Read the mod-published connection group at `pos`, or `Ok(None)` when unset, unloaded, or
+    /// out of height. Works on both server (including parked levels) and client (including viewed
+    /// levels).
+    pub(super) fn level_connection_group(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Result<Option<u64>, mod_api::LevelReadError> {
+        let world = self.native_level_view_world(level).ok_or_else(|| {
+            if self.level_handle_current(level) {
+                mod_api::LevelReadError::Unavailable
+            } else {
+                mod_api::LevelReadError::Stale
+            }
+        })?;
+        Ok(world.connection_group(pos[0], pos[1], pos[2]))
+    }
     /// Whether this is the level in place: the one the server ticks now, whose block entities
     /// the game's own capabilities read and write and whose capabilities
     /// `LevelRef::capability` looks up. False for a level parked while the server ticks
@@ -2428,6 +2445,8 @@ mod tests {
     #[ignore = "daily"]
     fn mod_tickets_save_apart_from_vanillas_tickets_and_release_with_the_world() {
         use mod_api::TicketOwner::{Block, Entity};
+        use std::sync::Arc;
+        use sunrise_client::{streaming::Streaming, testgen::TestTerrain};
         with_machines(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let chunk = game.level_chunk_ref(level, [-9, 4]).unwrap();
@@ -2440,8 +2459,13 @@ mod tests {
             game.save_chunk_tickets().unwrap();
             let vanilla = game.save.load_forced_chunks();
             assert!(vanilla.is_empty(), "vanilla's file has no mod ticket");
-            // The world closes: its streaming goes, the next opening reads the file.
+            // A new level starts with no live tickets; only the saved tickets carry over.
             let reopen = |game: &mut super::super::Game<'_>, slot_of: fn(&str) -> Option<u32>| {
+                let terrain =
+                    TestTerrain::new(game.pack.assets.registry, game.res.biomes()).unwrap();
+                game.streaming = Streaming::new(Arc::new(terrain), game.worker_context(), 1);
+                game.streaming.mesh = false;
+                game.streaming.radius = 0;
                 game.streaming.load_forced(
                     game.save.load_forced_chunks(),
                     game.save.load_mod_tickets(slot_of),

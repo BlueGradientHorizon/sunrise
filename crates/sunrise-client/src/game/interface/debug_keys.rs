@@ -230,8 +230,8 @@ impl Game<'_> {
         }
         Ok(())
     }
-    /// The network charts' samples each tick: `PingDebugMonitor.tick` while
-    /// they show, `BandwidthDebugMonitor.tick` always.
+    /// The network charts' samples each tick: `BandwidthDebugMonitor.tick` always, and the
+    /// integrated server's instant ping (a remote one is `tick_debug_connection`).
     pub(super) fn tick_debug_charts(&mut self) {
         let shown = self.debug && self.debug_charts.network;
         let Some(r) = &self.remote else {
@@ -253,17 +253,27 @@ impl Game<'_> {
             self.debug_charts.log_bandwidth(bytes);
             self.debug_charts.log_packets([sent, received]);
         }
-        if let Some(wanted) = self.debug_charts.subscription_request(self.debug) {
+        r.session
+            .drain_debug_pings(|delay| self.debug_charts.ping.log(delay));
+    }
+    /// `ClientPacketListener.tick` after the carried slot and the chat session: the ping while the
+    /// network charts show, then, with a level, `ClientDebugSubscriber.tick`'s request.
+    pub(in crate::game) fn tick_debug_connection(&mut self) {
+        let Some(r) = &self.remote else {
+            return;
+        };
+        let has_level = r.has_level();
+        if self.debug && self.debug_charts.network {
+            use sunrise_protocol::packets::status::Ping;
+            let time = sunrise_client::net::ping_millis();
+            self.send(Serverbound::PingRequest(Ping { time }));
+        }
+        if has_level && let Some(wanted) = self.debug_charts.subscription_request(self.debug) {
             // `dedicated_server_tick_time` is registry id 0.
             let subscriptions = if wanted { vec![0] } else { vec![] };
             self.send(Serverbound::DebugSubscriptionRequest(
                 DebugSubscriptionRequest { subscriptions },
             ));
-        }
-        if shown {
-            use sunrise_protocol::packets::status::Ping;
-            let time = self.debug_millis();
-            self.send(Serverbound::PingRequest(Ping { time }));
         }
     }
     /// The overlay's chart lines (`DebugScreenOverlay`'s "Debug charts").

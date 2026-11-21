@@ -7,41 +7,99 @@ use std::{
 };
 use syn::{Attribute, Item, Meta, UseTree, Visibility};
 
+/// The first of `values` this tool's own target has, as `cfg!` saw it when the tool was built.
+macro_rules! built_for {
+    ($key:ident: $($value:literal),+) => {
+        [$((cfg!($key = $value), $value)),+]
+            .into_iter()
+            .find_map(|(active, value)| active.then_some(value))
+    };
+}
+
+/// A target `cfg` value: Cargo's, when a build script runs this, else the target this tool was
+/// built for. A key the tool can't know about itself (`target_feature`) is unknown.
 fn target_cfg(name: &str) -> Option<String> {
     let environment = format!("CARGO_CFG_{}", name.to_ascii_uppercase());
     if let Ok(value) = std::env::var(environment) {
         return Some(value);
     }
-    match name {
-        "target_os" => Some(std::env::consts::OS.to_owned()),
-        "target_arch" => Some(std::env::consts::ARCH.to_owned()),
-        "target_abi" => Some(env!("CARGO_CFG_TARGET_ABI").to_owned()),
-        "target_env" => Some(env!("CARGO_CFG_TARGET_ENV").to_owned()),
-        "target_feature" => Some(env!("CARGO_CFG_TARGET_FEATURE").to_owned()),
-        "target_has_atomic" => Some(env!("CARGO_CFG_TARGET_HAS_ATOMIC").to_owned()),
-        "target_vendor" => Some(env!("CARGO_CFG_TARGET_VENDOR").to_owned()),
-        "target_family" => Some(env!("CARGO_CFG_TARGET_FAMILY").to_owned()),
-        "target_pointer_width" => Some(usize::BITS.to_string()),
-        "target_endian" if cfg!(target_endian = "little") => Some("little".to_owned()),
-        "target_endian" if cfg!(target_endian = "big") => Some("big".to_owned()),
-        _ => None,
-    }
+    let value = match name {
+        "target_os" => std::env::consts::OS,
+        "target_arch" => std::env::consts::ARCH,
+        "target_family" => std::env::consts::FAMILY,
+        "target_env" => {
+            built_for!(target_env: "gnu", "msvc", "musl", "sgx", "newlib", "uclibc", "ohos")
+                .unwrap_or("")
+        }
+        "target_vendor" => built_for!(target_vendor: "unknown", "pc", "apple", "fortanix")?,
+        "target_has_atomic" => {
+            return Some(
+                [
+                    (cfg!(target_has_atomic = "8"), "8"),
+                    (cfg!(target_has_atomic = "16"), "16"),
+                    (cfg!(target_has_atomic = "32"), "32"),
+                    (cfg!(target_has_atomic = "64"), "64"),
+                    (cfg!(target_has_atomic = "128"), "128"),
+                    (cfg!(target_has_atomic = "ptr"), "ptr"),
+                ]
+                .into_iter()
+                .filter_map(|(active, width)| active.then_some(width))
+                .collect::<Vec<_>>()
+                .join(","),
+            );
+        }
+        "target_pointer_width" => return Some(usize::BITS.to_string()),
+        "target_endian" if cfg!(target_endian = "little") => "little",
+        "target_endian" if cfg!(target_endian = "big") => "big",
+        _ => return None,
+    };
+    Some(value.to_owned())
 }
+
+/// The target triple this tool was built for, among the platforms Sunrise ships tools for.
+const BUILT_FOR: Option<&str> = if cfg!(all(
+    target_arch = "x86_64",
+    target_os = "linux",
+    target_env = "gnu"
+)) {
+    Some("x86_64-unknown-linux-gnu")
+} else if cfg!(all(
+    target_arch = "aarch64",
+    target_os = "linux",
+    target_env = "gnu"
+)) {
+    Some("aarch64-unknown-linux-gnu")
+} else if cfg!(all(target_arch = "x86_64", target_os = "macos")) {
+    Some("x86_64-apple-darwin")
+} else if cfg!(all(target_arch = "aarch64", target_os = "macos")) {
+    Some("aarch64-apple-darwin")
+} else if cfg!(all(
+    target_arch = "x86_64",
+    target_os = "windows",
+    target_env = "msvc"
+)) {
+    Some("x86_64-pc-windows-msvc")
+} else {
+    None
+};
 
 fn target_flag(name: &str, fallback: bool) -> bool {
     std::env::var_os(format!("CARGO_CFG_{}", name.to_ascii_uppercase())).is_some() || fallback
 }
 
-fn cfg_active(meta: &Meta, features: Option<&HashSet<String>>) -> bool {
-    match meta {
+/// Whether a cfg predicate holds: `None` when it turns on a target value this tool can't know
+/// about itself (`target_feature`), so an item under it is kept whichever way a `not` goes.
+fn cfg_active(meta: &Meta, features: Option<&HashSet<String>>) -> Option<bool> {
+    Some(match meta {
         Meta::Path(path) => {
             let Some(name) = path.get_ident().map(ToString::to_string) else {
-                return true;
+                return Some(true);
             };
             match name.as_str() {
                 "test" => false,
-                "unix" | "windows" => target_cfg("target_family")
-                    .is_none_or(|family| family.split(',').any(|item| item == name)),
+                "unix" | "windows" => target_cfg("target_family")?
+                    .split(',')
+                    .any(|item| item == name),
                 "debug_assertions" => target_flag("debug_assertions", cfg!(debug_assertions)),
                 "target_thread_local" => target_flag(
                     "target_thread_local",
@@ -56,51 +114,63 @@ fn cfg_active(meta: &Meta, features: Option<&HashSet<String>>) -> bool {
         }
         Meta::NameValue(pair) => {
             let Some(name) = pair.path.get_ident().map(ToString::to_string) else {
-                return true;
+                return Some(true);
             };
             if name != "feature" && !name.starts_with("target_") {
-                return true;
+                return Some(true);
             }
             let syn::Expr::Lit(syn::ExprLit {
                 lit: syn::Lit::Str(expected),
                 ..
             }) = &pair.value
             else {
-                return true;
+                return Some(true);
             };
             if name == "feature" {
-                return features.is_some_and(|features| features.contains(&expected.value()));
+                return Some(features.is_some_and(|features| features.contains(&expected.value())));
             }
-            target_cfg(&name).is_none_or(|actual| {
-                actual
-                    .split(',')
-                    .any(|item| item.trim() == expected.value())
-            })
+            target_cfg(&name)?
+                .split(',')
+                .any(|item| item.trim() == expected.value())
         }
         Meta::List(list) => {
             let Ok(inner) = list.parse_args_with(
                 syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
             ) else {
-                return true;
+                return Some(true);
+            };
+            let each: Vec<_> = inner
+                .iter()
+                .map(|meta| cfg_active(meta, features))
+                .collect();
+            // An unknown operand leaves the answer unknown unless a known one decides it.
+            let decided = |by: bool| {
+                if each.contains(&Some(by)) {
+                    Some(by)
+                } else if each.contains(&None) {
+                    None
+                } else {
+                    Some(!by)
+                }
             };
             if list.path.is_ident("any") {
-                inner.iter().any(|meta| cfg_active(meta, features))
+                decided(true)?
             } else if list.path.is_ident("all") {
-                inner.iter().all(|meta| cfg_active(meta, features))
+                decided(false)?
             } else if list.path.is_ident("not") {
-                !inner.iter().all(|meta| cfg_active(meta, features))
+                !decided(false)?
             } else {
                 true
             }
         }
-    }
+    })
 }
 
 fn attribute_is_active(meta: &Meta, features: Option<&HashSet<String>>) -> bool {
     match meta {
         Meta::List(list) if list.path.is_ident("cfg") => list
             .parse_args::<Meta>()
-            .map(|condition| cfg_active(&condition, features))
+            .map(|condition| cfg_active(&condition, features) != Some(false))
             .unwrap_or(true),
         Meta::List(list) if list.path.is_ident("cfg_attr") => {
             let Ok(args) = list.parse_args_with(
@@ -111,7 +181,7 @@ fn attribute_is_active(meta: &Meta, features: Option<&HashSet<String>>) -> bool 
             let Some(condition) = args.first() else {
                 return true;
             };
-            !cfg_active(condition, features)
+            cfg_active(condition, features) != Some(true)
                 || args
                     .iter()
                     .skip(1)
@@ -129,13 +199,12 @@ pub fn target_dependency_active(selector: &str) -> Result<bool, String> {
     {
         let meta: Meta = syn::parse_str(condition)
             .map_err(|error| format!("invalid Cargo target selector `{selector}`: {error}"))?;
-        return Ok(cfg_active(&meta, None));
+        return Ok(cfg_active(&meta, None) != Some(false));
     }
-    let target = std::env::var("TARGET");
-    Ok(selector
-        == target
-            .as_deref()
-            .unwrap_or(env!("SUNRISE_MOD_SOURCE_TARGET")))
+    Ok(match std::env::var("TARGET") {
+        Ok(target) => selector == target,
+        Err(_) => BUILT_FOR == Some(selector),
+    })
 }
 
 /// One module: its crate, its path below the crate root, and its items.
@@ -288,7 +357,7 @@ fn path_attribute(attrs: &[syn::Attribute], features: Option<&HashSet<String>>) 
                     )
                     .ok()?;
                 let condition = args.first()?;
-                cfg_active(condition, features)
+                (cfg_active(condition, features) != Some(false))
                     .then(|| args.iter().skip(1).find_map(|meta| path(meta, features)))
                     .flatten()
             }
@@ -1165,6 +1234,36 @@ mod index_tests {
 
         let test_only: Attribute = syn::parse_quote!(#[cfg(test)]);
         assert!(!attribute_is_active(&test_only.meta, None));
+    }
+
+    #[test]
+    fn an_unknown_target_feature_keeps_the_item_under_any_negation() {
+        for attr in [
+            quote::quote!(#[cfg(target_feature = "sunrise-fixture")]),
+            quote::quote!(#[cfg(not(target_feature = "sunrise-fixture"))]),
+            quote::quote!(#[cfg(not(all(unix, target_feature = "sunrise-fixture")))]),
+            quote::quote!(#[cfg_attr(target_feature = "sunrise-fixture", cfg(any()))]),
+            quote::quote!(#[cfg_attr(not(target_feature = "sunrise-fixture"), cfg(any()))]),
+        ] {
+            let text = attr.to_string();
+            let attr: Attribute = syn::parse_quote!(#attr);
+            assert!(attribute_is_active(&attr.meta, None), "{text}");
+        }
+        // A known operand still decides.
+        for (attr, active) in [
+            (
+                quote::quote!(#[cfg(all(test, target_feature = "sunrise-fixture"))]),
+                false,
+            ),
+            (
+                quote::quote!(#[cfg(not(any(not(test), target_feature = "sunrise-fixture")))]),
+                false,
+            ),
+        ] {
+            let text = attr.to_string();
+            let attr: Attribute = syn::parse_quote!(#attr);
+            assert_eq!(attribute_is_active(&attr.meta, None), active, "{text}");
+        }
     }
 
     #[test]

@@ -116,7 +116,7 @@ harnesses = [
   "trading", "trade_components", "merchant_*", "warden_owned_memories", "wolf_anger_writes", "zombie_cure_sound",
   "noai_*", "nautilus_memory", "pet_owner_teleport", "enderman_placement", "loaded_pig_tags", "ageable_integer_load",
   "bed_poi", "peaceful_summon", "return_to_sender", "hostile_sound_categories", "ominous_warning_sound",
-  "command_reinforcements", "last_hurt_by_mob", "spell_ticks", "gateway_cooldown",
+  "command_reinforcements", "last_hurt_by_mob", "spell_ticks", "gateway_cooldown", "damage_source_entities",
 ]
 lan = [
   "mobs", "barter", "piglin_offspring", "sleep-villager", "trials", "villagers", "hero-trading", "cure-discount",
@@ -174,7 +174,7 @@ cargo = [
 ]
 harnesses = [
   "lan*", "server_*", "remote_*", "dedicated_*", "online_mode", "secure_chat", "wire_stream", "item_wire",
-  "stop_sound_wire", "debug_packet_codec", "protocol_*", "friends_integration", "management_protocol", "user_cache", "player_sync",
+  "stop_sound_wire", "protocol_*", "friends_integration", "management_protocol", "user_cache", "player_sync",
   "*_guest", "guest_*", "connected_guest_advancement_save", "disconnect_crafting", "entity_sound_packet",
   "synced_*", "test_pos_guest",
 ]
@@ -372,7 +372,7 @@ paths = [
   "crates/sunrise-client/src/game/network/remote*", "crates/sunrise-protocol/src/packets/*",
   "crates/sunrise-client/src/game/world/tick_script.rs", "tools/net_capture.py", "tools/wire_stream.py",
 ]
-harnesses = ["wire_stream", "protocol_*", "item_wire", "stop_sound_wire", "debug_packet_codec", "player_sync"]
+harnesses = ["wire_stream", "protocol_*", "item_wire", "stop_sound_wire", "player_sync"]
 
 [[area]]
 name = "mod-api"

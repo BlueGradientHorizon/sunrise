@@ -10,6 +10,7 @@ import net.minecraft.network.protocol.game.ClientboundDebugSamplePacket;
 import net.minecraft.network.protocol.game.ServerboundDebugSubscriptionRequestPacket;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.util.debug.DebugSubscriptions;
+import net.minecraft.util.debugchart.LocalSampleLogger;
 import net.minecraft.util.debugchart.RemoteDebugSampleType;
 
 /** Debug sample / subscription request bodies through the native stream codecs. */
@@ -35,6 +36,35 @@ public final class VanillaDebugPacketOracle {
             var ids = new ArrayList<Integer>();
             for (var s : set) ids.add(BuiltInRegistries.DEBUG_SUBSCRIPTION.getId(s));
             out.add("{\"packet\":\"request\",\"ids\":" + ids + ",\"wire\":\"" + hex(buf) + "\"}");
+        }
+        out.add("{\"packet\":\"registry\",\"count\":" + BuiltInRegistries.DEBUG_SUBSCRIPTION.size() + "}");
+        // Refused input: the request's codec (unknown id, over 32), and a sample's codec plus the handler's
+        // logFullSample (a kind past the enum, more values than the logger's four: arraycopy throws).
+        for (String body : new String[]{"00", "0100", "020000", "020100", "03010000", "010f", "0110", "01ffffffff0f", "ff",
+                "20" + "00".repeat(32), "21" + "00".repeat(33)}) {
+            var buf = new RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(HexFormat.of().parseHex(body)), access);
+            String result;
+            try {
+                var ids = new TreeSet<Integer>();
+                for (var s : ServerboundDebugSubscriptionRequestPacket.STREAM_CODEC.decode(buf).subscriptions()) ids.add(BuiltInRegistries.DEBUG_SUBSCRIPTION.getId(s));
+                result = "ok " + ids;
+            } catch (Throwable t) {
+                result = "error";
+            }
+            out.add("{\"packet\":\"decode_request\",\"body\":\"" + body + "\",\"result\":\"" + result + "\"}");
+        }
+        String eight = "0000000000000007";
+        for (String body : new String[]{"0000", "01" + eight + "00", "04" + eight.repeat(4) + "00", "05" + eight.repeat(5) + "00", "0001", "000f", "00ffffffff0f"}) {
+            var buf = new RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(HexFormat.of().parseHex(body)), access);
+            String result;
+            try {
+                var packet = ClientboundDebugSamplePacket.STREAM_CODEC.decode(buf);
+                new LocalSampleLogger(4).logFullSample(packet.sample());
+                result = "ok " + Arrays.toString(packet.sample()) + " " + packet.debugSampleType().ordinal();
+            } catch (Throwable t) {
+                result = "error";
+            }
+            out.add("{\"packet\":\"decode_sample\",\"body\":\"" + body + "\",\"result\":\"" + result + "\"}");
         }
         Files.write(Path.of(args[0]), out);
     }
