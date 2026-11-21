@@ -1,0 +1,8 @@
+ids = [
+    "method:RecipeBooksRegistrar::recipe_book_type",
+    "method:RecipeBooksRegistrar::recipe_book_type_with_fields",
+    "method:RecipeBooksRegistrar::recipe_book_filter_look",
+    "method:MenusRegistrar::menu_recipe_book",
+]
+why = "Recipe book registration, filter sprites, menu links, saves and placement identities use one identifier grammar, following vanilla 26.3 Identifier.parse, Identifier.fromNamespaceAndPath and Identifier.isValidNamespace. Book declarations keep both parts explicit. NeoForge RecipeBookManager.init registers mod book categories without defining a separate identifier grammar."
+migrate = "Keep the same registrar calls. Give recipe_book_type and recipe_book_type_with_fields a fully qualified book ID such as your_mod:kitchen/pot. Give recipe_book_filter_look four fully qualified sprite IDs matching the actual assets; replace ..:pot with the intended sprite ID, such as your_mod:pot. In menu_recipe_book, pass full IDs for both the menu and the recipe type: replace :cooking or your_mod: with the actual registered ID, such as your_mod:cooking. Both parts must be nonempty; no default namespace or whitespace trimming is applied."

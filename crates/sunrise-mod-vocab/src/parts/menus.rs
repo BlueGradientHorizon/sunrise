@@ -192,6 +192,8 @@ pub trait MenusRegistrar {
     ) -> Result<(), String>;
 
     /// Declare this menu's book, authoritative recipe type and destination roles.
+    /// `menu` and `recipe_type` must both pass [`crate::Identifier::parse_namespaced`]:
+    /// both the namespace and the path must be explicit and nonempty.
     /// The menu remains content-owned; loading checks these roles against its
     /// actual container slots, crafting declaration and every permanent mask
     /// declared with [`Self::menu_slot_exclusions`].

@@ -2,6 +2,9 @@
 
 Register a custom recipe book during shared mod registration. Its namespaced ID is
 its stable identity for menus, per-player state, and negotiated synchronization.
+Use an explicit `namespace:path` with neither part empty, in a namespace owned by
+your mod. These IDs use `Identifier::parse_namespaced`: `..:pot` is invalid,
+`example:kitchen/pot` is valid, and whitespace is not stripped.
 
 `recipe_book_type("example:cooking")` saves the book's open and craftable-only
 filtering flags in the engine's `sunrise:book_settings` compound inside the
@@ -70,7 +73,8 @@ registrar.recipe_book_filter_look(
 )?;
 ```
 
-Each sprite is a 26 by 16 GUI sprite, `namespace:path` for the file
+Each sprite is a 26 by 16 GUI sprite, with an explicit `namespace:path` following
+the same identifier grammar as book IDs. The ID names the file
 `assets/<namespace>/textures/gui/sprites/<path>.png`; the highlighted pair shows while the cursor is
 over the button. The tooltip is a translation key, shown while filtering is on; while it is off the
 button keeps vanilla's `gui.recipebook.toggleRecipes.all`. Only the book's own mod may declare its
