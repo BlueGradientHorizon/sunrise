@@ -2147,9 +2147,9 @@ pub enum MobEvent {
         amount: f32,
         source: Damage,
     },
-    /// `Pufferfish.touch` on a mob (`Pufferfish.aiStep`): the hit, then, only
-    /// when `hurtServer` let it land, the fish's `entity.puffer_fish.sting`
-    /// and the poison it gives (`poison_ticks`, `60 * getPuffState()`).
+    /// `Pufferfish.touch` on a mob (`Pufferfish.aiStep`): settle this hit before
+    /// its poison and sting sound (only on `hurtServer` success), and before
+    /// trying the next candidate.
     PufferfishSting {
         mob: u32,
         target: u32,
@@ -3079,15 +3079,89 @@ pub fn collision_changes(w: &MobWorld, writes: &[((i32, i32, i32), u32, u32)]) -
         })
         .collect()
 }
-/// Applies the brain memories a mob's tick set on other mobs (from event
-/// index `from` on), at once: vanilla sets them on the other entity during
-/// the tick, before the mobs after it tick.
+/// The tail of a `Pufferfish.touch` whose hurt needs the owning game. The
+/// event still occupies `slot`; its hurt must not run again on resume.
+pub struct BrainHitResume {
+    pub target: u32,
+    pub join: crate::join_seq::JoinSeq,
+    slot: usize,
+    accepted: bool,
+    poison_ticks: i32,
+    sound_at: Option<[f64; 3]>,
+}
+
+impl BrainHitResume {
+    /// The hurt's actual victim, not a replacement that reused its network id.
+    pub fn matches_victim(&self, mob: &Mob) -> bool {
+        mob.id == self.target && mob.join == self.join && !mob.removed
+    }
+
+    /// Finish the sting after its owner settles death and Post. Return the
+    /// first unprocessed event, skipping any output inserted by this sting.
+    pub fn resume(
+        self,
+        mobs: &mut crate::join_seq::JoinList<Mob>,
+        events: &mut Vec<MobEvent>,
+        at: Option<usize>,
+    ) -> usize {
+        let victim = at
+            .and_then(|at| mobs.get_mut(at))
+            .filter(|mob| self.matches_victim(mob));
+        self.finish(events, victim)
+    }
+
+    fn finish(self, events: &mut Vec<MobEvent>, victim: Option<&mut Mob>) -> usize {
+        if !self.accepted {
+            events.remove(self.slot);
+            return self.slot;
+        }
+        // A lethal but accepted hit still poisons: addEffect doesn't test survival.
+        let raised = victim.map_or_else(Vec::new, |mob| {
+            mob.add_effect("minecraft:poison", self.poison_ticks, 0);
+            std::mem::take(&mut mob.outbox)
+        });
+        let sound = self
+            .sound_at
+            .map(|at| MobEvent::Sound("entity.puffer_fish.sting", at, 1.0, 1.0));
+        let next = self.slot + usize::from(sound.is_some()) + raised.len();
+        drop(events.splice(self.slot..=self.slot, sound.into_iter().chain(raised)));
+        next
+    }
+}
+
+/// Apply the brain events in a simulation without an owning `Game` to resume.
 pub fn apply_brain_events(
     mobs: &mut crate::join_seq::JoinList<Mob>,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     from: usize,
 ) {
+    let _ = apply_brain_event_tail(mobs, level, events, from, None);
+}
+
+/// Apply brain events in order before the next mob ticks. Use the borrowed
+/// pass's live row lookup and stop only at a hit that needs the owning game.
+pub fn apply_brain_events_until_hit(
+    mobs: &mut crate::join_seq::JoinList<Mob>,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    from: usize,
+    position: &dyn Fn(u32) -> Option<usize>,
+) -> Option<BrainHitResume> {
+    apply_brain_event_tail(mobs, level, events, from, Some(position))
+}
+
+fn apply_brain_event_tail(
+    mobs: &mut crate::join_seq::JoinList<Mob>,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    from: usize,
+    owned_position: Option<&dyn Fn(u32) -> Option<usize>>,
+) -> Option<BrainHitResume> {
+    let position = |mobs: &[Mob], id| match owned_position {
+        Some(position) => position(id),
+        None => mobs.iter().position(|m| m.id == id),
+    };
     let mut i = from;
     while i < events.len() {
         match events[i] {
@@ -3147,9 +3221,8 @@ pub fn apply_brain_events(
                 mut source,
                 poison_ticks,
             } => {
-                let mut sound = None;
-                let mut raised = Vec::new();
-                let fish = mobs.iter().find(|m| m.id == mob);
+                let victim_at = position(mobs, target);
+                let fish = position(mobs, mob).and_then(|at| mobs.get(at));
                 if source.attacker_species.is_none() {
                     source.attacker_species = fish.map(Mob::species);
                 }
@@ -3160,50 +3233,52 @@ pub fn apply_brain_events(
                 };
                 let attack = crate::health::Attack {
                     attacker: mob as i32,
-                    // Pufferfish.touch uses DamageSources.sting: the fish, no projectile.
+                    // Pufferfish.touch uses DamageSources.mobAttack: the fish, no projectile.
                     projectile: None,
                     direct: None,
                     held: [held, None],
                     player_uuid: None,
                     ..Default::default()
                 };
-                let (aim, fish_pos, fish_silent) = fish
-                    .map(|m| {
-                        (
-                            Aim {
-                                eye: [m.position.x, m.eye_y(), m.position.z],
-                                look: m.look_angle(),
-                                feet: [m.position.x, m.position.y, m.position.z],
-                            },
-                            [m.position.x, m.position.y, m.position.z],
-                            m.silent,
-                        )
-                    })
-                    .map(|(aim, pos, silent)| (Some(aim), Some(pos), silent))
-                    .unwrap_or((None, None, true));
+                let aim = fish.map(|m| Aim {
+                    eye: [m.position.x, m.eye_y(), m.position.z],
+                    look: m.look_angle(),
+                    feet: [m.position.x, m.position.y, m.position.z],
+                });
+                let sound_at = fish
+                    .filter(|m| !m.silent)
+                    .map(|m| [m.position.x, m.position.y, m.position.z]);
+                // The query fixed the candidate order, not the state of the
+                // next target after another victim's hurt or death listener.
+                let Some(victim) = victim_at
+                    .and_then(|at| mobs.get_mut(at))
+                    .filter(|m| !m.removed && m.alive())
+                else {
+                    events.remove(i);
+                    continue;
+                };
                 let mut hit_level = level.reborrow().attacked_by(&attack);
-                if let Some(t) = mobs.iter_mut().find(|m| m.id == target)
-                    && t.damage_aimed(&mut hit_level, amount, source, aim)
-                {
-                    t.add_effect("minecraft:poison", poison_ticks, 0);
-                    raised = std::mem::take(&mut t.outbox);
-                    if !fish_silent && let Some(at) = fish_pos {
-                        sound = Some(MobEvent::Sound("entity.puffer_fish.sting", at, 1.0, 1.0));
-                    }
+                let accepted = victim.damage_aimed(&mut hit_level, amount, source, aim);
+                let tail = BrainHitResume {
+                    target,
+                    join: victim.join,
+                    slot: i,
+                    accepted,
+                    poison_ticks,
+                    sound_at,
+                };
+                // Nonlethal hits already posted inline. This victim was live
+                // before the hit, so a death still needs the owner even if a
+                // subclass returned false or nobody listens for Post.
+                if owned_position.is_some() && !victim.alive() {
+                    return Some(tail);
                 }
-                events.remove(i);
-                if let Some(s) = sound {
-                    events.insert(i, s);
-                    i += 1;
-                }
-                for e in raised {
-                    events.insert(i, e);
-                    i += 1;
-                }
+                i = tail.finish(events, Some(victim));
             }
             _ => i += 1,
         }
     }
+    None
 }
 /// The player as mobs see it.
 #[derive(Clone, Debug)]

@@ -178,6 +178,9 @@ A server player's landing hurt settles death or protection and Post on the landi
 `HIT_GROUND`, the fall-distance reset, and the next accepted move. In a mob's own tick, landing
 hurt settles before the fall-distance reset, the rest of movement, a gliding collision hurt or
 another goal. Trampling farmland is still decided before the landing hurt.
+A pufferfish's sting on a mob finishes the hurt, including any death and `living_damage_post`,
+before applying that sting's poison or starting the next sting. The fish's own `entity_tick_post`
+follows all of its stings.
 
 For incoming damage, `event.weapon` is the direct entity's weapon, including a projectile's
 saved firing weapon. `event.causing_weapon` is instead the causing living entity's current

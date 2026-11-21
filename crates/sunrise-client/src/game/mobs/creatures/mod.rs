@@ -3633,7 +3633,8 @@ impl Game<'_> {
                         self.note_started_riding(vehicle);
                     }
                 }
-                // Applied after the fish's tick (`apply_brain_events`).
+                // The borrowed tick has already applied these fish events,
+                // including settling each sting before the next event.
                 MobEvent::StartFollowing { .. }
                 | MobEvent::SchoolSize { .. }
                 | MobEvent::PufferfishSting { .. } => {}

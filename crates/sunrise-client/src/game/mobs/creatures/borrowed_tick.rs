@@ -1,5 +1,13 @@
 //! Resumable borrowed mob-tick region; the caller owns final restoration.
 use super::*;
+use sunrise_client::mobs::BrainHitResume;
+
+/// The mob step is finished, but its events still belong to this tick slot.
+enum BrainEventCursor {
+    Start(usize),
+    AfterHit(BrainHitResume),
+}
+
 /// Route each player event to the player selected when it was emitted.
 /// Untagged events retain the previous per-tick guest binding.
 fn route_player_events(
@@ -179,19 +187,19 @@ impl Game<'_> {
         // Whether a mob still in the lifted list has left the pass (`keep` false) since the list
         // was last given back: a told-alone yield then takes it out before the call.
         let mut gone_rows = false;
+        let mut event_cursor = None;
+        // These belong to the finished mob, not the victim its event may hurt.
+        // Keep them until the mob's event tail finishes, then file its section
+        // writes and issue its Post while the rows are back in the owner.
+        let mut tell_post: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>)> = None;
+        let mut section_yield = false;
         loop {
             let mut pause = None;
             let mut air_answer = None;
             let mut retry_rider = None;
-            // A mob told alone hears its Pre right before its tick and its Post right after:
-            // stop there, restore the list, tell it while the live rows are readable, and resume.
+            // A mob told alone hears its Pre with the list restored, before it ticks.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
                 None;
-            let mut tell_post: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>)> = None;
-            // A mob's list is lifted while its world view is borrowed.  Once a
-            // position write was captured, stop after this mob, restore the
-            // list, and tell its writes while the live row is readable.
-            let mut section_yield = false;
             {
                 let ticking = self.entity_ticking_area();
                 let listed = self.entity_tick_listed_area();
@@ -225,6 +233,40 @@ impl Game<'_> {
                 laps.lap("creature_prepare");
                 let mut cached_difficulty: Option<((i32, i32), spawning::LocalDifficulty)> = None;
                 while cursor < original_len {
+                    if let Some(tail) = event_cursor.take() {
+                        let position_of = |id| {
+                            let slot = *index.get(&id)? as usize;
+                            if !keep.get(slot).copied().unwrap_or(true) {
+                                return None;
+                            }
+                            match &positions {
+                                Some(positions) => positions.get(&id).copied(),
+                                None => Some(slot),
+                            }
+                        };
+                        let from = match tail {
+                            BrainEventCursor::Start(from) => from,
+                            BrainEventCursor::AfterHit(hit) => {
+                                let at = position_of(hit.target);
+                                hit.resume(&mut mobs, &mut events, at)
+                            }
+                        };
+                        if let Some(hit) = sunrise_client::mobs::apply_brain_events_until_hit(
+                            &mut mobs,
+                            &mut level,
+                            &mut events,
+                            from,
+                            &position_of,
+                        ) {
+                            event_cursor = Some(BrainEventCursor::AfterHit(hit));
+                            break;
+                        }
+                        cursor += 1;
+                        if section_yield || tell_post.is_some() {
+                            break;
+                        }
+                        continue;
+                    }
                     let slot = cursor;
                     let i = match &positions {
                         None => slot,
@@ -765,12 +807,10 @@ impl Game<'_> {
                     snapshot[slot].alive &= kept;
                     snapshot[slot].removed |= !kept;
                     grid.update(slot, snapshot[slot].bounds);
-                    sunrise_client::mobs::apply_brain_events(
-                        &mut mobs,
-                        &mut level,
-                        &mut events,
-                        from,
-                    );
+                    if from < events.len() {
+                        event_cursor = Some(BrainEventCursor::Start(from));
+                        continue;
+                    }
                     cursor += 1;
                     if section_yield || tell_post.is_some() {
                         break;
@@ -778,12 +818,12 @@ impl Game<'_> {
                 }
             }
             self.creatures.lan_sounds.append(&mut hit_sounds);
-            if pause.is_none()
-                && retry_rider.is_none()
-                && !section_yield
-                && tell_pre.is_none()
-                && tell_post.is_none()
-            {
+            let brain_hit = match &event_cursor {
+                Some(BrainEventCursor::AfterHit(hit)) => Some(hit),
+                _ => None,
+            };
+            let paused = pause.is_some() || retry_rider.is_some() || brain_hit.is_some();
+            if !paused && !section_yield && tell_pre.is_none() && tell_post.is_none() {
                 break;
             }
             // No MobWorld, DamageLevel or navigation loan crosses this boundary.
@@ -794,7 +834,7 @@ impl Game<'_> {
             // can read or replace another actor's velocity. A section-only
             // or a told-alone yield must not change the normal end-of-pass
             // push ordering.
-            if pause.is_some() || retry_rider.is_some() {
+            if paused {
                 for m in &mut mobs {
                     sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
                 }
@@ -804,7 +844,7 @@ impl Game<'_> {
             // any) and is taken again as it is, so the loop's views of it (snapshot, grid,
             // index, places) stay valid unless the call wrote a mob or added one. The list's
             // write stamp says whether it did: any mutable access moves it.
-            let told_only = pause.is_none() && retry_rider.is_none() && !section_yield;
+            let told_only = !paused && !section_yield;
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 mobs.retain(|m| {
@@ -831,6 +871,7 @@ impl Game<'_> {
             let trampling = matches!(pause, Some(Pause::Trample(_)));
             let live_sections = section_table.as_ref().filter(|_| {
                 trampling
+                    || brain_hit.is_some()
                     || matches!(
                         pause,
                         Some(Pause::AfterDamage(_) | Pause::FallToPassengers(_))
@@ -843,6 +884,14 @@ impl Game<'_> {
                 );
             }
             let callback_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if let Some(hit) = brain_hit {
+                    if let Some(i) = self.mobs.locate(hit.join)
+                        && hit.matches_victim(&self.mobs[i])
+                    {
+                        self.finish_mob_damage_at(i);
+                    }
+                    return;
+                }
                 if section_yield && let Some(sections) = section_table.as_ref() {
                     self.entity_sections_ticked_live(
                         &mut sections.borrow_mut(),
@@ -897,6 +946,10 @@ impl Game<'_> {
             let unchanged = same_rows && self.mobs.stamp() == restored;
             if tell_pre.is_some() {
                 told_at = Some(cursor);
+            }
+            if brain_hit.is_none() {
+                tell_post = None;
+                section_yield = false;
             }
             if retry_rider.is_some() {
                 blocked = std::borrow::Cow::Owned(self.mobs_below_off_level());

@@ -699,6 +699,180 @@ fn squid_finishes_the_lethal_hit_its_subclass_reports_false() {
     });
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum PufferfishMoment {
+    Incoming(i32),
+    Death(Vec<(i32, i32)>),
+    Post(i32),
+    FishTickPost(Vec<(i32, i32)>),
+}
+
+struct PufferfishProbe {
+    fish: u32,
+    first: u32,
+    trace: Arc<Mutex<Vec<PufferfishMoment>>>,
+}
+
+fn active_poison(host: &dyn mod_api::ServerHost, victim: mod_api::LivingRef) -> Vec<(i32, i32)> {
+    let poison = host.effect_key("minecraft:poison").unwrap();
+    victim
+        .effects(host)
+        .unwrap()
+        .into_iter()
+        .filter(|effect| effect.id == poison)
+        .map(|effect| (effect.duration, effect.amplifier))
+        .collect()
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for PufferfishProbe {
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        r.entity_tick_each("minecraft:pufferfish");
+    }
+
+    fn living_incoming_damage(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut LivingIncomingDamageEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.source.causing == self.fish as i32
+            && event.source.damage_type == "minecraft:mob_attack"
+        {
+            self.trace
+                .lock()
+                .unwrap()
+                .push(PufferfishMoment::Incoming(event.entity));
+        }
+        mod_api::Flow::Continue
+    }
+
+    fn living_death(
+        &self,
+        host: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::LivingDeathEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.entity != self.first || event.source.causing != self.fish as i32 {
+            return mod_api::Flow::Continue;
+        }
+        let victim = host.living(host.entity(self.first).unwrap()).unwrap();
+        self.trace
+            .lock()
+            .unwrap()
+            .push(PufferfishMoment::Death(active_poison(host, victim)));
+        // Keep the victim available for the poison and the fish's own Post read.
+        assert!(victim.set_health(host, 5.0));
+        mod_api::Flow::Cancel
+    }
+
+    fn living_damage_post(&self, _: &mut dyn HitHost, event: &mut LivingDamagePostEvent<'_>) {
+        if event.source.causing == self.fish as i32
+            && event.source.damage_type == "minecraft:mob_attack"
+        {
+            self.trace
+                .lock()
+                .unwrap()
+                .push(PufferfishMoment::Post(event.entity));
+        }
+    }
+
+    fn entity_tick_listened(
+        &self,
+        _: mod_api::HostSide<'_>,
+        event: &mut mod_api::EntityTickListenedEvent,
+    ) {
+        event.listened = true;
+    }
+
+    fn entity_tick_post(
+        &self,
+        host: mod_api::HostSide<'_>,
+        event: &mut mod_api::EntityTickPostEvent<'_>,
+    ) {
+        if event.entities == [self.fish]
+            && let mod_api::HostSide::Server(host) = host
+        {
+            let victim = host.living(host.entity(self.first).unwrap()).unwrap();
+            self.trace
+                .lock()
+                .unwrap()
+                .push(PufferfishMoment::FishTickPost(active_poison(host, victim)));
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn borrowed_pufferfish_posts_before_poison_and_the_next_sting() {
+    use super::native_entity_refs::tests::run_fresh_cases;
+    if run_fresh_cases(
+        "game::native_damage_tests::borrowed_pufferfish_posts_before_poison_and_the_next_sting",
+        "SUNRISE_BORROWED_PUFFERFISH_CHILD",
+        &["sting"],
+    ) {
+        return;
+    }
+    let (fish, first, second) = (225051, 225052, 225053);
+    let trace = Arc::new(Mutex::new(Vec::new()));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "pufferfish-order",
+        Box::new(PufferfishProbe {
+            fish,
+            first,
+            trace: Arc::clone(&trace),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.build_registries();
+            game.streaming
+                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+            // Same chunk/section, in the order the contact query visits them.
+            let mut puffer = mob(game, fish, "minecraft:pufferfish");
+            puffer.position = Vec3::new(1.5, 80.0, 1.5);
+            puffer.extra.size = 2;
+            puffer.no_ai = true;
+            puffer.no_gravity = true;
+            let age = puffer.age;
+            game.mobs.push(puffer);
+            for (id, x) in [(first, 1.25), (second, 1.75)] {
+                let mut pig = mob(game, id, "minecraft:pig");
+                pig.position = Vec3::new(x, 80.0, 1.5);
+                pig.no_ai = true;
+                pig.no_gravity = true;
+                if id == first {
+                    pig.health = 0.5;
+                }
+                game.mobs.push(pig);
+            }
+
+            game.tick_creature_entities().unwrap();
+
+            use PufferfishMoment::*;
+            assert_eq!(
+                *trace.lock().unwrap(),
+                [
+                    Incoming(first as i32),
+                    Death(vec![]),
+                    Post(first as i32),
+                    Incoming(second as i32),
+                    Post(second as i32),
+                    FishTickPost(vec![(120, 0)])
+                ]
+            );
+            let revived = game.mobs.iter().find(|m| m.id == first).unwrap();
+            assert!(revived.alive(), "the death veto revived the first victim");
+            let puffer = game.mobs.iter().find(|m| m.id == fish).unwrap();
+            assert_eq!(
+                puffer.age,
+                age + 1,
+                "resuming a sting must not rerun the fish tick"
+            );
+        });
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
