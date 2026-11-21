@@ -25,19 +25,27 @@ The table includes data packs and biome modifiers. Spawners describe the biome's
 
 ## Read blended biome tints on the client
 
-Grass, foliage and dry-foliage colormaps are client-only resources. On the client, read the blended tint at a block position with `LevelRef::block_tint(host, pos, resolver)` (matching `ClientLevel.getBlockTint` and `BiomeColors.getAverageGrassColor` / `getAverageFoliageColor` / `getAverageDryFoliageColor` / `getAverageWaterColor`):
+Grass, foliage and dry-foliage colormaps are client-only resources. On the client, read blended tints through the existing client tint APIs:
+
+- **Inside `BlockTintSource` callbacks** (`color_in_world`, `color_as_terrain_particle`), call `BlockAndTintGetter::block_tint(pos, resolver)` with `ColorResolver::Grass`, `ColorResolver::Foliage`, `ColorResolver::DryFoliage`, `ColorResolver::Water`, or a mod resolver registered in `register_color_resolvers` (matching `BiomeColors.getAverageGrassColor` / `getAverageFoliageColor` / `getAverageDryFoliageColor` / `getAverageWaterColor`, opaque ARGB `0xFF00_0000 | rgb` blended over the biome blend radius):
 
 ```rust,ignore
-use mod_api::{ClientHost, ColorResolver, LevelRef};
+use mod_api::{BlockAndTintGetter, ColorResolver};
 
-fn sample_tints(host: &dyn ClientHost, level: LevelRef, pos: [i32; 3]) {
-    if let Ok(grass_argb) = level.block_tint(host, pos, ColorResolver::Grass) {
-        let _grass_rgb = grass_argb & 0x00FF_FFFF;
-    }
-    let _foliage_argb = level.block_tint(host, pos, ColorResolver::Foliage);
-    let _dry_foliage_argb = level.block_tint(host, pos, ColorResolver::DryFoliage);
-    let _water_argb = level.block_tint(host, pos, ColorResolver::Water);
+fn sample_in_tint_source(level: &dyn BlockAndTintGetter, pos: [i32; 3]) {
+    let _grass_argb = level.block_tint(pos, ColorResolver::Grass);
+    let _foliage_argb = level.block_tint(pos, ColorResolver::Foliage);
+    let _dry_foliage_argb = level.block_tint(pos, ColorResolver::DryFoliage);
+    let _water_argb = level.block_tint(pos, ColorResolver::Water);
 }
 ```
 
-`block_tint` averages over the client's biome blend radius using the loaded chunks (plains where absent) and active biome colours (including resource pack colormaps and `biome_colors`), without loading chunks. It returns `Err(LevelReadError::Unavailable)` before login or outside the world phase, and `Err(LevelReadError::Stale)` for a stale handle or another dimension.
+- **In other client hooks** (World phase), call `ClientHost::block_tint_color(state, tint_index, pos)` for a drawn block or fluid face's `0xRRGGBB` tint (for example, a face's `FaceSprite::tint_index`, or tint index `0` on `minecraft:grass_block`, `minecraft:oak_leaves`, `minecraft:leaf_litter`, or `minecraft:water`). This applies biome blending together with active resource pack `biome_colors` and Polytone block and fluid colormaps, matching what the chunk and fluid meshers draw:
+
+```rust,ignore
+use mod_api::{BlockState, ClientHost};
+
+fn sample_drawn_tint(host: &dyn ClientHost, grass_block: BlockState, pos: [i32; 3]) -> Option<u32> {
+    host.block_tint_color(grass_block, 0, pos)
+}
+```

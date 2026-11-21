@@ -82,31 +82,6 @@ pub trait LevelWorldgenBackend {
     #[access(WorldOnly)]
     fn level_seed(&self, level: LevelRef) -> Option<i64>;
 }
-/// The handles' client reads of the `level_worldgen` area, implemented by the game and reached through [`Backend`].
-// hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
-#[doc(hidden)]
-#[sunrise_mod_api_macros::host_area]
-pub trait LevelWorldgenClientBackend {
-    /// Side: client.
-    /// `ClientLevel.getBlockTint(pos, resolver)` (`BiomeColors.getAverageGrassColor`,
-    /// `getAverageFoliageColor`, `getAverageDryFoliageColor`, `getAverageWaterColor` and mod
-    /// resolvers registered in `register_color_resolvers`): the resolver's colour at `pos`
-    /// blended over the client's biome blend radius, as opaque ARGB (`0xFF00_0000 | rgb`),
-    /// using the client's loaded chunks (plains where a chunk is absent) and active biome
-    /// colours (including resource pack colormaps and `biome_colors`). Reads no server data
-    /// and never loads chunks.
-    ///
-    /// Returns `Err(LevelReadError::Unavailable)` on a logical server, outside the world
-    /// phase, before client login or without a backend, and `Err(LevelReadError::Stale)` for
-    /// a stale handle or a dimension other than the client's open level.
-    #[access(WorldOnly)]
-    fn level_block_tint(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-        resolver: ColorResolver,
-    ) -> Result<u32, LevelReadError>;
-}
 /// The handles' writes of the `level_worldgen` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
 #[doc(hidden)]

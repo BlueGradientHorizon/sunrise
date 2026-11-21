@@ -104,7 +104,9 @@ pub struct TerrainColumn {
 /// as indexes into `palette`, a column after another, and each column's biome JSON water colour
 /// (`water_colors`, `0xRRGGBB`, `0` where unloaded).
 ///
-/// Colormap-derived grass and foliage tints are client-side only (see [`LevelRef::block_tint`]).
+/// Colormap-derived grass and foliage tints are client-side only: read blended tints with
+/// [`BlockAndTintGetter::block_tint`] inside block tint callbacks or `ClientHost::block_tint_color`
+/// for a drawn block or fluid face in other client hooks.
 #[derive(Clone, Debug, PartialEq, Default)]
 // exhaustive: the game builds it with a literal; mods only read it
 #[derive(sunrise_mod_api_macros::Wire)]

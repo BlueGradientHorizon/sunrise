@@ -1946,21 +1946,10 @@ impl<'a> Tints<'a> {
         [cx, cz]: [i32; 2],
         q: [i32; 3],
     ) -> u16 {
-        let Some(rx) = (q[0] >> 2).checked_sub(cx).and_then(|d| d.checked_add(1)) else {
-            return plains;
-        };
-        let Some(rz) = (q[2] >> 2).checked_sub(cz).and_then(|d| d.checked_add(1)) else {
-            return plains;
-        };
+        let (rx, rz) = ((q[0] >> 2) - cx + 1, (q[2] >> 2) - cz + 1);
         if (0..3).contains(&rx) && (0..3).contains(&rz) {
             region[rz as usize][rx as usize].map_or(plains, |c| {
-                let min_qy = c.min_y() >> 2;
-                let max_qy = (c.min_y() + c.layout().height().max(1) - 1) >> 2;
-                c.biome(
-                    (q[0] & 3) * 4,
-                    q[1].clamp(min_qy, max_qy) << 2,
-                    (q[2] & 3) * 4,
-                )
+                c.biome((q[0] & 3) * 4, q[1] * 4, (q[2] & 3) * 4)
             })
         } else {
             plains
@@ -2106,74 +2095,6 @@ impl<'a> Tints<'a> {
         colors[slot] = color;
         color
     }
-}
-/// `ClientLevel.getBlockTint(pos, resolver)` (`BiomeColors.getAverageGrassColor`,
-/// `getAverageFoliageColor`, `getAverageDryFoliageColor`, `getAverageWaterColor`, and mod
-/// resolvers): the resolver's colour at `pos` blended over `blend_radius` around `pos` using
-/// `zoom` and the 3x3 chunk `region` centred on `(pos[0] >> 4, pos[2] >> 4)` (plains where a
-/// chunk is absent), as opaque ARGB (`0xFF00_0000 | rgb`).
-pub fn block_tint(
-    pos: [i32; 3],
-    region: &[[Option<&Chunk>; 3]; 3],
-    biomes: &Biomes,
-    zoom: BiomeZoom,
-    blend_radius: i32,
-    resolver: mod_api::ColorResolver,
-) -> u32 {
-    let resolver = match resolver {
-        mod_api::ColorResolver::Grass => Resolver::Grass,
-        mod_api::ColorResolver::Foliage => Resolver::Foliage,
-        mod_api::ColorResolver::DryFoliage => Resolver::Dry,
-        mod_api::ColorResolver::Water => Resolver::Water,
-        mod_api::ColorResolver::Mod(r) => {
-            Resolver::Mod(mod_api::__private::mod_color_resolver_index(r))
-        }
-    };
-    if pos
-        .iter()
-        .all(|&c| (i32::MIN + 32..=i32::MAX - 32).contains(&c))
-    {
-        let [x, y, z] = pos;
-        let origin = [x >> 4, z >> 4, y & !15];
-        let rgb = Tints::new(region, biomes, zoom, blend_radius, origin).get(
-            resolver,
-            x & 15,
-            y & 15,
-            z & 15,
-        );
-        return 0xFF00_0000 | rgb;
-    }
-    if let Resolver::Mod(index) = resolver
-        && !mod_tint::resolver_exists(index)
-    {
-        return 0xFFFF_FFFF;
-    }
-    let r = blend_radius.clamp(0, 7);
-    let plains = biomes.id("minecraft:plains");
-    let [cx, cz] = [pos[0] >> 4, pos[2] >> 4];
-    let (mut red, mut green, mut blue) = (0u32, 0u32, 0u32);
-    for dz in -r..=r {
-        for dx in -r..=r {
-            let bx = pos[0].wrapping_add(dx);
-            let bz = pos[2].wrapping_add(dz);
-            let q = zoom.quart_at_block(BlockPos::new(bx, pos[1], bz));
-            let biome = Tints::quart_biome(region, plains, [cx, cz], q);
-            let c = match resolver {
-                Resolver::Grass => biomes.grass(biome, f64::from(bx), f64::from(bz)),
-                Resolver::Foliage => biomes.get(biome).foliage,
-                Resolver::Dry => biomes.get(biome).dry_foliage,
-                Resolver::Water => biomes.get(biome).water,
-                Resolver::Mod(index) => {
-                    mod_tint::resolve(index, biomes.get(biome), f64::from(bx), f64::from(bz))
-                }
-            };
-            red += c >> 16 & 255;
-            green += c >> 8 & 255;
-            blue += c & 255;
-        }
-    }
-    let n = ((2 * r + 1) * (2 * r + 1)) as u32;
-    0xFF00_0000 | (red / n) << 16 | (green / n) << 8 | (blue / n)
 }
 /// Packs 8-bit RGB into the vertex's RGBA8 (red in the low byte), opaque.
 fn pack_rgb([r, g, b]: [u32; 3]) -> u32 {
