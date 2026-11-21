@@ -25,13 +25,17 @@ struct Release(Registry);
 
 impl Release {
     fn new(source: &str) -> Self {
+        Self::with_signer(source, &fixtures())
+    }
+
+    fn with_signer(source: &str, signer: &Path) -> Self {
         let r = Registry::new();
         let root = r.0.path();
         let placeholder = r.add(ID, VERSION, "26.3", "");
         let bytes = fs::read(fixtures().join(source)).unwrap();
-        let signature = fs::read_to_string(fixtures().join(format!("{source}.minisig"))).unwrap();
+        let signature = fs::read_to_string(signer.join(format!("{source}.minisig"))).unwrap();
         let hash = Self::keep(&r, &bytes);
-        let key = fs::read_to_string(fixtures().join("fixture.pub")).unwrap();
+        let key = fs::read_to_string(signer.join("fixture.pub")).unwrap();
         r.edit(ID, |t| {
             t.replace("kind='mod'", "kind='native-mod'")
                 .replace(
@@ -323,6 +327,20 @@ fn registry_refuses_invalid_signed_build_submissions() {
         let error = release.check().unwrap_err();
         assert!(error.contains(message), "{source} {descriptor}: {error}");
     }
+}
+
+#[test]
+fn a_valid_signature_does_not_accept_a_library_for_the_wrong_architecture() {
+    let fixture = fixtures().join("wrong-architecture");
+    let release = Release::with_signer("source.smod", &fixture);
+    let name = registry::builds::archive_name(ID, VERSION, BUILD_TAG, TARGET);
+    Release::keep(&release.0, &fs::read(fixture.join(name)).unwrap());
+    release.add_build(
+        &fs::read(fixture.join("valid.binaries.json")).unwrap(),
+        &fs::read_to_string(fixture.join("valid.binaries.json.minisig")).unwrap(),
+    );
+    let error = release.check().unwrap_err();
+    assert!(error.contains("X86_64 library, found I386"), "{error}");
 }
 
 #[test]
