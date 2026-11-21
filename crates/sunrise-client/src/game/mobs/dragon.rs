@@ -3518,6 +3518,13 @@ impl Breath {
         self.age < self.potion.as_ref().map_or(20, |p| p.settings.wait_time)
     }
 }
+#[cfg(test)]
+impl Dragon {
+    pub(super) fn set_render_test_crystal(&mut self, crystal: Option<usize>) {
+        self.nearest_crystal = crystal;
+    }
+}
+
 impl Game<'_> {
     /// `EnderDragonRenderer.submit` and `EnderDragonModel.setupAnim`, from the real dragon's slot.
     pub(super) fn dragon_geometry(
@@ -3674,7 +3681,7 @@ impl Game<'_> {
         };
         let first = out.len();
         self.mark_entity(first, "minecraft:ender_dragon");
-        self.mark_motion(first, Self::MOTION_OBJECT | u64::from(d.id));
+        self.mark_motion(first, 0);
         sunrise_client::mobs::render::draw(model, base, &poses, skin, color, light, overlay, out);
         if let Some(mask) = mask {
             dissolve_mask(&mut out[first..], skin, mask);
@@ -3692,6 +3699,8 @@ impl Game<'_> {
             let full = sunrise_client::mobs::render::FULL_BRIGHT;
             sunrise_client::mobs::render::draw(model, base, &poses, glow, color, full, 0, out);
         }
+        #[cfg(test)]
+        super::native_render_pair_tests::witness_body(d.id, first, out.len());
         // RenderTypes.eyes: the glowing eyes, added on top.
         let first_eye = additive.len();
         sunrise_client::mobs::render::draw(
@@ -3749,6 +3758,8 @@ impl Game<'_> {
         else {
             return;
         };
+        // Like the other layer-6 beams, this is a separate pack material from its body.
+        self.mark_stage(out.len(), "NONE");
         let q = |v: f32| (v * 65535.0).round().clamp(0.0, 65535.0) as u32;
         let wrap_light = q(s.v0) | q(s.v1 - s.v0) << 16;
         let (dx, dy, dz) = (delta.x as f32, delta.y as f32, delta.z as f32);

@@ -15,7 +15,7 @@ pub trait Hooks {
     /// entity renderer submissions, for local and remote players alike.
     #[hook(
         side = "client",
-        version = 3,
+        version = 4,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderPlayerEvent.Pre",

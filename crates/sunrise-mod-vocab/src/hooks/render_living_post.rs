@@ -18,7 +18,7 @@ pub trait Hooks {
     /// own level join slot.
     #[hook(
         side = "client",
-        version = 3,
+        version = 4,
         contract = "listen",
         neoforge = "RenderLivingEvent.Post",
         cancellable = false

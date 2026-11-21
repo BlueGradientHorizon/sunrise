@@ -47,6 +47,9 @@ impl Game<'_> {
         alpha: f64,
     ) -> Option<GeneralDrawFrame<'_>> {
         let rows = self.remote.as_ref()?.general.rows.as_slice();
+        if rows.is_empty() {
+            return None;
+        }
         Some(GeneralDrawFrame {
             rows,
             renderers: super::native_entity_renderers::general_renderers()?,
@@ -119,8 +122,9 @@ impl Game<'_> {
         let light = self.world.light(block[0], eye, block[2]);
         let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
         let key = catalog.key(row.type_slot);
-        self.mark_entity(out.len(), key);
-        self.mark_motion(out.len(), Self::MOTION_OBJECT | u64::from(id));
+        let start = out.len();
+        self.mark_entity(start, key);
+        self.mark_motion(start, 0);
         self.mod_entity_renderer_geometry(
             resolved,
             &entity,
@@ -131,6 +135,8 @@ impl Game<'_> {
             packed,
             out,
         );
+        #[cfg(test)]
+        super::native_render_pair_tests::witness_body(id, start, out.len());
     }
 }
 

@@ -467,13 +467,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
                 game.handle_packet(packet).unwrap();
             }
             let submitted = |game: &mut Game<'_>| {
-                frame(game, 1.0);
-                game.entity_motion
-                    .borrow()
-                    .windows(2)
-                    .filter(|w| w[0].1 != 0 && w[0].0 < w[1].0)
-                    .map(|w| w[0].1 as u32)
-                    .collect::<Vec<_>>()
+                super::native_render_pair_tests::submitted_bodies(game, |game| frame(game, 1.0)).1
             };
             assert_eq!(submitted(game), [5, 71, 42, 8]);
             // Arrival of the snapshot reveals the row at its earlier spawn slot, not the tail.
@@ -486,12 +480,48 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
                 .filter(|w| w[0].id == 77 && w[0].start < w[1].start)
                 .count();
             assert_eq!(own_type_spans, 3);
+            // The later zombie is the row's vehicle, not its render slot.
+            game.handle_packet(C::SetPassengers(play::SetPassengers {
+                vehicle: 42,
+                passengers: vec![12],
+            }))
+            .unwrap();
+            game.position_remote_general_passengers();
+            assert_eq!(
+                game.remote.as_ref().unwrap().passenger_vehicle(12),
+                Some(42)
+            );
+            assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
             game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![12] }))
                 .unwrap();
             game.handle_packet(spawn(12, "test:missile", [6.0, 321.0, 0.0]))
                 .unwrap();
             game.handle_packet(snapshot(12, Some(1))).unwrap();
             assert_eq!(submitted(game), [5, 71, 42, 8, 12]);
+
+            game.handle_packet(C::Respawn(play::Respawn {
+                spawn: play::SpawnInfo {
+                    dimension_type: 0,
+                    dimension: "minecraft:the_end".into(),
+                    seed: 1,
+                    game_type: 0,
+                    previous_game_type: None,
+                    debug: false,
+                    flat: false,
+                    last_death: None,
+                    portal_cooldown: 0,
+                    sea_level: 0,
+                },
+                keep: 0,
+            }))
+            .unwrap();
+            assert_eq!(submitted(game), [] as [u32; 0]);
+            game.handle_packet(vanilla(42, "minecraft:zombie")).unwrap();
+            game.handle_packet(spawn(12, "test:missile", [6.0, 321.0, 0.0]))
+                .unwrap();
+            assert_eq!(submitted(game), [42]);
+            game.handle_packet(snapshot(12, Some(1))).unwrap();
+            assert_eq!(submitted(game), [42, 12]);
         },
     );
 }
@@ -679,14 +709,15 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
                 };
                 poll_until(game, ready);
                 let check_quad = |g: &mut Game<'_>| {
-                    let (frame, ..) =
-                        g.entity_geometry(camera, 1.0, None, Vec::new(), &mut Vec::new());
-                    let motion = g.entity_motion.borrow();
-                    let run = motion
-                        .windows(2)
-                        .find(|w| w[0].1 == Game::MOTION_OBJECT | u64::from(id))
+                    let ((frame, ..), witnesses) =
+                        super::native_render_pair_tests::capture_body_witnesses(|| {
+                            g.entity_geometry(camera, 1.0, None, Vec::new(), &mut Vec::new())
+                        });
+                    let run = witnesses
+                        .into_iter()
+                        .find(|w| w.id == id)
                         .expect("the frame's entity pass carries the row's quad");
-                    let vertices = &frame[run[0].0 as usize..run[1].0 as usize];
+                    let vertices = &frame[run.vertices];
                     assert_eq!(vertices.len(), 4);
                     let x = vertices.iter().map(|v| v.pos[0]);
                     assert_eq!(x.clone().fold(f32::INFINITY, f32::min), 0.0);

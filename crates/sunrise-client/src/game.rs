@@ -5549,10 +5549,10 @@ impl Game<'_> {
         let tnt_sprites = std::cell::OnceCell::new();
         let falling_setup = std::cell::OnceCell::new();
         let orb_frame = std::cell::OnceCell::new();
-        let general_frame = std::cell::OnceCell::new();
-        let crystal_frame = std::cell::OnceCell::new();
         let mut runs = std::mem::take(&mut self.entity_runs);
-        self.ordered_draw_runs(&mut runs);
+        let general_frame = self.begin_general_geometry(camera, alpha);
+        let crystal_frame = self.begin_crystal_geometry();
+        self.ordered_draw_runs(general_frame.is_some(), crystal_frame.is_some(), &mut runs);
         // Sets the CEM frame even if there are no mobs; later passes also use it.
         let mob_frame = self.begin_mob_geometry(camera, alpha);
         for run in &runs {
@@ -5562,9 +5562,7 @@ impl Game<'_> {
                 F::Mob => self.mob_run_geometry(&mob_frame, range, &mut out),
                 F::LocalPlayer => self.local_player_geometry(camera, &mut out),
                 F::RemoteGeneral => {
-                    if let Some(frame) =
-                        general_frame.get_or_init(|| self.begin_general_geometry(camera, alpha))
-                    {
+                    if let Some(frame) = &general_frame {
                         self.general_run_geometry(frame, range, &mut out);
                     }
                 }
@@ -5575,8 +5573,7 @@ impl Game<'_> {
                     }
                 }
                 F::Crystal => {
-                    if let Some(frame) = crystal_frame.get_or_init(|| self.begin_crystal_geometry())
-                    {
+                    if let Some(frame) = &crystal_frame {
                         for crystal in &self.crystals[range] {
                             self.end_crystal_geometry(crystal, frame, camera, &mut out);
                         }

@@ -11,7 +11,7 @@ pub trait Hooks {
     /// including bodies drawn by a general entity renderer.
     #[hook(
         side = "client",
-        version = 3,
+        version = 4,
         contract = "listen",
         neoforge = "RenderPlayerEvent.Post",
         cancellable = false

@@ -16,7 +16,7 @@ pub trait Hooks {
     /// API @API:entity_outline@.
     #[hook(
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         neoforge = "none (NeoForge 26.3 has no glowing or team colour override)"
     )]

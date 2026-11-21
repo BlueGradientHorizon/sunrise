@@ -1228,6 +1228,9 @@ impl Game<'_> {
     }
 
     pub(super) fn begin_crystal_geometry(&self) -> Option<CrystalDrawFrame<'_>> {
+        if self.crystals.is_empty() {
+            return None;
+        }
         let model = self.crystal_model.as_ref()?;
         let r = self
             .gui
@@ -1268,7 +1271,7 @@ impl Game<'_> {
             * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.5, 0.0));
         let start = out.len();
         self.mark_entity(start, "minecraft:end_crystal");
-        self.mark_motion(start, Self::MOTION_OBJECT | u64::from(crystal.id));
+        self.mark_motion(start, 0);
         sunrise_client::mobs::render::draw(
             frame.model,
             base,
@@ -1284,6 +1287,8 @@ impl Game<'_> {
         for v in &mut out[start..] {
             v.layer |= u32::from(sunrise_client::mesher::BRIGHT) << 16;
         }
+        #[cfg(test)]
+        super::native_render_pair_tests::witness_body(crystal.id, start, out.len());
         if let Some(target) = crystal.beam {
             // The beam from the target's centre up to the bobbing crystal.
             let from = glam::DVec3::new(

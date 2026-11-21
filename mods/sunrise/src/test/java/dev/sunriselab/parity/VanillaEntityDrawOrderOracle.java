@@ -197,6 +197,14 @@ public final class VanillaEntityDrawOrderOracle {
         }
     }
 
+    private static HeadlessLevel newLevel(Allocator allocator) throws Exception {
+        var level = allocator.make(HeadlessLevel.class);
+        field(Level.class, "isClientSide").set(level, true);
+        field(ClientLevel.class, "tickRateManager").set(level, new TickRateManager());
+        startEntityStorage(level);
+        return level;
+    }
+
     public static void main(String[] args) throws Exception {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
@@ -211,10 +219,7 @@ public final class VanillaEntityDrawOrderOracle {
         var submit = method(LevelRenderer.class, "submitEntities", PoseStack.class,
             LevelRenderState.class, SubmitNodeCollector.class);
 
-        var level = allocator.make(HeadlessLevel.class);
-        field(Level.class, "isClientSide").set(level, true);
-        field(ClientLevel.class, "tickRateManager").set(level, new TickRateManager());
-        startEntityStorage(level);
+        var level = newLevel(allocator);
 
         var minecraft = allocator.make(Minecraft.class);
         minecraft.level = level;
@@ -245,11 +250,21 @@ public final class VanillaEntityDrawOrderOracle {
             String[] words = line.split(" ");
             switch (words[0]) {
                 case "login", "respawn" -> {
-                    int id = words[0].equals("login") ? Integer.parseInt(words[1]) : minecraft.player.getId();
+                    boolean login = words[0].equals("login");
+                    int id = login ? Integer.parseInt(words[1]) : minecraft.player.getId();
+                    if (!login && words.length == 2) {
+                        // handleRespawn constructs a fresh ClientLevel on a dimension change.
+                        level = newLevel(allocator);
+                        minecraft.level = level;
+                        field(ClientPacketListener.class, "level").set(listener, level);
+                        field(LevelExtractor.class, "level").set(extractor, level);
+                    }
                     minecraft.player = admitPlayer(allocator, level, id);
                     cameraEntity.set(camera, minecraft.player);
                 }
                 case "add" -> addEntity(level, Integer.parseInt(words[1]), words[2]);
+                case "beams" -> ((EndCrystal) level.getEntity(Integer.parseInt(words[1])))
+                    .setBeamTarget(new net.minecraft.core.BlockPos(3, 325, 3));
                 case "item" -> ((ItemEntity) level.getEntity(Integer.parseInt(words[1])))
                     .setItem(new ItemStack(Items.STONE));
                 case "remove" -> {

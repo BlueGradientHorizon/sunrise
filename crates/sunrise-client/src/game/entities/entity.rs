@@ -1330,14 +1330,10 @@ struct DrawExtras<'a> {
     general: Option<&'a super::remote::general::RemoteGenerals>,
 }
 
-/// The drawn entities as runs in the order they joined the level. The draw-only sources
-/// compete with the same cached head of the shared merge until it is consumed.
+/// The drawn entities as runs in the order they joined the level. Keep the next draw-only
+/// entity cached, so the existing body walk only compares its join with that one head.
 fn draw_runs(lists: EntityLists<'_>, mut extra: DrawExtras<'_>, runs: &mut Vec<DrawRun>) {
     use DrawFamily as F;
-    let mut bodies = lists
-        .merge_in_join_order::<true>()
-        .filter_map(|(handle, seq)| DrawFamily::of(handle).map(|(family, i)| (seq, family, i)))
-        .peekable();
     let mut crystals = extra.crystals.iter().enumerate().peekable();
     let mut general = extra
         .general
@@ -1346,20 +1342,18 @@ fn draw_runs(lists: EntityLists<'_>, mut extra: DrawExtras<'_>, runs: &mut Vec<D
         .enumerate()
         .filter(|(_, row)| row.shown)
         .peekable();
-    runs.clear();
-    while let Some((_, family, index)) = [
-        bodies.peek().copied(),
-        extra.local_player.map(|seq| (seq, F::LocalPlayer, 0)),
-        extra.dragon.map(|seq| (seq, F::Dragon, 0)),
-        crystals.peek().map(|&(i, c)| (c.join, F::Crystal, i)),
-        general
-            .peek()
-            .map(|&(i, row)| (row.join, F::RemoteGeneral, i)),
-    ]
-    .into_iter()
-    .flatten()
-    .min_by_key(|&(seq, _, _)| seq)
-    {
+    let mut next_extra = || {
+        let head @ (_, family, _) = [
+            extra.local_player.map(|seq| (seq, F::LocalPlayer, 0)),
+            extra.dragon.map(|seq| (seq, F::Dragon, 0)),
+            crystals.peek().map(|&(i, c)| (c.join, F::Crystal, i)),
+            general
+                .peek()
+                .map(|&(i, row)| (row.join, F::RemoteGeneral, i)),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by_key(|&(seq, _, _)| seq)?;
         match family {
             F::LocalPlayer => extra.local_player = None,
             F::Dragon => extra.dragon = None,
@@ -1369,17 +1363,33 @@ fn draw_runs(lists: EntityLists<'_>, mut extra: DrawExtras<'_>, runs: &mut Vec<D
             F::RemoteGeneral => {
                 general.next();
             }
-            _ => {
-                bodies.next();
-            }
+            _ => unreachable!("not a draw-only family"),
         }
-        match runs.last_mut() {
-            Some(run) if run.family == family && run.range.end == index => run.range.end += 1,
-            _ => runs.push(DrawRun {
-                family,
-                range: index..index + 1,
-            }),
+        Some(head)
+    };
+    runs.clear();
+    let mut push = |family, index| match runs.last_mut() {
+        Some(run) if run.family == family && run.range.end == index => run.range.end += 1,
+        _ => runs.push(DrawRun {
+            family,
+            range: index..index + 1,
+        }),
+    };
+    let mut pending = next_extra();
+    for (handle, seq) in lists.merge_in_join_order::<true>() {
+        while let Some((join, family, index)) = pending
+            && join < seq
+        {
+            push(family, index);
+            pending = next_extra();
         }
+        if let Some((family, index)) = DrawFamily::of(handle) {
+            push(family, index);
+        }
+    }
+    while let Some((_, family, index)) = pending {
+        push(family, index);
+        pending = next_extra();
     }
 }
 
@@ -1395,7 +1405,12 @@ impl Game<'_> {
     /// index. Respawn either keeps the lists or clears them for a new level. The server's
     /// save loads, level swaps, and tick-specific list reorders never feed this merge; they
     /// publish to the window through packets.
-    pub(super) fn ordered_draw_runs(&self, runs: &mut Vec<DrawRun>) {
+    pub(super) fn ordered_draw_runs(
+        &self,
+        draw_general: bool,
+        draw_crystals: bool,
+        runs: &mut Vec<DrawRun>,
+    ) {
         // A first-person body can draw into the shadow pass only.
         let local_player = self
             .player_model_shown()
@@ -1405,9 +1420,13 @@ impl Game<'_> {
             DrawExtras {
                 local_player,
                 dragon: self.dragon.as_ref().map(|dragon| dragon.join),
-                crystals: &self.crystals,
+                crystals: if draw_crystals { &self.crystals } else { &[] },
                 // Pending snapshots do not change the IndexMap's order or the spawn stamp.
-                general: self.remote.as_ref().map(|r| &r.general),
+                general: self
+                    .remote
+                    .as_ref()
+                    .filter(|_| draw_general)
+                    .map(|r| &r.general),
             },
             runs,
         );

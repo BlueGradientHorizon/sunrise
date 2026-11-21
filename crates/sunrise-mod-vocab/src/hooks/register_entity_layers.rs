@@ -73,7 +73,7 @@ living types) and the players; the armour stand and the ender dragon take them o
 layers, in a follow-up of #860, which lifts their refusal."#]
     #[hook(
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         context = "registration",
         neoforge = "EntityRenderersEvent.AddLayers"

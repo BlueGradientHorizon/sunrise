@@ -86,7 +86,7 @@ the error and asked no more until the next resource load resolves it again. What
 dropped, and until then its type draws as it would without one."#]
     #[hook(
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         context = "registration",
         neoforge = "EntityRenderersEvent.RegisterRenderers"

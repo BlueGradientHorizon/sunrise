@@ -22,7 +22,7 @@ pub trait Hooks {
     /// renderer submissions.
     #[hook(
         side = "client",
-        version = 4,
+        version = 5,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderLivingEvent.Pre",
