@@ -68,47 +68,99 @@ fn menu_screen_factories_key_by_menu_type_and_refuse_builtins_and_duplicates() {
     clean.mod_index = 1;
     clean.register_menu_screen(CROSS_MOD, factory()).unwrap();
     rollback(&mut clean);
-    let schema = super::super::tests::rule_schema();
-    install_registrar(clean, &schema).unwrap();
-    assert!(has_menu_screen_factory(CUSTOM));
-    assert!(!has_menu_screen_factory(CROSS_MOD));
+    crate::testing::with_mods(Vec::new().into(), || {
+        let schema = super::super::tests::rule_schema();
+        install_registrar(clean, &schema).unwrap();
+        assert!(has_menu_screen_factory(CUSTOM));
+        assert!(!has_menu_screen_factory(CROSS_MOD));
+    });
 }
 
 #[test]
 fn constructing_a_menu_screen_requires_the_client() {
+    use std::sync::Mutex;
+
     enum ScreenPolicy {
-        Factory,
+        Factory(Arc<Mutex<Vec<Option<String>>>>),
         NoScreen,
     }
     #[mod_api::__subscriptions]
     impl Hooks for ScreenPolicy {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            if matches!(self, Self::Factory) {
+            if let Self::Factory(openers) = self {
+                let openers = openers.clone();
                 r.register_menu_screen(
-                    "factory:menu",
-                    Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None),
+                    "runes:altar",
+                    Arc::new(move |_: &dyn ClientHost, open: crate::MenuScreenOpen<'_>| {
+                        openers.lock().unwrap().push(open.block.map(str::to_owned));
+                        None
+                    }),
                 )
                 .unwrap();
             }
         }
     }
+    let openers = Arc::new(Mutex::new(Vec::new()));
     let mods: crate::Mods = vec![
-        ModEntry::new("factory", Box::new(ScreenPolicy::Factory)),
+        ModEntry::new("factory", Box::new(ScreenPolicy::Factory(openers.clone()))),
         ModEntry::new("unrelated", Box::new(ScreenPolicy::NoScreen)),
     ]
     .into();
-    crate::testing::with_mods(mods.clone(), || {
-        crate::__private::part_tests::install_parts_fixture(&mods).unwrap();
-        assert_eq!(
-            crate::__private::client_requirement("factory").as_deref(),
-            Some("registers a client menu screen factory")
-        );
-        assert_eq!(crate::__private::client_requirement("unrelated"), None);
+    let served = crate::PackageInfo::new(
+        "runes".into(),
+        "1".into(),
+        crate::PackageKind::Content,
+        crate::Side::Both,
+        vec!["runes".into()],
+        vec![],
+    )
+    .with_served_by(Some("unrelated".into()));
+    crate::load_state::with_test_package_inventory(vec![served], || {
+        crate::testing::with_mods(mods.clone(), || {
+            crate::__private::part_tests::install_parts_fixture(&mods).unwrap();
+            assert_eq!(
+                crate::__private::client_requirement("factory").as_deref(),
+                Some("registers a client menu screen factory")
+            );
+            assert_eq!(crate::__private::client_requirement("unrelated"), None);
+
+            let host = crate::testing::FakeHost::new();
+            let open = |menu, block| {
+                crate::__private::create_menu_screen(
+                    &host,
+                    crate::MenuScreenOpen {
+                        window: 1,
+                        menu,
+                        block,
+                        pos: None,
+                        title: None,
+                        backing_slots: 1,
+                        player_slots: 36,
+                        data_slots: 0,
+                        extra: &[],
+                    },
+                )
+            };
+            // The factory owner differs from the serving package. The opener is context,
+            // not a dispatch key: both openings select the same registered factory.
+            for block in [Some("runes:altar"), Some("other:table"), None] {
+                assert!(matches!(
+                    open("runes:altar", block),
+                    Some(("factory", Ok(None)))
+                ));
+            }
+            assert!(open("minecraft:hopper", Some("runes:altar")).is_none());
+            assert!(open("runes:unregistered", Some("runes:altar")).is_none());
+            assert_eq!(
+                *openers.lock().unwrap(),
+                [Some("runes:altar".into()), Some("other:table".into()), None]
+            );
+        });
     });
 }
 
 #[test]
-fn served_content_menu_screen_dispatches_to_serving_host_only() {
+fn served_content_menu_buttons_dispatch_to_serving_host_only() {
     use std::sync::{Arc, Mutex};
 
     struct HostPart(Arc<Mutex<Option<&'static str>>>);
@@ -144,12 +196,6 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
             r.menu_part("runes:altar", HostPart(self.seen.clone()));
             r.menu_part("runes_extra:forge", HostPart(self.seen.clone()));
             r.menu_part("minecraft:hopper", HostPart(self.seen.clone()));
-            let f = || -> Arc<dyn crate::MenuScreenFactory> {
-                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
-            };
-            r.register_menu_screen("runes:altar", f()).unwrap();
-            r.register_menu_screen("runes_extra:forge", f()).unwrap();
-            r.register_menu_screen("minecraft:hopper", f()).unwrap();
         }
     }
     struct ThirdMod {
@@ -160,10 +206,6 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
         fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
             r.menu_part("plain:table", ThirdPart(self.seen.clone()));
             r.menu_part("minecraft:hopper", ThirdPart(self.seen.clone()));
-            let f = || -> Arc<dyn crate::MenuScreenFactory> {
-                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
-            };
-            r.register_menu_screen("minecraft:hopper", f()).unwrap();
         }
     }
     struct ThirdHijack {
@@ -173,10 +215,6 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
     impl crate::Hooks for ThirdHijack {
         fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
             r.menu_part("runes:altar", ThirdPart(self.seen.clone()));
-            let f = || -> Arc<dyn crate::MenuScreenFactory> {
-                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
-            };
-            assert!(r.register_menu_screen("runes:altar", f()).is_err());
         }
     }
 
