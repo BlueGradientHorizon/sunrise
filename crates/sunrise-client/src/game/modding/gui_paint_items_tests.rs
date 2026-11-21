@@ -75,6 +75,7 @@ fn a_mods_paint_draws_hotbar_items_and_blits_and_refuses_what_it_cannot_draw() {
                 &ItemStack::new("minecraft:stone", 5),
                 20.0,
                 20.0,
+                0,
             );
         });
     });
