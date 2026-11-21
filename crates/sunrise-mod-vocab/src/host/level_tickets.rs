@@ -24,8 +24,10 @@ pub trait LevelTicketsBackend {
     fn level_forced_chunks(&self, level: LevelRef) -> Option<Vec<[i32; 2]>>;
     /// Side: server.
     /// The chunk tickets `controller` holds in the level, as (owner, chunk
-    /// position, natural_spawning), in order. None for a stale handle, on a
-    /// client, outside a mod's hook and for another mod's controller.
+    /// position, natural_spawning), in order. Uses `controller`'s registered
+    /// identity rather than the current caller. None for an invalid controller
+    /// handle (such as one from a refused registration), a stale level handle,
+    /// or on a client.
     #[access(WorldOnly)]
     fn level_mod_forced_chunks(
         &self,
@@ -75,7 +77,8 @@ pub trait LevelTicketsBackendMut {
     /// Side: server.
     /// The chunk ticket of `controller` for `owner` on `chunk`
     /// (`TicketController.forceChunk`): true when the controller's tickets
-    /// changed. The controller must be the calling mod's own.
+    /// changed. Authorized by the registry-issued `controller` handle itself,
+    /// without consulting the current caller.
     /// A chunk stays forced, entity ticking and saved, and its level keeps
     /// ticking, while any ticket or `/forceload` holds it. With
     /// `natural_spawning` the chunk joins the spawning chunks (inhabited
@@ -87,9 +90,9 @@ pub trait LevelTicketsBackendMut {
     /// two controllers, release separately. They are saved in
     /// `data/sunrise/mod_chunk_tickets.dat` under the controller's id; when
     /// the world loads, those of a controller no loaded mod registers are
-    /// discarded. False outside a mod's hook, for another mod's controller, on
-    /// a client, for a chunk outside the world and for a level the server has
-    /// not opened.
+    /// discarded. False for an invalid controller handle (such as one from a
+    /// refused registration), on a client, for a chunk outside the world and
+    /// for a level the server has not opened.
     #[access(WorldOnly)]
     fn chunk_set_mod_forced(
         &mut self,

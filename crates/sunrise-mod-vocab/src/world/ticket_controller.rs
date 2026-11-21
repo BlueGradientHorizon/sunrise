@@ -50,8 +50,6 @@ impl RegisteredTicketValidator {
 pub(crate) struct ControllerInfo {
     /// The namespaced id, `mymod:quarry`, which the tickets are saved under.
     pub(crate) id: Box<str>,
-    /// The `[mod] id` that registered it, the only mod that may use it.
-    pub(crate) mod_id: &'static str,
     /// The controller's retained saved-ticket validator, if registered.
     pub(crate) validator: Option<RegisteredTicketValidator>,
 }
@@ -60,7 +58,9 @@ pub(crate) struct ControllerInfo {
 /// [`Registrar::register_ticket_controller`](crate::TicketsRegistrar::register_ticket_controller): the
 /// handle `chunk.set_mod_forced` and `level.mod_forced_chunks` take. Only the registrar makes
 /// one, resolved once there, and it is `Copy`: keep it from `register`, for example in a
-/// `OnceLock`. Another mod's controller does not work. Use its namespaced `id()` when
+/// `OnceLock`. Active chunk-ticket reads and writes authorize by this registry-issued handle
+/// rather than the current caller; separate controllers cannot read or release each other's
+/// tickets, and a handle from a refused registration does nothing. Use its namespaced `id()` when
 /// you need to store a controller name; its slot is local to this game's registry.
 // no wire: the handle resolves only in the registry that issued it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -94,12 +94,6 @@ impl TicketController {
     #[doc(hidden)]
     pub fn slot(self) -> u32 {
         self.slot
-    }
-    /// The `[mod] id` that owns it. For the game.
-    // hidden: a game-side helper, not part of the mod surface
-    #[doc(hidden)]
-    pub fn owner(self) -> Option<&'static str> {
-        self.info().map(|info| info.mod_id)
     }
     /// The controller's enabled saved-ticket validator, if any. For the game.
     // hidden: a game-side helper, not part of the mod surface

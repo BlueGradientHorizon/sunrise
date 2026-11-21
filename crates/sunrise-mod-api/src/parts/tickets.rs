@@ -120,7 +120,6 @@ pub(crate) fn register(
     }
     table.push(ControllerInfo {
         id: id.into(),
-        mod_id,
         validator: validator.map(|callback| {
             mod_vocab::__private::parts_installation::registered_ticket_validator(
                 mod_id, mod_index, callback,

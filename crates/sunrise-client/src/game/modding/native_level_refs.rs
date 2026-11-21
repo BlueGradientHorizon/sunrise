@@ -27,13 +27,6 @@ fn chunk_in_world(pos: [i32; 2]) -> bool {
     pos.iter().all(|c| (-LIMIT..LIMIT).contains(c))
 }
 
-/// Whether the mod running owns `controller`: a mod uses only the controllers it registered.
-fn calling_mod_owns(controller: TicketController) -> bool {
-    controller
-        .owner()
-        .is_some_and(|owner| mod_api::content::crash::current_native_mod() == Some(owner))
-}
-
 /// The stored light of `layer` at `pos` in `world`, as the game's own light query reads it.
 pub(super) fn world_brightness(world: &World, layer: LightLayer, pos: [i32; 3]) -> i32 {
     let light = world.light(pos[0], pos[1], pos[2]);
@@ -460,7 +453,8 @@ impl Game<'_> {
     }
     /// The chunk ticket of `controller` for `owner` on `chunk`
     /// (`TicketController.forceChunk`): true when the controller's tickets
-    /// changed. The controller must be the calling mod's own.
+    /// changed. Authorized by the registry-issued `controller` handle itself,
+    /// without consulting the current caller.
     /// A chunk stays forced, entity ticking and saved, and its level keeps
     /// ticking, while any ticket or `/forceload` holds it. With
     /// `natural_spawning` the chunk joins the spawning chunks (inhabited
@@ -472,9 +466,9 @@ impl Game<'_> {
     /// two controllers, release separately. They are saved in
     /// `data/sunrise/mod_chunk_tickets.dat` under the controller's id; when
     /// the world loads, those of a controller no loaded mod registers are
-    /// discarded. False outside a mod's hook, for another mod's controller, on
-    /// a client, for a chunk outside the world and for a level the server has
-    /// not opened.
+    /// discarded. False for an invalid controller handle (such as one from a
+    /// refused registration), on a client, for a chunk outside the world and
+    /// for a level the server has not opened.
     pub(super) fn chunk_set_mod_forced(
         &mut self,
         chunk: ChunkRef,
@@ -483,9 +477,9 @@ impl Game<'_> {
         forced: bool,
         natural_spawning: bool,
     ) -> bool {
-        if !calling_mod_owns(controller) {
+        let Some(controller) = TicketController::from_slot(controller.slot()) else {
             return false;
-        }
+        };
         if self.native_level_streaming(chunk.level()).is_none() || !chunk_in_world(chunk.pos()) {
             return false;
         }
@@ -507,16 +501,15 @@ impl Game<'_> {
         streaming.set_mod_forced(ticket, forced)
     }
     /// The chunk tickets `controller` holds in the level, as (owner, chunk
-    /// position, natural_spawning), in order. None for a stale handle, on a
-    /// client, outside a mod's hook and for another mod's controller.
+    /// position, natural_spawning), in order. None for an invalid controller
+    /// handle (such as one from a refused registration), a stale level handle,
+    /// or on a client.
     pub(super) fn level_mod_forced_chunks(
         &self,
         level: LevelRef,
         controller: TicketController,
     ) -> Option<Vec<(mod_api::TicketOwner, [i32; 2], bool)>> {
-        if !calling_mod_owns(controller) {
-            return None;
-        }
+        let controller = TicketController::from_slot(controller.slot())?;
         let tickets = self.native_level_streaming(level)?.mod_tickets();
         Some(
             tickets
@@ -2489,9 +2482,7 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             let chunk = game.level_chunk_ref(level, [5, 6]).unwrap();
             let (a, b) = (Block([80, 64, 96]), Entity(7));
-            // Outside a mod's hook there is no caller to own a ticket.
-            assert!(!game.chunk_set_mod_forced(chunk, quarry(), a, true, false));
-            let guard = in_mod("machines");
+            // A registered controller works outside a mod callback without TLS attribution.
             assert!(game.chunk_set_mod_forced(chunk, quarry(), a, true, false));
             assert!(
                 !game.chunk_set_mod_forced(chunk, quarry(), a, true, false),
@@ -2508,19 +2499,35 @@ mod tests {
                 game.level_mod_forced_chunks(level, quarry()),
                 Some(vec![(b, [5, 6], false)])
             );
-            // Another mod cannot use our controller, however it asks; its own is empty.
-            drop(guard);
+            // Calling through a different mod's callback with the same controller works;
+            // another controller with the same owner/chunk cannot read or remove that ticket.
             let guard = in_mod("other");
-            assert_eq!(game.level_mod_forced_chunks(level, quarry()), None);
-            assert!(!game.chunk_set_mod_forced(chunk, quarry(), b, false, false));
-            assert!(!game.chunk_set_mod_forced(chunk, quarry(), b, true, false));
+            assert_eq!(
+                game.level_mod_forced_chunks(level, quarry()),
+                Some(vec![(b, [5, 6], false)])
+            );
+            assert!(game.chunk_set_mod_forced(chunk, quarry(), a, true, false));
+            assert_eq!(
+                game.level_mod_forced_chunks(level, quarry()),
+                Some(vec![(a, [5, 6], false), (b, [5, 6], false)])
+            );
+            assert!(game.chunk_set_mod_forced(chunk, quarry(), a, false, false));
+            assert_eq!(
+                game.level_mod_forced_chunks(level, quarry()),
+                Some(vec![(b, [5, 6], false)])
+            );
             let vault = controller("other:vault");
             assert_eq!(game.level_mod_forced_chunks(level, vault), Some(vec![]));
+            assert!(!game.chunk_set_mod_forced(chunk, vault, b, false, false));
             assert!(game.chunk_set_mod_forced(chunk, vault, b, true, false));
             assert!(game.chunk_set_mod_forced(chunk, vault, b, false, false));
+            assert_eq!(
+                game.level_mod_forced_chunks(level, quarry()),
+                Some(vec![(b, [5, 6], false)])
+            );
             drop(guard);
-            // Our other controller is apart from the first: it neither lists nor releases its tickets.
-            let guard = in_mod("machines");
+            // Another controller of the same mod is apart from the first: it neither lists nor
+            // releases its tickets.
             let drill = controller("machines:drill");
             assert_eq!(game.level_mod_forced_chunks(level, drill), Some(vec![]));
             assert!(!game.chunk_set_mod_forced(chunk, drill, b, false, false));
@@ -2530,7 +2537,22 @@ mod tests {
                 game.level_mod_forced_chunks(level, quarry()),
                 Some(vec![(b, [5, 6], false)])
             );
-            drop(guard);
+            // An invalid registered-slot sentinel (returned on refused registration) refuses
+            // without mutating existing or new tickets.
+            let invalid = mod_api::__private::parts_installation::ticket_controller(u32::MAX);
+            let untouched = game.level_chunk_ref(level, [6, 6]).unwrap();
+            assert_eq!(game.level_mod_forced_chunks(level, invalid), None);
+            assert!(!game.chunk_set_mod_forced(chunk, invalid, b, false, false));
+            assert!(!game.chunk_set_mod_forced(untouched, invalid, a, true, false));
+            assert!(!game.streaming.forced.contains(&(6, 6)));
+            assert_eq!(
+                game.streaming.mod_tickets().of_controller(u32::MAX).count(),
+                0
+            );
+            assert_eq!(
+                game.level_mod_forced_chunks(level, quarry()),
+                Some(vec![(b, [5, 6], false)])
+            );
             // /forceload and a ticket on one chunk: the chunk stays until both go.
             assert!(game.chunk_set_forced(chunk, true));
             assert!(game.chunk_set_forced(chunk, false));
@@ -2539,7 +2561,6 @@ mod tests {
                 "the ticket holds it"
             );
             assert!(game.chunk_set_forced(chunk, true));
-            let _guard = in_mod("machines");
             assert!(game.chunk_set_mod_forced(chunk, quarry(), b, false, false));
             assert!(
                 game.streaming.forced.contains(&(5, 6)),
@@ -2548,8 +2569,19 @@ mod tests {
             game.streaming.clear_forced();
             assert!(game.streaming.forced.is_empty());
             // The world's bounds, as /forceload checks them.
-            let outside = mod_api::ChunkRef::new(level, [1_875_000, 0]);
+            let outside = ChunkRef::new(level, [1_875_000, 0]);
             assert!(!game.chunk_set_mod_forced(outside, quarry(), a, true, false));
+            // Stale handles refuse without mutating.
+            let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
+            let stale_chunk = ChunkRef::new(stale, [5, 6]);
+            assert_eq!(game.level_mod_forced_chunks(stale, quarry()), None);
+            assert!(!game.chunk_set_mod_forced(stale_chunk, quarry(), a, true, false));
+            assert!(!game.streaming.forced.contains(&(5, 6)));
+            // Client side refuses without mutating.
+            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+            assert_eq!(game.level_mod_forced_chunks(level, quarry()), None);
+            assert!(!game.chunk_set_mod_forced(chunk, quarry(), a, true, false));
+            assert!(!game.streaming.forced.contains(&(5, 6)));
         });
     }
 
@@ -2560,7 +2592,6 @@ mod tests {
         with_machines(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let chunk = game.level_chunk_ref(level, [-9, 4]).unwrap();
-            let _guard = in_mod("machines");
             let drill = controller("machines:drill");
             let (block, entity) = (Block([-140, 70, 70]), Entity(u128::MAX - 3));
             assert!(game.chunk_set_mod_forced(chunk, quarry(), block, true, false));
@@ -2621,7 +2652,6 @@ mod tests {
             game.enter_level(back).unwrap();
             let parked = mod_api::LevelRef::new(level.epoch(), other.key());
             let chunk = ChunkRef::new(parked, [2, 2]);
-            let _guard = in_mod("machines");
             let owner = mod_api::TicketOwner::Block([32, 64, 32]);
             assert!(!game.levels_to_tick().contains(&other));
             assert!(game.chunk_set_mod_forced(chunk, quarry(), owner, true, false));
@@ -2670,7 +2700,6 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             let chunk = game.level_chunk_ref(level, [3, 3]).unwrap();
             game.ui.registries.permission = 4;
-            let _guard = in_mod("machines");
             let owner = mod_api::TicketOwner::Block([48, 64, 48]);
             assert!(game.chunk_set_mod_forced(chunk, quarry(), owner, true, false));
             assert!(game.streaming.forced.contains(&(3, 3)));
@@ -2694,7 +2723,6 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             let plain = game.level_chunk_ref(level, [11, 12]).unwrap();
             let spawning = game.level_chunk_ref(level, [13, 12]).unwrap();
-            let _guard = in_mod("machines");
             let owner = Block([176, 64, 192]);
             assert!(game.chunk_set_mod_forced(plain, quarry(), owner, true, false));
             assert!(game.chunk_set_mod_forced(spawning, quarry(), owner, true, true));
@@ -2756,12 +2784,9 @@ mod tests {
             // Both chunks lie in the player's 8-chunk area and past 128 blocks of it.
             let flagged = game.level_chunk_ref(level, [8, 8]).unwrap();
             let plain = game.level_chunk_ref(level, [8, 7]).unwrap();
-            {
-                let _guard = in_mod("machines");
-                let owner = Block([128, 64, 128]);
-                assert!(game.chunk_set_mod_forced(flagged, quarry(), owner, true, true));
-                assert!(game.chunk_set_mod_forced(plain, quarry(), owner, true, false));
-            }
+            let owner = Block([128, 64, 128]);
+            assert!(game.chunk_set_mod_forced(flagged, quarry(), owner, true, true));
+            assert!(game.chunk_set_mod_forced(plain, quarry(), owner, true, false));
             game.spawn_natural();
             assert_eq!(game.world.inhabited.get(&(8, 8)), Some(&1));
             assert!(
@@ -3004,18 +3029,12 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             let owner = mod_api::TicketOwner::Block([1, 64, 1]);
             let live = game.level_chunk_ref(level, [5, 5]).unwrap();
-            {
-                let _guard = in_mod("machines");
-                assert!(game.chunk_set_mod_forced(live, quarry(), owner, true, false));
-            }
+            assert!(game.chunk_set_mod_forced(live, quarry(), owner, true, false));
             let tickets = vec![saved("machines:quarry", [1, 64, 1], (7, 7))];
             game.streaming.load_forced(Default::default(), tickets);
             // `level_load` runs after the load: its hold is the same owner's.
             let fresh = game.level_chunk_ref(level, [6, 6]).unwrap();
-            {
-                let _guard = in_mod("machines");
-                assert!(game.chunk_set_mod_forced(fresh, quarry(), owner, true, false));
-            }
+            assert!(game.chunk_set_mod_forced(fresh, quarry(), owner, true, false));
             game.validate_mod_chunk_tickets(game.dim);
             assert!(!game.streaming.forced.contains(&(7, 7)), "saved one pruned");
             assert!(game.streaming.forced.contains(&(5, 5)), "live one kept");
