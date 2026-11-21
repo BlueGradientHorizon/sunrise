@@ -7,8 +7,14 @@ let effect = r.effect_key("meals:comfort");
 r.mob_effect_part(&effect, Comfort).expect("attach Comfort to its effect");
 ```
 
-Implement the Part with `#[mod_api::sunrise_part]`. Its two methods are:
+Implement the Part with `#[mod_api::sunrise_part]`. Its methods are:
 
+- `on_effect_added` (version 2, vanilla's `MobEffect.onEffectAdded`) runs only when
+  `LivingEntity.addEffect` inserts an instance of this effect onto an entity that did
+  not already have it, after the active map and attribute modifiers are updated and
+  vanilla's added sound plays (before `onEffectStarted`). It receives the resolved
+  `effect` key, the target `entity` (`LivingRef`) and `amplifier`. It never runs on
+  reapplications, `forceAddEffect`, world load or client sync.
 - `should_apply_effect_tick_this_tick` receives the resolved `effect` key, remaining
   duration (`tick_count`, or the holder's tick count for an infinite effect), and
   amplifier. Set `event.apply = true` to run the effect now; it starts false.
@@ -18,11 +24,11 @@ Implement the Part with `#[mod_api::sunrise_part]`. Its two methods are:
   apply after every Part returns, in Part order. Clear `event.keep` to end the effect
   immediately, before its duration counts down, and skip later Parts.
 
-These are version 3 methods in the `effect` scope, keyed by `effect`; there are no
+These methods are scoped to `effect` and keyed by `effect`; there are no
 corresponding global `Hooks` methods. Each Part has its own `apply`, starting false,
 so one package's cadence never drives another package's action. The declaring package's
 Parts run first within that effect, even with `order = "before"` or `"none"`. Other Parts
-run by mod dispatch order, then registration order. All share the same holder snapshots.
+run by mod dispatch order, then registration order. All tick Parts share the same holder snapshots.
 This owner-first rule is specific to effects; it does not change package dispatch or
 the order of block entity Parts.
 
@@ -37,8 +43,13 @@ keep the normal unknown-key refusal.
 Unresolved keys refuse with `MobEffectPartError::InvalidKey`; vanilla effects refuse
 immediately with `MobEffectPartError::VanillaEffect`; attaching the same concrete
 Part type twice returns `Duplicate`. A Part attached to several
-effects distinguishes them with `event.effect`. `on_effect_added` stays global;
-`mob_effect_added`, the NeoForge event, also stays global.
+effects distinguishes them with `event.effect`.
+
+To observe every effect addition across vanilla and mod effects alike, subscribe to the
+global `Hooks::mob_effect_added` event (NeoForge's `MobEffectEvent.Added`, version 2),
+which fires after `canBeAffected` / `mob_effect_applicable` and before active-effect
+mutation with `entity`, `old_effect`, `new_effect` and optional `source` (including
+reapplications and unchanged updates; non-cancellable).
 
 ## Reading the holder
 
@@ -65,4 +76,4 @@ amounts therefore subtract exhaustion. To remove at most 4, read the current foo
 snapshot and add `-food.exhaustion.min(4.0)` only when exhaustion is positive. Food
 changes have no effect on a mob without food data.
 
-A `side = "server"` package can attach a Part because both methods are server-only.
+A `side = "server"` package can attach a Part because its methods are server-only.

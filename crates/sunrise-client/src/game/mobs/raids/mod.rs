@@ -513,10 +513,18 @@ impl Game<'_> {
         self.raiding.raids.set_omen_level(id, level).unwrap_or(0)
     }
     pub(super) fn raid_glow(&mut self, id: i32) {
-        for m in &mut self.mobs {
-            if raider::state(m).is_some_and(|s| s.raid_id == Some(id)) {
-                m.add_effect("glowing", 1000, 1);
-            }
+        let targets: Vec<u32> = self
+            .mobs
+            .iter()
+            .filter(|m| raider::state(m).is_some_and(|s| s.raid_id == Some(id)))
+            .map(|m| m.id)
+            .collect();
+        for mob_id in targets {
+            self.add_mob_effect(
+                mob_id,
+                sunrise_client::effects::EffectInstance::new("glowing", 1000, 1),
+                None,
+            );
         }
     }
     /// The `/raid check` summary line.

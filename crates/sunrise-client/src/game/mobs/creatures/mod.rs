@@ -4511,13 +4511,33 @@ impl Game<'_> {
     ) {
         self.give_mob_effect(effect, ticks, amplifier, false);
     }
+    /// [`Self::give_player_effect`] with an explicit causing entity for `MobEffectEvent.Added`.
+    pub(in crate::game) fn give_player_effect_from(
+        &mut self,
+        effect: &'static str,
+        ticks: i32,
+        amplifier: i32,
+        source: Option<mod_api::EntityRef>,
+    ) {
+        self.give_mob_effect_from(effect, ticks, amplifier, false, source);
+    }
     /// A mob's effect on the player. Creative and spectator players shrug off
     /// the damaging effects here, but the nautilus's ambient Breath is plain
     /// `addEffect` and lands in every game mode.
     fn give_mob_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32, ambient: bool) {
+        self.give_mob_effect_from(effect, ticks, amplifier, ambient, None);
+    }
+    fn give_mob_effect_from(
+        &mut self,
+        effect: &'static str,
+        ticks: i32,
+        amplifier: i32,
+        ambient: bool,
+        source: Option<mod_api::EntityRef>,
+    ) {
         let immune = self.creative || self.spectator();
         if let Some(instance) = mob_effect_instance(effect, ticks, amplifier, ambient, immune) {
-            self.potions.effects.add(instance);
+            self.add_player_effect_from(instance, source);
         }
     }
     /// `WitherRoseBlock.entityInside` for the player: on a server level that

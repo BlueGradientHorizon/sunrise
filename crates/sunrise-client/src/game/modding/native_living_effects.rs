@@ -88,14 +88,14 @@ impl Game<'_> {
 
     /// `LivingEntity.addEffect(instance)`: gives the living entity the
     /// effect by the game's own path. A player's or a guest's goes through
-    /// `add_player_effect` (so `MobEffectInstance.update`'s rules, the
-    /// attribute modifiers, absorption and the added-effect hooks of a
-    /// content mod's effect all apply); a mob's goes past `canBeAffected`
-    /// (a spider shrugs off poison) into its effects with the same hooks.
+    /// `add_player_effect` and a mob's goes through `add_mob_effect` (so
+    /// `canBeAffected`, `MobEffectEvent.Added`, `MobEffectInstance.update`,
+    /// attribute modifiers, absorption and `MobEffectPart::on_effect_added`
+    /// all run in vanilla/NeoForge order).
     /// The amplifier is cut to 0..=255 and the duration is -1 (infinite) or
     /// ticks. False before effect resolution, for a duration below -1, an armor
-    /// stand, the dragon, a stale handle or a client, or when the active
-    /// instance did not change, as in vanilla's `addEffect`.
+    /// stand, the dragon, a wither, a stale handle or a client, or when the
+    /// active instance did not change, as in vanilla's `addEffect`.
     pub(super) fn living_add_effect(&mut self, living: LivingRef, effect: &ActiveEffect) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect.id)
             .and_then(sunrise_client_core::potions::effect_by_index)
@@ -114,31 +114,7 @@ impl Game<'_> {
             Some(t @ (Target::Player | Target::Guest(_))) => self
                 .for_player(t, |g| g.add_player_effect(instance))
                 .unwrap_or(false),
-            Some(Target::Mob(id)) => {
-                let Some(m) = self.mobs.iter().find(|m| m.id == id && !m.removed) else {
-                    return false;
-                };
-                let kind = m.kind.id.clone();
-                let name =
-                    mod_api::__private::effect_key_id(effect.id).expect("resolved effect name");
-                let new = !m
-                    .extra
-                    .effects
-                    .iter()
-                    .any(|e| e.registry_index == Some(def.index));
-                // `LivingEntity.addEffect` refuses what the mob cannot be
-                // affected by, the `mob_effect_applicable` hook asked first.
-                if !self.can_be_affected_resolved(Some(id as i32), &kind, name, Some(effect.id)) {
-                    return false;
-                }
-                let Some(changed) = self.mutate_mob_effects(id, Some(name), |mob| {
-                    mob.add_effect_instance(name, instance)
-                }) else {
-                    return false;
-                };
-                self.mod_effect_added_resolved(effect.id, Some(id as i32), amplifier, new);
-                changed
-            }
+            Some(Target::Mob(id)) => self.add_mob_effect(id, instance, None),
             _ => false,
         }
     }
