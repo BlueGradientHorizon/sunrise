@@ -2069,29 +2069,45 @@ mod tests {
     #[ignore = "daily"]
     fn an_idle_level_closes_after_reporting_a_record_failure() {
         use crate::game::native_entity_refs::tests::with_game;
+        use mod_api::{RuntimeGenerator, RuntimeLevel};
         use sunrise_client::save::LevelShape;
-        mod_platform::testing::with_mods(Vec::new().into(), || {
-            with_game(|game| {
-                let root = tempfile::tempdir().unwrap();
-                game.world_root = root.path().to_path_buf();
-                game.save = Arc::new(SaveDir::new(
-                    game.world_root.clone(),
-                    LevelShape::OVERWORLD,
-                    Some(Default::default()),
-                ));
-                game.enter_level(Dim::Nether).unwrap();
-                dirty_test_chunk(game);
-                queue_unencodable_entity_record(&game.save);
-                let disk = SaveDir::new(game.save.root.clone(), game.save.shape, None);
-                game.enter_level(Dim::Overworld).unwrap();
-                game.levels.parked.get_mut(&Dim::Nether).unwrap().idle = IDLE_TICKS - 1;
-                game.close_idle_levels().unwrap();
-                assert_eq!(game.dim, Dim::Overworld);
-                assert!(!game.levels.parked.contains_key(&Dim::Nether));
-                assert_eq!(game.save.record_save_failures(), 1);
-                assert!(disk.raw_chunk(0, 0).is_some());
-            });
-        });
+        crate::game::in_own_process(
+            "game::levels::tests::an_idle_level_closes_after_reporting_a_record_failure",
+            || {
+                mod_platform::testing::with_mods(Vec::new().into(), || {
+                    with_game(|game| {
+                        let root = tempfile::tempdir().unwrap();
+                        game.world_root = root.path().to_path_buf();
+                        game.save = Arc::new(SaveDir::new(
+                            game.world_root.clone(),
+                            LevelShape::OVERWORLD,
+                            Some(Default::default()),
+                        ));
+                        // Built-in levels unload chunks without closing; exercise the save
+                        // on close of a custom level instead.
+                        let id = "test_idle:record_failure";
+                        let custom = Dim::Extra(mod_api::__private::dimension_key(id));
+                        let flat =
+                            RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1);
+                        game.levels
+                            .runtime
+                            .queue_open("test_idle", id, flat)
+                            .unwrap();
+                        game.enter_level(custom).unwrap();
+                        dirty_test_chunk(game);
+                        queue_unencodable_entity_record(&game.save);
+                        let disk = SaveDir::new(game.save.root.clone(), game.save.shape, None);
+                        game.enter_level(Dim::Overworld).unwrap();
+                        game.levels.parked.get_mut(&custom).unwrap().idle = IDLE_TICKS - 1;
+                        game.close_idle_levels().unwrap();
+                        assert_eq!(game.dim, Dim::Overworld);
+                        assert!(!game.levels.parked.contains_key(&custom));
+                        assert_eq!(game.save.record_save_failures(), 1);
+                        assert!(disk.raw_chunk(0, 0).is_some());
+                    });
+                });
+            },
+        );
     }
 
     #[test]
