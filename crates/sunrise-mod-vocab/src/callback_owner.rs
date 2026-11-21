@@ -31,6 +31,42 @@ impl CallbackOwner {
         call(self.id, self.index, &self.poisoned, kind, operation, invoke)
             .map_err(|why| format!("mod {}: {why}", self.id))
     }
+
+    /// Invoke retained code with session-wide panic disabling for `(operation, owner)` so
+    /// table rebuilds (such as `/reload`) keep a panicking callback disabled for the session.
+    pub fn call_session<T>(
+        &self,
+        kind: &'static str,
+        operation: &'static str,
+        invoke: impl FnOnce() -> T,
+    ) -> Result<T, String> {
+        if !crate::mod_index_on(self.index) || crate::runtime::callback_poisoned(operation, self.id)
+        {
+            return Err(format!("mod {}: {kind} owner is disabled", self.id));
+        }
+        let _guard = crate::mark_mod(self.id, operation);
+        match invoke_callback(
+            || crate::world::phase_refusal::contain_refusal(self.id, invoke),
+            |payload| {
+                if crate::runtime::poison_callback(operation, self.id) {
+                    log_and_queue_panic(operation, self.id, payload);
+                }
+            },
+        ) {
+            DispatchOutcome::Ok(value) => Ok(value),
+            DispatchOutcome::Refused(refusal) => {
+                refusal.report();
+                Err(format!(
+                    "mod {}: {kind} callback refused: {refusal}",
+                    self.id
+                ))
+            }
+            DispatchOutcome::Panicked => Err(format!(
+                "mod {}: {kind} callback panicked; it is disabled",
+                self.id
+            )),
+        }
+    }
 }
 
 pub(crate) fn enabled(index: usize, poisoned: &AtomicBool) -> bool {

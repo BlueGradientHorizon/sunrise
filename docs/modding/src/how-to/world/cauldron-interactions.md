@@ -35,10 +35,11 @@ fn register_cauldron_interaction(
 
 A custom block opts into dispatch by registration; its name need not end in
 `cauldron`. Register the filled target too when an interaction replaces the
-empty block with a custom cauldron. `register_to_all(item, handler)` queues
-registration over the complete prepared dispatcher set, including custom blocks
-registered later in the hook sequence, overwriting any existing entry for that
-item on each block in place.
+empty block with a custom cauldron. `register_to_all(item, handler)` applies
+over the complete prepared dispatcher set, including custom blocks registered
+later in the hook sequence, in registration order alongside direct `register`
+calls so later writes overwrite earlier entries for that item on each block in
+place.
 
 Vanilla entries are prebound in the same table. Registering an item that already
 has a vanilla or mod handler overwrites it in place (matching
@@ -74,7 +75,8 @@ precede exact item entries (matching vanilla `CauldronInteraction.Dispatcher.get
    (`minecraft:cauldron_can_remove_dye`) is checked first unless a mod replaces
    that tag entry via `register_tag`.
 2. Registered mod item tags on the block are checked in registration order
-   (`register_tag_to_all` expands after direct block registrations).
+   (direct `register_tag` and `register_tag_to_all` calls apply in registration
+   order across the complete prepared dispatcher set).
 3. Exact item entries on the block are checked last.
 
 Registering the same tag again on one block overwrites its handler in place at
@@ -190,16 +192,19 @@ grouping storage mutations (such as `ItemPlace::exchange` with
 
 ### Failures
 
-- A panic in `Interaction::interact` disables that mod's callback for the rest
-  of the session, logs the error and surfaces it through the client error toast
-  naming the mod without crashing unrelated ticks. Subsequent clicks on that
-  entry return `Consume` (without swinging) and do not re-invoke the disabled
-  callback.
-- Phase refusals are reported each time they occur and are never latched.
+- A panic in `Interaction::interact` disables that mod's cauldron callback for
+  the rest of the session (surviving `/reload`), logs the error and surfaces it
+  through the client error toast naming the mod without crashing unrelated
+  ticks. Subsequent clicks on that entry return `Consume` (without swinging)
+  and do not re-invoke the disabled callback.
+- Input construction and phase refusals are reported each time they occur,
+  return `Consume` without swinging, and are never latched.
 
 ## Client prediction
 
 Client prediction selects from the same prepared dispatcher table, but skips
 custom mod handlers entirely: it does not invoke `Interaction::interact` or
-predict local writes, and consumes the local click while waiting for the server
-result. Vanilla handlers continue to predict locally.
+predict local writes, and holds the local click while waiting for the server
+result. If the server callback returns `CauldronDecision::Pass` and block/useOn
+handling does not consume the click, the server resumes normal item use for
+that hand once. Vanilla handlers continue to predict locally.

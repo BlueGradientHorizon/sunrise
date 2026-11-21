@@ -59,7 +59,8 @@ impl<H> Default for Dispatcher<H> {
     fn default() -> Self {
         Self {
             maps: vanilla(),
-            ..Self::empty()
+            custom: HashMap::new(),
+            tagged: HashMap::new(),
         }
     }
 }
@@ -80,54 +81,12 @@ impl Dispatcher<()> {
     }
 }
 impl<H> Dispatcher<H> {
-    /// An unseeded batch of pending registrations, not a vanilla snapshot.
-    pub fn empty() -> Self {
-        Self {
-            maps: std::array::from_fn(|_| HashMap::new()),
-            custom: HashMap::new(),
-            tagged: HashMap::new(),
-        }
-    }
-
     /// Read an exact registration without considering the dye branch or tags.
     pub fn exact_entry(&self, block: &str, item: &str) -> Option<&Entry<H>> {
         match index(block) {
             Some(i) => self.maps[i].get(item),
             None => self.custom.get(block)?.get(item),
         }
-    }
-
-    /// Publish a batch of pending registrations, overwriting matching entries in place.
-    pub fn append_registrations(&mut self, pending: Self) {
-        for (map, entries) in self.maps.iter_mut().zip(pending.maps) {
-            map.extend(entries);
-        }
-        for (block, entries) in pending.custom {
-            self.custom.entry(block).or_default().extend(entries);
-        }
-        for (block, entries) in pending.tagged {
-            for (tag, handler) in entries {
-                self.register_tag(block.clone(), tag, handler);
-            }
-        }
-    }
-
-    /// Take the callbacks out of a discarded batch so each can be dropped in isolation.
-    pub fn into_mod_handlers(self) -> impl Iterator<Item = H> {
-        self.maps
-            .into_iter()
-            .chain(self.custom.into_values())
-            .flat_map(HashMap::into_values)
-            .filter_map(|entry| match entry {
-                Entry::Mod(handler) => Some(handler),
-                _ => None,
-            })
-            .chain(
-                self.tagged
-                    .into_values()
-                    .flatten()
-                    .map(|(_, handler)| handler),
-            )
     }
 
     /// Matches vanilla `CauldronInteraction.Dispatcher.get`: item-tag entries precede exact
@@ -172,25 +131,32 @@ impl<H> Dispatcher<H> {
     pub fn contains_block(&self, block: &str) -> bool {
         index(block).is_some() || self.custom.contains_key(block)
     }
-    /// Preparation-only insertion. Overwrites any existing entry in place.
-    pub fn register(&mut self, block: String, item: String, handler: H) {
+    /// Preparation-only insertion. Overwrites any existing entry in place and returns any
+    /// displaced mod handler so the caller can drop it inside its owner's unwind boundary.
+    pub fn register(&mut self, block: String, item: String, handler: H) -> Option<H> {
         let map = match index(&block) {
             Some(i) => &mut self.maps[i],
             None => self.custom.entry(block).or_default(),
         };
-        map.insert(item, Entry::Mod(handler));
+        match map.insert(item, Entry::Mod(handler)) {
+            Some(Entry::Mod(old)) => Some(old),
+            _ => None,
+        }
     }
     /// Preparation-only insertion of an item-tag entry, which declares a custom block as
     /// `register` does. Overwrites an existing entry for the same tag in place, keeping its
-    /// registration position.
-    pub fn register_tag(&mut self, block: String, tag: String, handler: H) {
+    /// registration position and returning any displaced mod handler for fenced disposal.
+    pub fn register_tag(&mut self, block: String, tag: String, handler: H) -> Option<H> {
         if index(&block).is_none() {
             self.custom.entry(block.clone()).or_default();
         }
         let entries = self.tagged.entry(block).or_default();
         match entries.iter().position(|(held, _)| *held == tag) {
-            Some(at) => entries[at].1 = handler,
-            None => entries.push((tag, handler)),
+            Some(at) => Some(std::mem::replace(&mut entries[at].1, handler)),
+            None => {
+                entries.push((tag, handler));
+                None
+            }
         }
     }
     /// Complete prepared dispatcher set, including declared custom blocks.

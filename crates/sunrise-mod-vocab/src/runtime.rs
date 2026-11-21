@@ -74,6 +74,11 @@ pub(crate) struct Installed {
     /// answers through one atomic load, so a dispatch with no poison pays nothing.
     poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
     poison_free: std::sync::atomic::AtomicBool,
+    /// Session-wide poison set for retained callbacks keyed by `(operation, mod_id)` so a
+    /// table rebuild (such as `/reload`) keeps a panicking callback disabled for the session.
+    callback_poisons:
+        std::sync::Mutex<Option<std::collections::HashSet<(&'static str, &'static str)>>>,
+    callback_poison_free: std::sync::atomic::AtomicBool,
     /// Hook-listener panic reports queued for this installed set's client error toast.
     hook_panics: std::sync::Mutex<Vec<HookPanicReport>>,
     has_hook_panics: std::sync::atomic::AtomicBool,
@@ -127,6 +132,8 @@ impl Installed {
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
             poisons: std::sync::Mutex::new(None),
             poison_free: std::sync::atomic::AtomicBool::new(true),
+            callback_poisons: std::sync::Mutex::new(None),
+            callback_poison_free: std::sync::atomic::AtomicBool::new(true),
             hook_panics: std::sync::Mutex::new(Vec::new()),
             has_hook_panics: std::sync::atomic::AtomicBool::new(false),
         }
@@ -262,6 +269,44 @@ fn is_poisoned(installed: &Installed, hook: generated::HookId, id: &str) -> bool
 /// Whether `id`'s listener of `hook` is poisoned for the session.
 pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
     installed().is_some_and(|installed| is_poisoned(installed, hook, id))
+}
+
+/// Record a retained callback panic for `(operation, id)` across the current installed mod
+/// session. Returns true on the first panic for that pair so callers report it once.
+pub(crate) fn poison_callback(operation: &'static str, id: &'static str) -> bool {
+    let Some(installed) = installed() else {
+        return true;
+    };
+    let mut poisons = installed
+        .callback_poisons
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let first = poisons
+        .get_or_insert_with(std::collections::HashSet::new)
+        .insert((operation, id));
+    installed
+        .callback_poison_free
+        .store(false, std::sync::atomic::Ordering::Release);
+    first
+}
+
+/// Whether `id`'s retained callback for `operation` is poisoned for the session.
+pub(crate) fn callback_poisoned(operation: &'static str, id: &'static str) -> bool {
+    let Some(installed) = installed() else {
+        return false;
+    };
+    if installed
+        .callback_poison_free
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return false;
+    }
+    installed
+        .callback_poisons
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(|poisons| poisons.contains(&(operation, id)))
 }
 
 /// Record a mod callback panic under the unified dispatch failure rule.

@@ -201,6 +201,12 @@ impl Game<'_> {
         let permission = host.hub.guests[gi].permission;
         let won_game = matches!(packet, S::ClientCommand(ref c) if c.action == 0)
             && host.play.get(&conn).is_some_and(|p| p.won_game);
+        if !matches!(packet, S::UseItem(_))
+            && let Some(host) = self.lan.as_mut()
+            && let Some(play) = host.play.get_mut(&conn)
+        {
+            play.cauldron_pass_item_use = None;
+        }
         match packet {
             S::PlayerAction(a) => match a.action {
                 0 => {
@@ -556,7 +562,19 @@ impl Game<'_> {
                 host.hub.ack(conn, p.sequence);
                 let hit = Hit::from_use_item_on(&p);
                 let hand = if p.hand == 1 { Hand::Off } else { Hand::Main };
-                let _ = self.guest_use_item_on(conn, gi, hit, hand);
+                if let Ok((false, true)) = self.guest_use_item_on_pass(conn, gi, hit, hand)
+                    && let Some(gi) = self
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guests.connection_index(conn))
+                {
+                    let _ = self.guest_use_item(conn, gi, hand, None);
+                    if let Some(host) = self.lan.as_mut() {
+                        let tick = host.hub.ticks;
+                        host.play.entry(conn).or_default().cauldron_pass_item_use =
+                            Some((hand, p.sequence.wrapping_add(1), tick));
+                    }
+                }
             }
             S::UseItem(p) => {
                 let Some(host) = self.lan.as_mut() else {
@@ -564,6 +582,20 @@ impl Game<'_> {
                 };
                 host.hub.ack(conn, p.sequence);
                 let hand = if p.hand == 1 { Hand::Off } else { Hand::Main };
+                let tick = host.hub.ticks;
+                let already_used = host.play.get_mut(&conn).is_some_and(|play| {
+                    play.cauldron_pass_item_use
+                        .take()
+                        .is_some_and(|(h, seq, at)| {
+                            h == hand && p.sequence == seq && tick.saturating_sub(at) <= 1
+                        })
+                });
+                if already_used {
+                    host.hub
+                        .guests
+                        .update(gi, |g| (g.yaw, g.pitch) = (p.yaw, p.pitch));
+                    return;
+                }
                 let _ = self.guest_use_item(conn, gi, hand, Some((p.yaw, p.pitch)));
             }
             S::Attack(p) => {

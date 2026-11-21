@@ -19,6 +19,11 @@ pub(super) struct GuestPlay {
     use_duration: i32,
     use_start: super::using_item::UseStart,
     use_delay: u32,
+    /// When a custom cauldron handler returns `Pass` on `UseItemOn`, the server resumes
+    /// `Item.use` for that hand because modded clients suppress `UseItem`; track `(hand,
+    /// next_sequence, tick)` so a follow-up `UseItem` from a client without the registration
+    /// does not run `Item.use` a second time.
+    pub(super) cauldron_pass_item_use: Option<(Hand, i32, u64)>,
     /// The shield's ItemCooldowns entry: an axe disabled it for this many ticks.
     pub(super) shield_cooldown: u32,
     /// `ServerGamePacketListenerImpl.dropSpamThrottler` (`TickThrottler(20, 1480)`): 20 for each

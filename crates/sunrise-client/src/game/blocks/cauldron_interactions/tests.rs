@@ -1170,6 +1170,13 @@ fn cauldron_panicking_handler_disables_callback_and_reports_toast() {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert!(mod_api::__private::take_hook_panics().is_empty());
 
+        // Reloading rebuilds the cauldron table, but the panicked mod's callback stays
+        // disabled for the rest of the session.
+        game.resolve_parts().unwrap();
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Consume);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert!(mod_api::__private::take_hook_panics().is_empty());
+
         setup(game, "minecraft:cauldron", None, "minecraft:lava_bucket", 1);
         assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
         assert_eq!(state(game), ("minecraft:lava_cauldron".into(), None));
@@ -1178,5 +1185,545 @@ fn cauldron_panicking_handler_disables_callback_and_reports_toast() {
             "minecraft:bucket"
         );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    });
+}
+
+#[test]
+fn cauldron_displaced_handlers_drop_under_original_owner_and_order_edits() {
+    use mod_api::{ModEntry, RegistrationContext};
+    use sunrise_mod_runtime::block_definitions::BlockDefinition;
+    use sunrise_world::{loot::PackOverlay, registry::BlockRegistry};
+
+    struct PanicDrop {
+        label: &'static str,
+        dropped: Arc<AtomicUsize>,
+    }
+    impl mod_api::Interaction for PanicDrop {
+        fn interact(&self, _host: &mut dyn ServerHost, _input: &CauldronUse) -> CauldronDecision {
+            CauldronDecision::Consume
+        }
+    }
+    impl Drop for PanicDrop {
+        fn drop(&mut self) {
+            self.dropped.fetch_add(1, Ordering::SeqCst);
+            panic!("drop panic for {}", self.label);
+        }
+    }
+    struct Labelled(&'static str);
+    impl mod_api::Interaction for Labelled {
+        fn interact(&self, _host: &mut dyn ServerHost, _input: &CauldronUse) -> CauldronDecision {
+            let _ = self.0;
+            CauldronDecision::Consume
+        }
+    }
+    struct OldOwner {
+        dropped: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for OldOwner {
+        fn register_cauldron_interaction(
+            &self,
+            _: &RegistrationContext,
+            event: &mut mod_api::RegisterCauldronInteractionEvent<'_>,
+        ) {
+            let water = mod_api::__private::block_key("minecraft:water_cauldron").unwrap();
+            let item = |id| mod_api::__private::item_key(id).unwrap();
+            event
+                .interactions
+                .register(
+                    water,
+                    item("test:exact"),
+                    Arc::new(PanicDrop {
+                        label: "exact",
+                        dropped: self.dropped.clone(),
+                    }),
+                )
+                .unwrap();
+            event
+                .interactions
+                .register_tag(
+                    water,
+                    "test:tag",
+                    Arc::new(PanicDrop {
+                        label: "tag",
+                        dropped: self.dropped.clone(),
+                    }),
+                )
+                .unwrap();
+            event
+                .interactions
+                .register(
+                    water,
+                    item("test:direct_then_all"),
+                    Arc::new(PanicDrop {
+                        label: "direct_then_all",
+                        dropped: self.dropped.clone(),
+                    }),
+                )
+                .unwrap();
+            event
+                .interactions
+                .register_tag_to_all(
+                    "test:all_tag_first",
+                    Arc::new(PanicDrop {
+                        label: "all_tag_first",
+                        dropped: self.dropped.clone(),
+                    }),
+                )
+                .unwrap();
+            // Registered before direct overrides so registration order can be verified.
+            event
+                .interactions
+                .register_to_all(item("test:all_then_direct"), Arc::new(Labelled("all_old")))
+                .unwrap();
+            event
+                .interactions
+                .register_tag_to_all(
+                    "test:all_then_direct_tag",
+                    Arc::new(Labelled("all_tag_old")),
+                )
+                .unwrap();
+            event
+                .interactions
+                .register_tag(
+                    water,
+                    "test:second_tag",
+                    Arc::new(Labelled("second_tag_old")),
+                )
+                .unwrap();
+        }
+    }
+    struct NewOwner;
+    #[mod_api::__subscriptions]
+    impl Hooks for NewOwner {
+        fn register_cauldron_interaction(
+            &self,
+            _: &RegistrationContext,
+            event: &mut mod_api::RegisterCauldronInteractionEvent<'_>,
+        ) {
+            let water = mod_api::__private::block_key("minecraft:water_cauldron").unwrap();
+            let custom = mod_api::__private::block_key("test:custom_cauldron").unwrap();
+            let item = |id| mod_api::__private::item_key(id).unwrap();
+            event
+                .interactions
+                .register(water, item("test:exact"), Arc::new(Labelled("exact_new")))
+                .unwrap();
+            event
+                .interactions
+                .register_tag(water, "#test:tag", Arc::new(Labelled("tag_new")))
+                .unwrap();
+            event
+                .interactions
+                .register_to_all(
+                    item("test:direct_then_all"),
+                    Arc::new(Labelled("direct_then_all_new")),
+                )
+                .unwrap();
+            event
+                .interactions
+                .register_tag_to_all(
+                    "#test:all_tag_first",
+                    Arc::new(Labelled("all_tag_first_new")),
+                )
+                .unwrap();
+            // Direct overrides registered after `register_to_all` / `register_tag_to_all` win on
+            // the target block while the earlier all-dispatcher entries remain on other blocks.
+            event
+                .interactions
+                .register(
+                    water,
+                    item("test:all_then_direct"),
+                    Arc::new(Labelled("direct_new")),
+                )
+                .unwrap();
+            event
+                .interactions
+                .register_tag(
+                    water,
+                    "test:all_then_direct_tag",
+                    Arc::new(Labelled("direct_tag_new")),
+                )
+                .unwrap();
+            // Declaring a custom block late still receives earlier `register_to_all` edits in
+            // registration order.
+            event
+                .interactions
+                .register(
+                    custom,
+                    item("test:custom_only"),
+                    Arc::new(Labelled("custom")),
+                )
+                .unwrap();
+        }
+    }
+
+    let dropped = Arc::new(AtomicUsize::new(0));
+    mod_platform::testing::with_mods(
+        vec![
+            ModEntry::new(
+                "old_owner",
+                Box::new(OldOwner {
+                    dropped: dropped.clone(),
+                }),
+            ),
+            ModEntry::new("new_owner", Box::new(NewOwner)),
+        ]
+        .into(),
+        || {
+            let _ = mod_api::__private::take_hook_panics();
+            crate::game::api_values::install_parts(&[]).unwrap();
+            mod_api::__private::resolve_block_keys(
+                ["minecraft:water_cauldron", "test:custom_cauldron"],
+                |_| {
+                    BlockDefinition::new(&[&Default::default()], 0)
+                        .map_err(|err| format!("{err:?}"))
+                },
+            )
+            .unwrap();
+            let ids = [
+                "test:exact",
+                "test:direct_then_all",
+                "test:all_then_direct",
+                "test:custom_only",
+            ];
+            mod_api::__private::resolve_items(ids).unwrap();
+            let root = tempfile::tempdir().unwrap();
+            let item_json = ids
+                .map(|id| (id, serde_json::json!({})))
+                .into_iter()
+                .collect::<std::collections::BTreeMap<_, _>>();
+            std::fs::write(
+                root.path().join("items.json"),
+                serde_json::to_vec(&item_json).unwrap(),
+            )
+            .unwrap();
+            let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
+            let items = Items::catalog(root.path(), &PackOverlay::NONE, &defaults).unwrap();
+            let registry = BlockRegistry::from_facts_json(
+                &br#"{
+                "defaults":{"minecraft:water_cauldron":0,"test:custom_cauldron":1},
+                "states":[
+                    ["water_cauldron",false,false,"","minecraft:water_cauldron"],
+                    ["custom_cauldron",false,false,"","test:custom_cauldron"]
+                ]
+            }"#[..],
+            )
+            .unwrap();
+
+            let mut registrar = Registrar::new(&items, &registry);
+            Game::native_register_cauldron_interaction(&RegistrationContext::new(), &mut registrar);
+            let table = registrar.finish().unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 4);
+            let panics = mod_api::__private::take_hook_panics();
+            assert!(!panics.is_empty());
+            assert!(
+                panics.iter().all(|report| report.mod_id == "old_owner"),
+                "drop panics must be attributed to the displaced owner, got {panics:?}"
+            );
+
+            let water = "minecraft:water_cauldron";
+            let empty = "minecraft:cauldron";
+            let custom = "test:custom_cauldron";
+            assert!(matches!(
+                table.select(water, "test:exact", false, |_| false),
+                Some(Entry::Mod(cb)) if cb.owner == "new_owner"
+            ));
+            assert!(matches!(
+                table.select(water, "test:any", false, |tag| tag == "test:tag"),
+                Some(Entry::Mod(cb)) if cb.owner == "new_owner"
+            ));
+            // direct-then-all: later `register_to_all` overwrote the earlier direct entry.
+            for block in [water, empty, custom] {
+                assert!(
+                    matches!(
+                        table.select(block, "test:direct_then_all", false, |_| false),
+                        Some(Entry::Mod(cb)) if cb.owner == "new_owner"
+                    ),
+                    "{block}"
+                );
+            }
+            // all-then-direct: later direct entry wins on water, while earlier all-dispatcher
+            // entry stays on empty and on the late-declared custom block.
+            assert!(matches!(
+                table.select(water, "test:all_then_direct", false, |_| false),
+                Some(Entry::Mod(cb)) if cb.owner == "new_owner"
+            ));
+            for block in [empty, custom] {
+                assert!(
+                    matches!(
+                        table.select(block, "test:all_then_direct", false, |_| false),
+                        Some(Entry::Mod(cb)) if cb.owner == "old_owner"
+                    ),
+                    "{block}"
+                );
+            }
+            // Tag replacement stays in place before later tags (and beats exact item entries).
+            assert!(matches!(
+                table.select(water, "test:all_then_direct", false, |tag| {
+                    tag == "test:all_then_direct_tag" || tag == "test:second_tag"
+                }),
+                Some(Entry::Mod(cb)) if cb.owner == "new_owner"
+            ));
+            assert!(matches!(
+                table.select(custom, "test:any", false, |tag| {
+                    tag == "test:all_then_direct_tag"
+                }),
+                Some(Entry::Mod(cb)) if cb.owner == "old_owner"
+            ));
+            assert!(matches!(
+                table.select(water, "test:any", false, |tag| {
+                    tag == "test:all_tag_first" || tag == "test:second_tag"
+                }),
+                Some(Entry::Mod(cb)) if cb.owner == "new_owner"
+            ));
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
+    if run_fresh_cases(
+        "game::cauldron_interactions::tests::cauldron_packet_pass_resumes_item_use_once_without_client_prediction",
+        "SUNRISE_CAULDRON_CASE",
+        &["run"],
+    ) {
+        return;
+    }
+    use sunrise_protocol::packets::play;
+
+    struct PacketDecision {
+        decision: Arc<std::sync::Mutex<CauldronDecision>>,
+        calls: Arc<AtomicUsize>,
+    }
+    impl mod_api::Interaction for PacketDecision {
+        fn interact(&self, _host: &mut dyn ServerHost, _input: &CauldronUse) -> CauldronDecision {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            *self.decision.lock().unwrap()
+        }
+    }
+    struct PacketMod {
+        decision: Arc<std::sync::Mutex<CauldronDecision>>,
+        calls: Arc<AtomicUsize>,
+        item_uses: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for PacketMod {
+        fn register_cauldron_interaction(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterCauldronInteractionEvent<'_>,
+        ) {
+            event
+                .interactions
+                .register(
+                    mod_api::__private::block_key("minecraft:cauldron").unwrap(),
+                    mod_api::__private::item_key("minecraft:milk_bucket").unwrap(),
+                    Arc::new(PacketDecision {
+                        decision: self.decision.clone(),
+                        calls: self.calls.clone(),
+                    }),
+                )
+                .unwrap();
+        }
+        fn right_click_item(
+            &self,
+            _: mod_api::HostSide<'_>,
+            _: &mut mod_api::RightClickItemEvent<'_>,
+        ) -> mod_api::Flow {
+            self.item_uses.fetch_add(1, Ordering::SeqCst);
+            mod_api::Flow::Continue
+        }
+    }
+
+    let decision = Arc::new(std::sync::Mutex::new(CauldronDecision::Pass));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let item_uses = Arc::new(AtomicUsize::new(0));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "packet_cauldron",
+        Box::new(PacketMod {
+            decision: decision.clone(),
+            calls: calls.clone(),
+            item_uses: item_uses.clone(),
+        }),
+    )]
+    .into();
+    fixture_mods(mods, |game| {
+        // 1. Client side: clicking a custom cauldron sends only `UseItemOn`, with no swing
+        //    and no speculative drinking or client callback execution.
+        let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
+        peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
+            .unwrap();
+        game.set_mode_id(0);
+        setup(game, "minecraft:cauldron", None, "minecraft:milk_bucket", 1);
+        game.player = Some(
+            sunrise_client::motion::PlayerMotion::new(
+                game.motion,
+                sunrise_core::geometry::Vec3::new(0.5, 64.0, 2.5),
+            )
+            .unwrap(),
+        );
+        game.forced_hit = Some(Hit {
+            pos: POS,
+            face: [0, 1, 0],
+            point: [0.5, 65.0, 0.5],
+            inside: false,
+        });
+        while peer.recv().is_ok() {}
+        let client_swings = game.swings_started;
+        game.remote_use(mod_api::InteractionAttempt::Press);
+        let mut use_item_on = None;
+        let mut saw_use_item = false;
+        while let Ok((id, bytes)) = peer.recv() {
+            match play::Serverbound::decode(id, &bytes) {
+                Ok(play::Serverbound::UseItemOn(packet)) => use_item_on = Some(packet),
+                Ok(play::Serverbound::UseItem(_)) => saw_use_item = true,
+                _ => {}
+            }
+        }
+        let packet = use_item_on.expect("client must send UseItemOn");
+        assert!(!saw_use_item, "client must not speculatively send UseItem");
+        assert_eq!(game.swings_started, client_swings);
+        assert!(game.using.is_none());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        // 2. Server side: feed the captured packet to a LAN guest.
+        game.remote = None;
+        game.options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        crate::game::native_item_places::tests::open_to_lan(game);
+        setup(game, "minecraft:cauldron", None, "minecraft:milk_bucket", 1);
+        let mut guest = crate::game::native_item_places::tests::guest(1);
+        guest.position = [0.5, 64.0, 2.5];
+        guest.inventory[0] = Some(ItemStack::new("minecraft:milk_bucket", 1));
+        guest.selected = 0;
+        game.lan.as_mut().unwrap().hub.guests.push(guest);
+
+        // Pass: resumes normal Item.use (starts drinking + fires RightClickItem) exactly once.
+        *decision.lock().unwrap() = CauldronDecision::Pass;
+        game.lan_guest_packet(1, play::Serverbound::UseItemOn(packet.clone()));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(item_uses.load(Ordering::SeqCst), 1);
+        assert!(game.as_guest(1, |g| g.using.is_some()).unwrap());
+
+        // A follow-up `UseItem(seq + 1)` from a client that did send one does not double-use.
+        game.as_guest(1, |g| g.using = None);
+        game.lan_guest_packet(
+            1,
+            play::Serverbound::UseItem(play::UseItem {
+                hand: packet.hand,
+                sequence: packet.sequence.wrapping_add(1),
+                yaw: 0.0,
+                pitch: 0.0,
+            }),
+        );
+        assert_eq!(item_uses.load(Ordering::SeqCst), 1);
+        assert!(game.as_guest(1, |g| g.using.is_none()).unwrap());
+
+        // Consume and Success do NOT fall through to Item.use.
+        for outcome in [CauldronDecision::Consume, CauldronDecision::Success] {
+            *decision.lock().unwrap() = outcome;
+            game.as_guest(1, |g| g.using = None);
+            let mut next = packet.clone();
+            next.sequence = next.sequence.wrapping_add(10);
+            game.lan_guest_packet(1, play::Serverbound::UseItemOn(next));
+            assert_eq!(item_uses.load(Ordering::SeqCst), 1);
+            assert!(game.as_guest(1, |g| g.using.is_none()).unwrap());
+        }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn cauldron_input_projection_failure_consumes_without_fallthrough() {
+    if run_fresh_cases(
+        "game::cauldron_interactions::tests::cauldron_input_projection_failure_consumes_without_fallthrough",
+        "SUNRISE_CAULDRON_CASE",
+        &["run"],
+    ) {
+        return;
+    }
+    struct PassHandler {
+        calls: Arc<AtomicUsize>,
+    }
+    impl mod_api::Interaction for PassHandler {
+        fn interact(&self, _host: &mut dyn ServerHost, _input: &CauldronUse) -> CauldronDecision {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            CauldronDecision::Pass
+        }
+    }
+    struct GuardMod {
+        calls: Arc<AtomicUsize>,
+        fallthrough: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for GuardMod {
+        fn register_cauldron_interaction(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterCauldronInteractionEvent<'_>,
+        ) {
+            event
+                .interactions
+                .register(
+                    mod_api::__private::block_key("minecraft:cauldron").unwrap(),
+                    mod_api::__private::item_key("minecraft:milk_bucket").unwrap(),
+                    Arc::new(PassHandler {
+                        calls: self.calls.clone(),
+                    }),
+                )
+                .unwrap();
+        }
+        fn right_click_item(
+            &self,
+            _: mod_api::HostSide<'_>,
+            _: &mut mod_api::RightClickItemEvent<'_>,
+        ) -> mod_api::Flow {
+            self.fallthrough.fetch_add(1, Ordering::SeqCst);
+            mod_api::Flow::Continue
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let fallthrough = Arc::new(AtomicUsize::new(0));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "guard_cauldron",
+        Box::new(GuardMod {
+            calls: calls.clone(),
+            fallthrough: fallthrough.clone(),
+        }),
+    )]
+    .into();
+    fixture_mods(mods, |game| {
+        let hit = Hit {
+            pos: POS,
+            face: [0, 1, 0],
+            point: [0.5, 65.0, 0.5],
+            inside: false,
+        };
+        // A malformed held stack (negative damage component fails `TryIntoApi`) is refused as
+        // `Outcome::Consume` with no swing, no callback run and no fallthrough to `Item.use`.
+        setup(game, "minecraft:cauldron", None, "minecraft:milk_bucket", 1);
+        game.inventory[0]
+            .as_mut()
+            .unwrap()
+            .data_mut()
+            .set_other("minecraft:damage", Some(sunrise_core::nbt::Tag::Int(-1)));
+        let swings = game.swings_started;
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Consume);
+        assert_eq!(game.swings_started, swings);
+        assert!(game.use_hand(Some(&hit)).unwrap());
+        assert_eq!(game.swings_started, swings);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(fallthrough.load(Ordering::SeqCst), 0);
+        assert!(game.using.is_none());
+
+        // With a valid held stack, the callback runs and `Pass` falls through normally
+        // to `Item.use` (starting to drink the milk bucket, which consumes the click).
+        setup(game, "minecraft:cauldron", None, "minecraft:milk_bucket", 1);
+        assert!(game.use_hand(Some(&hit)).unwrap());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(fallthrough.load(Ordering::SeqCst), 1);
+        assert!(game.using.is_some());
     });
 }

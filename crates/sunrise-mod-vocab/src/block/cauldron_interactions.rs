@@ -77,8 +77,9 @@ pub trait CauldronInteractions {
         item: ItemKey,
         handler: Arc<dyn Interaction>,
     ) -> Result<(), CauldronRegistrationError>;
-    /// Queue registration over the complete prepared dispatcher set, including later
-    /// declarations, overwriting any existing entry for `item` on each block in place.
+    /// Queue registration over the complete prepared dispatcher set, including custom blocks
+    /// declared later, applied in registration order alongside direct [`Self::register`] calls
+    /// so later writes win and overwrite any existing entry for `item` on each block in place.
     /// Item admission errors (`UnknownItem`) are returned and stored.
     fn register_to_all(
         &mut self,
@@ -98,9 +99,9 @@ pub trait CauldronInteractions {
         tag: &str,
         handler: Arc<dyn Interaction>,
     ) -> Result<(), CauldronRegistrationError>;
-    /// [`Self::register_tag`] over the complete prepared dispatcher set, queued as
-    /// [`Self::register_to_all`] is (NeoForge's `registerToAll(TagKey, …)`), overwriting any
-    /// matching tag entry on each block in place.
+    /// [`Self::register_tag`] over the complete prepared dispatcher set, applied in registration
+    /// order alongside direct [`Self::register_tag`] calls (NeoForge's
+    /// `registerToAll(TagKey, …)`), overwriting any matching tag entry on each block in place.
     fn register_tag_to_all(
         &mut self,
         tag: &str,

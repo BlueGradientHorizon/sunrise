@@ -4,7 +4,7 @@ use mod_api::{
     __private::game::{CallbackOwner, RegistrationContextNew, discard_registration},
     HookId,
 };
-use std::{cell::RefCell, sync::Arc};
+use std::{cell::RefCell, collections::BTreeSet, sync::Arc};
 use sunrise_client::cauldron::interactions::Dispatcher;
 
 #[derive(Clone)]
@@ -38,16 +38,52 @@ pub(super) fn install(table: Arc<Table>) {
     TABLE.with_borrow_mut(|old| *old = table);
 }
 
-/// What a `register_to_all` or `register_tag_to_all` entry answers for.
-enum Target {
-    Item(String),
-    Tag(String),
+fn discard_callback(callback: Callback) {
+    discard_registration(
+        (
+            HookId::RegisterCauldronInteraction,
+            "register_cauldron_interaction",
+        ),
+        Some(callback.owner),
+        callback.handler,
+    );
+}
+
+/// One admitted cauldron registration edit, replayed in registration order at `finish`.
+enum Edit {
+    Item {
+        block: String,
+        item: String,
+        callback: Callback,
+    },
+    AllItem {
+        item: String,
+        callback: Callback,
+    },
+    Tag {
+        block: String,
+        tag: String,
+        callback: Callback,
+    },
+    AllTag {
+        tag: String,
+        callback: Callback,
+    },
+}
+impl Edit {
+    fn into_callback(self) -> Callback {
+        match self {
+            Self::Item { callback, .. }
+            | Self::AllItem { callback, .. }
+            | Self::Tag { callback, .. }
+            | Self::AllTag { callback, .. } => callback,
+        }
+    }
 }
 pub(in crate::game) struct Registrar<'a> {
-    table: Table,
     items: &'a Items,
     registry: &'a sunrise_world::registry::BlockRegistry,
-    all: Vec<(Target, Callback)>,
+    edits: Vec<Edit>,
     error: Option<mod_api::CauldronRegistrationError>,
 }
 /// A tag as entries keep it: its resource location, without `#`.
@@ -60,10 +96,9 @@ fn tag_id(tag: &str) -> Option<String> {
 impl<'a> Registrar<'a> {
     fn new(items: &'a Items, registry: &'a sunrise_world::registry::BlockRegistry) -> Self {
         Self {
-            table: Table::default(),
             items,
             registry,
-            all: Vec::new(),
+            edits: Vec::new(),
             error: None,
         }
     }
@@ -72,43 +107,20 @@ impl<'a> Registrar<'a> {
         &mut self,
         listen: &mut dyn FnMut(&mut dyn mod_api::CauldronInteractions) -> bool,
     ) {
-        let mut pending = Registrar {
-            table: Table::empty(),
-            items: self.items,
-            registry: self.registry,
-            all: Vec::new(),
-            error: None,
-        };
+        let mut pending = Registrar::new(self.items, self.registry);
         if listen(&mut pending) {
-            let Registrar {
-                table, all, error, ..
-            } = pending;
-            self.table.append_registrations(table);
-            self.all.extend(all);
+            let Registrar { edits, error, .. } = pending;
+            self.edits.extend(edits);
             if let Some(error) = error {
                 self.error = Some(error);
             }
         } else {
-            for Callback { handler, owner, .. } in pending
-                .table
-                .into_mod_handlers()
-                .chain(pending.all.into_iter().map(|(_, callback)| callback))
-            {
-                discard_registration(
-                    (
-                        HookId::RegisterCauldronInteraction,
-                        "register_cauldron_interaction",
-                    ),
-                    Some(owner),
-                    handler,
-                );
+            for edit in pending.edits {
+                discard_callback(edit.into_callback());
             }
         }
     }
 
-    fn insert_tag(&mut self, block: String, tag: String, callback: Callback) {
-        self.table.register_tag(block, tag, callback);
-    }
     /// Record an admission error, which fails the whole preparation when it finishes.
     fn refuse(
         &mut self,
@@ -117,22 +129,68 @@ impl<'a> Registrar<'a> {
         self.error = Some(error);
         Err(error)
     }
-    fn insert(&mut self, block: String, item: String, callback: Callback) {
-        self.table.register(block, item, callback);
-    }
-    fn finish(mut self) -> Result<Arc<Table>> {
-        if let Some(error) = self.error {
+    fn finish(self) -> Result<Arc<Table>> {
+        let Self { edits, error, .. } = self;
+        if let Some(error) = error {
+            for edit in edits {
+                discard_callback(edit.into_callback());
+            }
             return Err(format!("cauldron registration: {error:?}").into());
         }
-        for (target, callback) in std::mem::take(&mut self.all) {
-            for block in self.table.blocks() {
-                match &target {
-                    Target::Item(item) => self.insert(block, item.clone(), callback.clone()),
-                    Target::Tag(tag) => self.insert_tag(block, tag.clone(), callback.clone()),
+        let mut table = Table::default();
+        let mut blocks = table.blocks();
+        let mut extra = BTreeSet::new();
+        for edit in &edits {
+            if let Edit::Item { block, .. } | Edit::Tag { block, .. } = edit
+                && !table.contains_block(block)
+            {
+                extra.insert(block.clone());
+            }
+        }
+        blocks.extend(extra);
+        for edit in edits {
+            match edit {
+                Edit::Item {
+                    block,
+                    item,
+                    callback,
+                } => {
+                    if let Some(old) = table.register(block, item, callback) {
+                        discard_callback(old);
+                    }
+                }
+                Edit::Tag {
+                    block,
+                    tag,
+                    callback,
+                } => {
+                    if let Some(old) = table.register_tag(block, tag, callback) {
+                        discard_callback(old);
+                    }
+                }
+                Edit::AllItem { item, callback } => {
+                    for block in &blocks {
+                        if let Some(old) =
+                            table.register(block.clone(), item.clone(), callback.clone())
+                        {
+                            discard_callback(old);
+                        }
+                    }
+                    discard_callback(callback);
+                }
+                Edit::AllTag { tag, callback } => {
+                    for block in &blocks {
+                        if let Some(old) =
+                            table.register_tag(block.clone(), tag.clone(), callback.clone())
+                        {
+                            discard_callback(old);
+                        }
+                    }
+                    discard_callback(callback);
                 }
             }
         }
-        Ok(Arc::new(self.table))
+        Ok(Arc::new(table))
     }
 }
 impl mod_api::CauldronInteractions for Registrar<'_> {
@@ -153,7 +211,11 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         else {
             return self.refuse(Error::UnknownItem);
         };
-        self.insert(block.to_string(), item.to_string(), Callback::new(handler));
+        self.edits.push(Edit::Item {
+            block: block.to_string(),
+            item: item.to_string(),
+            callback: Callback::new(handler),
+        });
         Ok(())
     }
     fn register_to_all(
@@ -166,8 +228,10 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         else {
             return self.refuse(mod_api::CauldronRegistrationError::UnknownItem);
         };
-        self.all
-            .push((Target::Item(item.to_string()), Callback::new(handler)));
+        self.edits.push(Edit::AllItem {
+            item: item.to_string(),
+            callback: Callback::new(handler),
+        });
         Ok(())
     }
     fn register_tag(
@@ -185,7 +249,11 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         let Some(tag) = tag_id(tag) else {
             return self.refuse(Error::InvalidTag);
         };
-        self.insert_tag(block.to_string(), tag, Callback::new(handler));
+        self.edits.push(Edit::Tag {
+            block: block.to_string(),
+            tag,
+            callback: Callback::new(handler),
+        });
         Ok(())
     }
     fn register_tag_to_all(
@@ -196,7 +264,10 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         let Some(tag) = tag_id(tag) else {
             return self.refuse(mod_api::CauldronRegistrationError::InvalidTag);
         };
-        self.all.push((Target::Tag(tag), Callback::new(handler)));
+        self.edits.push(Edit::AllTag {
+            tag,
+            callback: Callback::new(handler),
+        });
         Ok(())
     }
 }
@@ -221,54 +292,72 @@ impl Game<'_> {
         use sunrise_client::cauldron::Outcome;
         let Some(guard) = callback.guard.as_ref() else {
             log::warn!(
-                "cauldron interaction for {} has no installed owner",
-                callback.owner
+                "cauldron interaction for mod {} in phase {:?} has no installed owner",
+                callback.owner,
+                mod_api::__private::current_phase()
             );
             return Outcome::Consume;
         };
-        let Some(held) = self.held().cloned() else {
-            return Outcome::Pass;
+        let build_input = || -> std::result::Result<CauldronUse, String> {
+            let held = self
+                .held()
+                .cloned()
+                .ok_or_else(|| "missing held stack".to_owned())?;
+            let before = self.world.block(pos[0], pos[1], pos[2]);
+            let index = api_values::block_state::current()
+                .map_err(|err| format!("block state index unavailable: {err:?}"))?;
+            let state = index
+                .to_api(before)
+                .map_err(|err| format!("block state {before:?} unavailable: {err:?}"))?;
+            let epoch = self
+                .native_lifecycle
+                .epoch()
+                .ok_or_else(|| "no active world epoch".to_owned())?;
+            let player_id = self.native_acting_id();
+            let entity_id = self
+                .player_lookup_entity(player_id)
+                .unwrap_or_else(|| self.native_acting_entity());
+            let actor = mod_api::EntityRef::new(epoch, entity_id);
+            let player = mod_api::__private::game::player_ref(actor, player_id);
+            let level = self.level_ref(epoch, self.dim.key());
+            let held = held
+                .try_into_api()
+                .map_err(|err| format!("held stack projection failed: {err:?}"))?;
+            Ok(CauldronUse {
+                level,
+                pos,
+                state,
+                player,
+                hand: match self.hand {
+                    Hand::Main => mod_api::Hand::Main,
+                    Hand::Off => mod_api::Hand::Off,
+                },
+                held,
+                underwater: under_water,
+                creative: self.creative,
+            })
         };
-        let before = self.world.block(pos[0], pos[1], pos[2]);
-        let Ok(index) = api_values::block_state::current() else {
-            return Outcome::Pass;
+        let input = match build_input() {
+            Ok(input) => input,
+            Err(why) => {
+                log::warn!(
+                    "cauldron interaction input refused for mod {} in phase {:?}: {why}",
+                    callback.owner,
+                    mod_api::__private::current_phase()
+                );
+                return Outcome::Consume;
+            }
         };
-        let Ok(state) = index.to_api(before) else {
-            return Outcome::Pass;
-        };
-        let Some(epoch) = self.native_lifecycle.epoch() else {
-            return Outcome::Pass;
-        };
-        let player_id = self.native_acting_id();
-        let entity_id = self
-            .player_lookup_entity(player_id)
-            .unwrap_or_else(|| self.native_acting_entity());
-        let actor = mod_api::EntityRef::new(epoch, entity_id);
-        let player = mod_api::__private::game::player_ref(actor, player_id);
-        let level = self.level_ref(epoch, self.dim.key());
-        let Ok(held) = held.try_into_api() else {
-            return Outcome::Pass;
-        };
-        let input = CauldronUse {
-            level,
-            pos,
-            state,
-            player,
-            hand: match self.hand {
-                Hand::Main => mod_api::Hand::Main,
-                Hand::Off => mod_api::Hand::Off,
-            },
-            held,
-            underwater: under_water,
-            creative: self.creative,
-        };
-        let decision = guard.call("cauldron interaction", "cauldron_interaction", || {
+        let decision = guard.call_session("cauldron interaction", "cauldron_interaction", || {
             callback.handler.interact(self, &input)
         });
         match decision {
             Ok(CauldronDecision::Success) => Outcome::Success,
             Ok(CauldronDecision::Consume) => Outcome::Consume,
-            Ok(_) => Outcome::Pass,
+            Ok(_) => {
+                self.mod_cauldron_passed = true;
+                Outcome::Pass
+            }
             Err(why) => {
                 log::warn!("cauldron interaction refused: {why}");
                 Outcome::Consume

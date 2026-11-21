@@ -4143,6 +4143,9 @@ struct Game<'a> {
     /// The last `use_hand` that ended the click did so with `FAIL`, which
     /// does not consume the action (handleUseItemOn's ANY_BLOCK_USE).
     use_failed: bool,
+    /// Set during a server `UseItemOn` when a custom mod cauldron handler returned `Pass`
+    /// so packet-backed clicks whose client suppressed prediction can resume `Item.use` once.
+    mod_cauldron_passed: bool,
     block_use_original: Vec<(Hand, Option<ItemStack>)>,
     /// Level events of this tick for the guests, with their excluded source.
     lan_events: Vec<QueuedLevelEvent>,
@@ -13660,6 +13663,7 @@ impl<'a> Game<'a> {
             client_pick: Default::default(),
             guest_use: None,
             use_failed: false,
+            mod_cauldron_passed: false,
             block_use_original: Vec::new(),
             lan_events: Vec::new(),
             lan_songs: Vec::new(),

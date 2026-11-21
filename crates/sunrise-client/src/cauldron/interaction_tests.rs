@@ -91,10 +91,13 @@ fn washing_a_raid_banner_removes_just_its_last_layer() {
 fn cauldron_prebound_entries_overwrite_in_place_and_keep_tag_priority() {
     use interactions::{Dispatcher, Entry};
     let mut table = Dispatcher::<&str>::default();
-    table.register(
-        "minecraft:cauldron".into(),
-        "minecraft:water_bucket".into(),
-        "mod_water",
+    assert_eq!(
+        table.register(
+            "minecraft:cauldron".into(),
+            "minecraft:water_bucket".into(),
+            "mod_water",
+        ),
+        None
     );
     assert!(matches!(
         table.select(
@@ -105,10 +108,13 @@ fn cauldron_prebound_entries_overwrite_in_place_and_keep_tag_priority() {
         ),
         Some(Entry::Mod(owner)) if *owner == "mod_water"
     ));
-    table.register(
-        "minecraft:water_cauldron".into(),
-        "minecraft:bucket".into(),
-        "mod_bucket",
+    assert_eq!(
+        table.register(
+            "minecraft:water_cauldron".into(),
+            "minecraft:bucket".into(),
+            "mod_bucket",
+        ),
+        None
     );
     assert!(matches!(
         table.select(
@@ -119,15 +125,21 @@ fn cauldron_prebound_entries_overwrite_in_place_and_keep_tag_priority() {
         ),
         Some(Entry::Mod(owner)) if *owner == "mod_bucket"
     ));
-    table.register(
-        "minecraft:water_cauldron".into(),
-        "minecraft:leather_helmet".into(),
-        "first",
+    assert_eq!(
+        table.register(
+            "minecraft:water_cauldron".into(),
+            "minecraft:leather_helmet".into(),
+            "first",
+        ),
+        None
     );
-    table.register(
-        "minecraft:water_cauldron".into(),
-        "minecraft:leather_helmet".into(),
-        "second",
+    assert_eq!(
+        table.register(
+            "minecraft:water_cauldron".into(),
+            "minecraft:leather_helmet".into(),
+            "second",
+        ),
+        Some("first")
     );
     assert!(matches!(
         table.select(
@@ -215,15 +227,20 @@ fn cauldron_tag_entries_precede_exact_ones_and_overwrite_in_place() {
             )
             .is_none()
     );
-    // Overwriting an existing tag replaces it at its original position before later tags.
-    table.register_tag(water(), "c:buckets/milk".into(), "milk_v2");
+    // Overwriting an existing tag replaces it at its original position before later tags
+    // and returns the displaced handler.
+    assert_eq!(
+        table.register_tag(water(), "c:buckets/milk".into(), "milk_v2"),
+        Some("milk")
+    );
     assert_eq!(
         pick(&table, "othermod:goat_milk_bucket", milk),
         Some("milk_v2")
     );
-    let mut pending = Dispatcher::empty();
-    pending.register_tag(water(), "c:buckets/milk".into(), "milk_v3");
-    table.append_registrations(pending);
+    assert_eq!(
+        table.register_tag(water(), "c:buckets/milk".into(), "milk_v3"),
+        Some("milk_v2")
+    );
     assert_eq!(
         pick(&table, "othermod:goat_milk_bucket", milk),
         Some("milk_v3")
