@@ -76,21 +76,24 @@ whether any block collision shape is in a box, with `collision_boxes`'s walk and
 without building the list; entities and the world border are not part of it.
 
 Use `ray_trace_nearest_entity(host, from, to, margin, exclude, &mut accept)` if you
-only need one hit. It calls `accept` once per geometric hit in `visit_entities_in` order,
-not distance order. The predicate can make shared reads through the same host; no residency
-guard is held. Of the hits it accepts, the one with the smallest squared distance wins;
-an exact tie keeps the first visited. No accepted hit is `Ok(None)`. Invalid geometry or
-unavailable world access returns `Err(LevelReadError::Unavailable)`; a stale level gives
+only need one hit. Matching `ProjectileUtil.getEntityHitResult`, it passes each
+non-excluded candidate `EntityRef` in `visit_entities_in` order to `accept` before
+reading its bounding box and clipping against the segment. The predicate can make shared
+reads through the same host; no residency guard is held. Of the accepted candidates that
+the segment clips, the one with the smallest squared distance wins; an exact tie keeps
+the first visited hit. No accepted hit is `Ok(None)`. Non-finite geometry or unavailable
+world access returns `Err(LevelReadError::Unavailable)`; a stale level gives
 `Err(LevelReadError::Stale)`. A refused query never runs the predicate.
 
 Keep `ray_trace_entities(host, from, to, margin, exclude)` if you need the full hit list
 or must process hits nearest first. It preserves spatial traversal order for equal distances.
 
 Both queries use the test `ProjectileUtil.getEntityHitResult` makes on each candidate:
-clip against its box grown by `margin` and report the entry point and distance. A ray
-starting inside a grown box does not hit it. `exclude` skips an entity such as the shooter;
-`visit_entities_in` supplies the candidates, so spectator guests are not hit. The filter
-(`canHitEntity`, `isPickable`) is up to the caller."#]
+clip against its box inflated by `margin` (`AABB.inflate`: positive grows, negative
+shrinks; any finite value is accepted) and report the entry point and distance. A ray
+starting inside the adjusted box does not hit it. `exclude` skips an entity such as the
+shooter; `visit_entities_in` supplies the candidates, so spectator guests are not hit.
+The filter (`canHitEntity`, `isPickable`) is up to the caller."#]
     fn level_reads_note2();
     #[notes = r#"## Fluid properties and the explicit fluid tick
 

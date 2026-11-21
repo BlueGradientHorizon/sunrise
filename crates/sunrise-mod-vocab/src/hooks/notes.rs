@@ -964,9 +964,9 @@ handle, an entity the client doesn't track and a level it doesn't show:
   in the active server level or the client's displayed level. The visitor can read them through the same host.
   `ControlFlow::Break(())` stops the visit; `Continue(())` keeps it going. An empty query completes successfully,
   whereas a stale or unavailable level returns `LevelReadError` before the visitor runs.
-- `level.visit_all_entities(host, &mut visit)` visits the active server level's lookup in admission order, with no
-  box filter. It checks that every eligible member resolves before calling the visitor, even if the visitor would
-  stop on the first one.
+- `level.visit_all_entities(host, &mut visit)` visits the active server level's lookup lazily in admission order
+  (`ServerLevel.getAllEntities`), with no box filter, skipping any member that cannot resolve and stopping
+  immediately on `ControlFlow::Break(())`.
 - `level.pop_resource(host, pos, stack)` drops a stack as a broken block does (`Block.popResource`), `spawn_item(host, x, y, z,
   stack, pickup_delay)` and `spawn_item_with_motion` spawn a plain item entity and give its handle, with the pickup delay
   vanilla's `ItemEntity.setPickupDelay` sets at construction (10 a block's drop, 40 a player's throw, 32767 never), and

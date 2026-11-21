@@ -112,20 +112,40 @@ mod tests {
                 .collect();
             assert_eq!(ids, vec![90, 20, 3]);
 
-            // The earlier members still resolve, but no visit may happen before preflight passes.
+            // Extracting an early member skips it cleanly and visits remaining members in order.
+            let first_join = game.mobs[0].join_seq();
+            let first = game.mobs.extract(first_join).unwrap();
+            let remaining: Vec<_> = collect_game_all_entities(game, level)
+                .unwrap()
+                .into_iter()
+                .map(|e| e.id())
+                .filter(|id| [90, 20, 3].contains(id) || (21..=28).contains(id))
+                .collect();
+            assert_eq!(remaining, vec![20, 3]);
+            game.mobs.put_back(0, first);
+
+            // Extracting a later member does not block a lazy Break(()) or the earlier members.
             let join = game.mobs[1].join_seq();
             let extracted = game.mobs.extract(join).unwrap();
-            let mut visits = 0;
+            let mut visited = Vec::new();
             assert_eq!(
-                level.visit_all_entities(game, &mut |_| {
-                    visits += 1;
+                level.visit_all_entities(game, &mut |entity| {
+                    visited.push(entity.id());
                     ControlFlow::Break(())
                 }),
-                Err(LevelReadError::Unavailable)
+                Ok(ControlFlow::Break(()))
             );
-            assert_eq!(visits, 0);
+            assert_eq!(visited, vec![90]);
+            let remaining: Vec<_> = collect_game_all_entities(game, level)
+                .unwrap()
+                .into_iter()
+                .map(|e| e.id())
+                .filter(|id| [90, 20, 3].contains(id) || (21..=28).contains(id))
+                .collect();
+            assert_eq!(remaining, vec![90, 20]);
             game.mobs.put_back(1, extracted);
 
+            let mut visits = 0;
             let host: &dyn mod_api::Host = game;
             assert_eq!(
                 level.visit_all_entities(host, &mut |entity| {
@@ -259,7 +279,8 @@ mod tests {
             let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             // Far first, then a closer rejected hit, then two accepted hits at the same distance.
-            // The excluded pig would hit; the last pig encloses the ray's start and does not hit.
+            // The excluded pig is skipped before `accept`; the last pig encloses the ray's start,
+            // so `accept` runs on its `EntityRef` before clipping finds no entry.
             for (id, x) in [
                 (90, 9.0),
                 (60, 3.0),
@@ -278,13 +299,13 @@ mod tests {
             let to = [12.0, 64.5, 0.0];
             let mut seen = Vec::new();
             let nearest = level
-                .ray_trace_nearest_entity(host, from, to, 0.25, exclude, &mut |hit| {
-                    assert!(hit.entity.position(host).is_some());
-                    seen.push(hit.entity.id());
-                    hit.entity.id() != 60
+                .ray_trace_nearest_entity(host, from, to, 0.25, exclude, &mut |entity| {
+                    assert!(entity.position(host).is_some());
+                    seen.push(entity.id());
+                    entity.id() != 60
                 })
                 .unwrap();
-            assert_eq!(seen, [90, 60, 40, 20]);
+            assert_eq!(seen, [90, 60, 40, 20, 30]);
             assert_eq!(nearest.map(|hit| hit.entity.id()), Some(40));
 
             let hits = level
@@ -297,6 +318,58 @@ mod tests {
                 level.ray_trace_nearest_entity(host, from, to, 0.25, exclude, &mut |_| false),
                 Ok(None),
             );
+            // Negative margins deflate candidate boxes like vanilla's `AABB.inflate`.
+            // A pig is 0.9 wide (z in [-0.45, 0.45]): grazing at z = 0.35 hits at 0.0 and
+            // misses at -0.2; z = 0.5 misses at 0.0 and hits when -1.0 swaps inverted bounds.
+            let grazing_from = [0.0, 64.5, 0.35];
+            let grazing_to = [12.0, 64.5, 0.35];
+            assert_eq!(
+                level
+                    .ray_trace_nearest_entity(
+                        host,
+                        grazing_from,
+                        grazing_to,
+                        0.0,
+                        exclude,
+                        &mut |_| true,
+                    )
+                    .unwrap()
+                    .map(|hit| hit.entity.id()),
+                Some(60),
+            );
+            assert_eq!(
+                level.ray_trace_nearest_entity(
+                    host,
+                    grazing_from,
+                    grazing_to,
+                    -0.2,
+                    exclude,
+                    &mut |_| true,
+                ),
+                Ok(None),
+            );
+            assert_eq!(
+                level.ray_trace_entities(host, grazing_from, grazing_to, -0.2, exclude),
+                Some(Vec::new()),
+            );
+            let over_from = [0.0, 64.5, 0.5];
+            let over_to = [12.0, 64.5, 0.5];
+            assert_eq!(
+                level.ray_trace_nearest_entity(host, over_from, over_to, 0.0, exclude, &mut |_| {
+                    true
+                },),
+                Ok(None),
+            );
+            assert_eq!(
+                level
+                    .ray_trace_nearest_entity(host, over_from, over_to, -1.0, exclude, &mut |_| {
+                        true
+                    },)
+                    .unwrap()
+                    .map(|hit| hit.entity.id()),
+                Some(60),
+            );
+
             let empty_from = [0.0, 80.5, 0.0];
             let empty_to = [12.0, 80.5, 0.0];
             assert_eq!(
@@ -308,7 +381,8 @@ mod tests {
                 level.dimension(),
             );
             for (level, margin, error) in [
-                (level, -1.0, LevelReadError::Unavailable),
+                (level, f64::NAN, LevelReadError::Unavailable),
+                (level, f64::NEG_INFINITY, LevelReadError::Unavailable),
                 (stale, 0.25, LevelReadError::Stale),
             ] {
                 assert_eq!(
