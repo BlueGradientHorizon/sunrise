@@ -6,8 +6,9 @@ pub trait Hooks {
     /// world state is available during startup registration.
     #[notes = r##"## Discoverable bundled packs
 
-`Hooks::add_pack_finders` receives a typed `HostSide` and an
-`AddPackFindersEvent`. Use `event.packs.pack_type()` to distinguish
+`Hooks::add_pack_finders` receives a `&dyn PackDiscoveryContext` and an
+`AddPackFindersEvent`. The context provides local text operations, not world
+or session access, even on rediscovery. Use `event.packs.pack_type()` to distinguish
 `PackType::ClientResources` from `PackType::ServerData`. Register a
 `PackRegistration` with `event.packs.add_pack_finders(...)`; registrations for
 the other repository type are ignored. This hook contributes whole packs, while
@@ -40,10 +41,13 @@ A hidden pack still loads when selected, so pair it with `always_active` for one
 that is always on. `/datapack list` and `/datapack enable|disable` still name
 hidden data packs for operators."##]
     #[hook(
+        receiver = "associated",
+        context = "pack_discovery",
         dispatch = "flat",
         side = "both",
         contract = "listen",
-        neoforge = "AddPackFindersEvent"
+        neoforge = "AddPackFindersEvent",
+        version = 2
     )]
     fn add_pack_finders(packs: &mut dyn mod_api::PackFinders);
 }

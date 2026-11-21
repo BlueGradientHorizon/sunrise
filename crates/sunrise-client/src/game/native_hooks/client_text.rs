@@ -117,7 +117,7 @@ mod tests {
             assert_eq!(host.text_width(&deep), 6);
             assert_eq!(host.text_split(&deep, 100).len(), 1);
             assert_eq!(
-                deep.try_into_engine(&()),
+                sunrise_client_lib::api_text::to_serialized_engine(&deep),
                 Err(mod_api::TextFormError::TooDeep)
             );
 

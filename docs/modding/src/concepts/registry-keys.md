@@ -313,8 +313,8 @@ write validation (including engine-legal stacks above effective count or damage 
 A changed argument is validated in full; a refusal commits no outputs. The same
 rule applies to anvil/grindstone records and menu cursor/quick-move stacks.
 
-Recursive `Clone`, `Eq` and `Drop` of a tree a mod itself built are ordinary Rust ownership,
-not part of the boundary guarantee.
+`Text` copies and drops its component tree without using the call stack for depth. Component
+equality and formatting are not part of the serialization boundary guarantee.
 
 `Text::new(content)` constructs any content kind without exposing an engine value.
 The content, NBT-source, object, click and hover enums are exhaustive protocol enums;

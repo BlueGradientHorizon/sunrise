@@ -120,6 +120,16 @@ impl From<crate::TextFormError> for PackFinderError {
     }
 }
 
+/// Local text services during pack repository discovery. A repository does not lend a world.
+// no wire: borrows live text services for the callback.
+pub trait PackDiscoveryContext: crate::prelude::TextHost {
+    /// Client font measurement and visual order, when discovery runs on a client with a font.
+    /// `None` on startup before a font is loaded and on a logical server.
+    fn client_text(&self) -> Option<&dyn crate::prelude::ClientTextClientHost> {
+        None
+    }
+}
+
 /// The typed builder handed to `add_pack_finders`, rebuilt for each discovery.
 /// Registration performs no resource reload and does not select optional packs.
 pub trait PackFinders {
@@ -127,7 +137,7 @@ pub trait PackFinders {
     fn pack_type(&self) -> PackType;
     /// Add a bundled pack to this repository. A registration for the other pack
     /// type is ignored, allowing one hook implementation to describe both kinds.
-    /// Refuses an invalid title with [`PackFinderError::Text`], including components
-    /// deeper than 512 nodes; a refusal leaves the repository unchanged.
+    /// The title is a local component, not a serialized field. A title with unrepresentable
+    /// metadata is refused with [`PackFinderError::Text`] without changing the repository.
     fn add_pack_finders(&mut self, pack: PackRegistration) -> Result<(), PackFinderError>;
 }

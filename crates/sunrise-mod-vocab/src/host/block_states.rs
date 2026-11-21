@@ -5,9 +5,6 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait BlockStatesHost {
     /// Side: both.
-    /// Read a loaded, light-emitting block. No implicit chunk loading.
-    fn lit_block_name(&self, pos: [i32; 3]) -> Option<BlockKey>;
-    /// Side: both.
     /// Resolve a registered fluid identifier.
     fn fluid_key(&self, id: &str) -> Option<FluidKey>;
     /// Side: both.

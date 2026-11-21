@@ -15,6 +15,6 @@ impl<C: ?Sized> TryIntoEngine<C> for Text {
     type Engine = engine::Text;
     type Error = TextFormError;
     fn try_into_engine(&self, _: &C) -> Result<engine::Text, TextFormError> {
-        sunrise_client_lib::api_text::to_serialized_engine(self)
+        sunrise_client_lib::api_text::to_engine(self)
     }
 }

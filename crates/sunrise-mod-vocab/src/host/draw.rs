@@ -87,8 +87,8 @@ pub trait DrawContext {
     /// Paint GUI extraction calls through this window's atlas, including player faces, under
     /// their poses: every op, an `Item` as vanilla's `item` then `itemDecorations` (the stack of
     /// the local player's hotbar slot, scaled about its pivot, then its decorations unscaled) and
-    /// a `Blit` of every [`Blend`](crate::client::hud_layout::Blend). An op it cannot draw (text
-    /// deeper than 512 component nodes, an unknown slot, texture or sprite) refuses the whole
+    /// a `Blit` of every [`Blend`](crate::client::hud_layout::Blend). An op it cannot draw (invalid
+    /// text metadata, an unknown slot, texture or sprite) refuses the whole
     /// buffer with a [`GuiPaintError`] naming the op, and nothing of it is drawn.
     fn gui_paint(&mut self, draws: &[GuiDraw]) -> Result<(), GuiPaintError> {
         unimplemented!("DrawContext::gui_paint")
@@ -98,7 +98,6 @@ pub trait DrawContext {
         unimplemented!("DrawContext::gui_nine_slice")
     }
     /// A vanilla tooltip at the cursor, in GUI pixels.
-    /// Refuses text deeper than 512 component nodes before applying any changes.
     fn gui_tooltip(&mut self, lines: &[Text], at: [f32; 2]) -> Result<(), TextFormError> {
         unimplemented!("DrawContext::gui_tooltip")
     }
@@ -146,8 +145,8 @@ pub trait DrawContext {
     ///
     /// Refuses, answering no line at all (a [`TextLinesRefusal`], never a partial layout):
     /// a `max_width` that is not finite or that dividing by `scale` overflows, a `scale` that is
-    /// not finite or is zero or less, text that wraps into more than 512 lines, lines holding more
-    /// than 8192 characters together, and text deeper than 512 component nodes.
+    /// not finite or is zero or less, text that wraps into more than 512 lines, and lines holding
+    /// more than 8192 characters together. Component depth is not a layout limit.
     fn text_lines(
         &self,
         text: &Text,
@@ -274,7 +273,6 @@ pub trait DrawContext {
     /// full custom sprite stretches into `rect`, and the label moves by `label_offset`. Inactive
     /// takes precedence over highlighted. An omitted or unknown state id falls back to the custom
     /// normal sprite, then to the vanilla nine-slice for the current state.
-    /// Refuses text deeper than 512 component nodes before applying any changes.
     fn widget_button(
         &mut self,
         rect: [f32; 4],
@@ -481,7 +479,6 @@ pub trait BlockEntityDrawContext {
     /// width. Obfuscated glyphs change only when the block is drawn again: kept text stands
     /// still. Clamp text read from NBT, and widen `block_entity_render_bounding_box`
     /// for a long line. API @API:draw_text@.
-    /// Refuses text deeper than 512 component nodes before applying any changes.
     fn text(
         &mut self,
         text: &Text,
@@ -596,8 +593,8 @@ pub trait WorldDrawContext {
     /// world's name tags, far to near, whatever the stage. Each glyph and backdrop quad, both
     /// copies counted, takes one of the view's 4,096 quads shared with
     /// [`quads`](Self::quads) ([`usage`](Self::usage)).
-    /// Refuses a non-finite `at` ([`DrawError::NonFinite`]), text deeper than 512 component
-    /// nodes ([`DrawError::TextTooDeep`]) or otherwise refused ([`DrawError::TextRefused`]),
+    /// Refuses a non-finite `at` ([`DrawError::NonFinite`]), unrepresentable component metadata
+    /// ([`DrawError::TextRefused`]),
     /// and a label past the quads left ([`DrawError::CapacityExceeded`]); on `Err` nothing
     /// is drawn.
     fn name_tag(

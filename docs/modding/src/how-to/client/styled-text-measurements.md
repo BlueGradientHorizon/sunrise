@@ -33,7 +33,7 @@ name. It does not recurse into those components. Read `children`, `content` or
 `style.hover` directly if you need to distinguish their roles.
 
 Width is the same styled and translated width used by the engine's tooltip
-layout. Wrapping follows `Font.split(FormattedText, width)`: it keeps styles,
+layout. Wrapping follows `Font.split(FormattedText, width)`: it keeps styles and inline objects,
 breaks at newlines and fitting spaces, and uses the vanilla one-pixel minimum
 for widths below one. Returned lines are API-owned `Text` values. Translation
 uses the current client language; a later language or resource-pack font change

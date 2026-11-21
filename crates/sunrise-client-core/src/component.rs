@@ -164,7 +164,7 @@ fn object_style<'a>(
         style.opaque_style_id = o
             .get("__sunrise_local_style_id")
             .and_then(Value::as_u64)
-            .and_then(|id| u32::try_from(id).ok());
+            .and_then(|id| usize::try_from(id).ok());
     }
     if let Some(c) = o.get("color").and_then(Value::as_str) {
         style.color = parse_color(c);
@@ -289,8 +289,9 @@ pub fn text_with_decoded_clicks(v: &Value, clicks: &[crate::text::ClickEvent]) -
     .unwrap_or_default()
 }
 
-/// Render an in-process mod text component whose objects carry local style indices
-/// in `__sunrise_local_style_id`, without retaining a serialized JSON source.
+/// Render the engine-generated local layout projection, which omits user metadata.
+/// Only that projection's internally assigned style indices are used, and its
+/// objects are not retained as a serialized source.
 pub fn text_with_local_styles(v: &Value) -> Text {
     build(
         v,

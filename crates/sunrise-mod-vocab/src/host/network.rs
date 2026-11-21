@@ -68,6 +68,6 @@ pub trait NetworkClientHost {
     /// is dropped, never carried into the next. A second call in the same frame replaces the
     /// reason. The retained reason renders in the active language at draw and narration time;
     /// literal text stays unchanged. `DisconnectError::Unavailable` when no server or world is joined.
-    /// Refuses text deeper than 512 component nodes before applying any changes.
+    /// The reason is local to the client, not encoded into a packet.
     fn disconnect(&mut self, reason: Option<Text>) -> Result<(), DisconnectError>;
 }

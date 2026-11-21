@@ -120,7 +120,11 @@ struct Finder {
 }
 #[mod_api::__subscriptions]
 impl Hooks for Finder {
-    fn add_pack_finders(&self, _host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
+    fn add_pack_finders(
+        &self,
+        _context: &dyn PackDiscoveryContext,
+        event: &mut AddPackFindersEvent<'_>,
+    ) {
         for (kind, path) in [
             (PackType::ClientResources, ASSET_PACK),
             (PackType::ServerData, DATA_PACK),
@@ -163,13 +167,17 @@ fn with_finder_hidden(feature: bool, required: bool, hidden: bool, test: impl Fn
 }
 
 #[test]
-fn restricted_pack_discovery_refuses_game_text_reads() {
+fn both_startup_repositories_lend_only_available_text_services() {
     use std::sync::{Arc, Mutex};
 
     struct Observe(Arc<Mutex<Vec<PackType>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Observe {
-        fn add_pack_finders(&self, host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
+        fn add_pack_finders(
+            &self,
+            context: &dyn PackDiscoveryContext,
+            event: &mut AddPackFindersEvent<'_>,
+        ) {
             let component = mod_api::Text::literal("Startup");
             let fallback = mod_api::Text::new(mod_api::text::TextContent::Translatable {
                 key: "test.discovery.missing".into(),
@@ -180,24 +188,14 @@ fn restricted_pack_discovery_refuses_game_text_reads() {
             for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
                 deep = mod_api::Text::literal("").append(deep);
             }
-            let (resolved, resolved_fallback, resolved_deep, parsed) = match host {
-                HostSide::Client(host) => (
-                    host.text_string(&component),
-                    host.text_string(&fallback),
-                    host.text_string(&deep),
-                    host.text_from_json(r#""Startup""#),
-                ),
-                HostSide::Server(host) => (
-                    host.text_string(&component),
-                    host.text_string(&fallback),
-                    host.text_string(&deep),
-                    host.text_from_json(r#""Startup""#),
-                ),
-            };
-            assert_eq!(resolved, "Startup");
-            assert_eq!(resolved_fallback, "Fallback Pack");
-            assert_eq!(resolved_deep, "Deep");
-            assert_eq!(parsed, Err(mod_api::text::TextFormError::Unavailable));
+            assert_eq!(context.text_string(&component), "Startup");
+            assert_eq!(context.text_string(&fallback), "Fallback Pack");
+            assert_eq!(context.text_string(&deep), "Deep");
+            assert_eq!(
+                context.text_from_json(r#""Startup""#),
+                Err(mod_api::text::TextFormError::Unavailable)
+            );
+            assert!(context.client_text().is_none());
             self.0.lock().unwrap().push(event.packs.pack_type());
         }
     }
@@ -341,17 +339,13 @@ fn refused_registrations_leave_the_repository_unchanged() {
         )
     };
     let valid = format!("packmod:{ASSET_PACK}");
-    registry.add_pack_finders(entry(&valid)).unwrap();
-    let mut refused = entry("packmod:missing");
-    let mut title = mod_api::Text::literal("leaf");
-    for _ in 1..513 {
-        title = mod_api::Text::literal("parent").append(title);
+    let mut titled = entry(&valid);
+    titled.title = mod_api::Text::literal("leaf");
+    for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+        titled.title = mod_api::Text::literal("").append(titled.title);
     }
-    refused.title = title;
-    assert_eq!(
-        registry.add_pack_finders(refused),
-        Err(PackFinderError::Text(mod_api::TextFormError::TooDeep))
-    );
+    registry.add_pack_finders(titled).unwrap();
+    assert_eq!(registry.packs[0].title.plain(), "leaf");
     assert_eq!(registry.packs.len(), 1);
     for (path, error) in [
         (valid.as_str(), PackFinderError::Duplicate),

@@ -1,5 +1,6 @@
 //! Owned component trees. No language is resolved until the game displays a component.
 use crate::Tag;
+use sunrise_core::nbt::clone_tag;
 
 /// A proposed substitution in a resolved text run, for [`crate::Hooks::substitute_inline_images`].
 // exhaustive: a plain byte range and sprite id that mods build directly as a literal, like vanilla's records.
@@ -16,7 +17,7 @@ pub struct InlineImageReplacement {
 /// A component tree, retaining translation keys, styles and ordered children.
 /// Build it directly with [`Text::literal`], [`Text::translate`] or [`Text::new`]
 /// and lend it to host reads. The host validates it at the boundary.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 #[non_exhaustive]
 // no wire: handwritten Wire uses a stack-independent validated iterative codec.
 pub struct Text {
@@ -116,7 +117,7 @@ pub enum TextObject {
 }
 
 /// Optional style fields inherit; explicit `false` overrides an inherited decoration.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct TextStyle {
@@ -150,7 +151,7 @@ pub struct TextStyle {
 ///
 /// File-opening actions are intentionally absent: mods can neither produce nor
 /// round-trip `OpenFile`. Capture drops untrusted file-opening action metadata.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 // exhaustive: closed serialized component vocabulary; new cases change the link contract
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum TextClick {
@@ -176,7 +177,7 @@ pub enum TextClick {
 }
 
 /// A text component's hover action.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 // exhaustive: closed serialized component vocabulary; new cases change the link contract
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum TextHover {
@@ -361,6 +362,175 @@ impl std::error::Error for TextFormError {}
 impl crate::NoBackend for TextFormError {
     fn no_backend() -> Self {
         Self::Unavailable
+    }
+}
+
+impl Clone for TextClick {
+    fn clone(&self) -> Self {
+        match self {
+            Self::OpenUrl(value) => Self::OpenUrl(value.clone()),
+            Self::ChangePage(page) => Self::ChangePage(*page),
+            Self::SuggestCommand(value) => Self::SuggestCommand(value.clone()),
+            Self::RunCommand(value) => Self::RunCommand(value.clone()),
+            Self::CopyToClipboard(value) => Self::CopyToClipboard(value.clone()),
+            Self::ShowDialog(tag) => Self::ShowDialog(clone_tag(tag)),
+            Self::Custom { id, payload } => Self::Custom {
+                id: id.clone(),
+                payload: payload.as_ref().map(clone_tag),
+            },
+        }
+    }
+}
+
+impl TextHover {
+    fn clone_with(&self, mut text: impl FnMut(&Text) -> Text) -> Self {
+        match self {
+            Self::Text(child) => Self::Text(Box::new(text(child))),
+            Self::Item {
+                id,
+                count,
+                components,
+            } => Self::Item {
+                id: id.clone(),
+                count: *count,
+                components: components.as_ref().map(clone_tag),
+            },
+            Self::Entity { kind, id, name } => Self::Entity {
+                kind: kind.clone(),
+                id: *id,
+                name: name.as_deref().map(|name| Box::new(text(name))),
+            },
+        }
+    }
+}
+
+impl Clone for TextHover {
+    fn clone(&self) -> Self {
+        self.clone_with(Text::clone)
+    }
+}
+
+impl TextStyle {
+    fn clone_with(&self, text: impl FnMut(&Text) -> Text) -> Self {
+        Self {
+            color: self.color.clone(),
+            shadow_color: self.shadow_color,
+            bold: self.bold,
+            italic: self.italic,
+            underlined: self.underlined,
+            strikethrough: self.strikethrough,
+            obfuscated: self.obfuscated,
+            click: self.click.clone(),
+            hover: self.hover.as_ref().map(|hover| hover.clone_with(text)),
+            insertion: self.insertion.clone(),
+            font: self.font.clone(),
+            metadata: clone_tag(&self.metadata),
+        }
+    }
+}
+
+impl Clone for TextStyle {
+    fn clone(&self) -> Self {
+        self.clone_with(Text::clone)
+    }
+}
+
+impl Clone for Text {
+    fn clone(&self) -> Self {
+        // Clone from the leaves up; the same traversal includes each hover name,
+        // translation argument, separator and inline-object fallback.
+        let mut work = vec![(self, false)];
+        let mut ready = std::collections::HashMap::new();
+        while let Some((node, done)) = work.pop() {
+            if !done {
+                work.push((node, true));
+                node.visit_children(|child| work.push((child, false)));
+                continue;
+            }
+            let mut take = |child: &Text| {
+                ready
+                    .remove(&std::ptr::from_ref(child))
+                    .expect("cloned child")
+            };
+            let content = match &node.content {
+                TextContent::Literal(value) => TextContent::Literal(value.clone()),
+                TextContent::Keybind(key) => TextContent::Keybind(key.clone()),
+                TextContent::Score { name, objective } => TextContent::Score {
+                    name: name.clone(),
+                    objective: objective.clone(),
+                },
+                TextContent::Translatable {
+                    key,
+                    fallback,
+                    arguments,
+                } => TextContent::Translatable {
+                    key: key.clone(),
+                    fallback: fallback.clone(),
+                    arguments: arguments.iter().map(&mut take).collect(),
+                },
+                TextContent::Selector { pattern, separator } => TextContent::Selector {
+                    pattern: pattern.clone(),
+                    separator: separator.as_deref().map(|child| Box::new(take(child))),
+                },
+                TextContent::Nbt {
+                    path,
+                    interpret,
+                    source,
+                    separator,
+                } => TextContent::Nbt {
+                    path: path.clone(),
+                    interpret: *interpret,
+                    source: source.clone(),
+                    separator: separator.as_deref().map(|child| Box::new(take(child))),
+                },
+                TextContent::Object(TextObject::Atlas {
+                    atlas,
+                    sprite,
+                    fallback,
+                }) => TextContent::Object(TextObject::Atlas {
+                    atlas: atlas.clone(),
+                    sprite: sprite.clone(),
+                    fallback: fallback.as_deref().map(|child| Box::new(take(child))),
+                }),
+                TextContent::Object(TextObject::Player {
+                    profile,
+                    hat,
+                    fallback,
+                }) => TextContent::Object(TextObject::Player {
+                    profile: TextProfile {
+                        name: profile.name.clone(),
+                        id: profile.id,
+                        properties: profile
+                            .properties
+                            .iter()
+                            .map(|p| TextProfileProperty {
+                                name: p.name.clone(),
+                                value: p.value.clone(),
+                                signature: p.signature.clone(),
+                                metadata: clone_tag(&p.metadata),
+                            })
+                            .collect(),
+                        metadata: clone_tag(&profile.metadata),
+                    },
+                    hat: *hat,
+                    fallback: fallback.as_deref().map(|child| Box::new(take(child))),
+                }),
+            };
+            let style = node.style.clone_with(&mut take);
+            let children = node.children.iter().map(take).collect();
+            ready.insert(
+                std::ptr::from_ref(node),
+                Self {
+                    content,
+                    style,
+                    children,
+                    metadata: clone_tag(&node.metadata),
+                },
+            );
+        }
+        ready
+            .remove(&std::ptr::from_ref(self))
+            .expect("cloned root")
     }
 }
 

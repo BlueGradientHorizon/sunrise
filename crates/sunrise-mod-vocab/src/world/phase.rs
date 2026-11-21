@@ -53,9 +53,14 @@ pub trait ConfigContext {
 /// `data_maps_updated`, `default_components_bound`, `tags_updated`).
 ///
 /// Exposes process metadata, completed registries, tags, recipes, data maps, and published
-/// data resources without world, level, entity, or mutation access.
+/// data resources without world, level, entity, or mutation access. Use `block_states()` and
+/// `fluid_states()` for table lookups, and pass this context to [`crate::ItemResource::damageable`],
+/// [`crate::ItemResource::foil`], or [`crate::ItemResource::repairable`] for item metadata.
 pub trait ReloadContext:
     crate::prelude::BlockStatesHost
+    + crate::HostBlockStates
+    + crate::HostFluidStates
+    + crate::HostItemResourceMetadata
     + crate::prelude::KeysHost
     + crate::prelude::TagsHost
     + crate::prelude::TextHost

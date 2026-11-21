@@ -71,6 +71,8 @@ pub enum PhaseContext {
     ClientReloadListener,
     /// The client setup hook after initial resources load.
     ClientSetup,
+    /// Repository discovery before any world is opened.
+    PackDiscovery,
 }
 
 /// How a game hook borrows its receiver. Free dispatchers have no game receiver.

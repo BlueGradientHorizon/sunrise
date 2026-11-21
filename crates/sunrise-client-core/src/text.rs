@@ -115,7 +115,7 @@ pub struct Style {
     pub inline_object: Option<InlineObject>,
     /// Optional index into an in-process caller's style table for lossless
     /// round-tripping of opaque API click/hover/metadata payloads across layout.
-    pub opaque_style_id: Option<u32>,
+    pub opaque_style_id: Option<usize>,
 }
 /// A style's `font` field: an identifier (`alt` is `minecraft:alt`).
 pub fn font_id(v: &Value) -> Option<String> {

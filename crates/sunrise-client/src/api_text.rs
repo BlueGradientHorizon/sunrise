@@ -937,7 +937,7 @@ pub fn to_api_inprocess(text: &engine::Text) -> Text {
     capture_with(Source::Engine(text), true).expect("lenient capture is infallible")
 }
 
-fn api_nodes(root: &Text) -> Vec<&Text> {
+fn api_nodes(root: &Text, local_layout: bool) -> Vec<&Text> {
     let mut work = vec![(root, false)];
     let mut nodes = Vec::new();
     while let Some((text, done)) = work.pop() {
@@ -945,9 +945,22 @@ fn api_nodes(root: &Text) -> Vec<&Text> {
             nodes.push(text);
         } else {
             work.push((text, true));
-            let mut children = Vec::new();
-            text.visit_children(|text| children.push((text, false)));
-            work.extend(children.into_iter().rev());
+            let hover = if local_layout {
+                match &text.style.hover {
+                    Some(TextHover::Text(child)) => Some(child.as_ref()),
+                    Some(TextHover::Entity { name, .. }) => name.as_deref(),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let first = work.len();
+            text.visit_children(|child| {
+                if !hover.is_some_and(|hover| std::ptr::eq(hover, child)) {
+                    work.push((child, false));
+                }
+            });
+            work[first..].reverse();
         }
     }
     nodes
@@ -966,7 +979,7 @@ impl<'a> Payloads<'a> {
         {
             return Ok(());
         }
-        match json_nbt::JsonTag::new(tag) {
+        match json_nbt::JsonTag::for_projection(tag) {
             Ok(json_tag) => {
                 tags.insert(tag as *const _ as usize, json_tag);
                 Ok(())
@@ -989,17 +1002,20 @@ impl<'a> Payloads<'a> {
         }
         Self::insert_tag(tags, tag, lenient)
     }
-    fn new(nodes: &[&'a Text], lenient: bool) -> Result<Self, Error> {
+    fn new(nodes: &[&'a Text], lenient: bool, local_layout: bool) -> Result<Self, Error> {
         let mut tags = HashMap::new();
         for text in nodes {
-            Self::insert_metadata(&mut tags, &text.metadata, lenient)?;
-            Self::insert_metadata(&mut tags, &text.style.metadata, lenient)?;
             if let TextContent::Object(TextObject::Player { profile, .. }) = &text.content {
                 Self::insert_metadata(&mut tags, &profile.metadata, lenient)?;
                 for p in &profile.properties {
                     Self::insert_metadata(&mut tags, &p.metadata, lenient)?;
                 }
             }
+            if local_layout {
+                continue;
+            }
+            Self::insert_metadata(&mut tags, &text.metadata, lenient)?;
+            Self::insert_metadata(&mut tags, &text.style.metadata, lenient)?;
             #[allow(clippy::single_match)] // TODO(#2273): rewrite as `if let`.
             match &text.style.click {
                 Some(
@@ -1151,6 +1167,7 @@ fn emitted_style<'a>(
     style: &'a TextStyle,
     payloads: &Payloads<'_>,
     take: &mut impl FnMut(&'a Text) -> Value,
+    local_layout: bool,
 ) -> Map<String, Value> {
     let mut metadata = payloads.object(&style.metadata);
     let click = object_or_empty(metadata.remove("click_event"));
@@ -1173,6 +1190,9 @@ fn emitted_style<'a>(
         if let Some(v) = value {
             out.insert(key.into(), v);
         }
+    }
+    if local_layout {
+        return out;
     }
     if let Some(value) = &style.click {
         let kind = click_kind(value);
@@ -1274,6 +1294,7 @@ fn emitted_node<'a>(
     text: &'a Text,
     payloads: &Payloads<'_>,
     take: &mut impl FnMut(&'a Text) -> Value,
+    local_layout: bool,
 ) -> Value {
     let mut metadata = payloads.object(&text.metadata);
     let mut score = metadata.remove("score");
@@ -1373,7 +1394,7 @@ fn emitted_node<'a>(
     if let Some(score) = score {
         component::discard_component(score);
     }
-    out.extend(emitted_style(&text.style, payloads, take));
+    out.extend(emitted_style(&text.style, payloads, take, local_layout));
     if !text.children.is_empty() {
         out.insert(
             "extra".into(),
@@ -1385,17 +1406,25 @@ fn emitted_node<'a>(
 fn owned_text_component_with(
     text: &Text,
     lenient: bool,
-    local_styles: Option<&HashMap<usize, u32>>,
+    local_styles: Option<&HashMap<usize, usize>>,
 ) -> Result<Value, Error> {
-    let nodes = api_nodes(text);
-    let payloads = Payloads::new(&nodes, lenient)?; // Refuse all representation errors before any JSON clone.
+    let local_layout = local_styles.is_some();
+    let nodes = api_nodes(text, local_layout);
+    // During layout, omit input metadata and hover/click payloads entirely. Only the
+    // preview's component fields and internally assigned indices reach the renderer.
+    let payloads = Payloads::new(&nodes, lenient, local_layout)?;
     let mut ready = HashMap::new();
     for node in nodes {
-        let mut value = emitted_node(node, &payloads, &mut |child| {
-            ready
-                .remove(&(child as *const _ as usize))
-                .expect("child was built")
-        });
+        let mut value = emitted_node(
+            node,
+            &payloads,
+            &mut |child| {
+                ready
+                    .remove(&(child as *const _ as usize))
+                    .expect("child was built")
+            },
+            local_layout,
+        );
         if let Some(styles) = local_styles
             && let Some(&id) = styles.get(&(node as *const _ as usize))
             && let Value::Object(ref mut map) = value
@@ -1423,48 +1452,47 @@ pub fn to_engine_inprocess(text: &Text) -> engine::Text {
         .expect("lenient emit is infallible")
         .into()
 }
-fn inherit_api_style(child: &TextStyle, parent: &TextStyle) -> TextStyle {
-    let metadata = match (&parent.metadata, &child.metadata) {
-        (Tag::Compound(base), Tag::Compound(over)) if !base.is_empty() && !over.is_empty() => {
-            let mut merged = base.clone();
-            for (k, v) in over {
-                merged.insert(k.clone(), v.clone());
-            }
-            Tag::Compound(merged)
-        }
-        (base, Tag::Compound(over)) if over.is_empty() => base.clone(),
-        (_, over) => over.clone(),
-    };
-    let mut merged = TextStyle::default();
-    merged.color = child.color.clone().or_else(|| parent.color.clone());
-    merged.shadow_color = child.shadow_color.or(parent.shadow_color);
-    merged.bold = child.bold.or(parent.bold);
-    merged.italic = child.italic.or(parent.italic);
-    merged.underlined = child.underlined.or(parent.underlined);
-    merged.strikethrough = child.strikethrough.or(parent.strikethrough);
-    merged.obfuscated = child.obfuscated.or(parent.obfuscated);
-    merged.click = child.click.clone().or_else(|| parent.click.clone());
-    merged.hover = child.hover.clone().or_else(|| parent.hover.clone());
-    merged.insertion = child.insertion.clone().or_else(|| parent.insertion.clone());
-    merged.font = child.font.clone().or_else(|| parent.font.clone());
-    merged.metadata = metadata;
-    merged
+#[derive(Clone, Copy, Default)]
+struct LocalStyle<'a> {
+    color: Option<&'a str>,
+    font: Option<&'a str>,
+    insertion: Option<&'a str>,
+    click: Option<&'a TextClick>,
+    hover: Option<&'a TextHover>,
+    // Index of the latest style that contributed metadata.
+    metadata: Option<usize>,
 }
-fn assign_local_styles(root: &Text) -> (HashMap<usize, u32>, Vec<TextStyle>) {
+struct StyleEntry<'a> {
+    style: LocalStyle<'a>,
+    // The metadata this component contributes and the previous contributing style.
+    layer: Option<(&'a Tag, Option<usize>)>,
+}
+
+fn assign_local_styles(root: &Text) -> (HashMap<usize, usize>, Vec<StyleEntry<'_>>) {
     let empty = TextStyle::default();
     let mut ids = HashMap::new();
-    let mut styles: Vec<TextStyle> = Vec::new();
-    let mut stack = vec![(root, None::<u32>)];
+    let mut styles: Vec<StyleEntry<'_>> = Vec::new();
+    let mut stack = vec![(root, None::<usize>)];
     while let Some((node, parent_id)) = stack.pop() {
         let effective_id = if node.style == empty {
             parent_id
         } else {
-            let merged = match parent_id {
-                Some(pid) => inherit_api_style(&node.style, &styles[pid as usize]),
-                None => node.style.clone(),
-            };
-            let id = u32::try_from(styles.len()).expect("local style table index fits u32");
-            styles.push(merged);
+            let parent = parent_id.map(|id| styles[id].style).unwrap_or_default();
+            let child = &node.style;
+            let id = styles.len();
+            let layer = (!matches!(&child.metadata, Tag::Compound(map) if map.is_empty()))
+                .then_some((&child.metadata, parent.metadata));
+            styles.push(StyleEntry {
+                style: LocalStyle {
+                    color: child.color.as_deref().or(parent.color),
+                    font: child.font.as_deref().or(parent.font),
+                    insertion: child.insertion.as_deref().or(parent.insertion),
+                    click: child.click.as_ref().or(parent.click),
+                    hover: child.hover.as_ref().or(parent.hover),
+                    metadata: layer.map(|_| id).or(parent.metadata),
+                },
+                layer,
+            });
             Some(id)
         };
         if let Some(id) = effective_id {
@@ -1503,45 +1531,75 @@ fn assign_local_styles(root: &Text) -> (HashMap<usize, u32>, Vec<TextStyle>) {
 /// In-process engine text paired with its inherited API styles so layout and
 /// visual-order reads (`text_split`, `text_visual_order`, `text_lines`)
 /// preserve opaque click/hover/metadata payloads without JSON serialization.
-pub struct LocalText {
+pub struct LocalText<'a> {
     engine: engine::Text,
-    styles: Vec<TextStyle>,
+    styles: Vec<StyleEntry<'a>>,
 }
-impl LocalText {
+impl LocalText<'_> {
     pub fn engine(&self) -> &engine::Text {
         &self.engine
     }
     pub fn style_to_api(&self, style: &engine::Style) -> TextStyle {
-        let Some(orig) = style
-            .opaque_style_id
-            .and_then(|id| self.styles.get(id as usize))
-        else {
+        let Some(orig) = style.opaque_style_id.and_then(|id| self.styles.get(id)) else {
             return style_to_api_inprocess(style);
         };
-        let mut out = orig.clone();
-        let orig_rgb = orig.color.as_deref().and_then(component::parse_color);
-        if style.color != orig_rgb {
-            out.color = style.color.map(|v| format!("#{v:06X}"));
-        }
+        let orig = orig.style;
+        let mut out = TextStyle::default();
+        out.color = if style.color == orig.color.and_then(component::parse_color) {
+            orig.color.map(str::to_owned)
+        } else {
+            style.color.map(|v| format!("#{v:06X}"))
+        };
+        out.shadow_color = style.shadow_color;
         out.bold = style.bold;
         out.italic = style.italic;
         out.underlined = style.underlined;
         out.strikethrough = style.strikethrough;
         out.obfuscated = style.obfuscated;
+        out.font = orig.font.map(str::to_owned);
+        out.insertion = orig.insertion.map(str::to_owned);
+        out.click = orig.click.cloned();
+        out.hover = orig.hover.cloned();
+        if let Some((mut tag, mut prior)) = orig.metadata.and_then(|id| self.styles[id].layer) {
+            let mut overlays = Vec::new();
+            // Reuse the oldest compound's map order, then apply each child's overrides from
+            // oldest to newest. A non-compound either replaces its ancestor or starts a new map.
+            while let (Tag::Compound(map), Some((older @ Tag::Compound(_), next))) =
+                (tag, prior.and_then(|id| self.styles[id].layer))
+            {
+                overlays.push(map);
+                tag = older;
+                prior = next;
+            }
+            out.metadata = nbt::clone_tag(tag);
+            if let Tag::Compound(base) = &mut out.metadata {
+                for overlay in overlays.into_iter().rev() {
+                    for (key, value) in overlay {
+                        if let Some(replaced) = base.insert(key.clone(), nbt::clone_tag(value)) {
+                            nbt::discard_tag(replaced);
+                        }
+                    }
+                }
+            }
+        }
         out
     }
     pub fn text_to_api(&self, text: &engine::Text) -> Text {
+        let capture_span = |span: &engine::Span| {
+            let mut text = if span.style.inline_object.is_some() {
+                capture_with(Source::Span(span), true).expect("lenient capture is infallible")
+            } else {
+                Text::literal(span.text.as_str())
+            };
+            text.style = self.style_to_api(&span.style);
+            text
+        };
         match text.spans.as_slice() {
             [] => Text::literal(""),
-            [only] => Text::literal(only.text.clone()).with_style(self.style_to_api(&only.style)),
+            [only] => capture_span(only),
             spans => {
                 let mut root = Text::literal("");
-                root.children = spans
-                    .iter()
-                    .map(|span| {
-                        Text::literal(span.text.clone()).with_style(self.style_to_api(&span.style))
-                    })
-                    .collect();
+                root.children = spans.iter().map(capture_span).collect();
                 root
             }
         }
@@ -1550,7 +1608,7 @@ impl LocalText {
 /// Convert API text for in-process layout/shaping while retaining every
 /// inherited `TextStyle` (including deep NBT click/hover payloads and opaque
 /// metadata) verbatim in [`LocalText`].
-pub fn to_local_engine(text: &Text) -> LocalText {
+pub fn to_local_engine(text: &Text) -> LocalText<'_> {
     let (ids, styles) = assign_local_styles(text);
     let value =
         owned_text_component_with(text, true, Some(&ids)).expect("lenient emit is infallible");
@@ -1955,7 +2013,7 @@ mod iterative_tests {
                     }
                     let engine = text.try_into_engine(&()).unwrap();
                     let restored = engine.try_into_api().unwrap();
-                    assert_eq!(api_nodes(&restored).len(), 512);
+                    assert_eq!(api_nodes(&restored, false).len(), 512);
                     drop((text.clone(), restored.clone(), engine.clone()));
                     drop((text, restored, engine));
                 })
@@ -1996,12 +2054,12 @@ mod iterative_tests {
                 }
                 let engine = sunrise_client_core::text::Text::empty().with_component(source);
                 let api = engine.try_into_api().unwrap();
-                let nodes = api_nodes(&api);
+                let nodes = api_nodes(&api, false);
                 assert_eq!(nodes.len(), depth);
                 assert!(matches!(&nodes[0].content, TextContent::Literal(s) if s == "leaf"));
                 let emitted = api.try_into_engine(&()).unwrap();
                 let restored = emitted.try_into_api().unwrap();
-                assert_eq!(api_nodes(&restored).len(), depth);
+                assert_eq!(api_nodes(&restored, false).len(), depth);
                 if depth == 513 {
                     // Serialization boundaries enforce the 512-node depth limit.
                     let mut wire = Writer::new();
@@ -2077,7 +2135,7 @@ mod iterative_tests {
                         )]);
                     }
                     let api = text.try_into_api().unwrap();
-                    assert_eq!(api_nodes(&api).len(), depth);
+                    assert_eq!(api_nodes(&api, false).len(), depth);
                     if depth == 513 {
                         assert!(matches!(
                             to_serialized_engine(&api),
@@ -2104,8 +2162,8 @@ mod iterative_tests {
         assert_eq!(engine.plain().len(), 604);
         assert_eq!(to_engine_inprocess(&deep).plain().len(), 604);
         let roundtrip = to_api(&engine).unwrap();
-        assert_eq!(api_nodes(&roundtrip).len(), 601);
-        assert_eq!(api_nodes(&to_api_inprocess(&engine)).len(), 601);
+        assert_eq!(api_nodes(&roundtrip, false).len(), 601);
+        assert_eq!(api_nodes(&to_api_inprocess(&engine), false).len(), 601);
         assert_eq!(to_serialized_engine(&deep), Err(TextFormError::TooDeep));
         let mut wire = Writer::new();
         wire.put(&deep);

@@ -93,6 +93,14 @@ Attribute bounds are registration data too. `Registrar::widen_attribute_bounds` 
 the union of every mod's asks, so the result does not depend on the dispatch order, and the default never moves
 ([content mods](../how-to/content-mods.md) has the call, its refusals and what saves keep).
 
+## Pack repository discovery
+
+`add_pack_finders` takes `&dyn PackDiscoveryContext` and `&mut AddPackFindersEvent` at startup
+and on rediscovery. Register through `event.packs`; use `event.packs.pack_type()` to distinguish
+client resource and server data repositories. `context.text_string(&text)` resolves local text,
+using fallbacks before assets are loaded. `context.client_text()` lends font measurements only
+when the client is ready. Neither repository lends a world or a full `Host`.
+
 ## Reloading
 
 Data and asset reload hooks receive phase-scoped contexts instead of a full `Host`:
@@ -105,7 +113,10 @@ published client render assets, sprites and instance groups). Published asset/da
 the published generation, not pending prepare output: completion callbacks can refresh sprite and
 recipe caches after apply, including on first world open, without gaining world handles or
 transactions. Callbacks that take `DataLoadContext` use its restricted reads. Neither permits
-opening a world handle or transaction. The first client registration and prepare run on the loader
+opening a world handle or transaction. In setup and reload, `context.block_states()` and
+`context.fluid_states()` still read registry tables, and an `ItemResource` can query
+`damageable(context)`, `foil(context)`, or `repairable(context, &material)`. A position-based
+lookup such as `lit_block_name(pos)` requires a live game host. The first client registration and prepare run on the loader
 thread; later registration runs on the render thread, prepare on its worker, and apply on the
 owning game thread.
 

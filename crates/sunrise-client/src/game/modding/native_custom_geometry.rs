@@ -130,10 +130,9 @@ impl Game<'_> {
     ) -> Result<(), DrawError> {
         use super::api_values::TryIntoEngine;
         draw.check_label(at)?;
-        let text = text.try_into_engine(&()).map_err(|error| match error {
-            mod_api::TextFormError::TooDeep => DrawError::TextTooDeep,
-            _ => DrawError::TextRefused,
-        })?;
+        let text = text
+            .try_into_engine(&())
+            .map_err(|_| DrawError::TextRefused)?;
         let from_camera = DVec3::from(at) - DVec3::from(draw.camera());
         let o = from_camera + DVec3::new(0.0, 0.5, 0.0);
         let lines = [(text, 0.0)];

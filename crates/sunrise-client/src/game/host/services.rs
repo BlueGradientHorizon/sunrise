@@ -25,7 +25,7 @@ impl Commands for Game<'_> {
         self.native_refresh_commands()
     }
     fn feedback(&mut self, line: Text) -> Result<(), mod_api::text::TextFormError> {
-        self.native_feedback(line.try_into_engine(&())?);
+        self.native_feedback(sunrise_client_lib::api_text::to_serialized_engine(&line)?);
         Ok(())
     }
     fn run_command(&mut self, line: &str) -> bool {
@@ -42,7 +42,7 @@ impl Levels for Game<'_> {
 }
 impl Messages for Game<'_> {
     fn broadcast(&self, line: Text) -> Result<(), mod_api::text::TextFormError> {
-        self.native_broadcast(line.try_into_engine(&())?);
+        self.native_broadcast(sunrise_client_lib::api_text::to_serialized_engine(&line)?);
         Ok(())
     }
 }

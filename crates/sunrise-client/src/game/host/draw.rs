@@ -673,6 +673,138 @@ mod tests {
     }
 
     #[test]
+    fn laid_out_objects_keep_their_sprites_profiles_and_fallbacks_on_redraw() {
+        use mod_api::text::{TextContent, TextObject, TextProfile};
+        use sunrise_client::text::InlineObject;
+
+        let atlas = Text::new(TextContent::Object(TextObject::Atlas {
+            atlas: "minecraft:gui".into(),
+            sprite: "minecraft:heart/full".into(),
+            fallback: Some(Box::new(Text::literal("[heart]"))),
+        }));
+        let mut profile = TextProfile::default();
+        profile.name = Some("Alex".into());
+        let mut head = Text::new(TextContent::Object(TextObject::Player {
+            profile,
+            hat: false,
+            fallback: Some(Box::new(Text::literal("[Alex]"))),
+        }));
+        head.style.shadow_color = Some(0xFF00_0011);
+        let input = atlas.append(head);
+        let font = fake_font(6.0);
+        let local = sunrise_client_lib::api_text::to_local_engine(&input);
+        let lines = label_layout_with(&font, local.engine(), 150.0, TextAlign::Left, 1.0, |line| {
+            Ok(local.text_to_api(line))
+        })
+        .unwrap();
+        let redrawn = engine(&lines.lines[0].text);
+        assert_eq!(redrawn.plain(), "[heart][Alex]");
+        assert_eq!(font.width_text(&redrawn), lines.lines[0].width);
+        let [atlas, head] = redrawn.spans.as_slice() else {
+            panic!("expected two object spans")
+        };
+        assert!(matches!(&atlas.style.inline_object,
+            Some(InlineObject::Atlas { atlas, sprite, .. })
+            if atlas == "minecraft:gui" && sprite == "minecraft:heart/full"));
+        assert!(matches!(&head.style.inline_object,
+            Some(InlineObject::Player { profile, hat: false, .. })
+            if profile.get("name").and_then(serde_json::Value::as_str) == Some("Alex")));
+        assert_eq!(head.style.shadow_color, Some(0xFF00_0011));
+    }
+
+    #[test]
+    fn layout_does_not_read_style_indices_from_mod_metadata() {
+        use mod_api::{Tag, text::TextClick};
+        let mut styled = Text::literal("A");
+        styled.style.click = Some(TextClick::CopyToClipboard("not for B".into()));
+        let mut plain = Text::literal("B");
+        plain.metadata = Tag::compound([("__sunrise_local_style_id", Tag::Int(0))]);
+        let input = Text::literal("").append(styled).append(plain);
+        let local = sunrise_client_lib::api_text::to_local_engine(&input);
+        let lines = label_layout_with(
+            &fake_font(6.0),
+            local.engine(),
+            150.0,
+            TextAlign::Left,
+            1.0,
+            |line| Ok(local.text_to_api(line)),
+        )
+        .unwrap();
+        let [styled, plain] = lines.lines[0].text.children.as_slice() else {
+            panic!("expected two styles")
+        };
+        assert_eq!(
+            styled.style.click,
+            Some(TextClick::CopyToClipboard("not for B".into()))
+        );
+        assert_eq!(
+            plain.content,
+            mod_api::text::TextContent::Literal("B".into())
+        );
+        assert_eq!(plain.style.click, None);
+    }
+
+    #[test]
+    fn layout_copies_inherited_deep_hover_and_opaque_metadata_without_recursion() {
+        use mod_api::{
+            Tag,
+            text::{TextContent, TextHover},
+        };
+        const DEPTH: usize = 4096;
+        let mut hover = Text::literal("hover leaf");
+        let mut metadata = Tag::Int(73);
+        for _ in 0..DEPTH {
+            let mut parent = Text::literal("");
+            parent.style.hover = Some(TextHover::Text(Box::new(hover)));
+            hover = parent;
+            metadata = Tag::List(vec![metadata]);
+        }
+        let mut root = Text::literal("");
+        root.style.hover = Some(TextHover::Text(Box::new(hover)));
+        root.style.metadata = Tag::compound([("deep", metadata), ("override", Tag::Int(1))]);
+        let mut child = Text::literal("A");
+        child.style.metadata = Tag::compound([("override", Tag::Int(2))]);
+        root.children.push(child);
+        let local = sunrise_client_lib::api_text::to_local_engine(&root);
+        let lines = label_layout_with(
+            &fake_font(6.0),
+            local.engine(),
+            150.0,
+            TextAlign::Left,
+            1.0,
+            |line| Ok(local.text_to_api(line)),
+        )
+        .unwrap();
+        let style = &lines.lines[0].text.style;
+        let Some(TextHover::Text(hover)) = &style.hover else {
+            panic!("inherited hover")
+        };
+        let mut hover = hover.as_ref();
+        let Tag::Compound(metadata) = &style.metadata else {
+            panic!("inherited metadata")
+        };
+        assert_eq!(
+            metadata[&sunrise_core::nbt::JavaString::from("override")],
+            Tag::Int(2)
+        );
+        let mut deep = &metadata[&sunrise_core::nbt::JavaString::from("deep")];
+        for _ in 0..DEPTH {
+            let Tag::List(list) = deep else {
+                panic!("nested metadata")
+            };
+            deep = &list[0];
+        }
+        assert_eq!(deep, &Tag::Int(73));
+        for _ in 0..DEPTH {
+            let Some(TextHover::Text(child)) = &hover.style.hover else {
+                panic!("nested hover")
+            };
+            hover = child;
+        }
+        assert_eq!(hover.content, TextContent::Literal("hover leaf".into()));
+    }
+
+    #[test]
     fn a_reset_after_a_break_restores_the_style_the_tail_carried() {
         // `§lAA §rB` in a 14-pixel box: two bold characters fill the first line, the space is
         // where it breaks, and the second line starts in the bold style the split carried over.

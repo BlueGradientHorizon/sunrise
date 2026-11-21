@@ -2,8 +2,8 @@
 //! readers; selection and resource/data reloads use the ordinary pack paths.
 use super::{Game, api_values::TryIntoEngine, mods::ModsState};
 use mod_api::{
-    ClientHost, HookId, Host, HostSide, PackFinderError, PackFinders, PackPosition,
-    PackRegistration, PackSource, PackType, ServerHost,
+    HookId, PackDiscoveryContext, PackFinderError, PackFinders, PackPosition, PackRegistration,
+    PackSource, PackType,
 };
 use sunrise_assets::resource_source::{ResourceSource, stays_inside};
 use sunrise_client::{
@@ -104,10 +104,9 @@ impl PackFinders for Registry {
 
 /// A repository may be discovered before Game exists. As with startup reload
 /// listeners, registration has no world reads; only the supplied builder is live.
-struct DiscoveryHost;
-impl Host for DiscoveryHost {}
-mod_api::impl_host_areas!(DiscoveryHost, except(text));
-impl mod_api::prelude::TextHost for DiscoveryHost {
+struct StartupDiscovery;
+impl PackDiscoveryContext for StartupDiscovery {}
+impl mod_api::prelude::TextHost for StartupDiscovery {
     fn text_string(&self, text: &mod_api::Text) -> String {
         sunrise_client::lang::scoped(sunrise_client::lang::Language::default(), || {
             sunrise_client_lib::api_text::to_engine_inprocess(text).plain()
@@ -126,41 +125,14 @@ impl mod_api::prelude::TextHost for DiscoveryHost {
         Err(mod_api::text::TextFormError::Unavailable)
     }
 }
-impl ClientHost for DiscoveryHost {}
-mod_api::impl_client_host_areas!(DiscoveryHost, except(audio));
-// Registration opens no audio stream.
-impl mod_api::prelude::AudioClientHost for DiscoveryHost {
-    fn open_audio_stream(
-        &self,
-        _: &mod_api::StreamSpec,
-        _: Box<dyn mod_api::AudioStream>,
-    ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {
-        Err(mod_api::AudioRefusal::Unavailable)
-    }
-
-    fn open_push_audio_stream(
-        &self,
-        _: &mod_api::StreamSpec,
-    ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {
-        Err(mod_api::AudioRefusal::Unavailable)
-    }
-}
-
-impl ServerHost for DiscoveryHost {}
-mod_api::impl_server_host_areas!(DiscoveryHost);
-
 pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
     if !mod_api::__private::listened(HookId::AddPackFinders) {
         return Vec::new();
     }
     let mut registry = Registry::new(kind, mods.clone());
-    let mut host = DiscoveryHost;
-    let host = match kind {
-        PackType::ClientResources => HostSide::Client(&mut host),
-        PackType::ServerData => HostSide::Server(&mut host),
-        _ => return Vec::new(),
-    };
-    mod_api::dispatch_add_pack_finders(host, &mut registry);
+    if matches!(kind, PackType::ClientResources | PackType::ServerData) {
+        mod_api::dispatch_add_pack_finders(&StartupDiscovery, &mut registry);
+    }
     registry.packs
 }
 

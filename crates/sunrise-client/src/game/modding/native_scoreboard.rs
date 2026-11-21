@@ -37,8 +37,7 @@ pub(super) fn api_text(text: &EngineText) -> Result<mod_api::Text, TextFormError
 }
 
 fn engine_text(text: &mod_api::Text) -> Result<EngineText, TextFormError> {
-    use super::api_values::TryIntoEngine;
-    text.try_into_engine(&())
+    sunrise_client_lib::api_text::to_serialized_engine(text)
 }
 
 fn engine_comp(text: &mod_api::Text) -> Result<Comp, TextFormError> {
