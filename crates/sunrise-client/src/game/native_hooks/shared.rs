@@ -1758,6 +1758,8 @@ impl Game<'_> {
             direct_kind: None,
             position: None,
             projectile_weapon: None,
+            attacker_uuid: (player_uuid.is_none() && attacker != 0)
+                .then(|| self.attacker_uuid_of(attacker as u32)),
             player_uuid,
         }
     }

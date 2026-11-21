@@ -2,10 +2,9 @@
 use super::{Game, combat::PlayerCredit};
 use std::collections::HashMap;
 use sunrise_client::{
-    gossip::{self, GossipType},
     health::{Attack, Hurting, KnockbackCredit},
     items::ItemStack,
-    mobs::{Damage, Mob, MobEvent, Species, Who, villager},
+    mobs::{Damage, Mob, Species, Who},
 };
 
 #[derive(Default)]
@@ -66,35 +65,15 @@ impl KnockbackCredit for CreditLoan<'_> {
         }
     }
 
-    fn villager_hurt(&mut self, mob: &mut Mob, source: &Damage) {
-        let (Some(hurt_by), Some(who)) = (&self.plan.hurt_by, source.attacker) else {
-            return;
-        };
-        if source.kind.no_anger() {
-            return;
+    fn hurt_by_uuid(&self, source: &Damage) -> Option<([i32; 4], bool)> {
+        let hurt_by = self.plan.hurt_by.as_ref()?;
+        match source.attacker? {
+            Who::Player => hurt_by.player.map(|uuid| (uuid, false)),
+            Who::Mob(id) => hurt_by
+                .attacker
+                .filter(|(attacker, ..)| *attacker == id)
+                .map(|(_, uuid, minted)| (uuid, minted)),
         }
-        let (uuid, attacker_uuid) = match who {
-            Who::Player => (hurt_by.player, None),
-            Who::Mob(id) => match hurt_by.attacker {
-                Some((attacker, uuid, minted)) if attacker == id => {
-                    (Some(uuid), minted.then_some((id, uuid)))
-                }
-                _ => (None, None),
-            },
-        };
-        let Some(uuid) = uuid else { return };
-        villager::ext_mut(mob).gossips.add(
-            uuid,
-            GossipType::MinorNegative,
-            gossip::REPUTATION_CHANGE_PER_EVENT,
-        );
-        // The angry event only for a living villager and a player.
-        mob.outbox.push(MobEvent::VillagerHurt {
-            mob: mob.id,
-            angry: mob.alive() && who == Who::Player,
-            player: who == Who::Player,
-            attacker_uuid,
-        });
     }
 
     fn resolve_player_responsible(&mut self, mob: &mut Mob) -> bool {
@@ -137,6 +116,17 @@ impl KnockbackCredit for CreditLoan<'_> {
 }
 
 impl Game<'_> {
+    /// An attacking entity's UUID, and whether it had none yet and got one made up for this hit
+    /// (`uuid_for` makes it for good when the hit's mob event is handled).
+    pub(super) fn attacker_uuid_of(&self, id: u32) -> ([i32; 4], bool) {
+        match self
+            .known_resident_entity_uuid_at(self.dim.key(), id)
+            .or_else(|| self.persist.uuids.get(&id).copied())
+        {
+            Some(uuid) => (uuid, false),
+            None => (sunrise_client::save::random_uuid(), true),
+        }
+    }
     /// The credited entity and its main hand: in the level in place, or a mob
     /// a kill credit found in another loaded level.
     fn knockback_credit_entity(&self, id: i32) -> CreditEntity {
@@ -231,15 +221,10 @@ impl Game<'_> {
             .then(|| HurtBy {
                 player: self.player_uuid_of(self.lan_acting),
                 attacker: match attacker {
-                    Some(Who::Mob(id)) => Some(
-                        match self
-                            .known_resident_entity_uuid_at(self.dim.key(), id)
-                            .or_else(|| self.persist.uuids.get(&id).copied())
-                        {
-                            Some(uuid) => (id, uuid, false),
-                            None => (id, sunrise_client::save::random_uuid(), true),
-                        },
-                    ),
+                    Some(Who::Mob(id)) => {
+                        let (uuid, minted) = self.attacker_uuid_of(id);
+                        Some((id, uuid, minted))
+                    }
                     _ => None,
                 },
             });

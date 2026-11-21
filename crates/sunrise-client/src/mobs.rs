@@ -3169,6 +3169,7 @@ pub fn apply_brain_events(
                     direct: None,
                     held: [held, None],
                     player_uuid: None,
+                    attacker_uuid: None,
                     ..Default::default()
                 };
                 let (aim, fish_pos, fish_silent) = fish
@@ -6677,6 +6678,7 @@ mod allay_damage_identity_tests {
         let attack = crate::health::Attack {
             attacker: 7,
             player_uuid: Some(ACTUAL),
+            attacker_uuid: None,
             ..Default::default()
         };
         let mut level = test_level.level().attacked_by(&attack);

@@ -139,5 +139,25 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
         let lethal = sunrise_client::lan::playerdata::uuid_ints(0x5);
         assert_eq!(game.villager_reputation_of(91, lethal), -25);
         assert_eq!(game.villager_reputation_of(91, [0, 0, 0, 4]), 0);
+        // A site that pushes nobody (`no_push`, as a no_knockback damage type is) counts too, with
+        // the UUID of the hit's own source: a player, then a mob that already has one.
+        game.mobs
+            .push(Mob::new(93, kind.clone(), Vec3::new(1.0, 100.0, 2.0), 0.0));
+        let victim = game.mobs.len() - 1;
+        for (attacker, uuid) in [(Who::Player, host), (Who::Mob(92), [0, 0, 0, 4])] {
+            let mut attack = game.attack_of_who(Some(attacker));
+            attack.player_uuid = (attacker == Who::Player).then_some(host);
+            game.mobs[victim].invulnerable = 0;
+            let damage = match attacker {
+                Who::Player => Damage::player([1.0, 100.0, 2.0]),
+                Who::Mob(id) => Damage::mob(id, [1.0, 100.0, 2.0]),
+            };
+            assert!(game.mobs[victim].damage(
+                crate::game::entity::damage_level_of!(game, &attack, no_push, None),
+                1.0,
+                damage
+            ));
+            assert_eq!(game.villager_reputation_of(93, uuid), -25);
+        }
     });
 }
