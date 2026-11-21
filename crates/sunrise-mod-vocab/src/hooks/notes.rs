@@ -530,9 +530,8 @@ place; `server_tick` does not define one, so name the dimension and expect a ref
   spawn rules do not apply, as for `/summon`. A non-mob kind, invalid or out-of-bounds position, unloaded chunk,
   stale or unavailable level, or cancellation during finalization or level entry refuses the spawn. Configure the
   resulting entity through its handle rather than a spawn-options record.
-- `native_mob(dimension, id)` and `native_mobs(dimension)` read the living mobs: id, dimension, kind, position, yaw, health and maximum health.
 - A mob's health is set with `living.set_health(host, health)` on its `LivingRef`.
-- `native_kill_mob(dimension, id)` kills as `/kill` does, with its loot. `EntityRef::discard` removes an entity without death or loot: from the call on selectors and handles no longer find it, its passengers are off and `entity_leave_level` has fired, in the same hook.
+- `EntityRef::kill(host)` kills an entity as `/kill` does (living entities fall and drop loot, other entities are removed with `minecraft:entity_die`), routing parked dimensions and returning `Result<bool, LevelWriteError>`. `EntityRef::discard` removes an entity without death or loot: from the call on selectors and handles no longer find it, its passengers are off and `entity_leave_level` has fired, in the same hook.
 - While the game ticks its mobs they are out of the level: from a hook inside that tick, a spawned mob joins after the tick, and the others
   read as gone.
 
@@ -593,12 +592,11 @@ During `block_entity_tick`, use `event.subject.with_view` to read or edit the ma
 
 ### Entities
 
-`crates/sunrise-client/src/game/modding/native_entities.rs`: helpers for server mods, for the level in place, on a server only. Each
-names the level it means by its `dimension` (`minecraft:overworld`), as `native_set_block` does.
+`crates/sunrise-client/src/game/modding/native_entities.rs`: helpers for server mods on open server levels.
 
-- `native_summon(dimension, kind, pos, nbt)` spawns an entity of `kind` from its compound, as `/summon <kind> <pos> <nbt>`
-  does (passengers included), and returns its id. None on a client, for another dimension, outside `/summon`'s bounds, an
-  unloaded chunk, an unloadable kind, or a mod's `entity_join_level` veto (in a transaction its id goes stale).
+- `LevelRef::summon(host, kind, pos, nbt)` spawns an entity of `kind` from its compound in `level`, as `/summon <kind> <pos> <nbt>`
+  does (passengers included), routing parked dimensions and returning `Result<Option<EntityRef>, LevelWriteError>`. Returns `Ok(None)` outside `/summon`'s bounds, for an
+  unloaded chunk, an unloadable kind, or a mod's `entity_join_level` veto (in a transaction its handle goes stale), and `Err(LevelWriteError)` on a client, for a stale level, or when summoning into a parked level inside an open transaction.
 
 A model that moves (a turning gun barrel, a thrown projectile) is an `item_display` showing an item whose model comes from
 the mod's `.smod` assets: summon it once, then move it and pose it with `DisplayRef` from a tick hook. Easing between ticks happens on each
@@ -1547,7 +1545,7 @@ mod mixin or use it replaces in its design or PR."#]
   landed (`Ghast.hurtServer`). A negative amount hurts by 0 and a NaN or infinite one by `Float.MAX_VALUE`, as vanilla
   clamps them. It fires for the players, mobs and the ender dragon the game hurts, and runs on the thread that ticks
   the world (the server thread), so state a mod shares with its render thread hooks needs synchronising. `/kill` and
-  `native_kill_mob` don't reach it yet: they set the health to 0 instead of hurting with `minecraft:generic_kill` as
+  `EntityRef::kill` don't reach it yet: they set the health to 0 instead of hurting with `minecraft:generic_kill` as
   vanilla does. A mod may also register reduction modifiers on the container
   (`container.add_reduction_modifier(Reduction::Armor, ReductionChange::Scale(0.5))`, NeoForge's
   `addReductionModifier`): each changes what one reduction (the damage cooldown, armor, Resistance, protection
@@ -1673,7 +1671,7 @@ one, where vanilla gives the `by` one.
 - [the renderer's functions](#render-functions): `world_drawn`, called once the world is drawn with its colour, depth, matrices and entity geometry, and
   `render_needs`, where a mod asks for the entity runs and the world's depth without a shader pack.
 
-- [entities](#entities) for server mods: `native_summon(dimension, kind, pos, nbt)` spawns any entity from its compound
+- [entities](#entities) for server mods: `LevelRef::summon(host, kind, pos, nbt)` spawns any entity from its compound
   as `/summon` does.
 
 - `item_bar(stack, bar)`: the small bar `GuiGraphicsExtractor.itemDecorations` draws under an item,

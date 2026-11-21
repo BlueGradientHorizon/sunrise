@@ -245,7 +245,6 @@ entities::experience_orbs
 entities::level
 entities::set_experience_orb
 entities::spawn_falling_block
-entities::summon
 entity_actions::entity_broadcast_event
 entity_actions::entity_game_event
 entity_actions::entity_play_bound_sound
@@ -771,7 +770,6 @@ mobs::dragon_alive_crystals
 mobs::dragon_phase
 mobs::dragon_previously_killed
 mobs::dragon_set_phase
-mobs::kill_mob
 mobs::mob
 mobs::mob_add_goal
 mobs::mob_add_target_goal
