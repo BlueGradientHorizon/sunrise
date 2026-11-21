@@ -12,7 +12,7 @@ mod tests;
 /// position, rotation or scale (`ModelPart.offsetPos`, `offsetRotation`, `offsetScale`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: the three built-in targets and the registered ones
-// no wire: crosses only inside `AnimationHolder`, whose wire form checks each index
+// no wire: local client keyframe animation data, loaded from JSON and baked in-process.
 pub enum AnimationTarget {
     /// The part's position, in texels (`minecraft:position`).
     Position,
@@ -28,7 +28,7 @@ pub enum AnimationTarget {
 /// How a channel reaches a keyframe from the one before (`AnimationChannel.Interpolations`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: the two built-in interpolations and the registered ones
-// no wire: crosses only inside `AnimationHolder`, whose wire form checks each index
+// no wire: local client keyframe animation data, loaded from JSON and baked in-process.
 pub enum Interpolation {
     /// A straight line from the previous keyframe (`minecraft:linear`).
     Linear,
@@ -45,7 +45,7 @@ pub enum Interpolation {
 /// ([`AnimationTypes`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 // exhaustive: NeoForge's event registers these two kinds
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client animation-type registration value.
 pub enum JsonAnimationType {
     /// A channel target (`AnimationTarget`), `<namespace>:<path>` outside vanilla's namespace.
     Target(Identifier),
@@ -58,7 +58,7 @@ pub enum JsonAnimationType {
 /// (`post`), and how the channel moves into it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: plain data a parser builds and the sampler reads
-// no wire: crosses only inside `AnimationHolder`, whose wire form checks each index
+// no wire: local client keyframe animation data, loaded from JSON and baked in-process.
 pub struct Keyframe {
     /// When, in seconds from the animation's start.
     pub time: f32,
@@ -73,7 +73,7 @@ pub struct Keyframe {
 /// One bone's keyframes for one target (`AnimationChannel`), in time order.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: plain data a parser builds and the sampler reads
-// no wire: crosses only inside `AnimationHolder`, whose wire form checks each index
+// no wire: local client keyframe animation data, loaded from JSON and baked in-process.
 pub struct AnimationChannel {
     /// What it moves.
     pub target: AnimationTarget,
@@ -146,7 +146,7 @@ fn catmullrom(t: f32, p0: f32, p1: f32, p2: f32, p3: f32) -> f32 {
 /// animation's file names, with the mod that registered it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 // exhaustive: plain data the loader builds
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client animation-type registry metadata.
 pub struct RegisteredAnimationType {
     /// Whether it is a target or an interpolation, and the id the file names (`mymod:glow`).
     pub kind: JsonAnimationType,
@@ -169,8 +169,7 @@ impl RegisteredAnimationType {
 /// before playing it.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: plain data a parser builds
-#[derive(sunrise_mod_api_macros::Wire)]
-#[wire(via = AnimationHolderWire)]
+// no wire: local client animation definition, loaded from JSON and baked in-process.
 pub struct AnimationHolder {
     /// The animation's id (`mymod:golem/attack`), which bake errors name.
     pub id: Identifier,
@@ -184,130 +183,6 @@ pub struct AnimationHolder {
     /// point into. A registered target's values are as the file wrote them: its
     /// [`AnimationTypes::convert_target`] converts them at bake.
     pub types: Vec<RegisteredAnimationType>,
-}
-
-/// [`AnimationHolder`] as it crosses the wire, its channels in their own wire forms: decoding
-/// refuses a holder whose `Registered` index doesn't name a type of its kind in its own `types`,
-/// so an index never crosses without its list.
-#[derive(sunrise_mod_api_macros::Wire)]
-struct AnimationHolderWire {
-    id: Identifier,
-    length: f32,
-    looping: bool,
-    bones: Vec<(String, Vec<ChannelWire>)>,
-    types: Vec<RegisteredAnimationType>,
-}
-
-/// An [`AnimationChannel`] inside [`AnimationHolderWire`].
-#[derive(sunrise_mod_api_macros::Wire)]
-struct ChannelWire {
-    target: TargetWire,
-    keyframes: Vec<KeyframeWire>,
-}
-
-/// A [`Keyframe`] inside [`AnimationHolderWire`].
-#[derive(sunrise_mod_api_macros::Wire)]
-struct KeyframeWire {
-    time: f32,
-    pre: [f32; 3],
-    post: [f32; 3],
-    interpolation: InterpolationWire,
-}
-
-/// An [`AnimationTarget`] inside [`AnimationHolderWire`].
-#[derive(sunrise_mod_api_macros::Wire)]
-enum TargetWire {
-    Position,
-    Rotation,
-    Scale,
-    Registered(u16),
-}
-
-/// An [`Interpolation`] inside [`AnimationHolderWire`].
-#[derive(sunrise_mod_api_macros::Wire)]
-enum InterpolationWire {
-    Linear,
-    CatmullRom,
-    Registered(u16),
-}
-
-impl From<&AnimationHolder> for AnimationHolderWire {
-    fn from(holder: &AnimationHolder) -> Self {
-        let channel = |channel: &AnimationChannel| ChannelWire {
-            target: match channel.target {
-                AnimationTarget::Position => TargetWire::Position,
-                AnimationTarget::Rotation => TargetWire::Rotation,
-                AnimationTarget::Scale => TargetWire::Scale,
-                AnimationTarget::Registered(index) => TargetWire::Registered(index),
-            },
-            keyframes: channel
-                .keyframes
-                .iter()
-                .map(|k| KeyframeWire {
-                    time: k.time,
-                    pre: k.pre,
-                    post: k.post,
-                    interpolation: match k.interpolation {
-                        Interpolation::Linear => InterpolationWire::Linear,
-                        Interpolation::CatmullRom => InterpolationWire::CatmullRom,
-                        Interpolation::Registered(index) => InterpolationWire::Registered(index),
-                    },
-                })
-                .collect(),
-        };
-        Self {
-            id: holder.id.clone(),
-            length: holder.length,
-            looping: holder.looping,
-            bones: holder
-                .bones
-                .iter()
-                .map(|(bone, channels)| (bone.clone(), channels.iter().map(channel).collect()))
-                .collect(),
-            types: holder.types.clone(),
-        }
-    }
-}
-
-impl TryFrom<AnimationHolderWire> for AnimationHolder {
-    type Error = AnimationError;
-    fn try_from(wire: AnimationHolderWire) -> Result<Self, AnimationError> {
-        let channel = |channel: ChannelWire| AnimationChannel {
-            target: match channel.target {
-                TargetWire::Position => AnimationTarget::Position,
-                TargetWire::Rotation => AnimationTarget::Rotation,
-                TargetWire::Scale => AnimationTarget::Scale,
-                TargetWire::Registered(index) => AnimationTarget::Registered(index),
-            },
-            keyframes: channel
-                .keyframes
-                .into_iter()
-                .map(|k| Keyframe {
-                    time: k.time,
-                    pre: k.pre,
-                    post: k.post,
-                    interpolation: match k.interpolation {
-                        InterpolationWire::Linear => Interpolation::Linear,
-                        InterpolationWire::CatmullRom => Interpolation::CatmullRom,
-                        InterpolationWire::Registered(index) => Interpolation::Registered(index),
-                    },
-                })
-                .collect(),
-        };
-        let holder = Self {
-            id: wire.id,
-            length: wire.length,
-            looping: wire.looping,
-            bones: wire
-                .bones
-                .into_iter()
-                .map(|(bone, channels)| (bone, channels.into_iter().map(channel).collect()))
-                .collect(),
-            types: wire.types,
-        };
-        holder.check_indexes()?;
-        Ok(holder)
-    }
 }
 
 /// What a mod's registered targets and interpolations do (the `AnimationTarget` and
@@ -506,7 +381,7 @@ impl AnimationHolder {
 /// interpolations: each channel holds the path to its part, so playing it walks no names.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: built by `AnimationHolder::bake` only; its fields are private
-// no wire: baked and played in the mod; a `Registered` index crosses only in its holder's types.
+// no wire: baked and played locally in the client mod.
 pub struct KeyframeAnimation {
     pub(crate) length: f32,
     pub(crate) looping: bool,
@@ -667,7 +542,7 @@ fn walk_timing(walk_pos: f32, walk_speed: f32, speed_factor: f32, scale_factor: 
 /// When an animation started (vanilla's `AnimationState`): a start tick, or stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: its field is private; it changes through vanilla's transitions
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client animation playback timer.
 pub struct AnimationState {
     pub(crate) start_tick: i32,
 }

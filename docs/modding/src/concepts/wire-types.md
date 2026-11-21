@@ -47,11 +47,10 @@ Ordinary Wire keeps the NBT `Tag` limit of **512** containers and the `Text` lim
 **512** nested components. Build `Text` directly; ordinary Wire validates it and
 uses a private node-table encoding. `Text` is not admitted to typed payloads.
 
-JSON-backed `serde_json::Value`, JSON maps and `ModelPart` also refuse beyond
+JSON-backed `serde_json::Value` and JSON maps also refuse beyond
 32 JSON containers. Their encoders preflight the in-memory tree iteratively
 before serde recursion; their decoders scan the JSON's nesting outside quoted
-strings before parsing. A model part's JSON includes object, children-list and
-named-child-tuple containers, so one part can consume several JSON levels.
+strings before parsing.
 
 Hand-written recursive `Wire` implementations must enforce their own stack contract; the
 reader cannot police code outside its codec.

@@ -1,0 +1,24 @@
+ids = [
+  "type:AnimationHolder",
+  "type:AnimationState",
+  "type:CubeDefinition",
+  "type:CubeDeformation",
+  "type:JsonAnimationType",
+  "type:KeyConflictContext",
+  "type:KeyRegistration",
+  "type:LayerDefinition",
+  "type:MeshDefinition",
+  "type:ModelPart",
+  "type:ModelPolygon",
+  "type:ModelVertex",
+  "type:PartPose",
+  "type:RegisteredAnimationType",
+]
+why = "Model definitions, keyframe animations and key-mapping registrations live only on the client process, following vanilla 26.3 (`ModelPart`, `LayerDefinition`, `AnimationState`, `KeyMapping`) and NeoForge (`EntityRenderersEvent.RegisterLayerDefinitions`, `AnimationHolder`, `RegisterJsonAnimationTypesEvent`, `RegisterKeyMappingsEvent`, `KeyConflictContext`), which never define binary transport codecs for them. Native client mods use these values directly in-process and load model or animation assets through JSON, so their `Wire` implementations and private transport mirrors are removed."
+migrate = """
+Remove `AnimationHolder`, `AnimationState`, `JsonAnimationType`, `RegisteredAnimationType`, `CubeDeformation`, `PartPose`, `CubeDefinition`, `MeshDefinition`, `LayerDefinition`, `ModelVertex`, `ModelPolygon`, `ModelPart`, `KeyConflictContext` and `KeyRegistration` from `#[derive(Wire)]` structs and `Writer::put` / `Reader::decode` calls.
+
+- Keep local client usage unchanged: load animations with `RenderAssets::animation`, bake with `AnimationHolder::bake` or `bake_with`, track timing with `AnimationState`, build layers with `MeshDefinition` / `LayerDefinition::create`, pose `ModelPart` trees locally, and register keys with `Registrar::register_key_mapping(KeyRegistration::new(...))`.
+- For JSON serialization of model trees or meshes, use `serde_json::to_string` / `serde_json::from_str` (or `String::from(&mesh)` / `MeshDefinition::try_from(json)` and `String::from(&part)` / `ModelPart::try_from(json)`).
+- If a network payload needs to synchronize animation triggers, pose angles or binding names, define your own `#[derive(mod_api::Wire)]` record carrying only the primitive fields (for example an animation id string, tick count or rotation angles) and apply them locally on the receiving client.
+"""

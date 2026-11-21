@@ -161,18 +161,18 @@ impl Hooks for OwnedText {
 }
 
 #[test]
-fn static_text_and_checked_model_json_cannot_negotiate_as_owned_text() {
+fn static_text_and_checked_json_cannot_negotiate_as_owned_text() {
     mod_platform::testing::with_mods(
         vec![ModEntry::new("typed_schema", Box::new(OwnedText))].into(),
         || {
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
             let static_text = mod_api::payload_schema::<&'static str>();
-            let model = mod_api::payload_schema::<mod_api::ModelPart>();
-            assert_ne!(static_text, model);
+            let json = mod_api::payload_schema::<serde_json::Value>();
+            assert_ne!(static_text, json);
             for side in [Side::Client, Side::Server] {
                 let local = Local::capture(side).unwrap();
-                for schema in [static_text, model] {
+                for schema in [static_text, json] {
                     let mut peer = Manifest::builder();
                     peer.register(
                         RegistrationPhase::Play,
