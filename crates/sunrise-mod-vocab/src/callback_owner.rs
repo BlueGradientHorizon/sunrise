@@ -201,26 +201,69 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "daily"]
     fn a_panicking_payload_destructor_preserves_the_original_callback_diagnostic() {
-        use std::sync::Arc;
+        use std::sync::{Arc, Mutex};
 
+        // The process-wide hook must not replace the hook of concurrent tests.
+        const CHILD: &str = "SUNRISE_CALLBACK_PANIC_TEST_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "callback_owner::tests::a_panicking_payload_destructor_preserves_the_original_callback_diagnostic",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success() && stdout.contains("test result: ok. 1 passed;"),
+                "the isolated panic-hook test did not pass exactly one test:\n{stdout}{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        const ORIGINAL: &str = "original opaque callback panic";
+        const DESTRUCTOR: &str = "panic in the payload destructor";
         struct PanicOnDrop(Arc<AtomicBool>);
         impl Drop for PanicOnDrop {
             fn drop(&mut self) {
                 self.0.store(true, Ordering::Relaxed);
-                panic!("secondary panic while dropping the callback payload");
+                std::panic::panic_any(DESTRUCTOR);
             }
         }
+
+        let recorded = Arc::new(Mutex::new(Vec::new()));
+        let seen = recorded.clone();
+        std::panic::set_hook(Box::new(move |info| {
+            let diagnostic = if info.payload().is::<PanicOnDrop>() {
+                ORIGINAL
+            } else if info.payload().downcast_ref::<&str>().copied() == Some(DESTRUCTOR) {
+                DESTRUCTOR
+            } else {
+                return;
+            };
+            let contained = record_contained_panic(&|| diagnostic.to_owned());
+            seen.lock().unwrap().push((diagnostic, contained));
+        }));
 
         let dropped = Arc::new(AtomicBool::new(false));
         let poisoned = AtomicBool::new(false);
         let result: Result<(), _> = call("owner", 0, &poisoned, "test", "test", || {
             std::panic::panic_any(PanicOnDrop(dropped.clone()));
         });
+        drop(std::panic::take_hook());
         assert!(dropped.load(Ordering::Relaxed));
         assert_eq!(
+            recorded.lock().unwrap().as_slice(),
+            [(ORIGINAL, true), (DESTRUCTOR, true)]
+        );
+        assert_eq!(
             result.unwrap_err(),
-            "test callback panicked; it is disabled: Box<dyn Any>"
+            "test callback panicked; it is disabled: original opaque callback panic"
         );
         assert!(poisoned.load(Ordering::Acquire));
     }
