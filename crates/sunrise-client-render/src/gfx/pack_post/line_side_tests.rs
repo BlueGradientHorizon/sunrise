@@ -5,7 +5,7 @@
 //! the line, and the game widens it. The programs here are original and cut down.
 //!
 //! The fixture's camera looks along +z (yaw 0) with a 90° field of view, so in the square
-//! 64×64 frame a point (x, y, 2) ahead of it is at column 32 − 16x, row 32 − 16y. Each case
+//! 64×64 frame a point (x, y, z) ahead of it is at column 32 − 32x/z, row 32 − 32y/z. Each case
 //! draws its edges with ends chosen so that no pixel centre lies on a stroke's border, and
 //! checks every pixel: the colour of the last stroke over its centre, the clear value of
 //! colortex2 (transparent black, spec 6.1.5) outside them all.
@@ -50,20 +50,27 @@ fn pack(line_vsh: &str) -> sunrise_shaders::Pack {
 
 /// A line program that widens its line as vanilla's `rendertype_lines.vsh` does, to `width`
 /// pixels, after `VIEW_SCALE` scales the view (vanilla's shrinks it by 1/256), which leaves the
-/// line where it was on screen.
-fn widening(width: f32) -> String {
+/// line where it was on screen; then moves the whole line `jitter` pixels (right, up), as a
+/// temporal anti-aliasing jitter does. `extra` goes first in `main`.
+fn widening_with(width: f32, jitter: [f32; 2], extra: &str) -> String {
     format!(
         "#version 130\nuniform float viewWidth, viewHeight;\nvarying vec4 color;\n\
          #define VIEW_SCALE 0.75\nvec4 place(vec3 p) {{\n    \
          vec4 view = gl_ModelViewMatrix * vec4(p, 1.0);\n    \
          view.xyz *= VIEW_SCALE;\n    return gl_ProjectionMatrix * view;\n}}\n\
-         void main() {{\n    color = vaColor;\n    vec2 screen = vec2(viewWidth, viewHeight);\n    \
+         void main() {{\n{extra}    color = vaColor;\n    vec2 screen = vec2(viewWidth, viewHeight);\n    \
          vec4 a = place(vaPosition);\n    vec4 b = place(vaPosition + vaNormal);\n    \
          vec2 d = normalize((b.xy / b.w - a.xy / a.w) * screen);\n    \
          vec2 offset = vec2(-d.y, d.x) * {width:?} / screen;\n    \
          if (offset.x < 0.0) offset = -offset;\n    \
-         gl_Position = a + vec4((gl_VertexID % 2 == 0 ? offset : -offset) * a.w, 0.0, 0.0);\n}}\n"
+         gl_Position = a + vec4((gl_VertexID % 2 == 0 ? offset : -offset) * a.w, 0.0, 0.0);\n    \
+         gl_Position.xy += vec2({:?}, {:?}) * 2.0 / screen * gl_Position.w;\n}}\n",
+        jitter[0], jitter[1]
     )
+}
+
+fn widening(width: f32) -> String {
+    widening_with(width, [0.0; 2], "")
 }
 
 /// A line program that only transforms its line, then moves it `up` pixels up the screen (a
@@ -76,21 +83,68 @@ fn transforming(up: f32) -> String {
     )
 }
 
+/// A line program that only transforms its line, then maps the frame into its top left
+/// quarter, as a pack that renders the world into part of its buffers does.
+const INTO_A_QUARTER: &str = "#version 130\nvarying vec4 color;\nvoid main() {\n    \
+     color = vaColor;\n    gl_Position = ftransform();\n    \
+     gl_Position.xy = gl_Position.xy * 0.5 + vec2(-0.5, 0.5) * gl_Position.w;\n}\n";
+
+/// A line program that only transforms its line, through the model-view and the projection
+/// apart: its rounding isn't that of the game's product of the two.
+const TRANSFORMING_IN_TWO_STEPS: &str = "#version 130\nvarying vec4 color;\nvoid main() {\n    \
+     color = vaColor;\n    \
+     gl_Position = gl_ProjectionMatrix * (gl_ModelViewMatrix * vec4(vaPosition, 1.0));\n}\n";
+
 /// A line program that reads its vertex index and the line's direction into a varying, as a
 /// widening one does, and still only transforms its line.
 const READS_INDEX_AND_NORMAL: &str = "#version 130\nvarying vec4 color;\nvarying float side;\n\
      void main() {\n    color = vaColor;\n    side = float(gl_VertexID % 2) * vaNormal.x;\n    \
      gl_Position = ftransform();\n}\n";
 
-/// An edge's ends, camera-relative, at z = 2.
-type Edge = ([f32; 2], [f32; 2]);
+/// An edge's ends, camera-relative.
+type Edge = ([f32; 3], [f32; 3]);
 
-/// From (-0.5, 0.25) to (0.5, 0.25): columns 24..40 at row 28.
-const HORIZONTAL: Edge = ([-0.5, 0.25], [0.5, 0.25]);
-/// From (-0.25, -0.5) to (-0.25, 0.5): rows 24..40 at column 36.
-const VERTICAL: Edge = ([-0.25, -0.5], [-0.25, 0.5]);
-/// From (-0.4, -0.4) to (0.4, 0.4): from (38.4, 38.4) to (25.6, 25.6), across the diagonal.
-const DIAGONAL: Edge = ([-0.4, -0.4], [0.4, 0.4]);
+/// An edge drawn in a case: its name, its ends, and the ends of the part of it on screen, in
+/// pixels (column, row), before the pack moves it.
+type Case = (&'static str, Edge, [[f32; 2]; 2]);
+
+/// `edge` at z = 2, its ends on screen where the camera puts them.
+const fn ahead(name: &'static str, [x0, y0]: [f32; 2], [x1, y1]: [f32; 2]) -> Case {
+    (
+        name,
+        ([x0, y0, 2.0], [x1, y1, 2.0]),
+        [
+            [32.0 - 16.0 * x0, 32.0 - 16.0 * y0],
+            [32.0 - 16.0 * x1, 32.0 - 16.0 * y1],
+        ],
+    )
+}
+
+/// From (-0.5, 0.25) to (0.5, 0.25): columns 24..40 at row 28; from (-0.25, -0.5) to
+/// (-0.25, 0.5): rows 24..40 at column 36; from (-0.4, -0.4) to (0.4, 0.4): from (38.4, 38.4)
+/// to (25.6, 25.6), across the diagonal.
+const AHEAD: [Case; 3] = [
+    ahead("horizontal", [-0.5, 0.25], [0.5, 0.25]),
+    ahead("vertical", [-0.25, -0.5], [-0.25, 0.5]),
+    ahead("diagonal", [-0.4, -0.4], [0.4, 0.4]),
+];
+
+/// Edges from a start at clip w 1e-6, just ahead of the camera, and from one just behind it
+/// (w -1e-3), both to (-0.4, -0.4, 2) at (38.4, 38.4), far off the frame (the one behind
+/// mirrored): every point of each has x = y, so on screen each runs along the diagonal from
+/// (38.4, 38.4) up and left past the frame's corner, reached at z 0.91, ahead of the near plane.
+const NEAR_ZERO: [Case; 2] = [
+    (
+        "start at w ~ 0",
+        ([2.0, 2.0, 1e-6], [-0.4, -0.4, 2.0]),
+        [[-1000.0, -1000.0], [38.4, 38.4]],
+    ),
+    (
+        "start behind the camera",
+        ([2.0, 2.0, -1e-3], [-0.4, -0.4, 2.0]),
+        [[-1000.0, -1000.0], [38.4, 38.4]],
+    ),
+];
 
 /// One stroke of the outline: its ARGB colour and its width in pixels by the game's measure.
 type Stroke = (u32, f32);
@@ -99,8 +153,7 @@ type Stroke = (u32, f32);
 fn outline(gpu: &Fixture, edge: Edge, strokes: &[Stroke]) -> wgpu::Buffer {
     let mut bytes = Vec::new();
     for &(argb, width) in strokes {
-        let ([x0, y0], [x1, y1]) = edge;
-        for v in [x0, y0, 2.0, x1, y1, 2.0] {
+        for v in edge.0.into_iter().chain(edge.1) {
             bytes.extend_from_slice(&v.to_le_bytes());
         }
         bytes.extend_from_slice(&argb.to_le_bytes());
@@ -118,12 +171,20 @@ fn outline(gpu: &Fixture, edge: Edge, strokes: &[Stroke]) -> wgpu::Buffer {
 /// and its colour.
 type Band = (f32, [u8; 4]);
 
+/// Where the pack puts a point of the screen (column, row): `[scale, right, down]` scales it
+/// towards the top left corner, then moves it right and down, in pixels.
+type Place = [f32; 3];
+
+/// The pack leaves the line where the camera puts it.
+const IN_PLACE: Place = [1.0, 0.0, 0.0];
+
 /// The colour expected at pixel (x, y): that of the last of `bands` whose rectangle holds the
-/// pixel's centre, `OUTSIDE` for none. Each band is `edge`, moved `up` pixels up the screen,
-/// reaching its distance to each side.
-fn expected(x: u32, y: u32, edge: Edge, up: f32, bands: &[Band]) -> [u8; 4] {
-    let at = |[ex, ey]: [f32; 2]| [32.0 - 16.0 * ex, 32.0 - 16.0 * ey - up];
-    let (a, b) = (at(edge.0), at(edge.1));
+/// pixel's centre, `OUTSIDE` for none. Each band is the edge on screen `ends`, placed by
+/// `place`, reaching its distance to each side.
+fn expected(x: u32, y: u32, ends: [[f32; 2]; 2], place: Place, bands: &[Band]) -> [u8; 4] {
+    let [scale, right, down] = place;
+    let at = |[c, r]: [f32; 2]| [c * scale + right, r * scale + down];
+    let (a, b) = (at(ends[0]), at(ends[1]));
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let length = (dx * dx + dy * dy).sqrt();
     let (px, py) = (x as f32 + 0.5 - a[0], y as f32 + 0.5 - a[1]);
@@ -140,10 +201,34 @@ fn expected(x: u32, y: u32, edge: Edge, up: f32, bands: &[Band]) -> [u8; 4] {
 type Wrong = (&'static str, u32, u32, [u8; 4], [u8; 4]);
 
 /// The pixels that differ from `expected` when the pack whose line program is `line_vsh` draws
-/// `strokes` over each of the three edges; `None` without a GPU.
-fn wrong_pixels(line_vsh: &str, strokes: &[Stroke], up: f32, bands: &[Band]) -> Option<Vec<Wrong>> {
+/// `strokes` over each edge of `cases`; `None` without a GPU.
+fn wrong_pixels_of(
+    line_vsh: &str,
+    strokes: &[Stroke],
+    cases: &[Case],
+    place: Place,
+    bands: &[Band],
+) -> Option<Vec<Wrong>> {
     let _gpu = crate::gfx::test_gpu::lock();
     let gpu = Fixture::new()?;
+    // A line program writing an image needs storage written by a vertex stage, as the game's
+    // device has it (`surface_setup.rs`).
+    let storage = wgpu::Features::VERTEX_WRITABLE_STORAGE;
+    if !gpu.adapter.features().contains(storage) {
+        eprintln!("Line side test skipped: no vertex writable storage");
+        return None;
+    }
+    let (device, queue) = pollster::block_on(gpu.adapter.request_device(&wgpu::DeviceDescriptor {
+        required_features: storage,
+        required_limits: gpu.adapter.limits(),
+        ..Default::default()
+    }))
+    .expect("GPU device with vertex writable storage");
+    let gpu = Fixture {
+        adapter: gpu.adapter,
+        device,
+        queue,
+    };
     let pack = pack(line_vsh);
     let mut macros = sunrise_shaders::Macros::standard();
     let (properties, _) = sunrise_shaders::read_properties(&pack, &mut macros);
@@ -156,13 +241,9 @@ fn wrong_pixels(line_vsh: &str, strokes: &[Stroke], up: f32, bands: &[Band]) -> 
     let lines = post.lines.as_ref().map(|p| p.name.as_str());
     assert_eq!(lines, Some("gbuffers_line"), "{:?}", post.notes);
     let mut post = gpu.try_build(post).expect("the pack runs");
-    assert!(post.has_lines());
+    assert!(post.has_lines(), "{:?}", post.notes);
     let mut wrong = Vec::new();
-    for (name, edge) in [
-        ("horizontal", HORIZONTAL),
-        ("vertical", VERTICAL),
-        ("diagonal", DIAGONAL),
-    ] {
+    for &(name, edge, ends) in cases {
         post.set_lines(Some(super::Lines {
             edges: outline(&gpu, edge, strokes),
             count: 1,
@@ -172,7 +253,7 @@ fn wrong_pixels(line_vsh: &str, strokes: &[Stroke], up: f32, bands: &[Band]) -> 
         for y in 0..SIZE {
             for x in 0..SIZE {
                 let actual = pixels[(y * SIZE + x) as usize];
-                let expected = expected(x, y, edge, up, bands);
+                let expected = expected(x, y, ends, place, bands);
                 if actual != expected {
                     wrong.push((name, x, y, actual, expected));
                 }
@@ -180,6 +261,11 @@ fn wrong_pixels(line_vsh: &str, strokes: &[Stroke], up: f32, bands: &[Band]) -> 
         }
     }
     Some(wrong)
+}
+
+/// `wrong_pixels_of` the three edges ahead, the line moved `up` pixels up the screen.
+fn wrong_pixels(line_vsh: &str, strokes: &[Stroke], up: f32, bands: &[Band]) -> Option<Vec<Wrong>> {
+    wrong_pixels_of(line_vsh, strokes, &AHEAD, [1.0, 0.0, -up], bands)
 }
 
 fn assert_none_wrong(wrong: Option<Vec<Wrong>>) {
@@ -226,24 +312,104 @@ fn a_line_program_reading_its_index_and_normal_but_only_placing_its_line_is_wide
     assert_none_wrong(wrong);
 }
 
-/// A line moved 0.7 pixels up the screen, as a jitter moves it, is still the game's to widen
-/// (`OWN_WIDTH_PIXELS` is 0.75): 3 pixels to each side of where the pack put it.
+/// A line the pack moves 2.3 pixels up the screen, its two sides alike, is still the game's to
+/// widen: 3 pixels to each side of where the pack put it.
 #[test]
-fn a_line_moved_less_than_the_threshold_is_widened_by_the_game() {
+fn a_line_the_pack_moves_is_widened_by_the_game() {
     let wrong = wrong_pixels(
-        &transforming(0.7),
+        &transforming(2.3),
         &[(0xFFFF_FFFF, 6.0)],
-        0.7,
+        2.3,
         &[(3.0, WHITE)],
     );
     assert_none_wrong(wrong);
 }
 
-/// A line the pack widens by 0.8 pixels to each side keeps the pack's width: 0.8 is past
-/// `OWN_WIDTH_PIXELS`.
+/// A line program that maps the frame into its top left quarter (each point at half its
+/// column and row) is widened by the game, at the game's 6 pixels: every vertex moved, both
+/// sides of each end alike.
 #[test]
-fn a_line_widened_past_the_threshold_keeps_the_packs_width() {
-    let wrong = wrong_pixels(&widening(1.6), &[(0xFFFF_FFFF, 6.0)], 0.0, &[(0.8, WHITE)]);
+fn a_line_program_that_maps_the_frame_into_a_quarter_is_widened_by_the_game() {
+    let strokes = [(0xFFFF_FFFF, 6.0)];
+    let wrong = wrong_pixels_of(
+        INTO_A_QUARTER,
+        &strokes,
+        &AHEAD,
+        [0.5, 0.0, 0.0],
+        &[(3.0, WHITE)],
+    );
+    assert_none_wrong(wrong);
+}
+
+/// A line the pack widens to 0.8 pixels keeps the pack's width (0.4 to each side, which no
+/// pixel centre of the horizontal and vertical edges is within): its two sides are past half a
+/// pixel apart.
+#[test]
+fn a_line_widened_by_a_little_keeps_the_packs_width() {
+    let wrong = wrong_pixels(&widening(0.8), &[(0xFFFF_FFFF, 6.0)], 0.0, &[(0.4, WHITE)]);
+    assert_none_wrong(wrong);
+}
+
+/// A line the pack widens to 0.2 pixels, its sides less than half a pixel apart, is the game's
+/// to widen: 3 pixels to each side, give or take the pack's 0.1, which no pixel centre is
+/// within.
+#[test]
+fn a_line_widened_by_less_than_half_a_pixel_is_widened_by_the_game() {
+    let wrong = wrong_pixels(&widening(0.2), &[(0xFFFF_FFFF, 6.0)], 0.0, &[(3.0, WHITE)]);
+    assert_none_wrong(wrong);
+}
+
+/// A line the pack widens to 2 pixels (1 to each side, as Complementary Reimagined's do) and
+/// then jitters 0.4 pixels right and up, across each edge, keeps the pack's width on both
+/// sides of where the jitter put it: the jitter moves both of an end's sides alike.
+#[test]
+fn a_widened_line_with_a_jitter_keeps_the_packs_width_on_both_sides() {
+    let jitter = [0.4, 0.4];
+    let wrong = wrong_pixels_of(
+        &widening_with(2.0, jitter, ""),
+        &[(0xFFFF_FFFF, 6.0)],
+        &AHEAD,
+        [1.0, 0.4, -0.4],
+        &[(1.0, WHITE)],
+    );
+    assert_none_wrong(wrong);
+}
+
+/// A line whose start is at clip w near 0 or behind the camera, under a line program that
+/// only transforms it, in two steps: the game widens all of it to its 6 pixels, the part on
+/// screen too (`NEAR_ZERO`). Each end's corners have the same `w`, however near 0.
+#[test]
+fn a_line_with_an_end_near_or_behind_the_camera_keeps_the_games_width() {
+    let strokes = [(0xFFFF_FFFF, 6.0)];
+    let wrong = wrong_pixels_of(
+        TRANSFORMING_IN_TWO_STEPS,
+        &strokes,
+        &NEAR_ZERO,
+        IN_PLACE,
+        &[(3.0, WHITE)],
+    );
+    assert_none_wrong(wrong);
+}
+
+/// A line program that writes an image is run once per vertex, so its writes aren't repeated,
+/// and the game can't tell that it widens its line: it widens it too, by its 6 pixels on top of
+/// the pack's 4. The pack puts each corner on the side the game widens it to (an even corner
+/// to the right of the line's direction on screen), so the two add up: 3 + 2 to each side.
+#[test]
+fn a_line_program_that_writes_an_image_is_widened_by_the_game() {
+    let extra = "    imageStore(colorimg5, ivec2(gl_VertexID, 0), vec4(1.0));\n";
+    let vsh = widening_with(4.0, [0.0; 2], extra)
+        .replacen(
+            "varying vec4 color;\n",
+            "varying vec4 color;\nlayout(rgba8) writeonly uniform image2D colorimg5;\n",
+            1,
+        )
+        .replacen(
+            "if (offset.x < 0.0) offset = -offset;",
+            "offset = -offset;",
+            1,
+        );
+    let wrong = wrong_pixels(&vsh, &[(0xFFFF_FFFF, 6.0)], 0.0, &[(5.0, WHITE)]);
     assert_none_wrong(wrong);
 }
 

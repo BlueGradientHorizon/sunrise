@@ -696,6 +696,10 @@ impl Stage<'_> {
                 // Before the compatibility inputs, of which `gl_Vertex` is a prefix.
                 // GLSL IDs are signed, while naga's index inputs are unsigned. Convert the
                 // builtin itself so arithmetic and overload resolution keep GLSL's type.
+                // A gbuffers program's vertex stage runs for vertex `hz_vertex_index`, which the
+                // game may set to another vertex to run it again (`GbuffersInputs::after`).
+                "gl_VertexID" if self.gbuffers && !fragment => Some("int(hz_vertex_index)".into()),
+                "gl_VertexIndex" if self.gbuffers && !fragment => Some("hz_vertex_index".into()),
                 "gl_VertexID" => Some("int(gl_VertexIndex)".into()),
                 "gl_InstanceID" => Some("int(gl_InstanceIndex)".into()),
                 "gl_VertexIndex" | "gl_InstanceIndex" => None,

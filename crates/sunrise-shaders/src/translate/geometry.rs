@@ -127,24 +127,24 @@ fn statements(tokens: &[&str]) -> Vec<Statement> {
     out
 }
 
-/// The tokens among `tokens` that declare a member of a struct of `statements` (`vaNormal` in
-/// `struct S { vec3 vaNormal; };`): a word in the struct's body after its type or a `,` and
-/// before a `;`, a `,` or an array's `[`. A member keeps its name, as each access to it
-/// (`s.vaNormal`) does.
-fn struct_members(tokens: &[&str], statements: &[Statement]) -> BTreeSet<usize> {
+/// The tokens among `tokens` that declare a member of a struct (`vaNormal` in
+/// `struct S { vec3 vaNormal; };`), at file scope or in a function: a word in the struct's body
+/// after its type or a `,` and before a `;`, a `,` or an array's `[`. A member keeps its name,
+/// as each access to it (`s.vaNormal`) does. GLSL has no struct defined in another's body, so
+/// the first `}` closes it.
+fn struct_members(tokens: &[&str]) -> BTreeSet<usize> {
+    let words: Vec<usize> = (0..tokens.len())
+        .filter(|&i| significant(tokens[i]))
+        .collect();
     let mut members = BTreeSet::new();
-    for s in statements {
-        let words: Vec<usize> = s
-            .range
-            .clone()
-            .filter(|&i| significant(tokens[i]))
-            .collect();
-        let Some(open) = words.iter().position(|&i| tokens[i] == "{") else {
-            continue;
-        };
-        if !words[..open].iter().any(|&i| tokens[i] == "struct") {
+    for (at, &word) in words.iter().enumerate() {
+        if tokens[word] != "struct" {
             continue;
         }
+        let Some(open) = words[at..].iter().position(|&i| tokens[i] == "{") else {
+            continue;
+        };
+        let open = at + open;
         let close = words[open..]
             .iter()
             .position(|&i| tokens[i] == "}")
@@ -220,7 +220,12 @@ fn classify(tokens: &[&str], range: std::ops::Range<usize>) -> Statement {
     } else {
         let mut names = Vec::new();
         let first = words.iter().position(|w| matches!(*w, "(" | "="));
-        if let Some(p) = words.iter().position(|w| *w == "struct") {
+        // A struct's `struct` comes before its body; a function's body may define structs.
+        let head = words.iter().position(|w| matches!(*w, "(" | "{"));
+        if let Some(p) = words[..head.unwrap_or(words.len())]
+            .iter()
+            .position(|w| *w == "struct")
+        {
             names.extend(words.get(p + 1).map(|s| s.to_string()));
         } else if let Some(p) = first.filter(|&p| words[p] == "(") {
             // A function.
@@ -377,7 +382,7 @@ fn combine(
         .map(String::as_str)
         .chain(vs_outs.iter().map(|(n, _)| n.as_str()))
         .collect();
-    let members = struct_members(&vs_tokens, &vs);
+    let members = struct_members(&vs_tokens);
     for (i, t) in vs_tokens.iter().enumerate() {
         if vs_text[i] != *t || members.contains(&i) {
             continue;
@@ -741,6 +746,28 @@ mod tests {
                    value.vaNormal = vaNormal;\n    value.vaColor[1] = 1.0;\n    \
                    value.inner[1].a = 2.0;\n    \
                    vNormal = value.vaNormal * value.vaColor[1] * value.inner[1].a;\n    \
+                   gl_Position = gl_ModelViewProjectionMatrix * vec4(vaPosition, 1.0);\n}\n";
+        let given = vec![
+            ("vaPosition".to_owned(), "hz_Vertex.xyz".to_owned()),
+            ("vaNormal".to_owned(), "hz_Vertex.xyz".to_owned()),
+            ("vaColor".to_owned(), "hz_Color".to_owned()),
+        ];
+        if let Err(errors) = fold_given(vsh, PASS_GSH, PASS_FSH, given) {
+            panic!("{errors:?}");
+        }
+    }
+
+    /// The same with structs defined in a function, one in `main` and one in a block in it
+    /// (GLSL 4.60, 4.1.8: a struct may be defined in any scope), under a vertex stage that
+    /// never reads the game's `vaNormal` nor `vaColor`: their members keep their names too.
+    #[test]
+    fn a_struct_member_in_a_function_keeps_its_name_under_a_geometry_stage() {
+        let vsh = "#version 430\nout vec3 vNormal;\nvoid main() {\n    \
+                   struct Sample { vec3 vaNormal; float w, vaColor[2]; };\n    Sample value;\n    \
+                   value.vaNormal = vec3(1.0);\n    value.vaColor[1] = 2.0;\n    \
+                   vNormal = value.vaNormal * value.vaColor[1];\n    \
+                   if (vNormal.x > 0.0) {\n        struct Inner { vec3 vaNormal; };\n        \
+                   Inner inner;\n        inner.vaNormal = vNormal;\n        vNormal = inner.vaNormal;\n    }\n    \
                    gl_Position = gl_ModelViewProjectionMatrix * vec4(vaPosition, 1.0);\n}\n";
         let given = vec![
             ("vaPosition".to_owned(), "hz_Vertex.xyz".to_owned()),

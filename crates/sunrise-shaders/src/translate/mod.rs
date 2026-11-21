@@ -161,7 +161,9 @@ pub struct GbuffersInputs {
     /// GLSL declarations: the vertex inputs and any bindings of set 1.
     pub declarations: String,
     /// GLSL statements that set `hz_Vertex`, `hz_Color`, `hz_MultiTexCoord0`,
-    /// `hz_MultiTexCoord1` and `hz_Normal` (the compatibility inputs), run first in `main`.
+    /// `hz_MultiTexCoord1` and `hz_Normal` (the compatibility inputs) for the vertex
+    /// `gl_VertexIndex` names, run before the pack's `main`. That one is `hz_vertex_index`
+    /// (a `uint`), as in the pack's code (its `gl_VertexID` and `gl_VertexIndex`).
     pub body: String,
     /// The value of each attribute a pack may declare (`mc_Entity`, `vaPosition`...), as a GLSL
     /// expression of the declared type's size; an attribute not listed reads zero. A listed
@@ -170,7 +172,12 @@ pub struct GbuffersInputs {
     /// `mc_chunkFade`, and the core-profile vertex attributes (`vaPosition`, `vaColor`,
     /// `vaUV0`, `vaUV1`, `vaUV2`, `vaNormal`).
     pub attributes: Vec<(String, String)>,
-    /// GLSL statements run last in `main`, with `gl_Position` in wgpu's clip space.
+    /// GLSL statements run last in `main`, with `gl_Position` in wgpu's clip space. They may
+    /// run the pack's vertex stage for another vertex: set `hz_vertex_index` and call
+    /// `hz_vertex()`, which runs `body`, the pack's `main` and leaves that vertex's
+    /// `gl_Position` in wgpu's clip space, and its outputs; so they call it for this vertex
+    /// last. Only where `hz_vertex_reruns` (a constant): a stage that declares images or
+    /// buffers may write them, would write again, and isn't run twice.
     pub after: String,
     /// The alpha test applied to output 0 (`gl_FragData[0]`, `gl_FragColor`), the loader's
     /// (3.2 `alphaTest.<program>`): `None` keeps every fragment. With `parts`, solid terrain's.
@@ -599,7 +606,14 @@ fn translate(
         }
         if let (Some(inputs), ShaderStage::Vertex) = (gbuffers, stage.kind) {
             h.push_str(&inputs.declarations);
-            h.push('\n');
+            // A stage that declares images or buffers may write them, and runs once per vertex:
+            // run again, it would write twice (`GbuffersInputs::after`).
+            let reruns = stage.images.is_empty() && stage.buffers.is_empty();
+            writeln!(
+                h,
+                "\nuint hz_vertex_index;\nconst bool hz_vertex_reruns = {reruns};"
+            )
+            .unwrap();
             for (name, _, ty) in &implicit {
                 writeln!(h, "{ty} {name};").unwrap();
             }
@@ -610,16 +624,16 @@ fn translate(
     let flip = if target == Target::Buffers { "-" } else { "" };
     let fog =
         "    hz_Fog = hz_FogParameters(hz_fog_color, hz_fog.x, hz_fog.y, hz_fog.z, hz_fog.w);\n";
-    let mut vertex_main = String::from("\nvoid main() {\n");
+    // The pack's vertex stage for one vertex: its inputs, its `main`, `gl_Position` in wgpu's
+    // clip space. Ours runs it once, for `hz_vertex_index` in a gbuffers program; the game's
+    // `after` may run it again (`GbuffersInputs::after`).
+    let mut vertex_main = String::from("\nvoid hz_vertex() {\n");
     match gbuffers {
         None => vertex_main.push_str(
             "    vec2 hz_p = hz_quad[gl_VertexIndex];\n    hz_Vertex = vec4(hz_p, 0.0, 1.0);\n    \
              hz_MultiTexCoord0 = hz_Vertex;\n    hz_Color = vec4(1.0);\n    hz_Normal = vec3(0.0, 0.0, 1.0);\n",
         ),
-        Some(inputs) => {
-            vertex_main.push_str(&matrices);
-            vertex_main.push_str(&inputs.body);
-        }
+        Some(inputs) => vertex_main.push_str(&inputs.body.replace("gl_VertexIndex", "hz_vertex_index")),
     }
     for (name, given, ty) in &implicit {
         writeln!(vertex_main, "    {name} = {ty}({given});").unwrap();
@@ -644,7 +658,21 @@ fn translate(
     for name in &v.inits {
         writeln!(vertex_main, "    {name} = hz_init_{name}();").unwrap();
     }
-    vertex_main.push_str("    hz_main();\n");
+    write!(
+        vertex_main,
+        "    hz_main();\n    gl_Position = vec4(gl_Position.x, {flip}gl_Position.y, (gl_Position.z + gl_Position.w) * 0.5, gl_Position.w);\n}}\n\nvoid main() {{\n"
+    )
+    .unwrap();
+    if gbuffers.is_some() {
+        vertex_main.push_str(&matrices);
+        vertex_main.push_str("    hz_vertex_index = gl_VertexIndex;\n");
+    }
+    writeln!(
+        vertex_main,
+        "    hz_vertex();\n{}",
+        gbuffers.map_or("", |g| &g.after)
+    )
+    .unwrap();
     if patches {
         vertex_main.push_str("    sunrisePatchPos = hz_Vertex.xyz;\n");
     }
@@ -660,12 +688,7 @@ fn translate(
             writeln!(vertex_main, "    {part} = {name}{access};").unwrap();
         }
     }
-    write!(
-        vertex_main,
-        "    gl_Position = vec4(gl_Position.x, {flip}gl_Position.y, (gl_Position.z + gl_Position.w) * 0.5, gl_Position.w);\n{}}}\n",
-        gbuffers.map_or("", |g| &g.after)
-    )
-    .unwrap();
+    vertex_main.push_str("}\n");
     let mut fragment_main = String::from("\nvoid main() {\n");
     if gbuffers.is_some() {
         fragment_main.push_str(&matrices);
@@ -1768,6 +1791,100 @@ mod tests {
             assert_eq!(program.work_groups_render, expected, "{declaration}");
             assert_eq!(program.work_groups, None);
         }
+    }
+
+    /// A gbuffers vertex stage, and the game's `body`, read the vertex they run for from
+    /// `hz_vertex_index`, which the game's `after` may set to another vertex: only our `main`
+    /// reads the invocation's own index.
+    #[test]
+    fn a_vertex_stage_and_the_body_read_the_vertex_index_ours_sets() {
+        let files = [
+            (
+                "shaders/gbuffers_line.vsh",
+                "#version 430\nout float side;\nvoid main() {\n    \
+                 side = float(gl_VertexID % 2) + float(gl_VertexIndex);\n    \
+                 gl_Position = ftransform();\n}\n",
+            ),
+            (
+                "shaders/gbuffers_line.fsh",
+                "#version 430\nin float side;\nvoid main() { gl_FragData[0] = vec4(side); }",
+            ),
+        ];
+        let pack = Pack::from_zip_bytes("line-index.zip", zip(&files)).unwrap();
+        let macros = Macros::standard();
+        let vertex = preprocess(&pack, "gbuffers_line.vsh", &macros);
+        let fragment = preprocess(&pack, "gbuffers_line.fsh", &macros);
+        let inputs = GbuffersInputs {
+            body: "hz_Vertex = vec4(0.25, 0.5, -2.0, float(gl_VertexIndex));".into(),
+            ..Default::default()
+        };
+        let program = translate_gbuffers(&vertex, &fragment, Target::Buffers, &inputs)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let module = &program.vertex;
+        let reads = |f: &naga::Function, name: &str| {
+            f.expressions.iter().any(|(_, e)| match *e {
+                naga::Expression::GlobalVariable(g) => {
+                    module.global_variables[g].name.as_deref() == Some(name)
+                }
+                _ => false,
+            })
+        };
+        let named = |name: &str| {
+            let (_, f) = (module.functions.iter())
+                .find(|(_, f)| f.name.as_deref() == Some(name))
+                .unwrap_or_else(|| panic!("{name}"));
+            f
+        };
+        for name in ["hz_vertex", "hz_main"] {
+            assert!(reads(named(name), "hz_vertex_index"), "{name}");
+            assert!(!reads(named(name), "gl_VertexIndex"), "{name}");
+        }
+    }
+
+    /// A gbuffers vertex stage that writes an image or a buffer isn't run again for another
+    /// vertex (`hz_vertex_reruns` is false): its writes would be repeated. Others may be.
+    #[test]
+    fn a_vertex_stage_writing_images_or_buffers_is_not_run_again() {
+        let reruns = |declarations: &str, write: &str| {
+            let vsh = format!(
+                "#version 430\n{declarations}\nvoid main() {{\n    {write}\n    \
+                 gl_Position = ftransform();\n}}\n"
+            );
+            let files = [
+                ("shaders/gbuffers_line.vsh", vsh.as_str()),
+                (
+                    "shaders/gbuffers_line.fsh",
+                    "#version 430\nvoid main() { gl_FragData[0] = vec4(1.0); }",
+                ),
+            ];
+            let pack = Pack::from_zip_bytes("line-reruns.zip", zip(&files)).unwrap();
+            let macros = Macros::standard();
+            let vertex = preprocess(&pack, "gbuffers_line.vsh", &macros);
+            let fragment = preprocess(&pack, "gbuffers_line.fsh", &macros);
+            let inputs = GbuffersInputs {
+                body: "hz_Vertex = vec4(0.25, 0.5, -2.0, float(gl_VertexIndex));".into(),
+                ..Default::default()
+            };
+            let program = translate_gbuffers(&vertex, &fragment, Target::Buffers, &inputs)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let module = &program.vertex;
+            let (_, constant) = (module.constants.iter())
+                .find(|(_, c)| c.name.as_deref() == Some("hz_vertex_reruns"))
+                .expect("hz_vertex_reruns");
+            match module.global_expressions[constant.init] {
+                naga::Expression::Literal(naga::Literal::Bool(b)) => b,
+                ref e => panic!("{e:?}"),
+            }
+        };
+        assert!(reruns("", ""));
+        assert!(!reruns(
+            "layout(rgba8) writeonly uniform image2D colorimg5;",
+            "imageStore(colorimg5, ivec2(gl_VertexID, 0), vec4(1.0));"
+        ));
+        assert!(!reruns(
+            "layout(std430, binding = 0) buffer Counts { uint n; };",
+            "n = uint(gl_VertexID);"
+        ));
     }
 
     /// A line program that reads the game's `vaPosition` and `vaNormal` without declaring them

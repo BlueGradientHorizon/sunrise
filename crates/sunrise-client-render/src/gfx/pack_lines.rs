@@ -11,10 +11,13 @@
 ///
 /// The width is applied in screen space after the pack's transform, unless the pack widened
 /// the line itself, as vanilla's `rendertype_lines.vsh` does (Complementary Reimagined's
-/// `gbuffers_line` too): a vertex the pack moved off its line, across it, by more than
-/// [`OWN_WIDTH_PIXELS`]. Then the stroke keeps the pack's width, and a stroke with one drawn
-/// over it (the high contrast outline's black one) is widened by how much wider than that one
-/// the game draws it, so it still shows around it.
+/// `gbuffers_line` too). The game tells by running the pack's vertex stage again for the
+/// corner on the other side of the same end: a pack that only places the line (a transform,
+/// a jitter, the world drawn into part of its buffers) puts both at the same place, one that
+/// widens it puts them apart across the line. Then the stroke keeps the pack's width, and a
+/// stroke with one drawn over it (the high contrast outline's black one) is widened by how
+/// much wider than that one the game draws it, so it still shows around it. A line program
+/// that writes images or buffers isn't run again, and the game widens its line.
 pub fn inputs() -> sunrise_shaders::GbuffersInputs {
     let declarations =
         "layout(location = 0) in vec3 hz_l_start;\nlayout(location = 1) in vec3 hz_l_end;\n\
@@ -24,7 +27,7 @@ pub fn inputs() -> sunrise_shaders::GbuffersInputs {
     // Pack pipelines draw triangle lists: six vertices per edge, the strip's corners 0 1 2 and
     // 3 2 1, so a vertex's `gl_VertexID % 2` is its corner's side, as in vanilla's lines
     // (`rendertype_lines.vsh` offsets a vertex by that parity; Complementary's `gbuffers_line`
-    // does the same).
+    // does the same). Corner `c` is also vertex `c`.
     let body = "    int hz_l_v = int(gl_VertexIndex);\n    \
          hz_l_c = hz_l_v < 4 ? hz_l_v : hz_l_v == 4 ? 2 : 1;\n    \
          hz_Vertex = vec4(hz_l_c >= 2 ? hz_l_end : hz_l_start, 1.0);\n    \
@@ -41,14 +44,14 @@ pub fn inputs() -> sunrise_shaders::GbuffersInputs {
         ("vaNormal", "hz_Normal"),
     ];
     // The edge's ends where the game puts them, through the transform the pack's programs get,
-    // with the y flip `gl_Position` had before `after` (a gbuffers program draws into the pack's
-    // buffers); `hz_l_n`, the unit perpendicular of the edge on screen. `hz_l_s` is how far, in
-    // pixels, the pack put this vertex across the line through them (from either end, both on
-    // it, as an unwidened vertex is): more than `OWN_WIDTH_PIXELS`, and the
-    // pack widened the line, to the side of `hz_l_s`; the game then adds only what this stroke
-    // has over the one drawn on it. Otherwise the game widens it to the side of its corner.
-    let after = format!(
-        "    {{\n        \
+    // with the y flip `gl_Position` has here (a gbuffers program draws into the pack's
+    // buffers); `hz_l_n`, the unit perpendicular of the edge on screen. `hz_l_s` is how far
+    // apart across it, in pixels, the pack put this vertex and the other side's corner of the
+    // same end (vertex `hz_l_c ^ 1`, run last for this vertex again): more than half a pixel,
+    // and the pack widened the line, to the side of `hz_l_s`; the game then adds only what this
+    // stroke has over the one drawn on it. Otherwise the game widens it to the side of its
+    // corner. Both corners of an end share the pack's every other move, and its `w`.
+    let after = "    {\n        \
          vec4 hz_l_a = hz_ModelViewProjectionMatrix * vec4(hz_l_start, 1.0);\n        \
          vec4 hz_l_b = hz_ModelViewProjectionMatrix * vec4(hz_l_end, 1.0);\n        \
          vec2 hz_l_pa = vec2(hz_l_a.x, -hz_l_a.y) / hz_l_a.w;\n        \
@@ -56,13 +59,22 @@ pub fn inputs() -> sunrise_shaders::GbuffersInputs {
          vec2 hz_l_d = (hz_l_pb - hz_l_pa) * hz_target.xy;\n        \
          hz_l_d = dot(hz_l_d, hz_l_d) > 1e-12 ? normalize(hz_l_d) : vec2(1.0, 0.0);\n        \
          vec2 hz_l_n = vec2(-hz_l_d.y, hz_l_d.x);\n        \
-         vec2 hz_l_moved = gl_Position.xy / gl_Position.w - hz_l_pa;\n        \
-         float hz_l_s = dot(hz_l_moved * hz_target.xy * 0.5, hz_l_n);\n        \
-         bool hz_l_own = abs(hz_l_s) > {OWN_WIDTH_PIXELS:?};\n        \
-         float hz_l_side = hz_l_own ? sign(hz_l_s) : (hz_l_c & 1) != 0 ? -1.0 : 1.0;\n        \
+         int hz_l_k = hz_l_c;\n        \
+         float hz_l_s = 0.0;\n        \
+         if (hz_vertex_reruns) {\n            \
+         vec4 hz_l_p = gl_Position;\n            \
+         hz_vertex_index = uint(hz_l_k ^ 1);\n            \
+         hz_vertex();\n            \
+         vec4 hz_l_q = gl_Position;\n            \
+         hz_vertex_index = gl_VertexIndex;\n            \
+         hz_vertex();\n            \
+         hz_l_s = dot((hz_l_p.xy / hz_l_p.w - hz_l_q.xy / hz_l_q.w) * hz_target.xy * 0.5, hz_l_n);\n        \
+         }\n        \
+         bool hz_l_own = abs(hz_l_s) > 0.5;\n        \
+         float hz_l_side = hz_l_own ? sign(hz_l_s) : (hz_l_k & 1) != 0 ? -1.0 : 1.0;\n        \
          float hz_l_w = hz_l_own ? hz_l_width - hz_l_over : hz_l_width;\n        \
-         gl_Position.xy += hz_l_n * (hz_l_side * hz_l_w) / hz_target.xy * gl_Position.w;\n    }}\n"
-    );
+         gl_Position.xy += hz_l_n * (hz_l_side * hz_l_w) / hz_target.xy * gl_Position.w;\n    }\n"
+        .to_owned();
     sunrise_shaders::GbuffersInputs {
         declarations,
         body,
@@ -80,18 +92,6 @@ pub fn inputs() -> sunrise_shaders::GbuffersInputs {
         water_patches: false,
     }
 }
-
-/// How far across its line, in pixels, a vertex of the pack's line program must be for the
-/// game to take it that the pack widened the line itself. A pack that only transforms the line
-/// leaves its vertices on it: a uniform scale of the view (vanilla's `VIEW_SCALE` in
-/// `rendertype_lines.vsh`) keeps x/w and y/w, and a temporal anti-aliasing jitter moves the
-/// whole frame by at most half a pixel on each axis, so by at most half a pixel across a
-/// horizontal or vertical edge. A pack that widens the line by vanilla's measure moves each
-/// vertex by half the line's width: 1.25 pixels for vanilla's 2.5. Measured in game (936×1018,
-/// each move drawn 21 times wider), Complementary Reimagined r5.9.3 moves its vertices between
-/// 0.9 and 1 pixel across all four edges of a block's top, the same in every frame, and BSL
-/// 10.1.8 doesn't move them. 0.75 is between half a pixel and 0.9.
-pub const OWN_WIDTH_PIXELS: f32 = 0.75;
 
 /// The outline edges as the pack's lines program reads them: one 32-byte instance per edge.
 pub fn layout() -> wgpu::VertexBufferLayout<'static> {
