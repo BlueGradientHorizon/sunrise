@@ -945,8 +945,8 @@ impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
     }
-    fn entity_exists(&self, id: &str) -> bool {
-        self.game.res.mob_types().contains_key(id) || self.game.entity_type_exists(id)
+    fn spawner_type(&self, id: &str) -> Option<sunrise_client::mobs::spawner::SpawnerTypeFacts> {
+        self.game.res.rest().spawner_types.get(id).copied()
     }
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize {
         let mobs = self
@@ -1889,7 +1889,7 @@ mod tests {
             let level = game.natural_level();
             let placement = |random: &mut LegacyRandom| {
                 let ok = sunrise_client::mobs::spawn_rules::check_spawn_rules(
-                    level.mob_type("minecraft:sulfur_cube").unwrap(),
+                    level.mob_type("minecraft:sulfur_cube").unwrap().into(),
                     &level,
                     Reason::Natural,
                     random,

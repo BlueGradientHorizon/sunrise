@@ -326,7 +326,6 @@ impl Game<'_> {
         this.tick_mount_menu();
         this.tick_craft_table();
         this.tick_container_reach();
-        this.load_entity_types();
         this.ensure_stateful_entity_table();
         if !this.world.block_entities.has_states() {
             let states = this.ticking_states();

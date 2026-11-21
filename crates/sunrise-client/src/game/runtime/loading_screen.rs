@@ -382,7 +382,7 @@ impl Loading {
             self.vanilla_root.clone(),
             self.started,
             loaded.rest_loader,
-            Some(self.settings.clone()),
+            self.settings.clone(),
             loaded.game_cpu,
             std::mem::take(&mut loaded.client_applies),
             loaded.entity_models,

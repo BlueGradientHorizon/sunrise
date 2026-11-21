@@ -3,16 +3,24 @@ use super::{
 };
 use crate::game::{creatures::SpawnSite, native_entity_refs::tests::with_game};
 use mod_api::{
-    BlockPos, EntityTypeKey, Hooks, Host, LegacyRandomSource, MobSpawnPlacementCheckEvent,
-    ModEntry, Registrar, RegistrationContext, SpawnCheck, SpawnPlacementContext,
-    SpawnPlacementOperation, SpawnPlacementPredicate, SpawnReason,
+    BlockPos, EntityTypeKey, GeneralEntityCategory, GeneralSavePolicy, Heightmap, Hooks, Host,
+    LegacyRandomSource, MobSpawnPlacementCheckEvent, ModEntry, Registrar, RegistrationContext,
+    SpawnCheck, SpawnPlacementContext, SpawnPlacementOperation, SpawnPlacementPredicate,
+    SpawnPlacementType, SpawnReason,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::{
-    chunk::{Chunk, Light},
-    mobs::{spawn_rules::check_spawn_rules, spawn_selection::NaturalLevel},
+    chunk::{Chunk, Light, block_entity::Next},
+    mobs::{
+        data::Placement,
+        spawn_rules::check_spawn_rules,
+        spawn_selection::NaturalLevel,
+        spawner::{CustomSpawnRules, SpawnData, SpawnDataExt, Spawner},
+        trial_spawner::{TrialSpawner, TrialState},
+    },
     motion::PlayerMotion,
 };
+use sunrise_core::nbt::{Compound, Tag};
 
 #[derive(Debug, PartialEq)]
 enum Draw {
@@ -86,6 +94,186 @@ impl Hooks for NextListener {
 
 #[test]
 #[ignore = "daily"]
+fn spawners_check_registered_placements_for_types_outside_the_mob_table() {
+    const GENERAL: &str = "registry_placements:probe";
+
+    #[derive(Debug, PartialEq)]
+    struct Check(SpawnReason, BlockPos, i32);
+    struct RegistryPlacements(Arc<Mutex<Vec<Check>>>);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for RegistryPlacements {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let checks = self.0.clone();
+            let predicate: Arc<dyn SpawnPlacementPredicate> = Arc::new(
+                move |_: EntityTypeKey,
+                      ctx: &mut dyn SpawnPlacementContext,
+                      reason: SpawnReason,
+                      pos: BlockPos| {
+                    checks
+                        .lock()
+                        .unwrap()
+                        .push(Check(reason, pos, ctx.random().next_int()));
+                    false
+                },
+            );
+            r.declare_general_entity(
+                "probe",
+                GeneralEntityCategory::Misc,
+                0.5,
+                0.5,
+                None,
+                GeneralSavePolicy::Save,
+                true,
+                false,
+                None,
+                8,
+                1,
+                1,
+                &[],
+            )
+            .unwrap();
+            for (id, heightmap) in [
+                ("minecraft:ender_dragon", None),
+                ("minecraft:arrow", Some(Heightmap::OceanFloor)),
+                (GENERAL, Some(Heightmap::OceanFloor)),
+            ] {
+                let kind = r.entity_type_key(id);
+                r.register_spawn_placement(
+                    kind,
+                    Some(SpawnPlacementType::InWater),
+                    heightmap,
+                    predicate.clone(),
+                    SpawnPlacementOperation::Replace,
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    let checks = Arc::new(Mutex::new(Vec::new()));
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new(
+            "registry_placements",
+            Box::new(RegistryPlacements(checks.clone())),
+        )]
+        .into(),
+        || {
+            with_game(|game| {
+                let data = game.res.mob_data();
+                assert_eq!(data.placement("minecraft:ender_dragon"), Placement::InWater);
+                assert_eq!(data.placement("minecraft:arrow"), Placement::InWater);
+                assert_eq!(
+                    data.heightmap("minecraft:arrow"),
+                    sunrise_client::mobs::spawn_selection::Heightmap::OceanFloor
+                );
+                assert!(game.natural_level().mob_type("minecraft:arrow").is_none());
+                game.set_difficulty_forced(2);
+                game.world.game_time = 1;
+                game.player =
+                    Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 70.0, 0.5)).unwrap());
+                let mut chunk = Chunk::empty(0, 0);
+                chunk.lit = true;
+                game.world.chunks.insert((0, 0), Arc::new(chunk));
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                // The arrow's half-width is 0.25: its box misses the adjacent stone,
+                // whereas the old unit box for non-MobTypes would overlap it.
+                game.world.set(3, 70, 2, stone).unwrap();
+                let key = (2, 70, 2);
+                let pos = BlockPos::new(2, 70, 2);
+                let mut entity = Compound::default();
+                entity.insert("id".into(), Tag::String("minecraft:arrow".into()));
+                entity.insert(
+                    "Pos".into(),
+                    Tag::List(
+                        [2.625_f64, 70.0, 2.5]
+                            .into_iter()
+                            .map(|v| Tag::Double(v.to_bits()))
+                            .collect(),
+                    ),
+                );
+                let mut ordinary = Spawner {
+                    spawn_delay: 0,
+                    spawn_count: 1,
+                    next: Some(Next::Own(SpawnData::new(entity.clone(), None, None))),
+                    ..Default::default()
+                };
+                game.world.random.set_seed(7);
+                game.server_tick_spawner_of(key, &mut ordinary, None)
+                    .unwrap();
+                assert_eq!(
+                    *checks.lock().unwrap(),
+                    [Check(SpawnReason::Spawner, pos, -1_156_638_823)]
+                );
+                assert_eq!(
+                    ordinary.spawn_delay, 0,
+                    "the refusal stopped before creation"
+                );
+                assert_eq!(game.world.random.next_int(), -1_552_468_968);
+
+                ordinary.next = Some(Next::Own(SpawnData::new(
+                    entity.clone(),
+                    Some(CustomSpawnRules {
+                        block: (0, 15),
+                        sky: (0, 15),
+                    }),
+                    None,
+                )));
+                game.server_tick_spawner_of(key, &mut ordinary, None)
+                    .unwrap();
+                assert_eq!(
+                    checks.lock().unwrap().len(),
+                    1,
+                    "ordinary custom rules bypass placement"
+                );
+                assert!(
+                    ordinary.spawn_delay > 0,
+                    "creation still uses the existing path"
+                );
+
+                for id in ["minecraft:arrow", GENERAL] {
+                    entity.insert("id".into(), Tag::String(id.into()));
+                    let mut trial = TrialSpawner {
+                        next_spawn_data: Some(SpawnData::new(
+                            entity.clone(),
+                            Some(CustomSpawnRules {
+                                block: (15, 15),
+                                sky: (0, 15),
+                            }),
+                            None,
+                        )),
+                        ..Default::default()
+                    };
+                    game.world.random.set_seed(7);
+                    game.server_tick_trial_spawner(key, &mut trial, TrialState::Active, false)
+                        .unwrap();
+                    assert_eq!(
+                        game.world.random.next_int(),
+                        -1_552_468_968,
+                        "{id} advanced the live stream"
+                    );
+                }
+                assert_eq!(
+                    *checks.lock().unwrap(),
+                    [
+                        Check(SpawnReason::Spawner, pos, -1_156_638_823),
+                        Check(SpawnReason::TrialSpawner, pos, -1_156_638_823),
+                        Check(SpawnReason::TrialSpawner, pos, -1_156_638_823),
+                    ],
+                    "trial spawners check placement before their custom rules"
+                );
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
 fn placement_listener_draws_after_the_registered_predicate_on_the_callers_stream() {
     let draws = Arc::new(Mutex::new(Vec::new()));
     let probe = SpawnProbe {
@@ -105,7 +293,7 @@ fn placement_listener_draws_after_the_registered_predicate_on_the_callers_stream
                 let zombie = level.mob_type("minecraft:zombie").unwrap();
                 let mut random = LegacyRandom::new(7);
                 assert!(!check_spawn_rules(
-                    zombie,
+                    zombie.into(),
                     &level,
                     SpawnReason::Natural,
                     &mut random,

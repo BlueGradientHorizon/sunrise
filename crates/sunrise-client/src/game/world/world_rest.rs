@@ -1,9 +1,11 @@
 use super::*;
+use sunrise_client::mobs::spawner::SpawnerTypeFacts;
 
 pub(super) fn load_world_rest(
     resource_root: &sunrise_assets::resource_source::ResourceRoot,
     conditions: &sunrise_world::conditions::LoadConditions,
     resources: &Resources,
+    spawner_types: HashMap<String, SpawnerTypeFacts>,
     assets: &Assets,
     behaviour_json: &serde_json::Value,
     gameplay_projection: &[sunrise_client::blocks::GameplayProjection],
@@ -136,9 +138,11 @@ pub(super) fn load_world_rest(
             })
             .collect();
         let mut mob_data = sunrise_client::mobs::MobData::load(resource_root, facts);
+        // NeoForge keys placements by EntityType, not by the subset backed by MobTypes.
+        // Use exactly the registry the spawners will consult, with facts already validated.
         mob_data
             .install_spawn_placements(mod_api::__private::spawn_placement_declarations(), |id| {
-                mob_types.contains_key(id)
+                spawner_types.contains_key(id)
             })?;
         crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
             mob_types.contains_key(kind)
@@ -315,6 +319,7 @@ pub(super) fn load_world_rest(
         behaviours: behaviours?,
         mob_types,
         mob_data,
+        spawner_types,
         player_type,
         player_arm,
         player_arm_slim,

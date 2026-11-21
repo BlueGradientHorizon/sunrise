@@ -137,15 +137,27 @@ fn immune_tag(s: Species) -> Option<&'static str> {
 }
 /// `BlockState.isValidSpawn(level, pos, type)` for the block at a position.
 pub fn is_valid_spawn<L: SpawnLevel>(s: Species, l: &L, x: i32, y: i32, z: i32) -> bool {
-    if name(l, x, y, z) == "minecraft:magma_block" {
-        return fire_immune(s);
-    }
     let bit = match s {
         Species::Ocelot | Species::Parrot => data::VALID_SPAWN_LEAVES,
         Species::PolarBear => data::VALID_SPAWN_ICE,
         _ => data::VALID_SPAWN,
     };
-    flags(l, x, y, z) & bit != 0
+    valid_spawn_surface(l, x, y, z, bit, fire_immune(s))
+}
+
+fn valid_spawn_surface<L: SpawnLevel>(
+    l: &L,
+    x: i32,
+    y: i32,
+    z: i32,
+    bit: u16,
+    fire_immune: bool,
+) -> bool {
+    if name(l, x, y, z) == "minecraft:magma_block" {
+        fire_immune
+    } else {
+        flags(l, x, y, z) & bit != 0
+    }
 }
 /// `NaturalSpawner.isValidEmptySpawnBlock` for an entity type.
 pub fn is_valid_empty_spawn<L: SpawnLevel>(s: Species, l: &L, x: i32, y: i32, z: i32) -> bool {
@@ -268,56 +280,87 @@ fn surface_water<L: SpawnLevel>(l: &L, x: i32, y: i32, z: i32) -> bool {
         && name(l, x, y + 1, z) == "minecraft:water"
 }
 
-/// `SpawnPlacements.checkSpawnRules` for the entity type `entity` (a species
-/// can stand for several types), then `MobSpawnEvent.SpawnPlacementCheck`
-/// through [`SpawnLevel::placement_check`].
-pub fn check_spawn_rules<L: SpawnLevel>(
-    kind: &MobType,
+/// Registry identity and vanilla spawn facts of the resolved entity type.
+#[derive(Clone, Copy)]
+pub struct SpawnEntityType<'a> {
+    pub id: &'a str,
+    pub species: Option<Species>,
+    pub allowed_in_peaceful: bool,
+}
+
+impl<'a> From<&'a MobType> for SpawnEntityType<'a> {
+    fn from(kind: &'a MobType) -> Self {
+        Self {
+            id: &kind.id,
+            species: Some(kind.species),
+            allowed_in_peaceful: kind.allowed_in_peaceful(),
+        }
+    }
+}
+
+/// `SpawnPlacements.checkSpawnRules` for the resolved entity type, then
+/// `MobSpawnEvent.SpawnPlacementCheck` through [`SpawnLevel::placement_check`].
+pub fn check_spawn_rules<L: SpawnLevel, R: RandomSource + Clone>(
+    kind: SpawnEntityType<'_>,
     l: &L,
     reason: Reason,
-    random: &mut impl RandomSource,
+    random: &mut R,
     at: [i32; 3],
 ) -> bool {
-    if !kind.allowed_in_peaceful() && l.peaceful() {
+    if !kind.allowed_in_peaceful && l.peaceful() {
         return false;
     }
     let [x, y, z] = at;
-    let allowed = match l.mob_data().mod_spawns.get(&kind.id) {
+    let vanilla = |random: &mut R| match kind.species {
+        Some(s) => placement_predicate(s, l, reason, random, x, y, z),
+        // The dragon has no Species row, but SpawnPlacements registers it with
+        // Mob.checkMobSpawnRules, including access to magma (it is fire immune).
+        None if kind.id == "minecraft:ender_dragon" => {
+            is_spawner(reason) || valid_spawn_surface(l, x, y - 1, z, data::VALID_SPAWN, true)
+        }
+        // SpawnPlacements.checkSpawnRules accepts types without an entry.
+        None => true,
+    };
+    let allowed = match l.mob_data().mod_spawns.get(kind.id) {
         Some(row) => {
             let pos = BlockPos::new(x, y, z);
-            let mut ctx = SpawnContext {
-                level: SpawnLevelView(l),
-                random: SpawnRandom(random),
-                pos,
-            };
-            let test = |p: &data::OwnedSpawnPredicate, ctx: &mut SpawnContext<'_, L, _>| {
+            let test = |p: &data::OwnedSpawnPredicate, random: &mut R| {
                 if !p.owner.is_enabled() {
                     return None;
                 }
                 p.owner
-                    .call("spawn placement", "spawn_placement_predicate", || {
-                        p.predicate.test(row.kind, ctx, reason, pos)
-                    })
+                    .call_with_panic_rollback(
+                        "spawn placement",
+                        "spawn_placement_predicate",
+                        random,
+                        |random| {
+                            let mut ctx = SpawnContext {
+                                level: SpawnLevelView(l),
+                                random: SpawnRandom(random),
+                            };
+                            p.predicate.test(row.kind, &mut ctx, reason, pos)
+                        },
+                    )
                     .ok()
             };
             match &row.predicates {
-                // MergedSpawnPredicate.build installs only the selected replacement.
+                // NeoForge installs only the selected replacement, even when it fails.
                 data::SpawnPredicates::Replacement(predicate) => {
-                    test(predicate, &mut ctx).unwrap_or(false)
+                    test(predicate, random).unwrap_or(false)
                 }
                 data::SpawnPredicates::Combined { original, or, and } => {
                     let original = match original {
-                        Some(predicate) => test(predicate, &mut ctx).unwrap_or(false),
-                        None => placement_predicate(kind.species, l, reason, ctx.random.0, x, y, z),
+                        Some(predicate) => test(predicate, random).unwrap_or(false),
+                        None => vanilla(random),
                     };
-                    (original || or.iter().any(|p| test(p, &mut ctx) == Some(true)))
-                        && and.iter().all(|p| test(p, &mut ctx) != Some(false))
+                    (original || or.iter().any(|p| test(p, random) == Some(true)))
+                        && and.iter().all(|p| test(p, random) != Some(false))
                 }
             }
         }
-        None => placement_predicate(kind.species, l, reason, random, x, y, z),
+        None => vanilla(random),
     };
-    l.placement_check(&kind.id, reason, at, allowed, &mut SpawnRandom(random))
+    l.placement_check(kind.id, reason, at, allowed, &mut SpawnRandom(random))
 }
 
 struct SpawnLevelView<'a, L>(&'a L);
@@ -351,7 +394,6 @@ impl<L: SpawnLevel> SpawnPlacementLevel for SpawnLevelView<'_, L> {
 struct SpawnContext<'a, L, R> {
     level: SpawnLevelView<'a, L>,
     random: SpawnRandom<'a, R>,
-    pos: BlockPos,
 }
 
 impl<L: SpawnLevel, R: RandomSource> SpawnPlacementContext for SpawnContext<'_, L, R> {
@@ -363,14 +405,8 @@ impl<L: SpawnLevel, R: RandomSource> SpawnPlacementContext for SpawnContext<'_, 
         &mut self.random
     }
 
-    fn is_dark_enough_to_spawn(&mut self) -> bool {
-        is_dark_enough(
-            self.level.0,
-            self.random.0,
-            self.pos.x,
-            self.pos.y,
-            self.pos.z,
-        )
+    fn is_dark_enough_to_spawn(&mut self, pos: BlockPos) -> bool {
+        is_dark_enough(self.level.0, self.random.0, pos.x, pos.y, pos.z)
     }
 }
 
@@ -774,12 +810,24 @@ mod underwater_sky_tests {
                 );
                 let mut random = LegacyRandom::new(1);
                 assert!(
-                    check_spawn_rules(&guardian, w, Reason::Natural, &mut random, [0, 50, 0]),
+                    check_spawn_rules(
+                        (&guardian).into(),
+                        w,
+                        Reason::Natural,
+                        &mut random,
+                        [0, 50, 0]
+                    ),
                     "kelp between the guardian and the sea hides the sky"
                 );
                 let mut random = LegacyRandom::new(1);
                 assert!(
-                    !check_spawn_rules(&guardian, w, Reason::Natural, &mut random, [1, 50, 0]),
+                    !check_spawn_rules(
+                        (&guardian).into(),
+                        w,
+                        Reason::Natural,
+                        &mut random,
+                        [1, 50, 0]
+                    ),
                     "a bubble column is liquid(), so the sky still shows"
                 );
             },
@@ -954,7 +1002,7 @@ mod mod_spawn_rule_tests {
         facts: BlockFacts,
         data: data::MobData,
         sky: i32,
-        block: i32,
+        bright_block: Option<BlockPos>,
         peaceful: bool,
         /// The biome tags the spot's biome is in.
         biome_tags: Vec<&'static str>,
@@ -990,7 +1038,7 @@ mod mod_spawn_rule_tests {
                 facts,
                 data,
                 sky: 15,
-                block: 0,
+                bright_block: None,
                 peaceful: false,
                 biome_tags: vec!["test:haunted"],
                 heard: RefCell::default(),
@@ -1005,6 +1053,7 @@ mod mod_spawn_rule_tests {
                     id,
                     "minecraft:zombie"
                         | "minecraft:shulker"
+                        | "minecraft:arrow"
                         | "ruby:ghoul"
                         | "ruby:floater"
                         | "test:trader"
@@ -1014,8 +1063,44 @@ mod mod_spawn_rule_tests {
         /// `SpawnPlacements.checkSpawnRules` for a type of the zombie species.
         fn check(&self, entity: &str, reason: Reason, at: [i32; 3]) -> bool {
             let kind = mob_kind(entity, Species::Zombie);
-            check_spawn_rules(&kind, self, reason, &mut LegacyRandom::new(7), at)
+            check_spawn_rules((&kind).into(), self, reason, &mut LegacyRandom::new(7), at)
         }
+    }
+
+    #[test]
+    fn dragon_placement_keeps_its_vanilla_surface_requirement() {
+        let mut level = Flat::new(&[]);
+        level.peaceful = true; // The dragon is allowed in Peaceful.
+        let dragon = SpawnEntityType {
+            id: "minecraft:ender_dragon",
+            species: None,
+            allowed_in_peaceful: true,
+        };
+        let mut random = LegacyRandom::new(7);
+        // Mob.checkMobSpawnRules accepts a spawner in midair, but needs a
+        // valid surface for a natural spawn. Neither path draws random numbers.
+        assert!(!check_spawn_rules(
+            dragon,
+            &level,
+            Reason::Natural,
+            &mut random,
+            [0, 2, 0]
+        ));
+        assert!(check_spawn_rules(
+            dragon,
+            &level,
+            Reason::Spawner,
+            &mut random,
+            [0, 2, 0]
+        ));
+        assert!(check_spawn_rules(
+            dragon,
+            &level,
+            Reason::Natural,
+            &mut random,
+            [0, 1, 0]
+        ));
+        assert_eq!(random.next_int(), JAVA_DRAWS[0]);
     }
 
     fn mob_kind(entity: &str, species: Species) -> MobType {
@@ -1048,8 +1133,12 @@ mod mod_spawn_rule_tests {
         fn sky_light(&self, _: i32, _: i32, _: i32) -> i32 {
             self.sky
         }
-        fn block_light(&self, _: i32, _: i32, _: i32) -> i32 {
-            self.block
+        fn block_light(&self, x: i32, y: i32, z: i32) -> i32 {
+            if self.bright_block == Some(BlockPos::new(x, y, z)) {
+                15
+            } else {
+                0
+            }
         }
         fn sky_darken(&self) -> i32 {
             0
@@ -1135,7 +1224,7 @@ mod mod_spawn_rule_tests {
         }]);
         let check = |level: &Flat| {
             check_spawn_rules(
-                &trader,
+                (&trader).into(),
                 level,
                 Reason::Natural,
                 &mut LegacyRandom::new(7),
@@ -1178,19 +1267,23 @@ mod mod_spawn_rule_tests {
     }
 
     #[test]
-    fn a_dark_rule_needs_the_dark_a_monster_needs() {
+    fn a_dark_rule_checks_light_at_the_position_the_predicate_requests() {
         let mut level = Flat::new(&[ghoul(
-            |_: EntityTypeKey, ctx: &mut dyn SpawnPlacementContext, reason: Reason, _: BlockPos| {
-                reason == Reason::TrialSpawner || ctx.is_dark_enough_to_spawn()
+            |_: EntityTypeKey,
+             ctx: &mut dyn SpawnPlacementContext,
+             reason: Reason,
+             pos: BlockPos| {
+                reason == Reason::TrialSpawner || ctx.is_dark_enough_to_spawn(pos.offset(1, 0, 0))
             },
         )]);
         let on_grass = [0, 1, 0];
         level.sky = 0;
+        level.bright_block = Some(BlockPos::new(0, 1, 0));
         assert!(level.check("ruby:ghoul", Reason::Natural, on_grass));
-        level.block = 15;
+        level.bright_block = Some(BlockPos::new(1, 1, 0));
         assert!(!level.check("ruby:ghoul", Reason::Natural, on_grass));
         level.sky = 15;
-        level.block = 0;
+        level.bright_block = None;
         assert!(!level.check("ruby:ghoul", Reason::Natural, on_grass));
     }
 
@@ -1202,61 +1295,121 @@ mod mod_spawn_rule_tests {
         let mut context = SpawnContext {
             level: SpawnLevelView(&level),
             random: SpawnRandom(&mut rng),
-            pos: BlockPos::new(0, 1, 0),
         };
 
         // Java's Random(7): the refused bound draws nothing, and the Overworld's
         // darkness check then draws nextInt(32) and nextInt(8).
         assert_eq!(context.random().next_int_bound(0), 0);
         assert_eq!(context.random().next_int(), JAVA_DRAWS[0]);
-        assert!(context.is_dark_enough_to_spawn());
+        assert!(context.is_dark_enough_to_spawn(BlockPos::new(0, 1, 0)));
         assert_eq!(rng.next_int(), JAVA_DRAWS[3]);
     }
 
     #[test]
-    fn a_panicking_replacement_does_not_retry_vanilla_or_draw_again() {
-        let mut level = Flat::new(&[SpawnPlacementDeclaration {
-            id: "minecraft:zombie".into(),
-            kind: entity_type_key(0),
-            mod_id: "broken_spawn_replacement",
-            placement: None,
-            heightmap: None,
-            predicate: Arc::new(
-                |_: EntityTypeKey,
-                 ctx: &mut dyn SpawnPlacementContext,
-                 _: Reason,
-                 _: BlockPos|
-                 -> bool {
-                    assert_eq!(ctx.random().next_int(), JAVA_DRAWS[0]);
-                    panic!("test spawn predicate panic");
-                },
-            ),
-            operation: Replace,
-        }]);
-        level.sky = 0;
-        let kind = mob_kind("minecraft:zombie", Species::Zombie);
+    fn a_panicking_non_mob_replacement_restores_draws_and_disables_only_itself() {
+        const BROKEN: &str = "broken_arrow_placement";
+        const HEALTHY: &str = "healthy_spawn_placement";
+        crate::test_log::install();
+        crate::test_log::clear();
+        let calls = PredicateCalls::default();
+        let failed_calls = Arc::clone(&calls);
+        let mut level = Flat::new(&[
+            SpawnPlacementDeclaration {
+                id: "minecraft:arrow".into(),
+                kind: entity_type_key(0),
+                mod_id: HEALTHY,
+                placement: Some(SpawnPlacementType::NoRestrictions),
+                heightmap: Some(Heightmap::MotionBlockingNoLeaves),
+                predicate: Arc::new(recording_predicate(&calls, "original", true)),
+                operation: Replace,
+            },
+            SpawnPlacementDeclaration {
+                id: "minecraft:arrow".into(),
+                kind: entity_type_key(0),
+                mod_id: BROKEN,
+                placement: None,
+                heightmap: None,
+                predicate: Arc::new(
+                    move |_: EntityTypeKey,
+                          ctx: &mut dyn SpawnPlacementContext,
+                          _: Reason,
+                          _: BlockPos|
+                          -> bool {
+                        failed_calls
+                            .lock()
+                            .unwrap()
+                            .push(("broken", ctx.random().next_int()));
+                        panic!("test arrow predicate panic");
+                    },
+                ),
+                operation: Replace,
+            },
+            SpawnPlacementDeclaration {
+                id: "minecraft:shulker".into(),
+                kind: entity_type_key(1),
+                mod_id: HEALTHY,
+                placement: None,
+                heightmap: None,
+                predicate: Arc::new(recording_predicate(&calls, "healthy", false)),
+                operation: Replace,
+            },
+        ]);
+        let arrow = SpawnEntityType {
+            id: "minecraft:arrow",
+            species: None,
+            allowed_in_peaceful: true,
+        };
         let mut rng = LegacyRandom::new(7);
         assert!(!check_spawn_rules(
-            &kind,
+            arrow,
             &level,
-            Reason::Natural,
+            Reason::Spawner,
+            &mut rng,
+            [0, 1, 0]
+        ));
+        assert_eq!(rng.next_int(), JAVA_DRAWS[0]);
+
+        // The check hook can override the failed answer. Neither the disabled
+        // replacement nor the original consumes a draw on this attempt.
+        level.hook = Some(true);
+        assert!(check_spawn_rules(
+            arrow,
+            &level,
+            Reason::TrialSpawner,
             &mut rng,
             [0, 1, 0]
         ));
         assert_eq!(rng.next_int(), JAVA_DRAWS[1]);
 
-        // The check hook still gets the failed answer and can override it. The
-        // disabled replacement and vanilla consume no draws on this check.
-        level.hook = Some(true);
-        assert!(check_spawn_rules(
-            &kind,
+        level.hook = None;
+        let shulker = mob_kind("minecraft:shulker", Species::Shulker);
+        assert!(!check_spawn_rules(
+            (&shulker).into(),
             &level,
-            Reason::Natural,
+            Reason::Spawner,
             &mut rng,
             [0, 1, 0]
         ));
-        assert_eq!(rng.next_int(), JAVA_DRAWS[2]);
-        assert_eq!(*level.heard.borrow(), [false, false]);
+        assert_eq!(
+            rng.next_int(),
+            JAVA_DRAWS[3],
+            "keep the healthy veto's draw"
+        );
+        assert_eq!(*level.heard.borrow(), [false, false, false]);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [("broken", JAVA_DRAWS[0]), ("healthy", JAVA_DRAWS[2])]
+        );
+        let reports = crate::test_log::records();
+        let panics: Vec<_> = reports
+            .iter()
+            .filter(|(level, message)| {
+                *level == log::Level::Error && message.contains("spawn_placement_predicate")
+            })
+            .collect();
+        assert_eq!(panics.len(), 1, "{panics:?}");
+        assert!(panics[0].1.contains(BROKEN));
+        assert!(panics[0].1.contains("test arrow predicate panic"));
     }
 
     /// `mob_spawn_placement_check` still runs after the rule and is told its
@@ -1381,7 +1534,7 @@ mod mod_spawn_rule_tests {
             // The template zombie always passes for a trial spawner. The first
             // custom row has to be the original, not an OR after that template.
             let actual = check_spawn_rules(
-                &mob_kind("ruby:ghoul", Species::Zombie),
+                (&mob_kind("ruby:ghoul", Species::Zombie)).into(),
                 &level,
                 Reason::TrialSpawner,
                 &mut rng,
@@ -1458,6 +1611,20 @@ mod mod_spawn_rule_tests {
     }
 
     #[test]
+    fn registration_requires_prepared_vanilla_placement_membership() {
+        let mut level = Flat::new(&[]);
+        level.data.vanilla_spawn_placements = None;
+        assert_eq!(
+            level.install(&[ghoul(bright_ghoul)]).unwrap_err(),
+            "mod ruby spawn placement for ruby:ghoul: prepare resources to load vanilla spawn placement membership"
+        );
+        assert_eq!(
+            level.data.heightmap("ruby:ghoul"),
+            Surface::MotionBlockingNoLeaves
+        );
+    }
+
+    #[test]
     fn registration_validates_geometry_and_loaded_types() {
         let mut level = Flat::new(&[]);
         for (placement, heightmap) in [
@@ -1489,6 +1656,11 @@ mod mod_spawn_rule_tests {
                     level.install(&[original, extension]).unwrap_err(),
                     "mod jade spawn placement for ruby:ghoul: only Replace may supply placement or heightmap for an existing entry"
                 );
+                assert_eq!(
+                    level.data.heightmap("ruby:ghoul"),
+                    Surface::MotionBlockingNoLeaves,
+                    "the valid prefix of the refused batch must not publish its OceanFloor override"
+                );
             }
         }
         let unknown = SpawnPlacementDeclaration {
@@ -1517,7 +1689,7 @@ mod mod_spawn_rule_tests {
             Placement::NoRestrictions
         );
         assert!(!check_spawn_rules(
-            &mob_kind("minecraft:shulker", Species::Shulker),
+            (&mob_kind("minecraft:shulker", Species::Shulker)).into(),
             &level,
             Reason::TrialSpawner,
             &mut LegacyRandom::new(7),
@@ -1534,7 +1706,7 @@ mod mod_spawn_rule_tests {
         level.hook = Some(true);
         let mut rng = LegacyRandom::new(7);
         assert!(!check_spawn_rules(
-            &mob_kind("ruby:ghoul", Species::Zombie),
+            (&mob_kind("ruby:ghoul", Species::Zombie)).into(),
             &level,
             Reason::Natural,
             &mut rng,

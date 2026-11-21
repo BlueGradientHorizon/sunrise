@@ -11,7 +11,8 @@ use motion_ids::{motion_at, motion_block_entity};
 #[cfg(test)]
 use resource_load::load_resources;
 use resource_load::{
-    Progress, launch_world, load_resources_for_mods, named_scope, synchronous_startup,
+    Progress, launch_world, load_resources_for_mods, load_resources_sync, named_scope,
+    synchronous_startup,
 };
 /// The content tables the world plays with, as field-level borrows: the
 /// world's data packs' over the game's own. The `Game::items`/`recipes`/
@@ -2944,6 +2945,8 @@ struct WorldRest {
     transformers: sunrise_client::block_transform::Transformers,
     mob_types: HashMap<String, Arc<MobType>>,
     mob_data: sunrise_client::mobs::MobData,
+    /// Complete pre-creation facts for the registered entity types.
+    spawner_types: HashMap<String, sunrise_client::mobs::spawner::SpawnerTypeFacts>,
     providers: Providers,
     block_entity_render: BlockEntityRenderer,
     animate: sunrise_client::animate_tick::AnimateTables,
@@ -13979,37 +13982,26 @@ pub(crate) fn run_with(
     if !synchronous_startup(&options) {
         return run_loading(options, early_settings, vanilla_root, None, started);
     }
-    let mut pack_error = None;
-    let selected_root = if options.execution_role.is_dedicated_server() {
+    let roots = if options.execution_role.is_dedicated_server() {
         // Dedicated startup sees enabled mod assets but no client's resource packs.
-        mods::content_root(&vanilla_root, &options.mods)?
+        mods::content_root(&vanilla_root, &options.mods)?.into()
     } else {
         packs::startup_root(
             &vanilla_root,
             &early_settings.resource_packs,
             &[],
             &options.mods,
-        )
-        .or_else(|e| {
-            if e.is::<mods::DeclarationFailures>() {
-                return Err(e);
-            }
-            log::warn!("Sunrise: resource packs not applied: {e}");
-            pack_error = Some(e.to_string());
-            mods::content_root(&vanilla_root, &options.mods)
-        })?
+        )?
     };
-    let mut loaded = load_resources_for_mods(
-        selected_root,
+    let mut loaded = load_resources_sync(
+        roots,
         pack_finders::data_packs(&options.mods),
         launch_world(&options),
         &vanilla_root,
-        &early_settings,
+        &mut early_settings,
         started,
-        false,
         mods::LoadRole::startup(options.execution_role),
         &Progress::new(),
-        &mut |_, _| {},
         &options.mods,
     )?;
     let gui = loaded.gui.ok_or("missing menu bundle")?;
@@ -14025,12 +14017,12 @@ pub(crate) fn run_with(
         loaded.pack,
         gui,
         options,
-        loaded.pack_error.or(pack_error),
+        loaded.pack_error,
         audio,
         vanilla_root,
         started,
         loaded.rest_loader,
-        None,
+        early_settings,
         None,
         std::mem::take(&mut loaded.client_applies),
         loaded.entity_models,

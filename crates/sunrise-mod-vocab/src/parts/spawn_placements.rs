@@ -38,7 +38,12 @@ pub fn spawn_placement_declarations() -> &'static [SpawnPlacementDeclaration] {
 pub trait SpawnPlacementsRegistrar {
     /// Register a native predicate in `Hooks::register` (NeoForge's
     /// `RegisterSpawnPlacementsEvent.register`). Request `kind` from `r.entity_type_key`
-    /// with the full registry id, such as `mymod:ghoul` or `minecraft:zombie`.
+    /// with the full registry id. Any registered entity type is eligible, including
+    /// `minecraft:ender_dragon` (which has a vanilla entry) and non-mob types such as
+    /// `minecraft:arrow` (which do not). Ordinary and trial spawners check the resolved
+    /// entity type's predicate before attempting to create it, even for non-mobs.
+    /// Ordinary spawners with custom rules skip the predicate; trial spawners check
+    /// custom rules afterward. Registration does not add a spawn path for a type.
     ///
     /// If the type has no vanilla entry, its first registration needs both `placement`
     /// (where it may stand) and `heightmap` (how chunk generation finds the surface).
@@ -53,12 +58,17 @@ pub trait SpawnPlacementsRegistrar {
     /// `And` predicates run until one fails. Each list runs in registration order.
     /// The predicates run at `SpawnPlacements.checkSpawnRules`, not at direct vanilla
     /// predicate calls such as patrols and village sieges. They share the caller's live
-    /// random stream. Where `mob_spawn_placement_check` fires, it gets the effective
-    /// answer and the same stream after the predicates' draws.
+    /// random stream. A panicking predicate is disabled and its draws are rolled back;
+    /// a failed replacement does not rerun the original. Where `mob_spawn_placement_check`
+    /// fires, it gets the effective answer and the same stream after the predicates' draws.
     ///
     /// An unavailable key returns [`SpawnPlacementError::InvalidEntityType`] and records
     /// a registration refusal. Unloaded types, invalid combinations of metadata, and
     /// missing vanilla spawn placement data refuse resource loading, naming the mod and type.
+    /// The accepted gameplay resources supply both the registry keys and their spawn facts.
+    /// Recovery from a failed client pack load clears optional packs, not mod entity types.
+    /// Missing or malformed facts (category or dimensions) refuse resource loading and name
+    /// the affected entity type. Both spawners use those same resolved types.
     fn register_spawn_placement(
         &mut self,
         kind: EntityTypeKey,

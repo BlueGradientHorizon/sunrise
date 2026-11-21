@@ -401,9 +401,9 @@ fn required_packs_keep_their_priority_and_cannot_be_cleared() {
             )
             .unwrap(),
         );
-        assert!(!packs::able_to_clear_any_pack(&all, &[]));
         let empty = ResourceSource::directory(fixture.root.join("base"));
         let required = packs::enabled(&all, &[]);
+        assert!(!packs::has_optional_pack(&required));
         assert_eq!(
             packs::resources(empty.clone(), &required)
                 .unwrap()
@@ -411,10 +411,10 @@ fn required_packs_keep_their_priority_and_cannot_be_cleared() {
                 .unwrap(),
             br#"{"packmod.optional":"first"}"#
         );
-        let selected = ["file/override".to_owned()];
-        assert!(packs::able_to_clear_any_pack(&all, &selected));
+        let selected = packs::enabled(&all, &["file/override".to_owned()]);
+        assert!(packs::has_optional_pack(&selected));
         assert_eq!(
-            packs::resources(empty, &packs::enabled(&all, &selected))
+            packs::resources(empty, &selected)
                 .unwrap()
                 .read(ASSET)
                 .unwrap(),
@@ -423,6 +423,24 @@ fn required_packs_keep_their_priority_and_cannot_be_cleared() {
         let info = all[0].selection.as_ref().unwrap();
         let model = packs::SelectionModel::new(vec![info.selectable()], &[]);
         assert!(!model.can_unselect(true, 0));
+
+        let mut second_required = all[0].clone();
+        second_required.id = "mod/second".into();
+        second_required.selection.as_mut().unwrap().id = second_required.id.clone();
+        all.push(second_required);
+        let order = |ids: &[String]| {
+            packs::enabled(&all, ids)
+                .into_iter()
+                .map(|pack| pack.id)
+                .collect::<Vec<_>>()
+        };
+        let mut reordered = order(&[]);
+        assert_eq!(reordered.len(), 2);
+        reordered.reverse();
+        assert_eq!(order(&reordered), reordered);
+        assert!(!packs::has_optional_pack(&packs::enabled(&all, &reordered)));
+        reordered.push("file/override".into());
+        assert!(packs::has_optional_pack(&packs::enabled(&all, &reordered)));
 
         let data = data_packs(&sources);
         let mut options = sunrise_client::title::WorldOptions::default();

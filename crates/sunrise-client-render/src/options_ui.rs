@@ -2296,6 +2296,15 @@ impl OptionsUi {
     pub fn open(&mut self, in_world: bool) {
         self.open_at(in_world, Page::Main);
     }
+    /// Rebuild the resource-pack editor from the committed selection. The shared
+    /// fields belong to Create World's editor while it is showing data packs.
+    pub fn set_resource_pack_selection(&mut self, selected: &[String]) {
+        if self.data_pack_dir.is_none() {
+            self.pack_selection.clear();
+            self.pack_selection.extend_from_slice(selected);
+            self.pack_screen = None;
+        }
+    }
     /// Create World's Data Packs (`openDataPackSelectionScreen`): the Packs
     /// page on the new world's pack folder `dir`, `selected` chosen;
     /// `resources` holds the built-in pack's icon.
