@@ -2997,16 +2997,28 @@ pub(super) mod tests {
             assert!(!game.player_set_game_mode(player, GameMode::Survival));
             assert_eq!(game.player_previous_game_mode(player), Some(None));
             assert!(game.player_set_game_mode(player, GameMode::Creative));
-            assert_eq!(game.player_game_mode(player), Some(GameMode::Creative));
+            assert_eq!(
+                player.with_view(game, |view| view.game_mode()).flatten(),
+                Some(GameMode::Creative)
+            );
             assert_eq!(
                 game.player_previous_game_mode(player),
                 Some(Some(GameMode::Survival))
             );
-            let abilities = game.player_abilities(player).unwrap();
+            let abilities = player
+                .with_view(game, |view| view.abilities())
+                .flatten()
+                .unwrap();
             assert!(abilities.invulnerable && abilities.may_fly && abilities.instabuild);
             assert!(game.player_set_game_mode(player, GameMode::Survival));
-            assert_eq!(game.player_game_mode(player), Some(GameMode::Survival));
-            let abilities = game.player_abilities(player).unwrap();
+            assert_eq!(
+                player.with_view(game, |view| view.game_mode()).flatten(),
+                Some(GameMode::Survival)
+            );
+            let abilities = player
+                .with_view(game, |view| view.abilities())
+                .flatten()
+                .unwrap();
             assert!(!abilities.invulnerable && !abilities.may_fly && !abilities.instabuild);
             // A write sticks, is refused for a speed that is not a number, and a
             // mode change sets the flags again (the speeds stay).
@@ -3015,14 +3027,23 @@ pub(super) mod tests {
             written.walk_speed = 0.2;
             written.fly_speed = 0.1;
             assert!(game.player_set_abilities(player, written));
-            assert_eq!(game.player_abilities(player), Some(written));
-            assert_eq!(game.player_may_build(player), Some(false));
+            assert_eq!(
+                player.with_view(game, |view| view.abilities()).flatten(),
+                Some(written)
+            );
+            assert_eq!(player.with_view(game, |view| view.may_build()), Some(false));
             let mut bad = written;
             bad.walk_speed = f32::NAN;
             assert!(!game.player_set_abilities(player, bad));
-            assert_eq!(game.player_abilities(player), Some(written));
+            assert_eq!(
+                player.with_view(game, |view| view.abilities()).flatten(),
+                Some(written)
+            );
             assert!(game.player_set_game_mode(player, GameMode::Creative));
-            let abilities = game.player_abilities(player).unwrap();
+            let abilities = player
+                .with_view(game, |view| view.abilities())
+                .flatten()
+                .unwrap();
             assert!(abilities.may_build && abilities.instabuild && abilities.may_fly);
             assert_eq!((abilities.walk_speed, abilities.fly_speed), (0.2, 0.1));
             assert!(game.player_set_game_mode(player, GameMode::Survival));
@@ -3062,11 +3083,17 @@ pub(super) mod tests {
                     f64::from(0.25f32)
                 );
                 // In the player's own turn the write reaches the body as well.
-                let mut a = game.player_abilities(player).unwrap();
+                let mut a = player
+                    .with_view(game, |view| view.abilities())
+                    .flatten()
+                    .unwrap();
                 a.may_fly = true;
                 a.walk_speed = 0.3;
                 assert!(game.player_set_abilities(player, a));
-                assert_eq!(game.player_abilities(player), Some(a));
+                assert_eq!(
+                    player.with_view(game, |view| view.abilities()).flatten(),
+                    Some(a)
+                );
                 assert!(game.player.as_ref().unwrap().may_fly);
                 assert_eq!(other.position(game), Some([3.0, 64.0, 5.0]));
                 assert!(game.living(other).is_some());
@@ -3089,7 +3116,10 @@ pub(super) mod tests {
                     game.player_previous_game_mode(player),
                     Some(Some(GameMode::Survival))
                 );
-                let mut a = game.player_abilities(player).unwrap();
+                let mut a = player
+                    .with_view(game, |view| view.abilities())
+                    .flatten()
+                    .unwrap();
                 assert!(a.instabuild && a.may_fly);
                 a.fly_speed = 0.4;
                 a.walk_speed = 0.3;
@@ -3127,13 +3157,22 @@ pub(super) mod tests {
             );
             let player = game.player(13).unwrap();
             assert_eq!(player.fields().entity, other);
-            assert_eq!(player.game_mode(game), Some(GameMode::Survival));
+            assert_eq!(
+                player.with_view(game, |view| view.game_mode()).flatten(),
+                Some(GameMode::Survival)
+            );
             assert!(game.player_set_game_mode(player, GameMode::Creative));
-            assert_eq!(player.game_mode(game), Some(GameMode::Creative));
+            assert_eq!(
+                player.with_view(game, |view| view.game_mode()).flatten(),
+                Some(GameMode::Creative)
+            );
             assert_eq!(game.lan_acting, Some(12));
             let acting = game.player(12).unwrap();
             assert!(game.player_set_game_mode(acting, GameMode::Adventure));
-            assert_eq!(game.player_game_mode(acting), Some(GameMode::Adventure));
+            assert_eq!(
+                acting.with_view(game, |view| view.game_mode()).flatten(),
+                Some(GameMode::Adventure)
+            );
             let nested = game.enter_guest(13).unwrap();
             assert!(game.enter_guest(12).is_none());
             assert_eq!(game.lan_acting, Some(13));
@@ -3400,15 +3439,34 @@ pub(super) mod tests {
             assert!(game.fake_player(level, 1, "real").is_none());
             assert_eq!(game.player_is_fake(made), Some(true));
             assert!(game.player(1234).is_none());
-            let mut abilities = game.player_abilities(made).unwrap();
+            let mut abilities = made
+                .with_view(game, |view| view.abilities())
+                .flatten()
+                .unwrap();
             abilities.may_fly = true;
             assert!(game.player_set_abilities(made, abilities));
-            assert!(game.player_abilities(made).unwrap().may_fly);
+            assert!(
+                made.with_view(game, |view| view.abilities())
+                    .flatten()
+                    .unwrap()
+                    .may_fly
+            );
             assert!(game.player_set_food_level(made, 10));
             assert!(game.player_feed(made, 3, 0.0));
-            assert_eq!(game.player_food(made).unwrap().level, 13);
+            assert_eq!(
+                made.with_view(game, |view| view.food())
+                    .flatten()
+                    .unwrap()
+                    .level,
+                13
+            );
             assert!(game.player_set_experience_levels(made, 7));
-            assert_eq!(game.player_experience(made).unwrap().level, 7);
+            assert_eq!(
+                made.with_view(game, |view| view.experience())
+                    .unwrap()
+                    .level,
+                7
+            );
             assert!(game.player_set_item_cooldown(made, "minecraft:stone", 20));
             assert_eq!(
                 game.player_has_item_cooldown(made, "minecraft:stone"),
@@ -3554,8 +3612,20 @@ pub(super) mod tests {
             assert_eq!(game.fake_player(nether, 2345, "parked"), Some(nether_actor));
             assert!(game.player_set_experience_levels(nether_actor, 8));
             assert!(game.player_set_experience_levels(overworld_actor, 3));
-            assert_eq!(game.player_experience(nether_actor).unwrap().level, 8);
-            assert_eq!(game.player_experience(overworld_actor).unwrap().level, 3);
+            assert_eq!(
+                nether_actor
+                    .with_view(game, |view| view.experience())
+                    .unwrap()
+                    .level,
+                8
+            );
+            assert_eq!(
+                overworld_actor
+                    .with_view(game, |view| view.experience())
+                    .unwrap()
+                    .level,
+                3
+            );
             assert!(
                 game.enter_command_level(super::super::Dim::Overworld)
                     .is_some()

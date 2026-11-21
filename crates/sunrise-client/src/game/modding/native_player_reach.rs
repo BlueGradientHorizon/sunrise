@@ -222,7 +222,10 @@ mod tests {
             assert_eq!(reach(game, nether, EntityReach::Interact), None);
 
             assert_eq!(game.player_may_fly(player), Some(false));
-            let mut abilities = game.player_abilities(player).unwrap();
+            let mut abilities = player
+                .with_view(game, |view| view.abilities())
+                .flatten()
+                .unwrap();
             abilities.may_fly = true;
             assert!(game.player_set_abilities(player, abilities));
             assert_eq!(game.player_may_fly(player), Some(true));

@@ -245,7 +245,13 @@ mod tests {
             game.experience.level = 5;
             game.experience.progress = 0.5;
             assert!(game.player_set_total_experience(player, 1234));
-            assert_eq!(game.player_experience(player).unwrap().total, 1234);
+            assert_eq!(
+                player
+                    .with_view(game, |view| view.experience())
+                    .unwrap()
+                    .total,
+                1234
+            );
             assert_eq!(game.experience.level, 5, "the level is kept");
             assert_eq!(game.experience.progress, 0.5, "the progress is kept");
             assert!(!game.player_set_total_experience(player, -1));
