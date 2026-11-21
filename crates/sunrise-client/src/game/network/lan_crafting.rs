@@ -211,6 +211,23 @@ impl Game<'_> {
         }
     }
 
+    /// The guest's rule subject and item-part dispatcher, for clicks and menu reads alike.
+    pub(super) fn guest_menu_env<'read>(
+        &'read self,
+        guest: &'read Guest,
+        limited_crafting: bool,
+        can_equip: &'read dyn sunrise_client::mobs::equip::CanEquip,
+    ) -> Env<'read> {
+        Env {
+            player: Some(guest.uuid),
+            player_entity_id: Some(guest.entity_id),
+            limited_crafting,
+            can_equip: Some(can_equip),
+            known_recipes: Some(&guest.recipe_book),
+            ..self.menu_env()
+        }
+    }
+
     /// Runs `op` on the guest's menu with their inventory copied in and back.
     pub(super) fn guest_menu_op<R>(
         &mut self,
@@ -272,22 +289,10 @@ impl Game<'_> {
         let host = self.lan.as_ref()?;
         // `ArmorSlot.mayPlace` asks the parts with the game as `Host`: the menu is the guest's own.
         let parts = self.menu_can_equip();
-        let env = Env {
-            crafting_remainder: Some(self),
-            player: Some(host.hub.guests[gi].uuid),
-            player_entity_id: Some(host.hub.guests[gi].entity_id),
-            loop_context: &self.loop_context,
-            maps: maps.as_ref().map(|m| m as &dyn sunrise_client::menu::Maps),
-            limited_crafting: host.hub.limited_crafting,
-            can_equip: Some(&parts),
-            known_recipes: Some(&host.hub.guests[gi].recipe_book),
-            ..self.menu_env()
-        };
-        let env = Env {
-            slot_rules: rules.or(env.slot_rules),
-            stacked,
-            ..env
-        };
+        let mut env = self.guest_menu_env(&host.hub.guests[gi], host.hub.limited_crafting, &parts);
+        env.maps = maps.as_ref().map(|m| m as &dyn sunrise_client::menu::Maps);
+        env.slot_rules = rules.or(env.slot_rules);
+        env.stacked = stacked;
         let limits = host.hub.guests[gi]
             .menu
             .as_ref()

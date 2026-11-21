@@ -332,43 +332,6 @@ impl GuestPlay {
     }
 }
 
-struct ItemRules<'a>(
-    &'a sunrise_client::items::Items,
-    &'a sunrise_client::enchant::Enchantments,
-    Option<&'a dyn sunrise_client::menu::SlotRules>,
-    Option<&'a sunrise_client::menu::StackedOutcome>,
-    Vec<sunrise_client::containers::ModContainerInsertRule>,
-);
-impl Rules for ItemRules<'_> {
-    fn items(&self) -> &sunrise_client::items::Items {
-        self.0
-    }
-    fn enchantments(&self) -> &sunrise_client::enchant::Enchantments {
-        self.1
-    }
-    fn max_stack(&self, item: &str) -> u32 {
-        self.0.get(item).map_or(64, |i| i.max_stack)
-    }
-    fn slot_rules(&self) -> Option<&dyn sunrise_client::menu::SlotRules> {
-        self.2
-    }
-    fn stacked(&self) -> Option<&sunrise_client::menu::StackedOutcome> {
-        self.3
-    }
-    fn mod_container_insert_rule(
-        &self,
-        slot: usize,
-        current: Option<&sunrise_client::items::ItemStack>,
-        offered: &sunrise_client::items::ItemStack,
-    ) -> bool {
-        sunrise_client::containers::mod_container_insert_allowed(
-            self.4.get(slot).copied().unwrap_or_default(),
-            current,
-            offered,
-        )
-    }
-}
-
 /// `Player.isWithinEntityInteractionRange(entity, buffer)` for a guest: the
 /// eyes closer than the entity interaction range (3, 5 in creative) plus
 /// `buffer` to the entity's box.

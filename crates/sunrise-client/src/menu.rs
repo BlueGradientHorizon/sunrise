@@ -1782,10 +1782,8 @@ impl Menu {
     /// How many of `stack` slot `s` holds: `Slot.getMaxStackSize(stack)` where `Slot.mayPlace`
     /// takes it, else none.
     pub fn slot_holds(&self, env: &Env, s: usize, stack: &ItemStack) -> u32 {
-        match self.may_place(env, s, stack) {
-            true => self.slot_max(env, s, stack),
-            false => 0,
-        }
+        let placement = self.equip_placement(env, s, stack);
+        if placement.allowed { placement.max } else { 0 }
     }
 
     /// `Slot.mayPickup`: whether slot `s` gives up what it holds.

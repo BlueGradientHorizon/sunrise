@@ -21,12 +21,13 @@ use sunrise_client::{
     items::ItemStack,
     lan::{
         guest::Guest,
-        menu::{Menu as OpenMenu, SlotBacking, Slots, VEHICLE_KEY_Y},
+        menu::{
+            ContainerItems, ContainerRuleData, ContainerSlotRules, Menu as OpenMenu, SlotBacking,
+            Slots, VEHICLE_KEY_Y,
+        },
     },
-    menu::{
-        Env, Input, Kind, Menu, SlotContext, SlotSnapshot, apply_menu_slot_rules,
-        fits_inside_container_items, item_max_stack,
-    },
+    menu::{Env, Input, Kind, Menu, SlotSnapshot},
+    mobs::equip::CanEquip,
     world::World,
 };
 
@@ -43,25 +44,19 @@ pub(super) struct ServerMenuRead<'read, 'game> {
     acting: bool,
     registry_name: OnceCell<Option<&'read str>>,
     backing: OnceCell<Option<OpenBacking<'read>>>,
-    rules: OnceCell<ServerMenuRules<'read>>,
+    rules: OnceCell<ServerMenuRules>,
 }
 
 // no wire: resolved server slot-rule state for a single MenuView read scope.
-enum ServerMenuRules<'read> {
+enum ServerMenuRules {
     Menu {
         menu: Menu,
         insert_rules: Vec<ModContainerInsertRule>,
         container_slots: usize,
     },
     Hub {
-        shulker: bool,
-        container_slots: usize,
-        container_limits: Vec<Option<u32>>,
-        insert_rules: Vec<ModContainerInsertRule>,
-        hidden: Vec<usize>,
+        data: ContainerRuleData,
         items: Vec<Option<ItemStack>>,
-        registry_id: &'read str,
-        pos: Option<[i32; 3]>,
         slot_snapshot: SlotSnapshot,
     },
     HandlerOwned,
@@ -492,7 +487,8 @@ impl MenuView for ServerMenuRead<'_, '_> {
 
     fn slot_holds(&self, slot: usize, stack: &mod_api::ItemStack) -> Option<u32> {
         let stack = stack_value(stack).ok()?;
-        match self.native_menu_rules(slot)? {
+        let (_, rules) = self.native_menu_rules(slot)?;
+        match rules {
             ServerMenuRules::Menu {
                 menu,
                 insert_rules,
@@ -510,130 +506,36 @@ impl MenuView for ServerMenuRead<'_, '_> {
                 {
                     return Some(0);
                 }
-                Some(menu.slot_holds(&self.menu_env(), slot, &stack))
+                let equip = self.game.menu_can_equip();
+                Some(menu.slot_holds(&self.menu_env(&equip), slot, &stack))
             }
             ServerMenuRules::Hub {
-                shulker,
-                container_slots,
-                container_limits,
-                insert_rules,
-                hidden,
+                data,
                 items,
-                registry_id,
-                pos,
                 slot_snapshot,
             } => {
-                if slot >= *container_slots + 36 {
-                    return None;
-                }
-                if hidden.contains(&slot) {
-                    return Some(0);
-                }
-                let current = (slot < *container_slots)
-                    .then(|| items.get(slot).and_then(Option::as_ref))
-                    .flatten();
-                let admission = mod_container_insert_allowed(
-                    insert_rules.get(slot).copied().unwrap_or_default(),
-                    current,
-                    &stack,
-                );
-                let vanilla_place = !(*shulker
-                    && slot < *container_slots
-                    && !fits_inside_container_items(&self.game.loop_context, &stack));
-                let own = vanilla_place && admission;
-                let item_max = item_max_stack(self.game.items(), &stack).max(1);
-                let (index, container) = if slot < *container_slots {
-                    (slot, mod_api::MenuContainer::Main)
-                } else {
-                    let n = slot - *container_slots;
-                    (
-                        if n < 27 { n + 9 } else { n - 27 },
-                        mod_api::MenuContainer::Player,
-                    )
-                };
-                let context = SlotContext {
-                    player: Some(self.guest.uuid),
-                    pos: *pos,
-                    container,
-                    slots: items,
-                    snapshot: Some(slot_snapshot),
-                    ..Default::default()
-                };
-                let (place, _, max) = apply_menu_slot_rules(
-                    Some(self.game),
-                    registry_id,
-                    index,
-                    &stack,
-                    context,
-                    (own, true, u32::MAX),
-                    item_max,
-                );
-                if !(place && admission) {
-                    return Some(0);
-                }
-                Some(
-                    container_limits
-                        .get(slot)
-                        .copied()
-                        .flatten()
-                        .map_or(max, |limit| max.min(limit)),
-                )
+                let (slots, rules) = self.hub_slot_rules(data, items, slot_snapshot);
+                Some(slots.slot_holds(slot, &stack, &rules))
             }
             ServerMenuRules::HandlerOwned => None,
         }
     }
 
     fn slot_gives(&self, slot: usize) -> Option<bool> {
-        match self.native_menu_rules(slot)? {
+        let (backing, rules) = self.native_menu_rules(slot)?;
+        match rules {
             ServerMenuRules::Menu { menu, .. } => {
-                (slot < menu.slot_count()).then(|| menu.slot_gives(&self.menu_env(), slot))
+                let equip = self.game.menu_can_equip();
+                (slot < menu.slot_count()).then(|| menu.slot_gives(&self.menu_env(&equip), slot))
             }
             ServerMenuRules::Hub {
-                container_slots,
-                hidden,
+                data,
                 items,
-                registry_id,
-                pos,
                 slot_snapshot,
-                ..
             } => {
-                if slot >= *container_slots + 36 {
-                    return None;
-                }
-                if hidden.contains(&slot) {
-                    return Some(false);
-                }
-                let Some(stack) = self.shown_stack(slot).flatten() else {
-                    return Some(true);
-                };
-                let (index, container) = if slot < *container_slots {
-                    (slot, mod_api::MenuContainer::Main)
-                } else {
-                    let n = slot - *container_slots;
-                    (
-                        if n < 27 { n + 9 } else { n - 27 },
-                        mod_api::MenuContainer::Player,
-                    )
-                };
-                let item_max = item_max_stack(self.game.items(), &stack).max(1);
-                let context = SlotContext {
-                    player: Some(self.guest.uuid),
-                    pos: *pos,
-                    container,
-                    slots: items,
-                    snapshot: Some(slot_snapshot),
-                    ..Default::default()
-                };
-                let (_, pickup, _) = apply_menu_slot_rules(
-                    Some(self.game),
-                    registry_id,
-                    index,
-                    &stack,
-                    context,
-                    (true, true, u32::MAX),
-                    item_max,
-                );
-                Some(pickup)
+                let (slots, rules) = self.hub_slot_rules(data, items, slot_snapshot);
+                let stack = self.slot_stack(slot, backing)?;
+                Some(slots.slot_gives(slot, stack.as_ref(), &rules))
             }
             ServerMenuRules::HandlerOwned => None,
         }
@@ -782,12 +684,36 @@ impl<'read> ServerMenuRead<'read, '_> {
         })
     }
 
-    fn menu_env(&self) -> Env<'read> {
-        Env {
-            player: Some(self.guest.uuid),
-            player_entity_id: Some(self.guest.entity_id),
-            ..self.game.menu_env()
-        }
+    fn menu_env<'a>(&'a self, equip: &'a dyn CanEquip) -> Env<'a> {
+        self.game
+            .guest_menu_env(self.guest, self.host.hub.limited_crafting, equip)
+    }
+
+    fn hub_slot_rules<'a>(
+        &'a self,
+        data: &'a ContainerRuleData,
+        items: &'a [Option<ItemStack>],
+        slot_snapshot: &'a SlotSnapshot,
+    ) -> (ContainerSlotRules<'a>, ContainerItems<'a>) {
+        (
+            ContainerSlotRules {
+                open: self.open,
+                player: self.guest.uuid,
+                slots: items,
+                shulker: data.shulker,
+                limits: &data.limits,
+                hidden: &data.hidden,
+                loop_context: &self.host.hub.loop_context,
+                slot_snapshot,
+            },
+            ContainerItems {
+                items: self.game.items(),
+                enchantments: &self.game.stations().enchantments,
+                slot_rules: Some(self.game),
+                stacked: None,
+                insert_rules: &data.insert_rules,
+            },
+        )
     }
 
     fn load_menu_player(&self, rules: &mut Menu) {
@@ -812,12 +738,12 @@ impl<'read> ServerMenuRead<'read, '_> {
     /// Resolve the live slot-rule inputs shared with the authoritative click paths, only for
     /// a rule query with a backed slot. Handler-owned blockless slots without a declared menu
     /// type or vanilla chest layout never invent chest rules.
-    fn native_menu_rules(&self, slot: usize) -> Option<&ServerMenuRules<'read>> {
-        self.slot_backing(slot)?;
-        Some(self.rules.get_or_init(|| self.build_menu_rules()))
+    fn native_menu_rules(&self, slot: usize) -> Option<(MenuSlotBacking, &ServerMenuRules)> {
+        let backing = self.slot_backing(slot)?;
+        Some((backing, self.rules.get_or_init(|| self.build_menu_rules())))
     }
 
-    fn build_menu_rules(&self) -> ServerMenuRules<'read> {
+    fn build_menu_rules(&self) -> ServerMenuRules {
         let Some(open) = self.open else {
             let mut menu = Menu::new(Kind::Inventory);
             self.load_menu_player(&mut menu);
@@ -863,7 +789,8 @@ impl<'read> ServerMenuRead<'read, '_> {
             }
             self.load_menu_player(&mut menu);
             let items = open.slots.read(world, self.guest).unwrap_or_default();
-            let env = self.menu_env();
+            let equip = self.game.menu_can_equip();
+            let env = self.menu_env(&equip);
             if let Some(mod_type) = open.mod_type {
                 menu.load_container(&env, &items);
                 if let Some(crafting) = mod_type.crafting
@@ -893,21 +820,14 @@ impl<'read> ServerMenuRead<'read, '_> {
         if open.slots == Slots::Native && !is_native_chest_menu(registry_name, open.size) {
             return ServerMenuRules::HandlerOwned;
         }
-        let items = open.slots.read(world, self.guest).unwrap_or_default();
+        let items = if self.acting && open.slots == Slots::Ender {
+            self.game.ender_items.clone()
+        } else {
+            open.slots.read(world, self.guest).unwrap_or_default()
+        };
         ServerMenuRules::Hub {
-            shulker: open.slots != Slots::Native && registry_name == Some("minecraft:shulker_box"),
-            container_slots: open.size,
-            container_limits: open.slots.stack_limits(world, open.size),
-            insert_rules: open.live_container_insert_rules(world, open.size),
-            hidden: open
-                .hidden
-                .iter()
-                .copied()
-                .chain(open.unlinked_slots(world))
-                .collect(),
+            data: open.container_rule_data(world, open.size),
             items,
-            registry_id: registry_name.unwrap_or_default(),
-            pos: block_pos,
             slot_snapshot: SlotSnapshot::default(),
         }
     }
@@ -1870,6 +1790,149 @@ mod tests {
                     slot: 0
                 })
             );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn chest_slot_capacity_matches_click_with_patched_stack_maximum() {
+        use super::super::native_guest_turn_tests::with_guests;
+        use sunrise_core::nbt::Tag;
+        use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+
+        with_guests(|game| {
+            let conn = 12;
+            let pos = (3, 64, 5);
+            let mut stone = ItemStack::new("minecraft:stone", 1);
+            stone
+                .data_mut()
+                .set_other("minecraft:max_stack_size", Some(Tag::Int(1)));
+            game.world
+                .block_entities
+                .insert(pos, BlockEntity::Chest(vec![None; 27]));
+            let host = game.lan.as_mut().unwrap();
+            let window = host
+                .hub
+                .open_menu_window(
+                    conn,
+                    "minecraft:generic_9x3",
+                    Tag::String("Chest".into()),
+                    Some(pos),
+                    Slots::Block(pos),
+                    vec![None; 27],
+                    None,
+                )
+                .unwrap();
+            let menu = game
+                .player_container_menu(game.player(u128::from(conn)).unwrap())
+                .unwrap();
+            let offered = stone.try_into_api().unwrap();
+            assert_eq!(
+                menu.with_view(game, |view| view.slot_holds(0, &offered)),
+                Some(Some(1))
+            );
+
+            // The first pickup places one; a second identical stack cannot merge into it.
+            for expect_carried in [None, Some(&stone)] {
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(conn, |guest| guest.carried = Some(stone.clone()))
+                    .unwrap();
+                game.lan_guest_packet(
+                    conn,
+                    Serverbound::ContainerClick(ContainerClick {
+                        container: window,
+                        state: 0,
+                        slot: 0,
+                        button: 0,
+                        input: 0,
+                        changed: Vec::new(),
+                        carried: None,
+                    }),
+                );
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[0].as_ref(),
+                    Some(&stone)
+                );
+                assert_eq!(
+                    game.lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(conn)
+                        .unwrap()
+                        .carried
+                        .as_ref(),
+                    expect_carried
+                );
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn inventory_armor_query_and_click_use_the_same_guest_equip_override() {
+        use super::super::native_guest_turn_tests::with_guests;
+        use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+
+        struct Helmet;
+        #[mod_api::sunrise_part]
+        impl mod_api::ItemPart for Helmet {
+            fn can_equip(&self, _: &dyn mod_api::Host, event: &mut mod_api::CanEquipEvent<'_>) {
+                event.can_equip = event.entity.id() == 13;
+            }
+        }
+        struct Register;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Register {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let helmet = r.item_key("minecraft:iron_helmet");
+                r.item_part(helmet, Helmet);
+            }
+        }
+        let mods: mod_api::Mods =
+            vec![mod_api::ModEntry::new("helmet_test", Box::new(Register))].into();
+        crate::entry::install_client_hooks();
+        crate::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, || {
+            with_guests(|game| {
+                game.reset_entity_residency();
+                let helmet = ItemStack::new("minecraft:iron_helmet", 1);
+                let offered = helmet.try_into_api().unwrap();
+                for (conn, allowed) in [(12, false), (13, true)] {
+                    game.lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .update_guest(conn, |guest| guest.carried = Some(helmet.clone()))
+                        .unwrap();
+                    let menu = game
+                        .player_container_menu(game.player(u128::from(conn)).unwrap())
+                        .unwrap();
+                    assert_eq!(
+                        menu.with_view(game, |view| view.slot_holds(5, &offered)),
+                        Some(Some(u32::from(allowed)))
+                    );
+
+                    game.lan_guest_packet(
+                        conn,
+                        Serverbound::ContainerClick(ContainerClick {
+                            container: 0,
+                            state: 0,
+                            slot: 5,
+                            button: 0,
+                            input: 0,
+                            changed: Vec::new(),
+                            carried: None,
+                        }),
+                    );
+                    let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                    assert_eq!(guest.armor[0].as_ref(), allowed.then_some(&helmet));
+                    assert_eq!(guest.carried.as_ref(), (!allowed).then_some(&helmet));
+                }
+            })
         });
     }
 

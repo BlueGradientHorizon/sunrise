@@ -5,7 +5,10 @@
 //! hub runs.
 use super::*;
 use std::{cell::RefCell, rc::Rc};
-use sunrise_client::menu::{PlanningRules, RuleAnswers, StackedOutcome, StoredRules};
+use sunrise_client::{
+    lan::menu::ContainerItems,
+    menu::{PlanningRules, RuleAnswers, StackedOutcome, StoredRules},
+};
 
 impl Game<'_> {
     /// Run `f` with the LAN host taken out of `self.lan`, then put it back. `f` is given the whole
@@ -85,13 +88,14 @@ impl Game<'_> {
                             rules: Some(&*game),
                             answers: &answers,
                         };
-                        let rules = ItemRules(
-                            world_items!(game),
-                            &world_stations!(game).enchantments,
-                            Some(&planning),
-                            Some(answer),
-                            prepared.container_insert_rules().to_vec(),
-                        );
+                        let insert_rules = prepared.container_insert_rules().to_vec();
+                        let rules = ContainerItems {
+                            items: world_items!(game),
+                            enchantments: &world_stations!(game).enchantments,
+                            slot_rules: Some(&planning),
+                            stacked: Some(answer),
+                            insert_rules: &insert_rules,
+                        };
                         host.hub.plan_click(prepared, p, &rules);
                     });
                 },
@@ -136,16 +140,17 @@ impl Game<'_> {
         let thrown = self.with_lan_lifted(|game, host| {
             // Decided clicks use only the answers their plan kept; plain ones ask the game.
             let stored = stored.map(StoredRules);
-            let rules = ItemRules(
-                world_items!(game),
-                &world_stations!(game).enchantments,
-                match &stored {
+            let insert_rules = click.container_insert_rules().to_vec();
+            let rules = ContainerItems {
+                items: world_items!(game),
+                enchantments: &world_stations!(game).enchantments,
+                slot_rules: match &stored {
                     Some(stored) => Some(stored),
                     None => Some(&*game),
                 },
-                answer,
-                click.container_insert_rules().to_vec(),
-            );
+                stacked: answer,
+                insert_rules: &insert_rules,
+            };
             let outcome = host.hub.run_click(&mut click, p, &rules);
             host.hub.finish_click(click, p, &mut game.world, outcome)
         });

@@ -19,11 +19,7 @@ use sunrise_client::{
     entities::Experience,
     first_person::{Hand, SwingAnimation},
     items::ItemStack,
-    lan::{
-        guest::SPECTATOR,
-        hub::TickCtx,
-        menu::{Rules, Slots},
-    },
+    lan::{guest::SPECTATOR, hub::TickCtx, menu::Slots},
     motion::{MotionEvent, MotionWorld, PlayerMotion},
     pose::Dimensions,
 };

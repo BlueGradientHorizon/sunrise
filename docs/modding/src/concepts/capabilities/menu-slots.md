@@ -291,10 +291,11 @@ and the storage's rules hold: the player's inventory, armour and off hand by the
 [`ENTITY_ITEMS`](entity-items.md) index, a chest's or a furnace's slot through its `ITEMS` handler, a chest minecart's
 or a chested mount's through its `ENTITY_ITEMS`, and the player's ender chest, inventory crafting grid and a mod's chest
 menu (`open_menu`, reached with `host.menu(uuid, window)`), kept by the game. The slot's own rules come first, as a click has them:
-`view.slot_holds(slot, &stack)` is how many of a stack it holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`: a
-furnace's fuel slot one bucket, an armour slot one piece that fits it, a shulker box's slot no shulker box, a result
-slot none), and `view.slot_gives(slot)` whether it gives up what it holds (`Slot.mayPickup`: bound armour stays
-on outside creative). An insert fills that slot alone, and what doesn't fit stays out. A crafting grid a transaction
+`view.slot_holds(slot, &stack)` uses the same placement and capacity rules as a click (`Slot.mayPlace` and
+`Slot.getMaxStackSize(ItemStack)`). It includes the offered stack's component maximum, so a chest slot holds only
+one of a stack patched to a maximum of one. An armour slot holds one item if it fits, including an item part's
+`can_equip` decision for that player. `view.slot_gives(slot)` says whether the slot gives up what it holds
+(`Slot.mayPickup`: bound armour stays on outside creative). An insert fills that slot alone, and what doesn't fit stays out. A crafting grid a transaction
 changed has its result made again at the outermost commit, once for each player however many writes it took
 (`InventoryMenu.slotsChanged`, with `prepare_item_craft`); the result slot takes nothing and gives nothing,
 since taking it is a craft. A menu closed, replaced or reopened since the `MenuRef` was made, or one whose player left,

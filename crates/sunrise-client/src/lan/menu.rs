@@ -8,7 +8,7 @@ mod backing;
 use super::guest::Guest;
 use crate::{
     bundle::{Contents, toggle_selected},
-    containers::{BlockEntity, ModContainerInsertRule},
+    containers::{BlockEntity, ModContainerInsertRule, mod_container_insert_allowed},
     enchant::Enchantments,
     items::{ItemStack, Items},
     mobs::equip::equippable_in_slot,
@@ -24,7 +24,10 @@ pub trait Rules {
     fn items(&self) -> &Items;
     /// The enchantment definitions: what keeps worn armour on (`PREVENT_ARMOR_CHANGE`).
     fn enchantments(&self) -> &Enchantments;
-    fn max_stack(&self, item: &str) -> u32;
+    /// `ItemStack.getMaxStackSize`, including a stack's own component patch.
+    fn max_stack(&self, stack: &ItemStack) -> u32 {
+        crate::menu::item_max_stack(self.items(), stack)
+    }
     /// `Slot.mayPickup`: whether the stack in menu slot `slot` may be taken
     /// out. A block container's slots and the player's own allow it; a mod's
     /// menu can refuse.
@@ -57,6 +60,54 @@ pub trait Rules {
     ) -> bool {
         true
     }
+}
+
+/// Item definitions and mod answers lent by the game to a container click or read.
+pub struct ContainerItems<'a> {
+    pub items: &'a Items,
+    pub enchantments: &'a Enchantments,
+    pub slot_rules: Option<&'a dyn crate::menu::SlotRules>,
+    pub stacked: Option<&'a crate::menu::StackedOutcome>,
+    pub insert_rules: &'a [ModContainerInsertRule],
+}
+
+impl Rules for ContainerItems<'_> {
+    fn items(&self) -> &Items {
+        self.items
+    }
+
+    fn enchantments(&self) -> &Enchantments {
+        self.enchantments
+    }
+
+    fn slot_rules(&self) -> Option<&dyn crate::menu::SlotRules> {
+        self.slot_rules
+    }
+
+    fn stacked(&self) -> Option<&crate::menu::StackedOutcome> {
+        self.stacked
+    }
+
+    fn mod_container_insert_rule(
+        &self,
+        slot: usize,
+        current: Option<&ItemStack>,
+        offered: &ItemStack,
+    ) -> bool {
+        mod_container_insert_allowed(
+            self.insert_rules.get(slot).copied().unwrap_or_default(),
+            current,
+            offered,
+        )
+    }
+}
+
+/// The backing and layout constraints resolved for an open container.
+pub struct ContainerRuleData {
+    pub shulker: bool,
+    pub limits: Vec<Option<u32>>,
+    pub insert_rules: Vec<ModContainerInsertRule>,
+    pub hidden: Vec<usize>,
 }
 
 /// A guest's open container menu.
@@ -197,6 +248,21 @@ impl Menu {
             }
         }
         rules
+    }
+
+    /// Resolve the rules of this opening against its backing, for clicks and read scopes.
+    pub fn container_rule_data(&self, world: &World, size: usize) -> ContainerRuleData {
+        ContainerRuleData {
+            shulker: self.registry_id.as_ref() == "minecraft:shulker_box",
+            limits: self.slots.stack_limits(world, size),
+            insert_rules: self.live_container_insert_rules(world, size),
+            hidden: self
+                .hidden
+                .iter()
+                .copied()
+                .chain(self.unlinked_slots(world))
+                .collect(),
+        }
     }
 
     /// The linked slots (`links`) no container stands behind, which hold
@@ -582,6 +648,111 @@ pub fn write_links(
     changed
 }
 
+/// Borrowed rules and current contents of one resolved container opening. The click path
+/// lends its current slots; a read scope lends the snapshot it resolved from the same opening.
+pub struct ContainerSlotRules<'a> {
+    pub open: Option<&'a Menu>,
+    pub player: u128,
+    pub slots: &'a [Option<ItemStack>],
+    pub shulker: bool,
+    pub limits: &'a [Option<u32>],
+    pub hidden: &'a [usize],
+    pub loop_context: &'a LoopContext,
+    pub slot_snapshot: &'a crate::menu::SlotSnapshot,
+}
+
+impl<'a> ContainerSlotRules<'a> {
+    /// Map the flattened server slots to the same containers and indices as prediction.
+    fn slot_context(&self, i: usize) -> (usize, crate::menu::SlotContext<'a>) {
+        let slots = self.slots;
+        let menu = self.open;
+        let crafting = menu
+            .and_then(|menu| menu.mod_type)
+            .and_then(|menu| menu.crafting);
+        let mut context = crate::menu::SlotContext {
+            player: Some(self.player),
+            pos: menu.and_then(|menu| menu.pos).map(|(x, y, z)| [x, y, z]),
+            container: crate::menu::lan_container(i, Some(slots)),
+            slots,
+            snapshot: Some(self.slot_snapshot),
+            ..Default::default()
+        };
+        let mut index = if i < slots.len() {
+            i
+        } else {
+            player_slot(i - slots.len())
+        };
+        if let Some(crafting) = crafting {
+            let range = crafting.grid_slots();
+            context.grid = slots.get(range.clone()).unwrap_or_default();
+            context.result = slots
+                .get(crafting.result..crafting.result + 1)
+                .unwrap_or_default();
+            context.main_crafting = Some(crafting);
+            if i < slots.len() && range.contains(&i) {
+                context.container = mod_api::MenuContainer::Grid;
+                index = i - range.start;
+            } else if i < slots.len() && i == crafting.result {
+                context.container = mod_api::MenuContainer::Result;
+                index = 0;
+            }
+        }
+        (index, context)
+    }
+    fn enabled(&self, slot: usize) -> bool {
+        !self.hidden.contains(&slot)
+    }
+
+    fn apply(&self, slot: usize, stack: &ItemStack, rules: &dyn Rules, place: bool) -> (bool, u32) {
+        let item_max = rules.max_stack(stack).max(1);
+        let Some(open) = self.open else {
+            return (place, item_max);
+        };
+        let (index, context) = self.slot_context(slot);
+        let (place, _, max) = crate::menu::apply_menu_slot_rules(
+            rules.slot_rules(),
+            &open.registry_id,
+            index,
+            stack,
+            context,
+            (place, true, u32::MAX),
+            item_max,
+        );
+        (place, max)
+    }
+
+    fn placement(&self, slot: usize, stack: &ItemStack, rules: &dyn Rules) -> (bool, u32) {
+        let current = self.slots.get(slot).and_then(Option::as_ref);
+        let admission = rules.mod_container_insert_rule(slot, current, stack);
+        let vanilla = !(self.shulker
+            && slot < self.slots.len()
+            && !crate::menu::fits_inside_container_items(self.loop_context, stack));
+        let (place, max) = self.apply(slot, stack, rules, admission && vanilla);
+        let max = self
+            .limits
+            .get(slot)
+            .copied()
+            .flatten()
+            .map_or(max, |limit| max.min(limit));
+        // A scoped rule may not admit what the declaration's admission rule refuses.
+        (place && admission, max)
+    }
+
+    /// The capacity of an enabled slot for this offered stack (zero if it refuses it).
+    pub fn slot_holds(&self, slot: usize, stack: &ItemStack, rules: &dyn Rules) -> u32 {
+        if !self.enabled(slot) {
+            return 0;
+        }
+        let (place, max) = self.placement(slot, stack, rules);
+        if place { max } else { 0 }
+    }
+
+    /// Whether the normal container click route can take this slot's stack.
+    pub fn slot_gives(&self, slot: usize, stack: Option<&ItemStack>, rules: &dyn Rules) -> bool {
+        self.enabled(slot) && stack.is_none_or(|stack| rules.may_pickup(slot, stack))
+    }
+}
+
 /// Slots of a menu seen as one list.
 pub struct View<'a> {
     pub guest: &'a mut Guest,
@@ -631,42 +802,17 @@ impl View<'_> {
             None => self.guest.set_menu_slot(i, item),
         }
     }
-    /// Map the flattened server slots to the same containers and indices as prediction.
-    fn slot_context(&self, i: usize) -> (usize, crate::menu::SlotContext<'_>) {
-        let slots = self.container.as_deref().unwrap_or_default();
-        let menu = self.guest.menu.as_ref();
-        let crafting = menu
-            .and_then(|menu| menu.mod_type)
-            .and_then(|menu| menu.crafting);
-        let mut context = crate::menu::SlotContext {
-            player: Some(self.guest.uuid),
-            pos: menu.and_then(|menu| menu.pos).map(|(x, y, z)| [x, y, z]),
-            container: crate::menu::lan_container(i, self.container.as_deref()),
-            slots,
-            snapshot: Some(&self.slot_snapshot),
-            ..Default::default()
-        };
-        let mut index = if i < slots.len() {
-            i
-        } else {
-            player_slot(i - slots.len())
-        };
-        if let Some(crafting) = crafting {
-            let range = crafting.grid_slots();
-            context.grid = slots.get(range.clone()).unwrap_or_default();
-            context.result = slots
-                .get(crafting.result..crafting.result + 1)
-                .unwrap_or_default();
-            context.main_crafting = Some(crafting);
-            if i < slots.len() && range.contains(&i) {
-                context.container = mod_api::MenuContainer::Grid;
-                index = i - range.start;
-            } else if i < slots.len() && i == crafting.result {
-                context.container = mod_api::MenuContainer::Result;
-                index = 0;
-            }
-        }
-        (index, context)
+    fn container_slot_rules(&self) -> Option<ContainerSlotRules<'_>> {
+        Some(ContainerSlotRules {
+            open: self.guest.menu.as_ref(),
+            player: self.guest.uuid,
+            slots: self.container.as_deref()?,
+            shulker: self.shulker,
+            limits: &self.container_limits,
+            hidden: self.hidden,
+            loop_context: self.loop_context,
+            slot_snapshot: &self.slot_snapshot,
+        })
     }
     /// Whether the slot takes part in clicks at all.
     fn enabled(&self, i: usize) -> bool {
@@ -705,59 +851,35 @@ impl View<'_> {
             clicked: self.get(i),
         })
     }
-    fn vanilla_may_place(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> bool {
-        if self.container.is_none() && (5..=8).contains(&i) {
-            // `ArmorSlot.mayPlace`: `LivingEntity.isEquippableInSlot` for the guest, from the
-            // stack's `equippable` component. (The game clicks a guest's inventory menu through
-            // `crate::menu`, which also asks the parts of the item.)
-            let tags = &rules.enchantments().entity_tags;
-            let player = "minecraft:player";
-            return equippable_in_slot(rules.items(), tags, stack, ARMOR_SLOTS[i - 5], player);
-        }
-        !(self.shulker
-            && self.container.as_ref().is_some_and(|c| i < c.len())
-            && !crate::menu::fits_inside_container_items(self.loop_context, stack))
-    }
     fn slot_rules(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> (bool, u32) {
-        let admission = rules.mod_container_insert_rule(i, self.get(i).as_ref(), stack);
-        let own = self.vanilla_may_place(i, stack, rules) && admission;
-        let max = if self.container.is_none() && (5..=8).contains(&i) {
-            1
+        if let Some(container) = self.container_slot_rules() {
+            return container.placement(i, stack, rules);
+        }
+        // The game clicks the player's own inventory through `crate::menu`, which also asks
+        // the item parts. The Hub's standalone inventory path uses the equipment component.
+        let (place, max) = if (5..=8).contains(&i) {
+            let tags = &rules.enchantments().entity_tags;
+            (
+                equippable_in_slot(
+                    rules.items(),
+                    tags,
+                    stack,
+                    ARMOR_SLOTS[i - 5],
+                    "minecraft:player",
+                ),
+                1,
+            )
         } else {
-            u32::MAX
+            (true, u32::MAX)
         };
-        let item_max = rules.max_stack(&stack.item).max(1);
-        let Some(menu) = self
-            .guest
-            .menu
-            .as_ref()
-            .filter(|_| self.container.is_some())
-        else {
-            return (own, max.min(item_max));
-        };
-        let (index, context) = self.slot_context(i);
-        let (place, _, max) = crate::menu::apply_menu_slot_rules(
-            rules.slot_rules(),
-            &menu.registry_id,
-            index,
-            stack,
-            context,
-            (own, true, max),
-            item_max,
-        );
-        // A scoped rule may not admit what the declaration's admission rule refuses.
-        (place && admission, max)
+        let admission = rules.mod_container_insert_rule(i, self.get(i).as_ref(), stack);
+        (place && admission, max.min(rules.max_stack(stack).max(1)))
     }
     fn may_place(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> bool {
         self.enabled(i) && self.slot_rules(i, stack, rules).0
     }
     fn slot_max(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> u32 {
-        let max = self.slot_rules(i, stack, rules).1;
-        self.container_limits
-            .get(i)
-            .copied()
-            .flatten()
-            .map_or(max, |limit| max.min(limit))
+        self.slot_rules(i, stack, rules).1
     }
     /// `Slot.mayPickup`: whether menu slot `i` gives its stack up. The
     /// armour slots refuse while a survival player wears a binding curse
@@ -767,8 +889,10 @@ impl View<'_> {
         self.may_pickup_item(i, self.get(i).as_ref(), rules)
     }
     fn may_pickup_item(&self, i: usize, stack: Option<&ItemStack>, rules: &dyn Rules) -> bool {
-        if self.container.is_none()
-            && (5..=8).contains(&i)
+        if let Some(container) = self.container_slot_rules() {
+            return container.slot_gives(i, stack, rules);
+        }
+        if (5..=8).contains(&i)
             && !self.guest.creative()
             && stack.is_some_and(|s| rules.enchantments().prevents_armor_change(s))
         {
@@ -923,26 +1047,10 @@ fn move_to(
             if !rules.mod_container_insert_rule(i, Some(&existing), &stack) {
                 continue;
             }
-            if let Some(menu) = view
-                .guest
-                .menu
-                .as_ref()
-                .filter(|_| view.container.is_some())
+            if let Some(container) = view.container_slot_rules()
+                && !container.apply(i, &stack, rules, true).0
             {
-                let (index, context) = view.slot_context(i);
-                if !crate::menu::apply_menu_slot_rules(
-                    rules.slot_rules(),
-                    &menu.registry_id,
-                    index,
-                    &stack,
-                    context,
-                    (true, true, u32::MAX),
-                    rules.max_stack(&stack.item).max(1),
-                )
-                .0
-                {
-                    continue;
-                }
+                continue;
             }
             let max = view.slot_max(i, &existing, rules);
             if existing.count < max {
@@ -1118,7 +1226,7 @@ pub fn click(
                     && let Ok(i) = usize::try_from(slot)
                     && let Some(stack) = view.get(i)
                 {
-                    let max = rules.max_stack(&stack.item).max(1);
+                    let max = rules.max_stack(&stack).max(1);
                     view.guest.carried = Some(ItemStack {
                         count: max,
                         ..stack
@@ -1179,12 +1287,6 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
                 && (view.get(i).is_some() && !view.may_pickup(i, rules)
                     || clicked.as_ref().is_some_and(|stack| {
                         let (may_place, max) = view.slot_rules(i, stack, rules);
-                        let max = view
-                            .container_limits
-                            .get(i)
-                            .copied()
-                            .flatten()
-                            .map_or(max, |limit| max.min(limit));
                         !may_place || stack.count > max
                     }))
             {
@@ -1212,12 +1314,6 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
         (None, None) => {}
         (None, Some(mut c)) => {
             let (may_place, max) = view.slot_rules(i, &c, rules);
-            let max = view
-                .container_limits
-                .get(i)
-                .copied()
-                .flatten()
-                .map_or(max, |limit| max.min(limit));
             if view.enabled(i) && may_place {
                 let amount = if right { 1 } else { c.count }.min(max);
                 view.set(
@@ -1257,7 +1353,7 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
                 // A slot that takes nothing gives onto the same carried item,
                 // as far as the hand holds (`tryRemove`).
                 if s.same_item_same_components(&c) {
-                    let max = rules.max_stack(&c.item).max(1).saturating_sub(c.count);
+                    let max = rules.max_stack(&c).max(1).saturating_sub(c.count);
                     let mut slot = HostedSlotView {
                         view,
                         slot: i,
@@ -1492,7 +1588,7 @@ fn pickup_all(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
     if view.get(i).is_some() && view.may_pickup(i, rules) {
         return;
     }
-    let max = rules.max_stack(&carried.item).max(1);
+    let max = rules.max_stack(&carried).max(1);
     // Button 0 walks the slots from the first, button 1 from the last.
     let order: Vec<usize> = if button == 0 {
         (0..view.len()).collect()
@@ -1588,7 +1684,7 @@ fn quick_craft(
                 return;
             }
             let mut remaining = i64::from(carried.count);
-            let item_max = rules.max_stack(&carried.item).max(1);
+            let item_max = rules.max_stack(&carried).max(1);
             let count = slots.len();
             for i in slots {
                 if !view.enabled(i)
@@ -1651,9 +1747,6 @@ pub(crate) mod tests {
         fn enchantments(&self) -> &Enchantments {
             enchantments()
         }
-        fn max_stack(&self, item: &str) -> u32 {
-            self.0.get(item).map_or(64, |i| i.max_stack)
-        }
     }
 
     struct SameKindRules(Items);
@@ -1663,9 +1756,6 @@ pub(crate) mod tests {
         }
         fn enchantments(&self) -> &Enchantments {
             enchantments()
-        }
-        fn max_stack(&self, item: &str) -> u32 {
-            self.0.get(item).map_or(64, |i| i.max_stack)
         }
         fn mod_container_insert_rule(
             &self,
@@ -1689,9 +1779,6 @@ pub(crate) mod tests {
         }
         fn enchantments(&self) -> &Enchantments {
             enchantments()
-        }
-        fn max_stack(&self, item: &str) -> u32 {
-            self.0.get(item).map_or(64, |i| i.max_stack)
         }
         fn mod_container_insert_rule(
             &self,
@@ -1736,9 +1823,6 @@ pub(crate) mod tests {
         }
         fn enchantments(&self) -> &Enchantments {
             enchantments()
-        }
-        fn max_stack(&self, item: &str) -> u32 {
-            self.0.max_stack(item)
         }
         fn slot_rules(&self) -> Option<&dyn crate::menu::SlotRules> {
             Some(&AdmitAll)
@@ -1986,9 +2070,6 @@ pub(crate) mod tests {
             fn enchantments(&self) -> &Enchantments {
                 enchantments()
             }
-            fn max_stack(&self, item: &str) -> u32 {
-                self.items.get(item).map_or(64, |i| i.max_stack)
-            }
             fn may_pickup(&self, slot: usize, _: &ItemStack) -> bool {
                 slot != 1
             }
@@ -2154,7 +2235,7 @@ pub(crate) mod tests {
                 slot_snapshot: Default::default(),
                 loop_context: crate::test_resources::server_loop_context(),
             };
-            let (index, context) = view.slot_context(2);
+            let (index, context) = view.container_slot_rules().unwrap().slot_context(2);
             assert_eq!((index, context.container), (1, Grid));
             assert_eq!(
                 context.slot(Grid, 0).unwrap().item.as_ref(),
@@ -2163,9 +2244,9 @@ pub(crate) mod tests {
             assert_eq!(context.slot(Result, 0).unwrap().count, 4);
             assert!(context.slot(Main, 1).is_none());
             assert!(context.slot(Main, 0).is_none());
-            let (index, context) = view.slot_context(0);
+            let (index, context) = view.container_slot_rules().unwrap().slot_context(0);
             assert_eq!((index, context.container), (0, Result));
-            let (index, context) = view.slot_context(5);
+            let (index, context) = view.container_slot_rules().unwrap().slot_context(5);
             assert_eq!((index, context.container), (9, Player));
             let builds = std::cell::Cell::new(0);
             let build = || {
@@ -2176,7 +2257,7 @@ pub(crate) mod tests {
             view.slot_snapshot.get_or_init(build);
             assert_eq!(builds.get(), 1);
             view.set(1, Some(ItemStack::new("minecraft:birch_log", 3)));
-            let (_, context) = view.slot_context(1);
+            let (_, context) = view.container_slot_rules().unwrap().slot_context(1);
             assert_eq!(
                 context.slot(Grid, 0).unwrap().item.as_ref(),
                 "minecraft:birch_log"
@@ -2588,7 +2669,7 @@ pub(crate) mod tests {
         fn enchantments(&self) -> &Enchantments {
             enchantments()
         }
-        fn max_stack(&self, _: &str) -> u32 {
+        fn max_stack(&self, _: &ItemStack) -> u32 {
             64
         }
     }
@@ -2865,7 +2946,7 @@ pub(crate) mod tests {
         fn enchantments(&self) -> &Enchantments {
             enchantments()
         }
-        fn max_stack(&self, _: &str) -> u32 {
+        fn max_stack(&self, _: &ItemStack) -> u32 {
             64
         }
         fn may_pickup(&self, slot: usize, _: &ItemStack) -> bool {
@@ -3252,8 +3333,12 @@ pub(crate) mod tests {
             fn enchantments(&self) -> &Enchantments {
                 enchantments()
             }
-            fn max_stack(&self, item: &str) -> u32 {
-                if item == "minecraft:snowball" { 16 } else { 64 }
+            fn max_stack(&self, stack: &ItemStack) -> u32 {
+                if stack.item.as_ref() == "minecraft:snowball" {
+                    16
+                } else {
+                    64
+                }
             }
         }
         let rules = SmallRules;

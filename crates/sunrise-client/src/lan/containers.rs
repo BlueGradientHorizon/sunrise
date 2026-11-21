@@ -2,7 +2,7 @@
 //! level events, animations and block containers with their clicks.
 use super::{
     hub::Hub,
-    menu::{self, Menu, NativeMenuEvent, Rules, Slots, View},
+    menu::{self, ContainerRuleData, Menu, NativeMenuEvent, Rules, Slots, View},
 };
 use crate::{
     containers::{BlockEntity, ModContainerInsertRule},
@@ -776,68 +776,42 @@ impl Hub {
             return None;
         }
         let source = self.guests[i].menu.as_ref().map(|m| m.slots);
-        let shulker_box = self
-            .sync
-            .builtin
-            .get("minecraft:menu")
-            .and_then(|m| m.id("minecraft:shulker_box"));
-        let shulker = in_menu
-            && shulker_box.is_some()
-            && self.guests[i].menu.as_ref().map(|m| m.kind) == shulker_box;
-        let (drag, hidden, items, container_limits, container_insert_rules) =
-            self.guests.update(i, |guest| {
-                let drag = if in_menu {
-                    guest.menu.as_mut().and_then(|m| m.drag.take())
-                } else {
-                    guest.drag.take()
-                };
-                let hidden = guest
-                    .menu
-                    .as_ref()
-                    .filter(|_| in_menu)
-                    .map_or_else(Vec::new, |m| m.hidden.clone());
-                let items = source.and_then(|s| s.read(world, guest));
-                if in_menu && items.is_none() {
-                    return None;
-                }
-                let container_limits = source
-                    .map(|source| source.stack_limits(world, items.as_ref().map_or(0, Vec::len)))
-                    .unwrap_or_default();
-                let container_insert_rules = guest
-                    .menu
-                    .as_ref()
-                    .filter(|_| in_menu)
-                    .map(|m| {
-                        m.live_container_insert_rules(world, items.as_ref().map_or(0, Vec::len))
-                    })
-                    .unwrap_or_else(|| {
-                        source
-                            .map(|source| {
-                                source.container_insert_rules(
-                                    world,
-                                    items.as_ref().map_or(0, Vec::len),
-                                )
-                            })
-                            .unwrap_or_default()
-                    });
-                Some((
-                    drag,
-                    hidden,
-                    items,
-                    container_limits,
-                    container_insert_rules,
-                ))
-            })?;
+        let (drag, items, rules) = self.guests.update(i, |guest| {
+            let drag = if in_menu {
+                guest.menu.as_mut().and_then(|m| m.drag.take())
+            } else {
+                guest.drag.take()
+            };
+            let items = source.and_then(|s| s.read(world, guest));
+            if in_menu && items.is_none() {
+                return None;
+            }
+            let size = items.as_ref().map_or(0, Vec::len);
+            let rules = guest.menu.as_ref().filter(|_| in_menu).map_or_else(
+                || ContainerRuleData {
+                    shulker: false,
+                    limits: source
+                        .map(|source| source.stack_limits(world, size))
+                        .unwrap_or_default(),
+                    insert_rules: source
+                        .map(|source| source.container_insert_rules(world, size))
+                        .unwrap_or_default(),
+                    hidden: Vec::new(),
+                },
+                |open| open.container_rule_data(world, size),
+            );
+            Some((drag, items, rules))
+        })?;
         Some(PreparedClick {
             i,
             in_menu,
             source,
-            shulker,
+            shulker: rules.shulker,
             drag,
-            hidden,
+            hidden: rules.hidden,
             items,
-            container_limits,
-            container_insert_rules,
+            container_limits: rules.limits,
+            container_insert_rules: rules.insert_rules,
         })
     }
 
