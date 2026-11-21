@@ -67,25 +67,29 @@ class DailyRowsCoverage(unittest.TestCase):
         missing = log._replace(test="run_writes_missing_log")
         self.assertIn("by exact name", check.daily_problems([missing], targets, FULL)[0])
 
-    def test_an_own_sdk_call_switched_off_runs_nothing(self):
+    def test_an_own_sdk_call_runs_after_resolve_and_sdk_and_is_not_switched_off(self):
         log = row("cargo-sunrise-mod", "run_writes_native_registration_logs_to_latest_log", "test:run")
         with tempfile.TemporaryDirectory() as tmp:
             workflows = Path(tmp) / ".github/workflows"
             workflows.mkdir(parents=True)
             (workflows / "book-quickstart.yml").write_bytes(
                 (ROOT / ".github/workflows/book-quickstart.yml").read_bytes())
-            for condition, runs in [("", True), ("if: false", False), ("if: ${{ false }}", False),
-                                     ("if: ${{false}}", False), ("if: ${{  false  }}", False)]:
-                (workflows / "daily.yml").write_text(textwrap.dedent(f"""\
-                    jobs:
-                      book-quickstart:
-                        {condition}
-                        uses: ./.github/workflows/book-quickstart.yml
-                        with:
-                          commit: ${{{{ needs.resolve.outputs.commit }}}}
-                          own_sdk: true
-                    """), encoding="utf-8")
-                self.assertEqual(check.own_sdk_daily_runs(Path(tmp), log), runs, condition)
+            cases = [("", True), ("if: false", False), ("if: ${{ false }}", False),
+                     ("if: ${{false}}", False), ("if: ${{  false  }}", False)]
+            for needs in ("[resolve, sdk]", "[resolve]", "[sdk]"):
+                cases_for = cases if needs == "[resolve, sdk]" else [("", False)]
+                for condition, runs in cases_for:
+                    (workflows / "daily.yml").write_text(textwrap.dedent(f"""\
+                        jobs:
+                          book-quickstart:
+                            needs: {needs}
+                            {condition}
+                            uses: ./.github/workflows/book-quickstart.yml
+                            with:
+                              commit: ${{{{ needs.resolve.outputs.commit }}}}
+                              own_sdk: true
+                        """), encoding="utf-8")
+                    self.assertEqual(check.own_sdk_daily_runs(Path(tmp), log), runs, (needs, condition))
 
     def test_a_row_must_name_a_package_and_one_of_its_targets(self):
         problems = check.daily_problems([row("sunrise-nothing", "a"), row("sunrise-relay", "b", "test:missing")],

@@ -81,7 +81,9 @@ def own_sdk_daily_runs(root, row):
     daily = yaml.load(daily_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader) or {}
     call = daily.get("jobs", {}).get("book-quickstart", {})
     # The call's own condition (skips, leg selection) is the daily's routing, not this row's concern.
+    needs = call.get("needs") or []
     if (call.get("uses") != f"./{OWN_SDK_WORKFLOW}"
+            or not {"resolve", "sdk"} <= set([needs] if isinstance(needs, str) else needs)
             or call.get("with", {}).get("own_sdk") != "true"
             or call.get("with", {}).get("commit") != "${{ needs.resolve.outputs.commit }}"
             or re.sub(r"^\$\{\{(.*)\}\}$", r"\1", call.get("if", "").strip()).strip() == "false"):
