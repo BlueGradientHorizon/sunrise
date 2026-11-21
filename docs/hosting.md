@@ -43,13 +43,13 @@ plan are in [server.md](server.md).
 Linux (x86-64) and macOS (Apple Silicon or Intel):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/horizon-rust/horizon/main/packaging/server/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.sh | sh
 ```
 
 Windows (x64 or ARM64), in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/horizon-rust/horizon/main/packaging/server/install.ps1 | iex
+irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex
 ```
 
 The script picks the machine's x64 or ARM64 archive, including when PowerShell runs under x64 emulation. It downloads
@@ -689,7 +689,7 @@ No image is published: build one from the repository. The image holds none of Mi
 folder you prepared (step 2) read-only.
 
 ```sh
-git clone https://github.com/horizon-rust/horizon && cd sunrise
+git clone https://github.com/sunrise-org/sunrise && cd sunrise
 docker build -f packaging/server/Dockerfile -t sunrise-server .
 
 docker run -d --name sunrise -p 25565:25565 --stop-timeout 180 \
@@ -714,7 +714,7 @@ docker run -d --name sunrise -p 25565:25565 --stop-timeout 180 \
 ## 10. How fast is it
 
 The latest bot benchmark compares Sunrise with vanilla 26.3, Paper and Fabric + Lithium:
-[benchmarks/server-four-way-2026-10-19](https://github.com/horizon-rust/horizon/blob/main/benchmarks/server-four-way-2026-10-19/README.md).
+[benchmarks/server-four-way-2026-10-19](https://github.com/sunrise-org/sunrise/blob/main/benchmarks/server-four-way-2026-10-19/README.md).
 It ran release v2026.10.19 on a 4-thread laptop CPU (i7-7500U), with 1 to 50 players walking, exploring and
 standing around spawn, the bots on another machine. All four servers did the same work. Against
 Pumpkin: [performance/server-vs-pumpkin.md](performance/server-vs-pumpkin.md). In short:
@@ -787,4 +787,4 @@ counts droppable payloads as packets. It applies at the next start.
   open in your firewall. On a tailnet, use the server's tailnet address.
 - **It keeps restarting**: `sunrise-server status` shows the last crash and `sunrise-server logs -n 200` the log
   before it. Crash reports are in `crash-reports/`.
-- Report problems at <https://github.com/horizon-rust/horizon/issues>, with the end of the log.
+- Report problems at <https://github.com/sunrise-org/sunrise/issues>, with the end of the log.
