@@ -25,7 +25,7 @@ mod tests {
             // A write to the logical mapping does not move the physical read.
             game.keys.insert(KeyCode::KeyW);
             assert_eq!(forward_mapping.is_down(game), Ok(true));
-            game.set_mapping_down("key.forward", false).unwrap();
+            forward_mapping.set_down(game, false).unwrap();
             assert!(!forward_mapping.is_down(game).unwrap());
             assert_eq!(forward_mapping.physical_down(game), Ok(true));
             // Rebound, it reads the new key, and the old one no longer counts.

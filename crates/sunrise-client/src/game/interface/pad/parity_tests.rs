@@ -191,7 +191,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         assert!(before.forward);
         let [left, forward] = before.direction();
         assert!(left > 0.3 && forward > 0.8);
-        game.set_mapping_down("key.forward", false).unwrap();
+        forward_mapping.set_down(game, false).unwrap();
         let after = game.sample_movement_keys(game.pad_move());
         assert!(!forward_mapping.is_down(game).unwrap());
         assert!(!left_mapping.is_down(game).unwrap());
@@ -201,7 +201,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
 
         game.pad.state.left = [-0.85, 0.0];
         let [left, _] = game.pad_move().unwrap();
-        game.set_mapping_down("key.forward", true).unwrap();
+        forward_mapping.set_down(game, true).unwrap();
         let after = game.sample_movement_keys(game.pad_move());
         assert!(forward_mapping.is_down(game).unwrap());
         assert!(after.forward);
@@ -211,7 +211,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         // takes over. A changed left component does not take over forward.
         game.pad.state.left = [0.0, 0.0];
         let before = game.pad_move();
-        game.set_mapping_down("key.forward", false).unwrap();
+        forward_mapping.set_down(game, false).unwrap();
         game.pad.state.left = [-0.4, 0.0];
         game.resume_stick_mappings(before);
         assert_eq!(game.keys.override_for(&KeyCode::KeyW), Some(false));

@@ -1,6 +1,7 @@
 //! Bursts of key presses and clicks on a server's client: a player's act on the next tick in the
-//! order they came, and a mod's loop of `click_mapping` acts 64 entries of each queue a tick, oldest
-//! first, and one click of each number key, with nothing dropped below the queue's maximum.
+//! order they came. A mod's loop of `VanillaKeyMappingRef::click` acts on 64 entries of each
+//! queue a tick, oldest first, and one click of each number key, with nothing dropped below
+//! the queue's maximum.
 use super::*;
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
