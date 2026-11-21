@@ -358,10 +358,14 @@ fn check_slot(
                 continue;
             }
             let Some(Expr::Struct(table)) = call.args.first().map(calls::ungroup) else {
-                continue;
+                return Err(format!(
+                    "{module}::{installer}: cannot inspect the {slots} binding passed to {install}"
+                ));
             };
             if !path_is(&table.path, slots) {
-                continue;
+                return Err(format!(
+                    "{module}::{installer}: expected a {slots} binding passed to {install}"
+                ));
             }
             let field = table
                 .fields
@@ -642,6 +646,12 @@ mod tests {
                 Some("does not call generated::fire_render_needs"),
             ),
             (
+                format!(
+                    "{wired} let other = engine::Slots {{ render_needs: |_| {{}} }}; engine::install(other);"
+                ),
+                Some("cannot inspect the engine::Slots binding"),
+            ),
+            (
                 format!("let _unused = || {{ {wired} }};"),
                 Some("does not install engine::Slots::render_needs"),
             ),
@@ -698,7 +708,7 @@ mod tests {
         fixture(
             root,
             "sunrise-client/src/game.rs",
-            "mod heal; pub(crate) use heal::*;",
+            "mod heal; pub(crate) use heal::*; pub(crate) use heal::heal_callback as renamed;",
         );
         fixture(
             root,
@@ -742,6 +752,11 @@ mod tests {
             ),
             (
                 "|| crate::game::heal_callback()",
+                "|| mod_api::dispatch_loot_table_load()",
+                None,
+            ),
+            (
+                "game::renamed",
                 "|| mod_api::dispatch_loot_table_load()",
                 None,
             ),
