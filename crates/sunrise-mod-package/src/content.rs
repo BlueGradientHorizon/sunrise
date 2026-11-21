@@ -1161,6 +1161,57 @@ declaration_kinds! {
     Menu => "menu": MenuType,
 }
 
+/// Where a package's content files are read from: its folder or its `.smod`.
+#[derive(Debug, Clone)]
+pub struct ContentSource(Source);
+
+impl ContentSource {
+    /// The package at `path` (a `.smod` or a mod folder), and every content file it holds
+    /// (`assets/...`, `data/...`), sorted: content loading's own walk and checks, each path
+    /// [`check_path`], at most [`MAX_FILE`] bytes per file, [`MAX_FILES`] files and [`MAX_TOTAL`]
+    /// bytes in all.
+    pub fn open(path: &Path) -> Result<(ContentSource, Vec<String>), String> {
+        let (source, sized) = if path.is_dir() {
+            (Source::Dir(path.to_owned()), folder_files(path)?)
+        } else {
+            let mut zip = open_zip(path)?;
+            let mut out = Vec::new();
+            for i in 0..zip.len() {
+                let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
+                let name = entry.name().map_err(|e| e.to_string())?.into_owned();
+                if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir() {
+                    out.push((name.to_owned(), entry.size()));
+                }
+            }
+            (Source::Zip(path.to_owned()), out)
+        };
+        let mut files = Vec::with_capacity(sized.len());
+        let mut total = 0u64;
+        for (name, size) in sized {
+            check_path(&name)?;
+            if size > MAX_FILE {
+                return Err(format!("{name} is over {} MiB", MAX_FILE >> 20));
+            }
+            total += size;
+            files.push(name);
+        }
+        if files.len() > MAX_FILES {
+            return Err(format!("more than {MAX_FILES} content files"));
+        }
+        if total > MAX_TOTAL {
+            return Err(format!("content is over {} MiB", MAX_TOTAL >> 20));
+        }
+        files.sort();
+        files.dedup();
+        Ok((ContentSource(source), files))
+    }
+
+    /// A reader of its files, which checks each path and size again as it reads.
+    pub fn reader(&self) -> Result<FileReader<'_>, String> {
+        reader_of(&self.0)
+    }
+}
+
 /// Reads a mod's content files ([`Content::reader`]).
 pub enum FileReader<'a> {
     Dir(&'a Path),
@@ -1241,38 +1292,7 @@ impl Content {
         manifest: &Manifest,
         declared: Option<&[String]>,
     ) -> Result<Content, String> {
-        let (source, sized) = if path.is_dir() {
-            (Source::Dir(path.to_owned()), folder_files(path)?)
-        } else {
-            let mut zip = open_zip(path)?;
-            let mut out = Vec::new();
-            for i in 0..zip.len() {
-                let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
-                let name = entry.name().map_err(|e| e.to_string())?.into_owned();
-                if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir() {
-                    out.push((name.to_owned(), entry.size()));
-                }
-            }
-            (Source::Zip(path.to_owned()), out)
-        };
-        let mut files = Vec::with_capacity(sized.len());
-        let mut total = 0u64;
-        for (name, size) in sized {
-            check_path(&name)?;
-            if size > MAX_FILE {
-                return Err(format!("{name} is over {} MiB", MAX_FILE >> 20));
-            }
-            total += size;
-            files.push(name);
-        }
-        if files.len() > MAX_FILES {
-            return Err(format!("more than {MAX_FILES} content files"));
-        }
-        if total > MAX_TOTAL {
-            return Err(format!("content is over {} MiB", MAX_TOTAL >> 20));
-        }
-        files.sort();
-        files.dedup();
+        let (ContentSource(source), files) = ContentSource::open(path)?;
         let mut content = Content {
             source,
             files,
@@ -2452,6 +2472,47 @@ capabilities = ["registries"]
         let content = package.and_then(|p| Content::read(&path, &p.manifest));
         std::fs::remove_dir_all(&dir).unwrap();
         content
+    }
+
+    #[test]
+    fn a_folder_and_its_smod_list_and_read_the_same_content_files() {
+        let files: &[(&str, &[u8])] = &[
+            ("data/ruby/lumen/b.luau", b"return 2"),
+            ("assets/ruby/lang/en_us.json", b"{}"),
+            ("data/ruby/lumen/a.luau", b"return 1"),
+        ];
+        let dir = scratch("content-source");
+        let folder = dir.join("ruby");
+        for (name, bytes) in files {
+            let path = folder.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+        std::fs::write(folder.join(crate::manifest::MANIFEST), MANIFEST_TEXT).unwrap();
+        let archive = dir.join("ruby.smod");
+        std::fs::write(
+            &archive,
+            Package::write_files(MANIFEST_TEXT, files).unwrap(),
+        )
+        .unwrap();
+        for path in [&folder, &archive] {
+            let (source, names) = ContentSource::open(path).unwrap();
+            assert_eq!(
+                names,
+                [
+                    "assets/ruby/lang/en_us.json",
+                    "data/ruby/lumen/a.luau",
+                    "data/ruby/lumen/b.luau"
+                ],
+                "{}",
+                path.display()
+            );
+            let mut reader = source.reader().unwrap();
+            assert_eq!(reader.read("data/ruby/lumen/b.luau").unwrap(), b"return 2");
+            assert!(reader.read("data/ruby/lumen/../lumen/a.luau").is_err());
+            assert!(reader.read("data/ruby/lumen/c.luau").is_err());
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
