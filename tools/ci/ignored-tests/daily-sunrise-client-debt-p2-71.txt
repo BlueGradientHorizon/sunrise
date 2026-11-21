@@ -1,1 +1,2 @@
+sunrise-client game::core_tests::blank_inventory_presses_are_handled_and_feed_double_click_history lib daily resources
 sunrise-client game::native_hooks::register_preset_editors::tests::failed_preset_editor_paint_leaves_stock_frame_and_post lib daily child-process

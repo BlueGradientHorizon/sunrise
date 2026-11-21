@@ -11960,18 +11960,20 @@ impl Game<'_> {
         {
             return Ok(true);
         }
+        // AbstractContainerScreen.mouseClicked (also Creative's fallback) handles
+        // every press, even when no widget or slot accepts it. Releases answer separately.
         Ok(match self.screen {
             Screen::Inventory | Screen::Creative
                 if !matches!(button, MouseButton::Left | MouseButton::Right) =>
             {
-                // The container only takes another button as its pick block key.
                 if self.settings.keys.get("key.pickItem")
                     != sunrise_client::keybinds::mouse_name(button)
                 {
-                    return Ok(false);
+                    return Ok(pressed);
                 }
                 let handled = if pressed {
-                    self.inventory_pick_press()
+                    self.inventory_pick_press();
+                    true
                 } else {
                     self.inventory_pick_release()
                 };
@@ -11981,11 +11983,11 @@ impl Game<'_> {
                 handled
             }
             Screen::Inventory if pressed => {
-                let handled = self.inventory_press(!left);
+                self.inventory_press(!left);
                 if let Some(key) = self.container {
                     self.container_changed(key);
                 }
-                handled
+                true
             }
             Screen::Inventory => {
                 self.inventory_mouse_release(!left)
@@ -11993,7 +11995,10 @@ impl Game<'_> {
                     | self.recipe_book_release()
             }
             Screen::Chat if left_press => self.chat_click(),
-            Screen::Creative if pressed => self.click_creative(!left),
+            Screen::Creative if pressed => {
+                self.click_creative(!left);
+                true
+            }
             Screen::Creative => {
                 let released = left && self.creative_screen.release();
                 self.inventory_mouse_release(!left) || released
