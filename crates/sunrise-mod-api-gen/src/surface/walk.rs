@@ -18,6 +18,8 @@ pub(super) enum Target {
     Item(ItemId),
     Module(usize),
     External(Vec<String>),
+    /// A resolved outside definition; its canonical path need not be publicly reachable.
+    OutsideItem(Vec<String>),
     Ambiguous(String),
     ExternalGlob {
         path: Vec<String>,
@@ -175,7 +177,10 @@ impl<'i, 'a> Walker<'i, 'a> {
                 return Ok(Some(name.target));
             }
             if let Ok(Found::Item(id)) = self.index.resolve_rooted_path(module, path) {
-                return Ok(Some(Target::Item(id)));
+                let target = outside
+                    .external_item_path(self.index, id)
+                    .map_or_else(|| Target::Item(id), Target::OutsideItem);
+                return Ok(Some(target));
             }
         }
         Ok(None)
@@ -464,7 +469,14 @@ impl<'i, 'a> Walker<'i, 'a> {
                             all.entry(id).or_default().insert(path);
                         }
                     }
-                    Target::External(_) | Target::Ambiguous(_) if behind => {}
+                    Target::External(_) | Target::OutsideItem(_) | Target::Ambiguous(_)
+                        if behind => {}
+                    Target::OutsideItem(external) => {
+                        return Err(OutsideSeam::error(
+                            &format!("mod_api::{}", path.join("::")),
+                            &external,
+                        ));
+                    }
                     Target::Ambiguous(error) => {
                         return Err(format!("mod_api::{}: {error}", path.join("::")));
                     }

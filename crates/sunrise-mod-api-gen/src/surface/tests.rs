@@ -1260,6 +1260,49 @@ fn a_rooted_facade_reexport_resolves_an_allowed_workspace_crate() {
 }
 
 #[test]
+fn a_rooted_named_reexport_cannot_expose_an_outside_value_through_a_hidden_glob() {
+    for (nested, definition) in [
+        (
+            "pub mod nested { pub struct Hidden; pub fn outside_fn() {} }",
+            "engine_library::nested::outside_fn",
+        ),
+        (
+            "mod internal {
+                pub fn outside_fn() {}
+                pub mod exports { pub use super::outside_fn; }
+            }
+            pub use internal::exports as nested;",
+            "engine_library::internal::outside_fn",
+        ),
+    ] {
+        let error = try_export_fixture(
+            &[
+                (
+                    LIB,
+                    "/// A colour.",
+                    "#[doc(hidden)] pub mod bridge { pub use engine::nested::*; }\n/// A colour.",
+                ),
+                (
+                    "crates/sunrise-mod-api/src/lib.rs",
+                    "pub use mod_vocab::*;",
+                    "pub use mod_vocab::*;\npub use ::mod_vocab::bridge::outside_fn as Leaked;",
+                ),
+                (
+                    "engine-fixture/src/lib.rs",
+                    "pub mod nested { pub struct Hidden; }",
+                    nested,
+                ),
+            ],
+            HOOKS,
+        )
+        .err()
+        .expect("the re-exported value is defined outside the API's crates");
+        assert!(error.contains("mod_api::Leaked"), "{error}");
+        assert!(error.contains(definition), "{error}");
+    }
+}
+
+#[test]
 fn a_named_reexport_keeps_its_workspace_crate_when_a_local_module_collides() {
     let edited = "mod engine_library { pub struct Local; }\npub use engine::Secret as Exported;\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)

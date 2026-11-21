@@ -305,6 +305,14 @@ impl OutsideSeam {
         Ok(())
     }
 
+    /// The canonical path of a definition owned by a workspace crate outside the seam.
+    pub(crate) fn external_item_path(&self, index: &Index<'_>, id: ItemId) -> Option<Vec<String>> {
+        self.crates
+            .contains(&index.modules[id.module].krate)
+            .then(|| index.item_path(id))
+            .flatten()
+    }
+
     /// Resolves an indexed source path to an outside workspace crate, following Cargo and `use`
     /// aliases. The returned path uses the owning crate's real Rust library name.
     pub(crate) fn external_path(
@@ -315,11 +323,7 @@ impl OutsideSeam {
         rooted: bool,
     ) -> Result<Option<Vec<String>>, String> {
         match index.resolve_type_binding(module, path, rooted)? {
-            Binding::Found(Found::Item(id)) => Ok(self
-                .crates
-                .contains(&index.modules[id.module].krate)
-                .then(|| index.item_path(id))
-                .flatten()),
+            Binding::Found(Found::Item(id)) => Ok(self.external_item_path(index, id)),
             Binding::Found(Found::Module(target)) => Ok(self
                 .crates
                 .contains(&index.modules[target].krate)
