@@ -1576,6 +1576,7 @@ enum MobLandingMoment {
     Death(Option<mod_api::Tag>, Option<[f64; 3]>),
     Post,
     Repath,
+    NextTargetGoal,
     NextGoal,
     NextHit,
     TickFinished(Option<mod_api::Tag>),
@@ -1773,11 +1774,13 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
     if run_fresh_cases(
         "game::native_damage_tests::a_dolphin_goal_move_posts_before_the_next_goal",
         CASE,
-        &["follow", "breath"],
+        &["follow", "breath", "pig-target-breath"],
     ) {
         return;
     }
-    let breath = std::env::var(CASE).unwrap() == "breath";
+    let case = std::env::var(CASE).unwrap();
+    let breath = case != "follow";
+    let target = case == "pig-target-breath";
 
     // Use the real goal, observing its completion separately from the next goal's tick.
     #[derive(Clone, Debug)]
@@ -1808,7 +1811,10 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
     }
 
     #[derive(Clone, Debug)]
-    struct FollowingGoal(MobLandingTrace);
+    struct FollowingGoal {
+        trace: MobLandingTrace,
+        target: bool,
+    }
     impl Goal for FollowingGoal {
         fn flags(&self) -> u8 {
             0
@@ -1817,7 +1823,11 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
             true
         }
         fn tick(&mut self, _: &mut Mob, _: &mut Cx) {
-            self.0.lock().unwrap().push(MobLandingMoment::NextGoal);
+            self.trace.lock().unwrap().push(if self.target {
+                MobLandingMoment::NextTargetGoal
+            } else {
+                MobLandingMoment::NextGoal
+            });
         }
         fn box_clone(&self) -> Box<dyn Goal> {
             Box::new(self.clone())
@@ -1880,25 +1890,49 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
                 game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
             }
 
-            let mut dolphin = mob(game, id, "minecraft:dolphin");
-            dolphin.position = Vec3::new(1.5, 80.0, 1.5);
-            dolphin.velocity.y = -0.5;
-            dolphin.fall_distance = 6.0;
-            dolphin.health = 0.5;
-            dolphin.ai.goals = Default::default();
-            dolphin.ai.targets = Default::default();
-            if breath {
-                dolphin.air = 20;
-                dolphin.ai.goals.add(0, BreathAir::default());
+            let kind = if target {
+                "minecraft:pig"
             } else {
-                dolphin.ai.goals.add(
+                "minecraft:dolphin"
+            };
+            let mut mover = mob(game, id, kind);
+            mover.position = Vec3::new(1.5, 80.0, 1.5);
+            mover.velocity.y = -0.5;
+            mover.fall_distance = 6.0;
+            mover.health = 0.5;
+            mover.ai.goals.clear();
+            mover.ai.targets.clear();
+            if breath {
+                mover.air = 20;
+                if !target {
+                    mover.ai.goals.add(0, BreathAir::default());
+                }
+            } else {
+                mover.ai.goals.add(
                     0,
                     Follow(FollowPlayerRidden::new(false), Arc::clone(&trace)),
                 );
             }
-            dolphin.ai.goals.add(1, FollowingGoal(Arc::clone(&trace)));
-            game.mobs.push(dolphin);
+            mover.ai.goals.add(
+                1,
+                FollowingGoal {
+                    trace: Arc::clone(&trace),
+                    target: false,
+                },
+            );
+            game.mobs.push(mover);
             game.entity_section_joined(id, [1.5, 80.0, 1.5]);
+            if target {
+                let handle = game.mob(game.entity(id).unwrap()).unwrap();
+                assert!(handle.add_target_goal(game, 0, &mod_api::GoalSpec::BreathAir));
+                game.mobs[0].ai.targets.add(
+                    1,
+                    FollowingGoal {
+                        trace: Arc::clone(&trace),
+                        target: true,
+                    },
+                );
+            }
 
             game.tick_creature_entities().unwrap();
 
@@ -1911,6 +1945,9 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
             ];
             if !breath {
                 expected.push(MobLandingMoment::Repath);
+            }
+            if target {
+                expected.push(MobLandingMoment::NextTargetGoal);
             }
             expected.extend([
                 MobLandingMoment::NextGoal,

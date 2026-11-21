@@ -1146,8 +1146,14 @@ enum AiPause {
 }
 
 #[derive(Debug)]
+enum SelectorPhase {
+    Targets,
+    Goals,
+}
+
+#[derive(Debug)]
 enum MovementPhase {
-    Goal(super::goals::GoalMovementPause),
+    Goal(SelectorPhase, super::goals::GoalMovementPause),
     Travel(super::living::TravelPause),
 }
 
@@ -1165,7 +1171,7 @@ fn pause_movement(
     was_on_fire: bool,
 ) -> TickProgress {
     let travel = match &phase {
-        MovementPhase::Goal(goal) => &goal.movement,
+        MovementPhase::Goal(_, goal) => &goal.movement,
         MovementPhase::Travel(travel) => travel,
     };
     use super::living::MovementAction;
@@ -1754,13 +1760,35 @@ pub(super) fn resume_movement(
                 ControlFlow::Break(AiPause::Movement(MovementPhase::Travel(travel)))
             }
         },
-        MovementPhase::Goal(goal) => {
+        MovementPhase::Goal(phase, goal) => {
+            let force = goal.force;
             let paused = {
-                let BorrowedGoalSelectors { mob, goals, .. } = &mut BorrowedGoalSelectors::new(m);
-                goals.resume_movement(mob, &mut Cx { w, level, events }, goal)
+                let BorrowedGoalSelectors {
+                    mob,
+                    targets,
+                    goals,
+                } = &mut BorrowedGoalSelectors::new(m);
+                let mut cx = Cx { w, level, events };
+                let (active, after) = match phase {
+                    SelectorPhase::Targets => (targets, Some(goals)),
+                    SelectorPhase::Goals => (goals, None),
+                };
+                if let Some(goal) = active.resume_movement(mob, &mut cx, goal) {
+                    Some((phase, goal))
+                } else if !mob.removed
+                    && let Some(goals) = after
+                {
+                    // `Mob.serverAiStep` ticks the action selector only after
+                    // the target selector's last running goal returns.
+                    goals
+                        .tick_until_movement_pause(mob, &mut cx, force)
+                        .map(|goal| (SelectorPhase::Goals, goal))
+                } else {
+                    None
+                }
             };
-            if let Some(goal) = paused {
-                ControlFlow::Break(AiPause::Movement(MovementPhase::Goal(goal)))
+            if let Some((phase, goal)) = paused {
+                ControlFlow::Break(AiPause::Movement(MovementPhase::Goal(phase, goal)))
             } else {
                 if m.removed {
                     return TickProgress::Complete(false);
@@ -3731,9 +3759,6 @@ fn server_ai_until_pause(
     super::riders::drive(m, w);
     let tick_count = i64::from(m.age);
     let id_based = tick_count + i64::from(m.id);
-    // Only the dolphin's BreathAir and rider-follow goals call `Entity.move`
-    // directly. Dynamic goals cannot install those native goals.
-    let pause_goals = pause_movement && m.species() == Species::Dolphin;
     {
         let BorrowedGoalSelectors {
             mob,
@@ -3742,19 +3767,22 @@ fn server_ai_until_pause(
         } = &mut BorrowedGoalSelectors::new(m);
         let mut cx = Cx { w, level, events };
         let force = !(id_based % 2 != 0 && tick_count > 1);
-        if force {
-            targets.tick(mob, &mut cx);
-        } else {
-            targets.tick_running(mob, &mut cx, false);
-        }
-        if pause_goals {
-            if let Some(paused) = goals.tick_until_movement_pause(mob, &mut cx, force) {
-                return ControlFlow::Break(AiPause::Movement(MovementPhase::Goal(paused)));
+        // Native mods can install BreathAir in either selector, not just on dolphins.
+        for (selector, phase) in [
+            (targets, SelectorPhase::Targets),
+            (goals, SelectorPhase::Goals),
+        ] {
+            if pause_movement {
+                if let Some(paused) = selector.tick_until_movement_pause(mob, &mut cx, force) {
+                    return ControlFlow::Break(AiPause::Movement(MovementPhase::Goal(
+                        phase, paused,
+                    )));
+                }
+            } else if force {
+                selector.tick(mob, &mut cx);
+            } else {
+                selector.tick_running(mob, &mut cx, false);
             }
-        } else if force {
-            goals.tick(mob, &mut cx);
-        } else {
-            goals.tick_running(mob, &mut cx, false);
         }
     }
     finish_server_ai_step(m, w, level, events).map_break(AiPause::BeeDamage)
