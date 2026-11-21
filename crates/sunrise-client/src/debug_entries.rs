@@ -822,6 +822,7 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         struct Empty;
+        #[mod_api::__subscriptions]
         impl mod_api::Hooks for Empty {}
         mod_platform::testing::with_mods(
             vec![

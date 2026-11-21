@@ -5,6 +5,7 @@
 use super::*;
 use heck::ToUpperCamelCase;
 use std::fmt::Write as _;
+use syn::visit::Visit;
 
 /// Reads implemented by the scoped goal context over the active mob and its
 /// disjoint live mob loans. Players are read from the game's backend; other
