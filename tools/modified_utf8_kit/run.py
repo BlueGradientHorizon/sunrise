@@ -34,11 +34,17 @@ def median(values):
     return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
 
 
-def bootstrap_median_ci(values, rng, resamples=4000):
-    """The median of `values` and a 95% percentile-bootstrap interval for it."""
-    n = len(values)
-    meds = sorted(median([values[rng.randrange(n)] for _ in range(n)]) for _ in range(resamples))
-    return median(values), meds[int(0.025 * resamples)], meds[int(0.975 * resamples) - 1]
+def bootstrap_median_ci(groups, rng, resamples=4000):
+    """The median of the pooled values of `groups` (one list per fresh JVM start) and a 95% percentile-bootstrap
+    interval for it. Rounds of one JVM share its state and are not independent, so each resample draws whole starts
+    with replacement, then rounds with replacement within each drawn start."""
+    k = len(groups)
+
+    def draw():
+        return [g[rng.randrange(len(g))] for g in (groups[rng.randrange(k)] for _ in range(k)) for _ in g]
+
+    meds = sorted(median(draw()) for _ in range(resamples))
+    return median([v for g in groups for v in g]), meds[int(0.025 * resamples)], meds[int(0.975 * resamples) - 1]
 
 
 def cpu_list(text):
@@ -101,7 +107,7 @@ def generate(copies, fill):
     shutil.copyfile(HERE / "rust/Cargo.toml", rust / "Cargo.toml")
     shutil.copyfile(HERE / "rust/src/main.rs", rust / "src/main.rs")
     lines = ["//! Written by run.py: byte-identical copies of sunrise_core::modified_utf8, each with its own loops.",
-             "#![allow(dead_code)]", "use std::hint::black_box;", ""]
+             "use std::hint::black_box;", ""]
     for c in range(copies):
         d = rust / "src/copies" / f"c{c}"
         d.mkdir(parents=True)
@@ -139,7 +145,8 @@ def generate(copies, fill):
 
 def placements(binary, copies):
     """{function: [offset in its 64-byte line, per copy]} for each copy's loops and the module's functions emitted
-    out of line, read from the symbol table; and the functions whose copies share an address (merged)."""
+    out of line, read from the symbol table; the functions whose copies share an address (merged); and the functions
+    missing a copy (incomplete), which include the timed wrappers `enc_h` and `dec_h` when any copy of them is absent."""
     out = run("nm", "-C", "--defined-only", binary, capture_output=True, text=True).stdout
     found = {}
     for line in out.splitlines():
@@ -151,14 +158,16 @@ def placements(binary, copies):
             continue
         found.setdefault(m.group(2), {})[int(m.group(1))] = int(parts[0], 16)
     offsets, merged = {}, []
+    incomplete = [n for n in ("enc_h", "dec_h") if n not in found]
     for name, by_copy in sorted(found.items()):
         if len(by_copy) != copies:
+            incomplete.append(name)
             continue
         addresses = [by_copy[c] for c in range(copies)]
         offsets[name] = [a % 64 for a in addresses]
         if len(set(addresses)) < copies:
             merged.append(name)
-    return offsets, merged
+    return offsets, merged, incomplete
 
 
 def build(copies, attempts=16):
@@ -169,15 +178,17 @@ def build(copies, attempts=16):
     for fill in range(1, attempts + 1):
         generate(copies, fill)
         run("cargo", "build", "--release", "--quiet", "--manifest-path", BUILD / "rust/Cargo.toml", env=env)
-        offsets, merged = placements(binary, copies)
+        offsets, merged, incomplete = placements(binary, copies)
         distinct = {k: len(set(o)) >= need and k not in merged for k, o in offsets.items()}
-        if offsets and all(distinct.values()):
+        placed = not incomplete and all(distinct.values())
+        if placed:
             break
-    log(f"placement: {fill} build(s); " + ("every function's copies at distinct offsets" if all(distinct.values())
-                                          else "NOT all distinct: " + ", ".join(k for k, d in distinct.items() if not d)))
+    log(f"placement: {fill} build(s); " + ("every function's copies at distinct offsets" if placed else
+        "NOT placed: " + ", ".join([f"{k} not distinct" for k, d in distinct.items() if not d]
+                                   + [f"{k} missing a copy" for k in incomplete])))
     for name, o in offsets.items():
         log(f"  {name:20} offsets mod 64: {o}")
-    return binary, offsets, all(distinct.values())
+    return binary, offsets, placed
 
 
 def confidence(kit, java, classes, pin, inputs, starts, per_start, rows, rng):
@@ -193,7 +204,7 @@ def confidence(kit, java, classes, pin, inputs, starts, per_start, rows, rng):
             return [json.loads(line) for line in lines]
 
         for start in range(starts):
-            jvm = subprocess.Popen([str(a) for a in (*pin, java, "-cp", classes, "Mutf8Bench", op, set_name, inputs,
+            jvm = subprocess.Popen([str(a) for a in (*pin, java, "-cp", classes, "dev.sunriselab.parity.Mutf8Bench", op, set_name, inputs,
                                                      per_start, "stepped")],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 
@@ -212,7 +223,8 @@ def confidence(kit, java, classes, pin, inputs, starts, per_start, rows, rng):
             jvm.stdin.close()
             jvm.wait()
         mean = lambda r: sum(c["median_ns"] for c in r["copies"]) / len(r["copies"])
-        med, lo, hi = bootstrap_median_ci([mean(r) / r["hotspot_ns"] for r in rounds], rng)
+        med, lo, hi = bootstrap_median_ci(
+            [[mean(r) / r["hotspot_ns"] for r in rounds if r["jvm_start"] == s] for s in range(starts)], rng)
         per_copy = [round(median([r["copies"][c]["median_ns"] / r["hotspot_ns"] for r in rounds]), 4)
                     for c in range(len(rounds[0]["copies"]))]
         per_start_hs = [median([r["hotspot_ns"] for r in rounds if r["jvm_start"] == s]) for s in range(starts)]
@@ -221,7 +233,7 @@ def confidence(kit, java, classes, pin, inputs, starts, per_start, rows, rng):
                "copies": per_copy, "rust_ns": round(median([mean(r) for r in rounds]), 4),
                "hotspot_ns": round(median([r["hotspot_ns"] for r in rounds]), 4),
                "hotspot_start_spread": round((max(per_start_hs) - min(per_start_hs)) / median(per_start_hs), 4),
-               "allocations_per_batch": max(c["allocations_per_batch"] for r in rounds for c in r["copies"]),
+               "allocations": sum(c["allocations"] for r in rounds for c in r["copies"]),
                "rounds": len(rounds), "jvm_starts": starts}
         out[f"{op} {set_name}"] = row
         log(f"{op:6} {set_name:10} rust {row['rust_ns']:8.2f} ns  hotspot {row['hotspot_ns']:8.2f} ns  ratio "
@@ -248,7 +260,7 @@ def main():
     classes.mkdir(exist_ok=True)
     java = args.java
     javac = str(Path(java).with_name("javac")) if os.sep in java else "javac"
-    run(javac, "-d", classes, HERE / "java/Mutf8Bench.java")
+    run(javac, "-d", classes, ROOT / "mods/sunrise/src/test/java/dev/sunriselab/parity/Mutf8Bench.java")
     cpu, why = pick_cpu()
     pin = ["taskset", "-c", str(cpu)] if shutil.which("taskset") else []
     log(f"pinned to CPU {cpu}: {why}" if pin else "not pinned (no taskset)")
@@ -256,6 +268,8 @@ def main():
     if args.rows:
         wanted = [w.strip() for w in args.rows.split(",")]
         rows = [r for r in rows if any(f"{r[0]} {r[1]}".startswith(w) for w in wanted)]
+    if not rows:
+        sys.exit(f"--rows {args.rows!r} selects no cases")
     rng = random.Random(20261119)
     result = confidence(kit, java, classes, pin, inputs, args.confidence_starts, args.confidence_rounds, rows, rng)
     cpu_model = next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines()
@@ -269,7 +283,7 @@ def main():
     log(f"{cpu_model}; {jdk[0] if jdk else 'java ?'}; {rustc}; {args.copies} copies"
         + ("" if placed else " (NOT placement-averaged)"))
     missing = [k for k, r in result.items() if r["status"] != "faster"]
-    allocating = [k for k, r in result.items() if k.startswith("encode") and r["allocations_per_batch"]]
+    allocating = [k for k, r in result.items() if k.startswith("encode") and r["allocations"]]
     verdict = "PASS" if placed and not missing and not allocating else "FAIL"
     log(f"rows faster than HotSpot by more than 2%: {len(result) - len(missing)} of {len(result)}")
     if missing:

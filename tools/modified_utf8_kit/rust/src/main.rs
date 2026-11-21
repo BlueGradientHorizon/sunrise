@@ -134,7 +134,10 @@ fn main() {
                     for (copy, decode) in copies::DECODE {
                         let mut out = vec![Vec::new(); strings.len()];
                         decode(&bytes, &mut out);
-                        assert!(out == strings, "copy {copy} decodes {mix}-{len} differently");
+                        assert!(
+                            out == strings,
+                            "copy {copy} decodes {mix}-{len} differently"
+                        );
                     }
                 }
             }
@@ -150,9 +153,15 @@ fn main() {
             let mut run = |copy: usize| -> (f64, f64, u64) {
                 let mut once = || {
                     if op == "encode" {
-                        black_box(copies::ENCODE[copy].1(black_box(&strings), black_box(&mut out)));
+                        black_box(copies::ENCODE[copy].1(
+                            black_box(&strings),
+                            black_box(&mut out),
+                        ));
                     } else {
-                        black_box(copies::DECODE[copy].1(black_box(&bytes), black_box(&mut slots)));
+                        black_box(copies::DECODE[copy].1(
+                            black_box(&bytes),
+                            black_box(&mut slots),
+                        ));
                     }
                 };
                 for _ in 0..200 {
@@ -173,8 +182,7 @@ fn main() {
             for copy in 0..copies::ENCODE.len() {
                 let (median, p99, allocations) = run(copy);
                 println!(
-                    "{{\"copy\":{copy},\"median_ns\":{median:.4},\"p99_ns\":{p99:.4},\"allocations_per_batch\":{:.2}}}",
-                    allocations as f64 / 400.0
+                    "{{\"copy\":{copy},\"median_ns\":{median:.4},\"p99_ns\":{p99:.4},\"allocations\":{allocations}}}"
                 );
             }
         }

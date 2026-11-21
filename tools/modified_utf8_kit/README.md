@@ -47,7 +47,7 @@ run whose copies share an offset, or were merged into one, is marked `NOT placem
 For each row, Rust (every copy) and HotSpot run in alternating rounds over fresh JVMs: 8 JVM starts of 5 rounds each by
 default (`--confidence-starts`, `--confidence-rounds`), the JVM waiting between its rounds (`stepped`) while Rust runs
 on the same core, and HotSpot going first in every other round. Each round's mean over the copies is divided by
-HotSpot's round; the row reports the median of those ratios with a bootstrap 95% interval, each copy's own median
+HotSpot's round; the row reports the median of those ratios with a bootstrap 95% interval resampled by JVM start (whole starts, then rounds within them: rounds of one JVM share its state), each copy's own median
 ratio, and how far HotSpot moved between JVM starts. A row is `faster` when the whole interval is under 0.98,
 `slower` when it is over 1.00, and `inside the noise` otherwise.
 
@@ -58,4 +58,4 @@ allocation (a counting allocator counts them; decode allocates each string it re
 
 - `run.py`: the driver; it writes the bench crate to `.local/modified-utf8-kit/rust/` (`copies.rs`, `copies/`)
 - `rust/`: the bench program (`gen`, `check`, `bench`) and its manifest
-- `java/Mutf8Bench.java`: the JVM side
+- `mods/sunrise/src/test/java/dev/sunriselab/parity/Mutf8Bench.java`: the JVM side
