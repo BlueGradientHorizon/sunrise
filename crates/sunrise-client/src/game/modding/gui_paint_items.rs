@@ -7,16 +7,27 @@ use mod_api::GuiPaintError;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud_layout::{self, GuiDraw, GuiItems, Undrawable};
 use sunrise_client::items::ItemStack;
+use sunrise_items::equipment::OFFHAND;
 
-/// The local player's hotbar slots (0-8) and off hand (40), drawn for `GuiDraw::Item`.
+/// Whose hotbar the slots come from: the local player's, or a mob (another player the camera follows).
+#[derive(Clone, Copy)]
+pub(crate) enum HotbarSource {
+    Own,
+    Mob(usize),
+}
+
+/// A hotbar's slots (0-8) and off hand (40), drawn for `GuiDraw::Item`.
 pub(crate) struct HotbarItems<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
+    pub(crate) source: HotbarSource,
 }
 impl HotbarItems<'_, '_> {
     fn stack(&self, slot: u32) -> Option<&ItemStack> {
-        match slot {
-            40 => self.game.offhand.as_ref(),
-            0..=8 => self.game.inventory.get(slot as usize)?.as_ref(),
+        match (self.source, slot) {
+            (HotbarSource::Own, 40) => self.game.offhand.as_ref(),
+            (HotbarSource::Own, 0..=8) => self.game.inventory.get(slot as usize)?.as_ref(),
+            (HotbarSource::Mob(i), 40) => self.game.mobs[i].slot_stack(OFFHAND),
+            (HotbarSource::Mob(i), 0) => self.game.mobs[i].main_hand_stack(),
             _ => None,
         }
     }
@@ -57,7 +68,10 @@ impl Game<'_> {
         batch: &mut HudBatch,
         draws: &[GuiDraw],
     ) -> Result<(), GuiPaintError> {
-        let mut items = HotbarItems { game: self };
+        let mut items = HotbarItems {
+            game: self,
+            source: HotbarSource::Own,
+        };
         hud_layout::paint_checked(batch, &self.gui.atlas, draws, &mut items).map_err(paint_error)
     }
 }

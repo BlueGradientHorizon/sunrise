@@ -44,6 +44,7 @@ impl Game<'_> {
         values: &[play::AttributeSnapshot],
     ) {
         let max_health = self.remote_attribute_value("minecraft:max_health", values);
+        let armor = self.remote_attribute_value("minecraft:armor", values);
         let scale = self.remote_attribute_value("minecraft:scale", values);
         let camera_distance = self.remote_attribute_value("minecraft:camera_distance", values);
         let speed = self.remote_attribute_value("minecraft:movement_speed", values);
@@ -79,6 +80,13 @@ impl Game<'_> {
                 m,
                 sunrise_client::mobs::finalize::Attr::MaxHealth,
                 max_health,
+            );
+        }
+        if let Some(armor) = armor {
+            sunrise_client::mobs::finalize::set_base(
+                m,
+                sunrise_client::mobs::finalize::Attr::Armor,
+                armor,
             );
         }
         if let Some(scale) = scale {

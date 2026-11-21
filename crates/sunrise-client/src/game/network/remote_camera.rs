@@ -20,6 +20,15 @@ use sunrise_client::{
     motion::PlayerMotion,
 };
 
+/// The entity `Hud.getCameraPlayer` finds: the local player, another player (its index in
+/// `mobs`), or none because the camera is not a player.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::game) enum CameraPlayer {
+    Own,
+    Other(usize),
+    Absent,
+}
+
 /// `Minecraft.setCameraEntity` from a ClientboundSetCameraPacket: the player's
 /// own id puts the view back on the player; an id the level does not hold
 /// changes nothing (`ClientboundSetCameraPacket.getEntity` is null).
@@ -277,6 +286,16 @@ impl Game<'_> {
     /// `LocalPlayer.isControlledCamera`: the view is the player's own.
     pub(super) fn controls_camera(&self) -> bool {
         self.remote_camera_id().is_none()
+    }
+    /// `Hud.getCameraPlayer`: whose hotbar, bars and vehicle the HUD shows.
+    pub(in crate::game) fn camera_player(&mut self) -> CameraPlayer {
+        let Some(id) = self.remote_camera_id() else {
+            return CameraPlayer::Own;
+        };
+        match self.mob_index.find(&self.mobs, id) {
+            Some(i) if &*self.mobs[i].kind.id == "minecraft:player" => CameraPlayer::Other(i),
+            _ => CameraPlayer::Absent,
+        }
     }
     /// The mob the view follows, while the level still holds it.
     pub(super) fn camera_mob(&self) -> Option<&Mob> {

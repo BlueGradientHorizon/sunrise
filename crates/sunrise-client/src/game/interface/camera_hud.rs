@@ -1,0 +1,212 @@
+//! The HUD's hotbar, bars and mount hearts follow `Hud.getCameraPlayer`: the local player, another
+//! player the server attached the camera to, or nothing when the camera is not a player.
+use super::Game;
+use crate::game::gui_paint_items::HotbarSource;
+use crate::game::remote_camera::CameraPlayer;
+use mod_api::client::hud_layout::HeartKind;
+use sunrise_client::hud_layout::{AirInputs, FoodInputs, HealthInputs, HotbarInputs};
+use sunrise_client::mobs::finalize::{self, Attr};
+use sunrise_items::equipment::OFFHAND;
+
+/// `FoodData`'s defaults, which a client keeps for every player but itself.
+const REMOTE_FOOD: i32 = 20;
+const REMOTE_SATURATION: f32 = 5.0;
+/// `Entity.getMaxAirSupply`.
+const MAX_AIR: i32 = 300;
+
+impl Game<'_> {
+    /// `Hud.extractItemHotbar`'s inputs and where its stacks come from; None draws nothing.
+    pub(in crate::game) fn camera_hotbar(
+        &self,
+        camera: CameraPlayer,
+        attack: Option<f32>,
+    ) -> Option<(HotbarInputs, HotbarSource)> {
+        match camera {
+            CameraPlayer::Absent => None,
+            CameraPlayer::Own => {
+                let partial = self.clock.fraction() as f32;
+                let inputs = HotbarInputs {
+                    selected: self.selected as i32,
+                    right_handed: !self.settings.main_hand_left,
+                    offhand: self.offhand.is_some(),
+                    slots: std::array::from_fn(|i| {
+                        self.inventory[i]
+                            .as_ref()
+                            .map(|_| (f32::from(self.hotbar_pop[i]) - partial).max(0.0))
+                    }),
+                    offhand_pop: (f32::from(self.hotbar_pop[9]) - partial).max(0.0),
+                    attack,
+                };
+                Some((inputs, HotbarSource::Own))
+            }
+            CameraPlayer::Other(i) => {
+                let m = &self.mobs[i];
+                // A client never syncs another player's selected slot: the main hand is slot 0.
+                let inputs = HotbarInputs {
+                    selected: 0,
+                    right_handed: !m.extra.main_hand_left,
+                    offhand: m.slot_stack(OFFHAND).is_some(),
+                    slots: std::array::from_fn(|s| {
+                        (s == 0 && m.main_hand_stack().is_some()).then_some(0.0)
+                    }),
+                    offhand_pop: 0.0,
+                    attack,
+                };
+                Some((inputs, HotbarSource::Mob(i)))
+            }
+        }
+    }
+
+    /// `Hud.getPlayerVehicleWithHealth`: the camera player's vehicle as its max health and health.
+    pub(in crate::game) fn camera_vehicle(&mut self, camera: CameraPlayer) -> Option<(f32, f32)> {
+        let id = match camera {
+            CameraPlayer::Absent => return None,
+            CameraPlayer::Own => self.riding?,
+            CameraPlayer::Other(i) => {
+                let rider = self.mobs[i].id as i32;
+                self.remote.as_ref()?.entities.get(&rider)?.vehicle?
+            }
+        };
+        if let Some(m) = self.mob_index.get(&self.mobs, id) {
+            return Some((m.attrs.max_health, m.health));
+        }
+        let stand = self.armor_stands.iter().find(|s| s.id == id)?;
+        Some((20.0, stand.health))
+    }
+
+    /// `Hud.extractPlayerHealth` inputs for `VanillaGuiLayer::PlayerHealth`; None draws nothing.
+    pub(in crate::game) fn camera_health_inputs(
+        &mut self,
+        camera: CameraPlayer,
+    ) -> Option<(HealthInputs, HeartKind)> {
+        let (tick, millis) = (self.visual_ticks() as i32, self.visual_millis());
+        match camera {
+            CameraPlayer::Absent => None,
+            CameraPlayer::Own => {
+                let p = self.player.as_mut()?;
+                let blink = self.health_hud.update_health(
+                    p.health.health(),
+                    tick,
+                    millis,
+                    p.health.hurt.cooldown > 0,
+                );
+                let inputs = HealthInputs {
+                    tick,
+                    max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+                    absorption: p.health.absorption(),
+                    regeneration: self.potions.effects.get("regeneration").is_some(),
+                    hardcore: self.level.hardcore,
+                    blink,
+                };
+                let kind = self.player_heart_kind()?;
+                Some((inputs, kind))
+            }
+            CameraPlayer::Other(i) => {
+                let m = &self.mobs[i];
+                let (health, max_health, absorption, frozen, invulnerable) = (
+                    m.health,
+                    m.attrs.max_health,
+                    m.absorption,
+                    m.is_fully_frozen(),
+                    m.invulnerable > 0,
+                );
+                let blink = self
+                    .health_hud
+                    .update_health(health, tick, millis, invulnerable);
+                let inputs = HealthInputs {
+                    tick,
+                    max_health,
+                    absorption,
+                    regeneration: false,
+                    hardcore: self.level.hardcore,
+                    blink,
+                };
+                let mut kind = if frozen {
+                    HeartKind::Frozen
+                } else {
+                    HeartKind::Normal
+                };
+                self.native_player_heart_type(&mut kind);
+                Some((inputs, kind))
+            }
+        }
+    }
+
+    /// `Hud.extractArmor` value for `VanillaGuiLayer::ArmorLevel`; None draws nothing.
+    pub(in crate::game) fn camera_armor(&mut self, camera: CameraPlayer) -> Option<i32> {
+        match camera {
+            CameraPlayer::Absent => None,
+            CameraPlayer::Own => {
+                let p = self.player.as_mut()?;
+                Some(
+                    p.attribute("minecraft:armor")
+                        .or_else(|_| p.attribute("armor"))
+                        .unwrap_or(0.0) as i32,
+                )
+            }
+            CameraPlayer::Other(i) => {
+                let m = &self.mobs[i];
+                Some(finalize::value(m, Attr::Armor) as i32)
+            }
+        }
+    }
+
+    /// `Hud.extractFood` inputs for `VanillaGuiLayer::FoodLevel`; None draws nothing.
+    pub(in crate::game) fn camera_food_inputs(&self, camera: CameraPlayer) -> Option<FoodInputs> {
+        let tick = self.visual_ticks() as i32;
+        match camera {
+            CameraPlayer::Absent => None,
+            CameraPlayer::Own => {
+                let p = self.player.as_ref()?;
+                Some(FoodInputs {
+                    tick,
+                    food: p.health.food.food,
+                    saturation: p.health.food.saturation,
+                    hunger: self.potions.effects.get("hunger").is_some(),
+                })
+            }
+            CameraPlayer::Other(_) => Some(FoodInputs {
+                tick,
+                food: REMOTE_FOOD,
+                saturation: REMOTE_SATURATION,
+                hunger: false,
+            }),
+        }
+    }
+
+    /// `Hud.extractAirBubbles` inputs for `VanillaGuiLayer::AirLevel`; only the local player plays pop sounds.
+    pub(in crate::game) fn camera_air_inputs(
+        &self,
+        camera: CameraPlayer,
+    ) -> Option<(AirInputs, Option<[f64; 3]>)> {
+        let tick = self.visual_ticks() as i32;
+        match camera {
+            CameraPlayer::Absent => None,
+            CameraPlayer::Own => {
+                let p = self.player.as_ref()?;
+                Some((
+                    AirInputs {
+                        tick,
+                        air: p.air,
+                        max_air: MAX_AIR,
+                        // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
+                        under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
+                    },
+                    Some([p.position.x, p.position.y, p.position.z]),
+                ))
+            }
+            CameraPlayer::Other(i) => {
+                let m = &self.mobs[i];
+                Some((
+                    AirInputs {
+                        tick,
+                        air: m.air,
+                        max_air: MAX_AIR,
+                        under_water: m.fluids.eye_in_water,
+                    },
+                    None,
+                ))
+            }
+        }
+    }
+}

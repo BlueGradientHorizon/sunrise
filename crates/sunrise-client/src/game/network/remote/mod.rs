@@ -450,7 +450,7 @@ pub(super) struct Remote {
     /// A mod menu's extra data, kept for the `OpenScreen` of its window that
     /// follows (`sunrise:menu_extra`).
     pub(in crate::game) menu_extra: Option<sunrise_protocol::menu_extra::Message>,
-    pub(super) entities: HashMap<i32, Tracked>,
+    pub(in crate::game) entities: HashMap<i32, Tracked>,
     /// Per-tick remote entity scratch retained between frames.
     tick_fluids: Vec<Option<sunrise_client::mobs::living::Fluids>>,
     tick_rain: Vec<bool>,

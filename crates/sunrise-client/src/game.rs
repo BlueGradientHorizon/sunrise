@@ -236,6 +236,8 @@ mod bundle_use_tests;
 mod bundles;
 #[path = "game/items/cake_eligibility.rs"]
 mod cake_eligibility;
+#[path = "game/interface/camera_hud.rs"]
+mod camera_hud;
 #[cfg(test)]
 #[path = "game/interface/camera_submersion_tests.rs"]
 mod camera_submersion_tests;
@@ -7302,6 +7304,7 @@ impl Game<'_> {
         // crosshair, hotbar, effects, bars, sidebar, action bar, titles and chat;
         // the sleep overlay, debug screen and open screens still draw.
         let spectator = self.spectator();
+        let camera = self.camera_player();
         let (wi, hi) = (w as i32, h as i32);
         let mut gui_canceled = false;
         let replaying = self.replay.playing();
@@ -7363,23 +7366,15 @@ impl Game<'_> {
                 if spectator {
                     g.draw_spectator_hotbar(batch);
                 } else {
-                    let partial = g.clock.fraction() as f32;
-                    let inputs = hud_layout::HotbarInputs {
-                        selected: g.selected as i32,
-                        right_handed: !g.settings.main_hand_left,
-                        offhand: g.offhand.is_some(),
-                        slots: std::array::from_fn(|i| {
-                            g.inventory[i]
-                                .as_ref()
-                                .map(|_| (f32::from(g.hotbar_pop[i]) - partial).max(0.0))
-                        }),
-                        offhand_pop: (f32::from(g.hotbar_pop[9]) - partial).max(0.0),
-                        attack: (indicator == 2).then_some(strength),
-                    };
-                    let draws = hud_layout::hotbar(wi, hi, &inputs);
-                    // `extractSlot` for each item, in order, on the path `gui_paint` takes.
-                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g };
-                    hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
+                    if let Some((inputs, source)) =
+                        g.camera_hotbar(camera, (indicator == 2).then_some(strength))
+                    {
+                        let draws = hud_layout::hotbar(wi, hi, &inputs);
+                        // `extractSlot` for each item, in order, on the path `gui_paint` takes.
+                        let mut items =
+                            crate::game::gui_paint_items::HotbarItems { game: g, source };
+                        hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
+                    }
                 }
             });
             self.gui_layer(VanillaGuiLayer::Effects, &mut batch, &mut |g, batch| {
@@ -7399,15 +7394,11 @@ impl Game<'_> {
             // The installed vanilla bodies share the column heights and a scratch draw list.
             let mut status_heights = hud_layout::StatusBarHeights::default();
             let mut status_rows = Vec::new();
-            let mount = if !show_hud || spectator {
+            let mount = if !show_hud {
                 None
             } else {
-                self.mount_index().map(|i| {
-                    let mob = &self.mobs[i];
-                    (
-                        hud_layout::vehicle_max_hearts(mob.attrs.max_health),
-                        mob.health,
-                    )
+                self.camera_vehicle(camera).map(|(max_health, health)| {
+                    (hud_layout::vehicle_max_hearts(max_health), health)
                 })
             };
             // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
@@ -7419,23 +7410,7 @@ impl Game<'_> {
                     if !show_survival_status {
                         return;
                     }
-                    let (tick, millis) = (g.visual_ticks() as i32, g.visual_millis());
-                    let Some(p) = &mut g.player else { return };
-                    let blink = g.health_hud.update_health(
-                        p.health.health(),
-                        tick,
-                        millis,
-                        p.health.hurt.cooldown > 0,
-                    );
-                    let inputs = hud_layout::HealthInputs {
-                        tick,
-                        max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                        absorption: p.health.absorption(),
-                        regeneration: g.potions.effects.get("regeneration").is_some(),
-                        hardcore: g.level.hardcore,
-                        blink,
-                    };
-                    let Some(kind) = g.player_heart_kind() else {
+                    let Some((inputs, kind)) = g.camera_health_inputs(camera) else {
                         return;
                     };
                     status_rows.clear();
@@ -7454,11 +7429,9 @@ impl Game<'_> {
                 if !show_survival_status {
                     return;
                 }
-                let Some(p) = &mut g.player else { return };
-                let armor = p
-                    .attribute("minecraft:armor")
-                    .or_else(|_| p.attribute("armor"))
-                    .unwrap_or(0.0) as i32;
+                let Some(armor) = g.camera_armor(camera) else {
+                    return;
+                };
                 status_rows.clear();
                 hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
@@ -7467,12 +7440,8 @@ impl Game<'_> {
                 if !show_survival_status || mount.is_some_and(|(hearts, _)| hearts != 0) {
                     return;
                 }
-                let Some(p) = &g.player else { return };
-                let inputs = hud_layout::FoodInputs {
-                    tick: g.visual_ticks() as i32,
-                    food: p.health.food.food,
-                    saturation: p.health.food.saturation,
-                    hunger: g.potions.effects.get("hunger").is_some(),
+                let Some(inputs) = g.camera_food_inputs(camera) else {
+                    return;
                 };
                 status_rows.clear();
                 g.health_hud
@@ -7502,23 +7471,19 @@ impl Game<'_> {
                 if !show_survival_status {
                     return;
                 }
-                let Some(p) = &g.player else { return };
-                let inputs = hud_layout::AirInputs {
-                    tick: g.visual_ticks() as i32,
-                    air: p.air,
-                    max_air: 300,
-                    // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
-                    under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
+                let Some((inputs, sound_at)) = g.camera_air_inputs(camera) else {
+                    return;
                 };
-                let at = [p.position.x, p.position.y, p.position.z];
                 status_rows.clear();
                 let pop_sound =
                     g.health_hud
                         .air_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
-                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
-                // by this client only.
-                if let Some((volume, pitch)) = pop_sound {
+                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard by this
+                // client only, so another player's bubbles pop silently.
+                if let Some((volume, pitch)) = pop_sound
+                    && let Some(at) = sound_at
+                {
                     let players = sunrise_client::settings::SOUND_SOURCES
                         .iter()
                         .position(|s| *s == "player")

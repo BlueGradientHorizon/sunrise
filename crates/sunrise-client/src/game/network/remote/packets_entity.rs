@@ -375,6 +375,8 @@ impl Game<'_> {
         } else if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
             m.limb_speed = 1.5;
             m.hurt_time = 10;
+            // LivingEntity.handleDamageEvent.
+            m.invulnerable = 20;
         } else {
             self.remote_dragon_hurt(p.id);
         }

@@ -34,6 +34,10 @@ pub(super) fn apply(
             // Entity's signed air and frozen counters are synced as-is.
             (1, Value::Int(air)) => m.air = *air,
             (7, Value::Int(frozen)) => m.ticks_frozen = *frozen,
+            // Player.DATA_PLAYER_ABSORPTION_ID.
+            (17, Value::Float(absorption)) if &*m.kind.id == "minecraft:player" => {
+                m.absorption = *absorption;
+            }
             // Entity.DATA_POSE: a player's or mannequin's box follows it.
             (6, Value::Id(pose))
                 if matches!(&*m.kind.id, "minecraft:player" | "minecraft:mannequin") =>
