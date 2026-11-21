@@ -271,6 +271,11 @@ containers. Both require the owning game thread, not a worker-thread hook body.
 
 `block_entity(pos)` reads this level's block entity without loading a chunk; it returns `None` when absent, unloaded or out for its tick. On a client it returns only the local block entity handle. `container_size(at)` and `container_stack(at, slot)` are the same side-local capability snapshots as `ItemsHost` supplies; neither generates unopened loot, and both refuse clients and unloaded positions. `BlockEntityPartState::state_in(level, entity)` and `state_existing_in` read the same attachment snapshots as their `Host` equivalents, without inserting a default, generating loot or loading chunks. Unloaded or stale holders fail; clients have no server Part state. All are owning-game-thread reads, never available in worker hook bodies.
 
+A placement part can ask its `LevelHost` whether a resident neighbour offers `ITEMS`, using
+`has_item_capability(pos, None)` for an unsided answer. It sees the same state and block entities as
+other reads on that view, including staged changes. A client asks its own providers about its
+local data; placement still follows the server's result. See [Capabilities](capabilities.md).
+
 `LevelRandomHost::container_signal(pos)` is the engine comparator container read. Unlike the immutable slot snapshot, it generates unopened loot once, as vanilla's `getItem` does, then calculates 0 to 15 using each stack's maximum size. It returns `None` on clients and unloaded positions, never loads a chunk, and runs only on the owning game thread. `analog_output` version 2 receives this mutable host so the loot generation and random draws happen in vanilla order; it permits no other world edit.
 
 Redstone and shape reads on `LevelHost`, for placement and survival: `signal(pos, direction)`
@@ -318,11 +323,6 @@ keeps the stack. If a listener changes the placement inputs, it is refused rathe
 The veto's placement neighbour and the post-placement notice use the resolved face,
 and the notice uses the resolved click location. Neither changes the sides of the block placement or
 survival hooks.
-
-A placement part can ask its `LevelHost` whether a resident neighbour offers `ITEMS`, using
-`has_item_capability(pos, None)` for an unsided answer. It sees the same state and block entities as
-other reads on that view, including staged changes. A client asks its own providers about its
-local data; placement still follows the server's result. See [Capabilities](capabilities.md).
 
 `level.state_for_placement(host, block, &context)` takes `&mut dyn ServerHost` and queries only
 the level in play. It runs the block's `Block.getStateForPlacement`, including its
