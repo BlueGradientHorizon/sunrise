@@ -100,6 +100,7 @@ impl<'a> ItemStackView<'a> {
 
     /// Lend the resident stack's checked `(item, count, damage override)` without encoding it.
     /// The projector receives the view's scalars when an owned stack is requested.
+    // hidden: the engine lends resident storage using metadata it has checked.
     #[doc(hidden)]
     pub fn resident(metadata: StackMetadata, project: &'a StackProjector<'a>) -> Self {
         Self {
@@ -176,6 +177,7 @@ impl<'a> InventoryView<'a> {
     /// Lend the given slot range. `metadata` reads only the addressed slot and returns
     /// `(item, count, damage override)` for a readable stack. `project` receives the
     /// original index and those checked scalars; it runs only on explicit projection.
+    // hidden: the engine binds its inventory storage to the numbered slot readers.
     #[doc(hidden)]
     pub fn new(
         slots: Range<u32>,
@@ -333,6 +335,7 @@ impl ItemStack {
         Self::from_scalars(item, NonZeroU32::MIN, None)
     }
     /// Start a projection from checked scalar metadata before attaching any patch.
+    // hidden: the engine starts an owned projection from checked nonempty metadata.
     #[doc(hidden)]
     pub fn from_scalars(item: ItemKey, count: NonZeroU32, damage: Option<u32>) -> Self {
         Self {
