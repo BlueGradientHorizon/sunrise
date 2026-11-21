@@ -1,4 +1,4 @@
-use super::{connect_play_test, spawn_menu_test};
+use super::{connect_play_test, finish_play_test, spawn_menu_test};
 use crate::game::{
     native_entity_refs::tests::with_client_game, remote::Received, viewed_worlds::tests::column,
 };
@@ -163,22 +163,30 @@ fn connect_probe(
 ) {
     let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
     let (reader, writer) = connect_play_test(game, |reader, writer| {
-        writer
-            .send(
-                &cfg::Clientbound::CustomPayload(CustomPayload {
-                    channel: CHANNEL.into(),
-                    data: Control::Offer(local.manifest.clone()).encode().unwrap(),
-                })
-                .encode(),
-            )
-            .unwrap();
-        let (id, body) = reader.recv().unwrap();
-        assert!(
-            matches!(cfg::Serverbound::decode(id, &body).unwrap(), cfg::Serverbound::CustomPayload(p) if p.channel == CHANNEL)
-        );
+        offer_probe(reader, writer, &local);
     });
     spawn_menu_test(game);
     (local, reader, writer)
+}
+
+fn offer_probe(
+    reader: &mut sunrise_protocol::connection::ConnReader,
+    writer: &mut sunrise_protocol::connection::ConnWriter,
+    local: &raw_payloads::Local,
+) {
+    writer
+        .send(
+            &cfg::Clientbound::CustomPayload(CustomPayload {
+                channel: CHANNEL.into(),
+                data: Control::Offer(local.manifest.clone()).encode().unwrap(),
+            })
+            .encode(),
+        )
+        .unwrap();
+    let (id, body) = reader.recv().unwrap();
+    assert!(
+        matches!(cfg::Serverbound::decode(id, &body).unwrap(), cfg::Serverbound::CustomPayload(p) if p.channel == CHANNEL)
+    );
 }
 
 #[test]
@@ -281,6 +289,102 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
             Some(&"network after close")
         );
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_grouped_column_split_across_tcp_reads_is_adopted_as_one_bundle() {
+    use std::sync::atomic::Ordering;
+    with_probe(|game, _| {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        game.connect_remote_session(&address, "BundleProbe", None, None, false, false)
+            .unwrap();
+        let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
+        let (_reader, mut writer) = finish_play_test(accept_tcp(listener), |reader, writer| {
+            offer_probe(reader, writer, &local);
+        });
+        spawn_menu_test(game);
+        let counters = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .session
+            .counters
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap();
+        let group = C::CustomPayload(CustomPayload {
+            channel: connection_groups::CHANNEL.into(),
+            data: Section {
+                pos: [0, 4, 0],
+                entries: vec![Entry {
+                    cell: Cell::of([3, 70, 5]),
+                    group: Some(78),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        });
+        let delimiter = C::BundleDelimiter(Empty).encode();
+        let mut frames = Vec::new();
+        for body in [
+            delimiter.clone(),
+            column(0, 0).encode(),
+            group.try_encode_with_payload_codecs(&local.codecs).unwrap(),
+        ] {
+            writer.frame_into(&writer.contents(&body).unwrap(), &mut frames);
+        }
+        let before = counters.bytes_in.load(Ordering::Relaxed);
+        let (prefix, suffix) = frames.split_at(frames.len() - 1);
+        let wait_bytes = |sent| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while counters.bytes_in.load(Ordering::Relaxed) < before + sent as i64 {
+                assert!(
+                    Instant::now() < deadline,
+                    "client did not read the fragment"
+                );
+                thread::yield_now();
+            }
+        };
+        writer.write_raw(prefix).unwrap();
+        wait_bytes(prefix.len());
+        game.poll_remote_events(false).unwrap();
+        assert!(!game.world.loaded(0, 0));
+
+        writer.write_raw(suffix).unwrap();
+        wait_bytes(frames.len());
+        game.poll_remote_events(false).unwrap();
+        assert!(
+            !game.world.loaded(0, 0),
+            "no adoption before the closing delimiter"
+        );
+
+        writer.send(&delimiter).unwrap();
+        wait_for_bundle(game);
+        game.poll_remote_events(true).unwrap();
+        assert!(game.world.loaded(0, 0));
+        assert_eq!(game.world.block(3, 70, 5).0, 1);
+        assert_eq!(game.world.connection_group(3, 70, 5), Some(78));
+    });
+}
+
+fn accept_tcp(listener: std::net::TcpListener) -> sunrise_protocol::connection::Connection {
+    listener.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let stream = loop {
+        match listener.accept() {
+            Ok((stream, _)) => break stream,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                assert!(Instant::now() < deadline, "no test connection");
+                thread::yield_now();
+            }
+            Err(error) => panic!("test connection accept: {error}"),
+        }
+    };
+    stream.set_nonblocking(false).unwrap();
+    sunrise_protocol::connection::Connection::from_stream(stream).unwrap()
 }
 
 #[test]

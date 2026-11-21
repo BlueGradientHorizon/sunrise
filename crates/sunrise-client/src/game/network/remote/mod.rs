@@ -2456,15 +2456,25 @@ pub(crate) mod tests {
         sunrise_protocol::connection::ConnReader,
         sunrise_protocol::connection::ConnWriter,
     ) {
-        use super::super::execution_role::ExecutionRole;
-        use sunrise_protocol::{
-            connection::{Connection, Pipe},
-            packets::{Empty, configuration as cfg, login},
-        };
-        game.options.execution_role = ExecutionRole::Client;
+        use sunrise_protocol::connection::{Connection, Pipe};
+        game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
         let (client, server) = Pipe::pair();
         game.connect_local(client, "MenuReadTest").unwrap();
-        let (mut reader, mut writer) = Connection::local(server).split();
+        finish_play_test(Connection::local(server), configure)
+    }
+
+    fn finish_play_test(
+        server: sunrise_protocol::connection::Connection,
+        configure: impl FnOnce(
+            &mut sunrise_protocol::connection::ConnReader,
+            &mut sunrise_protocol::connection::ConnWriter,
+        ),
+    ) -> (
+        sunrise_protocol::connection::ConnReader,
+        sunrise_protocol::connection::ConnWriter,
+    ) {
+        use sunrise_protocol::packets::{Empty, configuration as cfg, login};
+        let (mut reader, mut writer) = server.split();
         reader
             .set_read_timeout(Some(std::time::Duration::from_secs(5)))
             .unwrap();
