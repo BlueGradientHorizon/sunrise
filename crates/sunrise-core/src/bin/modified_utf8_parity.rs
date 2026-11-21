@@ -296,6 +296,8 @@ fn chunk(mode: &str, c: u64, sink: &mut Sink) -> Result<(), String> {
                 random_units(&mut rng, &mut units);
                 bytes.clear();
                 encode(&units, encoded_len(&units), &mut bytes);
+                // The input joins the digest, so that two sides building different bytes can't agree on the units.
+                sink.bytes(&bytes);
                 decode_record(sink, &bytes, &mut out);
             }
         }
@@ -304,38 +306,27 @@ fn chunk(mode: &str, c: u64, sink: &mut Sink) -> Result<(), String> {
     Ok(())
 }
 
-/// The NBT writers on the edge strings: the disk writer writes a string too long for modified UTF-8 empty (#5064)
-/// and the network writer refuses it; a string that fits, both write as `writeUTF` does. One line per string:
-/// `fits|long ok|differs`.
+/// The NBT writers on the edge strings, as the full records the oracle's `callers` prints for `writeUTF`'s bytes: one
+/// line per string, `target unit disk=<hex> network=<hex or refused>`. The disk writer writes a string too long for
+/// modified UTF-8 empty (#5064) and the network writer refuses it.
 fn callers() -> String {
     let mut lines = String::new();
     for target in 65_533..=65_538usize {
         for (unit, n) in [(b'x' as u16, 1), (0, 2), (0x800, 3)] {
             let mut units = vec![unit; target / n];
             units.resize(units.len() + target % n, b'y'.into());
-            let len = encoded_len(&units);
-            let string = Tag::String(JavaString(units.clone()));
+            let string = Tag::String(JavaString(units));
             let disk = write_named(
                 &NamedTag {
                     name: JavaString::default(),
                     tag: string.clone(),
                 },
                 Limits::saved(),
-            );
-            let network = write_network(&string, Limits::saved());
-            let ok = if len > MAX_LEN {
-                disk.as_deref() == Ok(&[8, 0, 0, 0, 0][..]) && network.is_err()
-            } else {
-                let mut body = (len as u16).to_be_bytes().to_vec();
-                encode(&units, len, &mut body);
-                disk.is_ok_and(|d| d[..3] == [8, 0, 0] && d[3..] == body)
-                    && network.is_ok_and(|w| w[0] == 8 && w[1..] == body)
-            };
-            lines += &format!(
-                "{target} {unit:04x} {} {}\n",
-                if len > MAX_LEN { "long" } else { "fits" },
-                if ok { "ok" } else { "differs" }
-            );
+            )
+            .map_or_else(|_| "refused".to_owned(), |d| hex_bytes(&d));
+            let network = write_network(&string, Limits::saved())
+                .map_or_else(|_| "refused".to_owned(), |w| hex_bytes(&w));
+            lines += &format!("{target} {unit:04x} disk={disk} network={network}\n");
         }
     }
     lines

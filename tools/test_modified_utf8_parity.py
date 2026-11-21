@@ -101,9 +101,11 @@ def main():
         failed += fail
         timings[mode] = round(time.monotonic() - began, 1)
         print(f"modified_utf8 {mode}: {passed:,} pass, {fail:,} fail", flush=True)
-    callers = subprocess.run([probe, "callers"], capture_output=True, text=True, check=True).stdout.splitlines()
-    differs = sum(1 for line in callers if not line.endswith(" ok"))
-    print(f"modified_utf8 nbt-writers-edge: {len(callers) - differs:,} pass, {differs:,} fail", flush=True)
+    expected = subprocess.run([*java, "callers"], capture_output=True, text=True, check=True).stdout.splitlines()
+    actual = subprocess.run([probe, "callers"], capture_output=True, text=True, check=True).stdout.splitlines()
+    # 6 lengths x 3 unit widths: every record must be there, and equal to the bytes writeUTF gives.
+    differs = (len(expected) != 18 or len(actual) != 18) + sum(1 for a, b in zip(expected, actual) if a != b)
+    print(f"modified_utf8 nbt-writers-edge: {len(actual) - differs:,} pass, {differs:,} fail", flush=True)
     failed += differs
     lab.write_json(build / "report.json", {"full": args.full, "threads": args.threads, "seconds": timings,
                                            "total_seconds": round(time.monotonic() - started, 1), "failed": failed})

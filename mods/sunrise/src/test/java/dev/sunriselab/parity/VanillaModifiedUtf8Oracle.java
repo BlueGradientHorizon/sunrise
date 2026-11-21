@@ -82,6 +82,13 @@ public final class VanillaModifiedUtf8Oracle {
             }
         }
 
+        /** Folds `n` input bytes into the digest before their record. */
+        void fold(byte[] b, int n) {
+            long h = hash;
+            for (int i = 0; i < n; i++) h = (h ^ (b[i] & 0xff)) * 0x100000001b3L;
+            hash = h;
+        }
+
         /** writeUTF's result: 01, its length and its bytes; or 00 where it throws. */
         void encode(char[] units, int n) throws IOException {
             String s = new String(units, 0, n);
@@ -284,6 +291,7 @@ public final class VanillaModifiedUtf8Oracle {
                     sink.bytes.reset();
                     sink.data.writeUTF(new String(units.a, 0, units.n));
                     byte[] encoded = sink.bytes.toByteArray();
+                    sink.fold(java.util.Arrays.copyOfRange(encoded, 2, encoded.length), encoded.length - 2);
                     sink.decode(java.util.Arrays.copyOfRange(encoded, 2, encoded.length), encoded.length - 2);
                 }
             }
@@ -291,7 +299,36 @@ public final class VanillaModifiedUtf8Oracle {
         }
     }
 
+    /** The NBT writers' edge strings with the bytes `writeUTF` gives them, in the probe's `callers` format. */
+    static void callers() throws IOException {
+        int[][] widths = {{'x', 1}, {0, 2}, {0x800, 3}};
+        StringBuilder out = new StringBuilder();
+        for (int target = 65_533; target <= 65_538; target++) {
+            for (int[] w : widths) {
+                StringBuilder s = new StringBuilder();
+                for (int i = 0; i < target / w[1]; i++) s.append((char) w[0]);
+                for (int i = 0; i < target % w[1]; i++) s.append('y');
+                ByteArrayOutputStream body = new ByteArrayOutputStream();
+                String disk = "0800000000", network = "refused";
+                try {
+                    new DataOutputStream(body).writeUTF(s.toString());
+                    String hex = hexBytes(body.toByteArray(), body.size());
+                    disk = "080000" + hex;
+                    network = "08" + hex;
+                } catch (UTFDataFormatException e) {
+                    // too long: the disk writer's empty string, the network writer's refusal
+                }
+                out.append(String.format("%d %04x disk=%s network=%s%n", target, w[0], disk, network));
+            }
+        }
+        System.out.print(out);
+    }
+
     public static void main(String[] args) throws Exception {
+        if (args[0].equals("callers")) {
+            callers();
+            return;
+        }
         if (args[0].equals("dump")) {
             Sink sink = new Sink(true);
             chunk(args[1], Long.parseLong(args[2]), sink);
