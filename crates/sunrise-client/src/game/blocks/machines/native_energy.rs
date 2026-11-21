@@ -113,9 +113,7 @@ impl Game<'_> {
         amount: u32,
         tx: &TransactionContext,
     ) -> u32 {
-        if !self.transaction_holds(tx) {
-            return 0;
-        }
+        self.assert_current_transaction(tx);
         self.energy_moved(at, amount, true)
     }
     /// `SimpleEnergyHandler.extract`: takes up to `amount` out of the buffer at `at`
@@ -127,9 +125,7 @@ impl Game<'_> {
         amount: u32,
         tx: &TransactionContext,
     ) -> u32 {
-        if !self.transaction_holds(tx) {
-            return 0;
-        }
+        self.assert_current_transaction(tx);
         self.energy_moved(at, amount, false)
     }
 }

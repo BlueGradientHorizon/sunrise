@@ -31,7 +31,7 @@ use super::{
     BlockEntity, BlockStateId, Game, machines::HopperState, maps::MapData,
     native_server::PlayerRead,
 };
-use mod_api::{LevelRef, TransactionContext, TransactionLifecycle, TransactionSeal};
+use mod_api::{__private::TransactionFrame, LevelRef, TransactionContext, TransactionLifecycle};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
     effects::EffectInstance,
@@ -65,6 +65,9 @@ type ComposterRandoms =
 #[derive(Default)]
 pub(super) struct OpenTransactions {
     levels: Vec<Level>,
+    /// Live 1-byte allocation whose address uniquely identifies this journal instance.
+    tag: Option<Box<u8>>,
+    next_frame: u64,
     closing: Option<TransactionLifecycle>,
     /// Root completions, including those from transactions committed by its listeners.
     closing_configuration_completions: Vec<ConfigurationCompletion>,
@@ -89,6 +92,16 @@ pub(super) struct OpenTransactions {
 }
 
 impl OpenTransactions {
+    fn next_frame(&mut self) -> TransactionFrame {
+        let tag = self.tag.get_or_insert_with(|| Box::new(0));
+        let journal = std::ptr::from_ref(&**tag) as usize;
+        self.next_frame = self
+            .next_frame
+            .checked_add(1)
+            .expect("transaction frame sequence exhausted");
+        TransactionFrame::new(journal, self.next_frame, self.levels.len())
+    }
+
     fn player_write(&mut self) -> Option<&mut Level> {
         self.player_writes = self.player_writes.wrapping_add(1);
         self.writes = self.writes.wrapping_add(1);
@@ -226,14 +239,9 @@ fn merge_block_update_flags(earlier: i32, later: i32) -> i32 {
 }
 
 /// One open transaction.
-#[derive(Default)]
 pub(super) struct Level {
-    /// What names it to the mods that write in it (`TransactionContext`): unguessable in practice, so
-    /// only the value the game handed out names it.
-    token: u64,
-    /// What ends it (`TransactionSeal`), drawn apart from `token`: only whoever opened it holds
-    /// it, never a handler lent the `TransactionContext`.
-    close_token: u64,
+    /// Process-local identity of this frame: matches only the `TransactionContext` lent for it.
+    frame: TransactionFrame,
     dimension: Option<super::Dim>,
     /// Each block entity as it was before this transaction first wrote it.
     block_entities: HashMap<Pos, Kept>,
@@ -546,6 +554,60 @@ fn frame_token() -> u64 {
 }
 
 impl Level {
+    fn new(
+        frame: TransactionFrame,
+        dimension: super::Dim,
+        packets: Option<sunrise_client::lan::conn::transaction_packets::Scope>,
+        lifetimes: entities::EntityJournal,
+    ) -> Self {
+        Self {
+            frame,
+            dimension: Some(dimension),
+            block_entities: Default::default(),
+            removed_block_entities: Default::default(),
+            slots: Default::default(),
+            blocks: Default::default(),
+            level_random: Default::default(),
+            parked_level_randoms: Default::default(),
+            composter_randoms: Default::default(),
+            biomes: Default::default(),
+            players: Default::default(),
+            ender_items: Default::default(),
+            player_health: Default::default(),
+            mob_health: Default::default(),
+            mob_effects: Default::default(),
+            effect_modifiers: Default::default(),
+            entities: Default::default(),
+            equipment: Default::default(),
+            modifier_changes: Default::default(),
+            mob_lengths: Default::default(),
+            item_entities: Default::default(),
+            orbs: Default::default(),
+            stations: Default::default(),
+            menus: Default::default(),
+            menu_data: Default::default(),
+            board: Default::default(),
+            attachments: Default::default(),
+            save_gate: Default::default(),
+            chunk_marks: Default::default(),
+            save_chunks: Default::default(),
+            new_maps: Default::default(),
+            after: Default::default(),
+            actions: Default::default(),
+            trades: Default::default(),
+            packets,
+            captured_packets: Default::default(),
+            configuration_completions: Default::default(),
+            action: Default::default(),
+            scratch: Default::default(),
+            scratch_kept: Default::default(),
+            lifetimes,
+            travelled: Default::default(),
+            departed: Default::default(),
+            in_flight: Default::default(),
+        }
+    }
+
     /// Keep the first snapshot for this stream. `None` names the frame's own level.
     pub(super) fn keep_level_random(
         &mut self,
@@ -603,6 +665,29 @@ impl Level {
     }
 }
 
+/// RAII guard for one open transaction frame. Dropping it without `close` aborts this frame
+/// and any nested frames still open inside it.
+struct StorageScope<'a, 'g> {
+    game: &'a mut Game<'g>,
+    frame: TransactionFrame,
+    open: bool,
+}
+
+impl StorageScope<'_, '_> {
+    fn close(mut self, commit: bool) {
+        self.open = false;
+        self.game.close_storage_frame(self.frame, commit);
+    }
+}
+
+impl Drop for StorageScope<'_, '_> {
+    fn drop(&mut self) {
+        if self.open {
+            self.game.close_storage_frame(self.frame, false);
+        }
+    }
+}
+
 impl Game<'_> {
     /// Actual transaction/restore events for storage-attempt regression traces.
     #[cfg(test)]
@@ -611,43 +696,28 @@ impl Game<'_> {
             trace.lock().unwrap().push(entry);
         }
     }
-    /// Opens a transaction, nested in the open one if any (`Transaction.open`), and gives back
-    /// the seal that ends it.
-    pub(in crate::game) fn transaction_open(&mut self) -> TransactionSeal {
-        let (token, close) = self.open_storage_transaction();
-        mod_api::__private::transaction_seal(token, close)
-    }
-    /// Opens a transaction and gives back its write and close tokens.
-    fn open_storage_transaction(&mut self) -> (u64, u64) {
-        let (token, close_token) = (frame_token(), frame_token());
+    /// Opens a transaction and gives back its frame identity.
+    fn open_storage_transaction(&mut self) -> TransactionFrame {
+        let frame = self.transactions.next_frame();
         if self.transactions.is_empty() {
             self.world.block_entities.defer_retirement();
         }
         let lifetimes = self.entity_journal_open();
-        self.transactions.push(Level {
-            token,
-            close_token,
-            dimension: Some(self.dim),
-            packets: sunrise_client::lan::conn::transaction_packets::Scope::nested(),
-            lifetimes,
-            ..Level::default()
-        });
+        let packets = sunrise_client::lan::conn::transaction_packets::Scope::nested();
+        self.transactions
+            .push(Level::new(frame, self.dim, packets, lifetimes));
         #[cfg(test)]
         self.trace_storage_attempt("open".into());
-        (token, close_token)
+        frame
     }
-    /// Closes the transaction `seal` ends, first aborting every one opened inside it and left
-    /// open, so a guard closing its own is never stranded behind a child a mod abandoned.
-    /// Refused when `seal` names no open transaction: only whoever opened one ends it, never a
-    /// handler lent its `TransactionContext` (a hopper's move lends the game's own).
-    pub(in crate::game) fn transaction_close(&mut self, seal: &TransactionSeal, commit: bool) {
-        let (token, close) = mod_api::__private::seal_tokens(seal);
+    /// Closes `frame`, first aborting every transaction opened inside it and left open, so a
+    /// scope closing its own is never stranded behind an abandoned child.
+    fn close_storage_frame(&mut self, frame: TransactionFrame, commit: bool) {
         let Some(at) = self
             .transactions
             .iter()
-            .position(|level| level.token == token && level.close_token == close)
+            .rposition(|level| level.frame == frame)
         else {
-            log::warn!("Sunrise: refused to close a transaction the seal does not end");
             return;
         };
         if self.transactions.len() > at + 1 {
@@ -658,11 +728,63 @@ impl Game<'_> {
         }
         self.close_storage_transaction(commit);
     }
-    /// Whether `tx` names an open transaction: a write given any other changes nothing, so none
-    /// happens outside the journal.
-    pub(in crate::game) fn transaction_holds(&self, tx: &TransactionContext) -> bool {
-        let named = mod_api::__private::transaction_token(tx);
-        self.transactions.iter().any(|level| level.token == named)
+    /// Runs `f` inside a new (or nested) storage transaction, committing iff `f` returns
+    /// `(out, true)` and aborting on `false` or unwind.
+    pub(in crate::game) fn storage_scope<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self, TransactionFrame) -> (R, bool),
+    ) -> R {
+        let frame = self.open_storage_transaction();
+        let mut guard = StorageScope {
+            game: self,
+            frame,
+            open: true,
+        };
+        let (out, commit) = f(&mut *guard.game, frame);
+        guard.close(commit);
+        out
+    }
+    /// Runs `f` inside a new (or nested) storage transaction, lending a scoped
+    /// [`TransactionContext`]; commits on `Ok` and aborts on `Err` or unwind.
+    pub(in crate::game) fn storage_transaction<T, E>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut Self, &'loan TransactionContext) -> Result<T, E>,
+    ) -> Result<T, E> {
+        self.storage_scope(|game, frame| {
+            let outcome = frame.lend(|tx| f(game, tx));
+            let commit = outcome.is_ok();
+            (outcome, commit)
+        })
+    }
+    /// Whether at least one storage transaction is currently open.
+    pub(in crate::game) fn has_open_transaction(&self) -> bool {
+        !self.transactions.is_empty()
+    }
+    /// The innermost open storage transaction's frame identity, if any.
+    pub(in crate::game) fn current_storage_frame(&self) -> Option<TransactionFrame> {
+        self.transactions.last().map(|level| level.frame)
+    }
+    /// Asserts that `tx` is the live loan for this game's innermost open transaction, matching
+    /// NeoForge's `TransactionManager.validateCurrentTransaction`.
+    #[track_caller]
+    pub(in crate::game) fn assert_current_transaction(&self, tx: &TransactionContext) {
+        if self
+            .current_storage_frame()
+            .is_some_and(|frame| frame.matches(tx))
+        {
+            return;
+        }
+        match self.current_storage_frame() {
+            Some(current) => panic!(
+                "transaction context at depth {} does not match the innermost open transaction at depth {}",
+                tx.depth(),
+                current.depth(),
+            ),
+            None => panic!(
+                "transaction context at depth {} used with no open transaction",
+                tx.depth(),
+            ),
+        }
     }
     /// `transaction_lifecycle`: the close running, else whether one is open.
     pub(in crate::game) fn transaction_lifecycle(&self) -> TransactionLifecycle {
@@ -672,50 +794,38 @@ impl Game<'_> {
             None => TransactionLifecycle::Open,
         }
     }
-    /// `transaction_current`: the innermost open transaction's write token, never its seal.
-    pub(in crate::game) fn transaction_current(&self) -> Option<TransactionContext> {
-        let level = self.transactions.last()?;
-        Some(mod_api::__private::transaction_of(level.token))
-    }
     /// Stage completion on the current frame, or on the callback's own frame even if it
     /// left a child open. A missing frame never publishes anything.
     pub(in crate::game) fn journal_configuration_completion(
         &mut self,
-        seal: Option<&TransactionSeal>,
+        frame: Option<TransactionFrame>,
         completion: ConfigurationCompletion,
     ) -> bool {
-        let frame = match seal {
-            Some(seal) => self.transaction_frame_for_seal(seal),
+        let level = match frame {
+            Some(frame) => self
+                .transactions
+                .iter_mut()
+                .rev()
+                .find(|level| level.frame == frame),
             None => self.transactions.last_mut(),
         };
-        let Some(frame) = frame else {
+        let Some(level) = level else {
             return false;
         };
-        frame.configuration_completions.push(completion);
+        level.configuration_completions.push(completion);
         true
     }
     /// Discard this handler's completions without rolling back its other committed effects.
-    /// Any children it abandoned will be aborted by `transaction_close`.
-    pub(in crate::game) fn discard_configuration_completions(&mut self, seal: &TransactionSeal) {
-        if let Some(frame) = self.transaction_frame_for_seal(seal) {
-            frame.configuration_completions.clear();
-        }
-    }
-    fn transaction_frame_for_seal(&mut self, seal: &TransactionSeal) -> Option<&mut Level> {
-        let (token, close) = mod_api::__private::seal_tokens(seal);
-        self.transactions
+    /// Any children it abandoned will be aborted by `StorageScope`.
+    pub(in crate::game) fn discard_configuration_completions(&mut self, frame: TransactionFrame) {
+        if let Some(level) = self
+            .transactions
             .iter_mut()
             .rev()
-            .find(|level| level.token == token && level.close_token == close)
-    }
-    /// `transaction_depth`: how deeply `tx` is nested, 0 for the outermost.
-    pub(in crate::game) fn transaction_depth(&self, tx: &TransactionContext) -> Option<u32> {
-        let named = mod_api::__private::transaction_token(tx);
-        let at = self
-            .transactions
-            .iter()
-            .position(|level| level.token == named)?;
-        u32::try_from(at).ok()
+            .find(|level| level.frame == frame)
+        {
+            level.configuration_completions.clear();
+        }
     }
     /// Closes the innermost transaction: `commit` hands its changes to the one around it, or
     /// at the root makes them final and tells the world; otherwise every storage it wrote goes
@@ -746,9 +856,6 @@ impl Game<'_> {
         guard
             .game
             .trace_storage_attempt(if commit { "commit" } else { "abort" }.into());
-        let commit = commit
-            && !(level.packets.is_some()
-                && sunrise_client::lan::conn::transaction_packets::Scope::refused());
         guard.game.close_level(level, commit);
         if root {
             guard.game.world.block_entities.publish_retirement();

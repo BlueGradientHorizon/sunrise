@@ -49,7 +49,8 @@ impl Game<'_> {
         tx: &TransactionContext,
         stack: ItemStack,
     ) -> Option<ItemPlace> {
-        if !self.transaction_holds(tx) || stack.count == 0 {
+        self.assert_current_transaction(tx);
+        if stack.count == 0 {
             return None;
         }
         let item = Some(stack.item.clone());
@@ -62,7 +63,8 @@ impl Game<'_> {
         tx: &TransactionContext,
         stack: ItemStack,
     ) -> Option<ItemPlace> {
-        if !self.transaction_holds(tx) || stack.count == 0 {
+        self.assert_current_transaction(tx);
+        if stack.count == 0 {
             return None;
         }
         self.hold_scratch(None, stack).map(ItemPlace::ScratchSlots)
@@ -85,10 +87,11 @@ impl Game<'_> {
         tx: &TransactionContext,
         place: &ItemPlace,
     ) -> Option<ItemStack> {
+        self.assert_current_transaction(tx);
         let ItemPlace::Scratch(id) = place else {
             return None;
         };
-        if !self.transaction_holds(tx) || !self.transactions.first()?.scratch.contains_key(id) {
+        if !self.transactions.first()?.scratch.contains_key(id) {
             return None;
         }
         self.keep_scratch(*id);
@@ -100,10 +103,11 @@ impl Game<'_> {
         tx: &TransactionContext,
         place: &ItemPlace,
     ) -> Option<(Option<ItemStack>, Option<ItemStack>)> {
+        self.assert_current_transaction(tx);
         let ItemPlace::ScratchSlots(id) = place else {
             return None;
         };
-        if !self.transaction_holds(tx) || !self.transactions.first()?.scratch.contains_key(id) {
+        if !self.transactions.first()?.scratch.contains_key(id) {
             return None;
         }
         self.keep_scratch(*id);

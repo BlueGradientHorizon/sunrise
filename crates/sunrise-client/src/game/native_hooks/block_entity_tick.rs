@@ -6,7 +6,8 @@ use crate::game::{
 };
 use mod_api::{
     BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockEntityTickAccess,
-    BlockEntityTickScope, BlockEntityView, ResidentBlockEntity, ServerHost,
+    BlockEntityTickScope, BlockEntityView, ResidentBlockEntity, ServerHost, TransactionContext,
+    TransactionUnavailable,
 };
 use std::collections::HashMap;
 use sunrise_client::{
@@ -108,6 +109,32 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
 
     fn host(&mut self) -> &mut dyn ServerHost {
         self.game
+    }
+
+    fn with_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn BlockEntityTickAccess,
+            &'loan TransactionContext,
+        ) -> bool,
+    ) -> Result<(), TransactionUnavailable> {
+        if !mod_api::__private::access_allowed(
+            "with_transaction_scope",
+            mod_api::__private::LoadAccess::WorldOnly,
+        ) {
+            return Err(TransactionUnavailable);
+        }
+        let subject = self.subject;
+        let state = self.state;
+        let _ = self.game.storage_transaction(|game, tx| {
+            let mut inner = TickAccess {
+                game,
+                subject,
+                state,
+            };
+            callback(&mut inner, tx).then_some(()).ok_or(())
+        });
+        Ok(())
     }
 }
 

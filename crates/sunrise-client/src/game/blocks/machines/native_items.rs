@@ -172,9 +172,7 @@ impl Game<'_> {
         limit: u32,
         tx: &TransactionContext,
     ) -> bool {
-        if !self.transaction_holds(tx) {
-            return false;
-        }
+        self.assert_current_transaction(tx);
         if !(1..=99).contains(&limit) {
             return false;
         }
@@ -248,13 +246,11 @@ impl Game<'_> {
         amount: u32,
         tx: &TransactionContext,
     ) -> Option<ItemStack> {
+        self.assert_current_transaction(tx);
         let stack = ItemStack {
             count: amount,
             ..resource.clone()
         };
-        if !self.transaction_holds(tx) {
-            return Some(stack);
-        }
         let Some(view) = self.capability_view(at) else {
             return Some(stack);
         };
@@ -354,7 +350,8 @@ impl Game<'_> {
         amount: u64,
         tx: &TransactionContext,
     ) -> u64 {
-        if amount == 0 || !self.transaction_holds(tx) {
+        self.assert_current_transaction(tx);
+        if amount == 0 {
             return 0;
         }
         let Some(view) = self.capability_view(at) else {
@@ -407,7 +404,8 @@ impl Game<'_> {
         amount: u64,
         tx: &TransactionContext,
     ) -> u64 {
-        if amount == 0 || !self.transaction_holds(tx) {
+        self.assert_current_transaction(tx);
+        if amount == 0 {
             return 0;
         }
         let Some(view) = self.capability_view(at) else {
@@ -471,9 +469,7 @@ impl Game<'_> {
         max: u32,
         tx: &TransactionContext,
     ) -> Option<ItemStack> {
-        if !self.transaction_holds(tx) {
-            return None;
-        }
+        self.assert_current_transaction(tx);
         let view = self.capability_view(at)?;
         let slot = view.capability_slots(at.side).nth(slot)?;
         let c = self.containers();
