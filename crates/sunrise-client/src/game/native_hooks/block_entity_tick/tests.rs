@@ -343,6 +343,90 @@ fn edit_then_replace_abort_restores_the_original_contents() {
 
 #[test]
 #[ignore = "daily"]
+fn reentrant_removal_does_not_spill_the_same_saved_pot_twice() {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::reentrant_removal_does_not_spill_the_same_saved_pot_twice";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_REENTRANT_REMOVAL", &["run"]) {
+        return;
+    }
+
+    struct Listener(std::sync::atomic::AtomicBool);
+    #[mod_api::__subscriptions]
+    impl Hooks for Listener {
+        fn entity_join_level(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut EntityJoinLevelEvent<'_>,
+        ) -> Flow {
+            if event.kind == "minecraft:item" && !self.0.swap(true, Ordering::Relaxed) {
+                let level = host.level("minecraft:overworld").unwrap();
+                // Re-place a pot and remove it while the first pot is spilling its contents.
+                let pot = level.block_state(host, [2, 64, 1]).unwrap();
+                assert_eq!(
+                    level.set_block(host, AT, pot, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                assert!(level.remove_block(host, AT, false));
+            }
+            Flow::Continue
+        }
+    }
+
+    let mods: mod_api::Mods = vec![ModEntry::new(
+        "removal_reentry",
+        Box::new(Listener(false.into())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            use sunrise_core::nbt::Tag;
+
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert(CHUNK, Arc::new(Chunk::empty(0, 0)));
+            let registry = game.pack.assets.registry;
+            let pot = registry.default_state("minecraft:decorated_pot").unwrap();
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            game.world.set(POS.0, POS.1, POS.2, pot).unwrap();
+            game.world.set(2, 64, 1, pot).unwrap();
+            let stock = ItemStack::new("minecraft:diamond", 64);
+            let item = sunrise_client::save::item_to_nbt(&stock, game.res.items());
+            crate::game::spill::put_saved_entity(
+                &mut game.world,
+                AT,
+                Tag::compound([
+                    ("id", Tag::String("minecraft:decorated_pot".into())),
+                    ("x", Tag::Int(POS.0)),
+                    ("y", Tag::Int(POS.1)),
+                    ("z", Tag::Int(POS.2)),
+                    ("item", item),
+                ]),
+            );
+            let level = game.level("minecraft:overworld").unwrap();
+            let seal = game.transaction_open();
+            assert_eq!(
+                game.level_set_block(level, AT, stone, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+            game.transaction_close(&seal, true);
+            game.flush_spill();
+
+            assert_eq!(game.world.block(POS.0, POS.1, POS.2), game.world.air);
+            assert!(crate::game::spill::saved_entity(&game.world, AT).is_none());
+            assert!(game.dropped.len() > 1);
+            assert!(
+                game.dropped
+                    .iter()
+                    .all(|drop| drop.stack.item == stock.item)
+            );
+            let spilled: u32 = game.dropped.iter().map(|drop| drop.stack.count).sum();
+            assert_eq!(spilled, 64);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn strict_bulk_replacement_aborts_the_block_handle_and_inventory_together() {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());

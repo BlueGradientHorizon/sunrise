@@ -60,9 +60,11 @@ replaced block see it as it was, and a cancelled drop keeps the replacement.
 `LevelRef::set_block` and `LevelRef::remove_block` expose the tentative block state
 right away; block updates and replacement effects wait for the outermost commit
 in that level. Removal uses the block entity as it stood at replacement, including
-any edits made before the replacement. Its drops join before the row is removed and
-before neighbor notifications. On abort, the journal restores the original entity
-and undoes those edits. `host.edit_blocks` also restores the original blocks and
+any edits made before the replacement. For a direct write, the resident row's drops
+join before it is removed and before neighbor notifications. The drops already own
+the stacks they carry: a join listener that replaces the same position again does
+not spill those stacks a second time. On abort, the journal restores the original
+entity and undoes those edits. `host.edit_blocks` also restores the original blocks and
 block entities on abort; it publishes whole chunks on commit without drops or
 neighbor updates. If both kinds of write touch one position, they replay in call
 order; a later bulk edit cannot substitute its new block entity for the ordinary

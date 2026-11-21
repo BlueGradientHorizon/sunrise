@@ -20,9 +20,12 @@ loan checks that the original entity still occupies the same level and state. Ev
 storage write follows one save-mark rule.
 
 The server's block replacement replays vanilla 26.3's LevelChunk.setBlockState: preRemoveSideEffects
-uses the row as it stood at replacement, and Containers.dropItemStack joins the resulting drops
-(before removeBlockEntity and neighbor notifications), at NeoForge's EntityJoinLevelEvent site in
-PersistentEntitySectionManager.addEntity. In keeping with NeoForge's SnapshotJournal.onClose,
+uses the row as it stood at replacement. Direct removal joins the resident row's drops before
+removeBlockEntity and neighbor notifications, at NeoForge's EntityJoinLevelEvent site in
+PersistentEntitySectionManager.addEntity. Like Containers.dropItemStack splitting the original
+stack before each join, removal hands the drops ownership of their stacks. The saved-only route
+also consumes the original backing data, so a reentrant write cannot spill the same stack again
+(see DecoratedPotBlockEntity.getTheItem). In keeping with NeoForge's SnapshotJournal.onClose,
 only abort restores the first-write snapshot. Bulk edits keep FillCommand.fillBlocks' strict rules:
 no container drops or neighbor updates, with whole changed chunks published on commit. At a cell
 where ordinary and strict writes are mixed, replay follows their call order and keeps their rows distinct.

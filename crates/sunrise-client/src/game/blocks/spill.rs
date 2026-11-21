@@ -459,7 +459,7 @@ pub(super) fn put_saved_entity(
     }
 }
 
-/// The row still in the level after its pre-removal effects have run.
+/// How to finish the removal after its pre-removal effects have run.
 pub(super) enum RemovingBlockEntity {
     Saved,
     Resident {
@@ -833,7 +833,11 @@ impl GameLevel<'_> {
     ) -> RemovingBlockEntity {
         let key = (pos.x, pos.y, pos.z);
         self.unpack_loot(super::container_loot::LootTarget::Block(key), None);
-        if let Some(tag) = saved_entity(self.world, [pos.x, pos.y, pos.z]) {
+        // `Containers.dropItemStack` splits the original stack before adding the item.
+        // A saved-only row has no live slots to drain. Take its backing data here, so a
+        // join listener that replaces this cell again cannot decode the same stack twice.
+        if let Some(tag) = self.take_saved_entity(pos) {
+            self.positions.hoppers.remove(&key);
             if side_effects {
                 self.drop_saved_contents(pos, old, tag);
             }
@@ -988,12 +992,7 @@ impl GameLevel<'_> {
             self.positions.gateways.remove(&[pos.x, pos.y, pos.z]);
         }
         let (kind, neighbour_updates) = match removal {
-            RemovingBlockEntity::OwnTick => return 0,
-            RemovingBlockEntity::Saved => {
-                self.forget_saved_entity(pos);
-                self.positions.hoppers.remove(&key);
-                return 0;
-            }
+            RemovingBlockEntity::OwnTick | RemovingBlockEntity::Saved => return 0,
             RemovingBlockEntity::Resident {
                 kind,
                 neighbor_updates,
@@ -1045,30 +1044,20 @@ impl GameLevel<'_> {
             source: None,
         });
     }
-    fn forget_saved_entity(&mut self, pos: BlockPos) {
-        use sunrise_core::nbt::Tag;
-        let chunk_key = (pos.x >> 4, pos.z >> 4);
-        let at = |t: &Tag| {
-            let int = |k: &str| match t.get(k) {
-                Some(Tag::Int(v)) => Some(*v),
-                _ => None,
-            };
-            int("x") == Some(pos.x) && int("y") == Some(pos.y) && int("z") == Some(pos.z)
-        };
-        let Some(chunk) = self.world.chunks.get_mut(&chunk_key) else {
-            return;
-        };
-        let Some(saved) = chunk.saved.as_ref() else {
-            return;
-        };
-        let Some(index) = saved.block_entities.iter().position(at) else {
-            return;
-        };
-        let chunk = std::sync::Arc::make_mut(chunk);
-        let Some(saved) = chunk.saved.as_mut() else {
-            return;
-        };
-        std::sync::Arc::make_mut(saved).block_entities.remove(index);
+    fn take_saved_entity(&mut self, pos: BlockPos) -> Option<Tag> {
+        let chunk = self.world.chunks.get_mut(&(pos.x >> 4, pos.z >> 4))?;
+        let index = chunk
+            .saved
+            .as_ref()?
+            .block_entities
+            .iter()
+            .position(|tag| {
+                tag.get("x") == Some(&Tag::Int(pos.x))
+                    && tag.get("y") == Some(&Tag::Int(pos.y))
+                    && tag.get("z") == Some(&Tag::Int(pos.z))
+            })?;
+        let saved = std::sync::Arc::make_mut(chunk).saved.as_mut()?;
+        Some(std::sync::Arc::make_mut(saved).block_entities.remove(index))
     }
 
     /// Spill the contents of a block entity still backed by its saved compound.
