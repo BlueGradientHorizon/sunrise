@@ -20,7 +20,7 @@
 //! tightening any of them would change the wire, so it is a protocol decision rather than a
 //! refactor. Pinned by the tests in `tests/wire_contract.rs`.
 //!
-//! - `jsonrpc` is neither read nor validated; a message without it is served.
+//! - `jsonrpc` is ignored: a request is served whether the field is missing or invalid.
 //! - `id` is only rejected when it is `null`. Any other JSON value (string, boolean, object,
 //!   array, float) is echoed back unchanged.
 //! - A message that is not an object (array, string, number) has no accessible `id`, so it is
@@ -167,8 +167,12 @@ impl<'a> Server<'a> {
 
     /// Serve the process's stdin and stdout until the client closes them.
     ///
-    /// `app` answers the two tool methods (`tools/list` and `tools/call`); the protocol
-    /// methods and the framing are this module's.
+    /// `app` answers the two tool methods (`tools/list` and `tools/call`); this crate handles
+    /// the protocol methods and [stdio framing](Server::serve_on).
+    ///
+    /// # Errors
+    ///
+    /// A stdout write or flush error is returned as a string.
     pub fn serve<F>(&self, app: F) -> Result<(), String>
     where
         F: FnMut(&str, &Value) -> Result<Value, (i64, String)>,
@@ -182,9 +186,14 @@ impl<'a> Server<'a> {
     /// Serve one reader into one writer until the reader is exhausted: the line loop behind
     /// [`Server::serve`], on injected streams.
     ///
-    /// One request produces one compact line and a flush; a notification produces nothing.
-    /// Blank lines are skipped, a final `\r` is removed by `BufRead::lines`, a read error ends
-    /// the loop silently, and a write error is returned.
+    /// Input accepts LF and CRLF. Each reply is compact JSON followed by exactly one LF and
+    /// is flushed before the next request is handled. Blank lines and notifications produce
+    /// no output. A malformed JSON line produces a `-32700` reply with a null ID, then the
+    /// loop continues. A read error (including invalid UTF-8) ends the loop without a reply.
+    ///
+    /// # Errors
+    ///
+    /// A write or flush error stops the loop and is returned.
     pub fn serve_on<R: BufRead, W: Write, F>(
         &self,
         reader: R,
@@ -207,7 +216,9 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
-    /// One line of stdin in, one line of stdout out; none for a notification.
+    /// Handle one JSON message, returning its reply as a value, or `None` for a notification.
+    ///
+    /// Malformed JSON produces a `-32700` parse error with a null ID.
     pub fn handle_line<F>(&self, line: &str, app: &mut F) -> Option<Value>
     where
         F: FnMut(&str, &Value) -> Result<Value, (i64, String)>,

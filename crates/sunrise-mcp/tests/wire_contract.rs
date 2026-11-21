@@ -323,6 +323,18 @@ fn jsonrpc_is_not_required() {
 }
 
 #[test]
+fn invalid_jsonrpc_values_are_ignored() {
+    for version in [json!("1.0"), json!(false), Value::Null] {
+        let line = json!({ "jsonrpc": version, "id": 1, "method": "ping", "params": {} });
+        assert_eq!(
+            reply(&line.to_string()),
+            json!({ "jsonrpc": "2.0", "id": 1, "result": {} }),
+            "{line}"
+        );
+    }
+}
+
+#[test]
 fn a_non_null_id_is_echoed_unchanged() {
     for id in [
         json!("abc"),
@@ -357,6 +369,17 @@ fn client_capabilities_are_checked_for_presence_only() {
             "capabilities {capabilities}"
         );
     }
+}
+
+#[test]
+fn omitted_params_reach_the_application_as_an_empty_object() {
+    let mut app = |_: &str, params: &Value| Ok(json!({ "echo": params }));
+    let line = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+    let reply = SERVER.handle_line(line, &mut app).unwrap();
+    assert_eq!(
+        reply,
+        json!({ "jsonrpc": "2.0", "id": 1, "result": { "echo": {} } })
+    );
 }
 
 #[test]
