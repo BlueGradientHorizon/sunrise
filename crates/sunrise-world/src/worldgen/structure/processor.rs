@@ -1402,7 +1402,8 @@ fn process_infos<W: PlacementContext>(
         .processors
         .iter()
         .any(|p| p.evaluates_entire_piece());
-    let mut original = Vec::new();
+    // Capped finalization needs the source positions, not a second copy of the NBT.
+    let mut original_positions = Vec::new();
     let mut processed = Vec::new();
     for info in template.palettes()[palette].blocks() {
         let relative = StructureTemplate::transform(
@@ -1429,7 +1430,9 @@ fn process_infos<W: PlacementContext>(
         }
         if let Some(value) = current {
             processed.push(value);
-            original.push(info.clone());
+            if whole {
+                original_positions.push(info.pos);
+            }
         }
     }
     let processors = settings.processors.clone();
@@ -1437,7 +1440,7 @@ fn process_infos<W: PlacementContext>(
         let Processor::Capped { delegate, limit } = processor else {
             continue;
         };
-        if limit.bounds()[1] == 0 || processed.is_empty() || original.len() != processed.len() {
+        if limit.bounds()[1] == 0 || processed.is_empty() {
             continue;
         }
         let seed = world.world_seed()?;
@@ -1463,19 +1466,19 @@ fn process_infos<W: PlacementContext>(
             if replaced >= max {
                 break;
             }
-            let before = processed[index].clone();
+            let before = &processed[index];
             let altered = process_block(
                 delegate,
                 world,
                 resources,
                 position,
                 reference,
-                original[index].pos,
+                original_positions[index],
                 before.clone(),
                 settings,
             )?;
             if let Some(altered) = altered
-                && altered != before
+                && &altered != before
             {
                 replaced += 1;
                 processed[index] = altered;

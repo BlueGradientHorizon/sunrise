@@ -116,7 +116,7 @@ mod tests {
             let kind = r
                 .block_entity_type("callback")
                 .blocks(&[])
-                .transform(|data: &crate::Compound, _: crate::StructureTransform| Ok(data.clone()))
+                .transform(|_: &mut crate::Compound, _: crate::StructureTransform| Ok(()))
                 .build();
             r.block_entity_part(&kind, Callback).unwrap();
             cx.refuse("bootstrap failed: café\nmissing bridge");
