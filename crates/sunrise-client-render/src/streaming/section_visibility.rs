@@ -386,8 +386,11 @@ pub(super) mod tests {
         }
         static CONTEXT: OnceLock<Arc<WorkerContext>> = OnceLock::new();
         let context = CONTEXT.get_or_init(|| {
-            let root =
-                std::path::PathBuf::from(std::env::var_os("SUNRISE_MESH_TEST_RESOURCES").unwrap());
+            let root = std::path::PathBuf::from(
+                std::env::var_os("SUNRISE_MESH_TEST_RESOURCES")
+                    .or_else(|| std::env::var_os("SUNRISE_TEST_RESOURCES"))
+                    .unwrap(),
+            );
             let source = ResourceRoot::directory(root.clone());
             let assets = Arc::new(Assets::load(&root).unwrap());
             let render = Arc::new(assets.reload(&source).unwrap());

@@ -5,6 +5,7 @@
 use super::destination_tests::Fixture;
 use super::*;
 use std::io::{Cursor, Write};
+use sunrise_shaders::{Group, Post};
 
 fn pack() -> Post {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
@@ -49,7 +50,7 @@ fn pack() -> Post {
 /// Whether `pass` binds `is_wet` and `is_sneaking` to their built-in values.
 fn binds(pass: &Pass) -> [bool; 2] {
     ["is_wet", "is_sneaking"].map(|name| {
-        let builtin = pack_uniforms::index(name).expect("a built-in");
+        let builtin = sunrise_render_shaderpack::pack_uniforms::index(name).expect("a built-in");
         pass.uniforms.iter().any(|u| u.0 == Some(builtin))
     })
 }
