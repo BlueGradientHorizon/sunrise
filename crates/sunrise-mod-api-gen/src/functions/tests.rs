@@ -633,6 +633,62 @@ fn public_call() { crate::exposed(); }
 }
 
 #[test]
+fn inline_modules_check_crate_paths_without_using_the_enclosing_scope() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/lib.rs"),
+        r#"
+pub mod game;
+fn hidden() {}
+pub fn exposed() {}
+fn recursive(depth: u8) { if depth != 0 { crate::recursive(depth - 1); } }
+"#,
+    )
+    .unwrap();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+mod hooks {
+    mod imp { pub fn exposed() {} }
+    pub(super) use imp::exposed;
+}
+use self::hooks::*;
+fn hidden_in_inline_module() {
+    mod local { pub fn call() { crate::hidden(); } }
+    local::call();
+}
+fn public_in_inline_module() {
+    mod local {
+        use crate::exposed;
+        pub fn call() { exposed(); crate::exposed(); }
+    }
+    local::call();
+}
+fn restricted_after_inline_module() {
+    mod local { pub fn call() { crate::exposed(); } }
+    local::call();
+    exposed();
+}
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::{name}"));
+    for (name, path) in [
+        ("hidden_in_inline_module", "crate::hidden"),
+        ("restricted_after_inline_module", "exposed"),
+    ] {
+        let (code, why) = check(name).unwrap_err();
+        assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+        assert!(why.contains(&format!("`{path}`")), "{why}");
+    }
+    check("public_in_inline_module").unwrap();
+    index
+        .check(root.path(), "sunrise_client::recursive")
+        .unwrap();
+}
+
+#[test]
 fn a_target_is_checked_by_its_key_and_its_text() {
     let root = fixture();
     let index = index(root.path(), &BTreeSet::new()).unwrap();

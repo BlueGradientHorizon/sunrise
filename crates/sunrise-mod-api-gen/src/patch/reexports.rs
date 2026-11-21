@@ -411,6 +411,7 @@ pub(super) fn check_paths(source: &mut Source, found: &Found) -> Result<(), Stri
         walk: Walk<'a>,
         local: Vec<Scope>,
         names: Vec<(Namespace, String)>,
+        in_inline_module: bool,
         root_copy: Option<String>,
         refusal: Option<String>,
     }
@@ -456,6 +457,9 @@ pub(super) fn check_paths(source: &mut Source, found: &Found) -> Result<(), Stri
             let Some(first) = parts.first() else {
                 return Err(Unresolved);
             };
+            if self.in_inline_module && first != "crate" {
+                return Err(Unresolved);
+            }
             let head = if parts.len() == 1 {
                 space
             } else {
@@ -734,8 +738,13 @@ pub(super) fn check_paths(source: &mut Source, found: &Found) -> Result<(), Stri
             }
         }
 
-        // An inline module nested inside the body has its own scope, not the copy's scope.
-        fn visit_item_mod(&mut self, _: &'ast syn::ItemMod) {}
+        fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {
+            // The enclosing body's bindings do not resolve names in this module. Only `crate::`
+            // starts from a scope we know, regardless of the inline module's own declarations.
+            let was_inline = std::mem::replace(&mut self.in_inline_module, true);
+            syn::visit::visit_item_mod(self, item);
+            self.in_inline_module = was_inline;
+        }
     }
     let mut check = Check {
         walk: Walk {
@@ -745,6 +754,7 @@ pub(super) fn check_paths(source: &mut Source, found: &Found) -> Result<(), Stri
         },
         local: Vec::new(),
         names: Vec::new(),
+        in_inline_module: false,
         // A root function copied under its own name can still call itself.
         root_copy: (found.owner.is_none() && !found.module.contains("::"))
             .then(|| unraw(&found.function.sig.ident)),
