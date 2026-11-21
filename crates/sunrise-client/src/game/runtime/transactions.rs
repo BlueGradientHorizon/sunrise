@@ -180,6 +180,8 @@ struct KeptBlock {
     /// A level-host write only hid the entity from other reads. At commit
     /// the real Level.setBlock still has to run its removal side effects.
     replay_removal: bool,
+    /// A chosen placement installed a tentative block entity at this position.
+    staged_entity: bool,
     /// Any tentative write at this position replaced the block with one that does not keep
     /// connection groups (`!Behaviours::keeps_block_entity`), even if a later write returned
     /// it to a compatible block.
@@ -360,6 +362,40 @@ impl Kept {
     }
 }
 
+/// A tentative entity held aside while the root write removes the old one.
+pub(super) struct PlacementEntity(Pos, BlockStateId, Kept);
+
+impl PlacementEntity {
+    pub(super) fn belongs_to(
+        &self,
+        at: BlockPos,
+        block: BlockStateId,
+        b: &sunrise_world::level::Behaviours,
+    ) -> bool {
+        self.0 == (at.x, at.y, at.z) && b.block(self.1) == b.block(block)
+    }
+
+    pub(super) fn install(self, world: &mut World) {
+        let Self(pos, _, staged) = self;
+        let Some(entity) = staged.entity else { return };
+        world.block_entities.insert(pos, entity);
+        if let Some(generation) = staged.generation {
+            world.block_entities.restore_generation(pos, generation);
+            world.block_entities.reattach_retired(pos, generation);
+        }
+        world.set_block_entity_extras(pos, staged.extras);
+        if let Some(name) = staged.name {
+            world.block_names.insert(pos, name);
+        }
+        if let Some(observer) = world.block_entities.identity(pos) {
+            world
+                .block_entities
+                .contents_watches
+                .restore(observer, staged.contents_watches);
+        }
+    }
+}
+
 struct KeptPlayerHealth {
     data: sunrise_world::synced_floats::SyncedFloats,
     events_len: usize,
@@ -435,6 +471,7 @@ pub(super) enum After {
     Changed(Pos),
     /// Detached mod entity state (not necessarily items) was edited.
     DirtyBlockEntity(Pos),
+    UpdatePlacedBlockEntity(Pos, u64),
     /// A detached menu listener removed its holder; spill any unreturned contents only on commit.
     LostMenuContents(Pos, Box<sunrise_client::containers::ModBlockEntity>),
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
@@ -457,13 +494,9 @@ pub(super) enum After {
     ConnectionGroup(Dim, Pos, Option<u64>),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
-    /// A player-attributed chosen placement's `Block.setPlacedBy`, after its write is accepted.
-    PlayerPlacedBlock(
-        mod_api::PlayerRef,
-        mod_api::LevelRef,
-        [i32; 3],
-        BlockStateId,
-    ),
+    /// `Block.setPlacedBy` effects after its writes have been accepted.
+    PlacementEffect(Box<sunrise_world::level::ticks::PlacementEffect>),
+    PlacedBlock([i32; 3], BlockStateId),
     BlockGameEvent(
         &'static str,
         [i32; 3],
@@ -727,6 +760,7 @@ impl Game<'_> {
                             kept.flags = merge_block_update_flags(kept.flags, block.flags);
                             kept.level_host = block.level_host;
                             kept.replay_removal |= block.replay_removal;
+                            kept.staged_entity |= block.staged_entity;
                             kept.clear_connection_group |= block.clear_connection_group;
                         })
                         .or_insert(block);
@@ -1356,6 +1390,7 @@ impl Game<'_> {
                     flags,
                     level_host,
                     replay_removal: false,
+                    staged_entity: false,
                     clear_connection_group: false,
                 });
             level.after.push(After::Block(key, clears_group));
@@ -1401,6 +1436,37 @@ impl Game<'_> {
             block.replay_removal = true;
         }
     }
+    pub(super) fn journal_stage_placement_entity(&mut self, pos: Pos, entity: BlockEntity) {
+        self.journal_block_entity(pos);
+        let level = self
+            .transactions
+            .last_mut()
+            .expect("staged placement transaction");
+        level
+            .blocks
+            .get_mut(&pos)
+            .expect("staged placement block")
+            .staged_entity = true;
+        self.world.block_names.remove(&pos);
+        self.world.forget_block_entity_source(pos);
+        self.world.block_entities.insert(pos, entity);
+    }
+
+    /// Block-entity edits to an unpublished placement must not send a block update yet.
+    pub(super) fn defer_placed_block_entity_update(&mut self, pos: Pos) -> bool {
+        if self.transactions.iter().rev().any(|level| {
+            level
+                .blocks
+                .get(&pos)
+                .is_some_and(|block| block.staged_entity)
+        }) && let Some(generation) = self.world.block_entities.generation(&pos)
+        {
+            self.after_commit(After::UpdatePlacedBlockEntity(pos, generation));
+            return true;
+        }
+        false
+    }
+
     pub(super) fn journal_set_level_random(&mut self, random: sunrise_core::random::LegacyRandom) {
         self.journal_level_random();
         *self.world.random = random;
@@ -1471,15 +1537,19 @@ impl Game<'_> {
             After::FluidWrite(written) => self.commit_fluid_write(*written),
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
             After::LevelWrite(write) => self.commit_level_write(*write),
-            After::PlayerPlacedBlock(player, level, pos, state) => {
-                self.finish_player_placement(player, level, pos, state);
-            }
+            After::PlacementEffect(effect) => self.publish_placement_effect(*effect),
+            After::PlacedBlock(pos, state) => self.publish_placed_block(pos, state),
             After::BlockGameEvent(id, pos, who, state) => {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => self.container_changed(pos),
             After::DirtyBlockEntity(pos) => {
                 self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
+            }
+            After::UpdatePlacedBlockEntity(pos, generation) => {
+                if self.world.block_entities.generation(&pos) == Some(generation) {
+                    self.block_entity_updated(pos);
+                }
             }
             After::LostMenuContents(pos, taken) => self.drop_unreturned_mod_contents(pos, *taken),
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
@@ -1724,6 +1794,7 @@ impl Game<'_> {
                         flags,
                         level_host,
                         replay_removal,
+                        staged_entity,
                         clear_connection_group,
                     } = level.blocks[&pos];
                     if !told.insert(Err(pos)) {
@@ -1740,6 +1811,24 @@ impl Game<'_> {
                     // or that survives because a later write returned it to the old block kind.
                     let b = self.res.behaviours();
                     let net_keeps_group = b.keeps_block_entity(was, now);
+                    let mut placement_entity = None;
+                    if staged_entity
+                        && let Some(kept) = level.block_entities.get(&pos)
+                        && kept.generation != self.world.block_entities.generation(&pos)
+                        && !net_keeps_group
+                    {
+                        // The real replacement removes the original, not the newly staged entity.
+                        // Supply the final placed entity to LevelChunk's creation step.
+                        if self.world.block_entities.contains_key(&pos) {
+                            let staged = Kept::capture(&self.world, &self.hoppers, pos);
+                            self.world.block_entities.remove(&pos);
+                            placement_entity = Some(Box::new(PlacementEntity(pos, now, staged)));
+                        }
+                        self.world.set_block_entity_extras(pos, kept.extras.clone());
+                        if let Some(name) = &kept.name {
+                            self.world.block_names.insert(pos, name.clone());
+                        }
+                    }
                     if level.removed_block_entities.contains(&pos)
                         && !detached.contains(&pos)
                         && (replay_removal || b.block(now) == b.block(was))
@@ -1760,6 +1849,7 @@ impl Game<'_> {
                         let pos = [pos.0, pos.1, pos.2];
                         if level_host {
                             self.with_level(|_, level, ticks| {
+                                level.placement_entity = placement_entity;
                                 level.native_set_block(ticks, pos, now, flags);
                             });
                             let _ = self.process_level_events();
@@ -1869,6 +1959,15 @@ impl Game<'_> {
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
         for (pos, kept) in level.block_entities {
+            if level
+                .blocks
+                .get(&pos)
+                .is_some_and(|block| block.staged_entity)
+                && let Some(current) = self.world.block_entities.generation(&pos)
+                && Some(current) != kept.generation
+            {
+                self.world.block_entities.remove(&pos);
+            }
             match (&kept.entity, self.world.block_entities.get_mut(&pos)) {
                 (Some(entity), Some(now)) => {
                     fn shapes(

@@ -61,54 +61,94 @@ fn a_block_placed_as_a_player_runs_set_placed_by() {
 fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
     use super::native_entity_refs::tests::run_fresh_cases;
     use mod_api::{
-        BlockState, BlockUpdateFlags, EntityPlaceEvent, Flow, Hooks, ModEntry, ServerHost,
+        BlockEntityRef, BlockState, BlockUpdateFlags, EntityPlaceEvent, Flow, Hooks, LivingRef,
+        ModEntry, Placement, ServerHost, run_transaction,
     };
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
     use sunrise_client::{containers::BlockEntity, items::ItemStack};
-    use sunrise_core::position::BlockPos;
+    use sunrise_core::{nbt::Tag, position::BlockPos};
 
     const FLAG: &str = "SUNRISE_TEST_PLAYER_PLACE";
     const AT: [i32; 3] = [2, 70, 2];
+    const HEAD: [i32; 3] = [2, 70, 1];
     const AGAINST: [i32; 3] = [1, 70, 2];
     const WRITE: [i32; 3] = [4, 70, 2];
+    const OUTER: [i32; 3] = [5, 70, 2];
+    const NAME: &str = "The placed chest";
     if run_fresh_cases(
         "game::native_player_place_tests::chosen_placement_attributes_the_player_and_rolls_back_on_refusal",
         FLAG,
-        &["accept", "cancel", "change"],
+        &[
+            "chest-accept",
+            "chest-veto",
+            "chest-replace",
+            "bed-veto",
+            "bed-stale",
+            "bed-against",
+            "bed-unwind",
+            "bed-death",
+        ],
     ) {
         return;
     }
-    type PlacementSeen = (Option<EntityRef>, BlockPos, BlockState, BlockState);
+    type PlacementSeen = (
+        Option<EntityRef>,
+        BlockPos,
+        BlockState,
+        BlockState,
+        Placement,
+    );
     struct Probe {
         case: String,
         seen: Arc<Mutex<Vec<PlacementSeen>>>,
+        entity: Arc<Mutex<Option<BlockEntityRef>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
         fn entity_place(&self, host: &mut dyn ServerHost, event: &mut EntityPlaceEvent) -> Flow {
             let level = host.level("minecraft:overworld").unwrap();
-            assert!(matches!(event.placement, mod_api::Placement::Single));
             assert_eq!(level.block_state(host, AT), Some(event.state));
-            assert!(host.block_entity(level, AT).is_none());
             self.seen.lock().unwrap().push((
                 event.placer,
                 event.pos,
                 event.state,
                 event.placed_against,
+                event.placement.clone(),
             ));
-            if self.case != "accept" {
-                let pos = if self.case == "change" {
-                    AGAINST
-                } else {
-                    WRITE
+            if self.case.starts_with("chest-") {
+                let entity = host.block_entity(level, AT).expect("tentative chest");
+                assert!(entity.data(host).is_some());
+                assert_eq!(entity.set_name(host, Some(NAME)), Ok(true));
+                *self.entity.lock().unwrap() = Some(entity);
+            } else {
+                assert!(host.block_entity(level, AT).is_none());
+                let Placement::Multi(blocks) = &event.placement else {
+                    panic!("one event for both halves")
                 };
-                assert_eq!(
-                    level.set_block(host, pos, event.state, BlockUpdateFlags::NONE),
-                    Ok(true)
-                );
+                assert_eq!(level.block_state(host, HEAD), Some(blocks[1].state));
+                let write = match self.case.as_str() {
+                    "bed-stale" => Some(HEAD),
+                    "bed-against" => Some(AGAINST),
+                    "bed-veto" | "bed-unwind" => Some(WRITE),
+                    _ => None,
+                };
+                if let Some(write) = write {
+                    let edit = if self.case == "bed-against" {
+                        level.block_state(host, WRITE).unwrap()
+                    } else {
+                        event.state
+                    };
+                    assert_eq!(
+                        level.set_block(host, write, edit, BlockUpdateFlags::NONE),
+                        Ok(true)
+                    );
+                }
+                if self.case == "bed-unwind" {
+                    panic!("placement listener unwound");
+                }
             }
-            if self.case == "cancel" {
+            if self.case.ends_with("-veto") {
                 Flow::Cancel
             } else {
                 Flow::Continue
@@ -117,74 +157,177 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
     }
     let case = std::env::var(FLAG).unwrap();
     let seen = Arc::new(Mutex::new(Vec::new()));
+    let entity = Arc::new(Mutex::new(None));
     let mods = vec![ModEntry::new(
         "placement_probe",
         Box::new(Probe {
             case: case.clone(),
             seen: seen.clone(),
+            entity: entity.clone(),
         }),
     )];
     with_mods(mods.into(), || {
         with_guests(|game| {
+            use super::api_values::TryIntoApi;
             loaded(game);
             let place_as = game.player(13).unwrap();
             let level = game.level(game.dim.id()).unwrap();
-            let bed = api_state(game, "minecraft:red_bed");
+            let foot_id = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:red_bed")
+                .unwrap();
+            let foot: BlockState = foot_id.try_into_api().unwrap();
+            let head_id = game
+                .with_props(foot_id, &[("part", "head"), ("facing", "north")])
+                .unwrap();
+            let head: BlockState = head_id.try_into_api().unwrap();
+            let air: BlockState = game.world.air.try_into_api().unwrap();
             let stone = api_state(game, "minecraft:stone");
             let chest = api_state(game, "minecraft:chest");
-            assert_eq!(
-                level.set_block(game, AT, chest, BlockUpdateFlags::NONE),
-                Ok(true)
-            );
+            let barrel = api_state(game, "minecraft:barrel");
+            let is_bed = case.starts_with("bed-");
+            let (before, chosen) = if is_bed {
+                (chest, foot)
+            } else if case == "chest-replace" {
+                (barrel, chest)
+            } else {
+                (air, chest)
+            };
+            if before != air {
+                assert_eq!(
+                    level.set_block(game, AT, before, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+            }
             assert_eq!(
                 level.set_block(game, AGAINST, stone, BlockUpdateFlags::NONE),
                 Ok(true)
             );
             let stack = ItemStack::new("minecraft:dirt", 5);
             game.as_guest(13, |game| {
-                game.inventory[game.selected] = Some(stack.clone());
+                game.inventory[game.selected] = Some(stack.clone())
             })
             .unwrap();
-            game.world.block_entities.insert(
-                (2, 70, 2),
-                BlockEntity::Chest(vec![Some(stack.clone()); 27]),
-            );
+            if is_bed {
+                game.world.block_entities.insert(
+                    (2, 70, 2),
+                    BlockEntity::Chest(vec![Some(stack.clone()); 27]),
+                );
+            }
+            let original_entity = game.block_entity(level, AT);
             game.world.block_log = Some(Vec::new());
-            let air = game.world.air;
-            let result = game
-                .as_guest(12, |game| {
-                    place_as.place_block(game, level, AT, bed, BlockFace::East, false)
+            let place = |game: &mut super::Game<'_>| {
+                game.as_guest(12, |game| {
+                    place_as.place_block(game, level, AT, chosen, BlockFace::East, false)
                 })
-                .unwrap();
+                .unwrap()
+            };
+            let result = match case.as_str() {
+                "bed-unwind" => run_transaction(game, |game, outer| {
+                    assert_eq!(
+                        level.set_block(game, OUTER, stone, BlockUpdateFlags::NONE),
+                        Ok(true)
+                    );
+                    assert!(
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| place(game)))
+                            .is_err()
+                    );
+                    assert_eq!(game.transaction_current().as_ref(), Some(outer));
+                    assert_eq!(level.block_state(game, OUTER), Some(stone));
+                    assert_eq!(level.block_state(game, AT), Some(before));
+                    assert_eq!(level.block_state(game, WRITE), Some(air));
+                    Ok(())
+                }),
+                "bed-death" => run_transaction(game, |game, _| {
+                    place(game)?;
+                    assert_eq!(level.block_state(game, HEAD), Some(head));
+                    let living = LivingRef::new(place_as.entity());
+                    assert!(living.set_health(game, 0.0));
+                    assert_eq!(living.health(game), Some(0.0));
+                    Ok(())
+                }),
+                _ => place(game),
+            };
+            let seen = seen.lock().unwrap();
+            let [(placer, pos, state, against, footprint)] = seen.as_slice() else {
+                panic!("one placement event")
+            };
             assert_eq!(
-                *seen.lock().unwrap(),
-                [(Some(place_as.entity()), BlockPos::new(2, 70, 2), bed, stone)]
+                (*placer, *pos, *state, *against),
+                (
+                    Some(place_as.entity()),
+                    BlockPos::new(2, 70, 2),
+                    chosen,
+                    stone
+                )
             );
-            game.as_guest(13, |game| assert_eq!(game.held(), Some(&stack)))
-                .unwrap();
+            if is_bed {
+                let Placement::Multi(blocks) = footprint else {
+                    panic!("both bed halves")
+                };
+                assert_eq!(
+                    blocks
+                        .iter()
+                        .map(|cell| (cell.pos, cell.state))
+                        .collect::<Vec<_>>(),
+                    [
+                        (BlockPos::new(2, 70, 2), foot),
+                        (BlockPos::new(2, 70, 1), head)
+                    ]
+                );
+            } else {
+                assert!(matches!(footprint, Placement::Single));
+            }
+            if case != "bed-death" {
+                game.as_guest(13, |game| assert_eq!(game.held(), Some(&stack)))
+                    .unwrap();
+            }
             match case.as_str() {
-                "accept" => {
+                "bed-death" | "bed-against" => {
                     assert_eq!(result, Ok(()));
-                    assert_eq!(level.block_state(game, AT), Some(bed));
-                    assert_ne!(game.world.block(2, 70, 1), air, "the bed's head was placed");
+                    assert_eq!(level.block_state(game, AT), Some(foot));
+                    assert_eq!(level.block_state(game, HEAD), Some(head));
+                    assert_eq!(
+                        level.block_state(game, AGAINST),
+                        Some(if case == "bed-against" { air } else { stone })
+                    );
                 }
-                "cancel" | "change" => {
+                "chest-accept" | "chest-replace" => {
+                    assert_eq!(result, Ok(()));
+                    assert_eq!(level.block_state(game, AT), Some(chest));
+                    assert_eq!(game.block_entity(level, AT), *entity.lock().unwrap());
+                    assert_eq!(
+                        game.world.block_names.get(&(2, 70, 2)),
+                        Some(&Tag::String(NAME.into()))
+                    );
+                }
+                "chest-veto" | "bed-veto" | "bed-stale" | "bed-unwind" => {
                     assert_eq!(
                         result,
-                        Err(if case == "cancel" {
-                            Refusal::Canceled
-                        } else {
-                            Refusal::PlacementChanged
-                        })
+                        match case.as_str() {
+                            "bed-unwind" => Ok(()),
+                            "bed-stale" => Err(Refusal::PlacementChanged),
+                            _ => Err(Refusal::Canceled),
+                        }
                     );
-                    assert_eq!(level.block_state(game, AT), Some(chest));
+                    assert_eq!(level.block_state(game, AT), Some(before));
                     assert_eq!(level.block_state(game, AGAINST), Some(stone));
-                    assert!(
-                        matches!(game.world.block_entities.get(&(2, 70, 2)), Some(BlockEntity::Chest(slots)) if slots[0].as_ref() == Some(&stack))
-                    );
-                    assert_eq!(game.world.block(4, 70, 2), air, "listener write was undone");
-                    assert_eq!(game.world.block(2, 70, 1), air, "no companion was placed");
-                    assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                    assert_eq!(game.block_entity(level, AT), original_entity);
+                    assert!(!game.world.block_names.contains_key(&(2, 70, 2)));
+                    if is_bed {
+                        assert!(matches!(game.world.block_entities.get(&(2, 70, 2)),
+                            Some(BlockEntity::Chest(slots)) if slots[0].as_ref() == Some(&stack)));
+                    }
+                    assert_eq!(level.block_state(game, WRITE), Some(air));
+                    assert_eq!(level.block_state(game, HEAD), Some(air));
+                    if case == "bed-unwind" {
+                        assert_eq!(level.block_state(game, OUTER), Some(stone));
+                        assert!(game.transaction_current().is_none());
+                    } else {
+                        assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                    }
                 }
                 _ => unreachable!(),
             }

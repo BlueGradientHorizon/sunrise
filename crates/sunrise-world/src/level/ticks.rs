@@ -57,11 +57,28 @@ pub struct Ticks {
     /// Worldgen shape updates collect the ticks they schedule here, for the
     /// proto chunks of their region, instead of scheduling them.
     pub(crate) capture: Option<Vec<CapturedTick>>,
+    /// Explicit `Block.setPlacedBy` operations on a tentative placement. The
+    /// write's onPlace and neighbour passes run on publication, not in capture.
+    pub(crate) placement: Option<Vec<PlacementOperation>>,
     /// Fluid passage results between published shapes, by the shapes' identity (a publish makes
     /// a new shape, so a changed shape never finds an old result). Each entry keeps its shapes
     /// alive, so an identity is never reused while it is here; the list is cleared when it fills.
     pub(crate) published_passages: Vec<(VoxelShape, VoxelShape, u8, bool)>,
 }
+/// Operations of `Block.setPlacedBy`, in call order, on a tentative level.
+#[derive(Debug)]
+pub enum PlacementOperation {
+    Write(BlockPos, crate::registry::BlockStateId, i32),
+    Effect(PlacementEffect),
+}
+
+/// Work to publish only after the placement writes are accepted.
+#[derive(Debug)]
+pub enum PlacementEffect {
+    Neighbors(BlockPos, BlockId, Option<super::orientation::Orientation>),
+    LevelEvent(super::LevelEvent),
+}
+
 /// A tick scheduled while `Ticks::capture` is set.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CapturedTick {
@@ -98,6 +115,7 @@ impl Ticks {
             block_event_keys: Default::default(),
             handling_tick: false,
             capture: None,
+            placement: None,
             published_passages: Vec::new(),
         }
     }

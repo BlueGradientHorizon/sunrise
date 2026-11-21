@@ -320,9 +320,10 @@ and the notice uses the resolved click location. Neither changes the sides of th
 survival hooks.
 
 `PlayerRef::place_block` offers a mod's chosen placement to the same veto without simulating an item
-use. It reports the supplied player, tentative primary block (`Placement::Single`), and state
-opposite the supplied face. Its `Block.setPlacedBy` follow-up runs only after acceptance, at the
-outer commit if an enclosing transaction is open. A raw `LevelRef::set_block` and a playerless
+use. Unlike ordinary item and mob placement, the hook sees the tentative block entities and states,
+including the writes made by `Block.setPlacedBy`. It reports the supplied player and the previous
+state opposite the supplied face; a change to that neighbour alone does not invalidate the placement.
+The writes and their effects publish at the root commit. A raw `LevelRef::set_block` and a playerless
 `LevelRef::place_block` do not fire this hook.
 
 `level.state_for_placement(host, block, &context)` takes `&mut dyn ServerHost` and queries only

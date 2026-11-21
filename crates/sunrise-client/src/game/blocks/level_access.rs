@@ -40,6 +40,14 @@ impl LevelAccess for GameLevel<'_> {
         self.world.block_entities.stateful_entity(state.0)
     }
     fn ensure_block_entity(&mut self, pos: BlockPos, state: BlockStateId) {
+        if self
+            .placement_entity
+            .as_ref()
+            .is_some_and(|entity| entity.belongs_to(pos, state, self.behaviours))
+        {
+            self.placement_entity.take().unwrap().install(self.world);
+            return;
+        }
         let key = (pos.x, pos.y, pos.z);
         if !self.world.block_entities.stateful_entity(state.0)
             || self.world.block_entities.get(&key).is_some()

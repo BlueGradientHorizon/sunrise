@@ -29,7 +29,8 @@ level.place_block(host, pos, fitted, true)?;
 `level.place_block` is playerless: it does not fire `entity_place`, and `setPlacedBy` gets no placer or
 item. Use `player.place_block(host, level, pos, state, face, update_neighbour_shapes)` to let placement
 listeners veto a chosen state attributed to a real player. The face tells the hook which adjacent block
-it was placed against. The block callback still gets no placer or item.
+it was placed against. The hook sees the staged states and block entities, including companion
+writes; a veto restores them. The block callback still gets no placer or item.
 
 Neither handle runs an item use. Nothing else of `BlockItem.place` runs: no survival or obstruction check, item placement sound, placement
 game event or advancement. `place_block` and `update_from_neighbour_shapes` refuse with `LevelWriteError`:

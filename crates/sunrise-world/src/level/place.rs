@@ -1563,12 +1563,27 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
     }
 
-    /// `Block.setPlacedBy` for the blocks that place companions.
-    fn set_placed_by(&mut self, pos: BlockPos, state: BlockStateId) {
+    /// The `Block.setPlacedBy` branches that write blocks. When capturing a
+    /// placement these run before dispatch, including any notifications they request.
+    fn set_placed_by_writes(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
+        let b = self.b;
         if let Some((at, companion)) = self.placed_companion(pos, state) {
             self.set_block_and_update(at, companion);
-            return;
+        } else if b.data(state).is(Class::TripWireHook) {
+            self.tripwire_hook_calculate(pos, state, false, false, -1, None);
+        } else if b.data(state).is(Class::MossyCarpet) {
+            let topper = self.mossy_carpet_topper(pos);
+            if !b.is_air(topper) {
+                self.set_block_and_update(above(pos), topper);
+            }
+        } else {
+            return false;
         }
+        true
+    }
+
+    /// The `Block.setPlacedBy` branches that only schedule work or play a sound.
+    fn set_placed_by_effects(&mut self, pos: BlockPos, state: BlockStateId) {
         let b = self.b;
         let p = b.props;
         let data = b.data(state);
@@ -1591,13 +1606,12 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             self.sound(pos, &sound.into(), 1.0, 1.0);
         } else if data.is(Class::PistonBase) {
             self.piston_check_if_extend(pos, state);
-        } else if data.is(Class::TripWireHook) {
-            self.tripwire_hook_calculate(pos, state, false, false, -1, None);
-        } else if data.is(Class::MossyCarpet) {
-            let topper = self.mossy_carpet_topper(pos);
-            if !b.is_air(topper) {
-                self.set_block_and_update(above(pos), topper);
-            }
+        }
+    }
+
+    fn set_placed_by(&mut self, pos: BlockPos, state: BlockStateId) {
+        if !self.set_placed_by_writes(pos, state) {
+            self.set_placed_by_effects(pos, state);
         }
     }
     /// `MossyCarpetBlock.createTopperWithSideChance(level, pos, random::nextBoolean)`.
@@ -1886,6 +1900,48 @@ impl Behaviours {
     ) {
         self.sim(level, ticks).set_placed_by(pos, state);
     }
+    /// Run placement's additional block writes against a tentative level,
+    /// deferring their update passes and effects until acceptance.
+    pub fn capture_set_placed_by<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) -> Vec<super::ticks::PlacementOperation> {
+        let mut ticks = Ticks::default();
+        ticks.placement = Some(Vec::new());
+        self.sim(level, &mut ticks).set_placed_by_writes(pos, state);
+        ticks.placement.unwrap()
+    }
+
+    /// Run the non-writing branches of `setPlacedBy` after its writes were staged.
+    pub fn set_placed_by_effects<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        ticks: &mut Ticks,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) {
+        self.sim(level, ticks).set_placed_by_effects(pos, state);
+    }
+
+    /// Publish a captured callback effect. The caller has already accepted its writes.
+    pub fn publish_placement_effect<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        ticks: &mut Ticks,
+        effect: super::ticks::PlacementEffect,
+    ) {
+        use super::ticks::PlacementEffect;
+        let mut sim = self.sim(level, ticks);
+        match effect {
+            PlacementEffect::Neighbors(at, block, orientation) => {
+                sim.update_neighbors_at_oriented(at, block, orientation);
+            }
+            PlacementEffect::LevelEvent(event) => sim.emit(event),
+        }
+    }
+
     /// `BlockItem.place` for the item in `ctx`: resolves the replaced
     /// position, computes `getStateForPlacement`, checks survival and entity
     /// obstruction, writes the block (flags 11), runs `setPlacedBy` (second

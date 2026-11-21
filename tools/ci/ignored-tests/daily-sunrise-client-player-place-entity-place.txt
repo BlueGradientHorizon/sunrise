@@ -1,0 +1,1 @@
+sunrise-client game::native_player_place_tests::chosen_placement_attributes_the_player_and_rolls_back_on_refusal lib daily child-process

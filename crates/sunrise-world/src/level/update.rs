@@ -221,7 +221,13 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         self.level.random()
     }
     pub fn emit(&mut self, event: LevelEvent) {
-        self.level.emit(event);
+        if let Some(placement) = &mut self.ticks.placement {
+            placement.push(super::ticks::PlacementOperation::Effect(
+                super::ticks::PlacementEffect::LevelEvent(event),
+            ));
+        } else {
+            self.level.emit(event);
+        }
     }
     /// `TntBlock.prime` without a source: `new PrimedTnt` draws its push angle
     /// from the level random, then the primed sound and `prime_fuse` event.
@@ -277,7 +283,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
     }
     pub fn game_event(&mut self, pos: BlockPos, event: &'static str) {
-        self.level.emit(LevelEvent::GameEvent {
+        self.emit(LevelEvent::GameEvent {
             pos,
             event,
             state: None,
@@ -341,6 +347,17 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     ) -> bool {
         if !self.is_in_valid_bounds(pos) || !self.level.is_loaded(pos) {
             return false;
+        }
+        if let Some(placement) = &mut self.ticks.placement {
+            if self.level.block_state(pos) == state || self.level.set_raw(pos, state).is_none() {
+                return false;
+            }
+            placement.push(super::ticks::PlacementOperation::Write(
+                pos,
+                state,
+                update_flags,
+            ));
+            return true;
         }
         let Some(old) = self.chunk_set_block_state(pos, state, update_flags) else {
             return false;
@@ -604,6 +621,12 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         block: BlockId,
         orientation: Option<Orientation>,
     ) {
+        if let Some(placement) = &mut self.ticks.placement {
+            placement.push(super::ticks::PlacementOperation::Effect(
+                super::ticks::PlacementEffect::Neighbors(pos, block, orientation),
+            ));
+            return;
+        }
         self.add_and_run(Update::Multi {
             source: pos,
             block,

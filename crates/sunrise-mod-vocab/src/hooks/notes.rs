@@ -2803,12 +2803,11 @@ registration path.
   block once the game allowed it (`ServerPlayerGameMode.destroyBlock`) and may cancel it, which keeps the block and its
   drops. Set `exp_to_drop` to `Some(amount)` to replace the vanilla XP sample later, after item drops are prepared;
   `None` retains vanilla sampling. The subsequent `block_drops` event can edit the resulting experience or cancel
-  the drops, and disabled block drops suppress both items and XP. `entity_place` (`EntityPlaceEvent`, `EntityMultiPlaceEvent`) hears a block placed from an item
-  (`BlockItem.place`), an enderman putting its block down or a snow golem's trail, before it is written, and may cancel it:
-  nothing is placed and the stack is kept. For a player, `placed_against` is the state next to the primary placed
-  block opposite the clicked face, even when the clicked block is replaceable; for mobs it is the state below.
-  A bed, door or tall plant arrives as one `Placement::Multi`. Silverfish
-  infesting, turtle eggs and falling blocks are not placements yet.
+  the drops, and disabled block drops suppress both items and XP. `entity_place` (`EntityPlaceEvent`, `EntityMultiPlaceEvent`)
+  vetoes ordinary item and mob placement before the write. With `PlayerRef::place_block`, it sees the staged
+  placement, companions and block entities. A veto cancels the whole placement and spends no item.
+  `placed_against` is opposite the placement face for a player and below the new block for a mob. A bed, door
+  or tall plant arrives as one `Placement::Multi`. Silverfish infesting, turtle eggs and falling blocks are not placements.
 
 - Block entities for a mod's blocks (`block_entity`, `block_entity_ticks`,
   `block_entity_tick`): made when the block is placed, ticked on the server and saved with the chunk.

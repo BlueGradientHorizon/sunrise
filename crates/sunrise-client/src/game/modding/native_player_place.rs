@@ -10,7 +10,11 @@ use mod_api::{
 use sunrise_client::{containers::BlockEntity, items::ItemStack};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_world::{
-    level::{PlacementContext, classes::Class},
+    level::{
+        PlacementContext,
+        classes::Class,
+        ticks::{PlacementEffect, PlacementOperation},
+    },
     registry::BlockStateId,
 };
 
@@ -69,56 +73,95 @@ impl Game<'_> {
         {
             return Err(Refusal::Fenced);
         }
-        // The journal keeps the primary write tentative until the veto is settled. The
-        // existing callback runs after acceptance; #959 owns capturing its companion writes.
-        let seal =
-            mod_api::__private::listened(HookId::EntityPlace).then(|| self.transaction_open());
-        let result = (|| {
-            match self.level_set_block(level, pos, state, flags) {
-                Ok(true) => {}
-                Ok(false) => return Err(Refusal::Unchanged),
-                Err(_) => return Err(Refusal::Stale),
+        let listens = mod_api::__private::listened(HookId::EntityPlace);
+        if !listens && self.transactions.is_empty() {
+            if !self
+                .level_set_block(level, pos, state, flags)
+                .map_err(|_| Refusal::Stale)?
+            {
+                return Err(Refusal::Unchanged);
             }
-            if seal.is_some() {
-                let [dx, dy, dz] = block_face_direction(face).opposite().normal();
-                let against = self.world.block(x + dx, y + dy, z + dz);
-                if self.placement_canceled(
+            return self
+                .native_as_player_handle(player, |game| {
+                    game.run_mod_placement_callback(pos, state, None);
+                })
+                .then_some(())
+                .ok_or(Refusal::Stale);
+        }
+
+        mod_api::run_transaction(self, |game, _| {
+            let at = BlockPos::new(x, y, z);
+            let [dx, dy, dz] = block_face_direction(face).opposite().normal();
+            let against = game.world.block(x + dx, y + dy, z + dz);
+            use super::journal_level_write::JournalLevelWrite;
+            if !JournalLevelWrite::new(game, level)
+                .ok_or(Refusal::StaleLevel)?
+                .write_placement_block(pos, state, flags.bits())
+            {
+                return Err(Refusal::Unchanged);
+            }
+            let (operations, random) = game.plan_chosen_placement(at, state);
+            if <(u64, Option<f64>)>::from(&random) != (&*game.world.random).into() {
+                game.journal_set_level_random(random);
+            }
+            let mut extra = Vec::new();
+            for operation in operations {
+                match operation {
+                    PlacementOperation::Write(cell, state, flags) => {
+                        let p = [cell.x, cell.y, cell.z];
+                        if !JournalLevelWrite::new(game, level)
+                            .ok_or(Refusal::StaleLevel)?
+                            .write_placement_block(p, state, flags)
+                        {
+                            return Err(Refusal::PlacementChanged);
+                        }
+                        if listens && cell != at {
+                            if let Some((_, prior)) =
+                                extra.iter_mut().find(|(previous, _)| *previous == cell)
+                            {
+                                *prior = state;
+                            } else {
+                                extra.push((cell, state));
+                            }
+                        }
+                    }
+                    PlacementOperation::Effect(effect) => {
+                        game.after_commit(After::PlacementEffect(Box::new(effect)));
+                    }
+                }
+            }
+            let placed = game.world.block(x, y, z);
+            if listens {
+                if game.placement_canceled(
                     Some(player.entity()),
-                    BlockPos::new(x, y, z),
-                    state,
+                    at,
+                    placed,
                     against,
-                    None,
+                    extra.iter().copied(),
                 ) {
                     return Err(Refusal::Canceled);
                 }
-                if !self.level_handle_current(level) {
+                if !game.level_handle_current(level) {
                     return Err(Refusal::StaleLevel);
                 }
-                if level.dimension() != self.dim.key() {
+                if level.dimension() != game.dim.key() {
                     return Err(Refusal::OtherLevel);
                 }
-                self.validate_placement_player(player)?;
-                if self.world.block(x, y, z) != state
-                    || self.world.block(x + dx, y + dy, z + dz) != against
-                    || !self.world.loaded(x, z)
-                    || self.world.carrier_fences.locks_cell(&pos)
+                game.validate_placement_player(player)?;
+                if std::iter::once((at, placed))
+                    .chain(extra)
+                    .any(|(at, state)| {
+                        !game.world.is_loaded_at(at.x, at.y, at.z)
+                            || game.world.carrier_fences.locks_cell(&[at.x, at.y, at.z])
+                            || game.world.block(at.x, at.y, at.z) != state
+                    })
                 {
                     return Err(Refusal::PlacementChanged);
                 }
             }
-            if !self.transactions.is_empty() {
-                self.after_commit(After::PlayerPlacedBlock(player, level, pos, state));
-                Ok(())
-            } else {
-                self.finish_player_placement(player, level, pos, state)
-                    .then_some(())
-                    .ok_or(Refusal::Stale)
-            }
-        })();
-        if let Some(seal) = seal {
-            self.transaction_close(&seal, result.is_ok());
-        }
-        result
+            game.after_commit(After::PlacedBlock(pos, placed));
+            Ok(())
+        })
     }
 
     fn validate_placement_player(&self, player: PlayerRef) -> Result<(), Refusal> {
@@ -138,19 +181,26 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn finish_player_placement(
-        &mut self,
-        player: PlayerRef,
-        level: LevelRef,
-        pos: [i32; 3],
-        state: BlockStateId,
-    ) -> bool {
-        self.level_in_place(level)
-            && self.validate_placement_player(player).is_ok()
-            && self.native_as_player_handle(player, |game| {
-                game.run_mod_placement_callback(pos, state, None);
-            })
+    pub(super) fn publish_placement_effect(&mut self, effect: PlacementEffect) {
+        self.with_level(|b, level, ticks| b.publish_placement_effect(level, ticks, effect));
+        let _ = self.process_level_events();
     }
+
+    /// Only the non-placement effects remain. There is no delayed player turn or
+    /// callback write that can leave an accepted compound placement unfinished.
+    pub(super) fn publish_placed_block(&mut self, pos: [i32; 3], expected: BlockStateId) {
+        let [x, y, z] = pos;
+        let b = self.res.behaviours();
+        let placed = self.world.block(x, y, z);
+        if b.block(placed) == b.block(expected) {
+            self.with_level(|b, level, ticks| {
+                b.set_placed_by_effects(level, ticks, BlockPos::new(x, y, z), placed);
+            });
+            let _ = self.set_placed_by(pos, None, None);
+            let _ = self.process_level_events();
+        }
+    }
+
     pub(super) fn level_state_for_placement(
         &mut self,
         level: LevelRef,

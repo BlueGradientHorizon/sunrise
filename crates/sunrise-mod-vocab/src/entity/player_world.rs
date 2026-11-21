@@ -50,7 +50,7 @@ pub enum PlayerWorldRefusal {
     InTransaction,
     /// An `entity_place` listener vetoed `place_block`.
     Canceled,
-    /// The destination or the block it was placed against changed during `entity_place`.
+    /// A cell the placement writes no longer holds its tentative state, is unloaded or is fenced.
     PlacementChanged,
 }
 

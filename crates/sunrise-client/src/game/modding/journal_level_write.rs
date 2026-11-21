@@ -61,6 +61,29 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         true
     }
 
+    /// Capturing a placement creates its block entity as part of the tentative
+    /// cell. It is the same instance (including listener edits) on publication.
+    pub(super) fn write_placement_block(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        flags: i32,
+    ) -> bool {
+        let [x, y, z] = pos;
+        let old = self.game.world.block(x, y, z);
+        if !self.write_block(pos, state, flags) {
+            return false;
+        }
+        let key = (x, y, z);
+        if !self.game.world.block_entities.contains_key(&key)
+            && self.game.res.behaviours().block(old) != self.game.res.behaviours().block(state)
+            && let Some(entity) = self.game.new_block_entity_for_state(state)
+        {
+            self.game.journal_stage_placement_entity(key, entity);
+        }
+        true
+    }
+
     fn queue(&mut self, write: PendingWrite) -> bool {
         self.game.after_commit(After::LevelWrite(Box::new(write)));
         true
