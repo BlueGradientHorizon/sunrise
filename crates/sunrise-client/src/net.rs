@@ -352,6 +352,14 @@ impl Session {
             serial,
         }
     }
+    /// A deterministic client fixture producer using this session's actual receive window and FIFO.
+    #[cfg(feature = "test-payload-probe")]
+    #[doc(hidden)]
+    pub fn received_packet_probe(&self) -> impl Fn(play::Clientbound) + Send + Sync + use<> {
+        let sender = self.payload_events.clone();
+        move |packet| sender.send(Event::Packet(Box::new(packet))).unwrap()
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn start(
         inbox: &ClientInbox,

@@ -20,7 +20,8 @@ impl ClientExecutor {
 
     /// Queues `task` for the executor phase after the packet processor; it never runs
     /// inline, even on the client thread. Tasks get a live host in submission order.
-    /// A packet or queued payload work still waiting ahead of a task holds it back.
+    /// The packet phase also handles packets and queued payload work published during
+    /// packet handling. If any packet work is deferred, executor tasks wait too.
     /// Move owned data into the task, not the caller's host or payload context.
     /// Quitting drops tasks that have not run.
     /// A panic ends that task and is logged with the mod's name; an error toast goes

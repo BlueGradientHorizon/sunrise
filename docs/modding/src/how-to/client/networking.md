@@ -18,9 +18,10 @@ worker_executor.execute(Box::new(move |host| { /* use the client host here */ })
 
 The executor does not run the closure inline. Each client drain handles packets and queued
 payload work first, then runs executor tasks in submission order with a live
-`&mut dyn ClientHost`. A task submitted while packets are being handled can run in that drain;
-if packet work ahead of it is deferred, the task waits too. When the client starts quitting,
-including from the title screen, pending and new tasks are dropped. A panic ends only that task
+`&mut dyn ClientHost`. The packet phase includes packets and queued payload work published
+while earlier packets are being handled, even when a task was submitted first. If any packet
+work is deferred, executor tasks wait for the packet phase to finish. When the client starts
+quitting, including from the title screen, pending and new tasks are dropped. A panic ends only that task
 and is logged with the mod's name. The error toast goes through `toast_add`, so listeners may
 edit or cancel it without suppressing the log.
 

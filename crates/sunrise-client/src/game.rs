@@ -4012,9 +4012,9 @@ struct Game<'a> {
     /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
     remote: Option<remote::Remote>,
     client_inbox: sunrise_client::net::ClientInbox,
-    // Deferred packets, then pending executor tasks, in the same backlog.
+    // One ingress, with deferred packets and pending tasks held in their respective phases.
     client_backlog: std::collections::VecDeque<raw_backlog::Received>,
-    client_backlog_tasks: usize,
+    client_backlog_tasks: std::collections::VecDeque<sunrise_client::net::ClientTask>,
     client_backlog_serial: Option<u64>,
     client_executor: client_executor::State,
     /// The current connection came from Realms (retained for reconnect).
@@ -13612,7 +13612,7 @@ impl<'a> Game<'a> {
             remote: None,
             client_inbox: Default::default(),
             client_backlog: Default::default(),
-            client_backlog_tasks: 0,
+            client_backlog_tasks: Default::default(),
             client_backlog_serial: None,
             client_executor: Default::default(),
             realm_session: false,

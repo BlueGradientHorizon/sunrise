@@ -2298,7 +2298,7 @@ impl Game<'_> {
     pub(super) fn remote_backlog(&self) -> usize {
         self.remote
             .as_ref()
-            .map_or(0, |_| self.client_backlog.len() - self.client_backlog_tasks)
+            .map_or(0, |_| self.client_backlog.len())
     }
 
     /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
@@ -2342,10 +2342,11 @@ impl Game<'_> {
     /// before the frame's ticks. What this frame's poll left for later (chunks
     /// past its budget or still decoding, and everything after them) is taken
     /// when a tick is about to run, so the tick moves through those chunks, as
-    /// vanilla's does. A batch's `ChunkBatchReceived` is not among them: the
-    /// network thread answers it (`net::receive_play`).
+    /// vanilla's does. Finishing that work resumes the same packet-before-task
+    /// order for newly published events. The network thread still answers a
+    /// batch's `ChunkBatchReceived` (`net::receive_play`).
     pub(in crate::game) fn poll_remote_before_tick(&mut self) -> Result<()> {
-        if self.client_backlog.is_empty() {
+        if self.client_backlog.is_empty() && self.client_backlog_tasks.is_empty() {
             return Ok(());
         }
         self.poll_remote_with(true)

@@ -25,7 +25,7 @@ impl Game<'_> {
     pub(super) fn close_client_tasks(&mut self) {
         self.client_inbox.close();
         self.client_backlog.clear();
-        self.client_backlog_tasks = 0;
+        self.client_backlog_tasks.clear();
     }
 
     pub(super) fn run_client_task(&mut self, task: ClientTask) {

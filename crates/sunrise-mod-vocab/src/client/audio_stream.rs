@@ -287,9 +287,9 @@ impl AudioStreamRef {
     /// In `client_setup`, use `if let Some(executor) = host.client_executor()` to obtain a
     /// [`ClientExecutor`](crate::ClientExecutor), then clone it into a network-thread
     /// producer holding an `EntityRef`.
-    /// The queued work runs after preceding packets, so a removal or level change
-    /// ahead of it can make the handle stale. Retarget without borrowing a host or
-    /// a live payload context:
+    /// The task runs after the packet phase, so even a removal or level change published
+    /// during packet handling can make the handle stale. Retarget without borrowing a host
+    /// or a live payload context:
     ///
     /// ```
     /// # use mod_api::{AudioStreamRef, ClientExecutor, EntityRef};

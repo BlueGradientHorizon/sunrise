@@ -2,75 +2,79 @@
 use super::*;
 
 impl Game<'_> {
-    /// Drain the current connection's packets and then the application's tasks.
-    /// Before a tick the packet phase takes only deferred packets, with no chunk budget.
+    /// `Minecraft.runTick`: drain packets and queued payload work before executor tasks.
+    /// Before a tick, start with deferred packets and ignore the chunk budget.
     pub(super) fn poll_remote_events(&mut self, before_tick: bool) -> Result<()> {
-        let serial = self.remote.as_ref().map(|remote| remote.session.serial());
+        let mut serial = self.remote.as_ref().map(|remote| remote.session.serial());
         let mut events = std::mem::take(&mut self.client_backlog);
         let mut tasks = std::mem::take(&mut self.client_backlog_tasks);
         if self.client_backlog_serial != serial {
-            // Old packets (including queued payload work) belong only to their connection.
-            drop(events.drain(..events.len() - tasks));
-            self.client_backlog_serial = serial;
+            events.clear();
         }
-        if !before_tick {
-            let mut turn = self.client_inbox.poll();
-            let deferred_end = events.len();
-            for queued in turn.extract_if(.., |item| !matches!(item.event, Event::ClientTask(_))) {
-                let (source, event, credit) = queued.into_parts();
-                if source != serial {
-                    continue;
-                }
-                // Decode the columns in parallel, but apply each at its ordered slot.
-                events.push_back(match (self.remote.as_mut(), event) {
-                    (Some(remote), Event::Packet(packet))
-                        if matches!(*packet, C::LevelChunkWithLight(_)) =>
-                    {
-                        match remote.decoder.submit(remote.chunk_format.clone(), packet) {
-                            None => Received::Chunk(remote.chunk_format.clone(), credit),
-                            Some(packet) => Received::Event(Event::Packet(packet), credit),
+        let mut deferred_only = before_tick && !events.is_empty();
+        let mut chunks = Duration::ZERO;
+        let result = loop {
+            if !deferred_only {
+                for queued in self.client_inbox.poll() {
+                    let (source, event, credit) = queued.into_parts();
+                    match (self.remote.as_mut(), event) {
+                        (_, Event::ClientTask(task)) => tasks.push_back(task),
+                        // Packets and queued payload work belong to their physical connection.
+                        _ if source != serial => {}
+                        (Some(remote), Event::Packet(packet))
+                            if matches!(*packet, C::LevelChunkWithLight(_)) =>
+                        {
+                            // Decode in parallel, but apply each column at its ordered slot.
+                            events.push_back(
+                                match remote.decoder.submit(remote.chunk_format.clone(), packet) {
+                                    None => Received::Chunk(remote.chunk_format.clone(), credit),
+                                    Some(packet) => Received::Event(Event::Packet(packet), credit),
+                                },
+                            );
                         }
+                        (_, event) => events.push_back(Received::Event(event, credit)),
                     }
-                    (_, event) => Received::Event(event, credit),
-                });
+                }
             }
-            if tasks != 0 && events.len() != deferred_end {
-                // Put newly received packets before the deferred task suffix.
-                events.make_contiguous()[deferred_end - tasks..].rotate_left(tasks);
+            if events.is_empty() {
+                // This snapshot found no active packet work. It is the boundary
+                // between processQueuedPackets and runAllTasks.
+                break Ok(());
             }
-            tasks += turn.len();
-            events.extend(turn.into_iter().map(|queued| {
-                let (_, event, credit) = queued.into_parts();
-                Received::Event(event, credit)
-            }));
-        }
-        let result = self.dispatch_client_events(&mut events, before_tick, tasks);
-        let active = self.remote.as_ref().map(|remote| remote.session.serial());
-        if active != serial {
-            drop(events.drain(..events.len() - tasks));
-            self.client_backlog_serial = active;
-        }
-        // Minecraft.runTick finishes packet processing before scheduled executables.
-        // Anything held behind an undecoded or deferred chunk stays in this backlog.
-        if result.is_ok() && events.len() == tasks {
-            events.extend(
-                self.client_inbox
-                    .poll_ready_tasks(active)
-                    .map(|task| Received::Event(Event::ClientTask(task), None)),
-            );
-            while self.client_inbox.is_open()
-                && let Some(item) = events.pop_front()
-            {
-                let Received::Event(Event::ClientTask(task), _) = item else {
-                    unreachable!("only executor tasks remain after packet dispatch");
+            deferred_only = false;
+            let result = self.dispatch_client_events(&mut events, before_tick, &mut chunks);
+            let active = self.remote.as_ref().map(|remote| remote.session.serial());
+            if active != serial {
+                events.clear();
+                serial = active;
+            }
+            if result.is_err() || !events.is_empty() {
+                // A deferred packet holds back the entire executor phase.
+                break result;
+            }
+            // The inbox may have received more packets while these handlers ran.
+        };
+        if result.is_ok() {
+            if let Some(remote) = self.remote.as_mut() {
+                remote.backlog_since = if events.is_empty() {
+                    None
+                } else {
+                    Some(remote.backlog_since.unwrap_or_else(Instant::now))
                 };
-                self.run_client_task(task);
             }
-            tasks = 0;
+            self.send_suggestion_request();
+            if events.is_empty() {
+                while self.client_inbox.is_open()
+                    && let Some(task) = tasks.pop_front()
+                {
+                    self.run_client_task(task);
+                }
+            }
         }
         if self.client_inbox.is_open() {
-            self.client_backlog_tasks = tasks;
+            self.client_backlog_serial = serial;
             self.client_backlog = events;
+            self.client_backlog_tasks = tasks;
         }
         result
     }
@@ -79,20 +83,18 @@ impl Game<'_> {
         &mut self,
         events: &mut VecDeque<Received>,
         before_tick: bool,
-        tasks: usize,
+        chunks: &mut Duration,
     ) -> Result<()> {
         let overdue = self
             .remote
             .as_ref()
             .and_then(|r| r.backlog_since)
             .is_some_and(|since| since.elapsed() >= BACKLOG_LIMIT);
-        let mut chunks = Duration::ZERO;
         // A run of ForgetLevelChunk (thousands when the server's view moves far: a
         // teleport at 32 chunks) is forgotten at once, before whatever follows it.
         let mut forgotten = sunrise_client::fast_hash::FxHashSet::default();
         let mut forgotten_credits = Vec::new();
-        for _ in 0..events.len() - tasks {
-            let item = events.pop_front().expect("packet slot in the backlog");
+        while let Some(item) = events.pop_front() {
             if let Received::Event(Event::Packet(packet), _) = &item
                 && let C::ForgetLevelChunk(p) = &**packet
             {
@@ -106,7 +108,7 @@ impl Game<'_> {
             });
             forgotten_credits.clear();
             let chunk = matches!(item, Received::Chunk(_, _));
-            if chunk && !overdue && !before_tick && chunks >= CHUNK_PACKETS_PER_FRAME {
+            if chunk && !overdue && !before_tick && *chunks >= CHUNK_PACKETS_PER_FRAME {
                 events.push_front(item);
                 break;
             }
@@ -142,7 +144,7 @@ impl Game<'_> {
                             self.remote_chunk(&p, Some((&format, column)))
                         });
                     }
-                    chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
+                    *chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
                     continue;
                 }
             };
@@ -333,7 +335,7 @@ impl Game<'_> {
                     packet => self.handle_packet(packet)?,
                 },
             }
-            chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
+            *chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
             if self.remote.is_none() {
                 break;
             }
@@ -343,14 +345,6 @@ impl Game<'_> {
                 self.forget_remote_columns(&mut forgotten, true)
             });
         }
-        if let Some(r) = self.remote.as_mut() {
-            r.backlog_since = if events.len() == tasks {
-                None
-            } else {
-                Some(r.backlog_since.unwrap_or_else(Instant::now))
-            };
-        }
-        self.send_suggestion_request();
         Ok(())
     }
 }
@@ -359,6 +353,64 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_client_game;
+    use mod_api::{ClientHost, ClientPacketEvent, EntityRef, Hooks, ModEntry};
+    use std::sync::mpsc;
+
+    #[test]
+    #[ignore = "daily"]
+    fn executor_sees_entity_removal_published_during_packet_dispatch() {
+        struct Listener {
+            publish: Box<dyn Fn(C) + Send + Sync>,
+            entity: EntityRef,
+            record: mpsc::Sender<Option<[f64; 3]>>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn client_packet(&self, host: &mut dyn ClientHost, event: &mut ClientPacketEvent<'_>) {
+                if event.packet.id.path() != "ping" {
+                    return;
+                }
+                let entity = self.entity;
+                let record = self.record.clone();
+                host.client_executor()
+                    .unwrap()
+                    .execute(Box::new(move |host| {
+                        record.send(entity.position(host)).unwrap()
+                    }));
+                // Publish behind the callback while the first packet is still being handled.
+                (self.publish)(C::RemoveEntities(play::RemoveEntities {
+                    ids: vec![entity.id() as i32],
+                }));
+            }
+        }
+
+        with_client_game(|game| {
+            game.init_remote_for_replay().unwrap();
+            let remote = game.remote.as_mut().unwrap();
+            remote.logged_in = true;
+            let publish = remote.session.received_packet_probe();
+            game.spawn_entity(20, "minecraft:pig", [2.0, 64.0, 0.0], [0.0; 3]);
+            let entity = game.entity(20).unwrap();
+            assert_eq!(entity.position(game), Some([2.0, 64.0, 0.0]));
+
+            let (record, calls) = mpsc::channel();
+            publish(C::Ping(sunrise_protocol::packets::configuration::Ping {
+                id: 1,
+            }));
+            let mods = vec![ModEntry::new(
+                "during_packet",
+                Box::new(Listener {
+                    publish: Box::new(publish),
+                    entity,
+                    record,
+                }),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || game.poll_remote().unwrap());
+            assert_eq!(calls.try_recv(), Ok(None));
+        });
+    }
 
     #[test]
     #[ignore = "daily"]
