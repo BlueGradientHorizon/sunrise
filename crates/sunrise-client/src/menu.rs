@@ -2321,20 +2321,20 @@ impl Menu {
                 check_count = false;
                 let n = rows * 9;
                 if index < n {
-                    if !self.move_to(env, &mut stack, n, total, true) {
+                    if !self.move_to(env, Some(index), &mut stack, n, total, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, n, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, n, false) {
                     return None;
                 }
             }
             Kind::Hopper => {
                 check_count = false;
                 if index < 5 {
-                    if !self.move_to(env, &mut stack, 5, 41, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 5, 41, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 5, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 5, false) {
                     return None;
                 }
             }
@@ -2343,7 +2343,7 @@ impl Menu {
                 after_take = true;
                 Self::map_crafted(env.maps, &mut stack);
                 self.state.containers[RESULT][0] = Some(stack.clone());
-                if !self.move_to(env, &mut stack, t.slots, total, true) {
+                if !self.move_to(env, Some(index), &mut stack, t.slots, total, true) {
                     return None;
                 }
             }
@@ -2352,30 +2352,30 @@ impl Menu {
                 check_count = false;
                 let n = t.slots;
                 if index < n {
-                    if !self.move_to(env, &mut stack, n, total, true) {
+                    if !self.move_to(env, Some(index), &mut stack, n, total, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, n, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, n, false) {
                     return None;
                 }
             }
             Kind::Shulker => {
                 check_count = false;
                 if index < 27 {
-                    if !self.move_to(env, &mut stack, 27, total, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 27, total, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 27, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 27, false) {
                     return None;
                 }
             }
             Kind::Dispenser => {
                 after_take = true;
                 if index < 9 {
-                    if !self.move_to(env, &mut stack, 9, 45, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 45, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 9, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 9, false) {
                     return None;
                 }
             }
@@ -2387,20 +2387,20 @@ impl Menu {
                         (stack.count > 0).then(|| stack.clone());
                 };
                 if index <= 4 {
-                    if !self.move_to(env, &mut stack, 5, 41, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 5, 41, true) {
                         return None;
                     }
                 } else if crate::brewing::brewing_fuel(env.items, &clicked).is_some() {
-                    let moved = self.move_to(env, &mut stack, 4, 5, false);
+                    let moved = self.move_to(env, Some(index), &mut stack, 4, 5, false);
                     if moved
                         || (env.brewing.is_reagent(&stack)
-                            && !self.move_to(env, &mut stack, 3, 4, false))
+                            && !self.move_to(env, Some(index), &mut stack, 3, 4, false))
                     {
                         commit(self, &stack);
                         return None;
                     }
                 } else if env.brewing.is_reagent(&stack) {
-                    if !self.move_to(env, &mut stack, 3, 4, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 4, false) {
                         return None;
                     }
                 } else if env.brewing.is_bottle(&stack)
@@ -2410,25 +2410,25 @@ impl Menu {
                         .get("minecraft:brewing_potion_inputs")
                         .is_some_and(|m| m.contains(&*stack.item))
                 {
-                    if !self.move_to(env, &mut stack, 0, 3, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 3, false) {
                         return None;
                     }
                 } else if (5..32).contains(&index) {
-                    if !self.move_to(env, &mut stack, 32, 41, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 32, 41, false) {
                         return None;
                     }
                 } else if (32..41).contains(&index) {
-                    if !self.move_to(env, &mut stack, 5, 32, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 5, 32, false) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 5, 41, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 5, 41, false) {
                     return None;
                 }
             }
             Kind::Loom => {
                 after_take = true;
                 if index == 3 {
-                    if !self.move_to(env, &mut stack, 4, 40, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 4, 40, true) {
                         return None;
                     }
                 } else if index > 3 {
@@ -2443,33 +2443,33 @@ impl Menu {
                     };
                     match target {
                         Some(t) => {
-                            if !self.move_to(env, &mut stack, t, t + 1, false) {
+                            if !self.move_to(env, Some(index), &mut stack, t, t + 1, false) {
                                 return None;
                             }
                         }
                         None if index < 31 => {
-                            if !self.move_to(env, &mut stack, 31, 40, false) {
+                            if !self.move_to(env, Some(index), &mut stack, 31, 40, false) {
                                 return None;
                             }
                         }
                         None => {
-                            if index < 40 && !self.move_to(env, &mut stack, 4, 31, false) {
+                            if index < 40 && !self.move_to(env, Some(index), &mut stack, 4, 31, false) {
                                 return None;
                             }
                         }
                     }
-                } else if !self.move_to(env, &mut stack, 4, 40, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 4, 40, false) {
                     return None;
                 }
             }
             Kind::Stonecutter => {
                 after_take = true;
                 if index == 1 {
-                    if !self.move_to(env, &mut stack, 2, 38, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 2, 38, true) {
                         return None;
                     }
                 } else if index == 0 {
-                    if !self.move_to(env, &mut stack, 2, 38, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 2, 38, false) {
                         return None;
                     }
                 } else if env
@@ -2478,14 +2478,14 @@ impl Menu {
                     .iter()
                     .any(|r| r.input.test_in(env.loop_context, &stack))
                 {
-                    if !self.move_to(env, &mut stack, 0, 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                         return None;
                     }
                 } else if (2..29).contains(&index) {
-                    if !self.move_to(env, &mut stack, 29, 38, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 29, 38, false) {
                         return None;
                     }
-                } else if (29..38).contains(&index) && !self.move_to(env, &mut stack, 2, 29, false)
+                } else if (29..38).contains(&index) && !self.move_to(env, Some(index), &mut stack, 2, 29, false)
                 {
                     return None;
                 }
@@ -2494,24 +2494,24 @@ impl Menu {
                 after_take = true;
                 let full = self.state.containers[MAIN].iter().all(Option::is_some);
                 if index == 2 {
-                    if !self.move_to(env, &mut stack, 3, 39, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, true) {
                         return None;
                     }
                 } else if index == 0 || index == 1 {
-                    if !self.move_to(env, &mut stack, 3, 39, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, false) {
                         return None;
                     }
                 } else if full {
                     if (3..30).contains(&index) {
-                        if !self.move_to(env, &mut stack, 30, 39, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 30, 39, false) {
                             return None;
                         }
                     } else if (30..39).contains(&index)
-                        && !self.move_to(env, &mut stack, 3, 30, false)
+                        && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
                     {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 2, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 2, false) {
                     return None;
                 }
             }
@@ -2521,26 +2521,26 @@ impl Menu {
                     // onCraftedBy edits the result in its slot first.
                     Self::map_crafted(env.maps, &mut stack);
                     self.state.containers[RESULT][0] = Some(stack.clone());
-                    if !self.move_to(env, &mut stack, 3, 39, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, true) {
                         return None;
                     }
                 } else if index == 0 || index == 1 {
-                    if !self.move_to(env, &mut stack, 3, 39, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, false) {
                         return None;
                     }
                 } else if stack.data().is_some_and(|d| d.map_id.is_some()) {
-                    if !self.move_to(env, &mut stack, 0, 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                         return None;
                     }
                 } else if Self::is_carto_extra(&stack) {
-                    if !self.move_to(env, &mut stack, 1, 2, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 2, false) {
                         return None;
                     }
                 } else if (3..30).contains(&index) {
-                    if !self.move_to(env, &mut stack, 30, 39, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 30, 39, false) {
                         return None;
                     }
-                } else if (30..39).contains(&index) && !self.move_to(env, &mut stack, 3, 30, false)
+                } else if (30..39).contains(&index) && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
                 {
                     return None;
                 }
@@ -2553,27 +2553,27 @@ impl Menu {
                 check_count = false;
                 let start = 2 + columns * 3;
                 if index < start {
-                    if !self.move_to(env, &mut stack, start, total, true) {
+                    if !self.move_to(env, Some(index), &mut stack, start, total, true) {
                         return None;
                     }
                 } else if self.may_place(env, 1, &stack) && self.state.containers[MAIN][1].is_none()
                 {
-                    if !self.move_to(env, &mut stack, 1, 2, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 2, false) {
                         return None;
                     }
                 } else if self.may_place(env, 0, &stack) && self.state.containers[MAIN][0].is_none()
                 {
-                    if !self.move_to(env, &mut stack, 0, 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                         return None;
                     }
-                } else if columns == 0 || !self.move_to(env, &mut stack, 2, start, false) {
+                } else if columns == 0 || !self.move_to(env, Some(index), &mut stack, 2, start, false) {
                     // Between the inventory and the hotbar: the stack shrinks
                     // in its slot and EMPTY is returned either way.
                     let (main_end, hotbar_end) = (start + 27, start + 36);
                     if (main_end..hotbar_end).contains(&index) {
-                        self.move_to(env, &mut stack, start, main_end, false);
+                        self.move_to(env, Some(index), &mut stack, start, main_end, false);
                     } else if (start..main_end).contains(&index) {
-                        self.move_to(env, &mut stack, main_end, hotbar_end, false);
+                        self.move_to(env, Some(index), &mut stack, main_end, hotbar_end, false);
                     }
                     let slot = self.state.slots[index];
                     self.state.containers[slot.container][slot.index] =
@@ -2585,36 +2585,36 @@ impl Menu {
                 // BeaconMenu.quickMoveStack.
                 after_take = true;
                 if index == 0 {
-                    if !self.move_to(env, &mut stack, 1, 37, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 37, true) {
                         return None;
                     }
                 } else if self.state.containers[MAIN][0].is_none()
                     && self.may_place(env, 0, &stack)
                     && stack.count == 1
                 {
-                    if !self.move_to(env, &mut stack, 0, 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                         return None;
                     }
                 } else if (1..28).contains(&index) {
-                    if !self.move_to(env, &mut stack, 28, 37, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 28, 37, false) {
                         return None;
                     }
                 } else if (28..37).contains(&index) {
-                    if !self.move_to(env, &mut stack, 1, 28, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 28, false) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 1, 37, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 1, 37, false) {
                     return None;
                 }
             }
             Kind::Enchanting => {
                 after_take = true;
                 if index < 2 {
-                    if !self.move_to(env, &mut stack, 2, 38, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 2, 38, true) {
                         return None;
                     }
                 } else if &*stack.item == "minecraft:lapis_lazuli" {
-                    if !self.move_to(env, &mut stack, 1, 2, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 2, true) {
                         return None;
                     }
                 } else {
@@ -2648,23 +2648,23 @@ impl Menu {
                                 .smithing_accepts(env.loop_context, i, &stack)
                     });
                 if index == result {
-                    if !self.move_to(env, &mut stack, start, end, true) {
+                    if !self.move_to(env, Some(index), &mut stack, start, end, true) {
                         return None;
                     }
                 } else if index < result {
-                    if !self.move_to(env, &mut stack, start, end, false) {
+                    if !self.move_to(env, Some(index), &mut stack, start, end, false) {
                         return None;
                     }
                 } else if into_inputs && (start..end).contains(&index) {
-                    if !self.move_to(env, &mut stack, 0, result, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, result, false) {
                         return None;
                     }
                 } else if (start..use_row).contains(&index) {
-                    if !self.move_to(env, &mut stack, use_row, end, false) {
+                    if !self.move_to(env, Some(index), &mut stack, use_row, end, false) {
                         return None;
                     }
                 } else if (use_row..end).contains(&index)
-                    && !self.move_to(env, &mut stack, start, use_row, false)
+                    && !self.move_to(env, Some(index), &mut stack, start, use_row, false)
                 {
                     return None;
                 }
@@ -2672,7 +2672,7 @@ impl Menu {
             Kind::Merchant => {
                 after_take = true;
                 if index == 2 {
-                    if !self.move_to(env, &mut stack, 3, 39, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, true) {
                         return None;
                     }
                     // Slot.onQuickCraft uses the original copy and the moved count.
@@ -2688,32 +2688,32 @@ impl Menu {
                     }
                 } else if index != 0 && index != 1 {
                     if (3..30).contains(&index) {
-                        if !self.move_to(env, &mut stack, 30, 39, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 30, 39, false) {
                             return None;
                         }
                     } else if (30..39).contains(&index)
-                        && !self.move_to(env, &mut stack, 3, 30, false)
+                        && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
                     {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 3, 39, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 3, 39, false) {
                     return None;
                 }
             }
             Kind::Crafter | Kind::CrafterBlock => {
                 after_take = true;
                 if index < 9 {
-                    if !self.move_to(env, &mut stack, 9, 45, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 45, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 9, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 9, false) {
                     return None;
                 }
             }
             Kind::Furnace(recipe) => {
                 after_take = true;
                 if index == 2 {
-                    if !self.move_to(env, &mut stack, 3, 39, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, true) {
                         return None;
                     }
                     // Slot.onQuickCraft -> FurnaceResultSlot.onQuickCraft:
@@ -2730,23 +2730,23 @@ impl Menu {
                         &stack,
                     );
                     if smelts {
-                        if !self.move_to(env, &mut stack, 0, 1, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                             return None;
                         }
                     } else if Self::is_fuel(env, &stack) {
-                        if !self.move_to(env, &mut stack, 1, 2, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 1, 2, false) {
                             return None;
                         }
                     } else if (3..30).contains(&index) {
-                        if !self.move_to(env, &mut stack, 30, 39, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 30, 39, false) {
                             return None;
                         }
                     } else if (30..39).contains(&index)
-                        && !self.move_to(env, &mut stack, 3, 30, false)
+                        && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
                     {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 3, 39, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 3, 39, false) {
                     return None;
                 }
             }
@@ -2757,20 +2757,20 @@ impl Menu {
                     // before transfer; ResultSlot then processes its original copy.
                     Self::map_crafted(env.maps, &mut stack);
                     self.state.containers[RESULT][0] = Some(stack.clone());
-                    if !self.move_to(env, &mut stack, 10, 46, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 10, 46, true) {
                         return None;
                     }
                 } else if (10..46).contains(&index) {
-                    if !self.move_to(env, &mut stack, 1, 10, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 10, false) {
                         if index < 37 {
-                            if !self.move_to(env, &mut stack, 37, 46, false) {
+                            if !self.move_to(env, Some(index), &mut stack, 37, 46, false) {
                                 return None;
                             }
-                        } else if !self.move_to(env, &mut stack, 10, 37, false) {
+                        } else if !self.move_to(env, Some(index), &mut stack, 10, 37, false) {
                             return None;
                         }
                     }
-                } else if !self.move_to(env, &mut stack, 10, 46, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 10, 46, false) {
                     return None;
                 }
             }
@@ -2779,11 +2779,11 @@ impl Menu {
                 let equip = Self::equip(env, &clicked);
                 let armor_free = |m: &Self, eq: usize| !m.has_item(8 - eq);
                 if index == 0 {
-                    if !self.move_to(env, &mut stack, 9, 45, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 45, true) {
                         return None;
                     }
                 } else if (1..9).contains(&index) {
-                    if !self.move_to(env, &mut stack, 9, 45, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 45, false) {
                         return None;
                     }
                 } else if matches!(equip, Equip::Armor(eq) if armor_free(self, eq)) {
@@ -2791,22 +2791,22 @@ impl Menu {
                         unreachable!()
                     };
                     let pos = 8 - eq;
-                    if !self.move_to(env, &mut stack, pos, pos + 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, pos, pos + 1, false) {
                         return None;
                     }
                 } else if matches!(equip, Equip::Offhand) && !self.has_item(45) {
-                    if !self.move_to(env, &mut stack, 45, 46, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 45, 46, false) {
                         return None;
                     }
                 } else if (9..36).contains(&index) {
-                    if !self.move_to(env, &mut stack, 36, 45, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 36, 45, false) {
                         return None;
                     }
                 } else if (36..45).contains(&index) {
-                    if !self.move_to(env, &mut stack, 9, 36, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 36, false) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 9, 45, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 9, 45, false) {
                     return None;
                 }
             }
