@@ -656,7 +656,9 @@ Code mods can also register a namespaced custom pose once in `Hooks::register` t
 `Registrar::register_arm_pose("mymod:flip", uses_both_arms, affects_offhand)`. Keep its
 `CustomArmPose` token and return `ArmPose::Custom(token)` from `get_arm_pose`. The two
 flags independently control the humanoid's two-arm ordering and whether the other
-hand's pose gives way. The token carries both flags. Duplicate, malformed and foreign-namespace ids refuse registration.
+hand's pose gives way. The token carries both flags. Any valid explicit `namespace:path` is
+accepted with ownership attributed to the registering mod; duplicate and malformed ids refuse
+registration.
 
 In `arm_pose_transform`, match `event.pose` to that token and set `event.angles.right`
 or `event.angles.left` to absolute `[pitch, yaw, roll]` in radians. `event.right_arm`
@@ -934,8 +936,9 @@ A code mod can also register an attribute type of its own with `Registrar::decla
 min, max, syncable, sentiment, tooltip)` (vanilla's `RangedAttribute` in the attribute registry). Only both-side
 packages may declare attributes; client-only packages refuse with `WrongSide` so extra
 client mods cannot shift packet IDs. `mod_api::Sentiment` is `Positive`, `Negative`, or `Neutral`.
-The id lands in the
-mod's namespace, the bounds and default follow `RangedAttribute`'s own checks, `syncable` decides whether the
+A bare `path` uses the
+mod's namespace while an explicit valid `namespace:path` keeps its namespace (built-in and duplicate keys refuse),
+the bounds and default follow `RangedAttribute`'s own checks, `syncable` decides whether the
 value syncs to clients, and `sentiment` (POSITIVE by default) colors the attribute's tooltip lines. The declared
 attributes append after the vanilla ones in the attribute catalog — sorted by declaring mod id, then attribute
 id, so the network ids are the same on every side running the same mods — before entity attribute rows resolve,

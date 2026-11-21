@@ -1,6 +1,5 @@
 //! Validation for the shared load-owned custom statistic declarations.
 use super::*;
-use mod_vocab::__private::game::RegistrationContextNew;
 
 impl CustomStatsRegistrar for PartRegistrar {
     fn register_custom_stat(&mut self, id: &str) -> Result<(), crate::DeclarationError> {
@@ -19,10 +18,7 @@ impl CustomStatsRegistrar for PartRegistrar {
                     reason: "duplicate custom statistic".into(),
                 });
             }
-            if crate::RegistrationContext::new()
-                .registry("minecraft:custom_stat")
-                .is_ok_and(|names| names.contains(&id))
-            {
+            if self.has_builtin_entry("minecraft:custom_stat", &id) {
                 return Err(DeclarationError::Rejected {
                     id,
                     reason: "built-in custom statistic".into(),

@@ -90,7 +90,8 @@ among vanilla's in the Overworld or the Nether is a [biome region](../content-mo
 generator of the mod's own. `mod_biome_source` names a [biome source](#biome-sources) a
 mod registered instead, for either generator.
 
-A dimension in an unowned namespace, an empty name, a name that is not a folder of the world
+A bare name uses the registering mod's namespace; an explicit valid `namespace:path` keeps its
+namespace. An empty or malformed name, a name that is not a folder of the world
 (lowercase letters, digits and `_ . -` only, with `/` between segments that are not empty, `.` or
 `..`), a vanilla level's id, an id registered twice, a build height the dimension type codec refuses
 (`min_y` and `height` are multiples of 16, and the level stays between -2032 and 2031) and a
@@ -299,8 +300,10 @@ naming the generator and what is missing; the surface and the carvers alone need
 what it did before; one that asks for any runs on vanilla's generator, with the mod's terrain in
 place of the noise.
 
-A generator in an unowned namespace, an empty name, a name that is not a folder of the world (as
-for a dimension), an id registered twice and `minecraft:noise` stop the game at startup with a
+A bare name uses the registering mod's namespace; an explicit valid `namespace:path` keeps its
+namespace. An empty or malformed name, a name that is not a folder of the world (as
+for a dimension), an id registered twice and built-in chunk generators (`minecraft:noise`,
+`minecraft:flat`, `minecraft:debug`) stop the game at startup with a
 message naming the mod.
 
 A level stem naming a generator nobody registered, say after its mod was removed, is an error for

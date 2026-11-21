@@ -124,10 +124,9 @@ pub enum GeneralEntityRegistrationError {
     /// Only both-side packages may declare entity types, which the network
     /// names.
     WrongSide,
-    /// The type's id is malformed, empty or in a namespace the declaring mod
-    /// does not own (a vanilla type's included).
+    /// The type's id is malformed, empty or too long.
     InvalidId,
-    /// Another declaration already covers the type.
+    /// Another declaration or built-in entity type already covers the key.
     Duplicate,
     /// A dimension or passenger attachment component is NaN or infinite.
     NotFinite,
@@ -143,9 +142,10 @@ pub fn general_entity_type_declarations() -> &'static [GeneralEntityTypeDeclarat
 /// Registration of general entity types: one frozen registry of
 /// namespaced types, filled before worlds or connections open.
 pub trait GeneralTypesRegistrar {
-    /// Declare a general entity type of the mod's own (vanilla's
-    /// `EntityType` builder, NeoForge's `RegisterEvent`): `path` in the mod's
-    /// namespace (`robot` of `mymod` is `mymod:robot`), its category, its
+    /// Declare a general entity type (vanilla's
+    /// `EntityType` builder, NeoForge's `RegisterEvent`): a bare `path` uses
+    /// this mod's namespace (`robot` of `mymod` is `mymod:robot`), while an
+    /// explicit valid `namespace:path` keeps its namespace. Supply its category, its
     /// finite `width` and `height` in blocks, its passenger attachment, its save and
     /// summon policy, whether it is pickable, its signed integer tracking distance and
     /// update interval, its payload schema version and the loaded mods it requires.
@@ -158,8 +158,8 @@ pub trait GeneralTypesRegistrar {
     /// `passenger_attachment` is the finite `[x, y, z]` passenger point in vehicle-local
     /// blocks, rotated with the vehicle's yaw. `None` uses `[0.0, height, 0.0]`.
     ///
-    /// An id outside the mod's manifest-owned namespaces, a malformed id, a
-    /// duplicate of this mod's or another's, a non-finite dimension or attachment, a required
+    /// A malformed or overlong id, a duplicate of this mod's, another's or a
+    /// built-in entity type, a non-finite dimension or attachment, a required
     /// feature naming no loaded mod, or a declaration after the registry froze (the
     /// registration phase has ended) refuses, naming the mod, without
     /// panicking. Invalid input is refused, never clamped.

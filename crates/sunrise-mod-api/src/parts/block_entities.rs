@@ -222,20 +222,60 @@ pub mod tests {
         #[mod_api::__subscriptions]
         impl crate::Hooks for Invalid {
             fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
-                for path in ["", "other:press", "Uppercase", "has space"] {
+                for path in ["", "Uppercase", "has space", "minecraft:furnace"] {
                     r.block_entity_type(path).build();
                 }
             }
         }
-        let errors = install_parts(
-            &[ModEntry::new("test", Box::new(Invalid))],
-            &crate::parts::tests::rule_schema(),
-            |_| false,
-        )
-        .unwrap_err();
-        assert_eq!(errors.len(), 4);
-        assert!(errors.iter().all(|error| error.contains("mod test")
-            && (error.contains("invalid identifier") || error.contains("unowned namespace"))));
+        let data = mod_vocab::__private::RegistrationData::new(
+            [(
+                "minecraft:block_entity_type".into(),
+                vec!["minecraft:furnace".into()],
+            )]
+            .into(),
+            Default::default(),
+            Default::default(),
+            crate::RuntimeEnvironment::new(
+                crate::Dist::Client,
+                "26.3".into(),
+                "test".into(),
+                false,
+            ),
+        );
+        crate::load_state::with_test_registration_data(data, || {
+            let errors = install_parts(
+                &[ModEntry::new("test", Box::new(Invalid))],
+                &crate::parts::tests::rule_schema(),
+                |_| false,
+            )
+            .unwrap_err();
+            assert_eq!(errors.len(), 4, "{errors:?}");
+            assert!(errors[..3].iter().all(|error| {
+                error.contains("mod test") && error.contains("invalid identifier")
+            }));
+            assert!(errors[3].contains("mod test"));
+            assert!(errors[3].contains("minecraft:furnace"));
+
+            // Transform ownership tracks the declaring mod rather than the key's namespace.
+            let mut r = PartRegistrar::new("declarer");
+            let key = (&mut r as &mut dyn Registrar)
+                .block_entity_type("other:press")
+                .transform(|data: &Compound, _: StructureTransform| Ok(data.clone()))
+                .build();
+            assert!(r.refused.is_empty(), "{:?}", r.refused);
+            assert!(r.block_entity_transforms.contains_key("other:press"));
+            r.mod_id = "other";
+            r.set_block_entity_transform(
+                key,
+                Arc::new(|data: &Compound, _: StructureTransform| {
+                    Ok::<_, TransformRefusal>(data.clone())
+                }),
+            );
+            assert_eq!(
+                r.refused,
+                ["transform requires an owned block entity declaration"]
+            );
+        });
     }
 
     /// The block entity of type `doubler:press_entity`, held by block `test:press`.
@@ -952,13 +992,20 @@ impl BlockEntitiesRegistrar for PartRegistrar {
         path: &str,
         blocks: Vec<String>,
     ) -> crate::BlockEntityTypeKey {
-        let id = match self.owned_declaration_id(path) {
+        let id = match self.declaration_id(path) {
             Ok(id) => id,
             Err(reason) => {
                 self.refused.push(reason);
                 return mod_vocab::__private::parts_installation::block_entity_type_key(u32::MAX);
             }
         };
+        if self.has_builtin_entry("minecraft:block_entity_type", &id) {
+            self.refused.push(format!(
+                "mod {} declared built-in block entity type {id}",
+                self.mod_id
+            ));
+            return mod_vocab::__private::parts_installation::block_entity_type_key(u32::MAX);
+        }
         let key = self.block_entity_type_key(&id);
         let blocks = blocks
             .iter()
