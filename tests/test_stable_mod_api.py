@@ -220,6 +220,9 @@ class StableModApiTests(unittest.TestCase):
         for tag, export, signed, read_as, error in (
                 ("26.3-0.1.11", SURFACE, SURFACE, "identical", None),
                 ("26.3-0.1.11", two, reordered, "identical", None),
+                # A key is kept even when its list is empty: the export says the collection is there.
+                ("26.3-0.1.11", {**SURFACE, "extension_tags": []}, SURFACE, "identical",
+                 "patch release.*is not what the parent's tool exports"),
                 ("26.3-0.1.11", SURFACE, {**SURFACE, "hash": "other"}, "identical",
                  "patch release.*is not what the parent's tool exports"),
                 ("26.3-0.1.11", SURFACE, ADDITIVE, "additive", "patch release.*reads .* as additive"),
@@ -233,7 +236,10 @@ class StableModApiTests(unittest.TestCase):
                 ("26.3-0.1.11", SURFACE, {**SURFACE, "unreadable": True}, None,
                  "the parent's tool cannot read the signed surface.json for 26.3-0.1.11: .*twice"),
                 ("26.3-0.2.0", ADDITIVE, {**newer, "unreadable": True}, None, "cannot read the signed surface.json"),
-                ("26.3-0.2.0", ADDITIVE, b"{not json", None, "26.3-0.2.0's signed surface.json is not JSON")):
+                # The file itself, before any reader: refused naming the release and the asset.
+                ("26.3-0.2.0", ADDITIVE, b"{not json", None, ["26.3-0.2.0", "surface.json"]),
+                ("26.3-0.2.0", ADDITIVE, b"null", None, ["26.3-0.2.0", "surface.json"]),
+                ("26.3-0.2.0", ADDITIVE, b"[]", None, ["26.3-0.2.0", "surface.json"])):
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
             with self.subTest(tag=tag, signed=signed), \
                     mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
@@ -245,12 +251,40 @@ class StableModApiTests(unittest.TestCase):
                                       side_effect=self.judge(SURFACE, export, "identical" if tag == "26.3-0.1.11"
                                                              else "additive", read_as=read_as)):
                 self.notes.write_text("Existing notes.\n")
-                if error:
+                if isinstance(error, list):
+                    with self.assertRaises(SystemExit) as refused:
+                        nightly.stable_mod_api(HEAD, tag, self.notes)
+                    for name in error:
+                        self.assertIn(name, str(refused.exception))
+                    self.assertEqual(self.notes.read_text(), "Existing notes.\n")
+                elif error:
                     with self.assertRaisesRegex(SystemExit, error):
                         nightly.stable_mod_api(HEAD, tag, self.notes)
                     self.assertEqual(self.notes.read_text(), "Existing notes.\n")
                 else:
                     nightly.stable_mod_api(HEAD, tag, self.notes)
+
+    def test_the_parents_export_is_compared_whatever_the_order_of_its_lists(self):
+        # The parent's tool may export its own tree's lists in another order than its signed file: the same
+        # comparison as a patch's, so a surface that passed as a patch is the parent the next release reproduces.
+        two = {**ADDITIVE, "extension_tags": [{"registry": "item", "id": "tag:a"}, {"registry": "item", "id": "tag:b"}]}
+        reordered = {**two, "behaviours": two["behaviours"][::-1], "extension_tags": two["extension_tags"][::-1]}
+        for export, error in ((reordered, None), ({**two, "extension_tags": []}, "does not export its published"),
+                              ({key: value for key, value in two.items() if key != "extension_tags"},
+                               "does not export its published")):
+            assets = {OLD: sdk_assets(OLD, two, "1", {}), HEAD: sdk_assets(HEAD, two, "1", {})}
+            with self.subTest(export=export), \
+                    mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
+                    mock.patch.object(nightly.train, "origin_tags", return_value={"26.3-0.1.11": HEAD, PREVIOUS: OLD}), \
+                    mock.patch.object(nightly, "git"), mock.patch.object(nightly, "require_stable_lineage"), \
+                    mock.patch.object(nightly, "require_unchanged_content_schema"), \
+                    mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
+                    mock.patch.object(nightly.subprocess, "run", side_effect=self.judge(export, two)):
+                if error:
+                    with self.assertRaisesRegex(SystemExit, error):
+                        nightly.stable_mod_api(HEAD, "26.3-0.1.11", self.notes)
+                else:
+                    nightly.stable_mod_api(HEAD, "26.3-0.1.11", self.notes)
 
     def test_a_moved_parent_tag_or_a_version_that_skips_a_step_is_refused(self):
         tags = {PREVIOUS: OLD}

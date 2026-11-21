@@ -886,7 +886,9 @@ class VerifySumsTests(unittest.TestCase):
         for text, keys in ((f" {self.public}\u3000\r\n\n# a comment\n", [self.public]),
                            (f"{self.public}\nnot-a-key\n", None), (f"{self.public[:-4]}\n", None),
                            (f"{base64.b64encode(bytes(31)).decode()}\n", None), (f"{loose}\n", None),
-                           (f"\x1c{self.public}\n", None)):
+                           (f"\x1c{self.public}\n", None),
+                           # A bare carriage return ends no line for the native reader: one line, and no key.
+                           (f"{self.public}\r{self.public}\n", None)):
             subprocess.run(["git", "checkout", "-q", "main"], cwd=clone, check=True)
             keys_file = clone / nightly.KEYS_FILE
             keys_file.write_text(text)

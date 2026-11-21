@@ -482,7 +482,8 @@ must equal the parent's signed `surface.json`, and it diffs the two exports. A t
 candidate's signed `surface.json`, which modders build against, is written by the candidate's own exporter, so the
 parent's tool reads it as the SDK's readers do and diffs it against its own export of the candidate's tree: that
 diff, too, must be identical for a patch and at most additive for a minor (a minor's exporter may add records or
-fields the parent's reader doesn't know). A patch's file must also be that export exactly, in any order. A file the
+fields the parent's reader doesn't know). A patch's file must also be that export exactly, with every key it has and its lists in any order, the same
+comparison as the parent's export against the parent's signed file. A file the
 reader refuses, one with another schema, or one listing native internals is refused. A patch requires an identical mod API; a
 minor allows only changes the SDK classifies as additive. Conditional changes can break some existing mods, so a
 minor refuses them too. For content mods, the SDK's `content_api` version string must stay the same within a line.

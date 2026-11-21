@@ -150,9 +150,10 @@ class LegsTests(unittest.TestCase):
         # don't.
         git_a, git_b = "git+https://example.com/a?branch=main", "git+https://example.com/b"
 
-        def closure(judge, a=("local", git_a, git_b), commit="1111"):
+        def closure(judge, a=("local", git_a, git_b), commit="1111", b=()):
             sources = {"local": None, git_a: f"{git_a}#{commit}", git_b: f"{git_b}#2222"}
             packages = [("sunrise-mod-api-gen", None, judge), *(("a", sources[name], ()) for name in a),
+                        ("b", "registry+x", b),
                         # A registry package of the judge's own name: never where the judge's closure starts.
                         ("sunrise-mod-api-gen", "registry+x", ())]
             lock = {"package": [{"name": name, "version": "1.0.0", **({"source": source} if source else {}),
@@ -170,6 +171,9 @@ class LegsTests(unittest.TestCase):
         self.assertEqual(linked(closure(["a 1.0.0"])), {("sunrise-mod-api-gen", ""), ("a", "")},
                          "an unqualified version among several is the path package")
         self.assertNotEqual(closure(["a 1.0.0"]), closure([f"a 1.0.0 ({git_b})"]))
+        # The same packages reached, but the judge now links `a` itself and not only through `b`.
+        self.assertNotEqual(closure([f"a 1.0.0 ({git_a})", "b"], b=[f"a 1.0.0 ({git_a})"]),
+                            closure(["b"], b=[f"a 1.0.0 ({git_a})"]))
         # Cargo qualifies a selector only once another `a` is locked: the same package, spelled out, is no change.
         self.assertEqual(closure([f"a 1.0.0 ({git_a})"]), closure(["a"], a=(git_a,)))
         # A selector naming no entry or more than one: nothing to compare, so the caller fails closed.

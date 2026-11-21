@@ -353,8 +353,12 @@ def release_keys() -> list[str]:
         return []
     subprocess.run(["git", "fetch", "--quiet", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"],
                    cwd=REPOSITORY, check=True)
-    text = subprocess.run(["git", "show", f"refs/remotes/origin/main:{KEYS_FILE}"], cwd=REPOSITORY, check=True,
-                          capture_output=True, text=True).stdout
+    data = subprocess.run(["git", "show", f"refs/remotes/origin/main:{KEYS_FILE}"], cwd=REPOSITORY, check=True,
+                          capture_output=True).stdout
+    try:
+        text = data.decode()
+    except UnicodeDecodeError:
+        raise SystemExit(f"::error::main's {KEYS_FILE} is not UTF-8 text: launchers would trust no key")
     keys = [line.strip(RUST_WHITESPACE) for line in text_lines(text)]
     keys = [key for key in keys if key and not key.startswith("#")]
     for key in keys:
@@ -924,10 +928,11 @@ def parent_stage(sha: str, work: Path) -> str:
     return str(work / "judge-target" / "debug" / "sunrise-stage")
 
 
-def surface_records(surface: dict) -> set[tuple[str, str]]:
-    """A surface.json's records, each `(collection, its canonical JSON)`: equal only when every field is."""
-    return {(kind, json.dumps(record, sort_keys=True, separators=(",", ":")))
-            for kind, records in surface.items() if isinstance(records, list) for record in records}
+def canonical_surface(surface: dict) -> dict:
+    """A surface.json as compared: every top-level key kept, each list sorted by its items' canonical JSON (a
+    repeated item kept), so two surfaces compare equal exactly when they differ at most in their lists' order."""
+    return {key: sorted(json.dumps(item, sort_keys=True, separators=(",", ":")) for item in value)
+            if isinstance(value, list) else value for key, value in surface.items()}
 
 
 def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
@@ -968,6 +973,8 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
                     published[name] = json.loads(file.read_bytes())
                 except ValueError as error:
                     raise SystemExit(f"::error::refused: {name}'s signed {SDK_SURFACE} is not JSON: {error}")
+                if not isinstance(published[name], dict):
+                    raise SystemExit(f"::error::refused: {name}'s signed {SDK_SURFACE} is not a JSON object")
             if break_glass and published[old_tag] != published[tag]:
                 raise SystemExit(f"::error::refused: {tag} changes surface.json from {old_tag}'s; a break-glass "
                                  "release never does")
@@ -984,7 +991,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
                     raise SystemExit(f"::error::refused: {old_tag}'s sunrise-stage cannot export {name} {commit}: "
                                      f"{done.stderr.strip()}")
                 exported[name] = json.loads(out.read_bytes())
-            if exported["parent"] != published[old_tag]:
+            if canonical_surface(exported["parent"]) != canonical_surface(published[old_tag]):
                 raise SystemExit(f"::error::refused: {old_tag}'s own sunrise-stage does not export its published "
                                  "surface.json from its tree")
             if break_glass and exported["candidate"] != exported["parent"]:
@@ -1021,9 +1028,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
             if signed.get("schema") != export.get("schema"):
                 problems.append(f"the signed {SDK_SURFACE} for {tag} has schema {signed.get('schema')!r}, the parent "
                                 f"tool's export {export.get('schema')!r}")
-            fields = [{key: value for key, value in surface.items() if not isinstance(value, list)}
-                      for surface in (signed, export)]
-            if not minor and (fields[0] != fields[1] or surface_records(signed) != surface_records(export)):
+            if not minor and canonical_surface(signed) != canonical_surface(export):
                 problems.append(f"the signed {SDK_SURFACE} for {tag} is not what the parent's tool exports from its "
                                 "tree")
             if problems:
