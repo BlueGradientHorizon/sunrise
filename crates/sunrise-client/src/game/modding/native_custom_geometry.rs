@@ -41,13 +41,26 @@ impl Game<'_> {
         draw.push(corners, uv, [r.u0, r.v0, r.u1, r.v1], argb, sampling)
     }
     /// `DebugRenderer.refreshRendererList`: replace the active callbacks with newly collected
-    /// ones whose entries are on. Runs at start, at login and when the selection changes.
+    /// ones. Runs at start, at login and when the selection changes.
     pub(in crate::game) fn refresh_debug_renderers(&mut self) {
-        let renderers = mods::debug_renderers(self.options.execution_role);
-        let reduced = self.reduced_debug_info();
-        self.debug_renderers = self
-            .debug_entries
-            .active_renderers(renderers, self.debug, reduced);
+        struct EntryStates<'a> {
+            entries: &'a sunrise_client::debug_entries::DebugEntries,
+            overlay: bool,
+            reduced: bool,
+        }
+        impl mod_api::__private::DebugEntryStates for EntryStates<'_> {
+            fn is_enabled(&self, id: &str) -> bool {
+                self.entries
+                    .is_currently_enabled(id, self.overlay, self.reduced)
+            }
+        }
+        let states = EntryStates {
+            entries: &self.debug_entries,
+            overlay: self.debug,
+            reduced: self.reduced_debug_info(),
+        };
+        let renderers = mods::debug_renderers(self.options.execution_role, &states);
+        self.debug_renderers = self.debug_entries.active_renderers(renderers);
     }
     /// `DebugRenderer.emitGizmos`'s first half: a selection the list has not seen refreshes it.
     fn follow_debug_selection(&mut self) {

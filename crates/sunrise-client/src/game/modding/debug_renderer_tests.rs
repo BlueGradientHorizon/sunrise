@@ -7,7 +7,7 @@ use super::{
 };
 use glam::Mat4;
 use mod_api::{
-    DebugEntry, DebugGroup, DebugRenderer, Hooks, ModEntry, RegisterDebugEntriesEvent,
+    DebugEntry, DebugRenderer, Hooks, ModEntry, RegisterDebugEntriesEvent,
     RegisterDebugRenderersEvent, WorldDepth, WorldLine, content::crash::current_native_mod,
 };
 use std::sync::Mutex;
@@ -23,13 +23,17 @@ const CAMERA: [f64; 3] = [100.0, 64.0, 100.0];
 const OWNER: &str = "debug_test";
 const SHOWN: &str = "marker:pipes";
 const OTHER: &str = "marker:wires";
-/// Pushed as renderers, but neither has a renderer switch.
+/// Custom entry in the `minecraft` namespace that opts into showing under reduced debug info.
+const REDUCED_ALLOWED: &str = "minecraft:custom_marker";
+/// Queried as a switch, but never registered as a debug entry.
 const UNDECLARED: &str = "marker:ghost";
-const TEXT_ONLY: &str = "marker:text_only";
+/// Label for an unconditional renderer pushed without querying any switch.
+const ALWAYS: &str = "always";
 
-/// IDs captured by the callbacks that actually ran this frame.
+/// Labels captured by the callbacks that actually ran this frame.
 static ASKED: Mutex<Vec<&str>> = Mutex::new(Vec::new());
-/// What the mod pushes at a refresh.
+/// What the mod considers pushing at a refresh (`ALWAYS` pushes unconditionally; any other
+/// entry gates on `event.is_debug_entry_enabled(id)`).
 static PUSHED: Mutex<Vec<&str>> = Mutex::new(Vec::new());
 /// The refreshes since the last look (`refreshes`).
 static REFRESHES: AtomicUsize = AtomicUsize::new(0);
@@ -48,11 +52,9 @@ impl Hooks for Marker {
         for id in [SHOWN, OTHER] {
             event.entries.push(DebugEntry::renderer(id.into()));
         }
-        event.entries.push(DebugEntry::text(
-            TEXT_ONLY.into(),
-            DebugGroup::Memory,
-            |_, _| {},
-        ));
+        event
+            .entries
+            .push(DebugEntry::renderer(REDUCED_ALLOWED.into()).with_reduced_debug_info(true));
     }
     fn register_debug_renderers(
         &self,
@@ -64,23 +66,24 @@ impl Hooks for Marker {
         let owner = current_native_mod();
         assert_eq!(owner, Some(OWNER));
         for (slot, &id) in PUSHED.lock().unwrap().iter().enumerate() {
-            // Height identifies the refresh; depth distinguishes registrations for the same ID.
+            if id != ALWAYS && !event.is_debug_entry_enabled(id) {
+                continue;
+            }
+            // Height identifies the refresh; depth distinguishes multiple renderers in order.
             let y = 64.0 + refresh as f64;
             let z = 99.0 - slot as f64;
-            event
-                .renderers
-                .push(DebugRenderer::new(id.into(), move |_, _, draw| {
-                    assert_eq!(current_native_mod(), owner);
-                    ASKED.lock().unwrap().push(id);
-                    let marker = WorldLine::new(
-                        [100.25, y, z],
-                        [101.0, y, z],
-                        0xFF00FF00,
-                        2.0,
-                        WorldDepth::Tested,
-                    );
-                    draw.lines(&[marker]).unwrap();
-                }));
+            event.renderers.push(DebugRenderer::new(move |_, _, draw| {
+                assert_eq!(current_native_mod(), owner);
+                ASKED.lock().unwrap().push(id);
+                let marker = WorldLine::new(
+                    [100.25, y, z],
+                    [101.0, y, z],
+                    0xFF00FF00,
+                    2.0,
+                    WorldDepth::Tested,
+                );
+                draw.lines(&[marker]).unwrap();
+            }));
         }
     }
 }
@@ -119,20 +122,23 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         mod_platform::__private::install(
             vec![ModEntry::new(OWNER, Box::new(Marker::default()))].into(),
         );
-        push(&[SHOWN, OTHER, UNDECLARED, SHOWN, TEXT_ONLY]);
+        push(&[SHOWN, OTHER, UNDECLARED]);
         mods::register_debug_entries(ExecutionRole::Client);
         // The options exist before any refresh, and pushing an id does not make one.
         assert_eq!(refreshes(), 0);
         for id in [SHOWN, OTHER] {
             assert_eq!(
-                debug_entries::entry(id).map(|e| e.category),
-                Some(Category::Renderer)
+                debug_entries::entry(id).map(|e| (e.category, e.reduced)),
+                Some((Category::Renderer, false))
             );
         }
+        assert_eq!(
+            debug_entries::entry(REDUCED_ALLOWED).map(|e| (e.category, e.reduced)),
+            Some((Category::Renderer, true))
+        );
         // Not tied to a file: the statuses below stay out of `debug-profile.json`.
         game.debug_entries = DebugEntries::default();
         game.debug_entries.set_status(UNDECLARED, Status::AlwaysOn);
-        game.debug_entries.set_status(TEXT_ONLY, Status::AlwaysOn);
         game.title = None;
         let mut draw = WorldGeometry::default();
         let none = (Vec::new(), Vec::new());
@@ -144,7 +150,7 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         assert_eq!(frame(game, &mut draw), none);
         assert_eq!(refreshes(), 0);
 
-        // Selected: one refresh, and the first registered callback for this ID wins.
+        // Selected: one refresh, and the enabled renderer runs.
         game.debug_entries.set_status(SHOWN, Status::AlwaysOn);
         let shown = |y| (vec![[0.25, y, -1.0, 1.0, y, -1.0]], vec![SHOWN]);
         assert_eq!(frame(game, &mut draw), shown(2.0));
@@ -164,17 +170,30 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         assert_eq!(frame(game, &mut draw), none);
         assert_eq!(refreshes(), 1);
 
-        // So does reduced debug info, which hides a renderer.
+        // Reduced debug info hides default entries, while an entry opted in with
+        // `with_reduced_debug_info(true)` stays enabled.
         game.debug_entries.set_status(SHOWN, Status::AlwaysOn);
         assert_eq!(frame(game, &mut draw), shown(6.0));
         assert_eq!(refreshes(), 1);
+        push(&[SHOWN, REDUCED_ALLOWED]);
+        game.debug_entries
+            .set_status(REDUCED_ALLOWED, Status::AlwaysOn);
         game.options_control(
             &["options-set", "reducedDebugInfo", "true"],
             "options-set reducedDebugInfo true",
         )
         .unwrap();
-        assert_eq!(frame(game, &mut draw), none);
+        assert_eq!(
+            frame(game, &mut draw),
+            (
+                vec![[0.25, 7.0, -2.0, 1.0, 7.0, -2.0]],
+                vec![REDUCED_ALLOWED]
+            )
+        );
         assert_eq!(refreshes(), 1);
+        game.debug_entries
+            .set_status(REDUCED_ALLOWED, Status::Never);
+        push(&[SHOWN, OTHER, UNDECLARED]);
         game.options_control(
             &["options-set", "reducedDebugInfo", "false"],
             "options-set reducedDebugInfo false",
@@ -189,20 +208,24 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         assert_eq!(refreshes(), 1);
 
         // The installed objects keep their captured geometry until refresh, even when the mod
-        // would now push something else. Only declared and selected renderers run, in order.
+        // would now push something else. Multiple renderers (including repeated switches and
+        // unconditional ones) all run in registration order with no deduplication.
+        push(&[SHOWN, SHOWN, OTHER, ALWAYS]);
         game.debug_entries.set_status(SHOWN, Status::AlwaysOn);
         game.debug_entries.set_status(OTHER, Status::AlwaysOn);
-        let both = (
+        let all_four = (
             vec![
                 [0.25, 10.0, -1.0, 1.0, 10.0, -1.0],
                 [0.25, 10.0, -2.0, 1.0, 10.0, -2.0],
+                [0.25, 10.0, -3.0, 1.0, 10.0, -3.0],
+                [0.25, 10.0, -4.0, 1.0, 10.0, -4.0],
             ],
-            vec![SHOWN, OTHER],
+            vec![SHOWN, SHOWN, OTHER, ALWAYS],
         );
-        assert_eq!(frame(game, &mut draw), both);
+        assert_eq!(frame(game, &mut draw), all_four);
         assert_eq!(refreshes(), 1);
         push(&[OTHER]);
-        assert_eq!(frame(game, &mut draw), both);
+        assert_eq!(frame(game, &mut draw), all_four);
         assert_eq!(refreshes(), 0);
         game.debug_entries.set_status(SHOWN, Status::AlwaysOn);
         assert_eq!(

@@ -8,11 +8,10 @@ pub trait Hooks {
     /// The client keeps whichever presentation is already open on an in-place load update.
     #[notes = r#"## Dimension transition screens
 
-Push `DimensionTransitionScreen::new(id, transition, factory)` into `event.screens`.
+Push `DimensionTransitionScreen::new(transition, factory)` into `event.screens`.
 Use `DimensionTransition::Incoming(to)`, `Outgoing(from)` or `Conditional { to, from }`
-with namespaced dimension IDs. The client resolves those IDs at registration and rejects
-invalid registrations and screen IDs in the `minecraft` namespace. A screen ID is for
-validation and diagnostics, not draw dispatch.
+with namespaced dimension IDs. The client resolves those IDs at registration and logs and
+rejects invalid or duplicate transition keys.
 
 On a matching trip, the client calls the selected factory once as the registering mod and
 keeps its presentation until the loading screen closes. An existing loading screen (including
@@ -31,7 +30,7 @@ readiness, timeout and closing."#]
         answered_by = "mod",
         owned_answer_batch = true,
         neoforge = "RegisterDimensionTransitionScreenEvent",
-        version = 2
+        version = 3
     )]
     fn register_dimension_transition_screen(
         screens: &mut Vec<mod_api::Answered<mod_api::DimensionTransitionScreen>>,
