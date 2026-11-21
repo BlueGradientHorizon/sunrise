@@ -9,12 +9,18 @@ from unittest.mock import patch
 
 TEMPLATES = pathlib.Path(__file__).resolve().parents[1] / "crates/cargo-sunrise-mod/template/native"
 sys.path.insert(0, str(TEMPLATES))
-from sunrise_release import Batch, LINUX, json_write, sha, sign
+from sunrise_release import Batch, LINUX, REPO, json_write, sha, sign
 from sunrise_release_github import missing_assets
 sys.path.pop(0)
 
 
 class Resume(unittest.TestCase):
+    def test_repo_names_accept_registry_components_but_not_dot_paths(self):
+        for repo in ("test/_example", "test/-example", "test/.example", f"{'a' * 39}/{'b' * 100}"):
+            self.assertIsNotNone(REPO.fullmatch(repo), repo)
+        for repo in ("./project", "../project", "test/.", "test/..", f"{'a' * 40}/b", f"a/{'b' * 101}"):
+            self.assertIsNone(REPO.fullmatch(repo), repo)
+
     def test_only_missing_assets_are_uploaded_after_every_overlap_matches(self):
         rows = [
             {"name": "source.smod", "state": "uploaded", "digest": "exact source bytes"},

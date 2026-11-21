@@ -18,7 +18,8 @@ KEY = "SUNRISE_MOD_SIGNING_KEY"
 PASSPHRASE = "SUNRISE_MOD_SIGNING_PASSPHRASE"
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 PLAIN = re.compile(r"[a-zA-Z0-9_][a-zA-Z0-9_+.-]{0,127}\Z")
-REPO = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,38}/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}\Z")
+# Match the registry's valid_repo, including its exclusion of dot-only path components of length one or two.
+REPO = re.compile(r"(?!\.{1,2}/)[a-zA-Z0-9_.-]{1,39}/(?!\.{1,2}\Z)[a-zA-Z0-9_.-]{1,100}\Z")
 
 
 def require(condition, message):
