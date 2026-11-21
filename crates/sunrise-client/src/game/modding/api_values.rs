@@ -2230,6 +2230,12 @@ mod stack_limit_tests {
 
     #[test]
     fn damage_and_max_damage_follow_vanilla_int_ranges() {
+        use sunrise_core::vanilla_bytes::Writer;
+        use sunrise_protocol::{
+            buf::{Codec, Reader},
+            item::{Component, Slot, component},
+        };
+
         let items = catalog();
         let key = |id| mod_api::__private::item_key(id).unwrap();
         let plain = ApiStack::of(key("minecraft:stick"));
@@ -2274,10 +2280,19 @@ mod stack_limit_tests {
 
         let mut short_max = inherited.clone();
         short_max
-            .set_components([(JavaString::from("minecraft:max_damage"), Tag::Short(10))].into())
+            .set_components([(JavaString::from("minecraft:max_damage"), Tag::Short(20))].into())
             .unwrap();
         let engine = short_max.try_into_engine(&items).unwrap();
-        assert_eq!(engine.max_damage(Some(definition)), 10);
+        assert_eq!(engine.max_damage(Some(definition)), 20);
+        let packet_stack = crate::lan::guest::stack_to_network(|_| 1, |_, _| None, &Some(engine));
+        let mut writer = Writer::new();
+        Slot::write(&packet_stack, &mut writer);
+        let mut reader = Reader::new(&writer.data);
+        let decoded = Slot::read(&mut reader).unwrap().unwrap();
+        assert_eq!(
+            decoded.component(component::MAX_DAMAGE),
+            Some(&Component::Int(20))
+        );
 
         for invalid in [Tag::Int(0), Tag::Int(-1), Tag::Short(0), Tag::Short(-1)] {
             let mut bad_max = inherited.clone();
@@ -2349,6 +2364,14 @@ mod stack_limit_tests {
                 "maximum {maximum}"
             );
         }
+        let mut short_max = ApiStack::of(key);
+        short_max
+            .set_components([("minecraft:max_stack_size".into(), Tag::Short(1))].into())
+            .unwrap();
+        assert_eq!(
+            short_max.try_into_engine(&items),
+            Err(StackWriteError::InvalidMaximum)
+        );
         for maximum in [1, 99] {
             let mut stack = ApiStack::new(key, maximum).unwrap();
             stack

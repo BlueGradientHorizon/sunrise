@@ -1,6 +1,6 @@
 //! Admit only the staged component patch before a resolved slot is journaled or changed.
 use super::content_declarations::validate_decoded_components;
-use super::stack_count::{stack_item_definition, validate_stack_limits};
+use super::stack_count::{admit_stack_limits, stack_item_definition};
 use super::{
     ApiStack, EngineStack, Items, decode_stack_record, projected_stack, stack_read_metadata,
 };
@@ -129,13 +129,13 @@ pub(in crate::game) fn prepare_component_edit(
             .set_components(patch)
             .map_err(|reason| StackWriteError::InvalidComponents { reason })?;
     }
-    let (fields, _) = decode_stack_record(&record, id.clone());
+    let (mut fields, _) = decode_stack_record(&record, id.clone());
     validate_decoded_components(|name| match edits.component(name) {
         Some(ComponentEdit::Value(_)) => Some(&fields),
         Some(ComponentEdit::Remove | ComponentEdit::Inherit) => None,
         None => resident.carries_component(None, name).then_some(resident),
     })?;
-    validate_stack_limits(&fields, definition, record.damage_component())?;
+    admit_stack_limits(&mut fields, definition, record.damage_component())?;
 
     let gear = GearEdits {
         enchantments: edits.component(ENCHANTMENTS).is_some(),
@@ -149,7 +149,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolved_edit_accepts_positive_short_max_damage() {
+    fn resolved_edit_canonicalizes_positive_short_max_damage() {
         let items = super::super::stack_limit_tests::catalog();
         let definition = items.items.get("minecraft:iron_sword").unwrap();
         let mut resident = EngineStack::new("minecraft:iron_sword", 1);
@@ -157,14 +157,20 @@ mod tests {
             prepare_component_edit(EquipmentRead::resident(&resident), &items, &mut |editor| {
                 editor
                     .apply_components(
-                        &[(JavaString::from("minecraft:max_damage"), Tag::Short(10))].into(),
+                        &[(JavaString::from("minecraft:max_damage"), Tag::Short(20))].into(),
                     )
                     .unwrap();
             })
             .unwrap()
             .expect("max_damage edit should be staged");
         prepared.apply(&mut resident);
-        assert_eq!(resident.max_damage(Some(definition)), 10);
+        assert_eq!(resident.max_damage(Some(definition)), 20);
+        assert_eq!(
+            resident
+                .data()
+                .and_then(|data| data.other("minecraft:max_damage")),
+            Some(&Tag::Int(20)),
+        );
 
         let zero =
             prepare_component_edit(EquipmentRead::resident(&resident), &items, &mut |editor| {

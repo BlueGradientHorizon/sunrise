@@ -1691,10 +1691,11 @@ pub(super) fn network_stack(
 ) -> Stack {
     let enchantment_id = |name: &str| synced_id("minecraft:enchantment", name);
     let mut stack = Stack::new(item_id(&s.item), s.count as i32);
-    if s.damage > 0 {
+    // Send the stack's own damage, including an explicit zero, not the prototype.
+    if s.carries_component(None, "minecraft:damage") {
         stack.added.push((
             sunrise_protocol::item::component::DAMAGE,
-            sunrise_protocol::item::Component::Int(s.damage as i32),
+            sunrise_protocol::item::Component::Int(s.effective_damage(None)),
         ));
     }
     let enchantments: Vec<(i32, i32)> = s

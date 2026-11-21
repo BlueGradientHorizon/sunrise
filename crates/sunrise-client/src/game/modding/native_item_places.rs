@@ -1837,7 +1837,11 @@ pub(super) mod tests {
     fn player_cursor_edit_syncs_set_cursor_item_once() {
         use mod_api::{MenuReplace, Tag};
         use sunrise_client::lan::Out;
-        use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
+        use sunrise_protocol::{
+            buf::Reader,
+            item::{Component, component},
+            packets::play::Clientbound as C,
+        };
 
         fn cursor_packets(rx: &mpsc::Receiver<Out>) -> Vec<Option<sunrise_protocol::item::Stack>> {
             rx.try_iter()
@@ -1862,7 +1866,7 @@ pub(super) mod tests {
             let (tx, rx) = mpsc::channel();
             let mut player_guest = guest(1);
             player_guest.sender = PlayerSender::new(tx, Arc::default());
-            player_guest.carried = Some(ItemStack::new("minecraft:paper", 4));
+            player_guest.carried = Some(ItemStack::new("minecraft:stick", 1));
             game.lan.as_mut().unwrap().hub.guests.push(player_guest);
 
             // Sync initial inventory + cursor; subsequent tick sync sends no SetCursorItem.
@@ -1874,20 +1878,40 @@ pub(super) mod tests {
             // Parked cursor edit syncs once via sync_player_state (sync_guest_after_tick).
             let player = game.player(123).unwrap();
             let inv_menu = game.player_container_menu(player).unwrap();
-            let parked_name = Tag::String("synced parked cursor".into());
-            let mut parked_expected = ItemStack::new("minecraft:paper", 4);
-            parked_expected.data_mut().custom_name = Some(parked_name.clone());
             game.transaction(|host, tx| {
                 inv_menu.cursor().edit(host, tx, |stack| {
+                    assert_eq!(stack.damage_component(), None);
                     stack
-                        .apply_components(&[("minecraft:custom_name".into(), parked_name)].into())
+                        .apply_components(
+                            &[
+                                ("minecraft:max_stack_size".into(), Tag::Int(1)),
+                                ("minecraft:max_damage".into(), Tag::Short(20)),
+                                ("minecraft:damage".into(), Tag::Int(0)),
+                            ]
+                            .into(),
+                        )
                         .unwrap();
                 })
             })
             .unwrap();
-            let parked_net = game.lan.as_mut().unwrap().hub.stack(&Some(parked_expected));
             game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
-            assert_eq!(cursor_packets(&rx), vec![parked_net]);
+            let updates = cursor_packets(&rx);
+            let [Some(parked)] = updates.as_slice() else {
+                panic!("expected one carried stack update, got {updates:?}");
+            };
+            assert_eq!(parked.count, 1);
+            assert_eq!(
+                parked.component(component::MAX_STACK_SIZE),
+                Some(&Component::Int(1))
+            );
+            assert_eq!(
+                parked.component(component::MAX_DAMAGE),
+                Some(&Component::Int(20))
+            );
+            assert_eq!(
+                parked.component(component::DAMAGE),
+                Some(&Component::Int(0))
+            );
             game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
 

@@ -96,7 +96,37 @@ fn a_maximum_override_does_not_invent_a_damage_component() {
 }
 
 #[test]
-fn malformed_damage_refuses_while_removal_and_overwrite_win() {
+fn raw_damage_uses_the_vanilla_numeric_codec_on_owned_and_staged_writes() {
+    let patch: Compound = [("minecraft:damage".into(), Tag::Float(2.75_f32.to_bits()))].into();
+    let nbt = [
+        ("id".into(), Tag::String("minecraft:iron_sword".into())),
+        ("components".into(), Tag::Compound(patch.clone())),
+    ]
+    .into();
+    let mut stack = ItemStack::from_nbt(&Definitions, &nbt).unwrap();
+    assert_eq!(stack.damage_component(), Some(2));
+
+    stack.set_damage(5);
+    stack.set_components(patch.clone()).unwrap();
+    assert_eq!(stack.damage_component(), Some(2));
+    assert!(stack.components().is_none());
+
+    stack.set_damage(5);
+    stack.apply_components(&patch).unwrap();
+    assert_eq!(stack.damage_component(), Some(2));
+
+    stack.set_damage(5);
+    let view = ItemStackView::from_stack(&stack);
+    let edits = edit_item_components(view, &|_| None, |editor| {
+        editor.apply_components(&patch).unwrap();
+        assert_eq!(editor.damage_component(), Some(2));
+    });
+    edits.apply_to(&mut stack);
+    assert_eq!(stack.damage_component(), Some(2));
+}
+
+#[test]
+fn malformed_damage_refuses_while_removal_wins() {
     struct RemoveDamage;
     impl Component for RemoveDamage {
         type Value = ();
@@ -112,7 +142,12 @@ fn malformed_damage_refuses_while_removal_and_overwrite_win() {
     }
 
     let mut stack = ItemStack::of(ItemKey(0));
-    for value in [Tag::Int(-1), Tag::String("bad".into()), Tag::Long(i64::MAX)] {
+    for value in [
+        Tag::Int(-1),
+        Tag::String("bad".into()),
+        Tag::Long(i64::MAX),
+        Tag::Double((-1.25_f64).to_bits()),
+    ] {
         let before = stack.clone();
         assert_eq!(
             stack.set_components([(JavaString::from("minecraft:damage"), value)].into()),
@@ -141,15 +176,8 @@ fn malformed_damage_refuses_while_removal_and_overwrite_win() {
     );
     assert_eq!(stack, before);
 
-    // Replacing a patch with a numeric damage value overwrites prior damage.
-    stack.set_damage(5);
-    stack
-        .set_components([(JavaString::from("minecraft:damage"), Tag::Int(2))].into())
-        .unwrap();
-    assert_eq!(stack.damage_component(), Some(2));
-    assert!(stack.components().is_none());
-
     // Explicit `!minecraft:damage` clears prior damage and wins over `minecraft:damage`.
+    stack.set_damage(5);
     stack
         .set_components(
             [

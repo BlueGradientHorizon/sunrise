@@ -1086,6 +1086,53 @@ fn container_fill_listener_contract() {
     });
 }
 
+fn vehicle_slot_read_fills_without_opener_while_acting() {
+    with_game(|game| {
+        game.options.dedicated = Some(Vec::new());
+        let id = cart(game);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "fill",
+                Box::new(FillListener {
+                    mode: 0,
+                    seen: seen.clone(),
+                }),
+            )]
+            .into(),
+            || {
+                game.as_guest(12, |game| {
+                    assert!(game.native_acting_player().is_some());
+                    let slot = mod_api::ItemPlace::EntitySlot {
+                        entity: id,
+                        slot: 0,
+                    };
+                    let _ = slot.with_stack(game, |stack| stack.count());
+                    let _ = slot.with_stack(game, |stack| stack.count());
+                })
+                .unwrap();
+            },
+        );
+        assert!(
+            game.carts
+                .iter()
+                .find(|cart| cart.id == id)
+                .unwrap()
+                .loot
+                .is_none()
+        );
+        assert_eq!(
+            seen.lock().unwrap().as_slice(),
+            &[(
+                TABLE.to_owned(),
+                None,
+                [8.5, 64.0, 8.5],
+                vec![("minecraft:diamond".to_owned(), 1)]
+            )],
+        );
+    });
+}
+
 struct EmptyFillMod;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for EmptyFillMod {}
@@ -1136,7 +1183,7 @@ fn saved_carts_keep_a_loot_table_only_when_they_hold_a_container() {
     });
 }
 
-struct DurableStickListener;
+struct DurableStickListener(u32);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for DurableStickListener {
     fn container_loot_filled(
@@ -1155,37 +1202,40 @@ impl mod_api::Hooks for DurableStickListener {
                 .into(),
             )
             .unwrap();
-        stick.set_damage(0);
+        stick.set_damage(self.0);
         event.drops.clear();
         event.drops.push(stick);
     }
 }
 
-fn container_fill_preserves_explicit_zero_damage_on_custom_durable_item() {
+fn container_fill_preserves_valid_damage_overrides() {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
-        mod_platform::testing::with_mods(
-            vec![mod_api::ModEntry::new(
-                "durable_stick",
-                Box::new(DurableStickListener),
-            )]
-            .into(),
-            || {
-                place(game, POS, TABLE, 37);
-                open(game, POS, 0.0);
-                let stacks: Vec<_> = game.world.block_entities[&POS]
-                    .slots()
-                    .iter()
-                    .flatten()
-                    .collect();
-                assert_eq!(stacks.len(), 1);
-                let stick = stacks[0];
-                assert_eq!(&*stick.item, "minecraft:stick");
-                assert_eq!(stick.count, 1);
-                assert_eq!(stick.damage, 0);
-                assert_eq!(game.items().stack_max_damage(stick), 10);
-            },
-        );
+        for damage in [0, 11] {
+            mod_platform::testing::with_mods(
+                vec![mod_api::ModEntry::new(
+                    "durable_stick",
+                    Box::new(DurableStickListener(damage)),
+                )]
+                .into(),
+                || {
+                    place(game, POS, TABLE, 37);
+                    open(game, POS, 0.0);
+                    let stacks: Vec<_> = game.world.block_entities[&POS]
+                        .slots()
+                        .iter()
+                        .flatten()
+                        .collect();
+                    let [stick] = stacks.as_slice() else {
+                        panic!("expected one replacement drop, got {stacks:?}");
+                    };
+                    assert_eq!(&*stick.item, "minecraft:stick");
+                    assert_eq!(stick.count, 1);
+                    assert_eq!(stick.damage, damage);
+                    assert_eq!(game.items().stack_max_damage(stick), 10);
+                },
+            );
+        }
     });
 }
 
@@ -1327,8 +1377,12 @@ fn seeds_and_fill_listeners() {
             container_fill_listener_contract as fn(),
         ),
         (
-            "container_fill_preserves_explicit_zero_damage_on_custom_durable_item",
-            container_fill_preserves_explicit_zero_damage_on_custom_durable_item as fn(),
+            "vehicle_slot_read_fills_without_opener_while_acting",
+            vehicle_slot_read_fills_without_opener_while_acting as fn(),
+        ),
+        (
+            "container_fill_preserves_valid_damage_overrides",
+            container_fill_preserves_valid_damage_overrides as fn(),
         ),
     ]);
 }

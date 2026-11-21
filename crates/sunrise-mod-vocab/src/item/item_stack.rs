@@ -240,7 +240,8 @@ impl<'a> ItemComponentEditor<'a> {
         }
     }
 
-    /// Stage a component value. An invalid damage value leaves earlier edits intact.
+    /// Stage a component value. Raw `minecraft:damage` uses vanilla's numeric-to-int
+    /// codec; a negative result or nonnumeric value leaves earlier edits intact.
     pub fn set<C: Component>(&mut self, component: &C, value: C::Value) -> Result<(), StackError> {
         let id = component.id();
         let value = component.encode(value);
@@ -287,7 +288,8 @@ impl<'a> ItemComponentEditor<'a> {
 
     /// Merge values and explicit `!id` removals into the staged edits, leaving other
     /// components alone. A removal wins over a value in the same patch, including for
-    /// damage. Malformed damage refuses the entire patch without disturbing earlier edits.
+    /// damage. Raw damage uses the same codec as [Self::set]; invalid damage refuses
+    /// the entire patch without disturbing earlier edits.
     pub fn apply_components(&mut self, patch: &Compound) -> Result<(), StackError> {
         visit_component_patch(patch, |edit| match edit {
             PatchEdit::Component(id, edit) => {
@@ -701,6 +703,8 @@ impl ItemStack {
         self.components()?.patch.get(&JavaString::from(id))
     }
     /// Replace a component value. Only stacks with a patch allocate component storage.
+    /// Raw `minecraft:damage` uses vanilla's numeric-to-int codec and rejects negative
+    /// results and nonnumeric values.
     pub fn set<C: Component>(&mut self, component: &C, value: C::Value) -> Result<(), StackError> {
         self.set_component_value(component.id(), component.encode(value))
     }
@@ -778,7 +782,7 @@ impl ItemStack {
     /// `ItemStack.applyComponents`: merge a patch without discarding other overrides.
     /// Incoming values replace removals and incoming removals replace values. If both
     /// are supplied for one component, removal wins, including for damage.
-    /// Damage is normalized before any write; a malformed patch leaves this stack unchanged.
+    /// Damage uses the same codec as [Self::set]; invalid damage leaves the stack unchanged.
     pub fn apply_components(&mut self, patch: &Compound) -> Result<(), StackError> {
         visit_component_patch(patch, |edit| match edit {
             PatchEdit::Component(id, edit) => self.apply_component_edit(id, edit.map(Tag::clone)),
@@ -818,9 +822,9 @@ impl ItemStack {
         }
     }
     /// Replace the component patch at an NBT conversion boundary.
-    /// Damage is normalized into the scalar field, and `!minecraft:damage` clears any
-    /// prior or incoming damage value. Malformed damage refuses the entire replacement
-    /// and leaves the stack unchanged.
+    /// A numeric damage value uses the same codec as [Self::set] and replaces prior damage.
+    /// `!minecraft:damage` clears any prior or incoming damage value. Invalid damage
+    /// refuses the entire replacement and leaves the stack unchanged.
     pub fn set_components(&mut self, mut patch: Compound) -> Result<(), StackError> {
         let damage = patch_damage(&patch)?;
         let removed = patch.contains_key(&JavaString::from("!minecraft:damage"));
@@ -834,8 +838,8 @@ impl ItemStack {
         Ok(())
     }
     /// Decode the item NBT escape using this host's load-resolved item ids.
-    /// Unknown ids, zero counts and malformed damage return None.
-    /// Effective maxima remain the game's write-boundary responsibility.
+    /// Unknown ids, zero counts and invalid damage return None. Raw damage uses the same
+    /// codec as [Self::set]. Effective maxima remain the game's write-boundary responsibility.
     pub fn from_nbt(host: &dyn crate::Host, value: &Compound) -> Option<Self> {
         let Tag::String(id) = value.get(&JavaString::from("id"))? else {
             return None;
@@ -844,7 +848,14 @@ impl ItemStack {
         let item = host.item_key(&id)?;
         let count = match value.get(&JavaString::from("count")) {
             None => 1,
-            Some(value) => damage_value(value).ok()?,
+            Some(value) => u32::try_from(match value {
+                Tag::Byte(value) => i64::from(*value),
+                Tag::Short(value) => i64::from(*value),
+                Tag::Int(value) => i64::from(*value),
+                Tag::Long(value) => *value,
+                _ => return None,
+            })
+            .ok()?,
         };
         let mut stack = Self::new(item, count)?;
         match value.get(&JavaString::from("components")) {
@@ -881,14 +892,9 @@ pub(crate) fn unsigned_tag(value: u32) -> Tag {
 }
 
 fn damage_value(value: &Tag) -> Result<u32, StackError> {
-    let value = match value {
-        Tag::Byte(value) => i64::from(*value),
-        Tag::Short(value) => i64::from(*value),
-        Tag::Int(value) => i64::from(*value),
-        Tag::Long(value) => *value,
-        _ => return Err(StackError::InvalidDamage),
-    };
-    u32::try_from(value).map_err(|_| StackError::InvalidDamage)
+    sunrise_core::nbt::numeric_int(value)
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or(StackError::InvalidDamage)
 }
 
 enum PatchEdit<'a> {

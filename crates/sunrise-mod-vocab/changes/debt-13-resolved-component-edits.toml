@@ -4,6 +4,7 @@ ids = [
     "type:ItemPlaceEditError",
     "type:ItemPlaceEditError.ItemChanged",
     "type:ItemPlaceEditError.CountChanged",
+    "type:ItemPlaceEditError.UnsupportedPlace",
     "type:item::item_stack::ItemComponentEditor",
     "handle:item::item_stack::ItemComponentEditor::item",
     "handle:item::item_stack::ItemComponentEditor::count",

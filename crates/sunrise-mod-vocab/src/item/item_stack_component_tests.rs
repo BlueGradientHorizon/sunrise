@@ -150,9 +150,9 @@ fn applying_components_normalizes_damage_and_refuses_bad_patches_atomically() {
             .contains_key(&"!minecraft:damage".into())
     );
     stack
-        .apply_components(&[("minecraft:damage".into(), Tag::Long(u32::MAX.into()))].into())
+        .apply_components(&[("minecraft:damage".into(), Tag::Long((1_i64 << 32) + 7))].into())
         .unwrap();
-    assert_eq!(stack.damage_component(), Some(u32::MAX));
+    assert_eq!(stack.damage_component(), Some(7));
     assert!(
         !stack
             .components()

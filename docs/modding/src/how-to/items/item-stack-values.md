@@ -32,9 +32,11 @@ damage fits `0..=i32::MAX` when accepting a write. Adding only a maximum-damage 
 an item does not invent a damage component: explicitly adding `Some(0)` is what makes that
 component present.
 
-All numeric damage lives in the optional field. Raw damage entries normalize out of the
-component patch; `!minecraft:damage` clears any prior or incoming damage value, and malformed
-damage entries refuse the entire replacement. Generic component setters and raw
+All numeric damage lives in the optional field. Raw `minecraft:damage` entries use vanilla's
+numeric-to-int codec: for example, a Float containing `2.75` becomes damage `2`. A
+nonnumeric tag or a negative decoded result refuses the entire replacement. Numeric
+values replace old damage in the scalar field, not in the patch. `!minecraft:damage`
+clears any prior or incoming damage value. Generic component setters and raw
 `set_components` therefore return `Result`. A refusal leaves the stack unchanged. Typed damage
 setters do not need an error path.
 
@@ -75,10 +77,11 @@ accepting a resident write. An effective `max_stack_size` must be in `1..=99`, a
 `max_damage` must be positive (`1..=i32::MAX`), `damage` must be a non-negative integer
 (`0..=i32::MAX`, not capped by `max_damage`), and the presence of `max_damage` forbids a
 stack limit above one, even when the current count is one.
-Removing `max_stack_size` uses the absent limit of one. Invalid values produce typed errors,
-not clamped values. A transfer request is different: `ItemResource` plus a separate amount can request or
-return more than one resident stack's capacity. The resident writes it produces must
-pass validation.
+A raw `max_damage` override uses the same numeric-to-int conversion and is stored and synced
+as an integer. A `max_stack_size` override must be an NBT Int; removing it uses the absent limit
+of one. Invalid values produce typed errors, not clamped values. A transfer request is
+different: `ItemResource` plus a separate amount can request or return more than one
+resident stack's capacity. The resident writes it produces must pass validation.
 
 Game inventory, menus, trades and models keep their engine-owned representations. Where a
 native hook or host method takes an owned API snapshot, the game converts only after a listener

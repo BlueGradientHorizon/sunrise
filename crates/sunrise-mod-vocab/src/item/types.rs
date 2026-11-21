@@ -124,7 +124,8 @@ pub struct ContainerLootFilled<'a> {
     pub block: Option<[i32; 3]>,
     /// The container entity id, for a vehicle target.
     pub entity: Option<u32>,
-    /// The UUID of the player whose open starts the fill; None otherwise.
+    /// The UUID of the player whose open starts the fill. None for other accesses,
+    /// including vehicle slot reads during a player action.
     pub opener: Option<u128>,
 }
 
