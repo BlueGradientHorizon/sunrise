@@ -738,6 +738,12 @@ impl Game<'_> {
         let mut laps = sunrise_client::spans::laps();
         let eye = self.eye_position();
         let cam_eye = self.camera_eye_position().or(eye);
+        // Use aligned Camera.position() once initialized (matching vanilla f32 eye-height easing).
+        let cam_pos = if self.view.initialized {
+            Some(self.view.position)
+        } else {
+            cam_eye
+        };
         if let Some(e) = eye {
             // A client of a server eases the vignette in `tick_hud`, frozen level or not.
             if self.remote.is_none()
@@ -758,14 +764,14 @@ impl Game<'_> {
             // LocalPlayer water vision stays on local player eye; rain fog follows camera.
             let in_water = self.camera_fog_type(e) == FogType::Water;
             self.fog.tick(in_water, self.own_player_is_spectator());
-            if let Some(ce) = cam_eye {
+            if let Some(ce) = cam_pos {
                 let (rain, sky_light, rains) = self.rain_fog_inputs(ce);
                 update_rain_fog(&mut self.fog, rain, sky_light, rains, 1.0);
             }
         }
         laps.lap("tp_fx");
         self.particles.particle_level = self.settings.particles;
-        if let Some(ce) = cam_eye {
+        if let Some(ce) = cam_pos {
             self.particles.camera = ce;
         }
         let (rain, _) = self.weather_levels(1.0);
@@ -858,7 +864,7 @@ impl Game<'_> {
                 // The Sunrise Weather option off means no rain visuals or sounds at all.
                 if rain > 0.0
                     && self.settings.sunrise.weather
-                    && let Some(ce) = cam_eye
+                    && let Some(ce) = cam_pos
                 {
                     let weather_block = ce.map(|v| v.floor() as i32);
                     // ClientLevel.tickWeatherEffects: rain splashes around the camera, and the rain sound.

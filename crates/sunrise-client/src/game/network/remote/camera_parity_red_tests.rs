@@ -89,6 +89,7 @@ fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64;
     remote.logged_in = true;
     remote.entity_id = player_id;
     remote.view_distance = 8;
+    remote.level_load.finish();
     game.player = Some(
         PlayerMotion::new(
             game.motion,
@@ -884,6 +885,11 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
         sync_interaction_size(game, 31, 0.1, 1.9059);
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 31 }))
             .unwrap();
+        game.view = Default::default();
+        for _ in 0..40 {
+            game.tick_fov();
+        }
+        game.camera_view(1.0);
 
         // 1. Streaming center follows camera entity.
         game.update_world();
@@ -981,6 +987,7 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
             0.0,
             0.0,
         );
+        game.refresh_client_pick(1.0);
         assert_eq!(
             game.spectator_crosshair(),
             want_cart_crosshair,
@@ -994,6 +1001,7 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
             0.0,
             0.0,
         );
+        game.refresh_client_pick(1.0);
         assert_eq!(
             game.spectator_crosshair(),
             want_occluded_crosshair,
@@ -1028,6 +1036,7 @@ fn frozen_camera_partial_tick_matches_26_3_witness() {
 
         game.clock.reset();
         game.clock.set_frozen(true);
+        game.clock.tick_world_runs();
         game.clock.end_frame(false);
         // 3ms / 8ms = 0.375 exactly (0x3ec00000), matching real_partial_bits in witness.
         let ran = game.clock.advance(std::time::Duration::from_millis(3), 8.0);
