@@ -13,7 +13,8 @@ Use spawn hooks to accept or reject a spawn, edit a mob before finalization, or 
 
 Use `Registrar::register_spawn_placement` in `Hooks::register` (NeoForge's
 `RegisterSpawnPlacementsEvent.register`). Request the entity's fully qualified registry key
-with `r.entity_type_key`. It can name your own type, a vanilla type, or a type from another mod.
+with `r.entity_type_key`. Entries are keyed by registered entity type, including the Ender Dragon
+and non-mob types such as arrows. Registering a predicate does not create a new spawn path.
 This example registers a ghoul that spawns on blocks in a ground tag, in biomes in a biome tag,
 and in the dark (except at a trial spawner):
 
@@ -32,7 +33,7 @@ fn predicate(
 ) -> bool {
     ctx.level().block_in_tag(pos.offset(0, -1, 0), "mymod:ghoul_ground")
         && ctx.level().biome_in_tag(pos, "mymod:haunted")
-        && (reason == SpawnReason::TrialSpawner || ctx.is_dark_enough_to_spawn())
+        && (reason == SpawnReason::TrialSpawner || ctx.is_dark_enough_to_spawn(pos))
 }
 
 // In Hooks::register:
@@ -77,8 +78,6 @@ An unavailable key both returns `SpawnPlacementError::InvalidEntityType` and rec
 refusal, so ignoring the returned error does not hide it. A type missing at resource load or
 invalid placement/heightmap options refuse resource loading with the mod and type named. If mods
 register predicates, the prepared resources must include vanilla's spawn placement data.
-Registration is native and in-process: `SpawnPlacementType` and `SpawnPlacementError` no longer
-have Wire encodings.
 
 ## Saved display and utility entities
 

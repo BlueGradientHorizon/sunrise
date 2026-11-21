@@ -3,14 +3,15 @@ use super::{
 };
 use crate::game::{creatures::SpawnSite, native_entity_refs::tests::with_game};
 use mod_api::{
-    BlockPos, EntityTypeKey, Hooks, Host, LegacyRandomSource, MobSpawnPlacementCheckEvent,
-    ModEntry, Registrar, RegistrationContext, SpawnCheck, SpawnPlacementContext,
-    SpawnPlacementOperation, SpawnPlacementPredicate, SpawnReason,
+    BlockPos, EntityTypeKey, Heightmap, Hooks, Host, LegacyRandomSource,
+    MobSpawnPlacementCheckEvent, ModEntry, Registrar, RegistrationContext, SpawnCheck,
+    SpawnPlacementContext, SpawnPlacementOperation, SpawnPlacementPredicate, SpawnPlacementType,
+    SpawnReason,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::{
     chunk::{Chunk, Light},
-    mobs::{spawn_rules::check_spawn_rules, spawn_selection::NaturalLevel},
+    mobs::{data::Placement, spawn_rules::check_spawn_rules, spawn_selection::NaturalLevel},
     motion::PlayerMotion,
 };
 
@@ -82,6 +83,57 @@ impl Hooks for NextListener {
             value: event.random.next_int(),
         });
     }
+}
+
+#[test]
+#[ignore = "daily"]
+fn placement_registrations_load_for_entity_types_outside_the_mob_table() {
+    struct RegistryPlacements;
+
+    #[mod_api::__subscriptions]
+    impl Hooks for RegistryPlacements {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let predicate: Arc<dyn SpawnPlacementPredicate> = Arc::new(
+                |_: EntityTypeKey,
+                 _: &mut dyn SpawnPlacementContext,
+                 _: SpawnReason,
+                 _: BlockPos| true,
+            );
+            for (id, heightmap) in [
+                ("minecraft:ender_dragon", None),
+                ("minecraft:arrow", Some(Heightmap::OceanFloor)),
+            ] {
+                let kind = r.entity_type_key(id);
+                r.register_spawn_placement(
+                    kind,
+                    Some(SpawnPlacementType::InWater),
+                    heightmap,
+                    predicate.clone(),
+                    SpawnPlacementOperation::Replace,
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new(
+            "registry-placements",
+            Box::new(RegistryPlacements),
+        )]
+        .into(),
+        || {
+            with_game(|game| {
+                let data = game.res.mob_data();
+                assert_eq!(data.placement("minecraft:ender_dragon"), Placement::InWater);
+                assert_eq!(data.placement("minecraft:arrow"), Placement::InWater);
+                assert_eq!(
+                    data.heightmap("minecraft:arrow"),
+                    sunrise_client::mobs::spawn_selection::Heightmap::OceanFloor
+                );
+            });
+        },
+    );
 }
 
 #[test]

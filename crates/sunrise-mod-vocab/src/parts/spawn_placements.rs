@@ -38,7 +38,9 @@ pub fn spawn_placement_declarations() -> &'static [SpawnPlacementDeclaration] {
 pub trait SpawnPlacementsRegistrar {
     /// Register a native predicate in `Hooks::register` (NeoForge's
     /// `RegisterSpawnPlacementsEvent.register`). Request `kind` from `r.entity_type_key`
-    /// with the full registry id, such as `mymod:ghoul` or `minecraft:zombie`.
+    /// with the full registry id. Any registered entity type is eligible, including
+    /// `minecraft:ender_dragon` (which has a vanilla entry) and non-mob types such as
+    /// `minecraft:arrow` (which do not). Registration does not add a spawn path for a type.
     ///
     /// If the type has no vanilla entry, its first registration needs both `placement`
     /// (where it may stand) and `heightmap` (how chunk generation finds the surface).

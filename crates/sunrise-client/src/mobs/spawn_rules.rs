@@ -288,7 +288,6 @@ pub fn check_spawn_rules<L: SpawnLevel>(
             let mut ctx = SpawnContext {
                 level: SpawnLevelView(l),
                 random: SpawnRandom(random),
-                pos,
             };
             match &row.predicates {
                 data::SpawnPredicates::Replacement(predicate) => {
@@ -340,7 +339,6 @@ impl<L: SpawnLevel> SpawnPlacementLevel for SpawnLevelView<'_, L> {
 struct SpawnContext<'a, L, R> {
     level: SpawnLevelView<'a, L>,
     random: SpawnRandom<'a, R>,
-    pos: BlockPos,
 }
 
 impl<L: SpawnLevel, R: RandomSource> SpawnPlacementContext for SpawnContext<'_, L, R> {
@@ -352,14 +350,8 @@ impl<L: SpawnLevel, R: RandomSource> SpawnPlacementContext for SpawnContext<'_, 
         &mut self.random
     }
 
-    fn is_dark_enough_to_spawn(&mut self) -> bool {
-        is_dark_enough(
-            self.level.0,
-            self.random.0,
-            self.pos.x,
-            self.pos.y,
-            self.pos.z,
-        )
+    fn is_dark_enough_to_spawn(&mut self, pos: BlockPos) -> bool {
+        is_dark_enough(self.level.0, self.random.0, pos.x, pos.y, pos.z)
     }
 }
 
@@ -943,7 +935,7 @@ mod mod_spawn_rule_tests {
         facts: BlockFacts,
         data: data::MobData,
         sky: i32,
-        block: i32,
+        bright_block: Option<BlockPos>,
         peaceful: bool,
         /// The biome tags the spot's biome is in.
         biome_tags: Vec<&'static str>,
@@ -979,7 +971,7 @@ mod mod_spawn_rule_tests {
                 facts,
                 data,
                 sky: 15,
-                block: 0,
+                bright_block: None,
                 peaceful: false,
                 biome_tags: vec!["test:haunted"],
                 heard: RefCell::default(),
@@ -1037,8 +1029,12 @@ mod mod_spawn_rule_tests {
         fn sky_light(&self, _: i32, _: i32, _: i32) -> i32 {
             self.sky
         }
-        fn block_light(&self, _: i32, _: i32, _: i32) -> i32 {
-            self.block
+        fn block_light(&self, x: i32, y: i32, z: i32) -> i32 {
+            if self.bright_block == Some(BlockPos::new(x, y, z)) {
+                15
+            } else {
+                0
+            }
         }
         fn sky_darken(&self) -> i32 {
             0
@@ -1167,19 +1163,23 @@ mod mod_spawn_rule_tests {
     }
 
     #[test]
-    fn a_dark_rule_needs_the_dark_a_monster_needs() {
+    fn a_dark_rule_checks_light_at_the_position_the_predicate_requests() {
         let mut level = Flat::new(&[ghoul(
-            |_: EntityTypeKey, ctx: &mut dyn SpawnPlacementContext, reason: Reason, _: BlockPos| {
-                reason == Reason::TrialSpawner || ctx.is_dark_enough_to_spawn()
+            |_: EntityTypeKey,
+             ctx: &mut dyn SpawnPlacementContext,
+             reason: Reason,
+             pos: BlockPos| {
+                reason == Reason::TrialSpawner || ctx.is_dark_enough_to_spawn(pos.offset(1, 0, 0))
             },
         )]);
         let on_grass = [0, 1, 0];
         level.sky = 0;
+        level.bright_block = Some(BlockPos::new(0, 1, 0));
         assert!(level.check("ruby:ghoul", Reason::Natural, on_grass));
-        level.block = 15;
+        level.bright_block = Some(BlockPos::new(1, 1, 0));
         assert!(!level.check("ruby:ghoul", Reason::Natural, on_grass));
         level.sky = 15;
-        level.block = 0;
+        level.bright_block = None;
         assert!(!level.check("ruby:ghoul", Reason::Natural, on_grass));
     }
 
@@ -1191,14 +1191,13 @@ mod mod_spawn_rule_tests {
         let mut context = SpawnContext {
             level: SpawnLevelView(&level),
             random: SpawnRandom(&mut rng),
-            pos: BlockPos::new(0, 1, 0),
         };
 
         // Java's Random(7): the refused bound draws nothing, and the Overworld's
         // darkness check then draws nextInt(32) and nextInt(8).
         assert_eq!(context.random().next_int_bound(0), 0);
         assert_eq!(context.random().next_int(), JAVA_DRAWS[0]);
-        assert!(context.is_dark_enough_to_spawn());
+        assert!(context.is_dark_enough_to_spawn(BlockPos::new(0, 1, 0)));
         assert_eq!(rng.next_int(), JAVA_DRAWS[3]);
     }
 
@@ -1401,6 +1400,20 @@ mod mod_spawn_rule_tests {
     }
 
     #[test]
+    fn registration_requires_prepared_vanilla_placement_membership() {
+        let mut level = Flat::new(&[]);
+        level.data.vanilla_spawn_placements = None;
+        assert_eq!(
+            level.install(&[ghoul(bright_ghoul)]).unwrap_err(),
+            "mod ruby spawn placement for ruby:ghoul: prepare resources to load vanilla spawn placement membership"
+        );
+        assert_eq!(
+            level.data.heightmap("ruby:ghoul"),
+            Surface::MotionBlockingNoLeaves
+        );
+    }
+
+    #[test]
     fn registration_validates_geometry_and_loaded_types() {
         let mut level = Flat::new(&[]);
         for (placement, heightmap) in [
@@ -1431,6 +1444,11 @@ mod mod_spawn_rule_tests {
                 assert_eq!(
                     level.install(&[original, extension]).unwrap_err(),
                     "mod jade spawn placement for ruby:ghoul: only Replace may supply placement or heightmap for an existing entry"
+                );
+                assert_eq!(
+                    level.data.heightmap("ruby:ghoul"),
+                    Surface::MotionBlockingNoLeaves,
+                    "the valid prefix of the refused batch must not publish its OceanFloor override"
                 );
             }
         }

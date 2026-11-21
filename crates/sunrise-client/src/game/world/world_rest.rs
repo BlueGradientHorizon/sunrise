@@ -136,9 +136,11 @@ pub(super) fn load_world_rest(
             })
             .collect();
         let mut mob_data = sunrise_client::mobs::MobData::load(resource_root, facts);
+        // Spawn placements are keyed by the entity registry, not the subset backed by
+        // MobTypes. Vanilla registers the dragon, and NeoForge accepts any EntityType.
         mob_data
             .install_spawn_placements(mod_api::__private::spawn_placement_declarations(), |id| {
-                mob_types.contains_key(id)
+                mod_api::__private::resolved_entity_type_key(id).is_some()
             })?;
         crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
             mob_types.contains_key(kind)

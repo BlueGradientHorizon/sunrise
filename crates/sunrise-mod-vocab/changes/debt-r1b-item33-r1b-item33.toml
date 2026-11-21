@@ -1,0 +1,6 @@
+ids = [
+    "method:SpawnPlacementsRegistrar::register_spawn_placement",
+    "method:SpawnPlacementContext::is_dark_enough_to_spawn",
+]
+why = "Vanilla SpawnPlacements registers the Ender Dragon and looks up placements by EntityType. NeoForge RegisterSpawnPlacementsEvent.register accepts any registered EntityType, not just Mob types. Sunrise now resolves these registrations against the entity registry instead of the mob simulation table. Vanilla Monster.isDarkEnoughToSpawn takes a BlockPos; the predicate context now tests the requested position with the same live random stream."
+migrate = "Replace ctx.is_dark_enough_to_spawn() with ctx.is_dark_enough_to_spawn(pos), passing the predicate's BlockPos for the old result or another BlockPos to test that location. Keep checking SpawnReason::TrialSpawner first if you want the vanilla trial-spawner bypass. The registrar call is unchanged: use r.entity_type_key(\"minecraft:ender_dragon\") and pass None for metadata you want to keep. For a type with no vanilla entry, such as minecraft:arrow, supply both metadata fields on its first registration. This does not create a new spawn path or change the placement hook's version."

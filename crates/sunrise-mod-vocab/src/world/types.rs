@@ -1027,9 +1027,9 @@ pub trait SpawnPlacementContext {
     /// The caller's live random stream, not a copy. Draws advance it in call order and
     /// are kept even if this predicate or a later check rejects the spawn.
     fn random(&mut self) -> &mut dyn RandomSource;
-    /// `Monster.isDarkEnoughToSpawn` at the checked position, without any spawn-reason
-    /// bypass. It draws from the same stream as [`Self::random`].
-    fn is_dark_enough_to_spawn(&mut self) -> bool;
+    /// `Monster.isDarkEnoughToSpawn` at `pos`, without any spawn-reason bypass.
+    /// It draws from the same stream as [`Self::random`].
+    fn is_dark_enough_to_spawn(&mut self, pos: BlockPos) -> bool;
 }
 
 /// How a native spawn predicate composes with a type's existing predicate.
