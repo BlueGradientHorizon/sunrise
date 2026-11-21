@@ -48,7 +48,8 @@ At the outermost commit, default `ITEMS` and item `STORAGE` writes to vanilla co
 and engine-managed mod slots publish their implicit change notifications.
 Other deferred effects include jukebox playback, cauldron and composter block updates and
 item drops, including items placed at a block, thrown by a player or entity, or split off an
-item entity. Explicit mod-issued world notifications are not deferred with these effects.
+item entity. Explicit mod-issued sounds, particles and level, entity and player events are
+deferred too: see [Deferred level, entity, and player effects](#deferred-level-entity-and-player-effects).
 
 A world pickup or placement of fluid (`level.pickup_fluid`, `level.place_fluid`) writes
 its block at the call and the rest at the outermost commit; an aborted one leaves the world
