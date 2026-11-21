@@ -1,7 +1,7 @@
 //! The `screen_input_post` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// A mouse button went down over the open screen and the screen has run (`ScreenEvent.MouseButtonPressed.Post`, vanilla's `Screen.mouseClicked` returning): `screen`, `button`, `modifiers` and `double_click` as in `screen_mouse_button_pressed_pre`. Not cancellable; `event.handled` enters with whether the screen (or a mounted widget) handled the click, and a listener may set `event.handled = true` to mark it handled (OR-merged across listeners as NeoForge's `setResult(DEFAULT/HANDLED)`). Fires on the screen that received the click (even if handling changed screens), on the window only, for real mouse input and not a pad's or keyboard focus's, and only when the matching Pre did not cancel it.
+    /// A mouse button went down over the open screen and the screen has run (`ScreenEvent.MouseButtonPressed.Post`, vanilla's `Screen.mouseClicked` returning): `screen`, `button`, `modifiers` and `double_click` as in `screen_mouse_button_pressed_pre`. Not cancellable; `event.handled` enters with whether the screen (or a mounted widget) handled the click, and a listener may set `event.handled = true` or `event.handled = false` to override the handled result (matching NeoForge's `FORCE_HANDLED` / `DEFAULT` / `FORCE_UNHANDLED`). Fires on the screen that received the click (even if handling changed screens), on the window only, for real mouse input and not a pad's or keyboard focus's, and only when the matching Pre did not cancel it.
     #[hook(
         receiver = "read",
         dispatch = "flat",
@@ -19,7 +19,7 @@ pub trait Hooks {
         double_click: bool,
         handled: &mut bool,
     );
-    /// A mouse button went up over the open screen and the screen has run (`ScreenEvent.MouseButtonReleased.Post`, vanilla's `Screen.mouseReleased` returning), with the fields of `screen_mouse_button_released_pre`. Not cancellable; `event.handled` enters with whether the screen (or a mounted widget) handled the release, and a listener may set `event.handled = true` to mark it handled. Fires on the screen that received the release (even if handling changed screens), on the window only, for real mouse input and not a pad's or keyboard focus's, and only when the matching Pre did not cancel it.
+    /// A mouse button went up over the open screen and the screen has run (`ScreenEvent.MouseButtonReleased.Post`, vanilla's `Screen.mouseReleased` returning), with the fields of `screen_mouse_button_released_pre`. Not cancellable; `event.handled` enters with whether the screen (or a mounted widget) handled the release, and a listener may set `event.handled = true` or `event.handled = false` to override the handled result (matching NeoForge's `FORCE_HANDLED` / `DEFAULT` / `FORCE_UNHANDLED`). Fires on the screen that received the release (even if handling changed screens), on the window only, for real mouse input and not a pad's or keyboard focus's, and only when the matching Pre did not cancel it.
     #[hook(
         receiver = "read",
         dispatch = "flat",

@@ -1409,7 +1409,6 @@ impl Game<'_> {
                 double_click,
             } => {
                 if mod_api::__private::listened(HookId::ScreenMouseButtonPressedPost) {
-                    let was_handled = post.handled;
                     let screen = post.receiver.view();
                     self.native_screen_mouse_button_pressed_post(
                         &screen,
@@ -1418,7 +1417,6 @@ impl Game<'_> {
                         double_click,
                         &mut post.handled,
                     );
-                    post.handled |= was_handled;
                 }
                 if post.handled && self.screen_state.widgets.generation == post.receiver_generation
                 {
@@ -1435,7 +1433,6 @@ impl Game<'_> {
                 ..
             } => {
                 if mod_api::__private::listened(HookId::ScreenMouseButtonReleasedPost) {
-                    let was_handled = post.handled;
                     let screen = post.receiver.view();
                     self.native_screen_mouse_button_released_post(
                         &screen,
@@ -1443,7 +1440,6 @@ impl Game<'_> {
                         modifiers,
                         &mut post.handled,
                     );
-                    post.handled |= was_handled;
                 }
             }
             ScreenMousePostKind::Scroll(scroll) => {
