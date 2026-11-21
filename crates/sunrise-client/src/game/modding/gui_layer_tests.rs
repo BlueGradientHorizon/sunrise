@@ -6,7 +6,8 @@ use super::{
 };
 use mod_api::{
     ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
-    RegisterGuiLayersEvent, RegistrationContext, content::crash::current_native_mod,
+    RegisterGuiLayersEvent, RegistrationContext, RenderGuiPostEvent, RenderGuiPreEvent,
+    content::crash::current_native_mod,
 };
 use std::sync::Mutex;
 use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
@@ -155,10 +156,10 @@ fn take() -> Vec<String> {
 
 #[test]
 #[ignore = "daily"]
-fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
+fn mod_layers_draw_in_their_place_and_can_be_canceled() {
     // The layer order is kept once per process.
     if run_fresh_cases(
-        "game::gui_layer_tests::mod_layers_draw_in_their_place_and_hide_like_vanilla_layers",
+        "game::gui_layer_tests::mod_layers_draw_in_their_place_and_can_be_canceled",
         "SUNRISE_GUI_LAYER_FIXTURE",
         &["run"],
     ) {
@@ -176,9 +177,9 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
         mods::register_gui_layers(ExecutionRole::Client);
         let mut batch = HudBatch::new([320, 240], game.settings.gui_scale_inputs());
 
-        // Simulate the HUD paint sites with the crosshair skipped (third person).
-        // Its wrapper doesn't draw, but both neighboring layers still do.
+        // Simulate a vanilla crosshair body whose own guard hides its drawing.
         game.hud_layer_next = Some(0);
+        game.gui_layer(VanillaGuiLayer::Crosshair, &mut batch, &mut |_, _| {});
         for (layer, paint) in [
             (VanillaGuiLayer::Hotbar, "hotbar paint"),
             (VanillaGuiLayer::Effects, "effects paint"),
@@ -201,6 +202,9 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
                 "inner after",
                 "outer after",
                 "post hud_test:under_crosshair",
+                "pre minecraft:crosshair",
+                "crosshair wrapper",
+                "post minecraft:crosshair",
                 "pre hud_test:over_crosshair",
                 "draw hud_test:over_crosshair",
                 "post hud_test:over_crosshair",
@@ -242,20 +246,137 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
             colors,
             [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]]
         );
+    });
+}
 
-        // With the HUD hidden (F1), vanilla's sleep overlay still draws, and no mod layer.
-        game.gui_layer(VanillaGuiLayer::SleepOverlay, &mut batch, &mut |_, _| {
-            log("sleep paint")
+#[test]
+#[ignore = "daily"]
+fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let test = "game::gui_layer_tests::f1_hides_vanilla_paint_without_skipping_the_hud_walk";
+    crate::game::in_own_process(test, || {
+        const MOD_PAINT: u32 = 0xFF13_579B;
+        static CANCEL_HUD: AtomicBool = AtomicBool::new(false);
+
+        struct Observer;
+        #[mod_api::__subscriptions]
+        impl Hooks for Observer {
+            fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+                log("hud pre");
+                if CANCEL_HUD.load(Ordering::Relaxed) {
+                    Flow::Cancel
+                } else {
+                    Flow::Continue
+                }
+            }
+
+            fn register_gui_layers(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterGuiLayersEvent<'_>,
+            ) {
+                assert!(event.layers.register(
+                    "hud_test:indicator".into(),
+                    GuiLayerPlacement::AboveAll,
+                    Box::new(|_, draw| {
+                        log("indicator paint");
+                        draw.fill([14.0, 18.0, 4.0, 4.0], MOD_PAINT);
+                    }),
+                ));
+            }
+
+            fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
+                log(format!("pre {}", event.layer));
+                Flow::Continue
+            }
+
+            fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
+                log(format!("post {}", event.layer));
+            }
+
+            fn render_gui_post(&self, _: &dyn ClientHost, _: &mut RenderGuiPostEvent<'_>) {
+                log("hud post");
+            }
+        }
+
+        with_client_game(|game| {
+            mod_platform::__private::install(
+                vec![ModEntry::new("observer", Box::new(Observer))].into(),
+            );
+            mods::register_gui_layers(ExecutionRole::Client);
+            game.title = None;
+            game.screen = super::Screen::Playing;
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+                )
+                .unwrap(),
+            );
+            let rect = game.gui.atlas.gui_rect("hud/hotbar").unwrap();
+            let hotbar_uv = [rect.u0, rect.v0];
+            let has_hotbar = |frame: &HudBatch| {
+                frame
+                    .vertices
+                    .iter()
+                    .any(|v| v.uv == hotbar_uv && v.pos[1] == frame.height - 22.0)
+            };
+            let has_indicator = |frame: &HudBatch| {
+                frame
+                    .vertices
+                    .iter()
+                    .any(|v| v.color == sunrise_client::hud_layout::abgr(MOD_PAINT))
+            };
+            let mut expected = vec!["hud pre".to_owned()];
+            // NeoForge visits hidden and visible slots the same way. The literal IDs also
+            // cover normally absent vanilla bodies, e.g. vehicle health with no mount.
+            for id in [
+                "crosshair",
+                "hotbar",
+                "effects",
+                "boss_overlay",
+                "player_health",
+                "armor_level",
+                "food_level",
+                "vehicle_health",
+                "air_level",
+                "contextual_info_bar",
+                "selected_item_name",
+                "sleep_overlay",
+                "overlay_message",
+                "title",
+                "scoreboard_sidebar",
+                "subtitle_overlay",
+                "chat",
+                "tab_list",
+            ] {
+                expected.push(format!("pre minecraft:{id}"));
+                expected.push(format!("post minecraft:{id}"));
+            }
+            expected.extend(
+                [
+                    "pre hud_test:indicator",
+                    "indicator paint",
+                    "post hud_test:indicator",
+                    "hud post",
+                ]
+                .map(str::to_owned),
+            );
+
+            for hidden in [false, true] {
+                game.ui.hide_gui = hidden;
+                let frame = game.hud_layers([640, 480]);
+                assert_eq!(take(), expected);
+                assert_eq!(has_hotbar(&frame), !hidden);
+                assert!(has_indicator(&frame));
+            }
+            CANCEL_HUD.store(true, Ordering::Relaxed);
+            let frame = game.hud_layers([640, 480]);
+            assert_eq!(take(), ["hud pre"]);
+            assert!(!has_hotbar(&frame));
+            assert!(!has_indicator(&frame));
         });
-        game.draw_mod_gui_layers(None, &mut batch);
-        assert_eq!(
-            take(),
-            [
-                "pre minecraft:sleep_overlay",
-                "sleep paint",
-                "post minecraft:sleep_overlay"
-            ]
-        );
     });
 }
 

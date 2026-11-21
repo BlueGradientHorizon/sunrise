@@ -14,8 +14,11 @@ pub enum VanillaGuiLayer {
     Hotbar,
     Effects,
     BossOverlay,
-    VehicleHealth,
     PlayerHealth,
+    ArmorLevel,
+    FoodLevel,
+    VehicleHealth,
+    AirLevel,
     ContextualInfoBar,
     SelectedItemName,
     SleepOverlay,
@@ -29,13 +32,16 @@ pub enum VanillaGuiLayer {
 
 impl VanillaGuiLayer {
     /// Vanilla anchors in the layer registrar's bottom-to-top order.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 18] = [
         Self::Crosshair,
         Self::Hotbar,
         Self::Effects,
         Self::BossOverlay,
-        Self::VehicleHealth,
         Self::PlayerHealth,
+        Self::ArmorLevel,
+        Self::FoodLevel,
+        Self::VehicleHealth,
+        Self::AirLevel,
         Self::ContextualInfoBar,
         Self::SelectedItemName,
         Self::SleepOverlay,
@@ -54,8 +60,11 @@ impl VanillaGuiLayer {
             Self::Hotbar => "minecraft:hotbar",
             Self::Effects => "minecraft:effects",
             Self::BossOverlay => "minecraft:boss_overlay",
-            Self::VehicleHealth => "minecraft:vehicle_health",
             Self::PlayerHealth => "minecraft:player_health",
+            Self::ArmorLevel => "minecraft:armor_level",
+            Self::FoodLevel => "minecraft:food_level",
+            Self::VehicleHealth => "minecraft:vehicle_health",
+            Self::AirLevel => "minecraft:air_level",
             Self::ContextualInfoBar => "minecraft:contextual_info_bar",
             Self::SelectedItemName => "minecraft:selected_item_name",
             Self::SleepOverlay => "minecraft:sleep_overlay",
@@ -247,7 +256,7 @@ impl GuiLayers {
 }
 
 impl GuiLayerOrder {
-    /// The position of a vanilla anchor, including anchors skipped this frame.
+    /// The position of a vanilla anchor, regardless of whether its body draws this frame.
     pub fn position(&self, layer: VanillaGuiLayer) -> usize {
         self.positions[layer as usize]
     }
@@ -305,8 +314,11 @@ mod tests {
                 "compass:bar",
                 "minecraft:effects",
                 "minecraft:boss_overlay",
-                "minecraft:vehicle_health",
                 "minecraft:player_health",
+                "minecraft:armor_level",
+                "minecraft:food_level",
+                "minecraft:vehicle_health",
+                "minecraft:air_level",
                 "minecraft:contextual_info_bar",
                 "minecraft:selected_item_name",
                 "minecraft:sleep_overlay",
@@ -388,9 +400,6 @@ mod tests {
             "after_camera_decorations",
             "contextual_info_bar_background",
             "experience_level",
-            "armor_level",
-            "food_level",
-            "air_level",
             "spectator_tooltip",
             "demo_overlay",
         ];

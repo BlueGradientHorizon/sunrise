@@ -6,7 +6,7 @@ use super::Game;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud_kit::motion::Clock;
 use sunrise_client::hud_kit::room::{Keep, Room};
-use sunrise_client::{boss_overlay, hud_layout, hud_overlays};
+use sunrise_client::{boss_overlay, hud_overlays};
 
 impl Game<'_> {
     /// The HUD's clock this frame (`hud_kit::motion`): still, so overlays show their motion
@@ -52,11 +52,10 @@ impl Game<'_> {
         room
     }
 
-    /// The status rows above the hotbar in a `w` x `h` GUI px view, from what they draw this
-    /// frame (`draws`): a keep-out from their highest row's top down, as wide as the hotbar. Called
-    /// as they are laid out, after `hud_room`, so the overlays drawn over the HUD see them.
-    pub(super) fn keep_status_rows(&mut self, draws: &[hud_layout::GuiDraw], w: i32, h: i32) {
-        if let Some(top) = hud_layout::draws_top(draws).filter(|top| *top < h) {
+    /// Keep overlays clear of the status rows that drew this frame, from their highest row's
+    /// `top` down and as wide as the hotbar. The HUD pass collects their bounds before this call.
+    pub(super) fn keep_status_rows(&mut self, top: i32, w: i32, h: i32) {
+        if top < h {
             let half = hud_overlays::HOTBAR_HALF_WIDTH;
             self.ui.room.add(
                 Keep::StatusRows,

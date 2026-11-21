@@ -493,7 +493,7 @@ pub fn experience_colored(
 }
 
 /// State kept between frames (`Hud.lastHealth`, `displayHealth`, ...).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct HealthHud {
     pub last_health: i32,
     pub display_health: i32,
@@ -505,6 +505,22 @@ pub struct HealthHud {
     /// The `ui.hud.bubble_pop` volume and pitch `playAirBubblePoppedSound`
     /// asked for this frame; the caller plays it and clears it.
     pub bubble_pop_sound: Option<(f32, f32)>,
+    // Hearts seed the stream; food and air continue it, including when hearts did not draw.
+    random: LegacyRandom,
+}
+
+impl Default for HealthHud {
+    fn default() -> Self {
+        Self {
+            last_health: 0,
+            display_health: 0,
+            last_health_time: 0,
+            health_blink_time: 0,
+            last_bubble_pop_sound: 0,
+            bubble_pop_sound: None,
+            random: LegacyRandom::new(0),
+        }
+    }
 }
 
 /// The two status-bar heights for one HUD frame, measured from its bottom edge.
@@ -545,8 +561,8 @@ pub fn vehicle_health(
     hearts: i32,
     health: f32,
     heights: &mut StatusBarHeights,
-) -> Vec<GuiDraw> {
-    let mut out = Vec::new();
+    out: &mut Vec<GuiDraw>,
+) {
     let current = f64::from(health).ceil() as i32;
     let x_right = w / 2 + 91;
     let rows = hearts / 10 + i32::from(hearts % 10 > 0);
@@ -569,7 +585,6 @@ pub fn vehicle_health(
         yo -= 10;
         base += 20;
     }
-    out
 }
 
 fn heart(
@@ -645,46 +660,16 @@ fn heart(
     table[usize::from(hardcore) * 4 + usize::from(half) * 2 + usize::from(blink)]
 }
 
-/// The four `Hud.extractPlayerHealth` paint steps. They share one draw buffer so
-/// splitting the steps needs neither more allocations nor copies of draw commands.
-#[derive(Debug)]
-pub struct PlayerHealthRows {
-    draws: Vec<GuiDraw>,
-    armor_end: usize,
-    hearts_end: usize,
-    food_end: usize,
-}
-
-impl PlayerHealthRows {
-    /// All the draws in their original order: armour, hearts, food, air.
-    pub fn draws(&self) -> &[GuiDraw] {
-        &self.draws
-    }
-
-    /// The individually paintable slices in that same order.
-    pub fn layers(&self) -> [&[GuiDraw]; 4] {
-        [
-            &self.draws[..self.armor_end],
-            &self.draws[self.armor_end..self.hearts_end],
-            &self.draws[self.hearts_end..self.food_end],
-            &self.draws[self.food_end..],
-        ]
-    }
-}
-
 impl HealthHud {
-    /// `Hud.extractPlayerHealth` for a screen of `w` x `h` GUI pixels. Lay out
-    /// each row using its column's height, and share the same random stream
-    /// between hearts, food and air in that order. The vehicle's rows, if any,
-    /// have already reserved their space in `heights`.
-    pub fn layout(
+    /// `Hud.extractHealthLevel`: draw and reserve the bottom of the left status column.
+    pub fn layout_hearts(
         &mut self,
         i: &HealthInputs,
         w: i32,
         h: i32,
         heights: &mut StatusBarHeights,
-    ) -> PlayerHealthRows {
-        let mut out = Vec::new();
+        out: &mut Vec<GuiDraw>,
+    ) {
         let tick = i64::from(i.tick);
         let current = ceil(i.health);
         let blink = self.health_blink_time > tick && (self.health_blink_time - tick) / 3 % 2 == 1;
@@ -701,36 +686,19 @@ impl HealthHud {
         }
         self.last_health = current;
         let old = self.display_health;
-        let mut random = LegacyRandom::new(i64::from(i.tick.wrapping_mul(312_871)));
-        let mut next = |bound: i32| random.next_int_bound(bound).unwrap_or(0);
-        let (x_left, x_right) = (w / 2 - 91, w / 2 + 91);
+        self.random
+            .set_seed(i64::from(i.tick.wrapping_mul(312_871)));
+        let x_left = w / 2 - 91;
         let max_health = i.max_health.max(old.max(current) as f32);
         let absorption = ceil(i.absorption);
         let rows = ceil((max_health + absorption as f32) / 2.0 / 10.0);
         let row_height = (10 - (rows - 2)).max(3);
-        // Hearts occupy the bottom of the column, but armour still paints first.
         let y_hearts = heights.left.push(h, (rows - 1) * row_height + 10);
         let offset_index = if i.regeneration {
             i.tick % ceil(max_health + 5.0)
         } else {
             -1
         };
-        if i.armor > 0 {
-            let y = heights.left.push(h, 10);
-            for n in 0..10 {
-                let x = x_left + n * 8;
-                if n * 2 + 1 < i.armor {
-                    out.push(sprite("hud/armor_full", x, y, 9, 9));
-                }
-                if n * 2 + 1 == i.armor {
-                    out.push(sprite("hud/armor_half", x, y, 9, 9));
-                }
-                if n * 2 + 1 > i.armor {
-                    out.push(sprite("hud/armor_empty", x, y, 9, 9));
-                }
-            }
-        }
-        let armor_end = out.len();
         let containers = f64::from(max_health / 2.0).ceil() as i32;
         let absorb_containers = (f64::from(absorption) / 2.0).ceil() as i32;
         for c in (0..containers + absorb_containers).rev() {
@@ -738,7 +706,7 @@ impl HealthHud {
             let x = x_left + column * 8;
             let mut y = y_hearts - row * row_height;
             if current + absorption <= 4 {
-                y += next(2);
+                y += self.random.next_int_bound(2).unwrap_or(0);
             }
             if c < containers && c == offset_index {
                 y -= 2;
@@ -780,8 +748,43 @@ impl HealthHud {
                 out.push(sprite(name, x, y, 9, 9));
             }
         }
-        let hearts_end = out.len();
+    }
+
+    /// `Hud.extractArmorLevel`: draw directly above the rows that actually ran on the left.
+    pub fn layout_armor(
+        armor: i32,
+        w: i32,
+        h: i32,
+        heights: &mut StatusBarHeights,
+        out: &mut Vec<GuiDraw>,
+    ) {
+        if armor <= 0 {
+            return;
+        }
+        let x_left = w / 2 - 91;
+        let y = heights.left.push(h, 10);
+        for n in 0..10 {
+            let x = x_left + n * 8;
+            let name = match (n * 2 + 1).cmp(&armor) {
+                std::cmp::Ordering::Less => "hud/armor_full",
+                std::cmp::Ordering::Equal => "hud/armor_half",
+                std::cmp::Ordering::Greater => "hud/armor_empty",
+            };
+            out.push(sprite(name, x, y, 9, 9));
+        }
+    }
+
+    /// `Hud.extractFoodLevel`: leave the right column to vehicle hearts when mounted.
+    pub fn layout_food(
+        &mut self,
+        i: &HealthInputs,
+        w: i32,
+        h: i32,
+        heights: &mut StatusBarHeights,
+        out: &mut Vec<GuiDraw>,
+    ) {
         if i.vehicle_hearts == 0 {
+            let x_right = w / 2 + 91;
             let y_food = heights.right.push(h, 10);
             let (empty, half, full) = if i.hunger {
                 (
@@ -795,7 +798,7 @@ impl HealthHud {
             for n in 0..10 {
                 let mut y = y_food;
                 if i.saturation <= 0.0 && i.tick % (i.food * 3 + 1) == 0 {
-                    y += next(3) - 1;
+                    y += self.random.next_int_bound(3).unwrap_or(0) - 1;
                 }
                 let x = x_right - n * 8 - 9;
                 out.push(sprite(empty, x, y, 9, 9));
@@ -807,8 +810,18 @@ impl HealthHud {
                 }
             }
         }
-        let food_end = out.len();
-        // Hud.extractAirBubbles.
+    }
+
+    /// `Hud.extractAirLevel`: bubbles stack above the food or vehicle rows that drew.
+    pub fn layout_air(
+        &mut self,
+        i: &HealthInputs,
+        w: i32,
+        h: i32,
+        heights: &mut StatusBarHeights,
+        out: &mut Vec<GuiDraw>,
+    ) {
+        let x_right = w / 2 + 91;
         let max_air = i.max_air.max(1);
         let air = i.air.clamp(0, max_air);
         if i.under_water || air < max_air {
@@ -836,19 +849,13 @@ impl HealthHud {
                     }
                 } else if b > 10 - empty {
                     let wobble = if empty == 10 && i.tick % 2 == 0 {
-                        next(2)
+                        self.random.next_int_bound(2).unwrap_or(0)
                     } else {
                         0
                     };
                     out.push(sprite("hud/air_empty", x, y + wobble, 9, 9));
                 }
             }
-        }
-        PlayerHealthRows {
-            draws: out,
-            armor_end,
-            hearts_end,
-            food_end,
         }
     }
 }
@@ -861,15 +868,6 @@ pub fn paint(batch: &mut crate::hud::HudBatch, atlas: &crate::hud::HudAtlas, dra
     paint_with(batch, atlas, draws, None);
 }
 
-/// Paints consecutive steps of one layer in order, sharing the painter's scratch space.
-pub fn paint_layers(
-    batch: &mut crate::hud::HudBatch,
-    atlas: &crate::hud::HudAtlas,
-    layers: &[&[GuiDraw]],
-) {
-    paint_with(batch, atlas, layers.iter().copied().flatten(), None);
-}
-
 /// [`paint`], and with `items` also each `Item` (its stack, scaled about its pivot, then its
 /// decorations) and the blits of every blend. Without `items` those draw nothing, as `paint`.
 fn paint_with<'a>(
@@ -878,7 +876,7 @@ fn paint_with<'a>(
     draws: impl IntoIterator<Item = &'a GuiDraw>,
     mut items: Option<&mut dyn GuiItems>,
 ) {
-    let mut stack = vec![IDENTITY];
+    let mut stack = Vec::new();
     for d in draws {
         let start = batch.vertices.len();
         let pose = *stack.last().unwrap_or(&IDENTITY);
@@ -1040,9 +1038,7 @@ fn paint_with<'a>(
                 stack.push(m);
             }
             GuiDraw::Pop => {
-                if stack.len() > 1 {
-                    stack.pop();
-                }
+                stack.pop();
             }
         }
         if pose != IDENTITY {
@@ -1110,8 +1106,13 @@ mod player_health_tests {
             vehicle_hearts: 0,
         };
         let (w, h) = (320, 240);
-        let rows = hud.layout(&inputs, w, h, &mut StatusBarHeights::default());
-        let [armor, hearts, food, air] = rows.layers();
+        let mut heights = StatusBarHeights::default();
+        let (mut hearts, mut armor, mut food, mut air) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        hud.layout_hearts(&inputs, w, h, &mut heights, &mut hearts);
+        HealthHud::layout_armor(inputs.armor, w, h, &mut heights, &mut armor);
+        hud.layout_food(&inputs, w, h, &mut heights, &mut food);
+        hud.layout_air(&inputs, w, h, &mut heights, &mut air);
         assert_eq!(armor.len(), 10);
         assert_eq!(armor[0], sprite("hud/armor_half", 69, 181, 9, 9));
         assert_eq!(hearts.len(), 24);
@@ -1126,9 +1127,16 @@ mod player_health_tests {
         inputs.vehicle_hearts = 11;
         inputs.armor = 0;
         let mut heights = StatusBarHeights::default();
-        let vehicle = vehicle_health(w, h, 11, 22.0, &mut heights);
-        let mounted = hud.layout(&inputs, w, h, &mut heights);
-        let [armor, same_hearts, food, air] = mounted.layers();
+        let mut same_hearts = Vec::new();
+        let mut vehicle = Vec::new();
+        armor.clear();
+        food.clear();
+        air.clear();
+        hud.layout_hearts(&inputs, w, h, &mut heights, &mut same_hearts);
+        HealthHud::layout_armor(inputs.armor, w, h, &mut heights, &mut armor);
+        hud.layout_food(&inputs, w, h, &mut heights, &mut food);
+        vehicle_health(w, h, 11, 22.0, &mut heights, &mut vehicle);
+        hud.layout_air(&inputs, w, h, &mut heights, &mut air);
         assert!(armor.is_empty());
         assert_eq!(same_hearts, hearts);
         assert!(food.is_empty());

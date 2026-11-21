@@ -1,0 +1,1 @@
+sunrise-client game::gui_layer_tests::f1_hides_vanilla_paint_without_skipping_the_hud_walk lib daily child-process

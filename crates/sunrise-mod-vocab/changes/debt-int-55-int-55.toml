@@ -1,0 +1,17 @@
+ids = [
+    "hook:register_gui_layers",
+    "hook:gui_layer_pre",
+    "hook:gui_layer_post",
+    "hook:render_gui_pre",
+    "hook:render_gui_post",
+    "hook:health_hud",
+    "hook:player_heart_type",
+]
+why = "Vanilla 26.3 Hud.extractRenderState and Hud.extractPlayerHealth give status rows their draw conditions and positions. NeoForge's Hud.registerVanillaLayers, VanillaGuiLayers and GuiLayerManager.add/render/renderInner split the rows and visit their slots even when the original drawing is hidden. Sunrise now walks the five status slots separately, runs both sets of Pre and Post hooks under F1, and runs whole-HUD Post after the last slot and before screens. Only the original vanilla body applies its visibility condition; replacing or wrapping a layer does not change its ID or position. The existing DrawContext, paint guards and shared CallbackOwner reporting stay in place."
+migrate = '''
+The signatures do not change. `minecraft:player_health` now means player hearts only. Replace a combined `gui_layer_pre` cancellation with matches on the rows you want to hide: `minecraft:player_health`, `minecraft:armor_level`, `minecraft:food_level`, `minecraft:vehicle_health` and `minecraft:air_level`. For a replacement that drew several rows, move each row's drawing into its own `event.layers.replace_layer("minecraft:…", Box::new(draw))` call. To insert or observe after all the status rows, change `GuiLayerPlacement::Above("minecraft:player_health".into())` to `GuiLayerPlacement::Above("minecraft:air_level".into())`, or match `minecraft:air_level` instead of `minecraft:player_health` in `gui_layer_post`. Rows that do not draw do not reserve column height.
+
+In `Hooks::health_hud`, put only the heart draws in the answer; move armor, food, vehicle and air draws to replacements for their own IDs. Both `health_hud` and `player_heart_type` now run inside the original hearts body, so neither fires if the slot is canceled, replaced, or hidden. A wrapper that still wants those hooks calls `ctx.draw_previous()`.
+
+Layer Pre and Post, whole-HUD Pre and Post, and registered draw and wrapper callbacks are no longer implicitly skipped by F1. To keep a custom overlay hidden under F1, guard its drawing with `host.hud_mode() == mod_api::HudMode::AllVisible` (use `ctx.host()` in a wrapper). `ctx.draw_previous()` keeps the original vanilla condition. To skip a whole slot and its Post, keep returning `Flow::Cancel` from its Pre; to skip the entire layer walk and whole-HUD Post, return it from `render_gui_pre`. Move a `render_gui_post` overlay that must remain below the status rows to a layer registered below `minecraft:player_health`. Keep `render_gui_post` for drawing above the HUD but below screens; use `gui_render_post` only for drawing above screens.
+'''

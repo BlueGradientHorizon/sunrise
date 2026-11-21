@@ -193,8 +193,8 @@ impl GuiLayerWrapContext for GuiLayerWrapFrame<'_, '_, '_> {
 }
 
 impl<'g> Game<'g> {
-    /// Draws a vanilla slot where the HUD calls for it, first flushing inserted layers below it.
-    /// A replacement or wrapper inherits those same paint conditions and the layer's hooks.
+    /// Visits a vanilla slot after flushing inserted layers below it, even when vanilla paint is
+    /// hidden. The caller puts the visibility condition inside its vanilla paint procedure.
     pub(in crate::game) fn gui_layer(
         &mut self,
         layer: VanillaGuiLayer,
@@ -212,9 +212,7 @@ impl<'g> Game<'g> {
         );
     }
 
-    /// Draws inserted layers not drawn yet this frame, below `until` or to the end with `None`.
-    /// A skipped vanilla layer keeps its place; its neighbours draw at the next paint site.
-    /// Inserted layers don't draw while the HUD is hidden.
+    /// Visits inserted layers below `until`, or to the end with `None`, once per HUD walk.
     pub(in crate::game) fn draw_mod_gui_layers(
         &mut self,
         until: Option<VanillaGuiLayer>,

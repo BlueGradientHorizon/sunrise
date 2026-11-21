@@ -1134,21 +1134,15 @@ impl Game<'_> {
             vanilla
         }
     }
-    /// The player-health HUD rows, once a frame the HUD draws them
-    /// (`HealthHud::layout`, not under F1): `inputs` carries the health,
-    /// food, air and vehicle state the layout reads, `wi`/`hi` the screen's
-    /// GUI size. A mod that sets `draws` replaces every row — armour,
-    /// hearts, food and air are the answer's to give; `bubble_pop_sound`
-    /// too.
-    /// Nothing set draws Sunrise's own.
-    /// The hearts the local player's health bar draws (`Gui.HeartType.forPlayer`, then
-    /// NeoForge's `PlayerHeartTypeEvent`): poisoned, else withered, else frozen when fully
-    /// frozen, else normal, as a mod's `player_heart_type` leaves it. None without a player.
-    pub(super) fn player_heart_kind(&mut self) -> Option<mod_api::client::hud_layout::HeartKind> {
+    /// `Hud.HeartType.forPlayer`: the local player's vanilla heart style, before NeoForge's
+    /// `PlayerHeartTypeEvent` changes it in the hearts layer.
+    pub(super) fn player_heart_kind(
+        &self,
+        p: &sunrise_client::motion::PlayerMotion,
+    ) -> mod_api::client::hud_layout::HeartKind {
         use mod_api::client::hud_layout::HeartKind;
-        let p = self.player.as_ref()?;
         let effects = &self.potions.effects;
-        let mut kind = if effects.get("poison").is_some() {
+        if effects.get("poison").is_some() {
             HeartKind::Poisoned
         } else if effects.get("wither").is_some() {
             HeartKind::Withered
@@ -1156,9 +1150,7 @@ impl Game<'_> {
             HeartKind::Frozen
         } else {
             HeartKind::Normal
-        };
-        self.native_player_heart_type(&mut kind);
-        Some(kind)
+        }
     }
     /// Deliver a non-repeat key press to the native panel.
     pub(super) fn native_panel_key_event(&mut self, key: KeyCode, pressed: bool, repeat: bool) {

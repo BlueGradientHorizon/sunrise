@@ -229,22 +229,22 @@ fn decorations(c: &Value, atlas: &HudAtlas) -> Vec<GuiDraw> {
         0
     };
     let mut heights = hud_layout::StatusBarHeights::default();
-    let vehicle = hud_layout::vehicle_health(
+    let mut vehicle = Vec::new();
+    hud_layout::vehicle_health(
         w,
         h,
         vehicle_hearts,
         float("vehicleHealth", 0.0),
         &mut heights,
+        &mut vehicle,
     );
     if survival {
         let millis = 1_000_000_000i64;
-        let mut hud = HealthHud {
-            last_health: int("lastHealth", 0),
-            display_health: int("displayHealth", 0),
-            last_health_time: millis - i64::from(int("lastHealthAgo", 0)),
-            health_blink_time: i64::from(int("healthBlinkTime", 0)),
-            ..HealthHud::default()
-        };
+        let mut hud = HealthHud::default();
+        hud.last_health = int("lastHealth", 0);
+        hud.display_health = int("displayHealth", 0);
+        hud.last_health_time = millis - i64::from(int("lastHealthAgo", 0));
+        hud.health_blink_time = i64::from(int("healthBlinkTime", 0));
         let kind = if has("minecraft:poison") {
             HeartKind::Poisoned
         } else if has("minecraft:wither") {
@@ -273,8 +273,15 @@ fn decorations(c: &Value, atlas: &HudAtlas) -> Vec<GuiDraw> {
             under_water: c["underWater"].as_bool().unwrap_or(false),
             vehicle_hearts,
         };
-        let rows = hud.layout(&inputs, w, h, &mut heights);
-        draws.extend(rows.layers().into_iter().flatten().cloned());
+        // The Java oracle captures vanilla extraction order: armor before hearts, and
+        // vehicle hearts last. Use the same row painters as the layer walk, but emit in
+        // the order the oracle captures.
+        let mut hearts = Vec::new();
+        hud.layout_hearts(&inputs, w, h, &mut heights, &mut hearts);
+        HealthHud::layout_armor(inputs.armor, w, h, &mut heights, &mut draws);
+        draws.extend(hearts);
+        hud.layout_food(&inputs, w, h, &mut heights, &mut draws);
+        hud.layout_air(&inputs, w, h, &mut heights, &mut draws);
     }
     draws.extend(vehicle);
     let width = |s: &str| HudBatch::text_width(atlas, s) as i32;

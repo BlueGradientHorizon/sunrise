@@ -6,12 +6,13 @@ use crate::{ClientHost, DrawContext};
 /// Draws one registered HUD layer with the current client and drawing context.
 /// The client owns the closure for the session and calls it as the mod that installed it.
 /// Capture per-layer data; the host and canvas are borrowed only for this draw.
-/// A disabled owner is skipped. A refused or panicking draw discards its paint;
-/// only a panic disables this callback for the session.
+/// Runs even under F1 unless a Pre hook cancels it. A disabled owner is skipped.
+/// A refused or panicking draw discards its paint; only a panic disables this callback for the session.
 pub type GuiLayerDraw = dyn Fn(&dyn ClientHost, &mut dyn DrawContext) + Send + Sync + 'static;
 
 // no wire: the wrapper and its captures are kept in the client process.
 /// Draws around the previous body of a layer, or omits that body for this draw.
+/// Runs even under F1; the previous vanilla body still applies its own visibility rules.
 /// The client owns this callback for its lifetime. A disabled wrapper (including one
 /// disabled by panic) leaves the previous layer body to draw directly.
 /// On refusal or panic, the wrapper's own paint is discarded; paint it already delegated
@@ -28,9 +29,9 @@ pub trait GuiLayerWrapContext {
     fn with_draw(&mut self, draw: &mut dyn FnMut(&mut dyn DrawContext));
 
     /// Paint the previous body at this point in the same batch without firing layer hooks again.
-    /// The previous mod body runs as its own mod; a previous vanilla body runs as the engine.
-    /// A vanilla paint panic still escapes the layer as an engine fault, even if the wrapper
-    /// catches its unwind. Omit this call to skip the previous body for this draw.
+    /// The previous mod body runs as its own mod; a previous vanilla body applies its
+    /// visibility rules and runs as the engine. A vanilla paint panic still escapes the layer
+    /// as an engine fault, even if the wrapper catches its unwind. Omit this call to skip the previous body for this draw.
     fn draw_previous(&mut self);
 }
 
@@ -50,13 +51,14 @@ pub trait GuiLayerRegistrar {
     ) -> bool;
 
     /// Replace an already registered layer (including a vanilla layer) with `draw`.
-    /// Discards the entire previous body, including any wrappers, but keeps the layer's ID,
-    /// position and draw conditions.
+    /// Discards the entire previous body, including its wrappers and vanilla visibility rules,
+    /// but keeps the layer's ID and position.
     /// Returns false and logs a warning if `id` is not registered.
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool;
 
-    /// Wrap an already registered layer in place, keeping its ID, position and draw conditions.
-    /// The newest wrapper runs first and can draw the previous body through its context.
+    /// Wrap an already registered layer in place, keeping its ID and position.
+    /// The newest wrapper runs first and can draw the previous body through its context;
+    /// that body retains its own visibility rules.
     /// Returns false and logs a warning if `id` is not registered.
     fn wrap_layer(&mut self, id: &str, wrap: Box<GuiLayerWrapper>) -> bool;
 }

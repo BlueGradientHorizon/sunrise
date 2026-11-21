@@ -184,10 +184,9 @@ pub trait Notes {
   `list(&folder, after, limit)` returns lexicographically ordered names strictly after the cursor, at most `limit` entries; start with `None`, continue with the last name, and stop on an empty page.
   `ConfigPath::root()` lists the mod's own root; `limit` must be 1 through `CONFIG_LIST_MAX` (1024), otherwise `InvalidPage` ([config and bulk storage](../how-to/mod-settings.md)).
 
-- The player-health HUD rows through `health_hud`: every frame the HUD draws them, the
-  hook hears the layout's inputs (`HealthInputs`) and the screen's GUI size, and a mod that answers with
-  draws replaces all the rows — armour, hearts, food, air and the heights above the hotbar — for that
-  frame. Nothing answered draws Sunrise's own.
+- The player's hearts through `health_hud`: within the original `minecraft:player_health` body,
+  the hook receives `HealthInputs` and the screen's GUI size. An answer replaces just the hearts.
+  Armor, food, vehicle health and air have independent slots; no answer keeps the vanilla hearts.
 
 - Which hearts the player's health bar draws through `player_heart_type` (NeoForge's `PlayerHeartTypeEvent`):
   each frame the HUD draws the hearts, `kind` comes in as vanilla's pick (poisoned, withered, frozen or normal) and a mod

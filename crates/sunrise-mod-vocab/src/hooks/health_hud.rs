@@ -2,17 +2,16 @@
 // catalog-order: 0056
 
 pub trait Hooks {
-    /// The player-health HUD rows, once a frame the HUD draws them
-    /// (`HealthHud::layout`, not under F1): `inputs` carries the health,
-    /// food, air and vehicle state the layout reads, `wi`/`hi` the screen's
-    /// GUI size. A mod that sets `draws` replaces every row — armour,
-    /// hearts, food and air are the answer's to give; `bubble_pop_sound`
-    /// too.
-    /// Nothing set draws Sunrise's own.
+    /// In the original `minecraft:player_health` body, when the player's hearts draw.
+    /// `inputs` carries the HUD state and `wi`/`hi` the GUI size. Setting `draws` replaces
+    /// just the hearts; armor, food, vehicle health and air draw in separate layers.
+    /// An unset answer draws vanilla hearts. This hook does not fire if the original
+    /// hearts body is skipped (for example, under F1 or after layer Pre cancels it).
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_health_hud",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "replace",
         out = "draws",
         neoforge = "RenderGuiLayerEvent.Pre"

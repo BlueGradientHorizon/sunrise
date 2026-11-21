@@ -18,18 +18,19 @@ invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it in
 
 The client keeps the callback for the session and calls it as the mod that installed it. Capture
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
-passed on each draw. The callback runs only for its own layer, and not when the HUD is hidden
-or `gui_layer_pre` cancels the layer.
-A vanilla anchor that doesn't draw that frame still determines the layer's position. The vehicle
-health, player health and contextual bar anchors follow that paint order.
+passed on each draw. The callback runs for its own layer even under F1, unless that layer's
+Pre or the whole-HUD Pre cancels. To hide your own drawing under F1, check for
+`host.hud_mode() == mod_api::HudMode::AllVisible` before drawing. A vanilla anchor still
+determines the insertion point even when its drawing is hidden.
 
 ### Replacing or wrapping a layer
 
 In the same registration hook, call `event.layers.replace_layer(id, Box::new(draw))` to discard
 an existing layer's body, including any wrappers. Use `event.layers.wrap_layer(id, Box::new(wrap))`
 to keep the previous body and draw around it. Both methods accept a vanilla ID or an already
-registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID, its
-place in the HUD and its draw conditions.
+registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID and its
+place in the HUD. A replacement or wrapper runs even when the vanilla body would be hidden;
+`draw_previous()` still applies the original vanilla body's draw conditions.
 
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
@@ -49,19 +50,25 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 }));
 ```
 
-`gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. Post still fires if the
-wrapper omitted the previous body. If a retained painter or wrapper panics or is refused, its
-paint is discarded. A wrapper's completed `draw_previous()` calls keep their paint in order,
-without being called again. A panic disables just the offending callback for this session; a
-disabled wrapper leaves the previous body to draw directly. If Pre cancels the slot, neither the
-installed body nor Post runs. For work that must happen even when the HUD is hidden, use the independent foreground
-`gui_render_post` hook.
+`gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper, even if F1 hides the
+vanilla body or a wrapper omits it. If layer Pre cancels the slot, neither the installed body
+nor Post runs. `render_gui_pre` and `render_gui_post` surround the complete layer walk, including
+under F1. Cancel whole-HUD Pre to skip the layer walk and whole-HUD Post. For drawing above
+screens, use the independent foreground `gui_render_post` hook.
+
+If a retained painter or wrapper panics or is refused, its paint is discarded. A wrapper's
+completed `draw_previous()` calls keep their paint in order, without being called again. A panic
+is logged and shown in an error toast naming the mod. It disables just the offending callback
+for the session; a disabled wrapper leaves the previous body to draw directly. Other failures
+are reported each time without disabling the callback.
 
 ## Status rows and fixed text positions
 
-`minecraft:player_health` is still a single GUI layer for hearts, armour, food and air. Cancelling it
-in `gui_layer_pre` hides all four. `health_hud` replaces their combined drawing, not the separate
-`minecraft:vehicle_health` layer.
+The status layers are `minecraft:player_health` (hearts), `minecraft:armor_level`,
+`minecraft:food_level`, `minecraft:vehicle_health` and `minecraft:air_level`, in that order.
+Cancel or replace the specific slot you want to change. `health_hud` only replaces the original
+hearts drawing; it leaves the other rows alone. To draw above all the status rows, insert your
+layer above `minecraft:air_level`.
 
 Adding a taller status bar does not move the selected item name or the action bar. The name starts
 59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
