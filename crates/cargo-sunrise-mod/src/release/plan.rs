@@ -345,16 +345,13 @@ fn rebuild<'a>(
         else {
             continue;
         };
-        let covers_target = |tag: &str| {
-            tag == target.tag
-                || by_tag
-                    .get(tag)
-                    .is_some_and(|(_, r)| r.commit == target.commit)
-        };
         if source.line != target.line
             || target_version <= source_version
             || target.commit == source.commit
-            || row.builds.iter().any(|row| covers_target(&row.sunrise))
+            // Publishing an append also needs every previous build's stable tag to resolve.
+            || row.builds.iter().any(|row| {
+                by_tag.get(row.sunrise.as_str()).is_none_or(|(_, r)| r.commit == target.commit)
+            })
             || listed
                 .native_binaries
                 .iter()

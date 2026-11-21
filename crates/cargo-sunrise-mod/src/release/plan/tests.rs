@@ -342,6 +342,7 @@ fn rebuild_skips_unavailable_or_unfit_source_rows() {
         "unpublished",
         "broken",
         "moved-pin",
+        "withdrawn-build",
         "shorthand",
     ] {
         let mut registry = Registry::new();
@@ -381,6 +382,10 @@ fn rebuild_skips_unavailable_or_unfit_source_rows() {
                     .find(|r| r.tag == GAME_TAG)
                     .unwrap()
                     .commit = OTHER.into();
+                "1.0.0"
+            }
+            "withdrawn-build" => {
+                registry.releases.retain(|release| release.tag != BUILD_TAG);
                 "1.0.0"
             }
             "shorthand" => {
