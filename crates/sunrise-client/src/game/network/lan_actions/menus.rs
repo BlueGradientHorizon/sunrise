@@ -260,13 +260,23 @@ impl Game<'_> {
             }
             return MenuOpen::Stale;
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(gi) = self.guest_index(conn) else {
             return MenuOpen::Refused;
         };
-        host.hub
-            .open_container(conn, menu, title, pos, slots, items, extra);
-        if !hidden.is_empty() {
-            host.hub.hide_menu_slots(conn, hidden);
+        // Park the opener's window-0 cursor and build the first contents from
+        // their inventory, even when an open through BlockEntityRef runs in their turn.
+        if self
+            .with_own_record(gi, |host, _| {
+                host.hub
+                    .open_menu_window(conn, menu, title, Some(pos), slots, items, extra)?;
+                if !hidden.is_empty() {
+                    host.hub.hide_menu_slots(conn, hidden);
+                }
+                Some(())
+            })
+            .is_none()
+        {
+            return MenuOpen::Refused;
         }
         // `ContainerOpenersCounter.incrementOpeners`: a direct handle open
         // starts the lid once, sounding on its first opener. A spectator's
@@ -369,11 +379,18 @@ impl Game<'_> {
         };
         // ServerPlayer.openMenu closes the menu that was open.
         self.guest_close_all(conn);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(gi) = self.guest_index(conn) else {
             return false;
         };
-        host.hub
-            .open_container(conn, menu, title, pos, slots, items, None);
+        if self
+            .with_own_record(gi, |host, _| {
+                host.hub
+                    .open_menu_window(conn, menu, title, Some(pos), slots, items, None)
+            })
+            .is_none()
+        {
+            return false;
+        }
         self.player_menu_opening(conn);
         true
     }
@@ -415,11 +432,25 @@ impl Game<'_> {
     /// the container's lid, a vehicle's stand-in (its items go back to the
     /// vehicle), the trade (written back to the villager), the crafting table,
     /// station and mount menus, and the cursor stack back to the inventory.
-    /// Nothing is sent to the client: this is for a guest who is leaving or
-    /// whose server is closing. The guest must be in `host.hub.guests` and the
-    /// level they are in must be the one in place.
+    /// Does not send a close packet or remove window 0: ordinary menu
+    /// replacement keeps its cursor and crafting inputs. The guest's level
+    /// must be the one in place.
     pub(in crate::game) fn guest_close_all(&mut self, conn: u32) {
         self.guest_remove_menus(conn, MenuRemoval::Live);
+    }
+
+    /// Finish removal before saving or exporting a live guest. Neither menu's
+    /// cursor nor the inventory crafting grid is part of the saved player.
+    pub(in crate::game) fn guest_close_menus_for_save(&mut self, conn: u32) {
+        self.guest_close_all(conn);
+        self.lan_crafting_closed(conn, Some(0));
+    }
+
+    /// `Player.remove(CHANGED_DIMENSION)` removes both menus without dropping
+    /// a cursor that still fits. Overflow belongs in the level the guest left.
+    pub(in crate::game) fn guest_close_menus_for_travel(&mut self, conn: u32) {
+        self.lan_crafting_closed(conn, Some(0));
+        self.guest_close_all(conn);
     }
 
     pub(in crate::game) fn guest_disconnected(&mut self, conn: u32) {
@@ -433,13 +464,19 @@ impl Game<'_> {
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
             return;
         };
-        let open_menu = host.hub.guests[gi]
-            .menu
-            .as_ref()
-            .map(|m| (m.window, m.slots));
         if removal == MenuRemoval::Disconnected {
             self.guest_drop_carried(gi);
+        } else if let Some(host) = self.lan.as_mut() {
+            let returned = host.hub.take_closed_menu_cursors(conn).collect();
+            self.lan_place_back(gi, returned);
         }
+        let open_menu = self.lan.as_ref().and_then(|host| {
+            host.hub
+                .guest(conn)?
+                .menu
+                .as_ref()
+                .map(|m| (m.window, m.slots))
+        });
         if let Some((window, slots)) = open_menu {
             self.guest_container_closed(conn);
             if let Slots::Block(key) = slots

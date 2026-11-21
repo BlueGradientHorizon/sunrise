@@ -1999,8 +1999,12 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
+        // If the leaving level could not be opened for normal removal, put
+        // its remaining cursors in the same fallback as the remaining inputs.
+        let mut grid: Vec<_> = host.hub.take_closed_menu_cursors(g.conn).collect();
+        grid.extend(g.take_menu_cursors());
+        grid.extend(g.craft_grid.iter_mut().filter_map(Option::take));
         let play = host.menus.get_mut(&g.conn);
-        let mut grid: Vec<ItemStack> = g.craft_grid.iter_mut().filter_map(Option::take).collect();
         g.craft_result = None;
         if let Some(play) = play {
             if let Some((_, _, menu, _)) = play.crafting.table.take() {

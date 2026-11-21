@@ -177,6 +177,51 @@ fn overworld_to_nether() -> Vec<(String, String)> {
 
 #[test]
 #[ignore = "daily"]
+fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
+    use sunrise_client::items::ItemStack;
+
+    with_server(ExecutionRole::DedicatedServer, |game| {
+        let inventory_cursor = ItemStack::new("minecraft:iron_ingot", 3);
+        let open_cursor = ItemStack::new("minecraft:gold_ingot", 5);
+        let hub = &mut game.lan.as_mut().unwrap().hub;
+        hub.guests
+            .update(0, |g| g.carried = Some(inventory_cursor.clone()));
+        hub.open_native_menu(
+            CONN,
+            1,
+            sunrise_protocol::text::literal("fixture"),
+            Vec::new(),
+        )
+        .unwrap();
+        hub.guests
+            .update(0, |g| g.carried = Some(open_cursor.clone()));
+        game.level_teleports.push(super::LevelTeleport {
+            conn: CONN,
+            dim: Dim::Nether,
+            at: [8.5, 70.0, 8.5],
+            rotation: None,
+            vehicle: None,
+        });
+        game.run_level_teleports();
+
+        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        assert_eq!(guest.dimension, Dim::Nether.id());
+        assert!(guest.menu.is_none());
+        assert!(guest.carried.is_none());
+        assert_eq!(
+            guest
+                .inventory
+                .iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>(),
+            [inventory_cursor, open_cursor]
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_nether_portal_trip_is_heard_once_on_every_server() {
     for role in SERVERS {
         heard_on(role, |game, heard| {

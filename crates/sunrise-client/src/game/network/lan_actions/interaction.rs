@@ -31,11 +31,12 @@ impl Game<'_> {
 
     pub(super) fn guest_drop_carried(&mut self, gi: usize) {
         let carried = self.with_own_record(gi, |host, _| {
-            Some(
-                host.hub
-                    .guests
-                    .update(gi, |g| g.take_menu_cursors().collect::<Vec<_>>()),
-            )
+            let conn = host.hub.guests[gi].conn;
+            let mut stacks = host.hub.take_closed_menu_cursors(conn).collect::<Vec<_>>();
+            host.hub
+                .guests
+                .update(gi, |g| stacks.extend(g.take_menu_cursors()));
+            Some(stacks)
         });
         if let Some(carried) = carried.filter(|stacks| !stacks.is_empty()) {
             self.drop_guest_items(gi, carried);

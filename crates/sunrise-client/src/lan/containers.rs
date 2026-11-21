@@ -695,6 +695,19 @@ impl Hub {
         }
     }
 
+    /// Take cursor returns that a hub-side window close queued, before a guest's
+    /// menu replacement, removal or save can run ahead of the queue.
+    pub fn take_closed_menu_cursors(&mut self, conn: u32) -> impl Iterator<Item = ItemStack> + '_ {
+        self.native_menu_events
+            .extract_if(.., move |event| {
+                matches!(event, NativeMenuEvent::ReturnCarried { conn: owner, .. } if *owner == conn)
+            })
+            .filter_map(|event| match event {
+                NativeMenuEvent::ReturnCarried { item, .. } => Some(item),
+                _ => None,
+            })
+    }
+
     /// The client closed its window. Return the closing cursor to the game for removal.
     pub fn container_closed(&mut self, conn: u32, window: i32) -> Option<ItemStack> {
         let i = self.guests.connection_index(conn)?;

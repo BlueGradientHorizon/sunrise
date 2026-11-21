@@ -715,10 +715,11 @@ impl Game<'_> {
         let (end_portal, gateway) = self.inside_end_portals(at, WIDTH, HEIGHT);
         if end_portal && !riding {
             // EndPortalBlock.entityInside: the first exit from the End shows the credits.
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
             if self.dim == Dim::End && !host.hub.guest(conn).is_some_and(|g| g.seen_credits) {
+                self.guest_close_menus_for_travel(conn);
+                let Some(host) = self.lan.as_mut() else {
+                    return;
+                };
                 let _ = host
                     .hub
                     .guests
@@ -957,6 +958,9 @@ impl Game<'_> {
             .or_else(|| self.end_destination(entering, target))
             .unwrap_or(Vec3::new(from.x * scale, from.y, from.z * scale));
         self.end_portal_travel = false;
+        if source != target {
+            self.guest_close_menus_for_travel(conn);
+        }
         if let Err(e) = self.enter_level(target) {
             log::error!("could not open {}: {e}", target.id());
             return;
@@ -1527,12 +1531,23 @@ impl Game<'_> {
             let Some(i) = host.hub.guests.iter().position(|g| g.conn == t.conn) else {
                 continue;
             };
-            let source = self.dim;
+            let back = self.dim;
+            let source = Dim::from_id(&host.hub.guests[i].dimension);
             if t.dim != source {
-                drop_hook(host, t.conn);
+                if let Err(e) = self.enter_level(source) {
+                    log::error!("could not open {}: {e}", source.id());
+                    continue;
+                }
+                self.guest_close_menus_for_travel(t.conn);
+                if let Some(host) = self.lan.as_mut() {
+                    drop_hook(host, t.conn);
+                }
             }
             if let Err(e) = self.enter_level(t.dim) {
                 log::error!("could not open {}: {e}", t.dim.id());
+                if let Err(e) = self.enter_level(back) {
+                    log::error!("could not reopen {}: {e}", back.id());
+                }
                 continue;
             }
             let Some(host) = self.lan.as_mut() else {
@@ -1596,8 +1611,8 @@ impl Game<'_> {
                 hold: true,
                 left: Some(source),
             });
-            if let Err(e) = self.enter_level(source) {
-                log::error!("could not reopen {}: {e}", source.id());
+            if let Err(e) = self.enter_level(back) {
+                log::error!("could not reopen {}: {e}", back.id());
             }
         }
     }
