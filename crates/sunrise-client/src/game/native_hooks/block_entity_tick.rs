@@ -105,7 +105,7 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
         if !valid_tick_subject(&self.game.res.facts().get(live_state).name, loan.entity) {
             return;
         }
-        let mut data = TickData {
+        let mut data = ServerBlockEntityData {
             pos,
             loan,
             slot_count,
@@ -123,18 +123,18 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
     }
 }
 
-struct TickData<'a> {
-    pos: Pos,
-    loan: BlockEntityLoan<'a>,
-    slot_count: usize,
-    items: &'a Items,
-    journal: &'a mut OpenTransactions,
-    chunks: &'a ChunkMap,
-    names: &'a FxHashMap<Pos, Tag>,
-    hoppers: &'a HashMap<Pos, super::super::machines::HopperState>,
+pub(super) struct ServerBlockEntityData<'a> {
+    pub(super) pos: Pos,
+    pub(super) loan: BlockEntityLoan<'a>,
+    pub(super) slot_count: usize,
+    pub(super) items: &'a Items,
+    pub(super) journal: &'a mut OpenTransactions,
+    pub(super) chunks: &'a ChunkMap,
+    pub(super) names: &'a FxHashMap<Pos, Tag>,
+    pub(super) hoppers: &'a HashMap<Pos, super::super::machines::HopperState>,
 }
 
-impl TickData<'_> {
+impl ServerBlockEntityData<'_> {
     fn entity(&self) -> &EngineBlockEntity {
         self.loan.entity
     }
@@ -151,7 +151,7 @@ impl TickData<'_> {
     }
 }
 
-impl ResidentBlockEntity for TickData<'_> {
+impl ResidentBlockEntity for ServerBlockEntityData<'_> {
     fn id(&self) -> &str {
         self.entity().id()
     }

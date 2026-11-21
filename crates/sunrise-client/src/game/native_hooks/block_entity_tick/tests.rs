@@ -285,11 +285,7 @@ impl BlockEntityPart for Effects {
         }
     }
 
-    fn block_entity_load_additional(
-        &self,
-        _: &dyn LevelHost,
-        event: &mut BlockEntityLoadAdditionalEvent<'_>,
-    ) {
+    fn block_entity_load_additional(&self, event: &mut BlockEntityLoadAdditionalEvent<'_>) {
         *self.loaded_items.lock().unwrap() = event.tag.get(&"Items".into()).cloned();
     }
 
