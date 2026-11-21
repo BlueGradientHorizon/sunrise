@@ -160,7 +160,9 @@ impl Game<'_> {
                 .and_then(|menu| {
                     if menu.mod_type.is_some() && menu.player_slots() == 0 {
                         Some(ClickReply::Inventory)
-                    } else if click.button == OFFHAND_BUTTON && menu.slots == Slots::Native {
+                    } else if click.button == OFFHAND_BUTTON
+                        && (menu.mod_type.is_some() || menu.slots == Slots::Native)
+                    {
                         Some(ClickReply::Offhand)
                     } else {
                         None
