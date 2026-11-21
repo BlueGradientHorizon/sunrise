@@ -25,7 +25,7 @@
 //! the start of the next tick, from the block state then.
 use crate::chunk::block_entity::{BlockEntity, ModContainer, ModEnergyBuffer, ModFluidTanks};
 use crate::fast_hash::{FxHashMap, FxHashSet};
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -149,6 +149,7 @@ pub struct BlockEntities {
     /// The block entities moving pistons carry, by destination column and position:
     /// out of the live map until they land.
     carried: FxHashMap<(i32, i32), FxHashMap<Pos, carry::Carried>>,
+    column_unload_entries: u64,
     /// The block entity a player's break just removed, kept readable while that break's
     /// `block_drops` listeners run (`hold_broken`), and dropped after (`release_broken`).
     broken: Option<Broken>,
@@ -998,8 +999,10 @@ impl BlockEntities {
     /// chunk's alone, so a frame that loads or unloads many columns costs what they hold, not
     /// what the whole map holds.
     pub fn unload_column_where(&mut self, chunk: (i32, i32), mut gone: impl FnMut(&Pos) -> bool) {
-        if let std::collections::hash_map::Entry::Occupied(mut column) = self.carried.entry(chunk) {
-            column.get_mut().retain(|p, _| !gone(p));
+        if let Entry::Occupied(mut column) = self.carried.entry(chunk) {
+            let payloads = column.get_mut();
+            self.column_unload_entries += payloads.len() as u64;
+            payloads.retain(|p, _| !gone(p));
             if column.get().is_empty() {
                 column.remove();
             }
@@ -1007,6 +1010,7 @@ impl BlockEntities {
         let Some(listed) = self.columns.get(&chunk) else {
             return;
         };
+        self.column_unload_entries += listed.len() as u64;
         let doomed: Vec<Pos> = listed.iter().filter(|p| gone(p)).copied().collect();
         for pos in doomed {
             if self.map.remove(&pos).is_some() {
@@ -1017,6 +1021,12 @@ impl BlockEntities {
             }
         }
     }
+    /// Number of live/taken positions and carried payloads visited by indexed
+    /// unloads and replacements since the last read.
+    pub fn take_column_unload_entries(&mut self) -> u64 {
+        std::mem::take(&mut self.column_unload_entries)
+    }
+
     /// Removes the block entities `keep` refuses, and their slots
     /// (`clearAllBlockEntities` of unloaded chunks).
     pub fn retain(&mut self, mut keep: impl FnMut(&Pos, &mut BlockEntity) -> bool) {

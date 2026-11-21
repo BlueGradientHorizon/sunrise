@@ -720,6 +720,9 @@ pub struct FrameStats {
     gpu: Vec<f32>,
     /// Milliseconds per frame phase (`PHASES`), one entry per rendered frame.
     phases: Vec<[f32; PHASES.len()]>,
+    /// Per rendered frame during a raw flight: unload entries visited, upload
+    /// elements sorted and upload elements merged.
+    streaming_work: Vec<[u64; 3]>,
     static_snapshot_rebuilds: u64,
     static_snapshot_bytes_built: u64,
     static_bytes_uploaded: u64,
@@ -810,11 +813,21 @@ impl FrameStats {
         self.static_entities_drawn += stats.static_entities_drawn;
         self.dynamic_entities_drawn += stats.dynamic_entities_drawn;
     }
-    /// Adds every frame's time (`frame_ms`, `cpu_ms`, `gpu_ms`) to a summary.
+    pub fn record_streaming_work(&mut self, visited: u64, sorted: usize, merged: usize) {
+        if self.streaming_work.len() < Self::LIMIT {
+            self.streaming_work
+                .push([visited, sorted as u64, merged as u64]);
+        }
+    }
+    /// Adds every frame's time (`frame_ms`, `cpu_ms`, `gpu_ms`) to a summary,
+    /// and the streaming work when a raw flight recorded it.
     pub fn add_series(&self, summary: &mut serde_json::Value) {
         summary["frame_ms"] = self.millis.clone().into();
         summary["cpu_ms"] = self.cpu.clone().into();
         summary["gpu_ms"] = self.gpu.clone().into();
+        if !self.streaming_work.is_empty() {
+            summary["streaming_work"] = serde_json::json!(self.streaming_work);
+        }
     }
     /// One frame's allocations: this thread's since the last frame, all threads' since then.
     pub fn record_allocs(&mut self, window: Counts, process: Counts, now: Instant) {
@@ -887,6 +900,7 @@ impl FrameStats {
         self.cpu.clear();
         self.gpu.clear();
         self.phases.clear();
+        self.streaming_work.clear();
         self.static_snapshot_rebuilds = 0;
         self.static_snapshot_bytes_built = 0;
         self.static_bytes_uploaded = 0;

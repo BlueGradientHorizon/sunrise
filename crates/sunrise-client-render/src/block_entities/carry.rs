@@ -77,7 +77,10 @@ impl BlockEntities {
     }
     /// Holds `carried` for the moving piston at `at`, loaded with it.
     pub fn hold_carried(&mut self, at: Pos, carried: Carried) {
-        self.carried.entry(chunk_of(at)).or_default().insert(at, carried);
+        self.carried
+            .entry(chunk_of(at))
+            .or_default()
+            .insert(at, carried);
     }
     /// Drops the block entity carried to `at` without installing it: a
     /// client's copy once the server's block took the moving piston's place.
@@ -178,13 +181,18 @@ mod tests {
         entities.insert((-1, 64, 2), BlockEntity::Chest(vec![None; 3]));
         assert!(entities.carry((-1, 64, 2), retained));
 
+        entities.insert((17, 64, 1), BlockEntity::Chest(vec![]));
         for column in [(-1, 0), (1, 0), (2, 0)] {
             entities.unload_column(column);
         }
 
+        assert_eq!(entities.take_column_unload_entries(), 3);
+        assert!(!entities.contains_key(&(17, 64, 1)));
         assert!(!entities.land(west));
         assert!(!entities.land(east));
         assert!(entities.land(retained));
-        assert!(matches!(entities.get(&retained), Some(BlockEntity::Chest(slots)) if slots.len() == 3));
+        assert!(
+            matches!(entities.get(&retained), Some(BlockEntity::Chest(slots)) if slots.len() == 3)
+        );
     }
 }

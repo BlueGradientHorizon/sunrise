@@ -1749,6 +1749,8 @@ struct Game<'a> {
     native_mod_screen: Option<String>,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
     pending_uploads: Vec<sunrise_client::streaming::MeshUpload>,
+    /// Empty between updates. Reuses storage for merging two sorted runs.
+    pending_uploads_merge: Vec<sunrise_client::streaming::MeshUpload>,
     /// The camera section (column, height) `pending_uploads` is sorted for, farthest first:
     /// while it stays, the list needs only its new meshes merged in, not a sort every frame.
     pending_uploads_order: Option<((i32, i32), i32)>,
@@ -10747,6 +10749,7 @@ impl Game<'_> {
                     if !consumed && let Some(Err(error)) = finished {
                         log::warn!("Sunrise: couldn't save the world icon: {error}");
                     }
+                    self.record_streaming_work(rendered);
                     if rendered {
                         self.frame_stats.record(elapsed.as_secs_f32() * 1000.0);
                         if let Some((cpu, gpu)) = perf_times {
@@ -11363,6 +11366,7 @@ impl<'a> Game<'a> {
             occlusion: Default::default(),
             async_particle_culler: RefCell::new(Default::default()),
             pending_uploads: Vec::new(),
+            pending_uploads_merge: Vec::new(),
             pending_uploads_order: None,
             upload_pace: Default::default(),
             extras: Default::default(),
