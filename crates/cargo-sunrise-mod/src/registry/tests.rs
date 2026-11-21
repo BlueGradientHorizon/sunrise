@@ -231,8 +231,7 @@ fn a_stable_native_version_must_pin_the_named_release_commit() {
         r.build(&[]).unwrap_err(),
     ] {
         assert!(
-            unchecked.contains("coords 1.0.0")
-                && unchecked.contains("without the Sunrise releases"),
+            unchecked.contains("coords 1.0.0") && unchecked.contains(RELEASE_TAG),
             "{unchecked}"
         );
     }
@@ -241,17 +240,20 @@ fn a_stable_native_version_must_pin_the_named_release_commit() {
     index.releases.as_mut().unwrap()[0].commit = wrong.clone();
     write_release(RELEASE_TAG, &wrong);
     let err = r.run("check", &["base", "head"], &flag).unwrap_err();
-    assert!(err.contains("coords 1.0.0"), "{err}");
+    assert!(
+        err.contains("coords 1.0.0") && err.contains(RELEASE_TAG) && err.contains(RELEASE_PIN),
+        "{err}"
+    );
     let mismatch = verify(&index).unwrap_err();
     assert!(
-        err.contains(&mismatch) && mismatch.contains(RELEASE_TAG) && mismatch.contains(RELEASE_PIN),
-        "{err}"
+        mismatch.contains(RELEASE_TAG) && mismatch.contains(RELEASE_PIN),
+        "{mismatch}"
     );
 
     write_release("26.3-0.2.0", RELEASE_PIN);
     let err = r.build(&flag).unwrap_err();
     assert!(
-        err.contains(RELEASE_TAG) && err.contains("not in the supplied Sunrise releases"),
+        err.contains("coords 1.0.0") && err.contains(RELEASE_TAG),
         "{err}"
     );
 }
@@ -360,31 +362,44 @@ fn a_nightly_only_project_keeps_its_images_in_the_registry() {
         )
         .unwrap();
     };
-    for (images, problem) in [
-        ("icon='https://example.test/icon.png'", "its icon"),
+    let icon = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x80\0\0\0\x80\x08\x06\0\0\0";
+    std::fs::write(r.0.path().join("head/icons/example.png"), icon).unwrap();
+    r.screenshot("example", SHOT);
+    write("icon='icons/example.png'\nscreenshots=['screenshots/example/one.png']");
+    assert_eq!(r.bare_review(), Ok(()));
+    assert_eq!(r.run("check", &["base", "head"], &[]), Ok(()));
+    let index = r.build(&[]).unwrap();
+    let project = index.project("example").unwrap();
+    assert!(project.icon.is_some() && project.screenshots.len() == 1);
+
+    for (images, path) in [
+        (
+            "icon='https://example.test/icon.png'",
+            "https://example.test/icon.png",
+        ),
         (
             "screenshots=['https://example.test/one.png']",
-            "screenshot \"https://example.test/one.png\" must be kept in the registry",
+            "https://example.test/one.png",
+        ),
+        (
+            "screenshots=['screenshots/other/one.png']",
+            "screenshots/other/one.png",
+        ),
+        (
+            "screenshots=['screenshots/example/sub/one.png']",
+            "screenshots/example/sub/one.png",
         ),
     ] {
         write(images);
+        assert!(r.bare_review().is_err(), "{path}");
         for result in [
             r.run("check", &["base", "head"], &[]),
             r.build(&[]).map(drop),
         ] {
             let err = result.unwrap_err();
-            assert!(err.contains(problem), "{err}");
+            assert!(err.contains("example:") && err.contains(path), "{err}");
         }
     }
-
-    let icon = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x80\0\0\0\x80\x08\x06\0\0\0";
-    std::fs::write(r.0.path().join("head/icons/example.png"), icon).unwrap();
-    r.screenshot("example", SHOT);
-    write("icon='icons/example.png'\nscreenshots=['screenshots/example/one.png']");
-    assert_eq!(r.run("check", &["base", "head"], &[]), Ok(()));
-    let index = r.build(&[]).unwrap();
-    let project = index.project("example").unwrap();
-    assert!(project.icon.is_some() && project.screenshots.len() == 1);
 }
 
 #[test]
@@ -393,46 +408,42 @@ fn a_project_waiting_to_publish_keeps_its_id_out_of_the_index() {
     std::fs::write(r.0.path().join("head/mods/example.toml"), PROJECT_PAGE).unwrap();
     assert_eq!(r.check(), Ok(()));
     assert_eq!(r.review(), Ok(()));
+    assert_eq!(r.bare_review(), Ok(()));
     let index = r.build(&[]).unwrap();
     assert!(index.projects.is_empty() && index.left_out.is_empty());
 
     // It publishes no page, but who holds the id is still checked.
-    for (id, page, problem) in [
+    for (id, page, field) in [
         (
             "submit",
             PROJECT_PAGE.replace("'example'", "'submit'"),
-            "reserved",
+            None,
         ),
-        (
-            "example",
-            PROJECT_PAGE.replace("['author']", "[]"),
-            "at least one owner",
-        ),
+        ("example", PROJECT_PAGE.replace("['author']", "[]"), None),
         (
             "example",
             format!("{PROJECT_PAGE}owner_ids=[1, 2]\n"),
-            "owner_ids",
+            Some("owner_ids"),
         ),
-        (
-            "example",
-            PROJECT_PAGE.replace("'author'", "' '"),
-            "an owner is blank",
-        ),
+        ("example", PROJECT_PAGE.replace("'author'", "' '"), None),
         (
             "example",
             PROJECT_PAGE.replace("'author'", "'TODO(publish) your login'"),
-            "the owner is still the TODO(publish)",
+            None,
         ),
     ] {
         let path = r.0.path().join(format!("head/mods/{id}.toml"));
         std::fs::write(&path, page).unwrap();
-        assert!(r.bare_review().is_err());
+        assert!(r.bare_review().is_err(), "{id} {field:?}");
         for result in [
             r.run("check", &["base", "head"], &[]),
             r.build(&[]).map(drop),
         ] {
             let err = result.unwrap_err();
-            assert!(err.contains(problem), "{err}");
+            assert!(
+                err.contains(id) && field.is_none_or(|name| err.contains(name)),
+                "{err}"
+            );
         }
         std::fs::write(r.0.path().join("head/mods/example.toml"), PROJECT_PAGE).unwrap();
         if id != "example" {

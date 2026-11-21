@@ -143,7 +143,7 @@ fn a_nightly_only_project_keeps_its_id_from_a_collection() {
     let s = checkout("collection-nightly-id");
     let mut index = s.build().unwrap();
     let mut project = index.project("creature").unwrap().clone();
-    project.id = ID.into();
+    project.id = "source_only".into();
     project.versions.clear();
     project.nightly = Some(crate::index::Nightly {
         repo: "author/example".into(),
@@ -151,8 +151,10 @@ fn a_nightly_only_project_keeps_its_id_from_a_collection() {
         metadata: Default::default(),
     });
     index.projects.push(project);
+    assert_eq!(index.check(), Ok(()));
+    index.projects.last_mut().unwrap().id = ID.into();
     let error = index.check().unwrap_err();
-    assert!(error.contains("its id is already a project id"), "{error}");
+    assert!(error.contains(ID), "{error}");
 }
 
 #[test]

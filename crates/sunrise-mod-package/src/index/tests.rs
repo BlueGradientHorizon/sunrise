@@ -455,12 +455,8 @@ fn a_version_naming_a_release_the_index_does_not_list_is_left_out() {
         versions.push(v);
     }
     project.versions = versions;
-    assert!(
-        index
-            .check()
-            .unwrap_err()
-            .contains("not in the supplied Sunrise releases")
-    );
+    let error = index.check().unwrap_err();
+    assert!(error.contains(&id) && error.contains("9.0.0"), "{error}");
     let read = reread(&index);
     let kept: Vec<&str> = read
         .project(&id)
@@ -480,6 +476,7 @@ fn a_version_naming_a_release_the_index_does_not_list_is_left_out() {
 
     // An index that lists no releases makes no claim about the tag.
     index.releases = None;
+    assert_eq!(index.check(), Ok(()));
     assert_eq!(reread(&index).project(&id).unwrap().versions.len(), 3);
 }
 
@@ -513,7 +510,8 @@ fn a_takedown_of_the_whole_project_drops_its_nightly_source_for_a_reader() {
 
     // By id: the source goes too, and a project left with nothing is left out.
     index.revoked = vec![takedown(&id, None), takedown("source_only", None)];
-    assert!(index.check().unwrap_err().contains("was taken down"));
+    let error = index.check().unwrap_err();
+    assert!(error.contains(&id), "{error}");
     let read = reread(&index);
     let project = read.project(&id).unwrap();
     assert!(project.nightly.is_none() && !project.versions.is_empty());

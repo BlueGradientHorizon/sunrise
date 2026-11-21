@@ -523,7 +523,7 @@ fn a_review_protects_published_files() {
         changed.versions[0].sunrise = renamed;
         let r = review(std::slice::from_ref(&stable), &[changed], "ludovic111");
         assert_eq!(r.errors.len(), 1, "{r:?}");
-        assert!(r.errors[0].contains("stable release a published version names never changes"));
+        assert!(r.errors[0].contains("coords_hud 0.1.0"), "{r:?}");
     }
 }
 

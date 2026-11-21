@@ -354,6 +354,17 @@ impl Entry {
                 rules::MAX_SCREENSHOTS
             ));
         }
+        if nightly_only {
+            // Images are optional on a Nightly-only page, but must be local when supplied.
+            errors.extend(
+                self.icon
+                    .as_deref()
+                    .and_then(|icon| rules::check_icon_path(id, Some(icon)))
+                    .into_iter()
+                    .chain(rules::check_screenshot_paths(id, &self.screenshots))
+                    .map(|problem| format!("{id}: {problem}")),
+            );
+        }
         errors
     }
 }
@@ -805,16 +816,6 @@ fn project_with_cache(
     let id = &entry.id;
     if !valid_id(id) || crate::manifest::RESERVED_IDS.contains(&id.as_str()) {
         return Err(errors);
-    }
-    if nightly_only {
-        // Its images are optional, but the ones it has are kept in the registry like any other's.
-        let icon = entry.icon.as_deref();
-        errors.extend(
-            icon.and_then(|icon| rules::check_icon_path(id, Some(icon)))
-                .into_iter()
-                .chain(rules::check_screenshot_paths(&entry.screenshots))
-                .map(|problem| format!("{id}: {problem}")),
-        );
     }
     let icon = entry
         .icon
