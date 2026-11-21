@@ -41,7 +41,9 @@ impl ItemEntity {
             context,
             side: None,
         };
-        self.apply_move_restitution(motion, step);
+        if let Some(response) = self.move_restitution(motion, step) {
+            self.velocity = response.velocity;
+        }
         self.apply_speed_and_step(motion, no_physics, step);
         self.finish_move_block_effects(world, facts, step);
         step
@@ -238,19 +240,24 @@ impl ItemEntity {
     }
 
     /// The remainder of `Entity.move` after the owning side's fall check.
-    pub fn apply_move_restitution(&mut self, motion: BodyMotion<'_>, step: ItemStep) {
-        if let Some((wanted, moved, effect)) = step.restitution {
-            self.needs_sync |= motion.restitute(
-                (self.id, "minecraft:item"),
-                false,
+    pub fn move_restitution(
+        &self,
+        motion: BodyMotion<'_>,
+        step: ItemStep,
+    ) -> Option<crate::motion::BodyRestitution> {
+        let (wanted, moved, effect) = step.restitution?;
+        Some(motion.restitute(
+            (self.id, "minecraft:item"),
+            crate::motion::BodyMove {
                 wanted,
                 moved,
                 effect,
-                self.get_gravity(),
-                0.98_f32,
-                &mut self.velocity,
-            );
-        }
+            },
+            self.get_gravity(),
+            0.98_f32,
+            self.velocity,
+            self.fall_distance,
+        ))
     }
 
     /// The move's speed factor, then `applyEffectsFromBlocks`' grounded step.

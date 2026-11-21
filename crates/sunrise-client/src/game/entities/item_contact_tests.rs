@@ -138,6 +138,7 @@ type BounceContact = (bool, i32, String, [i32; 3]);
 #[derive(Clone, Default)]
 struct BounceProbe {
     calls: Arc<Mutex<Vec<BounceContact>>>,
+    bounced: Arc<Mutex<Vec<(i32, [i32; 3])>>>,
 }
 
 #[mod_api::sunrise_part]
@@ -158,6 +159,17 @@ impl BlockPart for BounceProbe {
             .unwrap()
             .push((client, event.entity, event.kind.into(), pos));
         event.factor = 0.67_f32;
+    }
+
+    fn bounce_on(
+        &self,
+        _: &mut dyn mod_api::LevelRandomHost,
+        event: &mut mod_api::BounceOnEvent<'_>,
+    ) {
+        self.bounced
+            .lock()
+            .unwrap()
+            .push((event.entity, [event.pos.x, event.pos.y, event.pos.z]));
     }
 }
 
@@ -188,7 +200,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 crate::game::api_values::install_parts(&mods).unwrap();
                 crate::game::native_hooks::install_block_contact_hooks();
-                let run = |game: &mut Game<'_>, client| {
+                let run = |game: &mut Game<'_>, client: bool| {
                     let registry = game.pack.assets.registry;
                     let block = |name| registry.default_state(name).unwrap();
                     let glass = block("minecraft:glass");
@@ -206,7 +218,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                             64.25,
                             -0.96,
                             64.0,
-                            Some(0.67_f32),
+                            0.5278801619529518_f64,
                             true,
                         ),
                         // The carpet supports the box, but getOnPosLegacy addresses the glass below it.
@@ -218,7 +230,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                             64.3125,
                             -0.96,
                             64.0625,
-                            Some(0.67),
+                            0.5278801619529518_f64,
                             true,
                         ),
                         (
@@ -229,12 +241,24 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                             64.3125,
                             -0.96,
                             64.0625,
-                            None,
+                            0.0_f64,
                             false,
                         ),
-                        (slime, None, None, 4.5, 64.25, -0.96, 64.0, Some(1.0), false),
-                        (honey, None, None, 4.5, 64.25, -0.96, 63.9375, None, false),
-                        (glass, None, None, 4.5, 64.03125, 0.0, 64.0, None, false),
+                        (
+                            slime,
+                            None,
+                            None,
+                            4.5,
+                            64.25,
+                            -0.96,
+                            64.0,
+                            0.7878808308504466_f64,
+                            false,
+                        ),
+                        (
+                            honey, None, None, 4.5, 64.25, -0.96, 63.9375, 0.0_f64, false,
+                        ),
+                        (glass, None, None, 4.5, 64.03125, 0.0, 64.0, 0.0_f64, false),
                         // A ceiling collision addresses the carpet cell but never queries its factor.
                         (
                             stone,
@@ -244,11 +268,11 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                             64.5,
                             1.0,
                             64.75,
-                            None,
+                            -0.0_f64,
                             false,
                         ),
                     ];
-                    for (floor, above, ceiling, x, y, vy, landed_y, factor, calls) in cases {
+                    for (floor, above, ceiling, x, y, vy, landed_y, expected_y, calls) in cases {
                         game.world = World::new(game.res.facts().air, 1);
                         game.world
                             .chunks
@@ -262,6 +286,8 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                         }
                         game.dropped.clear();
                         part.calls.lock().unwrap().clear();
+                        part.bounced.lock().unwrap().clear();
+                        game.persist.sync_body_position.clear();
                         game.spawn_item(
                             ItemStack::new("minecraft:iron_ingot", 1),
                             [x, y, 4.5],
@@ -269,27 +295,37 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                             20,
                         );
                         let mut item = game.dropped[0].clone();
-                        assert_eq!(
-                            game.tick_item_with_block_contacts(
-                                &mut item,
-                                None,
-                                &[],
-                                client,
-                                &mut |_| {}
-                            ),
-                            (true, false)
-                        );
+                        let dim = game.dim.id();
+                        let result =
+                            sunrise_client::block_contact::in_level(game.tick, Some(dim), || {
+                                game.tick_item_with_block_contacts(
+                                    &mut item,
+                                    None,
+                                    &[],
+                                    client,
+                                    &mut |_| {},
+                                )
+                            });
+                        assert_eq!(result, (true, false));
                         assert_eq!(item.position.y, landed_y);
-                        let expected = factor.map_or(0.0, |f| {
-                            let speed = vy - 0.04;
-                            let portion = (landed_y - y) / speed;
-                            let drag = f64::from(0.98_f32);
-                            (portion * 0.04 - speed)
-                                * (1.0 + portion * (drag - 1.0))
-                                * f64::from(f * 0.8_f32)
-                                * drag
-                        });
-                        assert_eq!(item.velocity.y, expected, "floor {floor:?}, start {y}");
+                        assert_eq!(
+                            item.velocity.y.to_bits(),
+                            expected_y.to_bits(),
+                            "floor {floor:?}, start {y}"
+                        );
+                        assert_eq!(
+                            game.persist.sync_body_position.contains(&item.id),
+                            !client && expected_y > 0.0
+                        );
+                        let bounced = part.bounced.lock().unwrap();
+                        if !client && calls {
+                            assert_eq!(*bounced, [(item.id as i32, [4, 63, 4])]);
+                        } else {
+                            assert!(
+                                bounced.is_empty(),
+                                "unexpected bounce callback: {bounced:?}"
+                            );
+                        }
                         let got = part.calls.lock().unwrap();
                         if calls {
                             assert_eq!(

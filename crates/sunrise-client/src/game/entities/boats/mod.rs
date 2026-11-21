@@ -1076,26 +1076,27 @@ impl Game<'_> {
                     movement,
                     moved,
                     true,
-                    sunrise_world::collision_context::CollisionContext::empty(false),
+                    sunrise_client::motion::BodyMotion::entity_context(b.id, b.position),
                     None,
                     &mut b.ground,
                 );
             }
             let effect = motion.legacy_contact(b.position, &b.ground);
             b.fall_distance = self.boat_fall(&b, moved.y);
-            // Damage and the later block effects still belong to AbstractBoat.tick.
-            let mut velocity = b.velocity;
-            motion.restitute(
-                (b.id, b.entity_type_name()),
-                false,
-                movement,
-                moved,
-                effect,
+            let entity = (b.id, b.entity_type_name());
+            let response = motion.restitute(
+                entity,
+                sunrise_client::motion::BodyMove {
+                    wanted: movement,
+                    moved,
+                    effect,
+                },
                 b.get_gravity(),
                 1.0_f32,
-                &mut velocity,
+                b.velocity,
+                b.fall_distance,
             );
-            b.velocity = velocity;
+            b.velocity = self.finish_body_restitution(entity, b.position, response);
         }
         self.body_motion(&game_side!(self))
             .apply_block_speed(b.position, &mut b.velocity);
@@ -1290,11 +1291,17 @@ impl Game<'_> {
     /// `Entity.canSimulateMovement`: for a boat (`AUTHORITATIVE_SIDE`) a
     /// server leaves the boat its player drives to that player's client, and a
     /// client moves only the boat its player drives.
-    fn boat_can_simulate_movement(&self, id: u32) -> bool {
+    pub(super) fn boat_can_simulate_movement(&self, id: u32) -> bool {
         if self.remote.is_some() {
             self.controls_boat(id)
         } else {
-            !self.guest_vehicles().contains(&id)
+            self.lan.as_ref().is_none_or(|host| {
+                !host
+                    .hub
+                    .guests
+                    .iter()
+                    .any(|guest| guest.vehicle == Some(id))
+            })
         }
     }
     /// `AbstractBoat.tick`: `status = getStatus()` for a boat this window

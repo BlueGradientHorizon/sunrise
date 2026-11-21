@@ -134,8 +134,6 @@ pub(super) struct Minecart {
     pub(super) fall_distance: f64,
     /// The squared speed `MinecartTNT.causeFallDamage` blows up with, set by
     /// a landing of three blocks or more and taken by the cart's next tick
-    /// step (vanilla explodes inside the move itself).
-    pub(super) fall_blast: Option<f64>,
     /// `Entity.stuckSpeedMultiplier`: set by a cobweb the cart's box is in,
     /// scaled into its next move.
     pub(super) stuck: Vec3,
@@ -516,7 +514,6 @@ impl Minecart {
             on_rails: false,
             ground: Default::default(),
             fall_distance: 0.0,
-            fall_blast: None,
             stuck: Vec3::ZERO,
             hurt_time: 0,
             hurt_dir: 1,
@@ -735,7 +732,7 @@ impl Game<'_> {
         rail: &Rail,
         intent: [f64; 2],
         slot: usize,
-    ) {
+    ) -> bool {
         c.fall_distance = 0.0;
         let ridden = self.has_seated_passengers(c.id);
         let (x, z) = (c.position.x, c.position.z);
@@ -806,7 +803,9 @@ impl Game<'_> {
             0.0,
             (scale * c.velocity.z).clamp(-max, max),
         );
-        self.move_cart(c, delta);
+        if !self.move_cart(c, delta) {
+            return false;
+        }
         // 🤖 Agent: `AbstractMinecart.move` runs applyEffectsFromBlocks at
         // once, the cart still at the rail's top height (below it is lowered).
         let here = c.position;
@@ -861,6 +860,7 @@ impl Game<'_> {
                 }
             }
         }
+        true
     }
     /// `Entity.checkInsideBlocks` for a recorded move of the cart from `from`
     /// to `to`: the entity-sensing blocks (plates, buttons, tripwires, detector
@@ -1054,7 +1054,7 @@ impl Game<'_> {
     /// `NewMinecartBehavior.moveAlongTrack`: the iteration keeps moving
     /// while distance is left, over as many rails as it takes, the speed
     /// recomputed per rail (slope, halt, boost).
-    fn move_along_track_new(&mut self, c: &mut Minecart, intent: [f64; 2]) {
+    fn move_along_track_new(&mut self, c: &mut Minecart, intent: [f64; 2]) -> bool {
         // `TrackIteration`: the slope, halt and boost speeds each apply once
         // per tick, and the iteration keeps moving while distance is left.
         let mut first = true;
@@ -1068,13 +1068,15 @@ impl Game<'_> {
             let pos = self.rail_block(c.position);
             let Some(rail) = self.rail(Some(c.id), pos[0], pos[1], pos[2]) else {
                 c.on_rails = false;
-                self.come_off_track(c);
+                if !self.come_off_track(c) {
+                    return false;
+                }
                 self.finish_cart_step(c, step_start, initial);
                 if first || c.position.distance(step_start) > f64::from(1.0e-5_f32) {
                     self.cart_block_effects(c);
                     self.cart_block_effects(c);
                 }
-                return;
+                return true;
             };
             if !c.on_rails {
                 c.on_rails = true;
@@ -1165,7 +1167,10 @@ impl Game<'_> {
             } else {
                 movement_left + (new_h - initial_h)
             };
-            movement_left = self.new_step_along_track(c, pos, &rail, movement_left);
+            let Some(left) = self.new_step_along_track(c, pos, &rail, movement_left) else {
+                return false;
+            };
+            movement_left = left;
             self.finish_cart_step(c, step_start, initial);
             // NewMinecartBehavior.moveAlongTrack applies block effects twice,
             // after recording the step, including a stationary first step.
@@ -1175,6 +1180,7 @@ impl Game<'_> {
             }
             first = false;
         }
+        true
     }
     /// `NewMinecartBehavior.stepAlongTrack`: toward the rail's exit, the
     /// hill's Y projected, a V of opposing slopes resting a slow cart.
@@ -1184,16 +1190,16 @@ impl Game<'_> {
         pos: [i32; 3],
         rail: &Rail,
         mut movement_left: f64,
-    ) -> f64 {
+    ) -> Option<f64> {
         if movement_left < f64::from(1.0e-5_f32) {
-            return 0.0;
+            return Some(0.0);
         }
         let old = c.position;
         let (e0, e1) = rail.shape.exits();
         let movement = Vec3::new(c.velocity.x, 0.0, c.velocity.z);
         if movement.length() < f64::from(1.0e-5_f32) {
             c.velocity = Vec3::ZERO;
-            return 0.0;
+            return Some(0.0);
         }
         let in_hill = e0[1] != e1[1];
         let mut out_dir = Vec3::new(f64::from(e0[0]) * 0.5, 0.0, f64::from(e0[2]) * 0.5);
@@ -1231,7 +1237,9 @@ impl Game<'_> {
         } else {
             movement_left = 0.0;
         }
-        self.move_cart(c, old.vector_to(new_pos));
+        if !self.move_cart(c, old.vector_to(new_pos)) {
+            return None;
+        }
         if in_hill {
             let new_block = [
                 new_pos.x.floor() as i32,
@@ -1247,7 +1255,7 @@ impl Game<'_> {
                     && !Self::is_descending(c.velocity, new_rail.shape)
                 {
                     c.velocity = Vec3::ZERO;
-                    return 0.0;
+                    return Some(0.0);
                 }
             }
             let h_dist =
@@ -1267,13 +1275,13 @@ impl Game<'_> {
             && new_pos.distance(old) > f64::from(1.0e-5_f32)
         {
             c.velocity = Vec3::ZERO;
-            return 0.0;
+            return Some(0.0);
         }
         c.velocity = movement;
-        movement_left
+        Some(movement_left)
     }
     /// `comeOffTrack`.
-    fn come_off_track(&self, c: &mut Minecart) {
+    fn come_off_track(&mut self, c: &mut Minecart) -> bool {
         let max = self.cart_max_speed(c);
         c.velocity.x = c.velocity.x.clamp(-max, max);
         c.velocity.z = c.velocity.z.clamp(-max, max);
@@ -1281,7 +1289,9 @@ impl Game<'_> {
             c.velocity = Vec3::new(c.velocity.x * 0.5, c.velocity.y * 0.5, c.velocity.z * 0.5);
         }
         let v = c.velocity;
-        self.move_cart(c, v);
+        if !self.move_cart(c, v) {
+            return false;
+        }
         if !c.ground.on_ground {
             // scale(getAirDrag()): 0.95F, widened.
             let drag = f64::from(0.95_f32);
@@ -1291,6 +1301,7 @@ impl Game<'_> {
                 c.velocity.z * drag,
             );
         }
+        true
     }
     /// `applyEffectsFromBlocks` for a cart: a bubble column lifts or drags it
     /// and resets the fall distance.
@@ -1390,19 +1401,23 @@ impl Game<'_> {
         c.velocity.y -= c.get_gravity();
         let pos = self.rail_block(c.position);
         if self.minecart_improvements() {
-            self.move_along_track_new(c, intent);
+            if !self.move_along_track_new(c, intent) {
+                return false;
+            }
         } else {
             // OldMinecartBehavior.tick writes `onRails` every tick, before the move.
             let rail = self.rail(Some(c.id), pos[0], pos[1], pos[2]);
             c.on_rails = rail.is_some();
             if let Some(rail) = rail {
-                self.move_along_track(c, pos, &rail, intent, slot);
+                if !self.move_along_track(c, pos, &rail, intent, slot) {
+                    return false;
+                }
                 self.note_cart_pass(c, pos);
                 if &*rail.name == "minecraft:activator_rail" {
                     self.activate_cart(c, rail.powered);
                 }
-            } else {
-                self.come_off_track(c);
+            } else if !self.come_off_track(c) {
+                return false;
             }
         }
         c.first_tick = false;
@@ -1468,12 +1483,6 @@ impl Game<'_> {
                 }
             }
             CartKind::Tnt => {
-                // MinecartTNT.causeFallDamage ran inside the move.
-                if let Some(speed_sqr) = c.fall_blast.take()
-                    && self.explode_cart(c, speed_sqr)
-                {
-                    return false;
-                }
                 // MinecartTNT.tick: the fuse and the collision check are separate.
                 if c.fuse > 0 {
                     c.fuse -= 1;

@@ -169,7 +169,7 @@ impl Game<'_> {
         // false (Entity.isDescending returns isShiftKeyDown, fixes #7553).
         let context = CollisionContext::for_entity(
             CollisionEntity {
-                identity: EntityIdentity(0),
+                identity: EntityIdentity(u64::from(f.id)),
                 kind: sunrise_world::collision_context::EntityContextKind::Other,
                 y: f.position.y,
                 descending: false,
@@ -229,7 +229,7 @@ impl Game<'_> {
             );
         }
         let effect = body.legacy_contact(f.position, &f.ground);
-        if f.ground.on_ground {
+        if !self.options.execution_role.is_client() && f.ground.on_ground {
             self.falling_block_impact(f);
             if f.fall_distance > 0.0 {
                 self.post_landing_event(
@@ -240,25 +240,24 @@ impl Game<'_> {
             }
             f.fall_distance = 0.0;
         }
-        let side = game_side!(self);
-        let body = self.body_motion(&side);
-        body.restitute(
-            (f.id, "minecraft:falling_block"),
-            false,
-            wanted,
-            movement,
-            effect,
+        let entity = (f.id, "minecraft:falling_block");
+        let response = self.body_motion(&game_side!(self)).restitute(
+            entity,
+            sunrise_client::motion::BodyMove {
+                wanted,
+                moved: movement,
+                effect,
+            },
             sunrise_client::entity_rules::EntityRules::get_gravity(f),
             0.98_f32,
-            &mut f.velocity,
+            f.velocity,
+            f.fall_distance,
         );
+        f.velocity = self.finish_body_restitution(entity, f.position, response);
+        let side = game_side!(self);
+        let body = self.body_motion(&side);
         body.apply_block_speed(f.position, &mut f.velocity);
-        body.step_on(
-            (f.id, "minecraft:falling_block"),
-            f.position,
-            &f.ground,
-            &mut f.velocity,
-        );
+        body.step_on(entity, f.position, &f.ground, &mut f.velocity);
         // applyEffectsFromBlocks: WebBlock.entityInside makes it stuck
         // (Entity.makeStuckInBlock), BubbleColumnBlock.entityInside lifts or
         // drags it. Entity.move records the move unless it was blocked short
@@ -352,14 +351,17 @@ impl Game<'_> {
         }
         let y = next.y.floor() as i32;
         let outside = y <= self.world.bottom_y() || y >= self.world.top_y();
-        if !f.ground.on_ground && (f.age > 100 && outside || f.age > 600) {
+        if !self.options.execution_role.is_client()
+            && !f.ground.on_ground
+            && (f.age > 100 && outside || f.age > 600)
+        {
             return Ok(if f.drop_item && entity_drops {
                 FallStep::Dropped(next)
             } else {
                 FallStep::Gone
             });
         }
-        if f.ground.on_ground {
+        if !self.options.execution_role.is_client() && f.ground.on_ground {
             return Ok(FallStep::Landed([
                 f.position.x.floor() as i32,
                 f.position.y.floor() as i32,

@@ -209,6 +209,8 @@ pub struct EntityMemory {
     pub(super) preparing_vehicle_removals: HashSet<super::commands::Target>,
     /// Vehicle destruction is logically visible before its passenger callbacks.
     pub(super) destroying_vehicles: HashSet<super::commands::Target>,
+    /// Bodies that set `Entity.syncPosition` this tick, cleared after tracking.
+    pub(super) sync_body_position: HashSet<u32>,
     /// Synched entity-data entries dirtied by forced writes since the last sync.
     pub(super) forced_meta: HashMap<u32, [u64; 4]>,
     /// `Entity.noPhysics` a native mod wrote for a kind whose own struct keeps

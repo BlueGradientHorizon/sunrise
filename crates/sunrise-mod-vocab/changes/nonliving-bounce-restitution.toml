@@ -1,3 +1,3 @@
-ids = ["hook:bounce_restitution", "method:BlockPart::bounce_restitution", "type:BounceRestitutionEvent"]
+ids = ["hook:bounce_restitution", "method:BlockPart::bounce_restitution", "hook:bounce_on", "method:BlockPart::bounce_on"]
 why = "Simulating nonliving bodies now query the block restitution Part at the same Entity.move phase as living bodies. The state and position are captured together; the engine scales the block coefficient in f32 before comparing it to the entity coefficient."
 migrate = "Rebuild for hook version 2; the signature is unchanged. A Part that wants to keep its earlier coverage should filter on event.kind. Otherwise answer for nonliving bodies too, on either side, without changing state or consuming random numbers."
