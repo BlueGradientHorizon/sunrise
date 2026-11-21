@@ -665,7 +665,33 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
 #[test]
 #[ignore = "daily"]
 fn panicking_grindstone_listeners_keep_vanilla_and_initial_behavior() {
-    with_mod(|| {
+    struct HealthyPlaceListener;
+
+    #[mod_api::__subscriptions]
+    impl Hooks for HealthyPlaceListener {
+        fn grindstone_place(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut GrindstonePlaceEvent<'_>,
+        ) -> Flow {
+            SCRIPT.with_borrow(|s| {
+                if !s.place_panic
+                    && let Some((count, xp)) = s.place_output.zip(s.place_xp)
+                {
+                    event.edits.output = Some(dirt(count));
+                    event.edits.xp = xp;
+                }
+            });
+            Flow::Continue
+        }
+    }
+
+    let mods: Mods = vec![
+        ModEntry::new("grindmod", Box::new(Mod)),
+        ModEntry::new("healthy-place", Box::new(HealthyPlaceListener)),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
         with_guests(|game| {
             let window = open_grindstone(game);
             let sword = enchanted_sword(game, 200);
@@ -684,7 +710,8 @@ fn panicking_grindstone_listeners_keep_vanilla_and_initial_behavior() {
             assert_eq!(slot(game, 2), Some(disenchanted_sword(200)));
             assert!(game.transactions.is_empty());
 
-            // Pick the sword back up and place it with a normal override for the take test.
+            // The panicking Place listener is skipped for the rest of this scope, but
+            // the healthy subscriber can still supply an override for the Take test.
             script(Script::default());
             click(game, window, 0, 0);
             script(Script {
@@ -693,16 +720,19 @@ fn panicking_grindstone_listeners_keep_vanilla_and_initial_behavior() {
                 ..Script::default()
             });
             click(game, window, 0, 0);
+            assert_eq!(DISPATCHES.get(), 0);
             let output = Some(ItemStack::new("minecraft:dirt", 1));
             assert_eq!(slot(game, 2), output);
 
             let events = game.lan_events.len();
             script(Script {
+                take_xp: Some(99),
                 take_new_top: Some(1),
                 take_panic: true,
                 ..Script::default()
             });
             click(game, window, 2, 0);
+            assert_eq!(DISPATCHES.get(), 1);
             assert_eq!(TAKE_XP.get(), Some(5));
             assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].carried, output);
             assert_eq!(slot(game, 0), None);
@@ -868,6 +898,9 @@ fn place_only_take_awards_xp_and_event_before_replacing_inputs() {
             mod_api::HookId::GrindstoneTake
         ));
         with_guests(|game| {
+            // The real integrated server sets this marker too; the host's orb query
+            // needs it when the fixture has no Serving loop.
+            game.options.dedicated = Some(Vec::new());
             let window = open_grindstone(game);
             let top = enchanted_sword(game, 200);
             let bottom = enchanted_sword(game, 150);
