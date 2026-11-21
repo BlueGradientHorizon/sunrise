@@ -558,6 +558,10 @@ impl Oit {
         &self.features
     }
 
+    pub(super) fn stage_layouts(&self) -> &[wgpu::BindGroupLayout; 4] {
+        &self.layouts
+    }
+
     /// Sizes the targets to the world's and writes this frame's projection.
     pub fn prepare(
         &mut self,

@@ -77,7 +77,59 @@ impl ViewSet {
     }
 }
 
+/// Read-only summary of one visible world section exposed to frame callbacks.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VisibleSection {
+    pub origin: [i32; 3],
+    pub bounds: [[f64; 3]; 2],
+    pub empty: bool,
+}
+
 impl Renderer {
+    /// Whether order-independent transparency is active for the given option value on this
+    /// renderer (no shader pack post-chain, no native pack, and device supports OIT).
+    pub fn oit_active_for(&self, improved_transparency: bool) -> bool {
+        improved_transparency
+            && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
+            && self.native.is_none()
+            && super::oit::supported(&self.device)
+    }
+
+    /// Collects the resident sections visible from `camera` within `radius` chunks and `frustum`,
+    /// filtered by the current occlusion graph when `cave_culling` is enabled.
+    pub fn collect_visible_sections(
+        &self,
+        camera: DVec3,
+        radius: i32,
+        frustum: &Frustum,
+        cave_culling: bool,
+        out: &mut Vec<VisibleSection>,
+    ) {
+        out.clear();
+        let mut scratch = Vec::new();
+        self.sections.visible(
+            camera,
+            radius,
+            frustum,
+            |k| !cave_culling || self.occlusion.contains(k),
+            |_, _| false,
+            &mut scratch,
+        );
+        let min_y = self.sections.min_y();
+        out.reserve(scratch.len());
+        for visible in &scratch {
+            let (cx, sy, cz) = visible.key;
+            let origin = [cx * 16, min_y + sy * 16, cz * 16];
+            let [ox, oy, oz] = origin.map(f64::from);
+            let gpu = self.sections.get(visible.slot);
+            out.push(VisibleSection {
+                origin,
+                bounds: [[ox, oy, oz], [ox + 16.0, oy + 16.0, oz + 16.0]],
+                empty: gpu.solid == 0 && gpu.translucent == 0,
+            });
+        }
+    }
+
     /// The views `render` draws `frame` from.
     pub fn views(&self, frame: &Frame) -> ViewSet {
         ViewSet::single(self.screen_view(

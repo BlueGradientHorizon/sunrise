@@ -1370,11 +1370,7 @@ impl Renderer {
         }
         // GameRenderer.useImprovedTransparency. A shader pack keeps its own
         // path.
-        let oit_on = self.improved_transparency
-            && !frame.title
-            && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
-            && self.native.is_none()
-            && oit::supported(&self.device);
+        let oit_on = !frame.title && self.oit_active_for(self.improved_transparency);
         let [
             entity_quads,
             text_quads,
@@ -2116,9 +2112,10 @@ impl Renderer {
                 self.weather.pipeline().get_bind_group_layout(1),
                 self.border_pipeline.get_bind_group_layout(0),
             ];
-            self.oit
-                .get_or_insert_with(|| {
-                    oit::Oit::new(
+            let oit = match &mut self.oit {
+                Some(oit) => oit,
+                None => {
+                    let oit = oit::Oit::new(
                         device,
                         layout,
                         flat.as_ref(),
@@ -2126,15 +2123,19 @@ impl Renderer {
                         [&clouds[0], &clouds[1]],
                         sprites,
                         format,
-                    )
-                })
-                .prepare(
-                    &self.device,
-                    &self.queue,
-                    size,
-                    &views.primary().projection,
-                    [water_mask_quads > 0, cloud_quads > 0],
-                );
+                    );
+                    self.world_primitives
+                        .enable_oit(device, oit.stage_layouts());
+                    self.oit.insert(oit)
+                }
+            };
+            oit.prepare(
+                &self.device,
+                &self.queue,
+                size,
+                &views.primary().projection,
+                [water_mask_quads > 0, cloud_quads > 0],
+            );
         }
         let pack_sky_clear = pack_draws_sky
             .then(|| self.pack_post.as_ref().and_then(|p| p.1.as_ref()))
@@ -2406,14 +2407,6 @@ impl Renderer {
             // The next stage of the mods' primitives to draw (`RenderLevelStage`): a stage this
             // route does not draw its part of the world at goes with the next one it reaches.
             let mut primitive_stage = 0;
-            // RenderLevelStageEvent.AfterSky: behind every terrain, once this pass drew the sky.
-            if world_primitives && !pack_draws_sky && !pack_draws_terrain {
-                self.world_primitives
-                    .draw_through(&mut pass, &mut primitive_stage, 0);
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-            }
             let terrain_pass =
                 |encoder: &mut wgpu::CommandEncoder, surface: &wgpu::TextureView, clear: bool| {
                     // Its lifetime forgotten: a closure cannot tie it to `encoder`'s.
@@ -2739,8 +2732,11 @@ impl Renderer {
             // RenderLevelStageEvent.AfterOpaqueBlocks: after solid and cutout terrain, before
             // entities.
             if world_primitives && !pack_draws_terrain {
-                self.world_primitives
-                    .draw_through(&mut pass, &mut primitive_stage, 1);
+                self.world_primitives.draw_through(
+                    &mut pass,
+                    &mut primitive_stage,
+                    world_primitives::STAGE_AFTER_OPAQUE_BLOCKS,
+                );
                 pass.set_bind_group(0, &self.group, &[]);
                 pack_frame(&mut pass);
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -2797,6 +2793,18 @@ impl Renderer {
                     );
                 }
                 pass.set_bind_group(0, &self.group, &[]);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+            }
+            // RenderLevelStageEvent.AfterOpaqueFeatures: after opaque entities and block
+            // entities, before translucent features.
+            if world_primitives && !pack_draws_terrain {
+                self.world_primitives.draw_through(
+                    &mut pass,
+                    &mut primitive_stage,
+                    world_primitives::STAGE_AFTER_OPAQUE_FEATURES,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+                pack_frame(&mut pass);
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             }
             if text_quads > 0 && !oit_on {
@@ -3034,6 +3042,18 @@ impl Renderer {
                 pass.set_bind_group(0, &self.group, &[]);
                 pack_frame(&mut pass);
             }
+            // RenderLevelStageEvent.AfterTranslucentFeatures: after translucent features, right
+            // before translucent terrain (classic path).
+            if world_primitives && !pack_draws_water && !pack_draws_terrain && !oit_on {
+                self.world_primitives.draw_through(
+                    &mut pass,
+                    &mut primitive_stage,
+                    world_primitives::STAGE_AFTER_TRANSLUCENT_FEATURES,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+                pack_frame(&mut pass);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+            }
             match self.flat.as_ref().filter(|_| flat_frame) {
                 // The pack draws translucent terrain after its deferred programs.
                 _ if pack_draws_water => {}
@@ -3153,6 +3173,9 @@ impl Renderer {
                                 let first = side as u32 * 6;
                                 pass.draw_indexed(first..first + 6, 0, 0..1);
                             }
+                        }
+                        if world_primitives {
+                            self.world_primitives.draw_oit(pass, stage);
                         }
                     };
                     let extras = oit::Extras {
@@ -3286,11 +3309,14 @@ impl Renderer {
                     pass.split(self.own_timing.as_mut(), "after translucent");
                 }
             }
-            // RenderLevelStageEvent.AfterTranslucentBlocks: after translucent terrain, here or
-            // OIT's.
-            if world_primitives && !pack_draws_water && !pack_draws_terrain {
-                self.world_primitives
-                    .draw_through(&mut pass, &mut primitive_stage, 2);
+            // RenderLevelStageEvent.AfterTranslucentBlocks: after translucent terrain (classic
+            // path).
+            if world_primitives && !pack_draws_water && !pack_draws_terrain && !oit_on {
+                self.world_primitives.draw_through(
+                    &mut pass,
+                    &mut primitive_stage,
+                    world_primitives::STAGE_AFTER_TRANSLUCENT_BLOCKS,
+                );
                 pass.set_bind_group(0, &self.group, &[]);
                 pack_frame(&mut pass);
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -3321,6 +3347,18 @@ impl Renderer {
                     );
                 }
                 pass.set_bind_group(0, &self.group, &[]);
+            }
+            // RenderLevelStageEvent.AfterTranslucentParticles: after translucent particles
+            // (classic path).
+            if world_primitives && !pack_draws_water && !pack_draws_terrain && !oit_on {
+                self.world_primitives.draw_through(
+                    &mut pass,
+                    &mut primitive_stage,
+                    world_primitives::STAGE_AFTER_TRANSLUCENT_PARTICLES,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+                pack_frame(&mut pass);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             }
             // Native world text is an ordinary depth-tested overlay, after
             // particles (also after the OIT composite) and before the hand.
@@ -3396,8 +3434,11 @@ impl Renderer {
             }
             // RenderLevelStageEvent.AfterWeather: after the rain and snow this pass drew.
             if world_primitives && !pack_draws_weather && !oit_on {
-                self.world_primitives
-                    .draw_through(&mut pass, &mut primitive_stage, 3);
+                self.world_primitives.draw_through(
+                    &mut pass,
+                    &mut primitive_stage,
+                    world_primitives::STAGE_AFTER_WEATHER,
+                );
                 pass.set_bind_group(0, &self.group, &[]);
                 pack_frame(&mut pass);
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -3437,14 +3478,14 @@ impl Renderer {
                 pack_frame(&mut pass);
             }
             // Native mods' primitives: after the entities and the rest of the world, into its
-            // targets (its resolution, reversed depth and TAA), before the hand
-            // (RenderLevelStageEvent.AfterLevel), with any stage not drawn yet.
+            // targets (its resolution, reversed depth and TAA), before the hand, with any stage
+            // not drawn yet.
             if world_primitives {
                 pass.stage(self.own_timing.as_mut(), "mod primitives");
                 self.world_primitives.draw_through(
                     &mut pass,
                     &mut primitive_stage,
-                    world_primitives::STAGES - 1,
+                    world_primitives::STAGE_CUSTOM_GEOMETRY,
                 );
             }
             if hand_in_world {

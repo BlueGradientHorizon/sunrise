@@ -1461,11 +1461,19 @@ mod tests {
                 [10.0, 20.0, 30.0, 40.0],
                 "stages in frame order, custom geometry just before AfterLevel"
             );
-            // AfterSky holds the first line, AfterOpaqueBlocks and AfterTranslucentBlocks none,
-            // AfterWeather the second, AfterLevel the rest.
+            // AfterSky holds the first line (mapped to stage 0), AfterOpaqueBlocks and
+            // AfterTranslucentBlocks none, AfterWeather the second (stage 5), AfterLevel the rest
+            // (stage 6).
             assert_eq!(
                 batch.stage_ends,
-                [[0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 2, 0]]
+                [
+                    [0, 0, 1, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 2, 0],
+                ]
             );
             // A title view draws no world: nothing, and every stage empty.
             game.fill_world_geometry(
@@ -1477,7 +1485,7 @@ mod tests {
                 &mut Vec::new(),
             );
             assert!(draw.batch().is_empty());
-            assert_eq!(draw.batch().stage_ends, [[0; 4]; 4]);
+            assert_eq!(draw.batch().stage_ends, [[0; 4]; 6]);
         });
     }
 

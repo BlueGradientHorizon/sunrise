@@ -11,11 +11,82 @@ use glam::Mat4;
 /// Initial per-view line and quad pre-reservation hint; buffers grow dynamically as needed.
 pub const DEFAULT_CAPACITY: u32 = 4096;
 
-/// The stages a frame draws primitives at, in frame order (`RenderLevelStage`).
-pub const STAGES: usize = 5;
+/// The pass-bearing standard world stages a frame draws primitives at, in frame order
+/// (`RenderLevelStage` pass stages, plus `STAGE_CUSTOM_GEOMETRY` at the end of the world pass).
+pub const STAGES: usize = 7;
+pub const STAGE_AFTER_OPAQUE_BLOCKS: usize = 0;
+pub const STAGE_AFTER_OPAQUE_FEATURES: usize = 1;
+pub const STAGE_AFTER_TRANSLUCENT_FEATURES: usize = 2;
+pub const STAGE_AFTER_TRANSLUCENT_BLOCKS: usize = 3;
+pub const STAGE_AFTER_TRANSLUCENT_PARTICLES: usize = 4;
+pub const STAGE_AFTER_WEATHER: usize = 5;
+pub const STAGE_CUSTOM_GEOMETRY: usize = 6;
+
+/// The three OIT stages (`DepthBounds`, `Transmittance`, `Accumulate`).
+pub const OIT_STAGES: usize = 3;
+
 /// world_primitives.wgsl after what it shares with the frame's other shaders (`frame_stored`).
 pub(super) fn shader() -> String {
     include_str!("../hdr_light.wgsl").to_owned() + include_str!("world_primitives.wgsl")
+}
+
+/// world_primitives.wgsl combined with `oit.wgsl` and the six OIT fragment entry points.
+pub(super) fn oit_shader() -> String {
+    include_str!("../hdr_light.wgsl").to_owned()
+        + include_str!("../oit.wgsl")
+        + include_str!("world_primitives.wgsl")
+        + r#"
+@fragment fn fs_oit_quad_bounds(in: QuadOut) -> @location(0) vec4<f32> {
+    let color = quad_color(in);
+    if color.a <= 0.0 { discard; }
+    return oit_bounds_fragment(color.a, in.clip);
+}
+@fragment fn fs_oit_quad_transmittance(in: QuadOut) -> OitCoefficients {
+    let color = quad_color(in);
+    if color.a <= 0.0 { discard; }
+    return oit_transmittance_fragment(color.a, in.clip);
+}
+@fragment fn fs_oit_quad_accumulate(in: QuadOut) -> @location(0) vec4<f32> {
+    let color = quad_color(in);
+    if color.a <= 0.0 { discard; }
+    return oit_accumulate_fragment(color, in.clip);
+}
+@fragment fn fs_oit_line_bounds(in: LineOut) -> @location(0) vec4<f32> {
+    let color = in.color;
+    if color.a <= 0.0 { discard; }
+    return oit_bounds_fragment(color.a, in.clip);
+}
+@fragment fn fs_oit_line_transmittance(in: LineOut) -> OitCoefficients {
+    let color = in.color;
+    if color.a <= 0.0 { discard; }
+    return oit_transmittance_fragment(color.a, in.clip);
+}
+@fragment fn fs_oit_line_accumulate(in: LineOut) -> @location(0) vec4<f32> {
+    let color = in.color;
+    if color.a <= 0.0 { discard; }
+    return oit_accumulate_fragment(color, in.clip);
+}
+"#
+}
+
+/// A frame's OIT primitives across the three OIT stages (`DepthBounds`, `Transmittance`,
+/// `Accumulate`).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OitBatch<'a> {
+    pub quads: &'a [Vertex],
+    pub quads_through: &'a [Vertex],
+    pub lines: &'a [[f32; 8]],
+    pub lines_through: &'a [[f32; 8]],
+    pub stage_ends: [[u32; 4]; OIT_STAGES - 1],
+}
+
+impl OitBatch<'_> {
+    pub fn is_empty(&self) -> bool {
+        self.quads.is_empty()
+            && self.quads_through.is_empty()
+            && self.lines.is_empty()
+            && self.lines_through.is_empty()
+    }
 }
 
 /// A frame's primitives, camera-relative, as the game tessellated them: quads of 4 vertices
@@ -32,6 +103,8 @@ pub struct Batch<'a> {
     /// lines through walls: each slice holds its stages in frame order, and what follows the
     /// last end is the last stage's. All zero, everything draws at the last stage.
     pub stage_ends: [[u32; 4]; STAGES - 1],
+    /// Primitives routed into the OIT translucent pass stages.
+    pub oit: OitBatch<'a>,
     /// The quads mods draw with their own pipelines (`gfx::mod_pipelines`), with their stages.
     pub pipelines: super::mod_pipelines::Batch<'a>,
 }
@@ -43,6 +116,7 @@ impl Batch<'_> {
             && self.quads_through.is_empty()
             && self.lines.is_empty()
             && self.lines_through.is_empty()
+            && self.oit.is_empty()
     }
 }
 
@@ -53,26 +127,42 @@ struct Globals {
     viewport: [f32; 4],
 }
 
+struct OitStagePipelines {
+    /// Depth tested, then seen through walls.
+    quad_pipelines: [wgpu::RenderPipeline; 2],
+    line_pipelines: [wgpu::RenderPipeline; 2],
+}
+
 /// The pipelines and buffers that draw a [`Batch`].
 pub struct WorldPrimitives {
     /// Depth tested, then seen through walls.
     quad_pipelines: [wgpu::RenderPipeline; 2],
     line_pipelines: [wgpu::RenderPipeline; 2],
+    /// OIT pipelines for `DepthBounds`, `Transmittance`, and `Accumulate`, built when OIT is enabled.
+    oit_pipelines: Option<[OitStagePipelines; OIT_STAGES]>,
     layout: wgpu::BindGroupLayout,
     globals: wgpu::Buffer,
     sampler: wgpu::Sampler,
     quads: wgpu::Buffer,
     lines: wgpu::Buffer,
+    oit_quads: wgpu::Buffer,
+    oit_lines: wgpu::Buffer,
     indices: wgpu::Buffer,
     index_quads: u32,
     group: Option<AtlasGroup>,
     quad_vertices: Vec<Vertex>,
     line_instances: Vec<[f32; 8]>,
+    oit_quad_vertices: Vec<Vertex>,
+    oit_line_instances: Vec<[f32; 8]>,
     index_data: Vec<u32>,
     /// Quads depth tested, quads through walls, lines depth tested, lines through walls.
     counts: [u32; 4],
     /// The batch's `stage_ends`, clamped to `counts`.
     stage_ends: [[u32; 4]; STAGES - 1],
+    /// OIT quads depth tested, quads through walls, lines depth tested, lines through walls.
+    oit_counts: [u32; 4],
+    /// The batch's OIT `stage_ends`, clamped to `oit_counts`.
+    oit_stage_ends: [[u32; 4]; OIT_STAGES - 1],
     /// Mods' own pipelines and their quads, drawn after each stage's primitives.
     pub(super) pipelines: super::mod_pipelines::ModPipelines,
 }
@@ -230,6 +320,7 @@ impl WorldPrimitives {
         Self {
             quad_pipelines,
             line_pipelines,
+            oit_pipelines: None,
             globals: buffer(
                 "World primitive globals",
                 std::mem::size_of::<Globals>() as u64,
@@ -242,16 +333,143 @@ impl WorldPrimitives {
             layout,
             quads: buffer("World primitive quads", 0, wgpu::BufferUsages::VERTEX),
             lines: buffer("World primitive lines", 0, wgpu::BufferUsages::VERTEX),
+            oit_quads: buffer("World primitive OIT quads", 0, wgpu::BufferUsages::VERTEX),
+            oit_lines: buffer("World primitive OIT lines", 0, wgpu::BufferUsages::VERTEX),
             indices: buffer("World primitive indices", 0, wgpu::BufferUsages::INDEX),
             index_quads: 0,
             group: None,
             quad_vertices: Vec::new(),
             line_instances: Vec::new(),
+            oit_quad_vertices: Vec::new(),
+            oit_line_instances: Vec::new(),
             index_data: Vec::new(),
             counts: [0; 4],
             stage_ends: [[0; 4]; STAGES - 1],
+            oit_counts: [0; 4],
+            oit_stage_ends: [[0; 4]; OIT_STAGES - 1],
             pipelines: super::mod_pipelines::ModPipelines::new(device, color_format),
         }
+    }
+
+    /// Compiles the OIT primitive pipelines for all three OIT stages, binding `oit_layouts` at
+    /// group 2 (leaving group 1 empty, matching `oit.rs` / `oit_features.rs`).
+    pub fn enable_oit(&mut self, device: &wgpu::Device, oit_layouts: &[wgpu::BindGroupLayout; 4]) {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("World primitives OIT"),
+            source: wgpu::ShaderSource::Wgsl(oit_shader().into()),
+        });
+        let quad_attributes =
+            wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x2,2=>Uint32,3=>Unorm8x4,4=>Uint32];
+        let line_attributes =
+            wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Unorm8x4,3=>Float32];
+        let quad_buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &quad_attributes,
+        })];
+        let line_buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: 32,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &line_attributes,
+        })];
+        let stages = [
+            (super::oit::Stage::DepthBounds, "bounds"),
+            (super::oit::Stage::Transmittance, "transmittance"),
+            (super::oit::Stage::Accumulate, "accumulate"),
+        ];
+        let list = wgpu::PrimitiveTopology::TriangleList;
+        let strip = wgpu::PrimitiveTopology::TriangleStrip;
+        let pipelines = stages.map(|(stage, suffix)| {
+            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("World primitives OIT"),
+                bind_group_layouts: &[Some(&self.layout), None, Some(&oit_layouts[stage as usize])],
+                ..Default::default()
+            });
+            let targets = super::oit::stage_targets(stage);
+            let make = |label: &str,
+                        vertex: &str,
+                        fragment: &str,
+                        buffers: &[Option<wgpu::VertexBufferLayout<'_>>],
+                        topology,
+                        through: bool| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(label),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: Some(vertex),
+                        compilation_options: Default::default(),
+                        buffers,
+                    },
+                    primitive: wgpu::PrimitiveState {
+                        topology,
+                        cull_mode: None,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: wgpu::TextureFormat::Depth32Float,
+                        depth_write_enabled: Some(false),
+                        depth_compare: Some(if through {
+                            wgpu::CompareFunction::Always
+                        } else {
+                            wgpu::CompareFunction::GreaterEqual
+                        }),
+                        stencil: Default::default(),
+                        bias: Default::default(),
+                    }),
+                    multisample: Default::default(),
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: Some(fragment),
+                        compilation_options: Default::default(),
+                        targets: &targets,
+                    }),
+                    multiview_mask: None,
+                    cache: None,
+                })
+            };
+            let quad_frag = format!("fs_oit_quad_{suffix}");
+            let line_frag = format!("fs_oit_line_{suffix}");
+            OitStagePipelines {
+                quad_pipelines: [
+                    make(
+                        &format!("World primitives OIT quads {suffix}"),
+                        "vs_quad",
+                        &quad_frag,
+                        &quad_buffers,
+                        list,
+                        false,
+                    ),
+                    make(
+                        &format!("World primitives OIT quads through walls {suffix}"),
+                        "vs_quad",
+                        &quad_frag,
+                        &quad_buffers,
+                        list,
+                        true,
+                    ),
+                ],
+                line_pipelines: [
+                    make(
+                        &format!("World primitives OIT lines {suffix}"),
+                        "vs_line",
+                        &line_frag,
+                        &line_buffers,
+                        strip,
+                        false,
+                    ),
+                    make(
+                        &format!("World primitives OIT lines through walls {suffix}"),
+                        "vs_line",
+                        &line_frag,
+                        &line_buffers,
+                        strip,
+                        true,
+                    ),
+                ],
+            }
+        });
+        self.oit_pipelines = Some(pipelines);
     }
 
     /// Reserves CPU and GPU geometry storage for `quads` and `lines`, total across both depth
@@ -301,6 +519,33 @@ impl WorldPrimitives {
         }
     }
 
+    fn reserve_oit(&mut self, device: &wgpu::Device, quads: u32, lines: u32) {
+        self.oit_quad_vertices
+            .reserve((quads as usize * 4).saturating_sub(self.oit_quad_vertices.len()));
+        self.oit_line_instances
+            .reserve((lines as usize).saturating_sub(self.oit_line_instances.len()));
+        let grow = |buffer: &mut wgpu::Buffer, label: &str, bytes: u64| {
+            if buffer.size() < bytes {
+                *buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(label),
+                    size: bytes.next_power_of_two(),
+                    usage: buffer.usage(),
+                    mapped_at_creation: false,
+                });
+            }
+        };
+        grow(
+            &mut self.oit_quads,
+            "World primitive OIT quads",
+            quads as u64 * 4 * std::mem::size_of::<Vertex>() as u64,
+        );
+        grow(
+            &mut self.oit_lines,
+            "World primitive OIT lines",
+            lines as u64 * 32,
+        );
+    }
+
     /// Uploads this frame's `batch`, drawn with `view_proj` (camera-relative world to clip,
     /// jittered as the world is) into a frame `viewport` pixels big, sampling `atlas`. Whether
     /// there is anything to draw. CPU and GPU storage grows at its high-water mark; subsequent
@@ -318,6 +563,10 @@ impl WorldPrimitives {
         let lines = [batch.lines, batch.lines_through].map(|l| l.len() as u32);
         self.counts = [quads[0], quads[1], lines[0], lines[1]];
         self.stage_ends = clamped_ends(batch.stage_ends, self.counts);
+        let oit_quads = [batch.oit.quads, batch.oit.quads_through].map(|q| (q.len() / 4) as u32);
+        let oit_lines = [batch.oit.lines, batch.oit.lines_through].map(|l| l.len() as u32);
+        self.oit_counts = [oit_quads[0], oit_quads[1], oit_lines[0], oit_lines[1]];
+        self.oit_stage_ends = clamped_ends(batch.oit.stage_ends, self.oit_counts);
         // Before the empty check, which counts the pipeline runs this queues; the pipelines
         // themselves were built with the renderer (`Renderer::build_mod_pipelines`).
         let pipeline_quads =
@@ -327,8 +576,16 @@ impl WorldPrimitives {
             return false;
         }
         let total_quads = quads[0] + quads[1];
-        self.reserve(device, upload, total_quads, lines[0] + lines[1]);
-        self.reserve_indices(device, upload, pipeline_quads);
+        let total_lines = lines[0] + lines[1];
+        let total_oit_quads = oit_quads[0] + oit_quads[1];
+        let total_oit_lines = oit_lines[0] + oit_lines[1];
+        self.reserve(device, upload, total_quads, total_lines);
+        self.reserve_oit(device, total_oit_quads, total_oit_lines);
+        self.reserve_indices(
+            device,
+            upload,
+            total_quads.max(total_oit_quads).max(pipeline_quads),
+        );
         if total_quads > 0 {
             self.quad_vertices.clear();
             for q in [batch.quads, batch.quads_through] {
@@ -337,12 +594,29 @@ impl WorldPrimitives {
             let bytes: &[u8] = bytemuck::cast_slice(&self.quad_vertices);
             upload(&self.quads, bytes);
         }
-        if lines[0] + lines[1] > 0 {
+        if total_lines > 0 {
             self.line_instances.clear();
             self.line_instances.extend_from_slice(batch.lines);
             self.line_instances.extend_from_slice(batch.lines_through);
             let bytes: &[u8] = bytemuck::cast_slice(&self.line_instances);
             upload(&self.lines, bytes);
+        }
+        if total_oit_quads > 0 {
+            self.oit_quad_vertices.clear();
+            for q in [batch.oit.quads, batch.oit.quads_through] {
+                self.oit_quad_vertices
+                    .extend_from_slice(&q[..q.len() / 4 * 4]);
+            }
+            let bytes: &[u8] = bytemuck::cast_slice(&self.oit_quad_vertices);
+            upload(&self.oit_quads, bytes);
+        }
+        if total_oit_lines > 0 {
+            self.oit_line_instances.clear();
+            self.oit_line_instances.extend_from_slice(batch.oit.lines);
+            self.oit_line_instances
+                .extend_from_slice(batch.oit.lines_through);
+            let bytes: &[u8] = bytemuck::cast_slice(&self.oit_line_instances);
+            upload(&self.oit_lines, bytes);
         }
         let globals = Globals {
             view_proj: view_proj.to_cols_array_2d(),
@@ -373,6 +647,49 @@ impl WorldPrimitives {
             });
         }
         true
+    }
+
+    /// Draws the OIT primitives for `stage` into the active OIT pass (group 2 is already bound
+    /// by `oit::Oit::run`). Leaves the pass with its own pipeline, bind group 0 and buffers.
+    pub(super) fn draw_oit(&self, pass: &mut wgpu::RenderPass<'_>, stage: super::oit::Stage) {
+        let Some(oit_pipelines) = &self.oit_pipelines else {
+            return;
+        };
+        let Some(AtlasGroup { group, .. }) = &self.group else {
+            return;
+        };
+        let stage_index = stage as usize;
+        let [quads, quads_through, lines, lines_through] = spans(
+            self.oit_counts,
+            &self.oit_stage_ends,
+            stage_index,
+            stage_index,
+        );
+        if quads.is_empty()
+            && quads_through.is_empty()
+            && lines.is_empty()
+            && lines_through.is_empty()
+        {
+            return;
+        }
+        let stage_pipelines = &oit_pipelines[stage_index];
+        pass.set_bind_group(0, group, &[]);
+        for (through, (quad_range, line_range)) in [(quads, lines), (quads_through, lines_through)]
+            .into_iter()
+            .enumerate()
+        {
+            if !quad_range.is_empty() {
+                pass.set_pipeline(&stage_pipelines.quad_pipelines[through]);
+                pass.set_vertex_buffer(0, self.oit_quads.slice(..));
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(quad_range.start * 6..quad_range.end * 6, 0, 0..1);
+            }
+            if !line_range.is_empty() {
+                pass.set_pipeline(&stage_pipelines.line_pipelines[through]);
+                pass.set_vertex_buffer(0, self.oit_lines.slice(..));
+                pass.draw(0..4, line_range);
+            }
+        }
     }
 
     /// Draws the stages from `*next` to `stage` that [`Self::prepare`] uploaded into a pass
@@ -420,7 +737,7 @@ impl WorldPrimitives {
 }
 
 /// A batch's stage ends made safe to draw from: never decreasing, never past `counts`.
-fn clamped_ends(ends: [[u32; 4]; STAGES - 1], counts: [u32; 4]) -> [[u32; 4]; STAGES - 1] {
+fn clamped_ends<const N: usize>(ends: [[u32; 4]; N], counts: [u32; 4]) -> [[u32; 4]; N] {
     let mut floor = [0; 4];
     ends.map(|end| {
         floor = std::array::from_fn(|i| end[i].clamp(floor[i], counts[i]));
@@ -431,9 +748,9 @@ fn clamped_ends(ends: [[u32; 4]; STAGES - 1], counts: [u32; 4]) -> [[u32; 4]; ST
 /// The uploaded quads and lines of stages `first..=last`: quads depth tested, quads through
 /// walls, lines depth tested, lines through walls, each as a range of its buffer, where the
 /// through-walls ones follow all the depth-tested ones.
-fn spans(
+fn spans<const N: usize>(
     counts: [u32; 4],
-    ends: &[[u32; 4]; STAGES - 1],
+    ends: &[[u32; 4]; N],
     first: usize,
     last: usize,
 ) -> [std::ops::Range<u32>; 4] {
@@ -511,20 +828,29 @@ mod tests {
     fn each_stage_draws_its_own_part_of_every_slice() {
         // Quads, quads through walls, lines, lines through walls: 6, 2, 4, 3 in all.
         let counts = [6, 2, 4, 3];
-        // AfterSky has 1 quad; AfterOpaqueBlocks nothing; AfterTranslucentBlocks 2 quads and
-        // a line; AfterWeather a quad through walls; AfterLevel the rest.
-        let ends = [[1, 0, 0, 0], [1, 0, 0, 0], [3, 0, 1, 0], [3, 1, 1, 0]];
+        // Stage 0 has 1 quad; stages 1 and 2 nothing; stage 3 has 2 quads and a line;
+        // stage 4 nothing; stage 5 has a quad through walls; stage 6 has the rest.
+        let ends = [
+            [1, 0, 0, 0],
+            [1, 0, 0, 0],
+            [1, 0, 0, 0],
+            [3, 0, 1, 0],
+            [3, 0, 1, 0],
+            [3, 1, 1, 0],
+        ];
         assert_eq!(spans(counts, &ends, 0, 0), [0..1, 6..6, 0..0, 4..4]);
         assert_eq!(spans(counts, &ends, 1, 1), [1..1, 6..6, 0..0, 4..4]);
-        assert_eq!(spans(counts, &ends, 2, 2), [1..3, 6..6, 0..1, 4..4]);
-        assert_eq!(spans(counts, &ends, 3, 3), [3..3, 6..7, 1..1, 4..4]);
-        assert_eq!(spans(counts, &ends, 4, 4), [3..6, 7..8, 1..4, 4..7]);
+        assert_eq!(spans(counts, &ends, 2, 2), [1..1, 6..6, 0..0, 4..4]);
+        assert_eq!(spans(counts, &ends, 3, 3), [1..3, 6..6, 0..1, 4..4]);
+        assert_eq!(spans(counts, &ends, 4, 4), [3..3, 6..6, 1..1, 4..4]);
+        assert_eq!(spans(counts, &ends, 5, 5), [3..3, 6..7, 1..1, 4..4]);
+        assert_eq!(spans(counts, &ends, 6, 6), [3..6, 7..8, 1..4, 4..7]);
         // A pass that skipped the middle stages draws them with the next one, in order.
-        assert_eq!(spans(counts, &ends, 1, 3), [1..3, 6..7, 0..1, 4..4]);
+        assert_eq!(spans(counts, &ends, 1, 5), [1..3, 6..7, 0..1, 4..4]);
         // Everything, as a batch without stages draws.
-        assert_eq!(spans(counts, &ends, 0, 4), [0..6, 6..8, 0..4, 4..7]);
+        assert_eq!(spans(counts, &ends, 0, 6), [0..6, 6..8, 0..4, 4..7]);
         assert_eq!(
-            spans(counts, &[[0; 4]; STAGES - 1], 4, 4),
+            spans(counts, &[[0; 4]; STAGES - 1], 6, 6),
             [0..6, 6..8, 0..4, 4..7]
         );
     }
@@ -532,13 +858,82 @@ mod tests {
     #[test]
     fn stage_ends_past_the_counts_or_going_back_are_clamped() {
         let ends = clamped_ends(
-            [[9, 0, 2, 0], [1, 0, 1, 0], [9, 9, 9, 9], [0; 4]],
+            [
+                [9, 0, 2, 0],
+                [1, 0, 1, 0],
+                [9, 9, 9, 9],
+                [0; 4],
+                [2, 1, 0, 0],
+                [0; 4],
+            ],
             [6, 2, 4, 3],
         );
         assert_eq!(
             ends,
-            [[6, 0, 2, 0], [6, 0, 2, 0], [6, 2, 4, 3], [6, 2, 4, 3]]
+            [
+                [6, 0, 2, 0],
+                [6, 0, 2, 0],
+                [6, 2, 4, 3],
+                [6, 2, 4, 3],
+                [6, 2, 4, 3],
+                [6, 2, 4, 3],
+            ]
         );
+    }
+
+    #[test]
+    fn oit_stages_slice_and_clamp_independently() {
+        let counts = [5, 3, 4, 2];
+        let ends = [[2, 1, 1, 0], [4, 1, 3, 2]];
+        assert_eq!(spans(counts, &ends, 0, 0), [0..2, 5..6, 0..1, 4..4]);
+        assert_eq!(spans(counts, &ends, 1, 1), [2..4, 6..6, 1..3, 4..6]);
+        assert_eq!(spans(counts, &ends, 2, 2), [4..5, 6..8, 3..4, 6..6]);
+        assert_eq!(
+            spans(counts, &[[0; 4]; OIT_STAGES - 1], 2, 2),
+            [0..5, 5..8, 0..4, 4..6]
+        );
+        assert_eq!(
+            clamped_ends([[9, 1, 5, 0], [1, 0, 2, 9]], counts),
+            [[5, 1, 4, 0], [5, 1, 4, 2]]
+        );
+        assert!(OitBatch::default().is_empty());
+        assert!(Batch::default().is_empty());
+        let line = [[0.0_f32; 8]];
+        let oit_only = Batch {
+            oit: OitBatch {
+                lines: &line,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!oit_only.is_empty());
+    }
+
+    #[test]
+    fn the_oit_shader_validates() {
+        let source = oit_shader();
+        let module = naga::front::wgsl::parse_str(&source).unwrap();
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap();
+        for entry in [
+            "vs_quad",
+            "vs_line",
+            "fs_oit_quad_bounds",
+            "fs_oit_quad_transmittance",
+            "fs_oit_quad_accumulate",
+            "fs_oit_line_bounds",
+            "fs_oit_line_transmittance",
+            "fs_oit_line_accumulate",
+        ] {
+            assert!(
+                module.entry_points.iter().any(|e| e.name == entry),
+                "{entry}"
+            );
+        }
     }
 
     #[test]
