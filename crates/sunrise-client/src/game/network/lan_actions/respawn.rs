@@ -96,6 +96,9 @@ impl Game<'_> {
                     let previous = *previous;
                     g.logs_kept = Some((previous.hurt_log, previous.attack_log));
                 }
+                // Even a credits return constructs a new entity. Keep its restored attributes
+                // and health, not the old body's Entity.tickCount.
+                g.carried_tick_count = None;
                 // Entity's constructor starts it at the origin; snapTo follows clone and copy.
                 g.place([0.0; 3]);
                 (g.yaw, g.pitch) = (0.0, 0.0);
