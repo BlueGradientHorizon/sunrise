@@ -1,5 +1,5 @@
 //! Application-lifetime client work. Each connection owns its packet receive provider.
-use mod_api::{__private::CallbackOwner, ClientExecutor, ClientHost};
+use mod_api::{__private::game::CallbackOwner, ClientExecutor, ClientHost};
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},

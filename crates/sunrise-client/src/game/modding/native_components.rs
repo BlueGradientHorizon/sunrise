@@ -825,7 +825,7 @@ mod item_resource_property_tests {
                     .is_none()
             );
             game.creative = false;
-            game.right = true;
+            game.set_mapping_held("key.use", true);
             game.screen = crate::game::Screen::Playing;
             game.inventory[game.selected] = Some(stack);
             assert!(game.start_eating(&info));

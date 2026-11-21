@@ -11,22 +11,12 @@ pub(super) fn validate_registered(menus: &[&MenuType]) -> Result<(), String> {
         let Some((_, _, layout)) = RecipeBookLayout::registered(&menu) else {
             continue;
         };
-        validate(
-            menus,
-            &menu,
-            layout,
-            mod_api::__private::menu_slot_exclusion_masks(&menu),
-        )?;
+        validate(menus, &menu, layout)?;
     }
     Ok(())
 }
 
-fn validate<'mask>(
-    menus: &[&MenuType],
-    id: &str,
-    layout: RecipeBookLayout,
-    masks: impl IntoIterator<Item = (Option<&'mask str>, &'mask [u16])>,
-) -> Result<(), String> {
+fn validate(menus: &[&MenuType], id: &str, layout: RecipeBookLayout) -> Result<(), String> {
     let menu = menus
         .iter()
         .find(|menu| menu.id == id)
@@ -37,14 +27,8 @@ fn validate<'mask>(
             .crafting
             .map(|grid| (grid.grid, grid.size, grid.result)),
     };
-    let checked = compile(layout, metadata)
+    compile(layout, metadata)
         .map_err(|error: LayoutError| format!("recipe book menu {id:?}: {error:?}"))?;
-    for (opener, excluded) in masks {
-        checked
-            .declaration()
-            .validate_exclusions(excluded)
-            .map_err(|error| format!("recipe book menu {id:?}, opener {opener:?}: {error}"))?;
-    }
     Ok(())
 }
 
@@ -72,15 +56,15 @@ mod tests {
             fuel: 1,
             result: 2,
         };
-        assert!(validate(&[&menu], "demo:pot", roles.clone(), []).is_ok());
+        assert!(validate(&[&menu], "demo:pot", roles.clone()).is_ok());
         assert!(
-            validate(&[], "demo:pot", roles.clone(), [])
+            validate(&[], "demo:pot", roles.clone())
                 .unwrap_err()
                 .contains("unknown content menu")
         );
         let short = MenuType { slots: 2, ..menu };
         assert!(
-            validate(&[&short], "demo:pot", roles.clone(), [])
+            validate(&[&short], "demo:pot", roles.clone())
                 .unwrap_err()
                 .contains("OutOfRange(2)")
         );
@@ -90,7 +74,7 @@ mod tests {
             results: vec![],
             ..short
         };
-        let error = validate(&[&slotless], "demo:pot", roles, []).unwrap_err();
+        let error = validate(&[&slotless], "demo:pot", roles).unwrap_err();
         assert!(
             error.contains("recipe book menu \"demo:pot\"") && error.contains("InvalidSlotCount"),
             "{error}"
@@ -122,22 +106,6 @@ mod tests {
             validate_registered(&[&menu()]).unwrap();
         });
     }
-
-    #[test]
-    fn any_permanent_mask_excluding_a_role_refuses_the_content_menu() {
-        let menu = menu();
-        let roles = RecipeBookLayout::Furnace {
-            input: 0,
-            fuel: 1,
-            result: 2,
-        };
-        assert!(validate(&[&menu], "demo:pot", roles.clone(), [(None, &[][..])]).is_ok());
-        let masks = [(None, &[][..]), (Some("demo:machine"), &[2][..])];
-        assert_eq!(
-            validate(&[&menu], "demo:pot", roles, masks).unwrap_err(),
-            "recipe book menu \"demo:pot\", opener Some(\"demo:machine\"): result slot 2 is permanently excluded"
-        );
-    }
     #[test]
     fn persistent_grid_roles_are_valid_but_computed_storage_must_agree() {
         let persistent = MenuType {
@@ -151,7 +119,7 @@ mod tests {
             slots: (0..6).collect(),
             result: 6,
         };
-        assert!(validate(&[&persistent], "demo:pot", roles.clone(), []).is_ok());
+        assert!(validate(&[&persistent], "demo:pot", roles.clone()).is_ok());
         let computed = MenuType {
             crafting: Some(sunrise_mod_package::content::MenuCrafting {
                 grid: 0,
@@ -161,7 +129,7 @@ mod tests {
             ..persistent
         };
         assert!(
-            validate(&[&computed], "demo:pot", roles, [])
+            validate(&[&computed], "demo:pot", roles)
                 .unwrap_err()
                 .contains("InvalidGrid")
         );
@@ -171,6 +139,6 @@ mod tests {
             slots: (0..4).collect(),
             result: 6,
         };
-        assert!(validate(&[&computed], "demo:pot", matching, []).is_ok());
+        assert!(validate(&[&computed], "demo:pot", matching).is_ok());
     }
 }

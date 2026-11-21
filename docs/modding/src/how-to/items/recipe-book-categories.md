@@ -96,8 +96,7 @@ other books sharing a menu.
 
 In `Hooks::register`, call `r.menu_recipe_book(menu, &book, recipe_type, layout)`.
 The layout maps recipe roles to container backing indices, not player inventory slots.
-Every declared role must be in the content menu, agree with its crafting grid if it has one,
-and remain available under every [permanent slot mask](../world/machine-menu-data.md#the-menus-screen).
+Every declared role must be in the content menu and agree with its crafting grid if it has one.
 Register a client factory for the same menu with `r.register_menu_screen(menu, factory)`.
 The factory returns `MenuScreen::new(layout)` with the geometry and sets
 `MenuScreenLayout::recipe_book` to `Some(book.clone())`. Content loading checks the layout's

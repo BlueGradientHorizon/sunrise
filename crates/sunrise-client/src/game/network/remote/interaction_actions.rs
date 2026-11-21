@@ -490,60 +490,20 @@ impl Game<'_> {
         let Some(r) = self.remote.as_mut() else {
             return;
         };
-        let mut input = r.input.take_queued();
         let stop = std::mem::take(&mut r.stop_mining);
-        // Minecraft.tick runs handleKeybinds only while `gui.screen() == null`: a
-        // book, a sign editor, a dialog or a prompt over the world (each a
-        // `Screen` in vanilla) stops the attack and use mappings from acting,
-        // and `KeyMapping.releaseAll` let go of the buttons when it opened
-        // (`track_toggle_screens`), so a dig held into a book ends (#9729).
-        let ready = r.loaded_sent
-            && self.screen == Screen::Playing
-            && self.sleeping.is_none()
-            && !self.screen_over_playing();
+        let ready = r.loaded_sent && self.sleeping.is_none() && !self.mod_mappings_screen_open();
         self.refresh_client_pick(1.0);
         if stop || !ready {
             self.stop_remote_mining();
         }
         if !ready {
-            // A screen's opening released the keys (`KeyMapping.releaseAll`).
-            self.hotbar_presses
-                .iter_mut()
-                .for_each(sunrise_client::input_queue::ClickQueue::clear);
             self.agent_attack_clicks_left(0);
             return;
         }
-        let (attack, use_item) = (self.left, self.right);
-        input.tick(&mut RemoteInputWorld(self), attack, use_item);
-        // An item in use drains the queues without acting on them.
-        self.agent_attack_clicks_left(
-            input.queued(sunrise_client::interaction_input::Button::Attack),
-        );
-        self.remote_count_miss_time();
-        if let Some(r) = self.remote.as_mut() {
-            input.merge_queued(std::mem::take(&mut r.input));
-            r.input = input;
-        }
-    }
-    /// `Minecraft.handleKeybinds`: a key that opens a screen runs
-    /// `Gui.setScreen`, whose `KeyMapping.releaseAll` clears the use key, and
-    /// the same invocation then releases an active use
-    /// (`player.isUsingItem() && !keyUse.isDown()` → `releaseUsingItem`).
-    /// Only the screens opened from those keybinds do this (inventory, chat,
-    /// advancements); the pause menu, server containers, mount inventories and
-    /// dialogs release on the first tick after closing instead, as vanilla
-    /// does.
-    pub(in crate::game) fn release_use_for_keybind_screen(&mut self) {
-        // Only a server's client holds a use to release.
-        if self.remote.is_none() {
-            return;
-        }
-        // `KeyMapping.releaseAll` clears key.use; without this the button still
-        // reads held and a use would start again on the first tick back.
-        self.right = false;
-        // Clearing the mapping for a screen is a capture reset, not a use-key release.
-        if !self.end_client_item_use(false) {
-            sunrise_client::interaction_input::release_on_screen_open(&mut RemoteInputWorld(self));
+        sunrise_client::interaction_input::tick(&mut RemoteInputWorld(self));
+        self.agent_attack_clicks_left(self.remote_attack_clicks_queued());
+        if self.clicks.miss_time > 0 {
+            self.clicks.miss_time -= 1;
         }
     }
     /// `MultiPlayerGameMode.releaseUsingItem`: sends `RELEASE_USE_ITEM` and

@@ -1893,7 +1893,7 @@ impl Audio {
         source: Box<dyn mod_api::AudioStream>,
     ) -> std::result::Result<Arc<dyn mod_api::AudioStreamSource>, mod_api::AudioRefusal> {
         if !self.backend.live {
-            mod_api::__private::CallbackOwner::for_mod(owner).dispose(
+            mod_api::__private::game::CallbackOwner::for_mod(owner).dispose(
                 "audio stream",
                 "AudioStream::drop",
                 source,

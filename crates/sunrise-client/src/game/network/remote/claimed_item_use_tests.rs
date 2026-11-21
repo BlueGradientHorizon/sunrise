@@ -133,8 +133,8 @@ fn interception_does_not_send_item_use_or_release_packets() {
 
             // An owner for the off-hand kind does not suppress normal off-hand use or release.
             game.offhand = Some(ItemStack::new(SHIELD, 1));
-            game.right = true;
-            game.remote.as_mut().unwrap().input.press(Button::Use);
+            game.set_mapping_held("key.use", true);
+            game.queue_mapping_click(Button::Use.mapping());
             game.remote_handle_input();
             assert!(game.using.is_some());
             assert!(
@@ -142,7 +142,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
                     .iter()
                     .any(|packet| matches!(packet, S::UseItem(play::UseItem { hand: 1, .. })))
             );
-            game.right = false;
+            game.set_mapping_held("key.use", false);
             game.remote_handle_input();
             assert!(game.using.is_none());
             assert!(sent(&mut reader).iter().any(|packet| matches!(
@@ -170,10 +170,9 @@ fn interception_does_not_send_item_use_or_release_packets() {
                 point: [0.5, 65.0, 0.5],
                 inside: false,
             });
-            game.right = true;
-            let input = &mut game.remote.as_mut().unwrap().input;
-            input.press(Button::Use);
-            input.press(Button::Use);
+            game.set_mapping_held("key.use", true);
+            game.queue_mapping_click(Button::Use.mapping());
+            game.queue_mapping_click(Button::Use.mapping());
             game.remote_handle_input();
             assert!(game.client_item_use.is_some());
             assert!(game.using.is_none());
@@ -184,7 +183,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
             assert!(game.using.is_none());
             assert!(game.remote.as_ref().unwrap().use_item.is_none());
 
-            game.right = false;
+            game.set_mapping_held("key.use", false);
             game.remote_handle_input();
             assert!(game.client_item_use.is_none());
             assert!(game.using.is_none());
@@ -213,9 +212,9 @@ fn interception_does_not_send_item_use_or_release_packets() {
 
 #[test]
 #[ignore = "daily"]
-fn owner_gets_release_or_reset_with_the_original_typed_stack() {
-    fn marked(item: &str, marker: Tag) -> ItemStack {
-        let mut stack = ItemStack::new(item, 1);
+fn owner_gets_release_or_reset_with_live_typed_stack() {
+    fn marked(item: &str, count: u32, marker: Tag) -> ItemStack {
+        let mut stack = ItemStack::new(item, count);
         stack
             .data_mut()
             .set_other(CUSTOM_DATA, Some(Tag::compound([("marker", marker)])));
@@ -223,15 +222,15 @@ fn owner_gets_release_or_reset_with_the_original_typed_stack() {
     }
     fn start(game: &mut Game<'_>) {
         game.select_hotbar_slot(3).unwrap();
-        game.inventory[3] = Some(marked(SHIELD, Tag::Byte(23)));
-        game.right = true;
-        game.remote.as_mut().unwrap().input.press(Button::Use);
+        game.inventory[3] = Some(marked(SHIELD, 1, Tag::Byte(23)));
+        game.set_mapping_held("key.use", true);
+        game.queue_mapping_click(Button::Use.mapping());
         game.remote_handle_input();
         assert!(game.client_item_use.is_some());
         assert!(game.using.is_none());
     }
     fn key_up(game: &mut Game<'_>) {
-        game.right = false;
+        game.set_mapping_held("key.use", false);
         game.remote_handle_input();
         assert!(game.client_item_use.is_none());
     }
@@ -242,41 +241,67 @@ fn owner_gets_release_or_reset_with_the_original_typed_stack() {
             game.screen = Screen::Playing;
             game.remote.as_mut().unwrap().loaded_sent = true;
             let shield = mod_api::__private::item_key(SHIELD).unwrap();
-            let original = |phase| Call {
+            let call = |phase, count, marker| Call {
                 phase,
                 registered_for: SHIELD,
                 item: shield,
                 slot: 3,
-                count: 1,
-                marker: Some(Tag::Byte(23)),
+                count,
+                marker: Some(marker),
             };
+            let original = |phase| call(phase, 1, Tag::Byte(23));
 
+            // Count and component mutations in the active slot are rebound on tick and release.
             start(game);
             assert_eq!(calls.take(), [original(Phase::Start)]);
             game.remote_tick_using();
-            game.inventory[3] = Some(marked(SHIELD, Tag::Int(99)));
+            game.inventory[3] = Some(marked(SHIELD, 3, Tag::Int(99)));
             game.remote_tick_using();
+            game.inventory[3] = Some(marked(SHIELD, 2, Tag::Int(101)));
             key_up(game);
             game.reset_client_item_use();
             assert_eq!(
                 calls.take(),
-                [original(Phase::Release(2)), original(Phase::Stop(2))]
+                [
+                    call(Phase::Release(2), 2, Tag::Int(101)),
+                    call(Phase::Stop(2), 2, Tag::Int(101)),
+                ]
             );
 
-            // Another registered item (even for the same mod) cannot receive this use's end.
+            // Another registered item (even for the same mod) cannot receive this use's end;
+            // on_stop_using keeps the last valid stack of the captured item kind.
             start(game);
+            game.inventory[3] = Some(marked(SHIELD, 4, Tag::Int(77)));
             game.remote_tick_using();
-            game.inventory[3] = Some(marked(STICK, Tag::Int(99)));
+            game.inventory[3] = Some(marked(STICK, 1, Tag::Int(99)));
             key_up(game);
             game.reset_client_item_use();
             assert_eq!(
                 calls.take(),
-                [original(Phase::Start), original(Phase::Stop(1))]
+                [
+                    original(Phase::Start),
+                    call(Phase::Stop(1), 4, Tag::Int(77)),
+                ]
+            );
+
+            // Emptying the active slot also preserves the last valid stack for on_stop_using.
+            start(game);
+            game.inventory[3] = Some(marked(SHIELD, 5, Tag::Int(88)));
+            game.remote_tick_using();
+            game.inventory[3] = None;
+            game.remote_tick_using();
+            assert!(game.client_item_use.is_none());
+            assert_eq!(
+                calls.take(),
+                [
+                    original(Phase::Start),
+                    call(Phase::Stop(1), 5, Tag::Int(88)),
+                ]
             );
 
             // The same kind in a different slot is a reset, even on the key-up tick.
             start(game);
-            game.inventory[4] = Some(marked(SHIELD, Tag::Int(99)));
+            game.inventory[4] = Some(marked(SHIELD, 1, Tag::Int(99)));
             game.select_hotbar_slot(4).unwrap();
             key_up(game);
             game.reset_client_item_use();
@@ -291,13 +316,72 @@ fn owner_gets_release_or_reset_with_the_original_typed_stack() {
             assert_eq!(calls.take(), [original(Phase::Start)]);
             assert!(mod_api::__private::set_mod_enabled(OWNER, true));
 
-            // A keybind opening a screen clears the mapping without an input release.
+            // A keybind opening a screen releases mappings and runs release_using then on_stop_using.
             start(game);
-            game.release_use_for_keybind_screen();
+            game.queue_mapping_click("key.chat");
+            assert!(game.client_item_use.is_some());
+            game.remote_handle_input();
+            assert!(game.client_item_use.is_none());
+            game.close_chat(crate::game::chat::ChatExit::Intentional);
             key_up(game);
             assert_eq!(
                 calls.take(),
-                [original(Phase::Start), original(Phase::Stop(0))]
+                [
+                    original(Phase::Start),
+                    original(Phase::Release(0)),
+                    original(Phase::Stop(0)),
+                ]
+            );
+
+            // Quick Actions (KeyG) with no dialog does not release an active use; when a
+            // Quick Actions dialog opens, release_using then on_stop_using run on the same tick.
+            start(game);
+            game.key_pressed(
+                winit::keyboard::KeyCode::KeyG,
+                winit::keyboard::KeyCode::KeyG,
+            )
+            .unwrap();
+            game.remote_handle_input();
+            assert!(!game.dialog_open());
+            assert!(game.client_item_use.is_some());
+            {
+                let registries = Arc::make_mut(&mut game.remote.as_mut().unwrap().registries);
+                let mut notice = std::collections::BTreeMap::new();
+                notice.insert(
+                    JavaString::from("type"),
+                    Tag::String(JavaString::from("minecraft:notice")),
+                );
+                notice.insert(
+                    JavaString::from("title"),
+                    Tag::String(JavaString::from("Quick")),
+                );
+                registries.registries.insert(
+                    "minecraft:dialog".into(),
+                    vec![("test:quick".into(), Some(Tag::Compound(notice)))],
+                );
+                registries
+                    .tags
+                    .entry("minecraft:dialog".into())
+                    .or_default()
+                    .insert("minecraft:quick_actions".into(), vec![0]);
+            }
+            game.key_pressed(
+                winit::keyboard::KeyCode::KeyG,
+                winit::keyboard::KeyCode::KeyG,
+            )
+            .unwrap();
+            game.remote_handle_input();
+            assert!(game.dialog_open());
+            assert!(game.client_item_use.is_none());
+            game.close_dialogs();
+            key_up(game);
+            assert_eq!(
+                calls.take(),
+                [
+                    original(Phase::Start),
+                    original(Phase::Release(0)),
+                    original(Phase::Stop(0)),
+                ]
             );
 
             // The death packet retires the capture without waiting for another input tick.
@@ -318,7 +402,7 @@ fn owner_gets_release_or_reset_with_the_original_typed_stack() {
 
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5)).unwrap());
-            game.inventory[game.selected] = Some(marked(SHIELD, Tag::Byte(23)));
+            game.inventory[game.selected] = Some(marked(SHIELD, 1, Tag::Byte(23)));
             assert!(game.use_hand(None).unwrap());
             assert_eq!(game.using, Some((game.selected, 0)));
             assert!(

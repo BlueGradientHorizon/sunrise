@@ -288,10 +288,10 @@ fn right_click_block_controls_cauldron_use() {
             Ok(true)
         );
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:water_bucket", 1));
-        game.keys.insert(KeyCode::ShiftLeft);
+        game.insert_device_key(KeyCode::ShiftLeft);
         game.use_hand(Some(&hit)).unwrap();
         assert_ne!(game.world.block(0, 64, 0), empty);
-        game.keys.remove(&KeyCode::ShiftLeft);
+        game.remove_device_key(&KeyCode::ShiftLeft);
 
         let campfire = game
             .pack

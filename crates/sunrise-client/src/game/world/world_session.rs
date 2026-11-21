@@ -58,7 +58,7 @@ impl Game<'_> {
                 realm,
             )?,
             Action::DataPacks { dir, selected } => {
-                self.keys.clear();
+                self.clear_device_keys();
                 self.set_screen(Screen::Options);
                 self.options_from_title = true;
                 let resources = self.vanilla_root();

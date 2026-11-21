@@ -1,6 +1,6 @@
 use super::*;
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -102,6 +102,8 @@ impl mod_api::MenuScreenFactory for IconScreen {
         }))
     }
 }
+const ICON_MENU: &str = "icon_open:menu";
+
 struct IconMod(Arc<AtomicBool>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for IconMod {
@@ -111,21 +113,12 @@ impl mod_api::Hooks for IconMod {
             &block,
             mod_api::ModContainer {
                 slots: 9,
-                menu: Some("minecraft:generic_9x1".into()),
+                menu: Some(ICON_MENU.into()),
                 ..Default::default()
             },
         );
-        r.menu_slot_exclusions(
-            "minecraft:generic_9x1",
-            Some("icon_open:machine"),
-            &[1, 2, 3, 4, 5, 6, 7, 8],
-        )
-        .unwrap();
-        r.register_menu_screen(
-            "minecraft:generic_9x1",
-            Arc::new(IconScreen(self.0.clone())),
-        )
-        .unwrap();
+        r.register_menu_screen(ICON_MENU, Arc::new(IconScreen(self.0.clone())))
+            .unwrap();
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
         event
@@ -133,31 +126,18 @@ impl mod_api::Hooks for IconMod {
             .unwrap();
     }
 }
-struct Diagnostics(Mutex<Vec<String>>);
-impl log::Log for Diagnostics {
-    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
-        true
-    }
-    fn log(&self, record: &log::Record<'_>) {
-        self.0.lock().unwrap().push(record.args().to_string());
-    }
-    fn flush(&self) {}
-}
-static DIAGNOSTICS: Diagnostics = Diagnostics(Mutex::new(Vec::new()));
 
 #[test]
 #[ignore = "daily"]
-fn unknown_slot_icon_refuses_screen_at_open_with_diagnostic() {
-    // Content registries and the logger are process-global.
+fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
+    // Content registries are process-global.
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::native_hooks::slot_icon_tests::unknown_slot_icon_refuses_screen_at_open_with_diagnostic",
+        "game::native_hooks::slot_icon_tests::unknown_slot_icon_opens_screen_and_draws_missing_sprite",
         "SUNRISE_SLOT_ICON_OPEN_CHILD",
         &["open"],
     ) {
         return;
     }
-    log::set_logger(&DIAGNOSTICS).unwrap();
-    log::set_max_level(log::LevelFilter::Error);
     let unknown = Arc::new(AtomicBool::new(false));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "icon_open",
@@ -169,36 +149,69 @@ fn unknown_slot_icon_refuses_screen_at_open_with_diagnostic() {
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-        crate::game::native_entity_refs::tests::with_game_role(
-            root.prepared().to_owned(),
-            crate::game::execution_role::ExecutionRole::Client,
-            |game| {
-                seed_native_menu(game, 1, "minecraft:generic_9x1");
-                let pos = (1, 64, 2);
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-                let block = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("icon_open:machine")
-                    .unwrap();
-                game.world.set(pos.0, pos.1, pos.2, block).unwrap();
-                assert!(game.open_native_screen(pos, Some(pos), 9, None));
-                assert!(game.mod_screen.is_some(), "valid icon must open the screen");
-                DIAGNOSTICS.0.lock().unwrap().clear();
-                unknown.store(true, Ordering::Relaxed);
-                // A panic fails this test; no catch_unwind masks it.
-                seed_native_menu(game, 2, "minecraft:generic_9x1");
-                assert!(!game.open_native_screen(pos, Some(pos), 9, None));
-                assert!(
-                    game.mod_screen.is_none(),
-                    "unknown icon must refuse, not retain the prior screen"
+        sunrise_client::containers::with_mod_menu_types(
+            [(
+                ICON_MENU.into(),
+                "icon_open".into(),
+                9,
+                0,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                true,
+            )],
+            || {
+                crate::game::native_entity_refs::tests::with_game_role(
+                    root.prepared().to_owned(),
+                    crate::game::execution_role::ExecutionRole::Client,
+                    |game| {
+                        seed_native_menu(game, 1, ICON_MENU);
+                        let pos = (1, 64, 2);
+                        game.world
+                            .chunks
+                            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                        let block = game
+                            .pack
+                            .assets
+                            .registry
+                            .default_state("icon_open:machine")
+                            .unwrap();
+                        game.world.set(pos.0, pos.1, pos.2, block).unwrap();
+                        assert!(game.open_native_screen(pos, Some(pos), 9, None));
+                        assert!(game.mod_screen.is_some(), "valid icon must open the screen");
+                        unknown.store(true, Ordering::Relaxed);
+                        seed_native_menu(game, 2, ICON_MENU);
+                        assert!(
+                            game.open_native_screen(pos, Some(pos), 9, None),
+                            "unknown icon must open and fall back to the missing sprite"
+                        );
+                        game.container = Some(pos);
+                        game.set_screen(Screen::Inventory);
+                        let mut actual = HudBatch::scratch([128, 128]);
+                        game.draw_slot_item(&mut actual, None, 300, &None, 8.0, 18.0);
+                        let missing = game
+                            .gui
+                            .atlas
+                            .gui_sprite_or_missing("icon_open:missing")
+                            .expect("missing sprite in atlas");
+                        assert_eq!(
+                            missing,
+                            game.gui.atlas.sprites[sunrise_client::hud::MISSING_SPRITE]
+                        );
+                        let mut expected = HudBatch::scratch([128, 128]);
+                        expected.rect_uv(8.0, 18.0, 16.0, 16.0, missing, 0xFFFF_FFFF);
+                        let geometry = |batch: &HudBatch| {
+                            batch
+                                .vertices
+                                .iter()
+                                .map(|v| (v.pos, v.uv))
+                                .collect::<Vec<_>>()
+                        };
+                        assert!(!expected.vertices.is_empty());
+                        assert_eq!(geometry(&actual), geometry(&expected));
+                    },
                 );
-                assert!(DIAGNOSTICS.0.lock().unwrap().iter().any(|message|
-                    message == "screen for icon_open:machine: unknown empty-slot GUI sprite \"icon_open:missing\""
-                ));
             },
         );
     });

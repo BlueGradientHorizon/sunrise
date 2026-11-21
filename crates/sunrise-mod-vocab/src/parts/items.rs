@@ -7,16 +7,20 @@ use crate::{ClientHost, ItemStack};
 /// [`ItemPart::release_using`]. Register one owner for an item with
 /// [`ItemsRegistrar::register_client_item_use`].
 ///
-/// Every callback receives the original stack snapshot and its hotbar slot (0–8), never a
-/// replacement. Track the capture in these callbacks, not through the living-item use reads.
+/// While the same item kind stays in the active hotbar slot (0–8), each tick and release
+/// rebinds the stack to the live slot contents (matching `LivingEntity.updatingUsingItem` and
+/// `LivingEntity.releaseUsingItem`). If the slot is emptied or replaced by a different item
+/// kind, [`Self::on_stop_using`] receives the last valid stack of the captured item kind.
+/// Track the capture in these callbacks, not through the living-item use reads.
 /// A disabled owner receives no callbacks.
 pub trait ClientItemUseBehavior: Send + Sync + 'static {
     /// Consume a main-hand use input before the client handles the crosshair target.
     fn use_item(&self, host: &mut dyn ClientHost, stack: &ItemStack, slot: u32);
 
-    /// Run only on input release while the same item kind is still selected in the original
-    /// slot and the player can still use it. The game clears the capture before calling this.
-    /// `ticks_held` counts elapsed held ticks.
+    /// Run on input release (including keybinds that open a screen and release key mappings,
+    /// matching `Minecraft.handleKeybinds`) while the same item kind is still selected in the
+    /// active slot and the player can still use it. The game clears the capture before calling
+    /// this. `ticks_held` counts elapsed held ticks.
     fn release_using(
         &self,
         _host: &mut dyn ClientHost,
@@ -27,9 +31,9 @@ pub trait ClientItemUseBehavior: Send + Sync + 'static {
     }
 
     /// Clean up after [`Self::release_using`] on a valid release, or on its own when the
-    /// capture resets (for example, when the player switches slots, dies or disconnects).
-    /// The game clears the capture before the end callbacks. `ticks_held` counts elapsed held
-    /// ticks.
+    /// capture resets (for example, when the player switches slots, replaces the item kind,
+    /// dies or disconnects). The game clears the capture before the end callbacks.
+    /// `ticks_held` counts elapsed held ticks.
     fn on_stop_using(
         &self,
         _host: &mut dyn ClientHost,

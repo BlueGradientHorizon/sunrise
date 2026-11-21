@@ -130,10 +130,10 @@ impl Game<'_> {
                 .modified
                 .extend(self.world.chunks.keys().copied());
         }
-        self.keys.clear();
+        self.clear_device_keys();
         self.physical_keys.clear();
-        self.left = false;
-        self.right = false;
+        self.set_mapping_held("key.attack", false);
+        self.set_mapping_held("key.use", false);
         self.pending_save = Some(ClosingSave {
             quit: false,
             close: false,

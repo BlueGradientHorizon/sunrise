@@ -46,7 +46,6 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                 ),
             ] {
                 event.screens.push(DimensionTransitionScreen::new(
-                    id.into(),
                     transition,
                     move |_, initial_reason| {
                         assert_eq!(current_native_mod(), Some(OWNER));
@@ -219,7 +218,6 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
             event: &mut mod_api::RegisterDimensionTransitionScreenEvent<'_>,
         ) {
             event.screens.push(DimensionTransitionScreen::new(
-                "marker:failing".into(),
                 DimensionTransition::Incoming(NETHER.into()),
                 |_, _| {
                     CREATES.fetch_add(1, Ordering::Relaxed);

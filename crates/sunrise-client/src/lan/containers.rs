@@ -72,7 +72,7 @@ pub struct PreparedClick {
     source: Option<Slots>,
     shulker: bool,
     drag: Option<(u8, Vec<usize>)>,
-    hidden: Vec<usize>,
+
     items: Option<Vec<Option<ItemStack>>>,
     container_limits: Vec<Option<u32>>,
     pub(crate) container_insert_rules: Vec<ModContainerInsertRule>,
@@ -431,7 +431,7 @@ impl Hub {
                 sent_data: Vec::new(),
                 reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
+
                 mod_type,
                 craft: None,
                 links: Vec::new(),
@@ -442,16 +442,6 @@ impl Hub {
         });
         self.send_menu_content(i, items);
         Some(window)
-    }
-
-    /// The open menu of `conn` has no `hidden` container slots: a mod's screen
-    /// does not show them, so a click or a shift-click never reaches them.
-    pub fn hide_menu_slots(&mut self, conn: u32, hidden: Vec<usize>) {
-        let _ = self.update_guest(conn, |g| {
-            if let Some(m) = g.menu.as_mut() {
-                m.hidden = hidden;
-            }
-        });
     }
 
     /// Opens a native mod's menu of `rows` rows (1 to 6, a chest's
@@ -496,7 +486,7 @@ impl Hub {
                 sent_data: Vec::new(),
                 reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
+
                 mod_type: None,
                 craft: None,
                 links: Vec::new(),
@@ -863,18 +853,13 @@ impl Hub {
         let shulker = in_menu
             && shulker_box.is_some()
             && self.guests[i].menu.as_ref().map(|m| m.kind) == shulker_box;
-        let (drag, hidden, items, container_limits, container_insert_rules) = {
+        let (drag, items, container_limits, container_insert_rules) = {
             let guest = &self.guests[i];
             let drag = if in_menu {
                 guest.menu.as_ref().and_then(|m| m.drag.clone())
             } else {
                 guest.drag.clone()
             };
-            let hidden = guest
-                .menu
-                .as_ref()
-                .filter(|_| in_menu)
-                .map_or_else(Vec::new, |m| m.hidden.clone());
             let items = source.and_then(|s| s.read(world, guest));
             if in_menu && items.is_none() {
                 return None;
@@ -899,13 +884,7 @@ impl Hub {
                     }
                 }
             }
-            (
-                drag,
-                hidden,
-                items,
-                container_limits,
-                container_insert_rules,
-            )
+            (drag, items, container_limits, container_insert_rules)
         };
         Some(PreparedClick {
             i,
@@ -913,7 +892,7 @@ impl Hub {
             source,
             shulker,
             drag,
-            hidden,
+
             items,
             container_limits,
             container_insert_rules,
@@ -936,7 +915,7 @@ impl Hub {
                 container: prepared.items.as_deref_mut(),
                 shulker: prepared.shulker,
                 container_limits: std::mem::take(&mut prepared.container_limits),
-                hidden: &prepared.hidden,
+
                 loop_context,
             };
             menu::click(
@@ -982,7 +961,7 @@ impl Hub {
                 container: prepared.items.as_deref_mut(),
                 shulker: prepared.shulker,
                 container_limits: Vec::new(),
-                hidden: &prepared.hidden,
+
                 loop_context,
             }
             .stacked_click(i32::from(p.slot), i32::from(p.button))
@@ -1015,7 +994,7 @@ impl Hub {
                     container: prepared.items.as_deref_mut(),
                     shulker: prepared.shulker,
                     container_limits: prepared.container_limits.clone(),
-                    hidden: &prepared.hidden,
+
                     loop_context,
                 },
                 &mut prepared.drag,

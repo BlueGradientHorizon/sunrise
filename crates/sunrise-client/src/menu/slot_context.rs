@@ -46,7 +46,26 @@ pub fn lan_container(i: usize, container: Option<&[Option<ItemStack>]>) -> MenuC
     }
 }
 
-impl SlotContext<'_> {
+impl<'a> SlotContext<'a> {
+    /// A flat, blockless menu's backing slots, borrowed for one slot-policy question.
+    pub fn blockless(
+        player: u128,
+        pos: Option<[i32; 3]>,
+        container: MenuContainer,
+        slots: &'a [Option<ItemStack>],
+    ) -> Self {
+        Self {
+            player: Some(player),
+            pos,
+            container,
+            slots,
+            main_crafting: None,
+            grid: &[],
+            result: &[],
+            trace: None,
+        }
+    }
+
     pub(super) fn record<R>(self, ask: impl FnOnce(SlotContext<'_>) -> R) -> (R, SlotReads) {
         let reads = RefCell::new(Vec::new());
         let trace = |container, index, stack: Option<&ItemStack>| {

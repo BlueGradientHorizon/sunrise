@@ -60,7 +60,7 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
             sent_data: vec![],
             reported_unsent_data_len: None,
             blockless_data: Vec::new(),
-            hidden: vec![],
+
             mod_type: Some(kind),
             craft: None,
             links: vec![],

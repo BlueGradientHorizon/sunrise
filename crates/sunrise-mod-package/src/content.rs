@@ -1081,9 +1081,18 @@ impl MenuCrafting {
     }
 }
 
-/// the most container slots a mod menu type has, as many as a mod
-/// container (`native_block_entity_container`) may.
-pub const MAX_MENU_SLOTS: u16 = 256;
+/// The most total item slots a mod menu type may carry (container backing slots plus
+/// the 36 appended player inventory slots when `player_inventory` is true): `32,768`,
+/// matching vanilla's signed 16-bit slot index range `0..=32,767` (`i16::MAX`).
+pub const MAX_MENU_SLOTS: u16 = (i16::MAX as u16) + 1;
+
+/// The most data slots carried over vanilla's signed 16-bit `ClientboundContainerSetDataPacket`
+/// (`0..=32,767`, count `32,768`).
+pub const MAX_SIGNED_DATA_SLOTS: u16 = (i16::MAX as u16) + 1;
+
+/// The most data slots carried over the unsigned 16-bit `sunrise:menu_data` payload
+/// (`0..=65,535`, count `65,536`).
+pub const MAX_BLOCKLESS_DATA_SLOTS: usize = u16::MAX as usize + 1;
 
 #[derive(Debug, Clone)]
 enum Source {
@@ -1803,10 +1812,10 @@ impl Content {
             let source = format!("{name} ({menu})");
             let file: MenuType =
                 serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
-            if file.slots > MAX_MENU_SLOTS {
+            let total_slots = usize::from(file.slots) + if file.player_inventory { 36 } else { 0 };
+            if total_slots > usize::from(MAX_MENU_SLOTS) {
                 return Err(format!(
-                    "{source}: slots ({}) is 0 to {MAX_MENU_SLOTS}",
-                    file.slots
+                    "{source}: total menu slots ({total_slots}) exceed {MAX_MENU_SLOTS}"
                 ));
             }
             if let Some(limits) = &file.owned_slots
@@ -3105,7 +3114,12 @@ capabilities = ["registries"]
             .collect();
         assert_eq!(wide_counts, [("ruby:huge", 70_000), ("ruby:wide", 300)]);
         for (case, file, details) in [
-            ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
+            ("menu-large-with-inv", r#"{"slots": 32733}"#, &["32769"][..]),
+            (
+                "menu-large-no-inv",
+                r#"{"slots": 32769, "player_inventory": false}"#,
+                &["32769"][..],
+            ),
             (
                 "menu-result",
                 r#"{"slots": 0, "results": [0]}"#,

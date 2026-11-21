@@ -41,9 +41,8 @@ pub struct PartRegistrar {
     pub(crate) biome_modifiers: Vec<BiomeModifierDeclaration>,
     pub(crate) biome_regions: Vec<BiomeRegionDeclaration>,
     pub(crate) datapack_registries: Vec<crate::DatapackRegistryDeclaration>,
-    pub(crate) menu_screen_factories: HashMap<String, HashMap<usize, MenuScreenRegistration>>,
+    pub(crate) menu_screen_factories: HashMap<String, MenuScreenRegistration>,
     pub(crate) menu_recipe_books: HashMap<String, MenuBookDeclaration>,
-    pub(crate) menu_slot_exclusions: HashMap<String, HashMap<String, Box<[u16]>>>,
     /// Loading warnings for each owning mod, in registration order.
     pub(crate) warnings: Vec<(&'static str, Vec<crate::LoadingMessage>)>,
     /// Refusal reasons recorded for the mod currently running `Hooks::register`.
@@ -106,7 +105,6 @@ impl PartRegistrar {
         Self {
             menu_screen_factories: HashMap::new(),
             menu_recipe_books: HashMap::new(),
-            menu_slot_exclusions: HashMap::new(),
             warnings: Vec::new(),
             current_refusals: Vec::new(),
             current_warnings: Vec::new(),
@@ -337,7 +335,6 @@ pub(crate) fn install_registrar(
         datapack_registries: registrar.datapack_registries,
         menu_screen_factories: registrar.menu_screen_factories,
         menu_recipe_books: registrar.menu_recipe_books,
-        menu_slot_exclusions: registrar.menu_slot_exclusions,
         recipe_book_types: registrar.recipe_book_types,
         recipe_book_fields: registrar.recipe_book_fields,
         recipe_book_filters: registrar.recipe_book_filters,

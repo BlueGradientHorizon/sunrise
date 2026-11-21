@@ -17,13 +17,10 @@ impl MenuPlacement {
 impl Menu {
     /// Rebuild only visibility from the actual current mod menu. A cached
     /// machine may have hidden slots left over from an earlier linked view.
-    pub fn reset_mod_visibility(&mut self, hidden: &[usize]) {
+    pub fn reset_mod_visibility(&mut self) {
         self.touch();
         if matches!(self.state.kind, Kind::Mod(_)) {
             self.state.slots = Menu::new(self.state.kind).state.slots;
-            for &slot in hidden {
-                self.hide_slot(slot);
-            }
         }
     }
 }

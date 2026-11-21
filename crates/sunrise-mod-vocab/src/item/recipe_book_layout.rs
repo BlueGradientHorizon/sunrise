@@ -43,17 +43,6 @@ impl RecipeBookLayout {
             .get(menu)
             .map(|binding| binding.owner)
     }
-    /// Check that a permanent exclusion mask leaves every declared role
-    /// available at its backing index. Loading checks the default and every
-    /// opener-specific mask. Local screen hides are not exclusions.
-    pub fn validate_exclusions(&self, excluded: &[u16]) -> Result<(), String> {
-        self.check_roles(|slot, role| {
-            if excluded.contains(&slot) {
-                return Err(format!("{role} slot {slot} is permanently excluded"));
-            }
-            Ok(())
-        })
-    }
     /// Menus with declarations, for content-load validation, never per tick.
     pub fn registered_menus() -> Vec<String> {
         let mut menus = crate::parts::installed()
@@ -78,11 +67,9 @@ impl RecipeBookLayout {
     }
 
     /// Check role indices against the content menu's container slot count.
-    /// The count includes permanently excluded slots. Exclusion masks are
-    /// checked separately with [`Self::validate_exclusions`].
     pub fn validate(&self, slot_count: u16) -> Result<(), String> {
-        if slot_count == 0 || slot_count > 256 {
-            return Err("container slot count must be in 1..=256".into());
+        if slot_count == 0 {
+            return Err("container slot count must be at least 1".into());
         }
         if let Self::Crafting {
             width,
@@ -100,15 +87,14 @@ impl RecipeBookLayout {
                 return Err("grid dimensions must match its slot list and fit the menu".into());
             }
         }
-        let mut seen = [false; 256];
+        let mut seen = std::collections::BTreeSet::new();
         self.check_roles(|slot, role| {
             if slot >= slot_count {
                 return Err(format!("{role} slot {slot} is outside the menu"));
             }
-            if seen[usize::from(slot)] {
+            if !seen.insert(slot) {
                 return Err(format!("{role} slot {slot} overlaps another role"));
             }
-            seen[usize::from(slot)] = true;
             Ok(())
         })
     }
@@ -150,5 +136,30 @@ impl RecipeBookLayout {
             }
             Self::Mod => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RecipeBookLayout;
+
+    #[test]
+    fn validate_accepts_more_than_256_slots_and_rejects_bad_indices() {
+        let big = RecipeBookLayout::Crafting {
+            width: 3,
+            height: 3,
+            slots: (290..299).collect(),
+            result: 299,
+        };
+        assert_eq!(big.validate(300), Ok(()));
+        assert!(big.validate(299).is_err());
+        assert!(big.validate(0).is_err());
+
+        let overlap = RecipeBookLayout::Furnace {
+            input: 270,
+            fuel: 271,
+            result: 270,
+        };
+        assert!(overlap.validate(300).is_err());
     }
 }

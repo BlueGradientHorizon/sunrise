@@ -776,7 +776,9 @@ impl Game<'_> {
     }
     /// `Slot.mayPlace` and `getMaxStackSize` for station slots.
     fn slot_rules(&self, slot: usize, stack: &ItemStack) -> (bool, u32) {
-        if slot >= super::mount_menu::SADDLE {
+        if slot >= super::mount_menu::SADDLE
+            && slot < crate::game::inventory_slots::MOD_MENU_SLOT_BASE
+        {
             return self.mount_slot_rules(slot, stack);
         }
         if let Some(BlockEntity::Crafter(c)) = self.container_kind()

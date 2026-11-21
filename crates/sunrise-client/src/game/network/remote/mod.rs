@@ -49,7 +49,6 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_client::first_person::{Hand, SwingAnimation};
-use sunrise_client::input_queue::InputQueue;
 use sunrise_client::{
     Result,
     blocks::Fluid,
@@ -118,7 +117,6 @@ mod packets_entity;
 mod packets_object;
 mod packets_player;
 mod packets_world;
-mod queued_keys;
 mod remote_attributes;
 mod remote_state;
 mod session;
@@ -583,11 +581,6 @@ pub(super) struct Remote {
     /// Per-hand swing policy, restored when the current input attempt ends.
     pub(in crate::game) interaction_swing: [bool; 2],
     destroy_delay: u32,
-    pub(super) input: sunrise_client::interaction_input::InteractionInput,
-    /// Keys whose presses send a packet (swap hands, drop, a mount's
-    /// inventory): like the click queue, they wait for the tick's
-    /// `handleKeybinds` phase rather than going out between window events.
-    pub(super) pending_keys: InputQueue<KeyCode>,
     /// Whether the main and off hand still wait for the server's answer to
     /// a SWAP_ITEM_WITH_OFFHAND (`remote_hand_slot_set`).
     swap_answer: [bool; 2],
@@ -853,10 +846,7 @@ impl Game<'_> {
 
     /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
     pub(in crate::game) fn remote_attack_clicks_queued(&self) -> u32 {
-        self.remote.as_ref().map_or(0, |r| {
-            r.input
-                .queued(sunrise_client::interaction_input::Button::Attack)
-        })
+        self.pending_mapping_clicks("key.attack")
     }
 
     /// Process what the network thread received (once per frame, like the
@@ -1991,7 +1981,24 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.pick_tick_targets();
     }
     fn handle_keys(&mut self) {
-        self.0.remote_queued_keys();
+        self.0.handle_play_keybinds();
+    }
+    fn pending_clicks(&self, button: sunrise_client::interaction_input::Button) -> u32 {
+        self.0.pending_mapping_clicks(button.mapping())
+    }
+    fn consume_click(&mut self, button: sunrise_client::interaction_input::Button) -> bool {
+        self.0.consume_mapping_click(button.mapping())
+    }
+    fn is_down(&self, button: sunrise_client::interaction_input::Button) -> bool {
+        self.0.mapped_key_down(button.mapping())
+    }
+    fn can_continue_attack(&self) -> bool {
+        !self.0.mod_mappings_screen_open()
+    }
+    fn spectator_hotbar(&mut self) {
+        while self.0.spectator() && self.0.consume_mapping_click("key.spectatorHotbar") {
+            self.0.spectator_action_key();
+        }
     }
     fn release_hit_result(&mut self) {
         self.0.release_tick_targets();
@@ -2081,7 +2088,6 @@ impl ClientMenu {
         self.current.as_ref()
     }
 }
-
 
 fn object_skin_changed(published: &HashMap<String, String>, key: &str, skin: &str) -> bool {
     published.get(key).is_none_or(|previous| previous != skin)
@@ -2526,7 +2532,9 @@ pub(crate) mod tests {
     }
 
     /// Spawns the connected client in the overworld as entity 7, profile 42.
-    pub(super) fn spawn_menu_test(game: &mut super::Game<'_>) -> sunrise_protocol::packets::play::SpawnInfo {
+    pub(super) fn spawn_menu_test(
+        game: &mut super::Game<'_>,
+    ) -> sunrise_protocol::packets::play::SpawnInfo {
         use crate::game::remote::RemoteDimensionEntry;
         use sunrise_client::level_loading::Reason;
         use sunrise_protocol::packets::play::SpawnInfo;

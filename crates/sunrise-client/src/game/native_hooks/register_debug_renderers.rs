@@ -5,8 +5,9 @@ impl Game<'_> {
     /// renderer-list refresh (NeoForge's `RegisterDebugRenderersEvent`).
     pub(in crate::game) fn native_register_debug_renderers(
         context: &mod_api::RegistrationContext,
+        entries: &dyn mod_api::__private::DebugEntryStates,
         renderers: &mut Vec<Answered<DebugRenderer>>,
     ) {
-        Self::fire_register_debug_renderers(context, renderers);
+        Self::fire_register_debug_renderers(context, entries, renderers);
     }
 }

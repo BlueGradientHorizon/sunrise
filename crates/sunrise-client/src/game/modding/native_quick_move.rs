@@ -33,19 +33,13 @@ pub(super) enum MenuSlot {
 /// a button other than left or right (`doClick` takes 0 and 1), no slot,
 /// a slot past the menu, or a container slot the mod's screen hides (the
 /// menu has no such slot, so the click goes nowhere).
-pub(super) fn quick_move_slot(
-    input: i32,
-    button: i32,
-    slot: i32,
-    size: usize,
-    hidden: &[usize],
-) -> Option<MenuSlot> {
+pub(super) fn quick_move_slot(input: i32, button: i32, slot: i32, size: usize) -> Option<MenuSlot> {
     if input != QUICK_MOVE || !(0..=1).contains(&button) {
         return None;
     }
     let slot = usize::try_from(slot).ok()?;
     if slot < size {
-        return (!hidden.contains(&slot)).then_some(MenuSlot::Container(slot));
+        return Some(MenuSlot::Container(slot));
     }
     let n = slot - size;
     match n {
@@ -112,13 +106,7 @@ impl Game<'_> {
         let Slots::Block(pos) = menu.slots else {
             return None;
         };
-        let at = quick_move_slot(
-            p.input,
-            i32::from(p.button),
-            i32::from(p.slot),
-            menu.size,
-            &menu.hidden,
-        )?;
+        let at = quick_move_slot(p.input, i32::from(p.button), i32::from(p.slot), menu.size)?;
         // A shift-click during a drag only ends the drag (`doClick`'s resetQuickCraft).
         // The ordinary path also answers spectators and dead players.
         if g.spectator() || g.dead || menu.drag.is_some() {
@@ -477,7 +465,7 @@ pub(super) struct Admitted {
     window: i32,
     pos: Pos,
     size: usize,
-    hidden: Vec<usize>,
+
     generation: Option<u64>,
 }
 
@@ -495,7 +483,7 @@ impl Admitted {
             window,
             pos,
             size,
-            hidden: menu.hidden.clone(),
+
             generation: game.world.block_entities.generation(&pos),
         })
     }
@@ -510,7 +498,6 @@ impl Admitted {
             m.window == self.window
                 && m.slots == Slots::Block(self.pos)
                 && m.size == self.size
-                && m.hidden == self.hidden
                 && m.drag.is_none()
         }) && !guest.spectator()
             && !guest.dead
@@ -558,57 +545,29 @@ mod tests {
     /// has the container's 9, then the main inventory, then the hotbar.
     #[test]
     fn a_quick_move_names_the_container_or_inventory_slot() {
-        assert_eq!(
-            quick_move_slot(1, 0, 0, 9, &[]),
-            Some(MenuSlot::Container(0))
-        );
-        assert_eq!(
-            quick_move_slot(1, 1, 8, 9, &[]),
-            Some(MenuSlot::Container(8))
-        );
+        assert_eq!(quick_move_slot(1, 0, 0, 9), Some(MenuSlot::Container(0)));
+        assert_eq!(quick_move_slot(1, 1, 8, 9), Some(MenuSlot::Container(8)));
         // The first main slot is inventory index 9, the last 35.
-        assert_eq!(
-            quick_move_slot(1, 0, 9, 9, &[]),
-            Some(MenuSlot::Inventory(9))
-        );
-        assert_eq!(
-            quick_move_slot(1, 0, 35, 9, &[]),
-            Some(MenuSlot::Inventory(35))
-        );
+        assert_eq!(quick_move_slot(1, 0, 9, 9), Some(MenuSlot::Inventory(9)));
+        assert_eq!(quick_move_slot(1, 0, 35, 9), Some(MenuSlot::Inventory(35)));
         // The hotbar comes last in the menu and first in the inventory.
-        assert_eq!(
-            quick_move_slot(1, 0, 36, 9, &[]),
-            Some(MenuSlot::Inventory(0))
-        );
-        assert_eq!(
-            quick_move_slot(1, 0, 44, 9, &[]),
-            Some(MenuSlot::Inventory(8))
-        );
+        assert_eq!(quick_move_slot(1, 0, 36, 9), Some(MenuSlot::Inventory(0)));
+        assert_eq!(quick_move_slot(1, 0, 44, 9), Some(MenuSlot::Inventory(8)));
     }
 
     /// Only a left or right shift-click on a slot the menu has is a quick
-    /// move: no other click type, button, outside click or hidden slot.
+    /// move: no other click type, button, outside click or unavailable slot.
     #[test]
     fn other_clicks_are_not_quick_moves() {
         // PICKUP, SWAP, CLONE, THROW, QUICK_CRAFT, PICKUP_ALL.
         for input in [0, 2, 3, 4, 5, 6] {
-            assert_eq!(quick_move_slot(input, 0, 0, 9, &[]), None);
+            assert_eq!(quick_move_slot(input, 0, 0, 9), None);
         }
-        assert_eq!(quick_move_slot(1, 2, 0, 9, &[]), None);
-        assert_eq!(quick_move_slot(1, -1, 0, 9, &[]), None);
-        assert_eq!(quick_move_slot(1, 0, -999, 9, &[]), None);
-        assert_eq!(quick_move_slot(1, 0, 45, 9, &[]), None);
+        assert_eq!(quick_move_slot(1, 2, 0, 9), None);
+        assert_eq!(quick_move_slot(1, -1, 0, 9), None);
+        assert_eq!(quick_move_slot(1, 0, -999, 9), None);
+        assert_eq!(quick_move_slot(1, 0, 45, 9), None);
         // A slot the mod's screen hides is not in the menu.
-        assert_eq!(quick_move_slot(1, 0, 3, 9, &[3]), None);
-        assert_eq!(
-            quick_move_slot(1, 0, 4, 9, &[3]),
-            Some(MenuSlot::Container(4))
-        );
-        // The inventory's slots are never hidden.
-        assert_eq!(
-            quick_move_slot(1, 0, 9, 9, &[0, 1, 2, 3, 4, 5, 6, 7, 8]),
-            Some(MenuSlot::Inventory(9))
-        );
     }
 
     /// A taken shift-click from the inventory: the clicked slot keeps what the

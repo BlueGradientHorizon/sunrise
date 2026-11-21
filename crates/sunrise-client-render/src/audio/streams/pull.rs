@@ -1,6 +1,6 @@
 //! One lazy PCM producer for all native pull streams on a shared output.
 use super::{Control, Ring, pcm};
-use mod_api::{__private::CallbackOwner, AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStream};
+use mod_api::{__private::game::CallbackOwner, AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStream};
 use std::{
     sync::{
         Arc,

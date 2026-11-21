@@ -598,6 +598,7 @@ pub(super) fn emit<'a>(
                         (event_type.as_str(), name.as_str()),
                         ("ApplyEffectTickEvent", "changes")
                             | ("ExtractBlockScreenEffectEvent", "renderer")
+                            | ("RegisterDebugRenderersEvent", "entries")
                     ) =>
                 {
                     "pub(super)"

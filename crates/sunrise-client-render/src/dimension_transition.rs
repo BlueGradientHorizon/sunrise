@@ -98,11 +98,6 @@ impl TransitionScreens {
     fn new(registrations: impl IntoIterator<Item = Registration>) -> Self {
         let mut screens = HashMap::new();
         for (owner, registration) in registrations {
-            let id = registration.screen();
-            if !Identifier::parse_namespaced(id).is_some_and(|id| id.namespace() != "minecraft") {
-                log::warn!("[{owner}] Invalid dimension transition screen id: {id}");
-                continue;
-            }
             let key = match registration.transition() {
                 DimensionTransition::Incoming(to) => resolve(to).map(TransitionKey::Incoming),
                 DimensionTransition::Outgoing(from) => resolve(from).map(TransitionKey::Outgoing),
@@ -118,7 +113,14 @@ impl TransitionScreens {
                         draw_owner: CallbackOwner::for_mod(owner),
                     });
                 }
-                _ => log::warn!("[{owner}] Invalid or duplicate dimension transition: {id}"),
+                Some(Entry::Occupied(_)) => log::warn!(
+                    "[{owner}] Duplicate dimension transition: {:?}",
+                    registration.transition()
+                ),
+                None => log::warn!(
+                    "[{owner}] Invalid dimension transition: {:?}",
+                    registration.transition()
+                ),
             }
         }
         Self(screens)
@@ -175,10 +177,10 @@ mod tests {
     fn key(id: &str) -> DimensionKey {
         mod_api::__private::dimension_key(id)
     }
-    fn entry(screen: &str, transition: DimensionTransition, argb: u32) -> Registration {
+    fn entry(transition: DimensionTransition, argb: u32) -> Registration {
         (
             "registrant",
-            DimensionTransitionScreen::new(screen.into(), transition, move |_, _| {
+            DimensionTransitionScreen::new(transition, move |_, _| {
                 Box::new(
                     move |_: &dyn ClientHost, _, _, draw: &mut dyn DrawContext| {
                         draw.fill([0.0, 0.0, 1.0, 1.0], argb);
@@ -201,18 +203,9 @@ mod tests {
     #[test]
     fn conditional_wins_over_incoming_then_outgoing_and_first_registration_wins() {
         let screens = TransitionScreens::new(vec![
+            entry(DimensionTransition::Outgoing("test:a".into()), 1),
+            entry(DimensionTransition::Incoming("test:b".into()), 2),
             entry(
-                "test:leave",
-                DimensionTransition::Outgoing("test:a".into()),
-                1,
-            ),
-            entry(
-                "test:arrive",
-                DimensionTransition::Incoming("test:b".into()),
-                2,
-            ),
-            entry(
-                "test:pair",
                 DimensionTransition::Conditional {
                     to: "test:b".into(),
                     from: "test:a".into(),
@@ -220,23 +213,14 @@ mod tests {
                 3,
             ),
             entry(
-                "test:duplicate",
                 DimensionTransition::Conditional {
                     to: "test:b".into(),
                     from: "test:a".into(),
                 },
                 4,
             ),
-            entry(
-                "test:duplicate",
-                DimensionTransition::Incoming("test:b".into()),
-                5,
-            ),
-            entry(
-                "test:duplicate",
-                DimensionTransition::Outgoing("test:a".into()),
-                6,
-            ),
+            entry(DimensionTransition::Incoming("test:b".into()), 5),
+            entry(DimensionTransition::Outgoing("test:a".into()), 6),
         ]);
         assert_eq!(chosen(&screens, "test:b", "test:a"), Some(3));
         assert_eq!(chosen(&screens, "test:b", "test:c"), Some(2));
@@ -247,50 +231,31 @@ mod tests {
     #[test]
     fn invalid_ids_do_not_reserve_a_transition_or_replace_vanilla() {
         let screens = TransitionScreens::new(vec![
+            entry(DimensionTransition::Incoming("INVALID:b".into()), 1),
+            entry(DimensionTransition::Outgoing("missing_namespace".into()), 2),
             entry(
-                "minecraft:reserved",
-                DimensionTransition::Incoming("test:b".into()),
-                1,
-            ),
-            entry(
-                "missing_namespace",
-                DimensionTransition::Incoming("test:b".into()),
-                2,
-            ),
-            entry(
-                "test:invalid",
-                DimensionTransition::Incoming("INVALID:b".into()),
-                3,
-            ),
-            entry(
-                "test:invalid",
-                DimensionTransition::Outgoing("missing_namespace".into()),
-                4,
-            ),
-            entry(
-                "test:invalid",
                 DimensionTransition::Conditional {
                     to: "test:b".into(),
                     from: "INVALID:a".into(),
                 },
+                3,
+            ),
+            entry(DimensionTransition::Incoming("test:b".into()), 4),
+            entry(
+                DimensionTransition::Incoming("minecraft:the_nether".into()),
                 5,
             ),
-            entry(
-                "test:valid",
-                DimensionTransition::Incoming("test:b".into()),
-                6,
-            ),
         ]);
-        assert_eq!(chosen(&screens, "test:b", "test:a"), Some(6));
+        assert_eq!(chosen(&screens, "test:b", "test:a"), Some(4));
+        assert_eq!(chosen(&screens, "minecraft:the_nether", "test:a"), Some(5));
         assert_eq!(chosen(&screens, "INVALID:b", "test:a"), None);
         assert_eq!(chosen(&screens, "test:c", "missing_namespace"), None);
-        assert_eq!(chosen(&screens, "test:b", "INVALID:a"), Some(6));
+        assert_eq!(chosen(&screens, "test:b", "INVALID:a"), Some(4));
     }
 
     #[test]
     fn selected_screen_follows_existing_progress_readiness_and_cleanup_then_falls_back() {
         let screens = TransitionScreens::new([entry(
-            "test:arrival",
             DimensionTransition::Conditional {
                 to: "test:b".into(),
                 from: "test:a".into(),
@@ -373,7 +338,6 @@ mod tests {
             let screens = TransitionScreens::new([(
                 "broken_presentation",
                 DimensionTransitionScreen::new(
-                    "test:broken".into(),
                     DimensionTransition::Incoming("test:b".into()),
                     |_, _| Box::new(BrokenDrop),
                 ),

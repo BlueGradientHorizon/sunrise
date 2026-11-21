@@ -211,10 +211,6 @@ impl Game<'_> {
         if guest.sender.menu_extra_rev < required_rev {
             return MenuOpen::Refused;
         }
-        let opener = (self.mod_menu_at(pos) == Some(menu)).then_some(block.as_str());
-        let Some(hidden) = Self::native_hidden_slots(menu, opener, items.len()) else {
-            return MenuOpen::Refused;
-        };
         // The mods may stop the menu; the click is spent.
         match self.guest_may_open(conn, menu, Some([pos.0, pos.1, pos.2])) {
             Some(true) => {}
@@ -286,10 +282,6 @@ impl Game<'_> {
                         .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
                 }
                 return None;
-            }
-            if !hidden.is_empty() {
-                host.hub
-                    .hide_menu_slots(conn, hidden.iter().copied().map(usize::from).collect());
             }
             Some(host.hub.guest(conn)?.menu_generation)
         }) else {

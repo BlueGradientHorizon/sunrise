@@ -866,28 +866,14 @@ impl Game<'_> {
                 ok()
             }
             "release" => {
-                self.keys.clear();
+                self.clear_device_keys();
                 self.physical_keys.clear();
                 self.mod_keys.set_all_up();
                 self.modifiers = winit::keyboard::ModifiersState::empty();
-                // Sneak and sprint pressed through `key` live in the toggle
-                // mappings: release them as their key's release would (a
-                // toggled one stays on), or the next sync puts them back. A
-                // controller still holding one keeps it.
-                let options = [self.settings.toggle_crouch, self.settings.toggle_sprint];
-                for (slot, name) in [(0, "key.sneak"), (1, "key.sprint")] {
-                    if !self.input_holds(name) {
-                        self.toggles.key(
-                            slot,
-                            sunrise_client::keymapping::KeyAction::Release,
-                            false,
-                            options[slot],
-                        );
-                    }
-                    self.sync_toggle(slot);
-                }
-                self.left = false;
-                self.right = false;
+                let options = self.toggle_options();
+                self.vanilla_mappings.set_keys_up_on_focus_loss(options);
+                self.set_mapping_held("key.attack", false);
+                self.set_mapping_held("key.use", false);
                 ok()
             }
             "mouse" => {
@@ -1413,7 +1399,7 @@ impl Game<'_> {
             self.block_editor_key_code(key, None, None);
             return Ok(());
         }
-        if self.keys.press(key, Source::Agent) {
+        if self.press_device_key(key, Source::Agent) {
             self.key_pressed(key, raw)?;
         }
         Ok(())
@@ -1422,8 +1408,8 @@ impl Game<'_> {
     /// `key ... up`: the script lets go. What it pressed as the keyboard's stand-in goes with it
     /// (a fixture's untagged press), and a controller's hold stays.
     fn control_key_up(&mut self, key: KeyCode) {
-        self.keys.release(&key, Source::Agent);
-        self.keys.release(&key, Source::Keyboard);
+        self.release_device_key(&key, Source::Agent);
+        self.release_device_key(&key, Source::Keyboard);
     }
 
     fn screen_name(&self) -> &'static str {

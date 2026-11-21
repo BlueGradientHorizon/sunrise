@@ -203,7 +203,7 @@ pub fn client_requirement(id: &str) -> Option<String> {
         && installed
             .menu_screen_factories
             .values()
-            .any(|rows| rows.contains_key(&index))
+            .any(|reg| reg.index == index)
     {
         return Some("registers a client menu screen factory".into());
     }
@@ -213,23 +213,6 @@ pub fn client_requirement(id: &str) -> Option<String> {
         .any(|book| book.owner == id)
     {
         return Some("binds a recipe book that requires a client menu screen".into());
-    }
-    if installed.menu_slot_exclusions.iter().any(|(menu, scopes)| {
-        scopes.iter().any(|(opener, slots)| {
-            if slots.is_empty() {
-                return false;
-            }
-            let scope = if menu.starts_with("minecraft:") {
-                opener
-            } else {
-                menu
-            };
-            scope
-                .split_once(':')
-                .is_some_and(|(namespace, _)| crate::parts::owns_namespace(id, namespace))
-        })
-    }) {
-        return Some("excludes menu slots that require a client menu screen".into());
     }
     if let Some((part, hook)) = installed.client_part(id) {
         return Some(format!(

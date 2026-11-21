@@ -6319,7 +6319,7 @@ mod tests {
                     sent_data: Vec::new(),
                     reported_unsent_data_len: None,
                     blockless_data: Vec::new(),
-                    hidden: Vec::new(),
+
                     mod_type: Some(mod_type),
                     registry_id: "test:kept".into(),
                     craft: None,
@@ -8114,7 +8114,7 @@ mod tests {
                 sent_data: Vec::new(),
                 reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
+
                 mod_type: Some(&MENU_TYPE),
                 registry_id: MENU_TYPE.id.into(),
                 craft: None,

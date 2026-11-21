@@ -457,14 +457,9 @@ impl Game<'_> {
             .as_ref()
             .map_or(target, |e| e.pos.map(|p| (p[0], p[1], p[2])));
         let mod_type = sunrise_client::containers::mod_menu_type(&menu);
-        let block = target.and_then(|pos| self.menu_opener_block(pos, &menu));
-        let owner = mod_type.map(|kind| kind.owner);
         // MenuScreens.create looks up the constructor before touching the active window.
-        // A stock menu only needs a native screen if its opener masks backing slots.
-        if (owner.is_some() || !mod_api::__private::menu_slot_exclusions(&menu, block).is_empty())
-            && !mod_api::__private::has_menu_screen_factory(&menu, owner, block)
-        {
-            log::warn!("no screen factory for menu {menu}, owner {owner:?}, opener {block:?}");
+        if mod_type.is_some() && !mod_api::__private::has_menu_screen_factory(&menu) {
+            log::warn!("no screen factory for menu {menu}");
             return;
         }
         if self.remote.as_ref().and_then(|r| r.menu.as_ref()).is_some() || self.mod_screen.is_some()

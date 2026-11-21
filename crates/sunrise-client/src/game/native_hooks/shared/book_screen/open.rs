@@ -1,24 +1,6 @@
 use super::*;
 
 impl Game<'_> {
-    /// The registered exclusions for a validated opener. Refuse the binding if
-    /// any declared index is outside this opening's actual container backing.
-    pub(in crate::game) fn native_hidden_slots(
-        menu: &str,
-        block: Option<&str>,
-        backing_slots: usize,
-    ) -> Option<&'static [u16]> {
-        let hidden = mod_api::__private::menu_slot_exclusions(menu, block);
-        if let Some(&last) = hidden.last()
-            && usize::from(last) >= backing_slots
-        {
-            log::error!(
-                "menu {menu} opener {block:?}: excluded slot {last} is outside {backing_slots} backing slots"
-            );
-            return None;
-        }
-        Some(hidden)
-    }
     /// The mod block at `pos` when its container opens menu type `menu`, the
     /// `block` its screen factory is told. Only when this is the menu that
     /// block opens: a position outlives the use that set it, so another menu
@@ -60,9 +42,6 @@ impl Game<'_> {
         };
         let mod_type = sunrise_client::containers::mod_menu_type(name);
         let block = target.and_then(|pos| self.menu_opener_block(pos, name));
-        let Some(hidden) = Self::native_hidden_slots(name, block, backing_slots) else {
-            return false;
-        };
         let binding = mod_api::RecipeBookLayout::registered(name);
         let of = block.unwrap_or(name);
         // A matching payload supplies the position, including an explicit absence.
@@ -85,11 +64,9 @@ impl Game<'_> {
             player_slots: mod_type
                 .map_or(36, sunrise_client::containers::ModMenuType::player_slots),
             data_slots: mod_type.map_or(0, |kind| kind.data_slots),
-            excluded_slots: hidden,
             extra: extra.as_ref().map_or(&[], |extra| extra.data.as_slice()),
         };
-        let created =
-            mod_api::__private::create_menu_screen(self, open, mod_type.map(|kind| kind.owner));
+        let created = mod_api::__private::create_menu_screen(self, open);
         // Opening bytes are construction-only; the result owns its presentation.
         drop(extra);
         let Some((owner, created)) = created else {
@@ -135,31 +112,14 @@ impl Game<'_> {
             log::error!("screen for {of}: layout is longer than its {backing_slots} backing slots");
             return false;
         }
-        // Every visible slot uses its backing index. An omitted entry is valid
-        // only for a declared exclusion, including at the tail of the layout.
-        // Content loading already ensures mapped book roles fit the menu and
-        // no permanent mask hides them.
-        let mut excluded = hidden.iter().copied().map(usize::from).peekable();
-        for index in 0..backing_slots {
-            let slot = screen.slots.get(index).and_then(Option::as_ref);
-            let should_show = excluded.next_if_eq(&index).is_none();
-            if slot.is_some() != should_show {
-                log::error!(
-                    "screen for {of}: slot {index} layout disagrees with its exclusion mask"
-                );
+        // Every slot uses its backing index; `None` (including omitted trailing
+        // entries) marks an initially inactive slot (`Slot.isActive()`).
+        for (index, slot) in screen.slots.iter().enumerate() {
+            if let Some(slot) = slot
+                && !slot.position.into_iter().all(f32::is_finite)
+            {
+                log::error!("screen for {of}: nonfinite slot {index} coordinates");
                 return false;
-            }
-            if let Some(slot) = slot {
-                if !slot.position.into_iter().all(f32::is_finite) {
-                    log::error!("screen for {of}: nonfinite slot {index} coordinates");
-                    return false;
-                }
-                if let Some(icon) = slot.no_item_icon.as_deref()
-                    && self.gui.atlas.gui_rect(icon).is_none()
-                {
-                    log::error!("screen for {of}: unknown empty-slot GUI sprite {icon:?}");
-                    return false;
-                }
             }
         }
         screen.slots.resize_with(backing_slots, || None);

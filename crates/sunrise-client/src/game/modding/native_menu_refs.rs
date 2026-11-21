@@ -229,8 +229,6 @@ impl Game<'_> {
         (host.hub.holder_guest(guest.uuid, self.dim.id())?.conn == guest.conn).then_some(())?;
         (guest.menu_generation == menu.fields().generation).then_some(())?;
         if let Some(open) = &guest.menu {
-            // Excluded slots keep their backing indices. The handle stays live
-            // for the other slots; the slot methods check the authoritative mask.
             (open.window == menu.fields().window).then_some(guest)
         } else {
             let play = host.play.get(&guest.conn);
@@ -248,9 +246,8 @@ impl Game<'_> {
     }
 
     /// A player's current supported menu. Refuses crafting tables, merchants,
-    /// workstations, lecterns and mounts. Permanently excluded slots remain
-    /// indexed but unavailable through slot methods without invalidating the handle.
-    /// Local screen hides do not change server access. Also refuses stale
+    /// workstations, lecterns and mounts. Local screen hides do not change server access.
+    /// Also refuses stale
     /// players and players whose state is swapped out by another active turn.
     /// The acting player's inventory, equipment, cursor and ender reads use Game's state.
     /// On a client, only the local player's supported menu is available.
@@ -343,12 +340,6 @@ impl Game<'_> {
         };
         if slot >= open.slot_count() {
             return None;
-        }
-        if open.hidden.contains(&slot) {
-            // The screen hides the click target, not a handler explicitly bound to that slot.
-            return self
-                .native_menu_place(guest.conn, open.window, slot)
-                .map(MenuSlotBacking::Place);
         }
         // A block menu whose block entities no longer show its slots (a chest's, over a
         // furnace set in its place) backs none of them, the player's included, until the close
@@ -467,7 +458,7 @@ impl Game<'_> {
     pub(super) fn menu_owned_slot_limit(&self, menu: MenuRef, slot: usize) -> Option<u32> {
         let open = self.native_menu_guest(menu)?.menu.as_ref()?;
         let limit = *open.owned_slots()?.get(slot)?;
-        (!open.hidden.contains(&slot)).then_some(u32::from(limit))
+        Some(u32::from(limit))
     }
 
     /// The menu engine's model of `menu`, holding slot `slot`, for its slots' rules: the

@@ -77,9 +77,10 @@ pixels from the bottom. A mod that needs to move either can cancel and redraw it
 ## Registering F3 text
 
 Push a `DebugEntry::text(id, group, lines)` in `Hooks::register_debug_entries` at client
-startup. Use a non-vanilla namespaced ID, which also identifies the entry in the debug options
-and saved profile. The group says which vanilla lines yours join; the closure receives the
-current client host and appends to the entry's lines.
+startup. Use any valid `<namespace>:<path>` ID (including custom `minecraft:<path>` IDs that do
+not collide with built-in vanilla entries); it identifies the entry in the debug options and
+saved profile. The group says which vanilla lines yours join; the closure receives the current
+client host and appends to the entry's lines.
 
 ```rust,ignore
 use mod_api::{DebugEntry, DebugGroup, RegisterDebugEntriesEvent, RegistrationContext};
@@ -94,15 +95,20 @@ fn register_debug_entries(&self, _: &RegistrationContext, event: &mut RegisterDe
 ```
 
 Each mod starts with an empty batch. The client keeps the closure and calls it as your mod only
-while the entry is visible and its mod is enabled. A panic discards its lines and disables the
-callback for the session. Reduced debug info hides it, even if it is set to always on.
+while the entry is visible and its mod is enabled. A panic discards its lines and disables that
+callback for the session. By default, reduced debug info hides the entry even if it is set to
+always on (matching vanilla's `DebugScreenEntry.isAllowed`); call `.with_reduced_debug_info(true)`
+on the `DebugEntry` to keep it allowed under reduced debug info.
 
 ## Registering world-space debug renderers
 
-Push `DebugEntry::renderer(id)` in `Hooks::register_debug_entries` at client startup to
-create the toggle. In `Hooks::register_debug_renderers`, push `DebugRenderer::new(id, draw)`
-with the same ID. Use the callback's `ClientHost`, `WorldRenderView` and `WorldDrawContext` to
-draw, and capture any state specific to this renderer instead of handling an ID in a draw hook.
+In `Hooks::register_debug_renderers`, push `DebugRenderer::new(draw)` for each renderer that
+should run until the next refresh. To gate a renderer on a debug options switch, register
+`DebugEntry::renderer(id)` at startup in `Hooks::register_debug_entries` (or reference a
+built-in vanilla entry such as `"minecraft:chunk_borders"`) and check
+`event.is_debug_entry_enabled(id)` before pushing. Unconditional renderers require no switch
+entry. Use the callback's `ClientHost`, `WorldRenderView` and `WorldDrawContext` to draw, and
+capture any per-refresh state specific to this renderer.
 
 ```rust,ignore
 use mod_api::{
@@ -117,21 +123,22 @@ fn register_debug_entries(&self, _: &RegistrationContext, event: &mut RegisterDe
 }
 
 fn register_debug_renderers(&self, _: &RegistrationContext, event: &mut RegisterDebugRenderersEvent<'_>) {
+    if !event.is_debug_entry_enabled(GUIDE_LINE) {
+        return;
+    }
     let line = WorldLine::new([0.0, 65.0, 0.0], [2.0, 65.0, 0.0], 0xFF00_FF00, 2.0, WorldDepth::Tested);
-    event.renderers.push(DebugRenderer::new(GUIDE_LINE.into(), move |_host, _view, draw| {
+    event.renderers.push(DebugRenderer::new(move |_host, _view, draw| {
         let _ = draw.lines(std::slice::from_ref(&line));
     }));
 }
 ```
 
 The client collects a fresh list at startup, login, the first world view and the next world view
-after a selection rebuild or respawn. A rebuild refreshes the list even if the same toggles end up
-enabled, such as when the overlay opens and closes between world views. Keep per-refresh state in
-the new callbacks. Push all renderers every time, even if their toggles are off; the first active
-registration for a switch wins. Only installed callbacks run in a world view, as their registering
-mods, after `submit_custom_geometry` and within its shared draw limits. Off or hidden toggles and
-disabled mods do not draw. A panic disables that mod's renderer for the switch for the rest of the
-session, even after a selection rebuild.
+after a selection rebuild or respawn. Every submitted renderer from an enabled mod is kept in
+registration order, with no ID-based filtering or deduplication. Keep per-refresh state in the
+new callbacks. Only installed callbacks run in a world view, as their registering mods, after
+`submit_custom_geometry` and within its shared draw limits. A panic disables only that
+callback for the rest of the session, including after a selection refresh.
 
 ## Block overlays
 

@@ -950,8 +950,6 @@ impl Game<'_> {
     /// last time, when this method can restore it (a command draft only for
     /// /), else with its prefix.
     pub(super) fn open_chat_method(&mut self, prefix: &str) {
-        // handleKeybinds: the number keys select before key.chat and key.command.
-        self.select_queued_hotbar();
         let command = prefix == "/";
         let draft = self
             .ui
@@ -995,9 +993,6 @@ impl Game<'_> {
         self.ui.chat_screen = Some(screen);
         self.ui.chat_opened = Some(std::time::Instant::now());
         self.set_screen(Screen::Chat);
-        self.keys.clear();
-        self.left = false;
-        self.right = false;
         self.capture(false);
     }
     pub(super) fn close_chat(&mut self, reason: ChatExit) {

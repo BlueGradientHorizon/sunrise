@@ -1,13 +1,13 @@
-# Pressing gameplay key mappings
+# Pressing vanilla key mappings
 
-A client mod can press the player's vanilla gameplay mappings as their keys do: hold one down and let
-it go, or click it. The game then acts through its own key handling, with every check it makes for the
-player's keys, so the server sees only the packets of a normal client, at the vanilla moments.
+A client mod can press any of the player's vanilla key mappings as their keys do: hold one down and
+let it go, or click it. The game then acts through its own key handling, with every check it makes for
+the player's keys, so the server sees only the packets of a normal client, at the vanilla moments.
 
 During `client_setup`, resolve `host.vanilla_key_mapping("key.sprint")` and
 `host.vanilla_key_mapping("key.attack")`. Store each successful `VanillaKeyMappingRef` in your mod's
-client state. In a world-phase callback, call `sprint.set_down(host, true)` and `attack.click(host)`
-with those same handles; handle any refusal as described below.
+client state. In client-setup or world-phase callbacks, call `sprint.set_down(host, true)` and
+`attack.click(host)` with those same handles; handle any refusal as described below.
 
 `mapping.set_down(host, down)` sets the held state (`KeyMapping.setDown`), without the click a
 press adds. For a hold-style mapping, `false` releases the mapping even if the player is holding
@@ -16,35 +16,30 @@ Neither changes the physical input, and the next input for that mapping takes ov
 `mapping.click(host)` adds one click (`KeyMapping.click`), without holding the mapping.
 A press of the key itself does both; a mod that wants a held attack that also starts at once calls both.
 
-Queued actions are taken oldest first, at most **64 entries per queue per drain**, with at most
-**1024 pending entries**. A burst spills into later drains, normally later client ticks, rather than
-all acting on the next tick. The hotbar differs: each number key keeps its own counter of up to
-**1024 pending clicks**, and a selection drain consumes **one click per key**, in order from key 1 to
-key 9, so the highest key clicked wins and a key's further clicks wait for later drains. Hotbar
-selection can drain more than once per tick, so its limit is per drain, not per tick: there is no
-once-per-tick guard. A full queue refuses the new entry, logs its first refusal once for that queue's
-lifetime, and the call returns normally (`Ok(())`), like a lost physical press. Clearing pending
-input does not reset that diagnostic. Physical input using these queues has the same limits; ordinary
-input below the limits keeps its order and timing.
+Attack, use, pick, inventory, swap-hands and drop clicks drain completely on the client tick
+(`while (key.consumeClick())`), with no fixed per-tick or queue-length cap. The hotbar differs, as in
+vanilla: each number key keeps its own click counter, and a selection drain consumes **one click per
+key**, in order from key 1 to key 9 (`if (keyHotbarSlots[i].consumeClick())`), so the highest key
+clicked wins and a key's further clicks wait for later drains.
 
-Writes accept vanilla movement, gameplay and inventory mappings such as `key.jump`, `key.attack`,
-and `key.hotbar.1`. They act on the mapping, not its current physical binding. Both return
-`Result<(), MappingError>`:
+Writes accept any resolved vanilla mapping (movement, gameplay, inventory, creative, multiplayer,
+miscellaneous and debug). They act on the mapping, not its current physical binding, and are available
+under `ClientSetup` access (both during `client_setup` and in world callbacks, with or without a
+loaded world). Both return `Result<(), MappingError>`:
 
 | Error | When |
 |---|---|
-| `MappingError::ClickOnly { key }` | `set_down` on `key.pickItem`; use `click` instead |
-| `MappingError::NoWorld` | no player is in a world |
-| `MappingError::Unavailable` | the client backend is unavailable or the call is outside the world phase |
+| `MappingError::Unavailable` | the client backend is unavailable or the call is outside client-setup/world phases |
 | `MappingError::Stale` | the handle does not belong to the current client; resolve its name again |
-| `MappingError::NotGameplay { key }` | a vanilla mapping of another category (`key.screenshot`, `key.fullscreen`, `key.chat`...) |
 
 An unknown name fails at resolution (`MappingError::Unknown { key }`), not at either write.
 
 ## What the game does with them
 
-The call only sets the held flag or adds the click. The client tick's key step (`handleKeybinds`) does
-the rest:
+The call only sets the held flag or adds the click, including during setup or behind a
+screen. The client tick’s key step (`handleKeybinds`) does the rest. For example,
+`key.chat` opens chat on that tick, not inside the mod callback. Opening a screen
+releases the live mappings before any later keybind in the same tick can act:
 
 - Attack, use and pick clicks are taken only with no screen or overlay open. The miss cooldown, busy
   hands and the item checks of `startAttack` and `startUseItem` apply, an entity attack respects the
@@ -56,7 +51,9 @@ the rest:
 - A held use repeats every four ticks and does nothing more while the item is in use; letting go
   releases it (a bow shoots).
 - A click on an inventory key acts as its key's press: a hotbar slot is selected on a subsequent tick, and
-  drop, the inventory and the hand swap act as they do for the key.
+  drop, the inventory and the hand swap act as they do for the key. Ordinary inventory
+  opens locally, releasing pending swap and drop clicks; the inventory key on a mount with
+  its own menu sends the server a request instead, so swap and drop still follow it.
 - Sneak, sprint, attack and use toggle when their toggle option is on: `true` flips them and `false`
   does nothing, as `ToggleKeyMapping.setDown`.
 
@@ -79,9 +76,8 @@ resolve the name again for a new client. Resolution returns `MappingError::Unkno
 that is not a vanilla mapping. Reads return `Stale` if the handle belongs to a different client and
 `Unavailable` when the client read cannot run in the current phase or backend.
 
-- `mapping.is_down(host)` reads the logical held state for movement, attack and use, including
-  controller input, toggles and logical overrides. Other vanilla mappings return `NoLogicalState`,
-  not their physical state.
+- `mapping.is_down(host)` reads the logical held state (`KeyMapping.isDown`) of any resolved vanilla
+  mapping, including controller input, toggles and logical overrides.
 - `mapping.physical_down(host)` follows the current binding and ignores toggles, conflict context,
   modifiers and logical writes. It returns `Ok(false)` when no physical key or button is bound.
 - `mapping.binding(host)` borrows the current binding name (`&str`) from the host, for example

@@ -60,7 +60,7 @@ fn matrix(mods: mod_api::Mods) {
                         game.tick_hit.set(None);
                         game.tick_mob = None;
                         game.mobs.clear();
-                        game.keys.clear();
+                        game.clear_device_keys();
                         game.yaw = 0.0;
                         game.pitch = 0.0;
                         let player_z = if path >= 3 { 0.5 } else { 3.5 };

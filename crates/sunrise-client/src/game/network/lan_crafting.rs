@@ -526,9 +526,9 @@ impl Game<'_> {
         let host = self.lan.as_mut()?;
         let gi = host.hub.guests.connection_index(conn)?;
         let guest = &host.hub.guests[gi];
-        let (open, layout) = guest.menu.as_ref().and_then(|m| {
+        let layout = guest.menu.as_ref().and_then(|m| {
             let layout = m.mod_type.filter(|t| t.owned_slots.is_some())?;
-            (m.window == p.container && !guest.spectator()).then_some((m, layout))
+            (m.window == p.container && !guest.spectator()).then_some(layout)
         })?;
         let generation = guest.menu_generation;
         let items = guest.native_menu.clone();
@@ -540,9 +540,6 @@ impl Game<'_> {
             .take()
             .filter(|(g, _)| *g == generation)
             .map_or_else(|| Box::new(Menu::new(Kind::Mod(layout))), |(_, menu)| menu);
-        for &slot in &open.hidden {
-            menu.hide_slot(slot);
-        }
         let live = |g: &Guest| {
             g.menu_generation == generation
                 && g.menu.as_ref().is_some_and(|m| m.window == p.container)
@@ -609,7 +606,7 @@ impl Game<'_> {
         use super::lan_menus::ClickReply;
         let host = self.lan.as_mut()?;
         let gi = host.hub.guests.connection_index(conn)?;
-        let (pos, mod_type, hidden, menu_id) = host.hub.guests[gi]
+        let (pos, mod_type, menu_id) = host.hub.guests[gi]
             .menu
             .as_ref()
             .filter(|m| p.container != 0 && m.window == p.container)
@@ -617,7 +614,6 @@ impl Game<'_> {
                 Slots::Block(pos) => Some((
                     pos,
                     m.mod_type,
-                    m.hidden.clone(),
                     host.hub.registry_name("minecraft:menu", m.kind)?.to_owned(),
                 )),
                 _ => None,
@@ -633,11 +629,9 @@ impl Game<'_> {
                 .unwrap_or_default();
             (l, links)
         });
-        let mut hidden = hidden;
-        if let Some((l, links)) = &linked {
-            let bound = linked_slot_count(&self.world, links);
-            hidden.extend(l.slots().skip(bound));
-        }
+        let unlinked = linked
+            .as_ref()
+            .map(|(l, links)| l.slots().skip(linked_slot_count(&self.world, links)));
         let entity = self.world.block_entities.get(&pos)?;
         let (kind, mut items) = machine_menu(entity, mod_type)?;
         let heard = matches!((kind, entity), (Kind::Mod(_), BlockEntity::Mod(entity))
@@ -677,7 +671,8 @@ impl Game<'_> {
             .filter(|(window, m)| *window == p.container && m.kind() == kind)
             .map_or_else(|| Box::new(Menu::new(kind)), |(_, m)| m);
         menu.set_registry_id(Some(&menu_id));
-        for &slot in &hidden {
+        menu.reset_mod_visibility();
+        for slot in unlinked.into_iter().flatten() {
             menu.hide_slot(slot);
         }
         // A crafting grid's result is what the guest was shown, the mods' say
@@ -2507,7 +2502,7 @@ mod recipe_check_tests {
                 sent_data: Vec::new(),
                 reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
+
                 mod_type: Some(station),
                 craft: None,
                 links: Vec::new(),

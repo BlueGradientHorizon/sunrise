@@ -1,0 +1,18 @@
+ids = [
+    "handle:PlayerRef::open_mod_menu",
+    "handle:RecipeBookLayout::validate",
+    "hook:menu_extra_data",
+]
+why = """
+Remove invented 256-slot/data-slot caps and the 32 KiB `menu_extra` cap, and conform retained mod callbacks to the uniform panic/refusal failure rule.
+- Vanilla 26.3 (`AbstractContainerMenu`, `ClientboundContainerSetDataPacket`, `FriendlyByteBuf.readByteArray`) and NeoForge (`AdvancedOpenScreenPayload` / `NeoForgeStreamCodecs.UNBOUNDED_BYTE_ARRAY`) have no 256-slot or 32 KiB cap.
+- Total menu item slots (`slots + if player_inventory { 36 } else { 0 }`) are capped at `MAX_MENU_SLOTS = 32,768` (`0..=32,767`, matching vanilla's signed 16-bit container slot index); mod menu backing slots use a disjoint client internal slot range (`MOD_MENU_SLOT_BASE`) so large menus never alias armor, station, or mount slots.
+- Block-backed/stock menu data slots are bounded by `MAX_SIGNED_DATA_SLOTS = 32,768` (`0..=32,767` in `ClientboundContainerSetDataPacket`); blockless mod menus carry `u16` indices (`0..=65,535`, up to `MAX_BLOCKLESS_DATA_SLOTS = 65,536`) over `sunrise:menu_data`.
+- `STOCK_NATIVE_DATA_CAPACITY` is deleted, `RecipeBookLayout::validate` and `CheckedSlotLayout::new` drop their 256-slot cap; `menu_extra::MAX_DATA` and `OpenMenuError::TooLarge` still enforce the outer payload limit.
+- `menu_extra_data` bumps from version 1 to version 2: payloads are no longer stripped above 32 KiB and are bounded only by the packet frame size.
+- Retained mod callbacks (`DebugEntry`, `DebugRenderer`, `GuiLayerBody`, `DimensionTransitionScreen`, `DimensionTransitionPresentation`, and `OwnedMenuScreen`'s independent draw/click/tooltip callbacks) route through `CallbackOwner`, which logs loudly via `log::error!`, disables only the failed callback for the session on panic (persisting across debug renderer refreshes), and queues a non-vetoable client error toast naming the mod.
+- Non-panic phase refusals (`PhaseRefusal::report`) log on every refusal instead of latching once per `(mod, operation, phase)`.
+"""
+migrate = """
+Remove code assuming a 256-slot/data-slot cap or 32 KiB `menu_extra` cap. `menu_extra_data` moves from version 1 to version 2: update listeners that assumed payloads above 32 KiB were dropped; payloads are now frame-bounded rather than truncated or stripped at 32 KiB.
+"""

@@ -42,13 +42,26 @@ impl Game<'_> {
     /// `DebugRenderer.refreshRendererList`: replace the active callbacks with newly collected
     /// ones whose entries are on. Runs at start, at login and when the selection changes.
     pub(in crate::game) fn refresh_debug_renderers(&mut self) {
-        let renderers = mods::debug_renderers(self.options.execution_role);
-        self.debug_renderers = self.debug_entries.active_renderers(
-            &self.registered_debug_entries,
-            renderers,
-            self.debug,
-            self.reduced_debug_info(),
-        );
+        struct EntryStates<'a> {
+            selection: &'a sunrise_client::debug_entries::DebugEntries,
+            entries: &'a [sunrise_client::debug_entries::RegisteredDebugEntry],
+            overlay: bool,
+            reduced: bool,
+        }
+        impl mod_api::__private::DebugEntryStates for EntryStates<'_> {
+            fn is_enabled(&self, id: &str) -> bool {
+                self.selection
+                    .enabled(self.entries, id, self.overlay, self.reduced)
+            }
+        }
+        let states = EntryStates {
+            selection: &self.debug_entries,
+            entries: &self.registered_debug_entries,
+            overlay: self.debug,
+            reduced: self.reduced_debug_info(),
+        };
+        let renderers = mods::debug_renderers(self.options.execution_role, &states);
+        self.debug_renderers = self.debug_entries.active_renderers(renderers);
     }
     /// `DebugRenderer.emitGizmos`'s first half: a selection the list has not seen refreshes it.
     fn follow_debug_selection(&mut self) {
@@ -93,17 +106,7 @@ impl Game<'_> {
         self.native_submit_custom_geometry(&view, draw);
         self.follow_debug_selection();
         for renderer in &self.debug_renderers {
-            if renderer.owner.is_enabled() {
-                let _ = renderer
-                    .owner
-                    .call("debug renderer", "debug_renderer_draw", || {
-                        renderer.renderer.draw(
-                            self,
-                            &view,
-                            &mut GameWorldDrawContext::new(self, draw),
-                        );
-                    });
-            }
+            renderer.draw(self, &view, &mut GameWorldDrawContext::new(self, draw));
         }
         self.native_render_level_stage(*last, &view, draw);
         self.commit_model_instances(draw, DVec3::from(camera), entities);

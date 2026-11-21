@@ -471,7 +471,7 @@ fn open_native_menu(game: &mut crate::game::Game<'_>) -> i32 {
         sent_data: Vec::new(),
         reported_unsent_data_len: None,
         blockless_data: Vec::new(),
-        hidden: Vec::new(),
+
         mod_type: None,
         registry_id: "minecraft:generic_9x1".into(),
         craft: None,

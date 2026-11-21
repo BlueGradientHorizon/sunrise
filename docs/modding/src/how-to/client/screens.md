@@ -54,8 +54,7 @@ closes; there is no close that skips it, because the vanilla client never omits 
 In `Hooks::register_dimension_transition_screen`, push a `DimensionTransitionScreen` for
 each trip you want to cover. Each mod receives an empty batch at client startup.
 `Conditional { to, from }` wins over `Incoming(to)`, then `Outgoing(from)`. The first valid
-registration for each key wins. Use a namespaced, non-`minecraft` screen ID for diagnostics;
-nothing looks it up during drawing.
+registration for each key wins.
 
 ```rust,ignore
 use mod_api::{
@@ -69,7 +68,6 @@ fn register_dimension_transition_screen(
     event: &mut RegisterDimensionTransitionScreenEvent<'_>,
 ) {
     event.screens.push(DimensionTransitionScreen::new(
-        "example:arrival".into(),
         DimensionTransition::Incoming("example:moon".into()),
         |_, initial_reason| {
             // Chosen once when the screen opens, not when the tracker restarts.
@@ -188,18 +186,15 @@ host.set_screen_slot(MENU, 4, None)?;
 assert_eq!(host.screen_slot(MENU, 3), Some([62.0, 18.0]));
 ```
 
-`menu` is the menu type whose screen is open, so a call made for another screen refuses, as does one from a mod
-that does not own the open screen. The mod whose factory built it can move its slots. A menu with
-a bound recipe book takes its factory from the mod that bound the book; several mods' blocks can open
-one vanilla menu type, each with its own mod's screen.
-`slot` is the index into
-`MenuScreenLayout::slots`. A position is GUI pixels from the screen's top-left corner and names the item's top-left
-corner, as in `MenuScreenLayout::slots`; `None` hides the slot. The call takes `&self`, so the menu's
-`MenuScreen::with_draw` callback can move slots for the next frame. Repeating a slot's current place
-changes nothing and costs no layout work. The change lasts for that opening. A replacement starts from
-its declared layout, even when the server reuses the same window ID without a close packet.
-`ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it
-is hidden.
+`menu` is the menu type whose screen is open, so a call made for another screen refuses. Any mod can
+read, move, activate, or hide slots of the open screen for `menu`. `slot` is the index into
+`MenuScreenLayout::slots` (including slots declared `None` at open, which start inactive and can be
+activated later with `Some([x, y])`). A position is GUI pixels from the screen's top-left corner and names the item's top-left
+corner, as in `MenuScreenLayout::slots`; `None` hides the slot. The call takes `&self`, so a screen hook such as
+`screen_render_post` can move slots every frame; a call that repeats a slot's current place changes nothing and
+costs no layout work. The change lasts for that opening. A replacement starts from its declared layout,
+even when the server reuses the same window id without a close packet. `ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it is
+hidden.
 
 From the next frame a moved slot is a vanilla slot at that position, which is what the screen reads live:
 
@@ -215,18 +210,16 @@ or a hide never touches the recipe book: a bound book keeps its catalogue and it
 position outside the image is allowed and is not clamped, and a slot there takes the click instead of making it a
 click outside the screen.
 
-The call is client-side only: nothing is sent, and the server's slot exclusions never change. A locally hidden
-slot keeps its item and a shift-click may still fill it, as a deactivated Java slot does. A permanently
-excluded slot cannot be shown: give every slot that any local layout uses a position at open, then hide the
-ones the current local layout doesn't use.
+The call is client-side only: nothing is sent, and server-side slot rules never change. A locally hidden
+slot keeps its item and a shift-click may still fill it, as a deactivated Java slot (`Slot.isActive()`)
+does. Slots declared `None` at open start inactive and can be activated later with `Some([x, y])`.
 
 Each refusal changes nothing and is named by `ScreenSlotRefusal`:
 
 | Refusal | When |
 |---|---|
-| `NoScreen` | No mod screen is shown, or the shown one belongs to another menu type or mod |
+| `NoScreen` | No mod screen is shown, or the shown one belongs to another menu type |
 | `NoSuchSlot` | `slot` is outside the menu's container backing |
-| `HiddenAtOpen` | A position for a permanently excluded slot |
 | `BadPosition` | An `x` or `y` that is NaN or infinite |
 | `Unavailable` | No game backend: screens are the client's |
 
