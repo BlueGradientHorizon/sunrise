@@ -148,18 +148,9 @@ mod tests {
     /// family's fields.
     #[test]
     fn a_rows_state_is_interpolated_to_the_frame() {
-        let row = super::super::remote::general::RemoteGeneral {
-            join: sunrise_client::join_seq::JoinSeq::next(),
-            type_slot: 0,
-            uuid: 1,
-            position: [0.0; 3],
-            previous: [0.0; 3],
-            rotation: [90.0, 20.0],
-            previous_rotation: [0.0, -20.0],
-            age: 40,
-            shown: true,
-            render_attachments: None,
-        };
+        let mut row = super::RemoteGeneral::new(0, 1, [0.0; 3], [90.0, 20.0]);
+        row.previous_rotation = [0.0, -20.0];
+        row.age = 40;
         let state = render_state(9, &row, 0.25);
         assert_eq!(state.id, 9);
         assert_eq!(state.age, 40.25);

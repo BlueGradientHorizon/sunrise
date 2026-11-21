@@ -98,7 +98,7 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_mut() {
             r.attachments
                 .retain(|holder, _| matches!(holder, Holder::Player(_)));
-            r.general.snapshots_before_spawn.clear();
+            r.general.reset_attachment_sync();
         }
         self.using = None;
         // After a death (no KEEP_ENTITY_DATA) the new LocalPlayer

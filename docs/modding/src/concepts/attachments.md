@@ -156,8 +156,9 @@ they stay server-only there, though their changes on a server are synced.
 A general entity row (`declare_general_entity`) has no data of its own on a client: its
 synced attachments are what a Sunrise client knows of it beyond its type, position and
 rotation. They arrive with the row, when the client starts tracking it, and go with it. Its
-[renderer](../how-to/client/entity-renderers.md#a-general-entitys-frame) reads a frozen generation
-of those values rather than consulting the client holder.
+[renderer](../how-to/client/entity-renderers.md#a-general-entitys-frame) reads the last
+published whole generation rather than consulting the client holder. A refusal to publish an
+over-budget render generation does not change the client's synced copy.
 
 ## Copying on respawn and conversion
 
