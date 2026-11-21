@@ -1554,20 +1554,7 @@ impl Def {
                         | S::Zoglin
                         | S::Wither
                 ),
-            // The `burn_in_daylight` entity type tag.
-            burns_in_day: matches!(
-                s,
-                S::Zombie
-                    | S::ZombieHorse
-                    | S::Drowned
-                    | S::ZombieVillager
-                    | S::Skeleton
-                    | S::Stray
-                    | S::Bogged
-                    | S::WitherSkeleton
-                    | S::Phantom
-                    | S::ZombieNautilus
-            ),
+            burns_in_day: false,
             undead,
             // `#can_breathe_under_water`. Not the dolphin: it holds its breath
             // (4800 ticks) and surfaces for air; nor the iron golem, which keeps

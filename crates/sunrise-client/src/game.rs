@@ -1744,7 +1744,7 @@ struct Game<'a> {
     /// The mod whose own screen is open (`Screen::Mod`).
     native_mod_screen: Option<String>,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
-    pending_uploads: Vec<((i32, i32, i32), sunrise_client::mesher::SectionMesh)>,
+    pending_uploads: Vec<sunrise_client::streaming::MeshUpload>,
     upload_pace: upload_pace::UploadPace,
     /// This frame's view frustum, for culling entities and block entities.
     view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,

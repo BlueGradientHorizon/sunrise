@@ -9,6 +9,7 @@ pub trait Hooks {
     /// flames and shadow are drawn after it, as `render_living_post` says.
     #[hook(
         side = "client",
+        version = 2,
         contract = "listen",
         neoforge = "RenderPlayerEvent.Post",
         cancellable = false

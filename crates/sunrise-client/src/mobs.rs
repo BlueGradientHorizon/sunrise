@@ -392,6 +392,7 @@ impl MobTypes {
             .transpose()?;
         let entity_type_tags =
             crate::items::load_tags(root, "entity_type", &sunrise_world::loot::PackOverlay::NONE)?;
+        let burn_in_daylight = entity_type_tags.get("minecraft:burn_in_daylight");
         let empty_model = Arc::new(Part::parse("root", &Value::Null));
         let item_tags =
             crate::items::load_tags(root, "item", &sunrise_world::loot::PackOverlay::NONE)
@@ -500,6 +501,7 @@ impl MobTypes {
             flags.powder_snow_walkable = entity_type_tags
                 .get("minecraft:powder_snow_walkable_mobs")
                 .is_some_and(|members| members.contains(&id));
+            flags.burns_in_day = burn_in_daylight.is_some_and(|members| members.contains(&id));
             let passenger_attachments =
                 riders::parse_passenger_attachments(&t["passenger_attachments"]);
             out.insert(

@@ -118,10 +118,18 @@ pub fn entity_types(mods: &[ContentMod]) -> Vec<&EntityType> {
     types
 }
 
-/// the mods' menu types in registry order, by id as effects are.
-pub fn menu_types(mods: &[ContentMod]) -> Vec<&MenuType> {
-    let mut menus: Vec<&MenuType> = mods.iter().flat_map(|m| &m.content.menu_types).collect();
-    menus.sort_by(|a, b| a.id.cmp(&b.id));
+/// The mods' menu types and their owning package IDs, sorted by menu ID.
+pub fn menu_types(mods: &[ContentMod]) -> Vec<(&MenuType, &str)> {
+    let mut menus: Vec<_> = mods
+        .iter()
+        .flat_map(|m| {
+            m.content
+                .menu_types
+                .iter()
+                .map(|menu| (menu, m.id.as_str()))
+        })
+        .collect();
+    menus.sort_by(|(a, _), (b, _)| a.id.cmp(&b.id));
     menus
 }
 
@@ -758,6 +766,7 @@ enum SkylightRule {
 
 /// A block being added: its declaration and where its states go.
 struct NewBlock<'a> {
+    stew_effects: Option<J>,
     decl: &'a Block,
     base_block: Option<KnownBlock<'a>>,
     rename: Rename,
@@ -1304,6 +1313,23 @@ impl<'a> Plan<'a> {
                 }
             }
         }
+        let effects = mob_effects(mods);
+        let mut stew_effect_ids = BTreeSet::new();
+        if mods.iter().flat_map(|m| &m.content.blocks).any(|b| {
+            b.suspicious_stew_effects
+                .as_ref()
+                .is_some_and(|effects| !effects.is_empty())
+        }) {
+            let registry = read_json(&base.join("registries.json"))?;
+            let Some(J::Obj(entries)) = registry
+                .get("minecraft:mob_effect")
+                .and_then(|r| r.get("entries"))
+            else {
+                return Err("no minecraft:mob_effect entries".into());
+            };
+            stew_effect_ids.extend(entries.iter().map(|(id, _)| id.clone()));
+            stew_effect_ids.extend(effects.iter().map(|effect| effect.id.clone()));
+        }
         let mut blocks = Vec::new();
         let mut next = names.len() as u32;
         let mut sorted: Vec<&ContentMod> = mods.iter().collect();
@@ -1315,6 +1341,33 @@ impl<'a> Plan<'a> {
             let mut declared: Vec<&Block> = m.content.blocks.iter().collect();
             declared.sort_by(|a, b| a.id.cmp(&b.id));
             for decl in declared {
+                let stew_effects = decl
+                    .suspicious_stew_effects
+                    .as_ref()
+                    .map(|effects| {
+                        effects
+                            .iter()
+                            .map(|effect| {
+                                let id = sunrise_core::identifier::Identifier::parse(&effect.id)
+                                    .ok()
+                                    .map(|id| id.to_string());
+                                let id = id.filter(|id| stew_effect_ids.contains(id)).ok_or_else(
+                                    || {
+                                        format!(
+                                            "{}: suspicious_stew_effects: unknown mob effect {:?}",
+                                            decl.id, effect.id
+                                        )
+                                    },
+                                )?;
+                                Ok::<_, String>(J::Obj(vec![
+                                    ("id".into(), J::Str(id)),
+                                    ("duration".into(), J::Num(effect.duration.into())),
+                                ]))
+                            })
+                            .collect::<std::result::Result<Vec<_>, _>>()
+                            .map(J::Arr)
+                    })
+                    .transpose()?;
                 let base_block = match decl.base_block.as_deref() {
                     Some(base) if defaults.contains_key(base) || declared_ids.contains(base) => {
                         Some(KnownBlock(base))
@@ -1593,6 +1646,7 @@ impl<'a> Plan<'a> {
                     wanted_sounds.push(s.clone());
                 }
                 blocks.push(NewBlock {
+                    stew_effects,
                     decl,
                     base_block,
                     rename,
@@ -1759,7 +1813,7 @@ impl<'a> Plan<'a> {
             blocks,
             items,
             vanilla_items,
-            effects: mob_effects(mods),
+            effects,
             fluids: fluids(mods),
             entity_types: entity_types(mods),
             block_entity_types: block_entity_types
@@ -1767,7 +1821,7 @@ impl<'a> Plan<'a> {
                 .map(|(_, kind)| kind)
                 .collect(),
             block_entity_factories,
-            menu_types: menu_types(mods),
+            menu_types: menu_types(mods).into_iter().map(|(menu, _)| menu).collect(),
             states: names.len(),
             defaults,
             sounds,
@@ -2073,6 +2127,14 @@ impl<'a> Plan<'a> {
             };
             let mut v = v.clone();
             v.rename(&i.rename, false);
+            if !components
+                && i.template.is_none()
+                && let Some(fields) = v.get_mut("fields")
+            {
+                // The generated BlockItem points to its new block, not to the
+                // template's main block if the template shared another item.
+                fields.set("block", J::Str(i.rename.to.clone()));
+            }
             if let Some(wall) = &i.wall_block
                 && let Some(fields) = v.get_mut("fields")
             {
@@ -2286,6 +2348,9 @@ impl<'a> Plan<'a> {
                         }
                         if b.decl.properties.vegetation {
                             v.set("declared_vegetation", J::Bool(true));
+                        }
+                        if let Some(effects) = &b.stew_effects {
+                            v.set("suspicious_stew_effects", effects.clone());
                         }
                         blocks.push(v);
                     }
