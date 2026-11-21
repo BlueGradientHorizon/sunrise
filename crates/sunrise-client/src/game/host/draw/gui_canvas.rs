@@ -513,8 +513,17 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let textures = root.path().join("assets/test/textures/gui");
         std::fs::create_dir_all(&textures).unwrap();
-        image::RgbaImage::from_pixel(2, 2, image::Rgba([255; 4]))
-            .save(textures.join("tile.png"))
+        let mut encoder = png::Encoder::new(
+            std::fs::File::create(textures.join("tile.png")).unwrap(),
+            2,
+            2,
+        );
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&[255; 16])
             .unwrap();
         std::fs::write(
             textures.join("tile.png.mcmeta"),
