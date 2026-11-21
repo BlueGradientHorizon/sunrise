@@ -3097,7 +3097,7 @@ pub fn arrow_to_nbt(
         position: p.position,
         motion: p.velocity,
         rotation: [p.yaw, p.pitch],
-        on_ground: p.on_ground,
+        on_ground: p.ground.on_ground,
         fall_distance: a.fall_distance,
     };
     let mut tag = base.tag(raw);
@@ -3185,7 +3185,7 @@ pub fn arrow_from_nbt(
     p.left_owner = flag(tag, "LeftOwner");
     p.owner_uuid = owner;
     p.no_gravity = flag(tag, "NoGravity");
-    p.on_ground = flag(tag, "OnGround");
+    p.ground.on_ground = flag(tag, "OnGround");
     projectile_fields::load_arrow_entity_fields(&mut p, tag);
     let a = p.arrow.as_mut()?;
     a.life = number(tag.get("life")).unwrap_or(0) as i16 as i32;
@@ -3242,7 +3242,7 @@ pub fn fireball_to_nbt(
         position: p.position,
         motion: p.velocity,
         rotation: [p.yaw, p.pitch],
-        on_ground: p.on_ground,
+        on_ground: p.ground.on_ground,
         fall_distance: p.fall_distance,
     };
     let mut tag = base.tag(raw);
@@ -3373,7 +3373,7 @@ pub fn throwable_to_nbt(
         position: p.position,
         motion: p.velocity,
         rotation: [p.yaw, p.pitch],
-        on_ground: p.on_ground,
+        on_ground: p.ground.on_ground,
         fall_distance: p.fall_distance,
     };
     let mut tag = base.tag(raw);
@@ -3419,7 +3419,7 @@ pub fn throwable_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Project
     p.owner_uuid = owner;
     p.no_gravity = flag(tag, "NoGravity");
     load_projectile_entity_fields(&mut p, tag);
-    p.on_ground = flag(tag, "OnGround");
+    p.ground.on_ground = flag(tag, "OnGround");
     Some(p)
 }
 
@@ -3463,7 +3463,7 @@ pub fn spit_or_bullet_from_nbt(
     [p.yaw, p.pitch] = rotation(tag);
     p.owner_uuid = owner;
     projectile_fields::load_projectile_flags_and_entity_fields(&mut p, tag);
-    p.on_ground = flag(tag, "OnGround");
+    p.ground.on_ground = flag(tag, "OnGround");
     Some(p)
 }
 
@@ -3488,7 +3488,7 @@ pub fn spit_or_bullet_to_nbt(
         position: p.position,
         motion: p.velocity,
         rotation: [p.yaw, p.pitch],
-        on_ground: p.on_ground,
+        on_ground: p.ground.on_ground,
         fall_distance: p.fall_distance,
     };
     let mut tag = base.tag(raw);
@@ -3561,7 +3561,7 @@ pub fn fireball_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Projecti
     if projectile_fields::keeps_entity_fields(&p) {
         load_projectile_entity_fields(&mut p, tag);
     }
-    p.on_ground = flag(tag, "OnGround");
+    p.ground.on_ground = flag(tag, "OnGround");
     p.fall_distance = float(tag.get("fall_distance")).unwrap_or(0.0);
     p.acceleration = float(tag.get("acceleration_power")).unwrap_or(0.1);
     if let Some(item) = tag.get("Item").and_then(item_from_nbt) {

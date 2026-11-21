@@ -914,7 +914,7 @@ impl Game<'_> {
                 Some(g) => g.entity_id,
                 None => owner(p.owner),
             };
-            let e = add_state(out, p.id, kind, at(p.position), p.yaw, p.on_ground);
+            let e = add_state(out, p.id, kind, at(p.position), p.yaw, p.ground.on_ground);
             e.pitch = p.pitch;
             e.velocity = at(p.velocity);
             e.needs_sync = p.needs_sync;
