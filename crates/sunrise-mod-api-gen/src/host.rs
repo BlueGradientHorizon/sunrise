@@ -394,7 +394,7 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
     }
     // A partial read backend advertises the backend but can only answer some of it.
     // Forward the named methods, and let the API's standard no-backend value handle
-    // the rest. Infallible key metadata retains the usual fail-loud default.
+    // the rest.
     let mut choices = String::new();
     let mut partial_impls = String::new();
     let mut read_names = std::collections::BTreeSet::new();
@@ -421,15 +421,12 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
                 } else {
                     format!("self, {args}")
                 };
-                let refused = refusal(&entry.sig, name)?
-                    .map(|value| {
-                        if args.is_empty() {
-                            format!("{sig} {{ {value} }}")
-                        } else {
-                            format!("{sig} {{ let _ = ({args},); {value} }}")
-                        }
-                    })
-                    .unwrap_or_default();
+                let value = refusal(&entry.sig, name)?;
+                let refused = if args.is_empty() {
+                    format!("{sig} {{ {value} }}")
+                } else {
+                    format!("{sig} {{ let _ = ({args},); {value} }}")
+                };
                 writeln!(partial_impls, "$crate::__partial_read!([$($provided)*] {name} {sig} {{ Self::{name}({call_args}) }} {{ {refused} }});").unwrap();
             }
             partial_impls.push_str("}\n");
@@ -1048,32 +1045,22 @@ fn signature_args(sig: &syn::Signature, name: &str) -> Result<String, String> {
         .join(", "))
 }
 
-/// How a read answers where there is no backend to ask: its typed refusal, or `None` where only
-/// a `String` forwards.
-fn refusal(sig: &syn::Signature, name: &str) -> Result<Option<&'static str>, String> {
+/// A backend read's typed answer where there is no backend to ask.
+fn refusal(sig: &syn::Signature, name: &str) -> Result<&'static str, String> {
     let syn::ReturnType::Type(_, ty) = &sig.output else {
         return Err(format!("{name}: a backend read returns a value"));
     };
     let syn::Type::Path(path) = &**ty else {
-        return Err(format!(
-            "{name}: the goal view cannot refuse its return type"
-        ));
+        return Err(format!("{name}: cannot refuse its backend return type"));
     };
     let last = path.path.segments.last().map(|seg| seg.ident.to_string());
-    Ok(match last.as_deref() {
-        Some("Option") => Some("None"),
-        Some("bool") => Some("false"),
-        // A read that answers `Result`: its refusal is the error a host without a backend answers.
-        Some("Result") => Some("Err(NoBackend::no_backend())"),
-        Some("u64" | "u32" | "i32" | "u16" | "u8" | "usize") => Some("0"),
-        // A registry key's metadata: a read the goal view only forwards.
-        Some("String") => None,
-        _ => {
-            return Err(format!(
-                "{name}: the goal view cannot refuse its return type"
-            ));
-        }
-    })
+    match last.as_deref() {
+        Some("Option") => Ok("None"),
+        Some("bool") => Ok("false"),
+        Some("Result") => Ok("Err(NoBackend::no_backend())"),
+        Some("u64" | "u32" | "i32" | "u16" | "u8" | "usize") => Ok("0"),
+        _ => Err(format!("{name}: cannot refuse its backend return type")),
+    }
 }
 
 /// `entity_position(entity)` on a backend is also `EntityRef::position(self, host)`: the handle
@@ -1157,8 +1144,6 @@ fn handle_method(
     let call = format!("{name}(self{args})");
     let body = if returns("Option") {
         format!("{backend}(host)?.{call}")
-    } else if handle.ends_with("Key") && returns("String") {
-        format!("{backend}(host).expect(\"registry key metadata requires a game host\").{call}")
     } else if returns("bool") {
         format!("{backend}(host).map(|backend| backend.{call}).unwrap_or(false)")
     } else if returns("CommandResult") {
@@ -1314,26 +1299,19 @@ fn goal_view(
                     && GOAL_VIEW_ENTITY_ARGS
                         .contains(&ty.path.segments[0].ident.to_string().as_str())
         );
-        // How a forwarded read answers a host without a backend: the typed refusal, or the empty
-        // string of a metadata read.
+        // How a forwarded read answers a host without a backend: its typed refusal.
         let forwarded = match refusal {
-            Some("None") => ".flatten()".to_string(),
+            "None" => ".flatten()".to_string(),
             // A `Result` read's no-backend answer is its error type's own `NoBackend` value,
             // wrapped back in the `Err`.
-            Some(refusal) if refusal.starts_with("Err(") => {
+            refusal if refusal.starts_with("Err(") => {
                 ".unwrap_or_else(|| Err(mod_api::NoBackend::no_backend()))".to_string()
             }
-            Some(refusal) => format!(".unwrap_or({refusal})"),
-            None => ".unwrap_or_default()".to_string(),
+            refusal => format!(".unwrap_or({refusal})"),
         };
         let body = if GOAL_VIEW_READS.contains(&name) {
             format!("self.r_{name}({args})")
         } else if entity_data {
-            let Some(refusal) = refusal else {
-                return Err(format!(
-                    "{name}: the goal view cannot refuse its return type"
-                ));
-            };
             if args.is_empty() {
                 refusal.to_string()
             } else if args.contains(',') {
@@ -1615,6 +1593,25 @@ mod tests {
         assert_eq!(handle, "BlockKey");
         assert!(code.contains("pub fn id (self , host : & dyn Host) -> Option < & str >"));
         assert!(code.contains("backend_of(host)?.block_key_id(self)"));
+    }
+
+    #[test]
+    fn registry_key_reads_cannot_generate_an_infallible_string() {
+        let method = entry("fn block_key_id(&self, key: BlockKey) -> String;");
+        let handles = handles("pub struct BlockKey;");
+        let error = handle_method(&method, Tier::Backend, &handles).unwrap_err();
+        assert!(error.starts_with("block_key_id:"));
+
+        let area = Area {
+            stem: "keys".into(),
+            camel: "Keys".into(),
+            tiers: BTreeMap::new(),
+            tables: BTreeMap::new(),
+        };
+        assert_eq!(
+            goal_view(&[], &[(&area, Tier::Backend, &method)], &[]),
+            Err("block_key_id: cannot refuse its backend return type".into())
+        );
     }
 
     #[test]

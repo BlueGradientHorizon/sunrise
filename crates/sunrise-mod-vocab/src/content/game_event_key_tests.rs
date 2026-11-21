@@ -49,13 +49,41 @@ struct Bare;
 impl Host for Bare {}
 crate::impl_host_areas!(Bare);
 #[test]
+fn registry_names_use_text_identity_across_backing_tables() {
+    use crate::content::registry_keys::registry_name_snapshot;
+    use std::{cmp::Ordering, collections::HashMap};
+    use sunrise_mod_runtime::registry_keys::Names;
+
+    let resident = GameEventKey(0).id(&Maps).unwrap();
+    let mut table = Names::default();
+    let slot = table.request("fixture", "minecraft:step").unwrap();
+    let snapshot = registry_name_snapshot(&table, slot).unwrap();
+    drop(table);
+
+    assert_eq!(snapshot, resident);
+    assert_eq!(snapshot, "minecraft:step");
+    assert_eq!("minecraft:step", snapshot);
+    assert!(PartialEq::<str>::eq(&snapshot, "minecraft:step"));
+    assert_eq!(AsRef::<str>::as_ref(&snapshot), "minecraft:step");
+    assert_eq!(format!("{snapshot}"), "minecraft:step");
+    assert!(std::ptr::eq(snapshot.as_str(), snapshot.clone().as_str()));
+
+    let counts = HashMap::from([(resident, 7)]);
+    assert_eq!(counts.get(&snapshot), Some(&7));
+    assert_eq!(counts.get("minecraft:step"), Some(&7));
+    let later = RegistryName::from_static("z:a");
+    assert_eq!(snapshot.cmp(&later), Ordering::Less);
+    assert!(snapshot < later);
+}
+
+#[test]
 fn game_event_data_reads_exact_frequency_missing_and_invalid_slots() {
-    assert_eq!(GameEventKey(0).id(&Maps).as_deref(), Ok("minecraft:step"));
+    assert_eq!(GameEventKey(0).id(&Maps).unwrap(), "minecraft:step");
     assert_eq!(GameEventKey(0).data(&Maps, &Frequencies), Ok(Some(7)));
     assert_eq!(GameEventKey(1).data(&Maps, &Frequencies), Ok(None));
     assert_eq!(
-        GameEventKey(u32::MAX).id(&Maps).as_deref(),
-        Err(&GameEventKeyError::InvalidKey)
+        GameEventKey(u32::MAX).id(&Maps),
+        Err(GameEventKeyError::InvalidKey)
     );
     assert_eq!(
         GameEventKey(u32::MAX).data(&Maps, &Frequencies),
@@ -66,8 +94,8 @@ fn game_event_data_reads_exact_frequency_missing_and_invalid_slots() {
         Err(DataMapError::Unavailable)
     );
     assert_eq!(
-        GameEventKey(0).id(&Bare).as_deref(),
-        Err(&GameEventKeyError::Unavailable)
+        GameEventKey(0).id(&Bare),
+        Err(GameEventKeyError::Unavailable)
     );
     assert!(matches!(
         crate::wire::Reader::decode::<GameEventKey>(&u32::MAX.to_le_bytes()),

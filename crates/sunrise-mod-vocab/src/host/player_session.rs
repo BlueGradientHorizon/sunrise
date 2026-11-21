@@ -19,7 +19,7 @@ pub trait PlayerSessionBackend {
     #[access(WorldOnly)]
     fn player_name(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
-    /// `ServerPlayer.getGameProfile`: the UUID, name and login properties (skin
+    /// `Player.getGameProfile()`: the UUID, name and login properties (skin
     /// `textures` included) of a connected or acting player, borrowed from the host.
     /// Displaced online players keep their profile. An offline-mode player has no
     /// properties. None for a stale or unavailable player.

@@ -44,7 +44,7 @@ pub use level::{
     FakeBattery, FakeBlockEntity, FakeContainer, FakeEntity, FakeGameEvent, FakeLevel, FakeSound,
     FakeTank,
 };
-pub use players::{FakePlayer, FakePlayers};
+pub use players::{FakePlayer, FakePlayers, GameProfileFixture};
 pub use registries::FakeRegistries;
 pub use services::{FakeCommands, FakeMessages};
 

@@ -42,10 +42,10 @@ Use `StateConstraint` for each partial constraint; `StateMatchError` identifies 
 
 `definition(block)` returns `None` for an unknown block or unavailable tables. A known block without
 properties returns an empty `StateProperties<'_>` view. Use `properties.iter()` to read each
-`StateProperty<'_>` in property-name order. Its `name: &str` and `values: &[String]` borrow the
-loaded table, keeping its value order. The view is tied to the host (or level view), not the temporary
-service returned by `block_states()`. For example, to check whether `facing` accepts `north`
-without copying the definition:
+`StateProperty<'_>` in property-name order. It is `Copy`; its `name: &str` and
+`values: &[String]` borrow the loaded table, keeping its value order. The view is tied
+to the host (or level view), not the temporary service returned by `block_states()`.
+For example, to check whether `facing` accepts `north` without copying the definition:
 
 ```rust,ignore
 let allows_north = host.block_states().definition(block).is_some_and(|properties| {
