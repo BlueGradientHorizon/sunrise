@@ -277,6 +277,106 @@ fn bounded_nine_slice_repeats_the_inner_subregion_in_metadata_units() {
     }
 }
 
+#[test]
+#[ignore = "daily"]
+fn bounded_affine_repeats_sample_fractional_base_and_mirrored_overlay_uvs() {
+    use crate::resource_source::{Resource, ResourceSource};
+
+    const CLEAR: [u8; 4] = [0; 4];
+    const MAGENTA: [u8; 4] = [255, 0, 255, 255];
+    let _gpu = crate::gfx::test_gpu::lock();
+    let mut atlas = HudAtlas::boot();
+    (atlas.width, atlas.height) = (8, 2);
+    atlas.pixels = [
+        [CLEAR, RED, GREEN, BLUE, CLEAR, CLEAR, CLEAR, CLEAR],
+        [CLEAR, CLEAR, CLEAR, CLEAR, MAGENTA, CLEAR, YELLOW, CLEAR],
+    ]
+    .as_flattened()
+    .concat();
+    let base = Rect {
+        u0: 0.5,
+        v0: 0.0,
+        u1: 1.0,
+        v1: 0.5,
+        w: 4,
+        h: 1,
+    };
+    let scaling = Some(GuiSpriteScaling::Tile([1, 1]));
+    for (key, rect) in [
+        ("test:base", base),
+        (
+            "test:overlay",
+            Rect {
+                u0: 0.0,
+                v0: 0.5,
+                u1: 0.5,
+                v1: 1.0,
+                ..base
+            },
+        ),
+    ] {
+        atlas
+            .gui
+            .insert(key.into(), GuiSprite::Present { rect, scaling });
+    }
+    let root = ResourceSource::indexed(
+        [
+            (
+                "assets/test/polytone/overlay_modifiers/base.json",
+                r#"{
+                    "texture": "test:base", "u0": 0.171875, "u1": 0.421875,
+                    "overlays": [{"texture": "test:overlay", "y_inc": 1, "u0": 0.796875}]
+                }"#,
+            ),
+            (
+                "assets/test/polytone/overlay_modifiers/overlay.json",
+                r#"{"texture": "test:overlay", "u1": 0.546875}"#,
+            ),
+        ]
+        .into_iter()
+        .map(|(path, json)| (path.into(), Resource::bytes(json.as_bytes().to_vec())))
+        .collect(),
+    );
+    atlas.sprite_modifiers = Arc::new(sprite_modifiers::SpriteModifiers::read(
+        &root,
+        atlas.gui.keys(),
+    ));
+    let Some(mut gpu) = Gpu::with_atlas([atlas.width, atlas.height], &atlas.pixels) else {
+        return;
+    };
+    let size = [5, 3];
+    let mut batch = HudBatch::scratch(size);
+    assert!(blit_gui_sprite(
+        &mut batch,
+        &atlas,
+        "test:base",
+        GuiSpriteBlit {
+            rect: base,
+            scaling,
+            dst: [0.0, 0.0, 8.0, 4.0],
+            color: u32::MAX,
+            region: None,
+            blend: SpriteBlend::Textured,
+        },
+        [0.75, 0.0, 0.25, 1.0, 0.0, 0.0],
+        None,
+    ));
+    let pixels = gpu.draw_prepared(&batch, size);
+    // Local X = (4X - Y) / 3, so the sampled phases in columns 1..=3 cycle by row.
+    // At phase 5/6, the base's 1 3/8 -> 3 3/8 span selects texel 3, not 2 as if
+    // either edge were rounded. At phase 1/6, the overlay's reversed 6 3/8 -> 4 3/8
+    // span selects texel 6, not 5. At phase 1/2, transparent overlay texel 5 leaves
+    // the base's green visible. The first row is above the overlay entirely.
+    let rows = pixels.as_chunks::<{ 5 * 4 }>().0;
+    for (row, expected) in rows[..3].iter().zip([
+        [BLUE, RED, GREEN],
+        [GREEN, MAGENTA, YELLOW],
+        [YELLOW, GREEN, MAGENTA],
+    ]) {
+        assert_eq!(&row[4..16], expected.as_flattened());
+    }
+}
+
 pub(super) struct Gpu {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,

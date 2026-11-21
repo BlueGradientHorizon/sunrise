@@ -1,1 +1,2 @@
+sunrise-client-render hud::coverage_tests::bounded_affine_repeats_sample_fractional_base_and_mirrored_overlay_uvs lib daily slow
 sunrise-client-render hud::coverage_tests::bounded_nine_slice_repeats_the_inner_subregion_in_metadata_units lib daily slow
