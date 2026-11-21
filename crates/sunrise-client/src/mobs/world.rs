@@ -1179,6 +1179,11 @@ mod scaffolding_sight_tests {
                 // Fence: outline top 66.0, collision top 66.5.
                 assert!(see(0.5, 67.0, 66.2));
                 assert!(!see(0.5, 67.0, 65.5));
+                // Enters the fence's cell below its outline top, crosses the collider above it and
+                // misses the outline.
+                assert!(
+                    w.visual_clear_between(Vec3::new(0.1, 65.9, 0.5), Vec3::new(0.5, 66.3, 0.5))
+                );
                 // Powder snow never blocks a visual ray.
                 assert!(see(2.5, 66.5, 65.1));
                 // Four layers: outline top 65.5, collision top 65.375.
