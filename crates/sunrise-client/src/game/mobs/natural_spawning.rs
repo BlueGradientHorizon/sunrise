@@ -1418,6 +1418,10 @@ impl<'a> Game<'a> {
 }
 
 #[cfg(test)]
+#[path = "natural_spawning/spawn_obstruction_fixture.rs"]
+mod spawn_obstruction_fixture;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

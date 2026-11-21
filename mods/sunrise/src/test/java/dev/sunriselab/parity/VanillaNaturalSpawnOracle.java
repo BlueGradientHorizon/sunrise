@@ -658,6 +658,8 @@ public final class VanillaNaturalSpawnOracle {
         level.structures = structures;
         Map2 chunkMap = (Map2) alloc(Map2.class);
         chunkMap.level = level;
+        put(source, ServerChunkCache.class, "chunkMap", chunkMap);
+        put(chunkMap, ChunkMap.class, "entityMap", new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>());
 
         Method createState = NaturalSpawner.class.getMethod("createState", int.class, ServerLevel.class, NaturalSpawner.ChunkGetter.class, LocalMobCapCalculator.class);
         Method canSpawn = NaturalSpawner.SpawnState.class.getDeclaredMethod("canSpawn", EntityType.class, Level.class, BlockPos.class, net.minecraft.world.level.chunk.ChunkAccess.class);
@@ -787,7 +789,32 @@ public final class VanillaNaturalSpawnOracle {
                     Chunk chunk = (Chunk) alloc(Chunk.class);
                     chunk.level = level;
                     chunk.at = new ChunkPos(Integer.parseInt(cp[0]), Integer.parseInt(cp[1]));
-                    if (mode.equals("spawner")) {
+                    if (mode.equals("obstruction")) {
+                        level.tick = -1;
+                        // The same already accepted entities are visible in vanilla even when
+                        // Sunrise defers the list insert until the spawn pass returns.
+                        double z = Double.parseDouble(c.get("z"));
+                        if (c.get("installation").equals("falling")) {
+                            net.minecraft.world.entity.item.FallingBlockEntity.fall(level,
+                                BlockPos.containing(8.5, 64, z), Blocks.SAND.defaultBlockState());
+                        } else if (!c.get("installation").equals("empty")) {
+                            var nbt = net.minecraft.nbt.TagParser.parseCompoundFully(c.get("entity_data"));
+                            nbt.putString("id", c.get("type"));
+                            var obstacle = Objects.requireNonNull(EntityType.loadEntityRecursive(
+                                net.minecraft.world.level.storage.TagValueInput.create(net.minecraft.util.ProblemReporter.DISCARDING, access, nbt),
+                                level, EntitySpawnReason.LOAD, e -> e));
+                            obstacle.setPos(8.5 + Double.parseDouble(c.get("dx")), 64, z);
+                            level.addFreshEntityWithPassengers(obstacle);
+                            if (c.get("installation").equals("removed")) {
+                                obstacle.discard();
+                                level.entities.remove(obstacle); // an untracked section no longer returns it
+                            }
+                        }
+                        var pig = Objects.requireNonNull(EntityTypes.PIG.create(level, EntitySpawnReason.NATURAL));
+                        pig.setPos(8.5, 64, z);
+                        boolean clear = level.noCollision(EntityTypes.PIG.getSpawnAABB(8.5, 64, z));
+                        log.add("obstruction " + clear + " " + pig.checkSpawnObstruction(level));
+                    } else if (mode.equals("spawner")) {
                         // SpawnerBlockEntity.serverTick, `ticks` times, at `spos`, loaded from `snbt` (base64 SNBT).
                         level.spawnerRandom = mainRandom;
                         level.tick = -1;
