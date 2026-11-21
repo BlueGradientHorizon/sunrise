@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt;
+use std::net::Ipv6Addr;
 use std::num::NonZeroU16;
 use std::sync::{Mutex, MutexGuard};
 
@@ -71,14 +72,17 @@ pub fn agent(
     url: &str,
     configure: impl FnOnce(ureq::AgentBuilder) -> ureq::AgentBuilder,
 ) -> Result<ureq::Agent, ProxyError> {
-    let selected = if direct(url) {
+    let destination = url::Url::parse(url).ok();
+    let selected = if destination
+        .as_ref()
+        .is_some_and(|url| bypasses_proxy(url, &no_proxy()))
+    {
         None
     } else if let Some(spec) = lock(&PROXY).clone() {
         Some(("launcher proxy setting", spec))
     } else {
-        env_proxy(scheme_of(url).unwrap_or("https"), |name| {
-            std::env::var_os(name)
-        })?
+        let scheme = destination.as_ref().map_or("https", url::Url::scheme);
+        env_proxy(scheme, |name| std::env::var_os(name))?
     };
     keep(
         slot,
@@ -186,7 +190,7 @@ fn valid_scheme(scheme: &str) -> bool {
 /// Whether `url` is reached without the proxy: a local address, or a host `NO_PROXY` names. The
 /// launcher asks this of its own requests, so both reach the same hosts directly.
 pub fn direct(url: &str) -> bool {
-    host_of(url).is_some_and(|host| local(host) || excluded(host, &no_proxy()))
+    url::Url::parse(url).is_ok_and(|url| bypasses_proxy(&url, &no_proxy()))
 }
 
 /// `HTTPS_PROXY` (`HTTP_PROXY` for an http address), then `ALL_PROXY`, in the upper-case spelling
@@ -267,9 +271,17 @@ fn is_loopback_v4(host: &str) -> bool {
             .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// Whether `host` is in `NO_PROXY`: `*`, `host`, `.domain`, `*.domain` and `host:port` entries.
-fn excluded(host: &str, no_proxy: &str) -> bool {
+/// Whether the destination is local or in `NO_PROXY`: `*`, `host`, `.domain`, `*.domain` and
+/// `host:port` entries (matching the effective port, including the scheme's default).
+fn bypasses_proxy(url: &url::Url, no_proxy: &str) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    if local(host) {
+        return true;
+    }
     let host = bare(host);
+    let port = url.port_or_known_default();
     no_proxy
         .split(',')
         .map(str::trim)
@@ -286,6 +298,12 @@ fn excluded(host: &str, no_proxy: &str) -> bool {
                     if !entry[at..].contains(']')
                         && (entry[..at].ends_with(']') || !entry[..at].contains(':')) =>
                 {
+                    if !entry[at + 1..]
+                        .parse::<u16>()
+                        .is_ok_and(|required| Some(required) == port)
+                    {
+                        return false;
+                    }
                     &entry[..at]
                 }
                 _ => entry,
@@ -295,9 +313,15 @@ fn excluded(host: &str, no_proxy: &str) -> bool {
         })
 }
 
-/// A host without the brackets an IPv6 literal wears, lower case.
+/// A lower-case host name or canonical IP literal, without IPv6 brackets.
 fn bare(host: &str) -> String {
-    host.trim().trim_matches(['[', ']']).to_ascii_lowercase()
+    let host = host.trim().trim_matches(['[', ']']);
+    if host.contains(':')
+        && let Ok(ip) = host.parse::<Ipv6Addr>()
+    {
+        return ip.to_string();
+    }
+    host.to_ascii_lowercase()
 }
 
 /// The lock, even after a thread panicked while holding it: an address lost to a panic is worse
@@ -411,33 +435,57 @@ mod tests {
         }
     }
 
+    fn bypasses(url: &str, no_proxy: &str) -> bool {
+        bypasses_proxy(&url::Url::parse(url).unwrap(), no_proxy)
+    }
+
     /// What an import with `NO_PROXY=modrinth.com` needs: the launcher's own requests to it go
     /// direct, so the jars fetched for it must too.
     #[test]
     fn no_proxy_lists_hosts_and_their_subdomains() {
-        assert!(excluded("anything.at.all", "*"));
-        assert!(excluded("cdn.modrinth.com", "modrinth.com"));
-        assert!(excluded("api.modrinth.com", "modrinth.com"));
-        assert!(excluded("piston-meta.mojang.com", "mojang.com"));
-        assert!(excluded(
-            "wiki.corp.example",
+        assert!(bypasses("https://anything.at.all", "*"));
+        assert!(bypasses("https://cdn.modrinth.com", "modrinth.com"));
+        assert!(bypasses("https://api.modrinth.com", "MODRINTH.com"));
+        assert!(bypasses("https://piston-meta.mojang.com", "*.mojang.com"));
+        assert!(bypasses(
+            "https://wiki.corp.example",
             " .corp.example , other.host "
         ));
-        assert!(excluded("github.com", "github.com:443"));
-        assert!(!excluded("notmodrinth.com", "modrinth.com"));
-        assert!(!excluded("modrinth.com", " .corp.example , mojang.com "));
-        assert!(!excluded("edge.forgecdn.net", "modrinth.com"));
-        assert!(!excluded("modrinth.com", ""));
+        assert!(!bypasses("https://notmodrinth.com", "modrinth.com"));
+        assert!(!bypasses(
+            "https://modrinth.com",
+            " .corp.example , mojang.com "
+        ));
+        assert!(!bypasses("https://edge.forgecdn.net", "modrinth.com"));
+        assert!(!bypasses("https://modrinth.com", ""));
     }
 
-    /// A bare IPv6 entry keeps its colons: cut at the last one it would never match the host in
-    /// its brackets, and the download would go through the proxy after all.
     #[test]
-    fn no_proxy_keeps_a_bare_ipv6_entry_whole() {
-        assert!(excluded("[2001:db8::1]", "2001:db8::1"));
-        assert!(excluded("[2001:db8::1]", "[2001:db8::1]"));
-        assert!(excluded("[2001:db8::1]", "[2001:db8::1]:8080"));
-        assert!(!excluded("[2001:db8::1]", "2001:db8::2"));
+    fn no_proxy_requires_the_specified_destination_port() {
+        assert!(bypasses(
+            "https://mirror.example:8443/",
+            "mirror.example:8443"
+        ));
+        assert!(!bypasses("https://mirror.example/", "mirror.example:8443"));
+        assert!(bypasses("https://mirror.example/", "mirror.example:443"));
+        assert!(!bypasses("http://mirror.example/", "mirror.example:443"));
+        assert!(bypasses("http://mirror.example/", "mirror.example:80"));
+        assert!(!bypasses("http://mirror.example/", "mirror.example:http"));
+        assert!(bypasses("https://mirror.example:8443/", "mirror.example"));
+        assert!(!bypasses(
+            r"https://other.example\@mirror.example:8443/",
+            "mirror.example:8443"
+        ));
+    }
+
+    #[test]
+    fn no_proxy_matches_ipv6_literals_with_or_without_brackets() {
+        let url = "http://[2001:0db8::1]:8080/";
+        assert!(bypasses(url, "2001:db8::1"));
+        assert!(bypasses(url, "[2001:db8::1]"));
+        assert!(bypasses(url, "[2001:0db8::1]:8080"));
+        assert!(!bypasses(url, "[2001:db8::1]:8081"));
+        assert!(!bypasses(url, "2001:db8::2"));
     }
 
     #[test]

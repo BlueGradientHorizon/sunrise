@@ -8,6 +8,7 @@ description = "Shared HTTP proxy selection and connection pools for Sunrise down
 
 [dependencies]
 ureq = { version = "2", default-features = false, features = ["tls", "socks-proxy"] }
+url = "2"
 
 [lints]
 workspace = true
