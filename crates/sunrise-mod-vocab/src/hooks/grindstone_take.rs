@@ -24,7 +24,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "GrindstoneEvent.OnTakeItem",
         cancellable = true,
-        version = 2
+        version = 3
     )]
     fn grindstone_take(
         player: u128,

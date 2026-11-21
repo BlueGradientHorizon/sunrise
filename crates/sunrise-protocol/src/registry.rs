@@ -49,7 +49,19 @@ pub struct SyncedNames<'a> {
     pub dynamic: &'a Dynamic,
 }
 impl crate::item::Names for SyncedNames<'_> {
+    fn consume_effect_kind(&self, id: i32) -> Option<crate::item::consume_effects::Kind> {
+        self.dynamic.consume_effect_kind(id)
+    }
+
     fn name(&self, registry: &str, id: i32) -> Option<String> {
+        if registry == crate::item::consume_effects::REGISTRY {
+            return match self.consume_effect_kind(id)? {
+                crate::item::consume_effects::Kind::Builtin(id) => {
+                    crate::item::consume_effects::builtin_name(id).map(str::to_owned)
+                }
+                crate::item::consume_effects::Kind::Native(name, _) => Some(name.to_string()),
+            };
+        }
         self.builtin
             .get(registry)
             .and_then(|ids| ids.name(id))
@@ -69,6 +81,11 @@ impl SyncedNames<'_> {
     /// None for an unknown registry or name. Compares the identifiers' parts in place: nothing is
     /// allocated, and a gap in a built-in report (an empty name) matches nothing.
     pub fn id(&self, registry: &Identifier, name: &Identifier) -> Option<i32> {
+        if names(crate::item::consume_effects::REGISTRY, registry) {
+            return self
+                .dynamic
+                .consume_effect_id_matching(|key| names(key, name));
+        }
         let index = |i: usize| i32::try_from(i).ok();
         self.builtin
             .registries
@@ -165,6 +182,9 @@ pub struct Dynamic {
     pub registries: HashMap<String, Vec<(String, Option<Tag>)>>,
     /// The tags the server sent, by registry: each tag's entries by id.
     pub tags: HashMap<String, HashMap<String, Vec<i32>>>,
+    /// RegistryData's effect IDs resolved to the local codecs during configuration.
+    #[doc(hidden)]
+    pub consume_effect_codecs: Option<Vec<crate::item::consume_effects::Kind>>,
     /// The peer confirmed the native component registry identity.
     pub custom_components: bool,
     /// The `sunrise:menu_extra` payload layout the peer serves: the revision its
@@ -176,7 +196,43 @@ pub struct Dynamic {
 /// client's memory with every packet.
 pub const MAX_TAG_REGISTRIES: usize = 512;
 
+impl crate::item::Names for Dynamic {
+    fn name(&self, registry: &str, id: i32) -> Option<String> {
+        self.name(registry, id).map(str::to_owned)
+    }
+
+    fn consume_effect_kind(&self, id: i32) -> Option<crate::item::consume_effects::Kind> {
+        use crate::item::consume_effects::{Kind, builtin_name};
+        match &self.consume_effect_codecs {
+            Some(kinds) => kinds.get(usize::try_from(id).ok()?).copied(),
+            None => builtin_name(id).map(|_| Kind::Builtin(id)),
+        }
+    }
+}
+
 impl Dynamic {
+    /// Admit the server snapshot using the local codecs, but keep its ID order.
+    pub fn add_consume_effects(&mut self, packet: RegistryData) -> crate::Result<()> {
+        self.consume_effect_codecs = Some(crate::item::consume_effects::resolve_configuration(
+            &packet.entries,
+        )?);
+        self.add(packet);
+        Ok(())
+    }
+
+    pub fn consume_effect_id(&self, name: &str) -> Option<i32> {
+        self.consume_effect_id_matching(|key| key == name)
+    }
+
+    fn consume_effect_id_matching(&self, matches: impl Fn(&str) -> bool) -> Option<i32> {
+        use crate::item::consume_effects::{REGISTRY, builtin_names};
+        let index = match self.registries.get(REGISTRY) {
+            Some(entries) => entries.iter().position(|(key, _)| matches(key)),
+            None => builtin_names().iter().position(|key| matches(key)),
+        }?;
+        i32::try_from(index).ok()
+    }
+
     /// Retained heap charge for a frozen configuration snapshot built by
     /// [`Self::add`] and [`Self::add_tags`] with insertion/replacement only.
     ///
@@ -191,6 +247,7 @@ impl Dynamic {
         let Self {
             registries,
             tags,
+            consume_effect_codecs,
             custom_components: _,
             menu_extra_revision: _,
         } = self;
@@ -203,6 +260,11 @@ impl Dynamic {
         );
         tags.iter().fold(
             registry_bytes
+                .saturating_add(consume_effect_codecs.as_ref().map_or(0, |kinds| {
+                    kinds
+                        .capacity()
+                        .saturating_mul(std::mem::size_of::<crate::item::consume_effects::Kind>())
+                }))
                 .saturating_add(
                     fresh_hash_table_bytes::<(String, HashMap<String, Vec<i32>>)>(tags.capacity()),
                 ),

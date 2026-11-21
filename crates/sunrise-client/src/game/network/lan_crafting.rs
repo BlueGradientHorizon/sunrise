@@ -1404,6 +1404,7 @@ impl Game<'_> {
                     for &s in changed.iter().filter(|&&s| s >= 10) {
                         g.menu_sent[s - 1] = menu.slot(s).cloned();
                     }
+                    g.carried_sent = g.carried.clone();
                 });
             }
         }
@@ -1757,18 +1758,8 @@ impl Game<'_> {
         let mut items: Vec<Option<ItemStack>> = (0..10).map(|s| menu.slot(s).cloned()).collect();
         let g = &host.hub.guests[gi];
         items.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
-        let carried = g.carried.clone();
         let items = items.iter().map(|s| host.hub.stack(s)).collect();
-        let carried = host.hub.stack(&carried);
-        host.hub.send_to(
-            conn,
-            &C::ContainerSetContent(play::ContainerSetContent {
-                container: window,
-                state,
-                items,
-                carried,
-            }),
-        );
+        host.hub.send_menu_items(gi, window, state, items);
         host.hub.guests.update(gi, |g| g.inventory_told());
     }
 

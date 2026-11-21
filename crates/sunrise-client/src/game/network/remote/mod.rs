@@ -1933,8 +1933,12 @@ impl Game<'_> {
 
     fn decode_remote_stack(&self, stack: &Stack) -> Option<ItemStack> {
         let r = self.remote.as_ref()?;
-        if !sunrise_protocol::item::custom::permitted(stack, r.registries.custom_components)
-            .unwrap_or(false)
+        if !sunrise_protocol::item::custom::permitted_with_names(
+            stack,
+            r.registries.custom_components,
+            &*r.registries,
+        )
+        .unwrap_or(false)
         {
             log::warn!("Dropping a stack with unnegotiated custom components");
             return None;
@@ -1957,16 +1961,22 @@ impl Game<'_> {
             let mut out = Stack::new(self.item_id(&stack.item), stack.count as i32);
             let safe = r.registries.custom_components
                 || sunrise_protocol::item::custom::entries().next().is_none()
-                || sunrise_protocol::item::WirePatch::decode(&patch)
-                    .and_then(|(added, removed)| {
-                        let decoded = Stack {
-                            added,
-                            removed,
-                            ..Stack::new(out.item, out.count)
-                        };
-                        sunrise_protocol::item::custom::permitted(&decoded, false)
-                    })
-                    .unwrap_or(false);
+                || sunrise_protocol::item::WirePatch::decode_reader(
+                    sunrise_protocol::buf::Reader::new(&patch).with_names(&*r.registries),
+                )
+                .and_then(|(added, removed)| {
+                    let decoded = Stack {
+                        added,
+                        removed,
+                        ..Stack::new(out.item, out.count)
+                    };
+                    sunrise_protocol::item::custom::permitted_with_names(
+                        &decoded,
+                        false,
+                        &*r.registries,
+                    )
+                })
+                .unwrap_or(false);
             if safe {
                 out.wire = sunrise_protocol::item::WirePatch(Some(patch));
                 return Some(out);
@@ -1977,6 +1987,9 @@ impl Game<'_> {
             |name| self.item_id(name),
             // Built-in first, as a hub's `SyncData::id` does: potions are one.
             |registry, name| {
+                if registry == sunrise_protocol::item::consume_effects::REGISTRY {
+                    return r.registries.consume_effect_id(name);
+                }
                 r.builtin
                     .get(registry)
                     .and_then(|ids| ids.id(name))

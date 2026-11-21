@@ -222,20 +222,7 @@ const GROUP: &[&str] = &[
     "any", "mainhand", "offhand", "hand", "feet", "legs", "chest", "head", "armor", "body",
     "saddle",
 ];
-const ANIMATION: &[&str] = &[
-    "none",
-    "eat",
-    "drink",
-    "block",
-    "bow",
-    "trident",
-    "crossbow",
-    "spyglass",
-    "toot_horn",
-    "brush",
-    "bundle",
-    "spear",
-];
+use sunrise_core::use_animation::NAMES as ANIMATION;
 fn patch_kind(name: &str, ids: &dyn Ids) -> Result<i32> {
     if let Some(kind) = builtin_component_id(name) {
         return Ok(kind);
@@ -374,32 +361,59 @@ fn effect_details(w: &mut Writer, v: &Value, depth: u32) -> Result<()> {
         effect_details(w, v, depth + 1)
     })
 }
-fn consume(w: &mut Writer, v: &Value, ids: &dyn Ids) -> Result<()> {
-    let kind = named(
-        need(v, "type")?,
-        &[
-            "minecraft:apply_effects",
-            "minecraft:remove_effects",
-            "minecraft:clear_all_effects",
-            "minecraft:teleport_randomly",
-            "minecraft:play_sound",
-        ],
-    )?;
-    w.varint(kind);
-    match kind {
-        0 => {
-            sequence(w, list(need(v, "effects")?)?, |w, v| effect(w, v, ids))?;
-            w.f32(f(v, "probability", 1.0)?);
+fn consume_list(w: &mut Writer, effects: &[Value], ids: &dyn Ids) -> Result<()> {
+    use crate::item::consume_effects::{REGISTRY, builtin_id};
+
+    let mut wire = Writer::new();
+    let mut count = 0;
+    for value in effects {
+        let (name, registered) = match value {
+            Value::RegisteredConsumeEffect(effect) => (effect.name.to_string(), Some(effect)),
+            _ => (string(need(value, "type")?)?, None),
+        };
+        let builtin = builtin_id(&name);
+        let Some(id) = ids.id(REGISTRY, &name).or(builtin) else {
+            // A server-only hook kind or a type missing from the peer snapshot has
+            // no stream form here. Keep the other effects and other components.
+            log::warn!("Cannot synchronize consume effect {name}: no peer registry ID");
+            continue;
+        };
+        let Some(kind) = builtin else {
+            let Some(effect) = registered else {
+                log::warn!("Cannot synchronize consume effect {name}: no admitted Wire value");
+                continue;
+            };
+            wire.varint(id);
+            wire.bytes(&effect.wire);
+            count += 1;
+            continue;
+        };
+        wire.varint(id);
+        match kind {
+            0 => {
+                sequence(&mut wire, list(need(value, "effects")?)?, |w, v| {
+                    effect(w, v, ids)
+                })?;
+                wire.f32(f(value, "probability", 1.0)?);
+            }
+            1 => holders(
+                &mut wire,
+                need(value, "effects")?,
+                "minecraft:mob_effect",
+                ids,
+            )?,
+            2 => (),
+            3 => {
+                wire.f32(f(value, "diameter", 16.0)?);
+                wire.bool(b(value, "directional_particles", true)?);
+            }
+            4 => sound(&mut wire, need(value, "sound")?, ids)?,
+            _ => unreachable!("built-in consume-effect type"),
         }
-        1 => holders(w, need(v, "effects")?, "minecraft:mob_effect", ids)?,
-        2 => (),
-        3 => {
-            w.f32(f(v, "diameter", 16.0)?);
-            w.bool(b(v, "directional_particles", true)?);
-        }
-        4 => sound(w, need(v, "sound")?, ids)?,
-        _ => unreachable!(),
+        count += 1;
     }
+    w.varint(count);
+    w.bytes(&wire.data);
     Ok(())
 }
 fn explosion(w: &mut Writer, v: &Value) -> Result<()> {
@@ -683,12 +697,10 @@ fn encode_leaf(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids) -> Result<()
         }
         24 => {
             w.f32(f(v, "consume_seconds", 1.6)?);
-            w.varint(named_default(v, "animation", 1, ANIMATION)?);
+            w.varint(named_default(v, "animation", 1, &ANIMATION)?);
             sound_default(w, v, "sound", "minecraft:entity.generic.eat", ids)?;
             w.bool(b(v, "has_consume_particles", true)?);
-            sequence(w, values(v, "on_consume_effects")?, |w, v| {
-                consume(w, v, ids)
-            })?;
+            consume_list(w, values(v, "on_consume_effects")?, ids)?;
         }
         26 => {
             w.f32(float(need(v, "seconds")?)?);
@@ -764,7 +776,7 @@ fn encode_leaf(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids) -> Result<()
             }
             sound_default(w, v, "shearing_sound", "minecraft:item.shears.snip", ids)?;
         }
-        36 => sequence(w, values(v, "death_effects")?, |w, v| consume(w, v, ids))?,
+        36 => consume_list(w, values(v, "death_effects")?, ids)?,
         37 => blocks(w, v, ids)?,
         38 => {
             w.bool(b(v, "deals_knockback", true)?);

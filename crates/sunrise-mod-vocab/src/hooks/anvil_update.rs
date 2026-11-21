@@ -17,7 +17,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "cancel",
         neoforge = "AnvilUpdateEvent",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn anvil_update(
         player: u128,

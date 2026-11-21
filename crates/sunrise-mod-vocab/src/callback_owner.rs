@@ -30,6 +30,20 @@ impl CallbackOwner {
         call(self.id, self.index, &self.poisoned, kind, operation, invoke)
             .map_err(|why| format!("mod {}: {why}", self.id))
     }
+    /// Persistent codecs remain installed when a live gameplay listener is switched off.
+    pub(crate) fn call_registered<T>(
+        &self,
+        kind: &'static str,
+        operation: &'static str,
+        invoke: impl FnOnce() -> T,
+    ) -> Result<T, String> {
+        let result = if self.poisoned.load(Ordering::Acquire) {
+            Err(format!("{kind} callback is disabled after a panic"))
+        } else {
+            invoke_owned(self.id, &self.poisoned, kind, operation, invoke)
+        };
+        result.map_err(|why| format!("mod {}: {why}", self.id))
+    }
 }
 
 pub(crate) fn enabled(index: usize, poisoned: &AtomicBool) -> bool {
@@ -47,6 +61,16 @@ pub(crate) fn call<T>(
     if !enabled(index, poisoned) {
         return Err(format!("{kind} owner is disabled"));
     }
+    invoke_owned(owner, poisoned, kind, operation, invoke)
+}
+
+fn invoke_owned<T>(
+    owner: &'static str,
+    poisoned: &AtomicBool,
+    kind: &'static str,
+    operation: &'static str,
+    invoke: impl FnOnce() -> T,
+) -> Result<T, String> {
     let _guard = crate::mark_mod(owner, operation);
     // A refusal by the phase gate refuses this call and nothing more; a real panic disables the owner.
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

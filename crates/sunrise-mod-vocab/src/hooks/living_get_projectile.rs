@@ -12,7 +12,8 @@ pub trait Hooks {
         side = "both",
         contract = "collect",
         out = "projectile",
-        neoforge = "LivingGetProjectileEvent"
+        neoforge = "LivingGetProjectileEvent",
+        version = 2
     )]
     fn living_get_projectile(
         player: Option<u128>,

@@ -86,6 +86,7 @@ pub enum ConsumeEffect {
     Native {
         kind: String,
         data: Arc<sunrise_core::nbt::Tag>,
+        registered: Option<sunrise_world::component_value::consume_effects::Admitted>,
     },
 }
 
@@ -118,6 +119,7 @@ pub fn parse_consumable(
                         Some(ConsumeEffect::Native {
                             kind: kind.to_owned(),
                             data: Arc::new(data),
+                            registered: None,
                         })
                     });
                 }
@@ -193,9 +195,74 @@ pub fn parse_consume_effect(effect: &serde_json::Value) -> Option<ConsumeEffect>
         k if !k.starts_with("minecraft:") => Some(ConsumeEffect::Native {
             kind: k.to_owned(),
             data: Arc::new(sunrise_core::json_nbt::json_to_tag(effect).ok()?),
+            registered: None,
         }),
         _ => None,
     }
+}
+
+/// Admit custom effects from saved NBT, or install effects already decoded by
+/// the connection's Wire codecs. Only the built-in gameplay projection uses JSON.
+pub(crate) fn stack_effects(
+    raw: &mut sunrise_core::nbt::Tag,
+    key: &str,
+    received: Option<&[sunrise_world::component_value::consume_effects::Admitted]>,
+) -> Result<Vec<ConsumeEffect>, String> {
+    use sunrise_core::nbt::Tag;
+    use sunrise_world::component_value::consume_effects::admit;
+
+    let Tag::Compound(_) = raw else {
+        return Err("expected effect component map".into());
+    };
+    let list = match raw.get_mut(key) {
+        None => return Ok(Vec::new()),
+        Some(Tag::List(list)) => list,
+        Some(Tag::ByteArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        Some(Tag::IntArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        Some(Tag::LongArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        _ => return Err("expected consume effect list".into()),
+    };
+    let mut effects = Vec::with_capacity(list.len());
+    for entry in list {
+        let kind = entry.get("type").and_then(|t| match t {
+            Tag::String(name) => Some(name.to_string_lossy()),
+            _ => None,
+        });
+        if let Some(kind) = kind.filter(|kind| {
+            kind.split_once(':')
+                .is_some_and(|(ns, _)| !ns.is_empty() && ns != "minecraft")
+        }) {
+            let Tag::Compound(fields) = entry else {
+                return Err("expected consume effect map".into());
+            };
+            let registered = match received {
+                Some(received) => received
+                    .iter()
+                    .find(|effect| effect.saved.as_ref() == entry)
+                    .cloned(),
+                None => admit(&kind, fields)?,
+            };
+            let data = if let Some(effect) = &registered {
+                *entry = (*effect.saved).clone();
+                effect.saved.clone()
+            } else {
+                // Existing server-only hook kinds still carry opaque fields.
+                // Preserve the admission rule for types without a map codec.
+                sunrise_core::json_nbt::tag_to_json(entry).map_err(|error| error.to_string())?;
+                Arc::new(entry.clone())
+            };
+            effects.push(ConsumeEffect::Native {
+                kind,
+                data,
+                registered,
+            });
+        } else if let Some(effect) =
+            parse_consume_effect(&sunrise_client_core::scoreboard::tag_to_json(entry))
+        {
+            effects.push(effect);
+        }
+    }
+    Ok(effects)
 }
 
 #[derive(Clone, Debug)]
@@ -1155,6 +1222,15 @@ impl Items {
                 extra,
             };
             let villager_food = component_prototype.villager_food(None);
+            let consumable = component_prototype.consumable(None).cloned();
+            let death_protection = component_prototype
+                .death_protection(None)
+                .map(<[_]>::to_vec);
+            if (c.get("minecraft:consumable").is_some() && consumable.is_none())
+                || (c.get("minecraft:death_protection").is_some() && death_protection.is_none())
+            {
+                return Err(format!("{name}: invalid consume effect component").into());
+            }
             items.insert(
                 id.clone(),
                 ItemInfo {
@@ -1180,17 +1256,8 @@ impl Items {
                     kinetic_timing: c
                         .get("minecraft:kinetic_weapon")
                         .and_then(crate::kinetic_weapon::UseTiming::from_json),
-                    // Consumable.CODEC's defaults.
-                    death_protection: c
-                        .get("minecraft:death_protection")
-                        .map(parse_death_effects)
-                        .transpose()
-                        .map_err(|e| format!("{name}: {e}"))?,
-                    consumable: c
-                        .get("minecraft:consumable")
-                        .map(parse_consumable)
-                        .transpose()
-                        .map_err(|e| format!("{name}: {e}"))?,
+                    death_protection,
+                    consumable,
                     use_remainder: c["minecraft:use_remainder"]["id"]
                         .as_str()
                         .map(str::to_owned),
@@ -3457,7 +3524,7 @@ mod consume_effect_tests {
         // A mod's own kind: Native with its JSON.
         let native =
             parse_consume_effect(&v(r#"{"type":"mymod:energy_boost","amount":42}"#)).unwrap();
-        assert!(matches!(&native, ConsumeEffect::Native { kind, data }
+        assert!(matches!(&native, ConsumeEffect::Native { kind, data, .. }
             if kind == "mymod:energy_boost" && data.get("amount") == Some(&sunrise_core::nbt::Tag::Byte(42))));
         // A bare vanilla name and its namespaced form are the same kind.
         let bare = parse_consume_effect(&v(

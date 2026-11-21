@@ -224,7 +224,7 @@ predicate occurs anywhere in the tree; a displayed item list is not a safe subst
 `UnknownItem` refuses a missing registry identity. Do not call this method per tick.
 Stack placement predicates and drawing consumers (HUD items, GUI item decorations,
 block-entity items and tooltip images) encode API stacks without enforcing resident
-count or damage maxima. Engine-legal over-limit stacks can be inspected and drawn.
+stack limits. Engine-legal over-limit stacks can be inspected and drawn.
 Unknown item keys and invalid/unrepresentable effect payloads refuse encoding;
 this is not a total conversion. Insertion and other world writes retain strict validation.
 
@@ -305,7 +305,7 @@ A refused hook capture does not dispatch; a refused writeback leaves every field
 No subscriber means no conversion or snapshot allocation.
 Mutable stack arguments are compared using value equality with the snapshot passed to
 the listener. An unchanged argument retains the original engine value without strict
-write validation (including engine-legal stacks above effective count or damage maxima).
+write validation (including engine-legal stacks that exceed resident stack limits).
 A changed argument is validated in full; a refusal commits no outputs. The same
 rule applies to anvil/grindstone records and menu cursor/quick-move stacks.
 

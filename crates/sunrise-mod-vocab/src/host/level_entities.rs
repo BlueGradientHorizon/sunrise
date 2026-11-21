@@ -16,9 +16,11 @@ pub trait LevelEntitiesBackend {
     /// the visit returns `Ok(ControlFlow::Break(()))`. Returning `Continue(())` for every
     /// member gives `Ok(ControlFlow::Continue(()))`, including when there are no members.
     ///
-    /// This does not build a result list. It first checks that **every** eligible
-    /// lookup member resolves. An unavailable member returns [`LevelReadError::Unavailable`]
-    /// before the first callback, even if the callback would have stopped on the first member.
+    /// This does not build a result list. It walks eligible lookup members lazily in
+    /// admission order, skipping any member that cannot resolve (matching
+    /// `ServerLevel.getAllEntities` and [`LevelRef::visit_entities_in`]), and stops
+    /// immediately when `visit` returns `ControlFlow::Break(())` without touching later
+    /// members.
     ///
     /// A stale level returns [`LevelReadError::Stale`]. A parked level or a call
     /// outside server world access returns [`LevelReadError::Unavailable`]. Neither
@@ -106,13 +108,14 @@ pub trait LevelEntitiesBackend {
     ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: server.
     /// Every entity the segment from `from` to `to` passes through, nearest first: the test
-    /// `ProjectileUtil.getEntityHitResult` makes on each candidate, each entity's box grown by
-    /// `margin` on every side and clipped against the segment. A ray that starts inside a box
-    /// does not hit that entity, as in vanilla. `exclude` (the shooter) is skipped. Hits
-    /// at equal returned distances keep spatial traversal order. Candidates are those
-    /// [`LevelRef::visit_entities_in`] finds, so the same kinds are left out. Returns
-    /// an empty list on a valid miss and `None` for invalid ray geometry or a refused
-    /// spatial query.
+    /// `ProjectileUtil.getEntityHitResult` makes on each candidate, each entity's box
+    /// inflated by `margin` on every side (`AABB.inflate`: positive grows, negative shrinks)
+    /// and clipped against the segment. A ray that starts inside the adjusted box does not
+    /// hit that entity, as in vanilla. `exclude` (the shooter) is skipped. Hits at equal
+    /// returned distances keep spatial traversal order. Candidates are those
+    /// [`LevelRef::visit_entities_in`] finds, so the same kinds are left out. Returns an
+    /// empty list on a valid miss and `None` for non-finite geometry or a refused spatial
+    /// query.
     ///
     /// Use this when you need every hit or must process hits in nearest-first order.
     /// If you just need the nearest hit matching a filter (such as `canHitEntity` or
@@ -129,17 +132,22 @@ pub trait LevelEntitiesBackend {
     /// Side: both.
     /// The nearest accepted hit on the segment from `from` to `to`, without collecting hits.
     /// Uses the candidates of [`LevelRef::visit_entities_in`] in the segment's bounds padded
-    /// by `margin`. Each candidate's box is grown by `margin` before clipping. A ray starting
-    /// inside a grown box does not hit it, and `exclude` (for example, the shooter) is skipped.
+    /// by `margin.abs()`. Matching `ProjectileUtil.getEntityHitResult`, each non-excluded
+    /// candidate is passed to `accept(entity)` in spatial traversal order **before** reading
+    /// its bounding box and clipping against the segment. Accepted candidates have their box
+    /// inflated by `margin` (`AABB.inflate`: positive grows, negative shrinks; any finite
+    /// value is accepted) and clipped against the segment. A ray starting inside the
+    /// adjusted box does not hit it, and `exclude` (for example, the shooter) is skipped
+    /// before calling `accept`.
     ///
-    /// `accept` runs once per geometric hit in spatial traversal order, not distance order.
-    /// It can make shared reads on the same host; no residency guard is held. Among the hits
-    /// for which it returns `true`, the smallest squared distance from `from` wins. An exact
-    /// tie in squared distance keeps the first visited hit. Use [`LevelRef::ray_trace_entities`]
-    /// if you need an ordered list or your filter depends on testing nearer hits first.
+    /// `accept` can make shared reads on the same host; no residency guard is held. Among
+    /// accepted candidates that the segment clips, the smallest squared distance from `from`
+    /// wins. An exact tie in squared distance keeps the first visited hit. Use
+    /// [`LevelRef::ray_trace_entities`] if you need an ordered list or must process hits
+    /// nearest first.
     ///
-    /// Returns `Ok(Some(hit))` on a match or `Ok(None)` when no hit is accepted. A stale
-    /// level returns [`LevelReadError::Stale`]. A negative or non-finite margin, non-finite
+    /// Returns `Ok(Some(hit))` on a match or `Ok(None)` when no accepted candidate is hit.
+    /// A stale level returns [`LevelReadError::Stale`]. A non-finite margin, non-finite
     /// endpoints or padded bounds, a parked or undisplayed level, or unavailable world
     /// access return [`LevelReadError::Unavailable`]. A refusal does not call `accept`.
     #[access(WorldOnly)]
@@ -150,7 +158,7 @@ pub trait LevelEntitiesBackend {
         to: [f64; 3],
         margin: f64,
         exclude: Option<EntityRef>,
-        accept: &mut dyn FnMut(EntityRayHit) -> bool,
+        accept: &mut dyn FnMut(EntityRef) -> bool,
     ) -> Result<Option<EntityRayHit>, LevelReadError>;
 }
 /// The handles' writes of the `level_entities` area, implemented by the game and reached through [`BackendMut`].

@@ -19,7 +19,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "GrindstoneEvent.OnPlaceItem",
         cancellable = true,
-        version = 2
+        version = 3
     )]
     fn grindstone_place(
         player: u128,

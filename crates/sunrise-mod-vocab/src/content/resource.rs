@@ -357,7 +357,7 @@ impl ItemResource {
     /// where `value` is the item's default (`host.item_default_component`), so the stack is
     /// the plain item again. A stack changes where it lives by an exchange of one of it for
     /// this: `place.exchange(host, tx, &changed, 1)`, which splits it off a bigger stack, in the
-    /// transaction.
+    /// transaction. Raw `minecraft:damage` follows the same codec as [ItemStack::set].
     pub fn with_component(
         &self,
         host: &dyn Host,

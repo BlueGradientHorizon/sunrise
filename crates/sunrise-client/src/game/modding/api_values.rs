@@ -2218,25 +2218,29 @@ mod stack_limit_tests {
         items
     }
 
-    /// Vanilla stores damage above the maximum; only writes refuse it. Reads see the stack.
+    /// Vanilla `DataComponents.DAMAGE` validates non-negative ints without capping by `max_damage`.
     #[test]
-    fn a_write_refuses_damage_over_the_maximum_a_read_takes() {
+    fn a_write_preserves_damage_above_max_damage() {
         let items = catalog();
         let mut over = ApiStack::of(mod_api::__private::item_key("minecraft:iron_sword").unwrap());
         over.set_damage(1000);
-        assert_eq!(
-            over.try_into_engine(&items),
-            Err(StackWriteError::DamageExceeded { maximum: 10 })
-        );
-        let read = stack_value(&over).unwrap();
         let definition = items.items.get("minecraft:iron_sword");
+        let written = over.try_into_engine(&items).unwrap();
+        assert_eq!(written.effective_damage(definition), 1000);
+        assert!(sunrise_client::stations::is_damageable(&items, &written));
+        let read = stack_value(&over).unwrap();
         assert_eq!(read.effective_damage(definition), 1000);
-        assert!(sunrise_client::stations::is_damageable(&items, &read));
     }
 
     #[test]
-    fn strict_damage_limits_include_zero_inheritance_removal_and_nbt_int_range() {
-        let mut items = catalog();
+    fn damage_and_max_damage_follow_vanilla_int_ranges() {
+        use sunrise_core::vanilla_bytes::Writer;
+        use sunrise_protocol::{
+            buf::{Codec, Reader},
+            item::{Component, Slot, component},
+        };
+
+        let items = catalog();
         let key = |id| mod_api::__private::item_key(id).unwrap();
         let plain = ApiStack::of(key("minecraft:stick"));
         assert!(plain.try_into_engine(&items).is_ok());
@@ -2250,10 +2254,15 @@ mod stack_limit_tests {
                 .get("minecraft:damage"),
             Some(&Tag::Int(0))
         );
+        explicit.set_damage(5);
+        let engine = explicit.try_into_engine(&items).unwrap();
+        assert_eq!(engine.damage, 5);
         explicit.set_damage(u32::MAX);
         assert_eq!(
             explicit.try_into_engine(&items),
-            Err(StackWriteError::DamageExceeded { maximum: 0 })
+            Err(StackWriteError::InvalidComponents {
+                reason: mod_api::StackError::InvalidDamage
+            })
         );
 
         let inherited = ApiStack::of(key("minecraft:iron_sword"));
@@ -2269,10 +2278,40 @@ mod stack_limit_tests {
         lower
             .set_components([(JavaString::from("minecraft:max_damage"), Tag::Int(5))].into())
             .unwrap();
+        let engine = lower.try_into_engine(&items).unwrap();
+        assert_eq!(engine.max_damage(Some(definition)), 5);
+        assert_eq!(engine.effective_damage(Some(definition)), 7);
+
+        let mut short_max = inherited.clone();
+        short_max
+            .set_components([(JavaString::from("minecraft:max_damage"), Tag::Short(20))].into())
+            .unwrap();
+        let engine = short_max.try_into_engine(&items).unwrap();
+        assert_eq!(engine.max_damage(Some(definition)), 20);
+        let packet_stack = crate::lan::guest::stack_to_network(|_| 1, |_, _| None, &Some(engine));
+        let mut writer = Writer::new();
+        Slot::write(&packet_stack, &mut writer);
+        let mut reader = Reader::new(&writer.data);
+        let decoded = Slot::read(&mut reader).unwrap().unwrap();
         assert_eq!(
-            lower.try_into_engine(&items),
-            Err(StackWriteError::DamageExceeded { maximum: 5 })
+            decoded.component(component::MAX_DAMAGE),
+            Some(&Component::Int(20))
         );
+
+        for invalid in [Tag::Int(0), Tag::Int(-1), Tag::Short(0), Tag::Short(-1)] {
+            let mut bad_max = inherited.clone();
+            bad_max
+                .set_components(
+                    [(JavaString::from("minecraft:max_damage"), invalid.clone())].into(),
+                )
+                .unwrap();
+            assert_eq!(
+                bad_max.try_into_engine(&items),
+                Err(StackWriteError::InvalidMaximum),
+                "max_damage {invalid:?}"
+            );
+        }
+
         let mut removed = inherited;
         removed
             .set_components(
@@ -2283,10 +2322,9 @@ mod stack_limit_tests {
                 .into(),
             )
             .unwrap();
-        assert_eq!(
-            removed.try_into_engine(&items),
-            Err(StackWriteError::DamageExceeded { maximum: 0 })
-        );
+        let engine = removed.try_into_engine(&items).unwrap();
+        assert_eq!(engine.max_damage(Some(definition)), 0);
+        assert_eq!(engine.effective_damage(Some(definition)), 7);
         removed.clear_damage();
         let engine = removed.try_into_engine(&items).unwrap();
         assert_eq!(engine.max_damage(Some(definition)), 0);
@@ -2294,12 +2332,12 @@ mod stack_limit_tests {
         removed.set_damage(0);
         assert!(removed.try_into_engine(&items).is_ok());
 
-        items
-            .items
-            .get_mut("minecraft:diamond_sword")
-            .unwrap()
-            .max_damage = u32::MAX;
         let mut oversized = ApiStack::of(key("minecraft:diamond_sword"));
+        oversized.set_damage(i32::MAX as u32);
+        assert_eq!(
+            oversized.try_into_engine(&items).unwrap().damage,
+            i32::MAX as u32
+        );
         oversized.set_damage(u32::MAX);
         assert_eq!(
             oversized.try_into_engine(&items),
@@ -2330,6 +2368,14 @@ mod stack_limit_tests {
                 "maximum {maximum}"
             );
         }
+        let mut short_max = ApiStack::of(key);
+        short_max
+            .set_components([("minecraft:max_stack_size".into(), Tag::Short(1))].into())
+            .unwrap();
+        assert_eq!(
+            short_max.try_into_engine(&items),
+            Err(StackWriteError::InvalidMaximum)
+        );
         for maximum in [1, 99] {
             let mut stack = ApiStack::new(key, maximum).unwrap();
             stack

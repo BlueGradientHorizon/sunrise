@@ -12,7 +12,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "BlockDropsEvent",
         cancellable = true,
-        version = 2,
+        version = 3,
         target = "sunrise_client::game::native_hooks::block_drops::GameLevel<'_>::native_block_drops"
     )]
     fn block_drops(

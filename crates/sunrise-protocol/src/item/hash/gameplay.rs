@@ -6,20 +6,7 @@ use crate::buf::Reader;
 use crate::item::{ATTRIBUTE_OPERATIONS, EQUIPMENT_SLOT_GROUPS};
 use sunrise_world::snbt_text::to_snbt;
 
-const USE_ANIMATION: [&str; 12] = [
-    "none",
-    "eat",
-    "drink",
-    "block",
-    "bow",
-    "trident",
-    "crossbow",
-    "spyglass",
-    "toot_horn",
-    "brush",
-    "bundle",
-    "spear",
-];
+use sunrise_core::use_animation::NAMES as USE_ANIMATION;
 const SWING: [&str; 3] = ["none", "whack", "stab"];
 /// `EquipmentSlot` by `id` (not declaration order).
 const SLOT: [&str; 8] = [
@@ -138,11 +125,12 @@ fn holder_with<O: Ops>(registry: &str, names: &dyn Names, r: &mut Reader) -> Opt
 
 /// `ConsumeEffect.CODEC`: a `type` field and the type's fields.
 fn consume_effect_with<O: Ops>(r: &mut Reader, names: &dyn Names) -> Option<O::Value> {
-    let kind = int_with::<O>(r)?;
+    use crate::item::consume_effects::{Kind, read_kind, read_native};
+    let kind = read_kind(r).ok()?;
     let rec = Record::<O>::new();
     Some(
         match kind {
-            0 => {
+            Kind::Builtin(0) => {
                 let effects = list_with::<O, _>(r, |r| super::raw::mob_effect_with::<O>(r, names))?;
                 let probability = float_with::<O>(r)?;
                 float_or_with::<O>(
@@ -153,14 +141,14 @@ fn consume_effect_with<O: Ops>(r: &mut Reader, names: &dyn Names) -> Option<O::V
                     1.0,
                 )
             }
-            1 => rec
+            Kind::Builtin(1) => rec
                 .field("type", string_with::<O>("minecraft:remove_effects"))
                 .field(
                     "effects",
                     holder_set_with::<O>("minecraft:mob_effect", names, r)?,
                 ),
-            2 => rec.field("type", string_with::<O>("minecraft:clear_all_effects")),
-            3 => {
+            Kind::Builtin(2) => rec.field("type", string_with::<O>("minecraft:clear_all_effects")),
+            Kind::Builtin(3) => {
                 let diameter = float_with::<O>(r)?;
                 let particles = boolean_with::<O>(r)?;
                 bool_or_with::<O>(
@@ -175,10 +163,13 @@ fn consume_effect_with<O: Ops>(r: &mut Reader, names: &dyn Names) -> Option<O::V
                     true,
                 )
             }
-            4 => rec
+            Kind::Builtin(4) => rec
                 .field("type", string_with::<O>("minecraft:play_sound"))
                 .field("sound", sound_with::<O>(r, names)?.code),
-            _ => return None,
+            Kind::Builtin(_) => unreachable!("built-in consume-effect type"),
+            Kind::Native(name, ty) => {
+                return O::registered_consume_effect(read_native(name, ty, r).ok()??);
+            }
         }
         .build(),
     )

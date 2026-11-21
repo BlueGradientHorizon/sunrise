@@ -271,16 +271,8 @@ impl Game<'_> {
             return Err(LevelReadError::Unavailable);
         }
 
-        // Preflight before exposing any member. The visitor can read this host but cannot
-        // change its membership, so the second pass need not resolve each handle again.
-        if self
-            .level_entity_candidates(level)
-            .any(|entity| self.native_entity_target(entity).is_none())
-        {
-            return Err(LevelReadError::Unavailable);
-        }
         for entity in self.level_entity_candidates(level) {
-            if visit(entity).is_break() {
+            if self.native_entity_target(entity).is_some() && visit(entity).is_break() {
                 return Ok(ControlFlow::Break(()));
             }
         }
@@ -452,8 +444,16 @@ impl Game<'_> {
         exclude: Option<EntityRef>,
     ) -> Option<Vec<EntityRayHit>> {
         let mut hits = Vec::new();
-        self.visit_entity_ray_hits(level, from, to, margin, exclude, |hit, _| hits.push(hit))
-            .ok()?;
+        self.visit_entity_ray_hits(
+            level,
+            from,
+            to,
+            margin,
+            exclude,
+            |_| true,
+            |hit, _| hits.push(hit),
+        )
+        .ok()?;
         hits.sort_by(|a, b| a.distance.total_cmp(&b.distance));
         Some(hits)
     }
@@ -465,14 +465,22 @@ impl Game<'_> {
         to: [f64; 3],
         margin: f64,
         exclude: Option<EntityRef>,
-        accept: &mut dyn FnMut(EntityRayHit) -> bool,
+        accept: &mut dyn FnMut(EntityRef) -> bool,
     ) -> Result<Option<EntityRayHit>, LevelReadError> {
         let mut nearest = None;
-        self.visit_entity_ray_hits(level, from, to, margin, exclude, |hit, distance_squared| {
-            if accept(hit) && nearest.is_none_or(|(_, best)| distance_squared < best) {
-                nearest = Some((hit, distance_squared));
-            }
-        })?;
+        self.visit_entity_ray_hits(
+            level,
+            from,
+            to,
+            margin,
+            exclude,
+            accept,
+            |hit, distance_squared| {
+                if nearest.is_none_or(|(_, best)| distance_squared < best) {
+                    nearest = Some((hit, distance_squared));
+                }
+            },
+        )?;
         Ok(nearest.map(|(hit, _)| hit))
     }
 
@@ -483,20 +491,26 @@ impl Game<'_> {
         to: [f64; 3],
         margin: f64,
         exclude: Option<EntityRef>,
+        mut accept: impl FnMut(EntityRef) -> bool,
         mut visit: impl FnMut(EntityRayHit, f64),
     ) -> Result<(), LevelReadError> {
-        if !(margin.is_finite() && margin >= 0.0 && from.iter().chain(&to).all(|v| v.is_finite())) {
+        if !(margin.is_finite() && from.iter().chain(&to).all(|v| v.is_finite())) {
             return Err(LevelReadError::Unavailable);
         }
-        // Every box the grown test can hit meets the segment's own box grown the same way.
-        let min = std::array::from_fn(|i| from[i].min(to[i]) - margin);
-        let max = std::array::from_fn(|i| from[i].max(to[i]) + margin);
+        // Every box the inflated or deflated test can hit meets the segment's own box
+        // padded by `margin.abs()` (including over-deflated boxes swapped by `Aabb::new`).
+        let pad = margin.abs();
+        let min = std::array::from_fn(|i| from[i].min(to[i]) - pad);
+        let max = std::array::from_fn(|i| from[i].max(to[i]) + pad);
         let start = Vec3::new(from[0], from[1], from[2]);
         let end = Vec3::new(to[0], to[1], to[2]);
         let padding = Vec3::new(margin, margin, margin);
         let _ = self.level_visit_entities_in(level, min, max, &mut |entity| {
-            // The walk and bounding-box read release any residency borrow before calling mod code.
+            // Match `ProjectileUtil.getEntityHitResult`: filter candidates before reading and
+            // clipping their bounding boxes. The walk releases any residency borrow before
+            // calling mod code.
             if Some(entity) != exclude
+                && accept(entity)
                 && let Some(bounds) = self.entity_bounding_box(entity)
                 && let Some((hit, distance_squared)) =
                     clip_entity_ray(start, end, padding, entity, bounds)
@@ -1224,6 +1238,34 @@ mod ray_tests {
         assert!(
             clip_entity_ray(Vec3::new(0.5, 0.0, 0.0), to, Vec3::ZERO, entity(1), at(0.0)).is_none()
         );
+        // A negative margin deflates via `AABB.inflate`, and over-deflation swaps min/max.
+        let grazing_from = Vec3::new(0.0, 0.375, 0.0);
+        let grazing_to = Vec3::new(10.0, 0.375, 0.0);
+        assert!(
+            clip_entity_ray(grazing_from, grazing_to, Vec3::ZERO, entity(1), at(3.0)).is_some()
+        );
+        assert!(
+            clip_entity_ray(
+                grazing_from,
+                grazing_to,
+                Vec3::new(-0.25, -0.25, -0.25),
+                entity(1),
+                at(3.0),
+            )
+            .is_none()
+        );
+        let over_from = Vec3::new(0.0, 0.625, 0.0);
+        let over_to = Vec3::new(10.0, 0.625, 0.0);
+        assert!(clip_entity_ray(over_from, over_to, Vec3::ZERO, entity(1), at(3.0)).is_none());
+        let (over, _) = clip_entity_ray(
+            over_from,
+            over_to,
+            Vec3::new(-1.25, -1.25, -1.25),
+            entity(1),
+            at(3.0),
+        )
+        .expect("over-deflation swaps min/max like vanilla AABB");
+        assert_eq!(over.location, [2.75, 0.625, 0.0]);
     }
 }
 

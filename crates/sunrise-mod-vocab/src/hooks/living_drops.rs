@@ -31,7 +31,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "cancel",
         neoforge = "LivingDropsEvent",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn living_drops(
         entity: u32,

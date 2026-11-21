@@ -51,6 +51,7 @@ pub(crate) struct Installed {
     pub(crate) particles: OnceLock<sunrise_mod_runtime::registry_keys::Particles>,
     /// The ticket controllers the mods registered; a [`TicketController`]'s slot indexes it.
     pub(crate) controllers: Vec<ControllerInfo>,
+    pub(crate) consume_effects: Vec<crate::parts::RegisteredConsumeEffect>,
     pub(crate) arm_poses: Vec<crate::client::arm_pose::PoseInfo>,
     pub(crate) structure_types: Vec<crate::world::structure_type::StructureTypeInfo>,
     pub(crate) feature_types: Vec<crate::world::feature_type::FeatureTypeInfo>,

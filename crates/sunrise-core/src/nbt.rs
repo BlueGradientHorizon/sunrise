@@ -375,6 +375,19 @@ impl Tag {
     }
 }
 
+/// Decode an NBT number as `NbtOps.getNumberValue` followed by Java's `Number.intValue`.
+pub fn numeric_int(value: &Tag) -> Option<i32> {
+    Some(match value {
+        Tag::Byte(n) => i32::from(*n),
+        Tag::Short(n) => i32::from(*n),
+        Tag::Int(n) => *n,
+        Tag::Long(n) => *n as i32,
+        Tag::Float(n) => f32::from_bits(*n) as i32,
+        Tag::Double(n) => f64::from_bits(*n) as i32,
+        _ => return None,
+    })
+}
+
 /// Stack-safe Rust ownership clone, preserving compound bucket and tree history.
 pub fn clone_tag(root: &Tag) -> Tag {
     clone_tree(root, false)

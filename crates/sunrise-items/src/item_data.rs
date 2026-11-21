@@ -328,6 +328,8 @@ fn enchantments_equal(first: &Levels, second: &Levels) -> bool {
             }))
 }
 
+use sunrise_world::component_value::consume_effects::Admitted;
+
 /// A saved consumable decoded once for use animation, countdown and completion.
 #[derive(Clone, Debug, PartialEq)]
 struct ConsumableComponent {
@@ -335,22 +337,29 @@ struct ConsumableComponent {
     value: crate::items::ItemConsumable,
 }
 impl ConsumableComponent {
-    fn new(raw: Tag) -> Option<Arc<Self>> {
-        // `Consumable.CODEC` is a record: a scalar or a list is no consumable.
-        if !matches!(raw, Tag::Compound(_)) {
-            return None;
-        }
-        let mut value =
-            crate::items::parse_consumable(&sunrise_client_core::scoreboard::tag_to_json(&raw))
-                .ok()?;
-        value.seconds = raw
-            .get("consume_seconds")
-            .and_then(crate::properties::component_float)
-            .unwrap_or(1.6);
-        value.particles = raw
-            .get("has_consume_particles")
-            .and_then(component_bool)
-            .unwrap_or(true);
+    fn new(mut raw: Tag, received: Option<&[Admitted]>) -> Option<Arc<Self>> {
+        let effects = crate::items::stack_effects(&mut raw, "on_consume_effects", received).ok()?;
+        let sound = raw.get("sound");
+        let value = crate::items::ItemConsumable {
+            seconds: raw
+                .get("consume_seconds")
+                .and_then(crate::properties::component_float)
+                .unwrap_or(1.6),
+            animation: match raw.get("animation") {
+                Some(Tag::String(name)) => {
+                    crate::use_animation::animation_name(name.0.iter().copied())
+                }
+                _ => sunrise_core::use_animation::UseAnimation::Eat,
+            },
+            sound: sound
+                .and_then(|sound| string(sound.get("sound_id").unwrap_or(sound)))
+                .unwrap_or_else(|| "minecraft:entity.generic.eat".to_owned()),
+            particles: raw
+                .get("has_consume_particles")
+                .and_then(component_bool)
+                .unwrap_or(true),
+            effects,
+        };
         Some(Arc::new(Self { raw, value }))
     }
 }
@@ -425,6 +434,32 @@ impl StackData {
         self.kinetic_weapon.as_ref()
     }
     /// Borrow preserved components without bypassing their insertion codecs.
+    /// Project an admitted effect component into the common stream encoder's value.
+    pub fn effect_codec_value(
+        &self,
+        name: &str,
+        raw: &Tag,
+    ) -> Result<sunrise_world::component_value::Value, String> {
+        let effects = match name {
+            "minecraft:consumable" => self.consumable.as_ref().map(|c| c.value.effects.as_slice()),
+            _ => self.death_protection.as_deref().map(Vec::as_slice),
+        }
+        .ok_or_else(|| "invalid consume effect component".to_owned())?;
+        sunrise_world::component_value::source::from_admitted_effect_component_tag(
+            name,
+            raw,
+            &|tag| {
+                effects.iter().find_map(|effect| match effect {
+                    crate::items::ConsumeEffect::Native {
+                        registered: Some(effect),
+                        ..
+                    } if effect.saved.as_ref() == tag => Some(effect.clone()),
+                    _ => None,
+                })
+            },
+        )
+    }
+
     pub fn preserved_components(&self) -> &[(String, Tag)] {
         &self.other
     }
@@ -566,7 +601,7 @@ impl StackData {
     /// This setter deliberately remains infallible. Invalid custom data and opaque
     /// effect payloads refuse replacement without changing the previous value or cache.
     pub fn set_other(&mut self, id: &str, value: Option<Tag>) {
-        let value = if id == "minecraft:custom_data" {
+        let mut value = if id == "minecraft:custom_data" {
             match value {
                 Some(raw) => match custom_data::decode(raw) {
                     Ok(decoded) => Some(decoded),
@@ -595,20 +630,17 @@ impl StackData {
             };
         }
         if id == "minecraft:death_protection" {
-            let replacement = match value.as_ref() {
-                Some(raw) => match crate::items::parse_death_effects(
-                    &sunrise_client_core::scoreboard::tag_to_json(raw),
-                ) {
+            self.death_protection = match value.as_mut() {
+                Some(raw) => match crate::items::stack_effects(raw, "death_effects", None) {
                     Ok(effects) => Some(Arc::new(effects)),
                     Err(_) => return,
                 },
                 None => None,
             };
-            self.death_protection = replacement;
         }
         if id == "minecraft:consumable" {
             let replacement = match value {
-                Some(raw) => match ConsumableComponent::new(raw) {
+                Some(raw) => match ConsumableComponent::new(raw, None) {
                     Some(component) => Some(component),
                     None => return,
                 },
@@ -782,7 +814,7 @@ impl StackData {
         if self.ominous_banner {
             let components = ominous_banner_components();
             let tag = Tag::compound(components.iter().cloned());
-            let (_, extra) = decode_components_inner(Some(&tag), false);
+            let (_, extra) = decode_components_inner(Some(&tag), false, None);
             self.ominous_banner = false;
             self.apply_component_changes(extra, components.iter().map(|(key, _)| *key));
         }
@@ -1578,6 +1610,9 @@ pub fn all_bricks(sides: &[Option<ItemStack>; 4]) -> bool {
     })
 }
 fn template_from(tag: &Tag) -> Option<ItemStack> {
+    template_from_with(tag, None)
+}
+fn template_from_with(tag: &Tag, effects: Option<&[Admitted]>) -> Option<ItemStack> {
     match tag {
         Tag::String(id) => Some(ItemStack::new(&id.to_string_lossy(), 1)),
         _ => {
@@ -1588,7 +1623,7 @@ fn template_from(tag: &Tag) -> Option<ItemStack> {
             if !(1..=99).contains(&count) {
                 return None;
             }
-            let (damage, extra) = decode_components(tag.get("components"));
+            let (damage, extra) = decode_components_inner(tag.get("components"), true, effects);
             Some(ItemStack {
                 item: Arc::from(id.as_str()),
                 count: count as u32,
@@ -2048,12 +2083,21 @@ impl<'a> Seen<'a> {
 }
 /// Damage and extra components from a stack's `components` compound.
 pub fn decode_components(components: Option<&Tag>) -> (u32, Option<Box<StackData>>) {
-    decode_components_inner(components, true)
+    decode_components_inner(components, true, None)
+}
+
+/// Install the typed effects already projected from this packet's stack and its templates.
+pub fn decode_network_components(
+    components: Option<&Tag>,
+    effects: &[Admitted],
+) -> (u32, Option<Box<StackData>>) {
+    decode_components_inner(components, true, Some(effects))
 }
 
 fn decode_components_inner(
     components: Option<&Tag>,
     compact_banner: bool,
+    received_effects: Option<&[Admitted]>,
 ) -> (u32, Option<Box<StackData>>) {
     let Some(c) = components else {
         return (0, None);
@@ -2077,6 +2121,11 @@ fn decode_components_inner(
             .collect(),
         _ => Vec::new(),
     };
+    let mut death_tag = c.get("minecraft:death_protection").cloned();
+    let death_protection = death_tag
+        .as_mut()
+        .and_then(|raw| crate::items::stack_effects(raw, "death_effects", received_effects).ok())
+        .map(Arc::new);
     let mut data = StackData {
         villager_food: None,
         damage_set: damage == 0 && c.get("minecraft:damage").is_some(),
@@ -2095,19 +2144,11 @@ fn decode_components_inner(
             .map(collapsed_text),
         potion,
         potion_extra,
-        death_protection: c
-            .get("minecraft:death_protection")
-            .and_then(|raw| {
-                crate::items::parse_death_effects(&sunrise_client_core::scoreboard::tag_to_json(
-                    raw,
-                ))
-                .ok()
-            })
-            .map(Arc::new),
+        death_protection,
         consumable: c
             .get("minecraft:consumable")
             .cloned()
-            .and_then(ConsumableComponent::new),
+            .and_then(|raw| ConsumableComponent::new(raw, received_effects)),
         kinetic_weapon: c
             .get("minecraft:kinetic_weapon")
             .cloned()
@@ -2146,12 +2187,18 @@ fn decode_components_inner(
         pot_decorations: seen
             .pot_decorations
             .map(|p| {
-                let side = |name: &str| p.get(name).and_then(template_from);
+                let side = |name: &str| {
+                    p.get(name)
+                        .and_then(|tag| template_from_with(tag, received_effects))
+                };
                 Box::new([side("back"), side("left"), side("right"), side("front")])
             })
             .filter(|sides| !all_bricks(sides)),
         bundle_contents: match seen.bundle_contents {
-            Some(Tag::List(list)) => list.iter().filter_map(template_from).collect(),
+            Some(Tag::List(list)) => list
+                .iter()
+                .filter_map(|tag| template_from_with(tag, received_effects))
+                .collect(),
             _ => Vec::new(),
         },
         stew_effects: match seen.suspicious_stew {
@@ -2174,7 +2221,9 @@ fn decode_components_inner(
         charged: match seen.charged_projectiles {
             Some(Tag::List(list)) => list
                 .iter()
-                .filter_map(crate::item_nbt::item_from_nbt)
+                .filter_map(|tag| {
+                    crate::item_nbt::item_from_nbt_with_effects(tag, received_effects)
+                })
                 .collect(),
             _ => Vec::new(),
         },
@@ -2184,7 +2233,7 @@ fn decode_components_inner(
                 .filter_map(|e| {
                     Some((
                         e.get("slot").and_then(int)?.clamp(0, 255) as u8,
-                        template_from(e.get("item")?)?,
+                        template_from_with(e.get("item")?, received_effects)?,
                     ))
                 })
                 .collect(),
@@ -2231,11 +2280,14 @@ fn decode_components_inner(
             } else if !MODELLED.contains(&key.as_str()) {
                 // Loading has no error channel: keep malformed source values opaque,
                 // but never leave a valid flattened custom-data compound undecoded.
-                let value = if key == "minecraft:custom_data" {
-                    custom_data::decode(v.clone()).unwrap_or_else(|_| v.clone())
-                } else {
-                    canonical_other_component(&key, v)
-                };
+                let value =
+                    if key == "minecraft:death_protection" && data.death_protection.is_some() {
+                        death_tag.take().unwrap_or_else(|| v.clone())
+                    } else if key == "minecraft:custom_data" {
+                        custom_data::decode(v.clone()).unwrap_or_else(|_| v.clone())
+                    } else {
+                        canonical_other_component(&key, v)
+                    };
                 data.other.push((key, value));
             }
         }
@@ -3705,17 +3757,15 @@ mod tests {
             damage_set: damage == 0 && c.get("minecraft:damage").is_some(),
             death_protection: c
                 .get("minecraft:death_protection")
-                .and_then(|raw| {
-                    crate::items::parse_death_effects(
-                        &sunrise_client_core::scoreboard::tag_to_json(raw),
-                    )
-                    .ok()
+                .cloned()
+                .and_then(|mut raw| {
+                    crate::items::stack_effects(&mut raw, "death_effects", None).ok()
                 })
                 .map(Arc::new),
             consumable: c
                 .get("minecraft:consumable")
                 .cloned()
-                .and_then(ConsumableComponent::new),
+                .and_then(|raw| ConsumableComponent::new(raw, None)),
             kinetic_weapon: c
                 .get("minecraft:kinetic_weapon")
                 .cloned()

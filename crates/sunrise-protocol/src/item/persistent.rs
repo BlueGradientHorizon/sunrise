@@ -19,13 +19,28 @@ impl<F: Fn(&str, &str) -> Option<i32>> Ids for F {
 }
 /// Adapter for a name-only lookup callback.
 #[non_exhaustive]
-pub struct NameLookup<'a>(pub &'a dyn Fn(&str, i32) -> Option<String>);
+pub struct NameLookup<'a>(
+    pub &'a dyn Fn(&str, i32) -> Option<String>,
+    Option<&'a crate::registry::Dynamic>,
+);
 impl<'a> NameLookup<'a> {
     pub fn new(lookup: &'a dyn Fn(&str, i32) -> Option<String>) -> Self {
-        Self(lookup)
+        Self(lookup, None)
+    }
+    pub fn with_registries(mut self, registries: &'a crate::registry::Dynamic) -> Self {
+        self.1 = Some(registries);
+        self
     }
 }
 impl Names for NameLookup<'_> {
+    fn consume_effect_kind(&self, id: i32) -> Option<super::consume_effects::Kind> {
+        match self.1 {
+            Some(registries) => registries.consume_effect_kind(id),
+            None => super::consume_effects::builtin_name(id)
+                .map(|_| super::consume_effects::Kind::Builtin(id)),
+        }
+    }
+
     fn name(&self, registry: &str, id: i32) -> Option<String> {
         (self.0)(registry, id)
     }

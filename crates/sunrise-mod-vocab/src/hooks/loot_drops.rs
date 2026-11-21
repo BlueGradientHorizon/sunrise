@@ -29,7 +29,8 @@ pub trait Hooks {
     /// an owned hand stack; projection may refuse. `context.weapon_item(host)` returns an
     /// owned snapshot of the recorded projectile weapon or the live melee weapon, including
     /// a player's active auto-spin stack.
-    /// Block and use drops retain their tool meaning.
+    /// Block and use drops retain their tool meaning. A changed drop keeps any
+    /// non-negative signed-int damage, even above its maximum durability.
     /// Server-side, for every player.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_loot_drops",
@@ -37,7 +38,8 @@ pub trait Hooks {
         side = "server",
         contract = "collect",
         out = "drops",
-        neoforge = "LivingDropsEvent, BlockDropsEvent"
+        neoforge = "LivingDropsEvent, BlockDropsEvent",
+        version = 2
     )]
     fn loot_drops(context: &LootDrops<'_>, drops: &mut Vec<ItemStack>);
 }

@@ -9,7 +9,7 @@ use crate::{
     items::ItemStack,
     world::World,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::{
@@ -18,6 +18,7 @@ use sunrise_protocol::{
         configuration::CustomPayload,
         play::{self, Clientbound as C},
     },
+    registry::SyncedNames,
 };
 
 /// Encode a captured level sound and its broadcast radius without a live hub.
@@ -580,26 +581,19 @@ impl Hub {
             items.push(self.guests[i].inventory[player_slot(j)].clone());
         }
         let net: Vec<_> = items.iter().map(|s| self.stack(s)).collect();
-        let carried = self.guests[i].carried.clone();
-        let carried = self.stack(&carried);
-        self.guests.update(i, |g| {
-            let Some(menu) = g.menu.as_mut() else {
-                return;
-            };
+        let Some((window, state)) = self.guests.update(i, |g| {
+            let menu = g.menu.as_mut()?;
             menu.state = (menu.state + 1) & 0x7FFF;
-            let packet = C::ContainerSetContent(play::ContainerSetContent {
-                container: menu.window,
-                state: menu.state,
-                items: net,
-                carried,
-            });
             menu.sent = items;
-            let inventory_included = menu.player_slots() != 0;
-            g.send(&packet);
-            if inventory_included {
+            let address = (menu.window, menu.state);
+            if menu.player_slots() != 0 {
                 g.inventory_told();
             }
-        });
+            Some(address)
+        }) else {
+            return;
+        };
+        self.send_menu_items(i, window, state, net);
     }
 
     /// `AbstractContainerMenu.sendAllDataToRemote` for the guest's open
@@ -673,11 +667,44 @@ impl Hub {
     }
 
     fn hashed_matches(&mut self, claimed: &Option<Hashed>, mine: &Option<ItemStack>) -> bool {
-        match (claimed, mine) {
-            (None, None) => true,
-            (Some(h), Some(s)) => h.item == self.item_id(&s.item) && h.count == s.count as i32,
-            _ => false,
+        let (Some(claimed), Some(_)) = (claimed, mine) else {
+            return claimed.is_none() && mine.is_none();
+        };
+        let Some(net) = self.stack(mine) else {
+            return false;
+        };
+        if claimed.item != net.item || claimed.count != net.count {
+            return false;
         }
+        let names = SyncedNames {
+            builtin: &self.sync.builtin,
+            dynamic: &self.sync.dynamic,
+        };
+        let Ok(expected) = Hashed::create(&net, &names) else {
+            return false;
+        };
+        if claimed.added.is_empty()
+            && expected.added.is_empty()
+            && claimed.removed.is_empty()
+            && expected.removed.is_empty()
+        {
+            return true;
+        }
+        let claimed_removed: HashSet<i32> = claimed.removed.iter().copied().collect();
+        if claimed_removed.len() != expected.removed.len()
+            || !expected
+                .removed
+                .iter()
+                .all(|id| claimed_removed.contains(id))
+        {
+            return false;
+        }
+        let claimed_added: HashMap<i32, i32> = claimed.added.iter().copied().collect();
+        claimed_added.len() == expected.added.len()
+            && expected
+                .added
+                .iter()
+                .all(|(id, hash)| claimed_added.get(id) == Some(hash))
     }
 
     /// The live storage value the server presents in this menu slot.
@@ -1138,11 +1165,12 @@ impl Hub {
             });
         }
         let carried = self.guests[i].carried.clone();
-        if !self.hashed_matches(&p.carried, &carried) {
-            let net = self.stack(&carried);
-            self.guests[i].send(&C::SetCursorItem(play::SetCursorItem { item: net }));
+        if self.hashed_matches(&p.carried, &carried) {
+            self.guests.update(i, |g| g.carried_sent = carried);
+        } else {
+            self.send_carried(i);
         }
-        // What the client now believes equals the server's state.
+        // The slots the client now believes match the server's.
         let items: Vec<_> = (0..total).map(|s| self.view_slot(i, world, s)).collect();
         self.guests.update(i, |g| {
             if in_menu {
@@ -1270,6 +1298,7 @@ impl Hub {
                     }
                 });
             }
+            self.sync_carried(i);
             // Then the data slots, as broadcastChanges does.
             self.sync_container_data(i, world);
         }

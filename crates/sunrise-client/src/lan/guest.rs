@@ -402,6 +402,8 @@ pub struct Guest {
     pub equipment_cache: super::equipment_cache::EquipmentCache,
     pub selected: usize,
     pub carried: Option<ItemStack>,
+    /// What the client believes the cursor holds (`AbstractContainerMenu.remoteCarried`).
+    pub carried_sent: Option<ItemStack>,
     /// The inventory menu's crafting grid (2x2) and its result
     /// (`InventoryMenu.craftSlots`, `resultSlots`), which the game computes.
     pub craft_grid: [Option<ItemStack>; 4],
@@ -821,6 +823,7 @@ impl Guest {
             equipment_cache: Default::default(),
             selected: 0,
             carried: None,
+            carried_sent: None,
             craft_grid: Default::default(),
             craft_result: None,
             ender_items: vec![None; 27],
@@ -1680,7 +1683,7 @@ fn trim_component(
         (material, pattern) => Component::TrimDirect { material, pattern },
     })
 }
-/// Convert a borrowed item template with the same component codecs as inventory slots.
+/// Encode the item template and its network-visible component patch.
 pub(super) fn network_stack(
     item_id: &dyn Fn(&str) -> i32,
     synced_id: &dyn Fn(&str, &str) -> Option<i32>,
@@ -1688,10 +1691,14 @@ pub(super) fn network_stack(
 ) -> Stack {
     let enchantment_id = |name: &str| synced_id("minecraft:enchantment", name);
     let mut stack = Stack::new(item_id(&s.item), s.count as i32);
-    if s.damage > 0 {
+    if stack.item <= 0 {
+        log::warn!("Cannot send item {}: no registered network id", s.item);
+    }
+    // Send the stack's own damage, including an explicit zero, not the prototype.
+    if s.carries_component(None, "minecraft:damage") {
         stack.added.push((
             sunrise_protocol::item::component::DAMAGE,
-            sunrise_protocol::item::Component::Int(s.damage as i32),
+            sunrise_protocol::item::Component::Int(s.effective_damage(None)),
         ));
     }
     let enchantments: Vec<(i32, i32)> = s
@@ -1785,30 +1792,6 @@ pub(super) fn network_stack(
                 stack.added.push((kind, component));
             }
         }
-        for (name, value) in d.preserved_components() {
-            let (removed, kind) = match name.strip_prefix('!') {
-                Some(kind) => (true, kind),
-                None => (false, name.as_str()),
-            };
-            if removed {
-                // Resolve every removal through the peer's canonical registry, including
-                // built-ins without a modelled value. Earlier codec branches may have
-                // already recorded this removal.
-                if let Some(id) = synced_id("minecraft:data_component_type", kind)
-                    && !stack.removed.contains(&id)
-                {
-                    stack.removed.push(id);
-                }
-            } else if sunrise_protocol::item::custom::id(kind).is_some() {
-                if let Some(id) = synced_id("minecraft:data_component_type", kind) {
-                    stack
-                        .added
-                        .push((id, sunrise_protocol::item::Component::Nbt(value.clone())));
-                } else {
-                    log::warn!("Cannot send custom component {kind} to this peer");
-                }
-            }
-        }
         if let Some(rgb) = d.dyed_color {
             stack.added.push((
                 sunrise_protocol::item::component::DYED_COLOR,
@@ -1839,7 +1822,7 @@ pub(super) fn network_stack(
                 ))
             })
             .collect();
-        if let Some(layers) = layers.filter(|layers| !layers.is_empty()) {
+        if let Some(layers) = layers.filter(|_| d.sets_component("minecraft:banner_patterns")) {
             stack.added.push((
                 sunrise_protocol::item::component::BANNER_PATTERNS,
                 sunrise_protocol::item::Component::BannerPatterns(layers),
@@ -1934,22 +1917,6 @@ pub(super) fn network_stack(
             ));
         }
         stack.added.extend(firework_components(d));
-        // A goat horn's instrument, by its `minecraft:instrument` id.
-        if let Some(id) = d
-            .other("minecraft:instrument")
-            .and_then(|t| crate::save::text(Some(t)))
-            .and_then(|name| {
-                synced_id(
-                    "minecraft:instrument",
-                    &sunrise_world::datafix::dynamic::namespaced(&name),
-                )
-            })
-        {
-            stack.added.push((
-                sunrise_protocol::item::component::INSTRUMENT,
-                sunrise_protocol::item::Component::Instrument(id),
-            ));
-        }
         // The compass's lodestone target.
         if let Some(t) = d.other("minecraft:lodestone_tracker") {
             let target = t.get("target").and_then(|g| {
@@ -1963,22 +1930,6 @@ pub(super) fn network_stack(
             stack.added.push((
                 sunrise_protocol::item::component::LODESTONE_TRACKER,
                 sunrise_protocol::item::Component::LodestoneTracker { target, tracked },
-            ));
-        }
-        // PotionContents: the potion by its `minecraft:potion` id.
-        if let Some(id) = (d.potion.as_deref()).and_then(|potion| {
-            synced_id(
-                "minecraft:potion",
-                &sunrise_world::datafix::dynamic::namespaced(potion),
-            )
-        }) {
-            stack.added.push((
-                sunrise_protocol::item::component::POTION_CONTENTS,
-                sunrise_protocol::item::Component::Potion {
-                    potion: Some(id),
-                    color: None,
-                    rest: Vec::new(),
-                },
             ));
         }
         // SuspiciousStewEffects: each effect by its `minecraft:mob_effect` id.
@@ -2194,6 +2145,104 @@ pub(super) fn network_stack(
             sunrise_protocol::item::component::CUSTOM_MODEL_DATA,
             custom_model_data(t),
         ));
+    }
+    if let Some(d) = s.data() {
+        use sunrise_protocol::item::persistent;
+
+        let ids = |registry: &str, name: &str| {
+            if registry == "minecraft:item" {
+                let id = item_id(name);
+                (id > 0).then_some(id)
+            } else {
+                synced_id(registry, name)
+            }
+        };
+        let mut encode_saved = |name: &str, value: &sunrise_core::nbt::Tag| {
+            let key = name.strip_prefix('!').unwrap_or(name);
+            let Some(kind) = persistent::component_id(key) else {
+                return;
+            };
+            if kind >= persistent::BUILTIN_COMPONENT_COUNT as i32
+                && synced_id("minecraft:data_component_type", key) != Some(kind)
+            {
+                // The peer did not negotiate this native component.
+                return;
+            }
+            if key != name {
+                if !stack.removed.contains(&kind) {
+                    stack.removed.push(kind);
+                }
+                return;
+            }
+            let encoded = if matches!(key, "minecraft:consumable" | "minecraft:death_protection") {
+                d.effect_codec_value(key, value)
+                    .map_err(sunrise_protocol::Error::new)
+                    .and_then(|value| persistent::component_from_value(kind, &value, &ids))
+            } else {
+                persistent::component_from_tag(kind, value, &ids)
+            };
+            match encoded {
+                Ok(component) => stack.added.push((kind, component)),
+                Err(error) => {
+                    log::warn!("Cannot send component {name} on {}: {error}", s.item);
+                }
+            }
+        };
+        // Consumable is modeled separately from the preserved fields, but its
+        // saved value is available by reference alongside those overrides.
+        if let Some(value) = d.other("minecraft:consumable") {
+            encode_saved("minecraft:consumable", value);
+        }
+        for (name, value) in d.preserved_components() {
+            // These fields have specialized encoders above; only the other
+            // saved overrides go through the general protocol codec.
+            if !matches!(
+                name.as_str(),
+                "minecraft:enchantment_glint_override"
+                    | "minecraft:max_damage"
+                    | "minecraft:unbreakable"
+                    | "minecraft:kinetic_weapon"
+                    | "minecraft:provides_trim_material"
+                    | "minecraft:provides_banner_patterns"
+                    | "minecraft:can_place_on"
+                    | "minecraft:can_break"
+                    | "minecraft:tool"
+                    | "minecraft:attribute_modifiers"
+                    | "minecraft:tooltip_display"
+                    | "minecraft:painting/variant"
+                    | "minecraft:sign_text_front"
+                    | "minecraft:sign_text_back"
+                    | "minecraft:lodestone_tracker"
+                    | "minecraft:custom_name"
+                    | "minecraft:lore"
+                    | "minecraft:rarity"
+                    | "minecraft:max_stack_size"
+                    | "minecraft:item_name"
+                    | "minecraft:item_model"
+                    | "minecraft:custom_data"
+                    | "minecraft:custom_model_data"
+                    | "minecraft:consumable"
+                    | "minecraft:potion_contents"
+                    | "minecraft:pot_decorations"
+            ) {
+                encode_saved(name, value);
+            }
+        }
+        if let Some(sunrise_core::nbt::Tag::Compound(entries)) =
+            crate::item_data::encode_extra_components_matching(s, |name| {
+                matches!(
+                    name,
+                    "minecraft:potion_contents" | "minecraft:pot_decorations"
+                )
+            })
+        {
+            for (name, value) in &entries {
+                let name = name.to_string_lossy();
+                if !name.starts_with('!') {
+                    encode_saved(&name, value);
+                }
+            }
+        }
     }
     stack
 }

@@ -604,19 +604,10 @@ impl Game<'_> {
                 .get(&conn)
                 .and_then(|p| p.lectern.as_ref())
                 .map_or(0, |gl| gl.state);
-            let carried = host
-                .hub
-                .guests
-                .iter()
-                .find(|g| g.conn == conn)
-                .and_then(|g| g.carried.clone());
-            let content = C::ContainerSetContent(play::ContainerSetContent {
-                container: window,
-                state,
-                items: vec![host.hub.stack(&book)],
-                carried: host.hub.stack(&carried),
-            });
-            host.hub.send_to(conn, &content);
+            if let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) {
+                let items = vec![host.hub.stack(&book)];
+                host.hub.send_menu_items(i, window, state, items);
+            }
             if all || page_changed {
                 host.hub.send_to(
                     conn,
@@ -996,9 +987,9 @@ impl Game<'_> {
                 });
                 if carried != original_carried
                     && let Some(host) = self.lan.as_mut()
+                    && let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn)
                 {
-                    let net = host.hub.stack(&carried);
-                    let _ = host.hub.update_guest(conn, move |g| {
+                    let changed = host.hub.guests.update(i, move |g| {
                         if g.menu_generation != menu_generation
                             || !g
                                 .menu
@@ -1008,13 +999,12 @@ impl Game<'_> {
                         {
                             return false;
                         }
-                        if g.carried == carried {
-                            return false;
-                        }
                         g.carried = carried;
-                        g.send(&C::SetCursorItem(play::SetCursorItem { item: net }));
                         true
                     });
+                    if changed {
+                        host.hub.send_carried(i);
+                    }
                 }
             }
             return;
@@ -1080,13 +1070,8 @@ impl Game<'_> {
             (0..own).map(|s| gs.menu.slot(s).cloned()).collect();
         let g = &host.hub.guests[gi];
         items.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
-        let carried = g.carried.clone();
-        let packet = C::ContainerSetContent(play::ContainerSetContent {
-            container: gs.window,
-            state: gs.state,
-            items: items.iter().map(|s| host.hub.stack(s)).collect(),
-            carried: host.hub.stack(&carried),
-        });
+        let items = items.iter().map(|s| host.hub.stack(s)).collect();
+        let state = gs.state;
         // ContainerSetData's value is a short. An anvil cost outside it
         // would change sign (`-65535` as `+1`), so the signed cost follows
         // on `sunrise:anvil_cost` after that short.
@@ -1112,7 +1097,7 @@ impl Game<'_> {
                 value,
             }));
         }
-        host.hub.send_to(conn, &packet);
+        host.hub.send_menu_items(gi, window, state, items);
         host.hub.guests.update(gi, |g| g.inventory_told());
         for packet in data {
             host.hub.send_to(conn, &packet);

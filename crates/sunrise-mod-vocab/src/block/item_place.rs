@@ -64,8 +64,11 @@ pub enum ItemPlace {
     },
     /// Slot `slot` of the inventory of entity `entity` in the level in place: a chest or hopper
     /// minecart's, a chest boat's, or a chested donkey's, mule's or llama's
-    /// (`Capabilities.Item.ENTITY` through `forHandlerIndex`). Reads use resident slots,
-    /// including the live vehicle menu's slots while it is open, without unpacking loot.
+    /// (`Capabilities.Item.ENTITY` through `forHandlerIndex`). Reading or writing a chest
+    /// vehicle's slot unpacks its pending loot table without a player
+    /// (`ContainerEntity.getChestVehicleItem` / `setChestVehicleItem`). The fill uses empty
+    /// slots without replacing occupied ones, and reads and writes use the live vehicle
+    /// menu's slots while it is open.
     EntitySlot {
         /// The entity's network id.
         entity: u32,
@@ -282,10 +285,12 @@ impl Drop for ItemPlace {
 pub enum ItemPlaceEditError {
     /// The place is empty or cannot be reached.
     NotHeld,
-    /// The place has no whole-stack edit (a cursor or a virtual transfer wrapper).
+    /// The place has no whole-stack edit (a virtual transfer wrapper such as `OneByOne` or
+    /// `InfiniteMaterials`).
     UnsupportedPlace,
     /// The backend, transaction or storage refused the write. For native player slots,
-    /// hands and equipment, a missing backend or a closed transaction refuses before the editor runs.
+    /// hands, cursors and equipment, a missing backend or a closed transaction refuses before the
+    /// editor runs.
     Unavailable,
     /// The component edits did not pass the game's write validation; none were applied.
     Stack(StackWriteError),
@@ -511,9 +516,10 @@ pub(crate) fn warn_broken(owner: Option<&'static str>, at: &dyn Debug) {
 impl ItemPlace {
     /// Lend the stack here to `read` and return its result, or return `None` without calling it
     /// if the place is empty or unavailable. Use [`ItemStackView::project`] to inspect components
-    /// or retain an owned stack. Native reads never load chunks, initialize a player, or unpack
-    /// pending loot. An item entity read sees live state, including earlier writes in
-    /// the same transaction.
+    /// or retain an owned stack. Native reads never load chunks or initialize a player; reading a
+    /// chest vehicle's [`EntitySlot`](Self::EntitySlot) unpacks its pending loot table without a
+    /// player and fills only empty slots (`ContainerEntity.getChestVehicleItem`, `LootTable.fill`).
+    /// An item entity read sees live state, including earlier writes in the same transaction.
     /// Handler-backed and decoded places lend a view of their provider's or decoder's value.
     /// An occupied place can still refuse projection. To check occupancy without projection,
     /// use [`Self::amount`] and compare it with zero.
@@ -673,18 +679,19 @@ impl ItemPlace {
     /// [`ItemComponentEditor::original`] shows the stack before edits. The callback does not
     /// receive the host and cannot use the host borrowed by this call.
     ///
-    /// For a player slot (including armour and off hand), hand, or a mob's or armour stand's
-    /// equipment, the game resolves the occupied slot before lending the editor. An unavailable
-    /// backend, a closed `tx`, or an empty or unreadable slot refuses before the callback runs.
-    /// The game validates the changed overrides together against the stack's effective limits
-    /// before writing any of them. Only those changes are applied, in place like `ItemStack.set`;
-    /// an unchanged batch needs no write. The result reaches clients through the usual menu,
-    /// inventory or equipment sync, without replaying equip sounds, events or attribute effects.
+    /// For a player slot (including armour and off hand), hand, open menu cursor, or a mob's or
+    /// armour stand's equipment, the game resolves the occupied slot before lending the editor.
+    /// An unavailable backend, a closed `tx`, or an empty or unreadable slot refuses before the
+    /// callback runs. The game validates the changed overrides together against the stack's
+    /// effective limits before writing any of them. Only those changes are applied, in place
+    /// like `ItemStack.set`; an unchanged batch needs no write. The result reaches clients
+    /// through the usual menu, cursor, inventory or equipment sync, including synchronized
+    /// component overrides, without replaying equip sounds, events or attribute effects.
     ///
-    /// `Strict` preserves this contract. Cursors, `OneByOne` and `InfiniteMaterials` refuse
-    /// before calling the editor: they do not provide a synced whole-stack write. Other places
-    /// use their ordinary exchange rules. A refusal leaves the place unchanged; aborting `tx`
-    /// or an enclosing transaction restores a successful write.
+    /// `Strict` preserves this contract. `OneByOne` and `InfiniteMaterials` refuse before
+    /// calling the editor: they do not provide a synced whole-stack write. Other places use
+    /// their ordinary exchange rules. A refusal leaves the place unchanged; aborting `tx` or an
+    /// enclosing transaction restores a successful write.
     pub fn edit(
         &self,
         host: &mut dyn ServerHost,
@@ -695,15 +702,15 @@ impl ItemPlace {
         while let Self::Strict(inner) = place {
             place = inner;
         }
-        if matches!(
-            place,
-            Self::PlayerCursor { .. } | Self::OneByOne(_) | Self::InfiniteMaterials { .. }
-        ) {
+        if matches!(place, Self::OneByOne(_) | Self::InfiniteMaterials { .. }) {
             return Err(ItemPlaceEditError::UnsupportedPlace);
         }
         if matches!(
             place,
-            Self::PlayerSlot { .. } | Self::PlayerHand { .. } | Self::Equipment { .. }
+            Self::PlayerSlot { .. }
+                | Self::PlayerHand { .. }
+                | Self::PlayerCursor { .. }
+                | Self::Equipment { .. }
         ) {
             let mut edit = Some(edit);
             return backend_mut_of(host)
