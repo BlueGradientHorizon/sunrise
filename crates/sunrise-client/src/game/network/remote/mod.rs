@@ -310,8 +310,6 @@ pub(super) struct Remote {
     /// The block, item and fluid tags of `registries` by name, as native mods read them
     /// (`install_remote_tags`).
     pub(super) tags: Option<sunrise_client::items::Items>,
-    /// Whether the published snapshot includes the item registry, even if its table is empty.
-    pub(super) has_item_tags: bool,
     /// The game's enchantments and the server's that it lacks (a data
     /// pack's), from their synced data; `None` when the server has none.
     pub(super) enchantments: Option<Arc<sunrise_client::enchant::Enchantments>>,
