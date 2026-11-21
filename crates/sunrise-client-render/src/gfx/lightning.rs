@@ -148,7 +148,7 @@ impl<T> Cache<T> {
 /// Where `bolt` is drawn relative to `camera`, the frame's `cameraPosition`: subtracted in
 /// doubles, then narrowed, so a bolt far from the origin keeps its fraction. The renderer's
 /// instance offsets and packs' `lightningBoltPosition` both come from here.
-pub(crate) fn offset(bolt: &Bolt, camera: DVec3) -> [f32; 3] {
+pub(super) fn offset(bolt: &Bolt, camera: DVec3) -> [f32; 3] {
     (DVec3::from_array(bolt.at) - camera).as_vec3().to_array()
 }
 
