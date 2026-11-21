@@ -355,15 +355,15 @@ impl Goal for FollowPlayerRidden {
         self.move_to_rider(m, cx, false);
     }
 
-    fn tick_until_trample(
+    fn tick_until_movement_pause(
         &mut self,
         m: &mut Mob,
         cx: &mut Cx,
-    ) -> Option<super::living::TravelTrample> {
+    ) -> Option<super::living::TravelPause> {
         self.move_to_rider(m, cx, true)
     }
 
-    fn after_trample(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
+    fn after_movement(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         if let Some((position, yaw)) = self.pending_rider.take() {
             self.repath(m, cx, position, yaw);
             true
@@ -379,7 +379,7 @@ impl FollowPlayerRidden {
         m: &mut Mob,
         cx: &mut Cx,
         pause: bool,
-    ) -> Option<super::living::TravelTrample> {
+    ) -> Option<super::living::TravelPause> {
         let p = self.rider(cx)?;
         let (position, yaw) = (p.position, p.yaw);
         let speed = if self.leading { 0.01 } else { 0.015 };

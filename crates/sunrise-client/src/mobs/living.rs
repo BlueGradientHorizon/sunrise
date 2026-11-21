@@ -463,20 +463,20 @@ impl TravelTail {
 }
 
 /// An authoritative move stopped inside `Entity.move`, and the remaining travel.
-pub struct TravelTrample {
+pub struct TravelPause {
     movement: MoveTrample,
     tail: TravelTail,
 }
 
-impl std::fmt::Debug for TravelTrample {
+impl std::fmt::Debug for TravelPause {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.debug_tuple("TravelTrample")
+        fmt.debug_tuple("TravelPause")
             .field(&self.decision())
             .finish()
     }
 }
 
-impl TravelTrample {
+impl TravelPause {
     pub fn decision(&self) -> FarmlandTrample {
         self.movement.trample
     }
@@ -899,10 +899,10 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         gate: &mut MoveGate,
     ) {
-        self.move_until_trample(w, level, events, gate, false);
+        self.move_until_pause(w, level, events, gate, false);
     }
 
-    fn move_until_trample(
+    fn move_until_pause(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
@@ -1755,7 +1755,7 @@ impl Mob {
         input: Vec3,
         events: &mut Vec<MobEvent>,
     ) {
-        let _ = self.travel_until_trample(w, level, input, events, false);
+        let _ = self.travel_until_pause(w, level, input, events, false);
     }
 
     /// `LivingEntity.travelFallFlying`: use the mob's existing authoritative move
@@ -1766,7 +1766,7 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let before = (self.velocity.x * self.velocity.x + self.velocity.z * self.velocity.z).sqrt();
         self.velocity = crate::motion::fall_flying_movement(
             self.velocity,
@@ -1787,7 +1787,7 @@ impl Mob {
         input: Vec3,
         events: &mut Vec<MobEvent>,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let (fluid_speed, air_speed) = if self.species() == super::Species::HappyGhast {
             let speed = super::happy_ghast::travel_speed(self);
             (speed, speed)
@@ -1818,7 +1818,7 @@ impl Mob {
         lava_speed: f32,
         air_speed: f32,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let (speed, drag) = if self.fluids.in_water {
             (water_speed, f64::from(0.8_f32))
         } else if self.fluids.in_lava {
@@ -1839,7 +1839,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         tail: TravelFinish,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         self.travel_move_with(w, level, events, pause, TravelTail::Fixed(tail))
     }
 
@@ -1850,11 +1850,10 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         tail: TravelTail,
-    ) -> Result<(), TravelTrample> {
-        if let Some(movement) =
-            self.move_until_trample(w, level, events, &mut MoveGate::new(), pause)
+    ) -> Result<(), TravelPause> {
+        if let Some(movement) = self.move_until_pause(w, level, events, &mut MoveGate::new(), pause)
         {
-            return Err(TravelTrample { movement, tail });
+            return Err(TravelPause { movement, tail });
         }
         tail.finish(self, w, level, events);
         Ok(())
@@ -1917,7 +1916,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         stop_gliding: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let friction = if self.on_ground {
             // FRICTION_MODIFIER scales the block's slipperiness.
             let modifier = super::sulfur_cube::physics(self)
@@ -1994,7 +1993,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         water: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let falling = self.velocity.y <= 0.0;
         let old_y = self.position.y;
         let gravity = self.effective_gravity();

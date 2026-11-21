@@ -1132,8 +1132,8 @@ enum BaseStage {
 
 #[derive(Debug)]
 enum TramplePhase {
-    Goal(super::goals::GoalTrample),
-    Travel(super::living::TravelTrample),
+    Goal(super::goals::GoalMovementPause),
+    Travel(super::living::TravelPause),
 }
 
 /// A suspended mob's landing and the exact remainder of its tick.
@@ -1686,7 +1686,7 @@ pub(super) fn resume_after_trample(
         TramplePhase::Goal(goal) => {
             let paused = {
                 let BorrowedGoalSelectors { mob, goals, .. } = &mut BorrowedGoalSelectors::new(m);
-                goals.resume_after_trample(mob, &mut Cx { w, level, events }, goal)
+                goals.resume_movement(mob, &mut Cx { w, level, events }, goal)
             };
             if let Some(goal) = paused {
                 Some(TramplePhase::Goal(goal))
@@ -3144,7 +3144,7 @@ fn ai_step_after_goals(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_trample: bool,
-) -> Result<(), super::living::TravelTrample> {
+) -> Result<(), super::living::TravelPause> {
     m.handle_jumping(w);
     let input = Vec3::new(
         f64::from(m.ai.xxa),
@@ -3159,7 +3159,7 @@ fn ai_step_after_goals(
         m.velocity = Vec3::ZERO;
     } else if !(m.species() == Species::Mannequin && m.extra.immovable) {
         // Mannequin.isEffectiveAi: an immovable one never travels.
-        m.travel_until_trample(w, level, input, events, pause_trample)?;
+        m.travel_until_pause(w, level, input, events, pause_trample)?;
         // A fall's hurt (checkFallDamage) teleports at once.
         hurt_teleports(m, w, events);
     }
@@ -3643,7 +3643,7 @@ fn server_ai_until_trample(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_trample: bool,
-) -> Option<super::goals::GoalTrample> {
+) -> Option<super::goals::GoalMovementPause> {
     // A Java `int`: past `i32::MAX` it wraps, as there.
     m.ai.no_action_time = m.ai.no_action_time.wrapping_add(1);
     // A happy ghast set up for its age (ageBoundaryReached runs at once).
@@ -3675,7 +3675,7 @@ fn server_ai_until_trample(
             targets.tick_running(mob, &mut cx, false);
         }
         if pause_goals {
-            if let Some(paused) = goals.tick_until_trample(mob, &mut cx, force) {
+            if let Some(paused) = goals.tick_until_movement_pause(mob, &mut cx, force) {
                 return Some(paused);
             }
         } else if force {

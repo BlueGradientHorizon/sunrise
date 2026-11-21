@@ -66,16 +66,16 @@ pub trait Goal: std::fmt::Debug + Send + Sync {
     fn tick(&mut self, _m: &mut Mob, _cx: &mut Cx) {}
     /// Goals that move the body itself can stop for the owning level to apply
     /// a landing decision. The ordinary goal path runs without a pause.
-    fn tick_until_trample(
+    fn tick_until_movement_pause(
         &mut self,
         mob: &mut Mob,
         cx: &mut Cx,
-    ) -> Option<super::living::TravelTrample> {
+    ) -> Option<super::living::TravelPause> {
         self.tick(mob, cx);
         None
     }
     /// Finish a goal that stopped in its own movement; false for a different goal.
-    fn after_trample(&mut self, _m: &mut Mob, _cx: &mut Cx) -> bool {
+    fn after_movement(&mut self, _m: &mut Mob, _cx: &mut Cx) -> bool {
         false
     }
     fn box_clone(&self) -> Box<dyn Goal>;
@@ -122,8 +122,8 @@ pub struct GoalSelector {
     pub disabled: u8,
 }
 #[derive(Debug)]
-pub(super) struct GoalTrample {
-    pub(super) movement: super::living::TravelTrample,
+pub(super) struct GoalMovementPause {
+    pub(super) movement: super::living::TravelPause,
     slot: usize,
     force: bool,
 }
@@ -233,12 +233,12 @@ impl GoalSelector {
             }
         }
     }
-    pub(super) fn tick_until_trample(
+    pub(super) fn tick_until_movement_pause(
         &mut self,
         m: &mut Mob,
         cx: &mut Cx,
         force: bool,
-    ) -> Option<GoalTrample> {
+    ) -> Option<GoalMovementPause> {
         if force {
             self.prepare_tick(m, cx);
         }
@@ -251,13 +251,13 @@ impl GoalSelector {
         cx: &mut Cx,
         force: bool,
         start: usize,
-    ) -> Option<GoalTrample> {
+    ) -> Option<GoalMovementPause> {
         for (slot, g) in self.goals.iter_mut().enumerate().skip(start) {
             if g.running
                 && (force || g.goal.every_tick())
-                && let Some(movement) = g.goal.tick_until_trample(m, cx)
+                && let Some(movement) = g.goal.tick_until_movement_pause(m, cx)
             {
-                return Some(GoalTrample {
+                return Some(GoalMovementPause {
                     movement,
                     slot,
                     force,
@@ -267,19 +267,19 @@ impl GoalSelector {
         None
     }
 
-    pub(super) fn resume_after_trample(
+    pub(super) fn resume_movement(
         &mut self,
         m: &mut Mob,
         cx: &mut Cx,
-        paused: GoalTrample,
-    ) -> Option<GoalTrample> {
+        paused: GoalMovementPause,
+    ) -> Option<GoalMovementPause> {
         paused.movement.resume(m, cx.w, cx.level, cx.events);
         // An owning-host listener can remove or shift the running goal. Only
         // the still-resident goal holding this pause can finish its path update.
         let next = self
             .goals
             .iter_mut()
-            .position(|g| g.goal.after_trample(m, cx))
+            .position(|g| g.goal.after_movement(m, cx))
             .map_or(paused.slot, |slot| slot + 1);
         self.tick_from(m, cx, paused.force, next)
     }

@@ -605,7 +605,7 @@ pub(super) fn travel_in_water(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelTrample> {
+) -> Result<(), super::living::TravelPause> {
     let speed = match m.species() {
         Species::Axolotl | Species::Dolphin => m.ai.speed,
         _ => 0.01,
