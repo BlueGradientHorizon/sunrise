@@ -70,7 +70,6 @@ pub fn result_code(result: Result<(), DrawError>) -> u32 {
         Ok(()) => 0,
         Err(DrawError::NonFinite) => 1,
         Err(DrawError::InvalidWidth) => 2,
-        Err(DrawError::TextRefused) => 3,
         Err(_) => 4,
     }
 }

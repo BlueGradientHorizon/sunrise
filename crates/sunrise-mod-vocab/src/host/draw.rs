@@ -599,8 +599,8 @@ pub trait WorldDrawContext {
     /// 2, or exactly [`NameTagOptions::light`] with [`NameTagOptions::exact_light`]), and
     /// faded on the backdrop over everything, walls included, unlit. Labels draw with the
     /// world's name tags, far to near, whatever the stage.
-    /// Refuses a non-finite `at` ([`DrawError::NonFinite`]) or text refused at the boundary
-    /// ([`DrawError::TextRefused`]); on `Err` nothing is drawn.
+    /// Refuses a non-finite `at` ([`DrawError::NonFinite`]); on `Err` nothing is drawn.
+    /// Only visible text and styles are used, not click, hover or opaque metadata.
     fn name_tag(
         &mut self,
         at: [f64; 3],

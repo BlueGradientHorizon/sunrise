@@ -126,7 +126,7 @@ pub struct WorldGeometry {
     time: f32,
     copies: Vec<ModelCopy>,
     groups: std::collections::HashSet<mod_api::InstanceGroupRef>,
-    submitted_groups: Vec<(Option<&'static str>, mod_api::InstanceGroupRef)>,
+    submitted_groups: Vec<mod_api::InstanceGroupRef>,
     model_cut: u32,
     /// The standard pass stage (`0..=6`) lines and quads go to now.
     stage: usize,
@@ -401,7 +401,9 @@ impl WorldGeometry {
         mut stage: impl FnMut(usize, &ModelCopy) -> bool,
     ) {
         for (index, instance) in instances.iter().enumerate() {
-            if !instance_valid(instance) {
+            if instance.origin.iter().any(|v| !v.is_finite())
+                || instance.transform.iter().any(|v| !v.is_finite())
+            {
                 continue;
             }
             if !copy_visible(
@@ -410,7 +412,9 @@ impl WorldGeometry {
                 instance.origin,
                 self.camera,
                 cull,
-            ) {
+            ) || instance.light.block > 15
+                || instance.light.sky > 15
+            {
                 continue;
             }
             let copy = ModelCopy {
@@ -432,16 +436,20 @@ impl WorldGeometry {
     pub fn has_group(&self, group: mod_api::InstanceGroupRef) -> bool {
         self.groups.contains(&group)
     }
-    pub fn mark_group(&mut self, group: mod_api::InstanceGroupRef) {
+    pub fn queue_group(&mut self, group: mod_api::InstanceGroupRef) {
         self.groups.insert(group);
+        self.submitted_groups.push(group);
     }
-    pub fn queue_group(&mut self, owner: Option<&'static str>, group: mod_api::InstanceGroupRef) {
-        self.submitted_groups.push((owner, group));
-    }
-    pub fn take_submitted_groups(
+    pub fn drain_submitted_groups(
         &mut self,
-    ) -> Vec<(Option<&'static str>, mod_api::InstanceGroupRef)> {
+    ) -> impl Iterator<Item = mod_api::InstanceGroupRef> + '_ {
+        self.submitted_groups.drain(..)
+    }
+    pub fn take_submitted_groups(&mut self) -> Vec<mod_api::InstanceGroupRef> {
         std::mem::take(&mut self.submitted_groups)
+    }
+    pub fn recycle_submitted_groups(&mut self, submitted: Vec<mod_api::InstanceGroupRef>) {
+        self.submitted_groups = submitted;
     }
     pub fn copy_count(&self) -> usize {
         self.copies.len()
@@ -777,13 +785,6 @@ fn copy_visible(
         return false;
     }
     cull.is_none_or(|cull| cull.intersects(min, max))
-}
-
-fn instance_valid(instance: &ModelInstance) -> bool {
-    instance.origin.iter().all(|v| v.is_finite())
-        && instance.transform.iter().all(|v| v.is_finite())
-        && instance.light.block <= 15
-        && instance.light.sky <= 15
 }
 
 pub fn validate_instances(instances: &[ModelInstance]) -> Result<(), InstanceError> {

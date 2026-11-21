@@ -9,6 +9,7 @@ use sunrise_client::{gfx::PreparedModelInstance, world_geometry::row_major_3x4};
 struct Group {
     generation: u64,
     owner: Option<&'static str>,
+    submitted: bool,
     model: ModelRef,
     copies: Vec<ModelInstance>,
     len: usize,
@@ -52,6 +53,7 @@ impl Group {
 pub(super) struct InstanceGroupStorage {
     next: u64,
     groups: Vec<Option<Group>>,
+    retired: sunrise_client::fast_hash::FxHashMap<u64, Group>,
 }
 impl InstanceGroupStorage {
     #[cfg(test)]
@@ -64,6 +66,7 @@ impl InstanceGroupStorage {
     }
     pub(super) fn clear(&mut self) {
         self.groups.clear();
+        self.retired.clear();
     }
     pub(super) fn retire_disabled(&mut self, disabled: &std::collections::BTreeSet<String>) {
         for slot in &mut self.groups {
@@ -71,7 +74,10 @@ impl InstanceGroupStorage {
                 .as_ref()
                 .is_some_and(|g| g.owner.is_some_and(|id| disabled.contains(id)))
             {
-                *slot = None;
+                let group = slot.take().expect("disabled slot has a group");
+                if group.submitted {
+                    self.retired.insert(group.generation, group);
+                }
             }
         }
     }
@@ -126,6 +132,7 @@ impl InstanceGroups for Game<'_> {
         let mut group = Group {
             generation: storage.next,
             owner,
+            submitted: false,
             model,
             copies: vec![ModelInstance::at([0.0; 3], 0xFFFF_FFFF); capacity as usize],
             len: 0,
@@ -215,7 +222,12 @@ impl Game<'_> {
     ) -> Result<(), GroupError> {
         let mut storage = self.instance_groups.borrow_mut();
         storage.get(handle, self.standalone_geometry.generation())?;
-        storage.groups[handle.fields().slot as usize] = None;
+        let group = storage.groups[handle.fields().slot as usize]
+            .take()
+            .expect("validated group slot");
+        if group.submitted {
+            storage.retired.insert(group.generation, group);
+        }
         Ok(())
     }
     pub(super) fn draw_instance_group(
@@ -224,26 +236,35 @@ impl Game<'_> {
         handle: InstanceGroupRef,
     ) -> Result<(), GroupError> {
         let mut storage = self.instance_groups.borrow_mut();
-        let _ = storage.get(handle, self.standalone_geometry.generation())?;
-        if draw.has_group(handle) {
-            return Ok(());
+        let group = storage.get(handle, self.standalone_geometry.generation())?;
+        if !draw.has_group(handle) {
+            group.submitted = true;
+            draw.queue_group(handle);
         }
-        draw.mark_group(handle);
-        draw.queue_group(mod_api::content::crash::current_native_mod(), handle);
         Ok(())
     }
-    /// Stage all retained instance groups queued during `submit_custom_geometry`, reading their
-    /// live length, composed transforms, and prepared records after `prepare_render_buffers` has
-    /// finished updating them. Groups destroyed or retired in between are silently skipped.
+
+    /// Resolve live data after the prepare hook, or the last data of an accepted group that
+    /// was destroyed. The latter no longer occupies a public handle slot.
     pub(super) fn resolve_submitted_groups(
         &self,
         draw: &mut sunrise_client::world_geometry::WorldGeometry,
     ) {
-        let model_generation = self.standalone_geometry.generation();
-        for (owner, handle) in draw.take_submitted_groups() {
-            let mut storage = self.instance_groups.borrow_mut();
-            let Ok(group) = storage.get_owned(owner, handle, model_generation) else {
-                continue;
+        let mut storage = self.instance_groups.borrow_mut();
+        let mut submitted = draw.take_submitted_groups();
+        for handle in submitted.drain(..) {
+            let fields = handle.fields();
+            let retired = storage.retired.remove(&fields.generation);
+            let group = if let Some(group) = retired.as_ref() {
+                group
+            } else if let Some(group) = storage.groups[fields.slot as usize]
+                .as_mut()
+                .filter(|group| group.generation == fields.generation)
+            {
+                group.submitted = false;
+                group
+            } else {
+                unreachable!("accepted group must be live or retained");
             };
             let _ = self.draw_cached_model_instances(
                 draw,
@@ -251,6 +272,25 @@ impl Game<'_> {
                 &group.composed[..group.len],
                 Some(&group.records[..group.len]),
             );
+        }
+        draw.recycle_submitted_groups(submitted);
+    }
+
+    /// A frame can stop before prepare, for example on graphics device loss.
+    pub(super) fn discard_submitted_groups(
+        &self,
+        draw: &mut sunrise_client::world_geometry::WorldGeometry,
+    ) {
+        let mut storage = self.instance_groups.borrow_mut();
+        for handle in draw.drain_submitted_groups() {
+            let fields = handle.fields();
+            if storage.retired.remove(&fields.generation).is_none()
+                && let Some(group) = storage.groups[fields.slot as usize]
+                    .as_mut()
+                    .filter(|group| group.generation == fields.generation)
+            {
+                group.submitted = false;
+            }
         }
     }
 }
@@ -265,6 +305,7 @@ mod tests {
         let mut group = Group {
             generation: 1,
             owner: None,
+            submitted: false,
             model: mod_api::__private::built::model_ref(1, 0),
             copies: vec![copy; 2],
             len: 2,

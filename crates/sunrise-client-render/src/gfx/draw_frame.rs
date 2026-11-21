@@ -528,6 +528,8 @@ impl Renderer {
         let leaving = &self.lod_leaving_scratch;
         let mut visible = std::mem::take(&mut self.visible);
         visible.clear();
+        let lend_sections = !frame.title && hooks.is_some();
+        self.visible_renderable_scratch.clear();
         crate::spans::time("visibility", || {
             // GPU culling draws the solid quads of the near whole sections it has records of:
             // within the render distance the walk lists only those with translucent quads,
@@ -543,6 +545,11 @@ impl Renderer {
                 },
                 gpu_frame,
                 &mut visible,
+                lend_sections.then_some(resident::PrimarySelection {
+                    frustum: &view,
+                    detail_columns: &self.detail_columns,
+                    out: &mut self.visible_renderable_scratch,
+                }),
             )
         });
         #[cfg(debug_assertions)]
@@ -564,7 +571,24 @@ impl Renderer {
         if !frame.title
             && let Some(hooks) = hooks.as_deref_mut()
         {
-            self.collect_primary_renderable_sections(camera, radius, &view, culling);
+            self.visible_renderable_sections.clear();
+            self.visible_renderable_sections
+                .extend(
+                    self.visible_renderable_scratch
+                        .iter()
+                        .map(|&(_, (x, y, z), slot)| {
+                            let origin = [x * 16, self.sections.min_y() + y * 16, z * 16];
+                            let [x, y, z] = origin.map(f64::from);
+                            mod_api::RenderableSection::new(
+                                origin,
+                                [[x, y, z], [x + 16.0, y + 16.0, z + 16.0]],
+                                slot.is_none_or(|slot| {
+                                    let mesh = self.sections.get(slot);
+                                    mesh.solid == 0 && mesh.translucent == 0
+                                }),
+                            )
+                        }),
+                );
             hooks.on_custom_geometry(&self.visible_renderable_sections, hook_oit);
             if sky_open(frame) && (frame.skybox || frame.end_sky) && !hook_pack_draws_sky {
                 hooks.on_after_sky(&self.visible_renderable_sections, hook_oit);
@@ -1419,11 +1443,25 @@ impl Renderer {
             && post.has_entities()
         {
             pack_entities = true;
+            let spans = if hook_geometry.entity_spans.is_empty() {
+                frame.entity_spans
+            } else {
+                for span in &mut hook_geometry.entity_spans {
+                    span.start += frame.entities.len() as u32;
+                }
+                let before_hooks = frame
+                    .entity_spans
+                    .partition_point(|s| s.start < frame.entities.len() as u32);
+                hook_geometry
+                    .entity_spans
+                    .splice(..0, frame.entity_spans[..before_hooks].iter().copied());
+                &hook_geometry.entity_spans
+            };
             post.prepare_entities(
                 &self.device,
                 &self.queue,
                 merged_entities,
-                frame.entity_spans,
+                spans,
                 frame.crumbling_sprite,
                 frame.end_portal_sprites[1],
                 &mut self.pack_entity_rest,

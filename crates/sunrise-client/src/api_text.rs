@@ -878,7 +878,7 @@ pub fn to_api(text: &engine::Text) -> Result<Text, TextFormError> {
     capture(Source::Engine(text))
 }
 
-fn api_nodes(root: &Text) -> Vec<&Text> {
+fn api_nodes(root: &Text, visual_only: bool) -> Vec<&Text> {
     let mut work = vec![(root, false)];
     let mut nodes = Vec::new();
     while let Some((text, done)) = work.pop() {
@@ -887,7 +887,20 @@ fn api_nodes(root: &Text) -> Vec<&Text> {
         } else {
             work.push((text, true));
             let mut children = Vec::new();
-            text.visit_children(|text| children.push((text, false)));
+            let unpainted_hover = visual_only
+                .then(|| match &text.style.hover {
+                    Some(TextHover::Text(child))
+                    | Some(TextHover::Entity {
+                        name: Some(child), ..
+                    }) => Some(&**child),
+                    _ => None,
+                })
+                .flatten();
+            text.visit_children(|child| {
+                if !unpainted_hover.is_some_and(|hover| std::ptr::eq(hover, child)) {
+                    children.push((child, false));
+                }
+            });
             work.extend(children.into_iter().rev());
         }
     }
@@ -1058,10 +1071,10 @@ fn action(action: &str, field: &str, value: Value) -> Map<String, Value> {
 }
 fn emitted_style<'a>(
     style: &'a TextStyle,
-    payloads: &Payloads<'_>,
+    payloads: Option<&Payloads<'_>>,
     take: &mut impl FnMut(&'a Text) -> Value,
 ) -> Map<String, Value> {
-    let mut metadata = payloads.object(&style.metadata);
+    let mut metadata = payloads.map_or_else(Map::new, |p| p.object(&style.metadata));
     let click = object_or_empty(metadata.remove("click_event"));
     let hover = object_or_empty(metadata.remove("hover_event"));
     let mut out = filter_metadata(metadata, reserved);
@@ -1077,13 +1090,19 @@ fn emitted_style<'a>(
         ("strikethrough", style.strikethrough.map(Value::Bool)),
         ("obfuscated", style.obfuscated.map(Value::Bool)),
         ("font", style.font.clone().map(Value::String)),
-        ("insertion", style.insertion.clone().map(Value::String)),
+        (
+            "insertion",
+            payloads
+                .and(style.insertion.as_ref())
+                .cloned()
+                .map(Value::String),
+        ),
     ] {
         if let Some(v) = value {
             out.insert(key.into(), v);
         }
     }
-    if let Some(value) = &style.click {
+    if let (Some(payloads), Some(value)) = (payloads, &style.click) {
         let kind = click_kind(value);
         let mut fields = filter_metadata(click, |key| event_reserved(kind, key));
         fields.extend(match value {
@@ -1105,7 +1124,7 @@ fn emitted_style<'a>(
     } else {
         component::discard_component(Value::Object(click));
     }
-    if let Some(value) = &style.hover {
+    if let (Some(payloads), Some(value)) = (payloads, &style.hover) {
         let kind = match value {
             TextHover::Text(_) => "show_text",
             TextHover::Item { .. } => "show_item",
@@ -1166,10 +1185,10 @@ fn emitted_style<'a>(
 }
 fn emitted_node<'a>(
     text: &'a Text,
-    payloads: &Payloads<'_>,
+    payloads: Option<&Payloads<'_>>,
     take: &mut impl FnMut(&'a Text) -> Value,
 ) -> Value {
-    let mut metadata = payloads.object(&text.metadata);
+    let mut metadata = payloads.map_or_else(Map::new, |p| p.object(&text.metadata));
     let mut score = metadata.remove("score");
     let mut out = filter_metadata(metadata, reserved);
     match &text.content {
@@ -1241,7 +1260,7 @@ fn emitted_node<'a>(
                 } => {
                     out.extend([
                         ("object".into(), "player".into()),
-                        ("player".into(), profile_json(profile, Some(payloads))),
+                        ("player".into(), profile_json(profile, payloads)),
                         ("hat".into(), (*hat).into()),
                     ]);
                     fallback
@@ -1276,43 +1295,34 @@ fn emitted_node<'a>(
     }
     Value::Object(out)
 }
-fn owned_text_component_with_depth_check(
-    text: &Text,
-    check_component_depth: bool,
-) -> Result<Value, Error> {
-    if check_component_depth {
-        text.validate()?;
-    } else {
-        text.validate_payloads()?;
-    }
-    let nodes = api_nodes(text);
-    let payloads = Payloads::new(&nodes)?; // Refuse all representation errors before any JSON clone.
+fn emit_component(text: &Text, nodes: Vec<&Text>, payloads: Option<&Payloads<'_>>) -> Value {
     let mut ready = HashMap::new();
     for node in nodes {
-        let value = emitted_node(node, &payloads, &mut |child| {
+        let value = emitted_node(node, payloads, &mut |child| {
             ready
                 .remove(&(child as *const _ as usize))
                 .expect("child was built")
         });
         ready.insert(node as *const _ as usize, value);
     }
-    Ok(ready
+    ready
         .remove(&(text as *const _ as usize))
-        .expect("root was built"))
+        .expect("root was built")
 }
-#[cfg(test)]
 fn owned_text_component(text: &Text) -> Result<Value, Error> {
-    owned_text_component_with_depth_check(text, true)
+    text.validate()?;
+    let nodes = api_nodes(text, false);
+    let payloads = Payloads::new(&nodes)?;
+    Ok(emit_component(text, nodes, Some(&payloads)))
 }
 /// Encode API text, preserving the boundary's validation and representation errors.
 pub fn to_engine(text: &Text) -> Result<engine::Text, TextFormError> {
-    owned_text_component_with_depth_check(text, true).map(Into::into)
+    owned_text_component(text).map(Into::into)
 }
-/// Encode API text for in-memory client rendering (such as world name tags) without enforcing
-/// a component-tree depth cap, matching vanilla `SubmitNodeCollection.submitNameTag`. Opaque
-/// NBT payloads still obey `NbtAccounter.MAX_STACK_DEPTH` (512).
-pub fn to_engine_for_render(text: &Text) -> Result<engine::Text, TextFormError> {
-    owned_text_component_with_depth_check(text, false).map(component::render_component)
+/// Project a component to visual in-memory text. Hover, click, and opaque metadata are never
+/// encoded, and codec limits do not apply to this traversal.
+pub fn to_engine_for_render(text: &Text) -> engine::Text {
+    component::render_component(emit_component(text, api_nodes(text, true), None))
 }
 
 #[cfg(test)]
@@ -1705,7 +1715,7 @@ mod iterative_tests {
                     }
                     let engine = text.try_into_engine(&()).unwrap();
                     let restored = engine.try_into_api().unwrap();
-                    assert_eq!(api_nodes(&restored).len(), 512);
+                    assert_eq!(api_nodes(&restored, false).len(), 512);
                     drop((text.clone(), restored.clone(), engine.clone()));
                     drop((text, restored, engine));
                 })
@@ -1752,7 +1762,7 @@ mod iterative_tests {
                     continue;
                 }
                 let api = engine.try_into_api().unwrap();
-                let nodes = api_nodes(&api);
+                let nodes = api_nodes(&api, false);
                 assert_eq!(nodes.len(), 512);
                 assert!(matches!(&nodes[0].content, TextContent::Literal(s) if s == "leaf"));
                 // Compare the full trees without calling recursive PartialEq on this small stack.
@@ -1841,7 +1851,7 @@ mod iterative_tests {
                     if depth == 513 {
                         assert!(matches!(api, Err(mod_api::text::TextFormError::TooDeep)));
                     } else {
-                        assert_eq!(api_nodes(api.as_ref().unwrap()).len(), 512);
+                        assert_eq!(api_nodes(api.as_ref().unwrap(), false).len(), 512);
                     }
                     std::mem::forget((text, api));
                 }
@@ -1891,7 +1901,7 @@ mod iterative_tests {
                     super::to_engine(&text),
                     Err(mod_api::text::TextFormError::TooDeep)
                 );
-                let rendered = super::to_engine_for_render(&text).unwrap();
+                let rendered = super::to_engine_for_render(&text);
                 assert_eq!(rendered.plain(), "leaf");
                 drop(rendered);
                 drop(text);
@@ -1913,7 +1923,7 @@ mod iterative_tests {
                     outer.style.hover = Some(mod_api::text::TextHover::Text(Box::new(hover_text)));
                     hover_text = outer;
                 }
-                let rendered_hover = super::to_engine_for_render(&hover_text).unwrap();
+                let rendered_hover = super::to_engine_for_render(&hover_text);
                 assert_eq!(rendered_hover.plain(), "hover");
                 assert!(
                     rendered_hover.spans.iter().all(|s| s.style.hover.is_none()),
@@ -1933,7 +1943,7 @@ mod iterative_tests {
                     id: [1, 2],
                     name: Some(Box::new(deep_name)),
                 });
-                let rendered_entity = super::to_engine_for_render(&entity_hover).unwrap();
+                let rendered_entity = super::to_engine_for_render(&entity_hover);
                 assert_eq!(rendered_entity.plain(), "entity");
                 assert!(
                     rendered_entity

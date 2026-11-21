@@ -59,9 +59,9 @@ background opacity (0.25 when the background is for chat only), and the faded te
 
 A label is 0.025 blocks a font pixel, so it shrinks with distance; scale by distance yourself for a constant size.
 Backing storage grows dynamically with no per-view quad cap, and in-memory `Text` components impose no
-component-tree depth limit. A position that is not finite (`DrawError::NonFinite`) or text refused at the boundary
-(`DrawError::TextRefused`, such as malformed profile fields or opaque NBT payloads deeper than vanilla's 512-container
-NBT limit) is refused by name and draws nothing. The
+component-tree depth limit. Labels ignore click events, hover events, and opaque metadata; NBT limits
+apply when serializing text, not when drawing labels. A non-finite position (`DrawError::NonFinite`)
+draws nothing. The
 [hook notes](../../reference/hook-notes.md#custom-world-geometry) give the details.
 
 ## The client session

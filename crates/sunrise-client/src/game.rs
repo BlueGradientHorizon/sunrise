@@ -3443,7 +3443,7 @@ struct Game<'a> {
     /// Prepared block-entity copies for this frame, in entity-stream order.
     prepared_model_draws: std::cell::RefCell<Vec<sunrise_client::gfx::PreparedModelDraw>>,
     /// Scratch for the copies a frame draws through the terrain materials.
-    model_copy_order: Vec<u32>,
+    model_copy_order: std::cell::RefCell<Vec<u32>>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
     /// Read-only renderer snapshot cached while `self.renderer` is temporarily taken for
     /// `Renderer::render` so `ClientHost` queries still see framebuffer size and
@@ -13366,7 +13366,7 @@ impl<'a> Game<'a> {
             dynamic_textures: Default::default(),
             text_patches: Default::default(),
             prepared_model_draws: Default::default(),
-            model_copy_order: Vec::new(),
+            model_copy_order: Default::default(),
             world_geometry: Some(Default::default()),
             render_snapshot: std::cell::Cell::new(None),
             debug_renderers: Vec::new(),

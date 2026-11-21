@@ -658,7 +658,7 @@ pub struct Renderer {
     visible_lods: Vec<lod::Visible>,
     /// Canonical primary-camera visible sections exposed to `FrameHooks` (reused across frames).
     visible_renderable_sections: Vec<mod_api::RenderableSection>,
-    visible_renderable_scratch: Vec<(u64, SectionKey, bool)>,
+    visible_renderable_scratch: Vec<(u64, SectionKey, Option<u32>)>,
     /// Reusable merge buffers when `FrameHooks` adds CPU entity / name-tag / see-through vertices.
     hook_entities_scratch: Vec<Vertex>,
     hook_see_through_scratch: Vec<Vertex>,

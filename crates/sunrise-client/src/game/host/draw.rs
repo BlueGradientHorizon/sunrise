@@ -86,7 +86,10 @@ impl DrawContext for GameDrawContext<'_, '_> {
         lines: &[Text],
         at: [f32; 2],
     ) -> Result<(), mod_api::text::TextFormError> {
-        let lines = lines.try_into_engine(&())?;
+        let lines: Vec<_> = lines
+            .iter()
+            .map(sunrise_client::api_text::to_engine_for_render)
+            .collect();
         self.game.native_gui_tooltip(&mut *self.surface, &lines, at);
         Ok(())
     }
@@ -100,7 +103,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         align: TextAlign,
         scale: f32,
     ) -> Result<TextLines, TextLinesRefusal> {
-        let text: crate::text::Text = text.try_into_engine(&())?;
+        let text = sunrise_client::api_text::to_engine_for_render(text);
         label_layout(&self.game.gui.atlas.font, &text, max_width, align, scale)
     }
     fn fluid(&mut self, fluid: &str, at: [f32; 2], size: f32) {
@@ -156,7 +159,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         highlighted: bool,
         sprites: Option<&ButtonSprites>,
     ) -> Result<(), mod_api::text::TextFormError> {
-        let label = label.try_into_engine(&())?;
+        let label = sunrise_client::api_text::to_engine_for_render(label);
         self.game.native_widget_button(
             &mut *self.surface,
             rect,
@@ -344,7 +347,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         glowing: bool,
         outline: Option<u32>,
     ) -> Result<f32, mod_api::text::TextFormError> {
-        let text = sunrise_client::api_text::to_engine_for_render(text)?;
+        let text = sunrise_client::api_text::to_engine_for_render(text);
         Ok(self
             .game
             .native_draw_text(&mut *self.surface, &text, at, color, glowing, outline))
@@ -358,7 +361,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
             .native_draw_terrain_model(&mut *self.surface, model, options)
     }
     fn text_width(&self, text: &Text) -> Result<f32, mod_api::text::TextFormError> {
-        let text = sunrise_client::api_text::to_engine_for_render(text)?;
+        let text = sunrise_client::api_text::to_engine_for_render(text);
         Ok(self.game.native_draw_text_width(&*self.surface, &text))
     }
     fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {

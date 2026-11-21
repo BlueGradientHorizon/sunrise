@@ -67,9 +67,8 @@ the game does not start, and a reload keeps the previous resources and handles, 
 selected resource packs and tries again, as vanilla does with any failed reload. An optional
 pipeline that cannot be built is logged once with its id and resolves to `Invalid`, and the other
 pipelines draw. In each
-stage, pipeline quads draw after that stage's plain quads and lines, in the order submitted. Under a shader
-pack they follow the plain quads: a stage the pack draws itself is drawn with the next stage the
-game reaches."#]
+stage, pipeline quads draw after that stage's plain quads and lines, in the order submitted. If a
+shader pack skips a stage, its callback does not run or replay at a later stage."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

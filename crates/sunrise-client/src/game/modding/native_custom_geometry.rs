@@ -38,23 +38,31 @@ impl<'a, 'g> GameWorldStageDriver<'a, 'g> {
     }
 
     fn view<'v>(
-        &'v self,
+        camera: &'v mod_api::Camera,
+        alpha: f64,
+        game_time: i64,
         sections: &'v [mod_api::RenderableSection],
         oit_on: bool,
     ) -> mod_api::WorldRenderView<'v> {
-        mod_api::WorldRenderView::new(
-            self.frame_camera,
-            self.alpha as f32,
-            self.game.world.game_time,
-            oit_on,
-            sections,
-        )
+        mod_api::WorldRenderView::new(camera, alpha as f32, game_time, oit_on, sections)
+    }
+}
+
+impl Drop for GameWorldStageDriver<'_, '_> {
+    fn drop(&mut self) {
+        self.game.discard_submitted_groups(self.draw);
     }
 }
 
 impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<'_, '_> {
     fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = self.view(sections, oit_on);
+        let view = Self::view(
+            self.frame_camera,
+            self.alpha,
+            self.game.world.game_time,
+            sections,
+            oit_on,
+        );
         self.draw.begin_custom_geometry();
         self.game.native_submit_custom_geometry(&view, self.draw);
         for renderer in &self.game.debug_renderers {
@@ -72,7 +80,13 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = self.view(sections, oit_on);
+        let view = Self::view(
+            self.frame_camera,
+            self.alpha,
+            self.game.world.game_time,
+            sections,
+            oit_on,
+        );
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterSky);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterSky, &view, &mut surface);
@@ -83,17 +97,28 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
     ) -> sunrise_client::gfx::world_primitives::PreparedHookGeometry {
-        let view = self.view(sections, oit_on);
+        let view = Self::view(
+            self.frame_camera,
+            self.alpha,
+            self.game.world.game_time,
+            sections,
+            oit_on,
+        );
         self.game.native_prepare_render_buffers(&view);
         self.game.resolve_submitted_groups(self.draw);
         let mut out = sunrise_client::gfx::world_primitives::PreparedHookGeometry::default();
-        self.game.commit_model_instances(
-            self.draw,
-            DVec3::from(self.draw.camera()),
-            &mut out.entities,
-        );
+        let camera = DVec3::from(self.draw.camera());
+        self.game
+            .bake_model_instances(self.draw, camera, &mut out.entities, &mut out.entity_spans);
         self.draw.sort_labels();
         let [world, see_through] = self.draw.labels();
+        if !world.is_empty()
+            && let Some(span) =
+                self.game
+                    .entity_part_span(out.entities.len(), "minecraft:name_tag", true)
+        {
+            out.entity_spans.push(span);
+        }
         out.entities.extend_from_slice(world);
         out.see_through.extend_from_slice(see_through);
         out.prepared_draws = std::mem::take(&mut *self.game.prepared_model_draws.borrow_mut());
@@ -107,7 +132,13 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
     ) -> sunrise_client::gfx::world_primitives::StageData<'_> {
-        let view = self.view(sections, oit_on);
+        let view = Self::view(
+            self.frame_camera,
+            self.alpha,
+            self.game.world.game_time,
+            sections,
+            oit_on,
+        );
         self.draw.begin_live_stage(stage);
         {
             let mut surface = self.draw.stage_surface(stage);
@@ -124,7 +155,13 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_after_level(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = self.view(sections, oit_on);
+        let view = Self::view(
+            self.frame_camera,
+            self.alpha,
+            self.game.world.game_time,
+            sections,
+            oit_on,
+        );
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterLevel);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterLevel, &view, &mut surface);
@@ -188,6 +225,7 @@ impl Game<'_> {
     }
     /// One view's geometry, the last view's gone first. `title` views draw no world: the
     /// title and connect screens have no mod geometry, so none outlives leaving a world.
+    #[cfg(test)]
     pub(super) fn fill_world_geometry(
         &mut self,
         title: bool,
@@ -279,8 +317,7 @@ impl Game<'_> {
     /// faded text on the backdrop over everything, unlit. Otherwise once, depth tested and
     /// translucent: the faded text on the backdrop in the caller's light. The faded text's alpha
     /// (unless `faded_alpha`) and the backdrop's follow the player's text background opacity.
-    /// Refused whole, before any layout, for a position that is not finite or text refused at
-    /// the boundary.
+    /// Refused whole, before layout, for a position that is not finite.
     pub(super) fn native_world_name_tag(
         &self,
         draw: &mut WorldGeometry,
@@ -289,8 +326,7 @@ impl Game<'_> {
         options: NameTagOptions,
     ) -> Result<(), DrawError> {
         draw.check_label(at)?;
-        let text = sunrise_client::api_text::to_engine_for_render(text)
-            .map_err(|_| DrawError::TextRefused)?;
+        let text = sunrise_client::api_text::to_engine_for_render(text);
         let from_camera = DVec3::from(at) - DVec3::from(draw.camera());
         let o = from_camera + DVec3::new(0.0, 0.5, 0.0);
         let lines = [(text, 0.0)];
@@ -463,19 +499,36 @@ impl Game<'_> {
         }
         Ok(())
     }
-    /// Bake copies the instance route could not take onto the entity stream. Opaque ones of a
-    /// standalone model go as block entities (`mark_model_copies`), one run per overlay. Copies
-    /// with a colour alpha below `0xFF`, of a translucent model or of a block state go through
-    /// the terrain materials (`terrain_model::draw_model`), after them; the renderer sorts their
-    /// quads far to near.
+    #[cfg(test)]
     pub(super) fn commit_model_instances(
-        &mut self,
+        &self,
         draw: &mut WorldGeometry,
         camera: DVec3,
         entities: &mut Vec<Vertex>,
     ) {
+        self.bake_model_instances(draw, camera, entities, &mut self.entity_spans.borrow_mut());
+    }
+
+    /// Bake CPU copies onto the entity stream with their pack spans. Opaque standalone copies
+    /// go as block entities, one run per overlay. Material copies follow and the renderer sorts
+    /// their translucent quads far to near.
+    fn bake_model_instances(
+        &self,
+        draw: &mut WorldGeometry,
+        camera: DVec3,
+        entities: &mut Vec<Vertex>,
+        spans: &mut Vec<sunrise_client::gfx::pack_draw::EntitySpan>,
+    ) {
         let mut run_overlay = None;
-        let mut materials = std::mem::take(&mut self.model_copy_order);
+        let mut materials = self.model_copy_order.borrow_mut();
+        let mut mark_span = |start| {
+            if let Some(span) = self.model_copy_span(start) {
+                match spans.last_mut() {
+                    Some(last) if last.start == span.start => *last = span,
+                    _ => spans.push(span),
+                }
+            }
+        };
         materials.clear();
         for index in 0..draw.copy_count() {
             let copy = draw.copy(index);
@@ -492,7 +545,7 @@ impl Game<'_> {
             let start = entities.len();
             if run_overlay != Some(copy.overlay) {
                 run_overlay = Some(copy.overlay);
-                self.mark_model_copies(start);
+                mark_span(start);
             }
             let shown = || {
                 faces
@@ -520,9 +573,9 @@ impl Game<'_> {
             super::minecarts::scale_tint_alpha(&mut entities[start..], shown(), copy.tint);
         }
         if !materials.is_empty() {
-            self.mark_model_copies(entities.len());
+            mark_span(entities.len());
             let layers = &self.pack.render.sprite_layers;
-            for &index in &materials {
+            for &index in materials.iter() {
                 let copy = draw.copy(index as usize);
                 let Some(faces) = self.model_faces(copy.slot) else {
                     continue;
@@ -561,7 +614,6 @@ impl Game<'_> {
                 );
             }
         }
-        self.model_copy_order = materials;
         draw.clear_copies();
     }
 }
@@ -1130,8 +1182,7 @@ mod tests {
                 draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0; 2]);
                 context(game, &mut draw).draw_instance_group(group).unwrap();
                 context(game, &mut draw).draw_instance_group(group).unwrap();
-                game.resolve_submitted_groups(&mut draw);
-                // Retiring storage must not remove copies already accepted by this view.
+                // Destruction before prepare invalidates the handle, not the accepted copies.
                 group.destroy(game).unwrap();
                 assert_eq!(group.write(game, 0, &[copy]), Err(GroupError::Stale));
                 assert_eq!(group.destroy(game), Err(GroupError::Stale));
@@ -1147,6 +1198,7 @@ mod tests {
                     group.set_group_transform(game, rows(pose)),
                     Err(GroupError::Stale)
                 );
+                game.resolve_submitted_groups(&mut draw);
                 let mut actual = Vec::new();
                 game.commit_model_instances(&mut draw, camera, &mut actual);
                 assert_eq!(

@@ -116,6 +116,8 @@ impl StageData<'_> {
 #[derive(Default)]
 pub struct PreparedHookGeometry {
     pub entities: Vec<Vertex>,
+    /// Span starts are relative to `entities`, before the renderer merges the streams.
+    pub entity_spans: Vec<super::pack_draw::EntitySpan>,
     pub see_through: Vec<Vertex>,
     pub prepared_draws: Vec<super::PreparedModelDraw>,
     pub text_patches: Vec<crate::font::Patch>,

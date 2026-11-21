@@ -73,8 +73,6 @@ pub enum DrawError {
     NonFinite,
     /// A finite line width is zero or negative.
     InvalidWidth,
-    /// A label's text was refused at the boundary (`TextFormError`).
-    TextRefused,
 }
 
 /// How [`WorldDrawContext::name_tag`](crate::WorldDrawContext::name_tag) draws a label.

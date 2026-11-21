@@ -6,6 +6,9 @@ ids = [
   "type:DrawError",
   "type:DrawError.CapacityExceeded",
   "type:DrawError.TextTooDeep",
+  "type:DrawError.TextRefused",
+  "method:WorldDrawContext::name_tag",
+  "fn:sunrise_client_render::gfx::Renderer::render",
   "type:PipelineDrawError",
   "type:PipelineDrawError.CapacityExceeded",
   "type:InstanceError",
@@ -79,7 +82,7 @@ and NeoForge 26.3 (`SubmitCustomGeometryEvent`, `RenderLevelStageEvent`, `IRende
   3-field summary.
 - Add `Hooks::prepare_render_buffers` (`PrepareRenderBuffersEvent`) firing after `AfterSky` and
   before entity/instance uploads and pass-bearing stages so mods can update retained GPU buffers
-  (`InstanceGroups`, dynamic textures) and see those changes on the same frame.
+  (`InstanceGroups`) and see those changes on the same frame.
 - Expand `RenderLevelStage` to all 9 NeoForge 26.3 stages (`AfterSky`, `AfterOpaqueBlocks`,
   `AfterOpaqueFeatures`, `AfterTranslucentFeatures`, `AfterTranslucentBlocks`,
   `AfterTranslucentParticles`, `AfterWeather`, `OitTranslucent(OitStage)`, `AfterLevel`) with
@@ -100,7 +103,8 @@ and NeoForge 26.3 (`SubmitCustomGeometryEvent`, `RenderLevelStageEvent`, `IRende
 """
 migrate = """
 - Remove calls to `WorldDrawContext::usage()`, references to `WorldDrawUsage`, and match arms for
-  `DrawError::CapacityExceeded`, `DrawError::TextTooDeep`, `PipelineDrawError::CapacityExceeded`,
+  `DrawError::CapacityExceeded`, `DrawError::TextTooDeep`, `DrawError::TextRefused`,
+  `PipelineDrawError::CapacityExceeded`,
   `InstanceError::CapacityExceeded`, and `GroupError::CapacityExceeded`.
 - For `draw_model_instances`, handle `Err(InstanceError::Model(_))` for stale/unknown model handles;
   invalid visible copies are skipped individually without rolling back valid copies.
@@ -108,8 +112,20 @@ migrate = """
   `std::mem::take`, `.clone()`, or borrowing.
 - Update `WorldRenderView` reads: replace `event.view.camera` (`[f64; 3]`) with
   `event.view.camera_position()` or `event.view.camera.position`, and update explicit annotations or
-  `DebugRenderer` callbacks to `&WorldRenderView<'_>`.
-- Implement `Hooks::prepare_render_buffers` to update retained `InstanceGroups` or dynamic textures
+  `DebugRenderer` callbacks to `&WorldRenderView<'_>`. Replace
+  `WorldRenderView::new(camera_position, partial_tick, game_time)` with
+  `WorldRenderView::new(&camera, partial_tick, game_time, improved_transparency, sections)`.
+  The view no longer implements `Wire` or `PartialEq`; copy out the fields you own, compare those
+  fields directly, or encode them in your own payload type.
+- The native replacement target stays `sunrise_client_render::gfx::Renderer::render`. Change its
+  signature to `fn render(&mut self, frame: &Frame<'_>, hooks: Option<&mut dyn
+  sunrise_client_render::gfx::world_primitives::FrameHooks>) -> Result<bool>` and forward `hooks`
+  when delegating to the original. The `Result` is `sunrise_client_render::Result`.
+- `AfterTranslucentBlocks` and `AfterWeather` are classic-only. For improved transparency use
+  `OitTranslucent` sub-passes for lines/quads; mod pipeline quads are not compatible with OIT.
+  Submit those in `submit_custom_geometry` for the deferred world pass or choose an available
+  standard world stage that meets your ordering needs.
+- Implement `Hooks::prepare_render_buffers` to update retained `InstanceGroups`
   before pass-bearing stages run.
 - Replace `RenderLevelStage::ALL` with `RenderLevelStage::frame_order(view.improved_transparency)`
   (`CLASSIC_ORDER` or `OIT_ORDER`).

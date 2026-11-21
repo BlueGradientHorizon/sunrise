@@ -77,110 +77,6 @@ impl ViewSet {
     }
 }
 
-/// Collects canonical primary-camera visible sections (including compiled empty air sections
-/// tracked in `detail_columns` without a `SectionGpu` mesh) into reusable `out` and `scratch`
-/// storage, ordered front-to-back by distance then section key.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn collect_primary_renderable_sections_into<T>(
-    detail_columns: &crate::fast_hash::FxHashMap<(i32, i32), crate::section_mask::SectionMask>,
-    sections: &super::resident::Resident<T>,
-    is_empty: impl Fn(&T) -> bool,
-    reachable: impl Fn(super::SectionKey) -> bool,
-    lod_cutout: &crate::fast_hash::FxHashSet<(i32, i32)>,
-    lod_leaving: &[(super::SectionKey, std::time::Instant)],
-    lod_leaving_columns: &crate::fast_hash::FxHashSet<(i32, i32)>,
-    camera: DVec3,
-    radius: i32,
-    frustum: &Frustum,
-    cave_culling: bool,
-    scratch: &mut Vec<(u64, super::SectionKey, bool)>,
-    out: &mut Vec<mod_api::RenderableSection>,
-) {
-    out.clear();
-    scratch.clear();
-    let min_y = sections.min_y();
-    let from = super::resident::camera_column(camera);
-    let beyond = |x: i32, z: i32| {
-        (!lod_cutout.is_empty() && lod_cutout.contains(&(x, z)))
-            || (!lod_leaving_columns.is_empty() && lod_leaving_columns.contains(&(x, z)))
-    };
-    let mut emit_section = |cx: i32, sy: i32, cz: i32, near: bool, inside: bool| {
-        let key = (cx, sy, cz);
-        if near && cave_culling && !reachable(key) {
-            return;
-        }
-        let ox = f64::from(cx * 16) - camera.x;
-        let oy = f64::from(min_y + sy * 16) - camera.y;
-        let oz = f64::from(cz * 16) - camera.z;
-        let min = Vec3::new(ox as f32, oy as f32, oz as f32);
-        let resident = sections.find_with_bounds(key);
-        if !inside {
-            let bounds = resident.and_then(|(_, b)| b).filter(|_| frustum.tight());
-            let (bmin, bmax) = super::resident::section_box(min, bounds);
-            if !frustum.intersects(bmin, bmax) {
-                return;
-            }
-        }
-        let dx8 = ox + 8.0;
-        let dy8 = oy + 8.0;
-        let dz8 = oz + 8.0;
-        let distance = (dx8 * dx8 + dy8 * dy8 + dz8 * dz8).to_bits();
-        let empty = resident.is_none_or(|(gpu, _)| is_empty(gpu));
-        scratch.push((distance, key, empty));
-    };
-    for (&(cx, cz), &mask) in detail_columns {
-        if mask.is_empty() {
-            continue;
-        }
-        let near = crate::streaming::in_view_distance(from, radius, cx, cz);
-        if !near && !beyond(cx, cz) {
-            continue;
-        }
-        let mut it = mask.iter();
-        let Some(low) = it.next() else { continue };
-        let high = it.last().unwrap_or(low);
-        let ox = f64::from(cx * 16) - camera.x;
-        let oz = f64::from(cz * 16) - camera.z;
-        let min_x = ox as f32;
-        let min_z = oz as f32;
-        let low_oy = (f64::from(min_y + low as i32 * 16) - camera.y) as f32;
-        let high_oy = (f64::from(min_y + high as i32 * 16) - camera.y) as f32;
-        let cmin = Vec3::new(min_x, low_oy, min_z);
-        let cmax = Vec3::new(min_x + 16.0, high_oy + 16.0, min_z + 16.0);
-        let inside = frustum.contains(cmin, cmax);
-        if !inside && !frustum.intersects(cmin, cmax) {
-            continue;
-        }
-        for y in mask.iter() {
-            emit_section(cx, y as i32, cz, near, inside);
-        }
-    }
-    if !lod_leaving_columns.is_empty() {
-        for &(key, _) in lod_leaving {
-            let (cx, sy, cz) = key;
-            if detail_columns
-                .get(&(cx, cz))
-                .is_some_and(|m| m.contains(sy as usize))
-            {
-                continue;
-            }
-            let near = crate::streaming::in_view_distance(from, radius, cx, cz);
-            emit_section(cx, sy, cz, near, false);
-        }
-    }
-    scratch.sort_unstable_by_key(|&(distance, key, _)| (distance, key));
-    out.reserve(scratch.len());
-    for &(_, (cx, sy, cz), empty) in scratch.iter() {
-        let origin = [cx * 16, min_y + sy * 16, cz * 16];
-        let [ox, oy, oz] = origin.map(f64::from);
-        out.push(mod_api::RenderableSection::new(
-            origin,
-            [[ox, oy, oz], [ox + 16.0, oy + 16.0, oz + 16.0]],
-            empty,
-        ));
-    }
-}
-
 impl Renderer {
     /// Whether order-independent transparency is active for the given option value on this
     /// renderer (no shader pack post-chain, no native pack, and device supports OIT).
@@ -189,33 +85,6 @@ impl Renderer {
             && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
             && self.native.is_none()
             && super::oit::supported(&self.device)
-    }
-
-    /// Populate `self.visible_renderable_sections` with the primary camera's canonical visible
-    /// sections (including compiled air sections), reusing backing storage across frames.
-    pub(super) fn collect_primary_renderable_sections(
-        &mut self,
-        camera: DVec3,
-        radius: i32,
-        frustum: &Frustum,
-        cave_culling: bool,
-    ) {
-        let occlusion = &self.occlusion;
-        collect_primary_renderable_sections_into(
-            &self.detail_columns,
-            &self.sections,
-            |gpu| gpu.solid == 0 && gpu.translucent == 0,
-            |k| occlusion.contains(k),
-            &self.lod_cutout,
-            &self.lod_leaving,
-            &self.lod_leaving_scratch,
-            camera,
-            radius,
-            frustum,
-            cave_culling,
-            &mut self.visible_renderable_scratch,
-            &mut self.visible_renderable_sections,
-        );
     }
 
     /// The views `render` draws `frame` from.
@@ -401,8 +270,6 @@ mod tests {
 
         let mut lod_cutout: FxHashSet<(i32, i32)> = FxHashSet::default();
         lod_cutout.insert((0, -7));
-        let lod_leaving: Vec<(super::super::SectionKey, std::time::Instant)> = Vec::new();
-        let lod_leaving_columns: FxHashSet<(i32, i32)> = FxHashSet::default();
 
         let camera = DVec3::new(8.0, 8.0, 8.0);
         let view = View::screen(180.0, 0.0, 70.0, 16.0 / 9.0, 512.0);
@@ -410,39 +277,32 @@ mod tests {
             view.view_proj(Mat4::IDENTITY),
         ));
 
-        let mut scratch = Vec::new();
-        let mut out = Vec::new();
-        collect_primary_renderable_sections_into(
-            &detail_columns,
-            &sections,
-            |&empty| empty,
-            |key| key != (0, 0, -3),
-            &lod_cutout,
-            &lod_leaving,
-            &lod_leaving_columns,
+        let mut selected = Vec::new();
+        let mut draws = Vec::new();
+        sections.walk(
             camera,
             3,
             &frustum,
+            |key| key != (0, 0, -3),
+            |x, z| lod_cutout.contains(&(x, z)),
             true,
-            &mut scratch,
-            &mut out,
-        );
-
-        let origins_and_empty: Vec<([i32; 3], bool)> =
-            out.iter().map(|s| (s.origin, s.empty)).collect();
-        assert_eq!(
-            origins_and_empty,
-            vec![
-                ([0, 0, -16], true),
-                ([0, 0, -32], false),
-                ([0, 0, -112], false),
-            ],
-            "canonical primary walk keeps compiled air, excludes behind/cave-culled/out-of-range, and honours lod_cutout"
+            &mut draws,
+            Some(super::super::resident::PrimarySelection {
+                frustum: &frustum,
+                detail_columns: &detail_columns,
+                out: &mut selected,
+            }),
         );
         assert_eq!(
-            out[0].bounds,
-            [[0.0, 0.0, -16.0], [16.0, 16.0, 0.0]],
-            "compiled air section reports full 16x16x16 world bounds"
+            selected
+                .iter()
+                .map(|&(_, key, slot)| (key, slot.is_none()))
+                .collect::<Vec<_>>(),
+            [((0, 0, -1), true), ((0, 0, -2), false), ((0, 0, -7), false)]
+        );
+        assert_eq!(
+            draws.iter().map(|v| v.key).collect::<Vec<_>>(),
+            [(0, 0, -7)]
         );
     }
 }

@@ -1,5 +1,5 @@
 //! `WorldDrawContext::name_tag` (#4171): a mod's label hides behind a wall unless it is
-//! see-through, shrinks with distance as a name tag does, is refused whole for text too deep
+//! see-through, shrinks with distance as a name tag does, supports deep in-memory text
 //! or a position that is not finite, draws as vanilla's name tags in its light and the
 //! player's text background opacity.
 use super::host::draw::GameWorldDrawContext;
@@ -488,9 +488,15 @@ fn a_deep_label_renders_and_non_finite_is_refused() {
                 sunrise_core::nbt::Tag::List(vec![t])
             }),
         )]);
-        let (refused, drawn) = labels(game, [0.5, 70.0, 0.5], &bad_nbt, options);
-        assert_eq!(refused, Err(DrawError::TextRefused));
-        assert!(drawn.iter().all(Vec::is_empty));
+        let (ok, drawn) = labels(game, [0.5, 70.0, 0.5], &bad_nbt, options);
+        let (_, expected) = labels(game, [0.5, 70.0, 0.5], &Text::literal("x"), options);
+        assert_eq!(ok, Ok(()));
+        for (actual, expected) in drawn.iter().zip(&expected) {
+            assert_eq!(
+                bytemuck::cast_slice::<Vertex, u8>(actual),
+                bytemuck::cast_slice::<Vertex, u8>(expected)
+            );
+        }
         for at in [[f64::NAN, 70.0, 0.5], [0.5, f64::INFINITY, 0.5]] {
             let (refused, drawn) = labels(game, at, &Text::literal("x"), options);
             assert_eq!(refused, Err(DrawError::NonFinite));

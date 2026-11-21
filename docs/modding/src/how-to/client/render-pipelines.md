@@ -169,8 +169,7 @@ sub-passes (`OitTranslucent`) return `StagePass::Oit`, which exposes only `lines
 because mod render pipelines target the main world colour format rather than OIT float targets.
 Backing storage grows dynamically without a fixed per-view quad cap. Within a stage, pipeline quads
 draw after that stage's plain quads and lines, in the order submitted. Under a shader pack they
-follow the plain quads: a stage the pack draws itself is drawn with the next stage the game
-reaches.
+follow the plain quads. A stage skipped by a shader pack does not run or replay later.
 
 ## Sampling a texture
 
