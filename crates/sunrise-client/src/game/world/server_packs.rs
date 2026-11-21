@@ -659,6 +659,7 @@ mod tests {
             sync::mpsc,
             time::{Duration, Instant},
         };
+        use winit::keyboard::KeyCode;
 
         const OWNER: &str = "audio_toast_fixture";
         struct HideHud;
@@ -687,7 +688,6 @@ mod tests {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
                     game.title = None;
                     game.screen = crate::game::Screen::Playing;
-                    game.ui.hide_gui = false;
                     game.audio.backend_live_for_bench();
                     let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
                     let (dropped, retired) = mpsc::channel();
@@ -742,7 +742,8 @@ mod tests {
                     let canceled = game.hud_layers(size);
                     assert!(!has_toast(&canceled, 0.0), "ordinary toast is canceled");
                     assert!(has_toast(&canceled, error_y), "audio error still draws");
-                    game.ui.hide_gui = true;
+                    game.key_pressed(KeyCode::F1, KeyCode::F1).unwrap();
+                    game.handle_play_keybinds();
                     assert!(
                         !has_toast(&game.hud_layers(size), error_y),
                         "F1 hides the notice"

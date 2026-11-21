@@ -163,11 +163,11 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         game.screen = screen;
         game.remote.as_mut().unwrap().state_id = 17;
 
-        // The wire reader retains a negative damage patch that cannot be hashed.
-        let mut unhashable = Stack::new(game.item_id("minecraft:wooden_pickaxe"), 1);
+        // MapPostProcessing.SCALE has a stream codec but no persistent codec to hash.
+        let mut unhashable = Stack::new(game.item_id("minecraft:filled_map"), 1);
         unhashable
             .added
-            .push((component::DAMAGE, Component::Int(-1)));
+            .push((component::MAP_POST_PROCESSING, Component::Int(1)));
         let inventory = |slot, item| C::SetPlayerInventory(play::SetPlayerInventory { slot, item });
         let packet = inventory(0, Some(unhashable)).encode();
         let mut packet = Reader::new(&packet);
@@ -180,12 +180,34 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
             game.carried.clone(),
         );
         assert!(before.0.as_ref().unwrap().wire_patch().is_some());
-        // The first pickup can hash. The second swaps the pickaxe onto the cursor.
-        assert!(!menu.click(game, &[pickup(37), pickup(36)]));
+        assert!(game.hashed_stack(&before.0).is_err());
+        // The second pickup would put the unhashable map on the cursor.
+        // Submit both clicks in order, without committing or sending any prediction.
+        assert!(menu.click(game, &[pickup(37), pickup(36)]));
         assert_eq!(
             (&game.inventory[0], &game.inventory[1], &game.carried),
             (&before.0, &before.1, &before.2)
         );
+        for slot in [37, 36] {
+            let (id, body) = reader.recv().unwrap();
+            let play::Serverbound::ContainerClick(click) =
+                play::Serverbound::decode(id, &body).unwrap()
+            else {
+                panic!("expected an unpredicted pickup for slot {slot}");
+            };
+            assert_eq!(
+                (
+                    click.container,
+                    click.state,
+                    click.slot,
+                    click.button,
+                    click.input
+                ),
+                (0, 17, slot, 0, 0)
+            );
+            assert!(click.changed.is_empty());
+            assert!(click.carried.is_none());
+        }
         reader
             .set_read_timeout(Some(std::time::Duration::from_millis(20)))
             .unwrap();

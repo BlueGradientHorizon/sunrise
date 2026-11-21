@@ -439,6 +439,9 @@ impl Game<'_> {
                 if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
                     self.native_client_level_unload(&old);
                 }
+                // Minecraft.clearClientLevel -> updateLevelInEngines(null) stops
+                // sound immediately after the level-unload event fires.
+                self.stop_sounds_for_new_level();
                 self.native_lifecycle.begin_close();
                 self.native_lifecycle_world_closed();
                 let ticks = self.ticks;
