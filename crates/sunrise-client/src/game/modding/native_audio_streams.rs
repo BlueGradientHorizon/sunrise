@@ -1,4 +1,4 @@
-//! The game opens client mods' pull and push audio streams on the mixer's separate pool and
+//! The game opens client mods' audio streams on the mixer's separate pool and
 //! places the entity-following ones each frame.
 use super::Game;
 use mod_api::{AudioRefusal, AudioStream, AudioStreamRef, StreamSpec};
@@ -16,22 +16,6 @@ impl Game<'_> {
         &self,
         spec: &StreamSpec,
         source: Box<dyn AudioStream>,
-    ) -> Result<AudioStreamRef, AudioRefusal> {
-        self.open_mod_audio_stream(spec, Some(source))
-    }
-
-    /// Opens a stream an async producer pushes into.
-    pub(in crate::game) fn open_push_audio_stream(
-        &self,
-        spec: &StreamSpec,
-    ) -> Result<AudioStreamRef, AudioRefusal> {
-        self.open_mod_audio_stream(spec, None)
-    }
-
-    fn open_mod_audio_stream(
-        &self,
-        spec: &StreamSpec,
-        source: Option<Box<dyn AudioStream>>,
     ) -> Result<AudioStreamRef, AudioRefusal> {
         if !self.native_window() {
             return Err(AudioRefusal::OnServer);

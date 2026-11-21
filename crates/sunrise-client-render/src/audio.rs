@@ -195,7 +195,7 @@ struct Mixer {
     cameras: Vec<([f64; 3], Basis, u32)>,
     /// Per-source gain/pan/step cache for one buffer, reused across callbacks.
     voices: Vec<(ChannelId, [f32; 3], f64)>,
-    /// Mods' push and pull audio streams, separate from vanilla's channels.
+    /// Mods' audio streams, separate from vanilla's channels.
     streams: Vec<streams::StreamVoice>,
     /// Each `SoundSource`'s volume for a stream: master times the group, as every sound's.
     stream_gain: [f32; 11],
@@ -1886,13 +1886,13 @@ impl Audio {
             }
         }
     }
-    /// Opens a mod stream. The shared worker reads `source` on demand if supplied; otherwise
-    /// the mod pushes PCM from any thread. Both paths use the separate mod stream pool.
+    /// Opens a mod stream on the separate mod stream pool. The shared worker reads `source`
+    /// on demand.
     pub fn open_stream(
         &self,
         owner: &str,
         spec: &mod_api::StreamSpec,
-        source: Option<Box<dyn mod_api::AudioStream>>,
+        source: Box<dyn mod_api::AudioStream>,
     ) -> std::result::Result<Arc<dyn mod_api::AudioStreamSource>, mod_api::AudioRefusal> {
         if !self.backend.live {
             return Err(mod_api::AudioRefusal::NoOutput);

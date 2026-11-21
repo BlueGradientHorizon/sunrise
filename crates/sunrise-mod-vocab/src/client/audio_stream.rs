@@ -1,47 +1,37 @@
-//! A client mod's PCM streams: the mixer's worker pulls from a native [`AudioStream`], or an
-//! async producer pushes through [`AudioStreamRef`]. Both use their own pool, never vanilla's
-//! streaming slots.
+//! A client mod's PCM streams: the mixer's worker pulls from a native [`AudioStream`] on its
+//! own pool, never vanilla's streaming slots.
 use super::types::SoundSource;
 use crate::EntityRef;
 use std::sync::Arc;
 
 /// The most streams one mod holds open at once ([`AudioRefusal::ModStreamLimit`]).
-pub const AUDIO_STREAMS_PER_MOD: u32 = 32;
+pub const AUDIO_STREAMS_PER_MOD: u32 = 256;
 /// The most streams open at once across every mod ([`AudioRefusal::TooManyStreams`]).
-pub const AUDIO_STREAMS_TOTAL: u32 = 64;
+pub const AUDIO_STREAMS_TOTAL: u32 = 1_024;
 /// The lowest sample rate a stream takes, in Hz.
 pub const AUDIO_STREAM_RATE_MIN: u32 = 8_000;
 /// The highest sample rate a stream takes, in Hz.
 pub const AUDIO_STREAM_RATE_MAX: u32 = 48_000;
-/// The capacity of an async push stream's queue, in milliseconds of source audio.
-pub const AUDIO_STREAM_RING_MAX_MS: u32 = 1_000;
 
 /// A native source of PCM owned by the mixer. Its worker calls [`read`](Self::read) serially
 /// on demand, never in the device callback or while holding mixer or pool locks.
 ///
 /// The source runs in-process, with no `Host` or world borrow and no reentry into the game.
 /// Reads must do bounded, nonblocking work: do not wait on I/O, locks, another thread or a tick.
-/// Muting or unplacing the stream does not pause demand. The worker drops an admitted source
-/// at EOF or after stop, without waiting for another device callback.
+/// An async or network producer bridges through its own nonblocking buffer read here. Muting or
+/// unplacing the stream does not pause demand. The worker drops an admitted source at EOF or
+/// after stop, without waiting for another device callback. A panic in [`read`](Self::read)
+/// stops only this stream.
 // no wire: the mixer owns and calls this native source in-process.
 pub trait AudioStream: Send + 'static {
     /// Fill at most `pcm.len() / channels` whole frames of interleaved signed 16-bit PCM in the
-    /// stream's [`StreamSpec`] format. The buffer is cleared before each call. Report only
-    /// frames supplied; a count larger than the offered buffer stops the stream.
-    fn read(&mut self, pcm: &mut [i16]) -> AudioRead;
-}
-
-/// What a pull source supplied in one [`AudioStream::read`].
-// no wire: a native source returns this directly to the mixer worker.
-// exhaustive: a read either supplies frames or ends the source.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AudioRead {
-    /// The number of whole interleaved frames written, not the number of samples. A short read
-    /// plays what is ready; zero is temporary silence. The worker retries on later demand.
-    Frames(usize),
-    /// Permanently out of PCM. Return this on a separate read after reporting any final frames;
-    /// the mixer plays them for their full duration before stopping the stream.
-    Eof,
+    /// stream's [`StreamSpec`] format. `pcm` is zeroed before each call.
+    ///
+    /// - Returning `0` signals EOF: already-queued frames drain, then the stream stops.
+    /// - Returning `1..=pcm.len() / channels` publishes that many whole interleaved frames;
+    ///   return `n > 0` without writing to `pcm` for temporary silence.
+    /// - Returning `> pcm.len() / channels` stops the stream immediately without publishing.
+    fn read(&mut self, pcm: &mut [i16]) -> usize;
 }
 
 /// Where a stream is heard. Positions are in the client's current level.
@@ -235,14 +225,8 @@ impl std::fmt::Display for SpecFault {
 }
 
 /// The game's side of one open audio stream. A mod reaches it through [`AudioStreamRef`], not
-/// directly. Every method works from any thread; `push` and the controls never wait on the mixer.
+/// directly. Every method works from any thread and never waits on the mixer.
 pub trait AudioStreamSource: Send + Sync + 'static {
-    /// Queues interleaved `samples`: whole frames only (a trailing odd sample of a stereo stream
-    /// is not taken). Returns the frames accepted, which falls short of the frames offered when
-    /// the ring is full, or when another thread is pushing to the same stream at that moment
-    /// (the ring has one producer: that push returns 0 and drops nothing already queued): the
-    /// rest is refused, never delayed. A pull stream accepts no pushes.
-    fn push(&self, samples: &[i16]) -> u32;
     /// Moves the stream; false, changing nothing, for a stereo stream and a placement other than
     /// `Flat`, for a position that is not finite or lies past 30 million blocks, and once the
     /// stream is stopped.
@@ -257,11 +241,11 @@ pub trait AudioStreamSource: Send + Sync + 'static {
     fn stop(&self);
 }
 
-/// The controls for an open mod audio stream, with push access only for async push streams.
+/// The controls for an open mod audio stream.
 ///
 /// Keep the handle while the stream should play. Dropping it stops the stream, as [`stop`]
-/// does. The handle can be used from any thread, including a `Network`-thread payload handler;
-/// neither push nor pull waits for a client tick.
+/// does. Every control works from any thread, including a `Network`-thread payload handler,
+/// without waiting on the mixer or a client tick.
 ///
 /// [`stop`]: AudioStreamRef::stop
 // no wire: the handle controls a stream on this client's mixer.
@@ -276,18 +260,6 @@ impl AudioStreamRef {
     #[doc(hidden)]
     pub fn new(source: Arc<dyn AudioStreamSource>) -> Self {
         Self { source }
-    }
-    /// Queues interleaved signed 16-bit PCM (`channels` samples per frame) and returns the
-    /// number of whole frames accepted. A trailing incomplete frame is not queued. The ring
-    /// holds [`AUDIO_STREAM_RING_MAX_MS`] milliseconds of source audio; drop what does not fit
-    /// or push it again later. The mixer starts with the first available frame and plays
-    /// silence when the stream runs dry.
-    ///
-    /// A push writes straight into the ring made when the stream opened: it never blocks,
-    /// allocates or waits for a tick. Only one thread can push at a time: an overlapping push
-    /// accepts nothing and returns 0. A pull stream always returns 0.
-    pub fn push(&self, samples: &[i16]) -> u32 {
-        self.source.push(samples)
     }
     /// Moves the stream. False, changing nothing, for a stereo stream and a placement other than
     /// [`StreamPlacement::Flat`], for a position that is not finite or lies past 30 million

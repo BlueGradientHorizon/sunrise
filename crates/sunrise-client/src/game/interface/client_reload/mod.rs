@@ -39,13 +39,6 @@ impl mod_api::prelude::AudioClientHost for StartupClientHost {
     ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {
         Err(mod_api::AudioRefusal::Unavailable)
     }
-
-    fn open_push_audio_stream(
-        &self,
-        _: &mod_api::StreamSpec,
-    ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {
-        Err(mod_api::AudioRefusal::Unavailable)
-    }
 }
 
 impl Game<'_> {
