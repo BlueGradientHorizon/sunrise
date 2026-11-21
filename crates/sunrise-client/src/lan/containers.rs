@@ -1198,7 +1198,9 @@ impl Hub {
                     (&crafter, None)
                 }
                 // ContainerData supplies zeros for slots the mod has not written.
-                Some(BlockEntity::Mod(e)) => (&e.data, m.mod_type.map(|t| t.data_slots)),
+                Some(BlockEntity::Mod(e)) if m.mod_type.is_some() || !e.data.is_empty() => {
+                    (&e.data, m.mod_type.map(|t| t.data_slots))
+                }
                 _ => return,
             };
             let count = declared.unwrap_or(data.len());

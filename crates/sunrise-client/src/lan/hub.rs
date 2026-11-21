@@ -8035,14 +8035,6 @@ mod tests {
 
         // The declaration is larger than any Vec can hold; it is not used as a capacity.
         hub.sync_containers(&world);
-        assert_eq!(
-            hub.guests[0]
-                .menu
-                .as_ref()
-                .unwrap()
-                .reported_unsent_data_len,
-            Some(usize::MAX)
-        );
         let packets = drain_data(&rx);
         let mut by_id = BTreeMap::new();
         for packet in packets {
@@ -8078,5 +8070,15 @@ mod tests {
             (updates[0].container, updates[0].id, updates[0].value),
             (1, 300, 222)
         );
+
+        let Some(crate::containers::BlockEntity::Mod(entity)) = world.block_entities.get_mut(&pos)
+        else {
+            panic!("missing menu block entity");
+        };
+        entity.data.truncate(301);
+        hub.sync_containers(&world);
+        let updates = drain_data(&rx);
+        assert_eq!(updates.len(), 1);
+        assert_eq!((updates[0].id, updates[0].value), (i16::MAX, 0));
     }
 }
