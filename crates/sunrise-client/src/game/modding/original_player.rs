@@ -898,9 +898,9 @@ mod tests {
                                 ]
                             );
                             assert_eq!(
-                                VALUE.has(game, Holder::Player(12)),
-                                Ok(false),
-                                "the old UUID checkpoint must not restore over the replacement"
+                                VALUE.get(game, Holder::Player(12)),
+                                Ok(999),
+                                "the old UUID checkpoint must not overwrite the clone listener's write"
                             );
                             assert_eq!(RETAINED.get(game, Holder::Player(12)), Ok(77));
                         } else {

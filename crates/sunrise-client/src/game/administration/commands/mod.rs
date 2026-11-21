@@ -4836,68 +4836,72 @@ mod forced_respawn_tests {
         use crate::game::{native_guest_turn_tests::with_guests, respawn_anchor::RespawnConfig};
         use sunrise_client::chunk::Chunk;
 
-        with_guests(|game| {
-            game.build_registries();
-            for x in -2..=2 {
-                for z in -2..=2 {
-                    game.streaming
-                        .insert_remote(&mut game.world, Chunk::empty(x, z));
-                }
-            }
-            game.level.world_spawn = Some([0, 80, 0]);
-            game.level.world_spawn_angle = [-30.0, -5.0];
-            let registry = game.pack.assets.registry;
-            let air = registry.default_state("minecraft:air").unwrap();
-            // Liquid is a block property: aquatic plants such as kelp still permit
-            // a forced point, while a bubble column does not, at feet or head.
-            for (block, allowed) in [
-                ("air", true),
-                ("water", false),
-                ("lava", false),
-                ("bubble_column", false),
-                ("kelp", true),
-                ("stone", false),
-            ] {
-                let state = registry
-                    .default_state(&format!("minecraft:{block}"))
-                    .unwrap();
-                for height in [0, 1] {
-                    game.world.set(5, 64, 5, air).unwrap();
-                    game.world.set(5, 65, 5, air).unwrap();
-                    game.world.set(5, 64 + height, 5, state).unwrap();
-                    assert!(game.as_console(|g| g.run_command("spawnpoint guest12 5 64 5 45 10")));
-                    let config = game
-                        .command_guest(12)
-                        .unwrap()
-                        .respawn_elsewhere
-                        .as_ref()
-                        .and_then(RespawnConfig::from_saved)
-                        .unwrap();
-                    assert!(config.forced);
-                    assert_eq!(config.pos, [5, 64, 5]);
-                    game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
-                        g.dead = true;
-                        g.health = 0.0;
-                    });
-                    game.guest_respawn(12);
-                    let guest = game.command_guest(12).unwrap();
-                    assert!(!guest.dead, "{block} at height {height}");
-                    assert_eq!(
-                        guest.respawn_elsewhere.is_some(),
-                        allowed,
-                        "{block} at height {height}"
-                    );
-                    assert_eq!(game.level.world_spawn, Some([0, 80, 0]));
-                    if allowed {
-                        assert_eq!(guest.position, [5.5, 64.1, 5.5]);
-                        assert_eq!([guest.yaw, guest.pitch], [45.0, 10.0]);
-                    } else {
-                        // The missing point must not supply the fallback's facing.
-                        assert_eq!([guest.yaw, guest.pitch], [-30.0, -5.0]);
-                        assert_eq!(game.level.world_spawn_angle, [-30.0, -5.0]);
+        mod_platform::testing::with_mods(Vec::new().into(), || {
+            with_guests(|game| {
+                game.build_registries();
+                for x in -2..=2 {
+                    for z in -2..=2 {
+                        game.streaming
+                            .insert_remote(&mut game.world, Chunk::empty(x, z));
                     }
                 }
-            }
+                game.level.world_spawn = Some([0, 80, 0]);
+                game.level.world_spawn_angle = [-30.0, -5.0];
+                let registry = game.pack.assets.registry;
+                let air = registry.default_state("minecraft:air").unwrap();
+                // Liquid is a block property: aquatic plants such as kelp still permit
+                // a forced point, while a bubble column does not, at feet or head.
+                for (block, allowed) in [
+                    ("air", true),
+                    ("water", false),
+                    ("lava", false),
+                    ("bubble_column", false),
+                    ("kelp", true),
+                    ("stone", false),
+                ] {
+                    let state = registry
+                        .default_state(&format!("minecraft:{block}"))
+                        .unwrap();
+                    for height in [0, 1] {
+                        game.world.set(5, 64, 5, air).unwrap();
+                        game.world.set(5, 65, 5, air).unwrap();
+                        game.world.set(5, 64 + height, 5, state).unwrap();
+                        assert!(
+                            game.as_console(|g| g.run_command("spawnpoint guest12 5 64 5 45 10"))
+                        );
+                        let config = game
+                            .command_guest(12)
+                            .unwrap()
+                            .respawn_elsewhere
+                            .as_ref()
+                            .and_then(RespawnConfig::from_saved)
+                            .unwrap();
+                        assert!(config.forced);
+                        assert_eq!(config.pos, [5, 64, 5]);
+                        game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                            g.dead = true;
+                            g.health = 0.0;
+                        });
+                        game.guest_respawn(12);
+                        let guest = game.command_guest(12).unwrap();
+                        assert!(!guest.dead, "{block} at height {height}");
+                        assert_eq!(
+                            guest.respawn_elsewhere.is_some(),
+                            allowed,
+                            "{block} at height {height}"
+                        );
+                        assert_eq!(game.level.world_spawn, Some([0, 80, 0]));
+                        if allowed {
+                            assert_eq!(guest.position, [5.5, 64.1, 5.5]);
+                            assert_eq!([guest.yaw, guest.pitch], [45.0, 10.0]);
+                        } else {
+                            // The missing point must not supply the fallback's facing.
+                            assert_eq!([guest.yaw, guest.pitch], [-30.0, -5.0]);
+                            assert_eq!(game.level.world_spawn_angle, [-30.0, -5.0]);
+                        }
+                    }
+                }
+            });
         });
     }
 }

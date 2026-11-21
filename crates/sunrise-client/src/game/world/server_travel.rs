@@ -1208,35 +1208,6 @@ impl Game<'_> {
         }
     }
 
-    /// TeleportTransition.createDefault and missingRespawnBlock: the player
-    /// waits at the world spawn for its chunks, then PlayerSpawnFinder puts
-    /// it on a free column within the respawn radius.
-    pub(super) fn world_spawn_trip(&mut self, conn: u32) {
-        let Some([x, y, z]) = self.level.world_spawn else {
-            return;
-        };
-        self.server_trips.retain(|t| !t.is(conn));
-        self.server_trips.push(Trip {
-            conn,
-            dim: self.world_spawn_level(),
-            source: self.dim,
-            target: Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5),
-            end: false,
-            entering: false,
-            plan: None,
-            vehicle: None,
-            gateway: None,
-            respawn: None,
-            spawn_search: None,
-            world_spawn: true,
-            missing: None,
-            finder: None,
-            placed: false,
-            hold: false,
-            left: None,
-        });
-    }
-
     /// `TheEndGatewayBlockEntity.getPortalPosition` and the teleport within
     /// the End (keeping the player's motion and look): straight to an exact
     /// exit, else once the destination has loaded around the player, who
@@ -1330,30 +1301,7 @@ impl Game<'_> {
                 return;
             };
             let yaw = host.hub.guests[i].yaw;
-            let (position, yaw) = if trip.world_spawn {
-                // PlayerSpawnFinder.findSpawn around the world spawn.
-                let suggestion =
-                    [trip.target.x, trip.target.y, trip.target.z].map(|v| v.floor() as i32);
-                match self.search_spawn(suggestion, &mut trip.finder) {
-                    // The respawn already put the player on this column:
-                    // vanilla teleports once, so no second move.
-                    Ok(at)
-                        if self.lan.as_ref().is_some_and(|host| {
-                            host.hub.guests[i].position == [at.x, at.y, at.z]
-                        }) =>
-                    {
-                        self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
-                        continue;
-                    }
-                    Ok(at) => (at, yaw),
-                    Err(chunk) => {
-                        self.spawn_wait.push(chunk);
-                        self.server_trips.insert(k, trip);
-                        k += 1;
-                        continue;
-                    }
-                }
-            } else if let Some(job) = trip.gateway {
+            let (position, yaw) = if let Some(job) = trip.gateway {
                 match self.resolve_gateway(job, trip.target) {
                     Ok(at) => (at, yaw),
                     Err(e) => {
