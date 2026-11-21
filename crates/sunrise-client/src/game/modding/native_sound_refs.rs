@@ -9,14 +9,14 @@
 use super::{
     Game,
     commands::Target,
+    journal_level_write::PendingWrite,
     native_hooks::{mod_sound_ok, sound_id},
 };
 use mod_api::{EntityRef, PlayerRef, SoundSource};
-use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
     /// Where `player` is reached now: the window's own player or a guest.
-    fn native_player_sound_target(&self, player: PlayerRef) -> Option<Target> {
+    pub(super) fn native_player_sound_target(&self, player: PlayerRef) -> Option<Target> {
         if self.player(player.uuid()) != Some(player) {
             return None;
         }
@@ -44,13 +44,17 @@ impl Game<'_> {
         sound: Option<&str>,
         source: Option<SoundSource>,
     ) -> bool {
-        let Some(target) = self.native_player_sound_target(player) else {
+        if self.native_player_sound_target(player).is_none() {
             return false;
-        };
+        }
         if sound.is_some_and(|s| !sound_id(s)) {
             return false;
         }
-        self.stop_sound_for(&[target], sound, source.map(SoundSource::index));
+        self.emit_level_effect(PendingWrite::PlayerStopSound {
+            player,
+            sound: sound.map(str::to_owned),
+            source: source.map(SoundSource::index),
+        });
         true
     }
     /// `PlaySoundCommand` for one player: plays sound event `sound` at the
@@ -76,8 +80,14 @@ impl Game<'_> {
         {
             return false;
         }
-        let seed = self.world.random.next_long();
-        self.play_sound_to(target, sound, at, volume, pitch, source.index(), seed);
+        self.emit_level_effect(PendingWrite::PlayerSound {
+            player,
+            sound: sound.to_owned(),
+            at,
+            source: source.index(),
+            volume,
+            pitch,
+        });
         true
     }
     /// `Level.playSound(null, entity, sound, source, volume, pitch)`: plays
@@ -103,9 +113,7 @@ impl Game<'_> {
         ) else {
             return false;
         };
-        self.native_queue_sound(level, sound, at, source, volume, pitch, None)
-            .map(|queued| queued.entity = Some(id))
-            .is_some()
+        self.native_queue_sound(level, sound, at, source, volume, pitch, None, Some(id))
     }
 }
 
@@ -317,18 +325,16 @@ pub(super) mod tests {
             let before = game.lan.as_ref().unwrap().hub.next_sound_seed();
             let mut level_random = game.world.random.clone();
             for _ in 0..2 {
-                assert!(
-                    game.native_queue_sound(
-                        level,
-                        sound,
-                        [0.5, 64.0, 0.0],
-                        SoundSource::Neutral,
-                        1.0,
-                        1.0,
-                        None,
-                    )
-                    .is_some()
-                );
+                assert!(game.native_queue_sound(
+                    level,
+                    sound,
+                    [0.5, 64.0, 0.0],
+                    SoundSource::Neutral,
+                    1.0,
+                    1.0,
+                    None,
+                    None,
+                ));
             }
             // The gameplay random is exactly where it was: a mod's sound
             // moves no level draw.

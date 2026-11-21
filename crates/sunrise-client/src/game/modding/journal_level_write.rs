@@ -10,9 +10,9 @@ use mod_api::{
     AttachmentBatch, AttachmentStore, BlockEntityRef, BlockKey, BlockPos, BlockSide, BlockState,
     BlockUpdateFlags, Compound, Direction, FeatureFlags, FluidState, ItemStack, LegacyRandomSource,
     LevelHost, LevelRandomHost, LevelRef, LevelTicksHost, LevelWriteHost, LightLayer,
-    PartStateError, ParticleOptions, Tags,
+    PartStateError, ParticleOptions, PlayerRef, Tags,
 };
-use sunrise_core::ticks::TickPriority;
+use sunrise_core::{random::RandomSource, ticks::TickPriority};
 use sunrise_world::{
     fluid::FluidKind,
     level::{FluidWrite, LevelAccess as _, flags, states::BlockId},
@@ -292,9 +292,73 @@ pub(super) enum PendingWrite {
     Sound(NativeSound),
     Particles(QueuedParticle),
     Event(i32, [i32; 3], i32),
+    GlobalEvent(i32, [i32; 3], i32),
+    EntityEvent(i32, i8, [f64; 3]),
+    PlayerSound {
+        player: PlayerRef,
+        sound: String,
+        at: [f64; 3],
+        source: usize,
+        volume: f32,
+        pitch: f32,
+    },
+    PlayerStopSound {
+        player: PlayerRef,
+        sound: Option<String>,
+        source: Option<usize>,
+    },
 }
 
 impl Game<'_> {
+    /// Queue a validated level, entity, or player effect immediately, or defer it to root commit
+    /// when a transaction is open so rolled-back transactions and aborted savepoints never publish
+    /// sounds, particles, or level/global/entity events.
+    pub(super) fn emit_level_effect(&mut self, write: PendingWrite) {
+        if !self.transactions.is_empty() {
+            self.after_commit(super::transactions::After::LevelWrite(Box::new(write)));
+            return;
+        }
+        match write {
+            PendingWrite::Sound(mut sound) => {
+                if let Some(host) = &self.lan {
+                    sound.seed = host.hub.next_sound_seed();
+                    self.creatures.lan_sounds.push(sound);
+                }
+            }
+            PendingWrite::Particles(particles) => {
+                self.creatures.lan_particles.push(particles);
+            }
+            PendingWrite::Event(id, pos, data) => self.level_event_at(id, pos, data),
+            PendingWrite::GlobalEvent(id, pos, data) => self.global_level_event(id, pos, data),
+            PendingWrite::EntityEvent(entity_id, event, at) => {
+                self.lan_entity_event(entity_id, event, at);
+            }
+            PendingWrite::PlayerSound {
+                player,
+                sound,
+                at,
+                source,
+                volume,
+                pitch,
+            } => {
+                if let Some(target) = self.native_player_sound_target(player) {
+                    let seed = self.world.random.next_long();
+                    self.play_sound_to(target, &sound, at, volume, pitch, source, seed);
+                }
+            }
+            PendingWrite::PlayerStopSound {
+                player,
+                sound,
+                source,
+            } => {
+                if let Some(target) = self.native_player_sound_target(player) {
+                    self.stop_sound_for(&[target], sound.as_deref(), source);
+                }
+            }
+            other => self.commit_level_write(other),
+        }
+    }
+
     pub(super) fn commit_level_write(&mut self, write: PendingWrite) {
         match write {
             PendingWrite::BlockTick(pos, block, delay) => {
@@ -323,6 +387,32 @@ impl Game<'_> {
                 self.flush_lan_particles();
             }
             PendingWrite::Event(id, pos, data) => self.level_event_at(id, pos, data),
+            PendingWrite::GlobalEvent(id, pos, data) => self.global_level_event(id, pos, data),
+            PendingWrite::EntityEvent(entity_id, event, at) => {
+                self.lan_entity_event(entity_id, event, at);
+            }
+            PendingWrite::PlayerSound {
+                player,
+                sound,
+                at,
+                source,
+                volume,
+                pitch,
+            } => {
+                if let Some(target) = self.native_player_sound_target(player) {
+                    let seed = self.world.random.next_long();
+                    self.play_sound_to(target, &sound, at, volume, pitch, source, seed);
+                }
+            }
+            PendingWrite::PlayerStopSound {
+                player,
+                sound,
+                source,
+            } => {
+                if let Some(target) = self.native_player_sound_target(player) {
+                    self.stop_sound_for(&[target], sound.as_deref(), source);
+                }
+            }
         }
     }
 

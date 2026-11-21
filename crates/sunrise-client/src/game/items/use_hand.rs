@@ -767,7 +767,9 @@ impl Game<'_> {
                     Some(living) => self.entity_sound_source(living.entity())?,
                     None => mod_api::SoundSource::Players,
                 };
-                self.native_queue_sound(level, sound, at, source, 1.0, 1.0, None)?;
+                if !self.native_queue_sound(level, sound, at, source, 1.0, 1.0, None, None) {
+                    return None;
+                }
                 true
             }
             ConsumeEffect::Native { kind, data } => consume_effect_dispatch::dispatch(kind, || {

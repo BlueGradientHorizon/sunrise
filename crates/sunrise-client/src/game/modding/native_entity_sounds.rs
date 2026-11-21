@@ -90,8 +90,7 @@ impl Game<'_> {
                 None
             }
         };
-        self.native_queue_sound(level, sound, at, source, volume, pitch, except)
-            .is_some()
+        self.native_queue_sound(level, sound, at, source, volume, pitch, except, None)
     }
     /// `Entity.gameEvent(event)`: game event `event` (`minecraft:step`...)
     /// at the entity's position with the entity as its source, which sculk
@@ -137,7 +136,9 @@ impl Game<'_> {
         let Ok(entity_id) = i32::try_from(entity.id()) else {
             return false;
         };
-        self.lan_entity_event(entity_id, id as i8, at);
+        self.emit_level_effect(super::journal_level_write::PendingWrite::EntityEvent(
+            entity_id, id as i8, at,
+        ));
         true
     }
     /// `Entity.isSpectator`: true for a player in spectator mode, false for

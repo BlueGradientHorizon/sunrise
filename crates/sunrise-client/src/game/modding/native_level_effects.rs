@@ -3,6 +3,7 @@
 //! Every player in range hears or sees them, as `ServerLevel.playSound` and
 //! `sendParticles` send them. They return false on a client, for a handle of
 //! an earlier open, or for arguments the network can't carry.
+use super::journal_level_write::PendingWrite;
 use super::native_hooks::{mod_particles_ok, mod_sound_ok};
 use super::{Game, creatures::NativeSound, lan_particles::QueuedParticle};
 use mod_api::{LevelRef, PlayerRef, PlayerWorldRefusal, SoundSource};
@@ -41,12 +42,12 @@ impl Game<'_> {
                 Err(_) => return false,
             },
         };
-        self.native_queue_sound(level, sound, at, source, volume, pitch, except)
-            .is_some()
+        self.native_queue_sound(level, sound, at, source, volume, pitch, except, None)
     }
-    /// `level_play_sound`, leaving out the player on connection
-    /// `except` (`Level.playSound(except, ...)`): the queued sound, None
-    /// when it can't be sent.
+    /// Queue or defer a validated level or entity-bound sound (`Level.playSound`), leaving out
+    /// `except` and optionally binding to `entity`. Inside an open transaction the sound waits in
+    /// `PendingWrite::Sound` until root commit (drawing its seed on publish) and discards on abort.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn native_queue_sound(
         &mut self,
         level: LevelRef,
@@ -56,26 +57,26 @@ impl Game<'_> {
         volume: f32,
         pitch: f32,
         except: Option<u32>,
-    ) -> Option<&mut NativeSound> {
-        let dimension = self.native_level_dimension(level)?;
-        if !mod_sound_ok(sound, at, source.index(), volume, pitch) {
-            return None;
+        entity: Option<i32>,
+    ) -> bool {
+        let Some(dimension) = self.native_level_dimension(level) else {
+            return false;
+        };
+        if self.lan.is_none() || !mod_sound_ok(sound, at, source.index(), volume, pitch) {
+            return false;
         }
-        // `Level.playSound` draws `soundSeedGenerator.nextLong` at the call;
-        // without a host nothing can be sent, as the flush already did.
-        let seed = self.lan.as_ref()?.hub.next_sound_seed();
-        self.creatures.lan_sounds.push(NativeSound {
+        self.emit_level_effect(PendingWrite::Sound(NativeSound {
             dimension,
             sound: sound.to_owned(),
             at,
             source: source.index() as i32,
             volume,
             pitch,
-            seed,
+            seed: 0,
             except,
-            entity: None,
-        });
-        self.creatures.lan_sounds.last_mut()
+            entity,
+        }));
+        true
     }
     /// Sends `count` particles around `at` to the players in this level
     /// within 32 blocks, as `ServerLevel.sendParticles` does: each offset is
@@ -101,7 +102,7 @@ impl Game<'_> {
         if !mod_particles_ok(options, state, state_ok, at, spread, speed) {
             return false;
         }
-        self.creatures.lan_particles.push(QueuedParticle {
+        self.emit_level_effect(PendingWrite::Particles(QueuedParticle {
             dimension,
             options: options.clone(),
             state,
@@ -110,7 +111,7 @@ impl Game<'_> {
             speed: [speed; 3],
             count,
             randomization: 0,
-        });
+        }));
         true
     }
 }
