@@ -444,6 +444,40 @@ mod copy {
 }
 
 #[test]
+fn qualified_projections_check_the_trait_prefix() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+mod types {
+    mod imp {
+        pub trait Tag { type Value; const VALUE: (); }
+        impl Tag for () { type Value = (); const VALUE: () = (); }
+    }
+    pub(super) use imp::Tag;
+    pub trait PublicTag { type Value; const VALUE: (); }
+    impl PublicTag for () { type Value = (); const VALUE: () = (); }
+}
+mod copy {
+    use super::types::*;
+    fn restricted_type(_: <() as Tag>::Value) {}
+    fn restricted_value() { let Tag = (); let _ = <() as Tag>::VALUE; }
+    fn public(_: <() as PublicTag>::Value) { let _ = <() as PublicTag>::VALUE; }
+}
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::copy::{name}"));
+    for name in ["restricted_type", "restricted_value"] {
+        let (code, why) = check(name).unwrap_err();
+        assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+        assert!(why.contains("`Tag`"), "{why}");
+    }
+    check("public").unwrap();
+}
+
+#[test]
 fn local_value_bindings_mask_imports_only_where_in_scope() {
     let root = fixture();
     fs::write(

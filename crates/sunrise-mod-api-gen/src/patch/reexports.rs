@@ -493,12 +493,25 @@ pub(super) fn check_paths(source: &mut Source, found: &Found) -> Result<(), Stri
             };
         }
 
-        fn path(&mut self, path: &syn::Path, space: Namespace) {
-            if path.leading_colon.is_none() && self.refusal.is_none() {
-                let parts: Vec<_> = path.segments.iter().map(|s| unraw(&s.ident)).collect();
-                if let Ok(Some(binding)) = self.binding(&parts, space) {
-                    self.note(&parts, binding);
-                }
+        fn path(&mut self, path: &syn::Path, qself: Option<&syn::QSelf>, space: Namespace) {
+            if path.leading_colon.is_some() || self.refusal.is_some() {
+                return;
+            }
+            let (len, space) = match qself {
+                // In `<T as m::Trait>::Item` only `m::Trait` is a path we can resolve here.
+                // In `<T>::Item` there is no trait prefix. Syn visits `T` separately.
+                Some(qself) if qself.position == 0 => return,
+                Some(qself) => (qself.position, Namespace::Type),
+                None => (path.segments.len(), space),
+            };
+            let parts: Vec<_> = path
+                .segments
+                .iter()
+                .take(len)
+                .map(|s| unraw(&s.ident))
+                .collect();
+            if let Ok(Some(binding)) = self.binding(&parts, space) {
+                self.note(&parts, binding);
             }
         }
     }
@@ -650,42 +663,32 @@ pub(super) fn check_paths(source: &mut Source, found: &Found) -> Result<(), Stri
         }
 
         fn visit_expr_path(&mut self, expr: &'ast syn::ExprPath) {
-            if expr.qself.is_none() {
-                self.path(&expr.path, Namespace::Value);
-            }
+            self.path(&expr.path, expr.qself.as_ref(), Namespace::Value);
             syn::visit::visit_expr_path(self, expr);
         }
 
         fn visit_type_path(&mut self, ty: &'ast syn::TypePath) {
-            if ty.qself.is_none() {
-                self.path(&ty.path, Namespace::Type);
-            }
+            self.path(&ty.path, ty.qself.as_ref(), Namespace::Type);
             syn::visit::visit_type_path(self, ty);
         }
 
         fn visit_trait_bound(&mut self, bound: &'ast syn::TraitBound) {
-            self.path(&bound.path, Namespace::Type);
+            self.path(&bound.path, None, Namespace::Type);
             syn::visit::visit_trait_bound(self, bound);
         }
 
         fn visit_expr_struct(&mut self, expr: &'ast syn::ExprStruct) {
-            if expr.qself.is_none() {
-                self.path(&expr.path, Namespace::Type);
-            }
+            self.path(&expr.path, expr.qself.as_ref(), Namespace::Type);
             syn::visit::visit_expr_struct(self, expr);
         }
 
         fn visit_pat_struct(&mut self, pat: &'ast syn::PatStruct) {
-            if pat.qself.is_none() {
-                self.path(&pat.path, Namespace::Type);
-            }
+            self.path(&pat.path, pat.qself.as_ref(), Namespace::Type);
             syn::visit::visit_pat_struct(self, pat);
         }
 
         fn visit_pat_tuple_struct(&mut self, pat: &'ast syn::PatTupleStruct) {
-            if pat.qself.is_none() {
-                self.path(&pat.path, Namespace::Value);
-            }
+            self.path(&pat.path, pat.qself.as_ref(), Namespace::Value);
             syn::visit::visit_pat_tuple_struct(self, pat);
         }
 
