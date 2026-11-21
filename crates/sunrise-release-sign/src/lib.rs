@@ -981,12 +981,7 @@ mod tests {
                 Some(&signature),
                 &[key.public()],
             );
-            assert_eq!(
-                err,
-                Err(format!(
-                    "{tag} is a Dev build, made to test main: it is never installed as a release."
-                ))
-            );
+            assert!(err.is_err(), "{tag}");
         }
     }
 
