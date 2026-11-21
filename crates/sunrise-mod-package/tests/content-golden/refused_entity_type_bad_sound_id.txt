@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: refused_entity_type_bad_sound_id:sample: sounds.ambient: invalid full sound id "zombie_ambient"

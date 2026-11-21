@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_bad_attribute_id/sunrise/entity_type/sample.json: attribute "max_health" is an attribute id (namespace:path)

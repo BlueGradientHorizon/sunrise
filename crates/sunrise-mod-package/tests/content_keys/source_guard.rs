@@ -2,8 +2,39 @@
 //! the probe. The key includes the source file, item and attribute arguments,
 //! so a second use of a known workaround still needs its own evidence.
 
-use crate::CORPUS;
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::{Path, PathBuf},
+};
+
+// Files defining workspace types used in declaration inputs, and the paths by which
+// the reader names them (including re-exports). Registry crates such as semver,
+// serde_json and toml are out of scope.
+#[rustfmt::skip]
+const EXTERNAL_DECLARATIONS: &[(&str, &[&str])] = &[
+    ("../sunrise-core/src/arm_pose.rs", &["sunrise_core::arm_pose::ArmPose"]),
+    ("../sunrise-mod-vocab/src/content/package_side.rs", &["mod_vocab::Side"]),
+    ("../sunrise-mod-vocab/src/world/package_details.rs", &["mod_vocab::DependencyOrder", "mod_vocab::DependencyOrder::After"]),
+    // The field's custom deserializer maps names to this vocabulary instead of deriving Serde.
+    ("../sunrise-mod-vocab/src/client/types.rs", &["mod_vocab::NoteInstrument", "mod_vocab::NoteInstrument::ALL"]),
+];
+
+#[rustfmt::skip]
+const NOT_DECLARATIONS: &[(&str, &str)] = &[
+    ("mod_vocab::__private::DeclarationKind", "labels validation errors"),
+    ("mod_vocab::DeclarationError", "reports validation errors"),
+    ("mod_vocab::wire", "typed payload codec, not Serde"),
+    ("mod_surface::uses::USES_FILE", "name of native fit metadata"),
+    ("mod_surface::uses::MAX_USES_BYTES", "size limit for native fit metadata"),
+    ("sunrise_mod_api_macros::Wire", "derive for the typed payload codec, not Serde"),
+    ("sunrise_assets::blockstate::BlockStateFile", "asset reference check, not a declaration"),
+    ("sunrise_assets::blockstate::VariantSet", "asset reference check, not a declaration"),
+    ("sunrise_assets::item_model::ClientItem", "asset reference check, not a declaration"),
+    ("sunrise_assets::model::CuboidModel", "asset reference check, not a declaration"),
+    ("sunrise_assets::model::Loader", "asset reference check, not a declaration"),
+    ("sunrise_assets::model::TextureSlot", "asset reference check, not a declaration"),
+];
 
 type Use<'a> = (&'a str, &'a str, &'a str);
 
@@ -25,9 +56,9 @@ const REVIEWED: &[(Use<'static>, &[&str])] = &[
     (("content.rs", "duration", "deserialize_with = \"deserialize_stew_duration\""), &["block_full"]),
     (("content.rs", "GateSound", "untagged"), &["block_full", "keys_block_forms", "refused_block_gate_sound_site"]),
     (("content/entity_sounds.rs", "SoundOverride", "untagged"), &["entity_type_full", "keys_entity_sounds"]),
-    (("content/entity_type.rs", "allowed_in_peaceful", "deserialize_with = \"deserialize_peaceful_setting\""), &["entity_type_full", "refused_entity_type_thrown_peaceful"]),
-    (("content/entity_type.rs", "shadow_radius", "deserialize_with = \"deserialize_shadow\""), &["entity_type_full", "refused_entity_type_negative_shadow"]),
-    (("content/entity_type.rs", "shadow_strength", "deserialize_with = \"deserialize_shadow\""), &["entity_type_full"]),
+    (("content/entity_type.rs", "allowed_in_peaceful", "deserialize_with = \"deserialize_peaceful_setting\""), &["entity_type_full", "refused_entity_type_thrown_peaceful", "refused_entity_type_null_allowed_in_peaceful"]),
+    (("content/entity_type.rs", "shadow_radius", "deserialize_with = \"deserialize_shadow\""), &["entity_type_full", "refused_entity_type_negative_shadow", "refused_entity_type_null_shadow_radius"]),
+    (("content/entity_type.rs", "shadow_strength", "deserialize_with = \"deserialize_shadow\""), &["entity_type_full", "refused_entity_type_null_shadow_strength"]),
     (("content/entity_type.rs", "passenger_attachments", "deserialize_with = \"deserialize_passenger_attachments\""), &["entity_type_full", "refused_entity_type_bad_attachments", "refused_entity_type_attachment_length", "refused_entity_type_attachment_type"]),
     (("manifest.rs", "version", "deserialize_with = \"version_from_str\""), &["manifest_full", "manifest_minimal", "refused_manifest_bad_version"]),
     (("manifest.rs", "Property", "untagged"), &["manifest_full", "refused_manifest_bad_property_type"]),
@@ -59,12 +90,33 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
         sources(Path::new(stem), &mut files);
     }
     files.sort();
+    let paths = files
+        .iter()
+        .map(|file| (file.as_str(), Path::new("src").join(file)))
+        .chain(
+            EXTERNAL_DECLARATIONS
+                .iter()
+                .map(|&(file, _)| (file, PathBuf::from(file))),
+        );
+    let known_paths: BTreeSet<_> = EXTERNAL_DECLARATIONS
+        .iter()
+        .flat_map(|&(_, paths)| paths.iter().copied())
+        .chain(NOT_DECLARATIONS.iter().map(|&(path, _reason)| path))
+        .collect();
+    let corpus = crate::corpus::entries();
+    let mut unclassified = Vec::new();
     let mut unreviewed = Vec::new();
-    for file in &files {
-        let source = fs::read_to_string(Path::new("src").join(file)).unwrap();
-        for (item, feature) in blind_spots(&tokens(&source)) {
+    for (file, path) in paths {
+        let source = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{file}: {e}"));
+        let source_tokens = tokens(&source);
+        for path in workspace_paths(&source_tokens) {
+            if !known_paths.contains(path.as_str()) {
+                unclassified.push(format!("{file}: {path}"));
+            }
+        }
+        for (item, feature) in blind_spots(&source_tokens) {
             if let Some(fixtures) =
-                reviewed.remove(&[file.clone(), item.to_owned(), feature.clone()])
+                reviewed.remove(&[file.to_owned(), item.to_owned(), feature.clone()])
             {
                 assert!(
                     !fixtures.is_empty(),
@@ -78,12 +130,14 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
                             "missing reader test {fixture}"
                         );
                     } else {
+                        let path = Path::new(
+                            corpus
+                                .get(*fixture)
+                                .unwrap_or_else(|| panic!("missing corpus fixture {fixture}")),
+                        );
                         assert!(
-                            Path::new(CORPUS)
-                                .join(fixture)
-                                .join("sunrise-mod.toml")
-                                .is_file(),
-                            "missing corpus fixture {fixture}"
+                            !path.is_dir() || path.join("sunrise-mod.toml").is_file(),
+                            "missing manifest for corpus fixture {fixture}"
                         );
                     }
                 }
@@ -92,6 +146,11 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
             }
         }
     }
+    assert!(
+        unclassified.is_empty(),
+        "Unclassified workspace paths (add the declaration source or explain the exception):\n{}",
+        unclassified.join("\n")
+    );
     assert!(
         unreviewed.is_empty(),
         "Serde uses without a coverage review:\n{}",
@@ -113,6 +172,62 @@ fn sources(dir: &Path, files: &mut Vec<String>) {
         } else if path.extension().is_some_and(|ext| ext == "rs") {
             files.push(path.to_str().unwrap().replace('\\', "/"));
         }
+    }
+}
+
+fn workspace_paths(tokens: &[&str]) -> BTreeSet<String> {
+    let mut paths = BTreeSet::new();
+    for (i, &name) in tokens.iter().enumerate() {
+        // These two libraries use short `[lib] name`s, not their Cargo package names.
+        if (name.starts_with("sunrise_") || matches!(name, "mod_vocab" | "mod_surface"))
+            && (tokens[i + 1..].starts_with(&[":", ":"])
+                || tokens[i + 1..].starts_with(&["as"])
+                || i > 0 && tokens[i - 1] == "use")
+        {
+            collect_path(&mut &tokens[i..], "", &mut paths);
+        }
+    }
+    paths
+}
+
+// Split grouped imports down to individual paths, keeping the same precision as
+// for a fully qualified field type. `as` does not change the source being used.
+fn collect_path(tokens: &mut &[&str], prefix: &str, paths: &mut BTreeSet<String>) {
+    if let ["{", ..] = *tokens {
+        *tokens = &tokens[1..];
+        while !tokens.starts_with(&["}"]) {
+            collect_path(tokens, prefix, paths);
+            if let ["as", _, tail @ ..] = *tokens {
+                *tokens = tail;
+            }
+            if let [",", tail @ ..] = *tokens {
+                *tokens = tail;
+            } else {
+                break;
+            }
+        }
+        assert!(
+            tokens.starts_with(&["}"]),
+            "unclosed grouped workspace import"
+        );
+        *tokens = &tokens[1..];
+        return;
+    }
+    let (name, rest) = tokens.split_first().expect("workspace path segment");
+    *tokens = rest;
+    let path = match (*name, prefix) {
+        (_, "") => (*name).to_owned(),
+        ("self", prefix) => prefix.to_owned(),
+        (name, prefix) => format!("{prefix}::{name}"),
+    };
+    // A turbofish starts type arguments, not another segment.
+    if let [":", ":", next, ..] = rest
+        && *next != "<"
+    {
+        *tokens = &rest[2..];
+        collect_path(tokens, &path, paths);
+    } else {
+        paths.insert(path);
     }
 }
 

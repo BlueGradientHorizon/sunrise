@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_fluid_interaction_neighbour_id/sunrise/fluid_interaction/sample.json: neighbour "#minecraft:water" is an id (namespace:path)

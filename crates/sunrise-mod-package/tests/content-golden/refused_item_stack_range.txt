@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_stack_range/sunrise/item/sample.json: max_stack_size is 1 to 99

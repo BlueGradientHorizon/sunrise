@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_mob_effect_color_range/sunrise/mob_effect/sample.json: color is RGB, 0 to 16777215 (0xFFFFFF)

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_fluid_slope_find_distance/sunrise/fluid/sample.json: world: slope_find_distance is 1 to 4

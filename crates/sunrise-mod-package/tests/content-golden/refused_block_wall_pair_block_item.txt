@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: refused_block_wall_pair_block_item:sample: wall_block refused_block_wall_pair_block_item:wall has this sign's item, so it declares no block_item

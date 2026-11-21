@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_content_bad_declaration_extension/sunrise/block/sample.toml: data/refused_content_bad_declaration_extension/sunrise/ holds block/, item/, mob_effect/, creative_tab/, fluid/, fluid_interaction/, entity_type/ and menu/*.json only

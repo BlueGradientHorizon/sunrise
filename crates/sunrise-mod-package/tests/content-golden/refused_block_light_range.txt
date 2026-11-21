@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_light_range/sunrise/block/sample.json: light is 0 to 15

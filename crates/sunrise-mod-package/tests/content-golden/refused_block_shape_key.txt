@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_shape_key/sunrise/block/sample.json: invalid shapes key "off": one value per property

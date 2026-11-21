@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_block_item_none/sunrise/block/sample.json: block_item is an item id; a block with no item is "item": false

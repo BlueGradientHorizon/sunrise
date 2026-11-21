@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_state_property_empty/sunrise/block/sample.json: state property "phase" needs a value

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_slot_limit/sunrise/menu/sample.json (refused_menu_slot_limit:sample): slots (257) and data_slots (0) are each 0 to 256

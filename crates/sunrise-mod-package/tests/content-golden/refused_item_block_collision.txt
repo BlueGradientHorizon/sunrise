@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_block_collision/sunrise/item/sample.json: refused_item_block_collision:sample is also a block's item

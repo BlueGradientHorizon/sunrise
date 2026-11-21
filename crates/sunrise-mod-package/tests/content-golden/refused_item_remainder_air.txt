@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_remainder_air/sunrise/item/sample.json: crafting_remainder "minecraft:air" is no remainder (leave it out)

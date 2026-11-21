@@ -1,15 +1,17 @@
 //! Content declarations admitted (or refused) within a stable release line.
-//! To add an entry, create its corpus folder and run this test with
-//! `SUNRISE_BLESS_CONTENT_GOLDEN=1`: it writes the golden files that are missing and never rewrites one.
+//! To add an entry, put its folder or `.smod` in the corpus and run just the `content_golden` test
+//! (`-- --exact content_golden`) with `SUNRISE_BLESS_CONTENT_GOLDEN=1`. It only writes missing files.
 
-use std::{collections::BTreeSet, env, fs, io, path::Path};
+#[path = "support/content_corpus.rs"]
+mod corpus;
+
+use std::{env, fs, io, path::Path};
 use sunrise_mod_package::{Content, Package};
 
-const CORPUS: &str = "tests/content-corpus";
 const GOLDEN: &str = "tests/content-golden";
 
 /// The dump names each entry by its path from the crate root, with literal forward slashes
-/// (Content's Source::Dir), so the tests run there wherever their executable was started.
+/// (Content's Source::Dir or Source::Zip), wherever the test executable was started.
 fn at_crate_root() {
     env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
 }
@@ -26,16 +28,27 @@ fn daily_content_golden() {
 #[test]
 fn content_golden() {
     at_crate_root();
-    let entries = entry_names(CORPUS, true);
-    let goldens = entry_names(GOLDEN, false);
+    let entries = corpus::entries();
     let bless = env::var("SUNRISE_BLESS_CONTENT_GOLDEN").as_deref() == Ok("1");
-    let orphans: Vec<_> = goldens.difference(&entries).collect();
+    let mut orphans = Vec::new();
+    for golden in fs::read_dir(GOLDEN).unwrap_or_else(|e| panic!("{GOLDEN}: {e}")) {
+        let golden = golden.unwrap();
+        let file = golden.file_name().into_string().expect("UTF-8 golden name");
+        assert!(
+            golden.file_type().unwrap().is_file(),
+            "{GOLDEN}/{file} is not a regular file"
+        );
+        let name = file.strip_suffix(".txt").expect("golden file ends in .txt");
+        if !entries.contains_key(name) {
+            orphans.push(file);
+        }
+    }
+    orphans.sort();
     let mut mismatches = Vec::new();
     let mut first_diff = None;
 
-    for entry in &entries {
-        let path = format!("{CORPUS}/{entry}");
-        let actual = dump(Path::new(&path));
+    for (entry, path) in &entries {
+        let actual = dump(Path::new(path));
         let golden = format!("{GOLDEN}/{entry}.txt");
         if bless && !Path::new(&golden).exists() {
             fs::write(&golden, actual).unwrap_or_else(|e| panic!("{golden}: {e}"));
@@ -53,7 +66,6 @@ fn content_golden() {
         });
     }
 
-    assert!(!entries.is_empty(), "{CORPUS} is empty");
     assert!(
         orphans.is_empty(),
         "goldens without corpus entries: {orphans:?}"
@@ -69,45 +81,16 @@ fn content_golden() {
 #[test]
 fn content_golden_is_deterministic() {
     at_crate_root();
-    for entry in entry_names(CORPUS, true) {
-        let path = format!("{CORPUS}/{entry}");
+    for (entry, path) in corpus::entries() {
         let path = Path::new(&path);
         assert_eq!(dump(path), dump(path), "{entry} changed between reads");
     }
 }
 
-fn entry_names(dir: &str, corpus: bool) -> BTreeSet<String> {
-    fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("{dir}: {e}"))
-        .map(|entry| {
-            let entry = entry.unwrap();
-            let kind = entry.file_type().unwrap();
-            let filename = entry.file_name().into_string().expect("UTF-8 fixture name");
-            let name = if corpus {
-                assert!(kind.is_dir(), "{dir}/{filename} is not a directory");
-                &filename
-            } else {
-                assert!(kind.is_file(), "{dir}/{filename} is not a regular file");
-                filename
-                    .strip_suffix(".txt")
-                    .expect("golden file ends in .txt")
-            };
-            assert!(
-                !name.is_empty()
-                    && name
-                        .bytes()
-                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
-                "invalid fixture name: {dir}/{filename}"
-            );
-            name.to_owned()
-        })
-        .collect()
-}
-
 fn dump(path: &Path) -> String {
-    let Package { manifest, .. } = match Package::read(path) {
+    let Package { manifest, icon } = match Package::read(path) {
         Ok(package) => package,
-        Err(error) => return format!("manifest:\nrefused: {error}\n"),
+        Err(error) => return format!("manifest:\nrefused: {error}\n\nicon:\nunavailable\n"),
     };
     let content = Content::read(path, &manifest).and_then(|content| {
         match content.server_only_refusal(&manifest) {
@@ -119,5 +102,5 @@ fn dump(path: &Path) -> String {
         Ok(content) => format!("{content:#?}"),
         Err(error) => format!("refused: {error}"),
     };
-    format!("manifest:\n{manifest:#?}\n\ncontent:\n{content}\n")
+    format!("manifest:\n{manifest:#?}\n\nicon:\n{icon:?}\n\ncontent:\n{content}\n")
 }

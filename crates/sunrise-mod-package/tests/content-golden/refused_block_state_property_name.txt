@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_state_property_name/sunrise/block/sample.json: state property "Lit" is lower case letters, digits and underscores

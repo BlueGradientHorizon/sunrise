@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_fluid_tick_delay/sunrise/fluid/sample.json: world: tick_delay is 1 or more

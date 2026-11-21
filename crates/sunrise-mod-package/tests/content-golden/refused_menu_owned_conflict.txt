@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_owned_conflict/sunrise/menu/sample.json (refused_menu_owned_conflict:sample): owned_slots cannot be combined with results or crafting

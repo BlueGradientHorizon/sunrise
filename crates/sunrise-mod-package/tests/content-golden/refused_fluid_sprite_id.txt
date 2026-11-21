@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_fluid_sprite_id/sunrise/fluid/sample.json: sprite is an atlas sprite id (namespace:path)

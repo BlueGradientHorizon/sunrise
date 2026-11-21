@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_bad_render_shape/sunrise/block/sample.json: unknown variant `TRANSPARENT`, expected one of `MODEL`, `ENTITYBLOCK_ANIMATED`, `INVISIBLE` at line 1 column 76

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_component_reserved/sunrise/item/sample.json: component "minecraft:rarity": set rarity instead

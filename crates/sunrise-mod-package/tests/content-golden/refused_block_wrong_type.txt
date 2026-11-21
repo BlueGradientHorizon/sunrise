@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_wrong_type/sunrise/block/sample.json: invalid type: integer `1`, expected a boolean at line 1 column 41

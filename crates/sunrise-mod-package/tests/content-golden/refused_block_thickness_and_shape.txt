@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_thickness_and_shape/sunrise/block/sample.json: thickness sets the shapes, so a block has one or the other

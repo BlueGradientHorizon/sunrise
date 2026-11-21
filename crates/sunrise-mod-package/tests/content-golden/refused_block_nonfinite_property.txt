@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_nonfinite_property/sunrise/block/sample.json: hardness, explosion_resistance and friction are numbers

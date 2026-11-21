@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_thrown_peaceful/sunrise/entity_type/sample.json: only a living type may set allowed_in_peaceful (its template is minecraft:snowball)

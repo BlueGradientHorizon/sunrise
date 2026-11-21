@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: refused_block_wall_pair_double_pair:second_sign: wall_block refused_block_wall_pair_double_pair:wall is already paired with refused_block_wall_pair_double_pair:sample

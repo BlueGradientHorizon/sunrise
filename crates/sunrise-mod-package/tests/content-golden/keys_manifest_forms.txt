@@ -81,6 +81,9 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 Content {
     source: Dir(

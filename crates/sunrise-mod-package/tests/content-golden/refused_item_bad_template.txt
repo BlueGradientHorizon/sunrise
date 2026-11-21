@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_bad_template/sunrise/item/sample.json: template "other_mod:stick" is not a vanilla item (minecraft:...)

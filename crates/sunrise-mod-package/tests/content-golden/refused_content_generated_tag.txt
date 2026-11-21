@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/sunrise/tags/block/class/amended.json: sunrise:class/* tags are generated; attach a part through block_part_tag instead

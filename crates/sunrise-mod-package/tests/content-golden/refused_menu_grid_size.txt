@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_grid_size/sunrise/menu/sample.json (refused_menu_grid_size:sample): crafting size is 2 or 3

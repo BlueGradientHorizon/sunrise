@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_thrown_sounds/sunrise/entity_type/sample.json: only a living type has sounds (its template is minecraft:snowball)

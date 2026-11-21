@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_nonfinite_attachment/sunrise/entity_type/sample.json: passenger attachments are finite numbers

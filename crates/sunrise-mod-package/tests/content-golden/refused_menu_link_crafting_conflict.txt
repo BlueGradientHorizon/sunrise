@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_link_crafting_conflict/sunrise/menu/sample.json (refused_menu_link_crafting_conflict:sample): links overlap the crafting slots

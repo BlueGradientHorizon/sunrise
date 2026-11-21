@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_creative_tab_missing_icon/sunrise/creative_tab/sample.json: missing field `icon` at line 1 column 30

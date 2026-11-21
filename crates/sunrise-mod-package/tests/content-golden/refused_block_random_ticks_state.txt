@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_random_ticks_state/sunrise/block/sample.json: random_ticks needs values of the block's own state property "lit" (state_properties)

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_components_without_item/sunrise/block/sample.json: item is false, so the block has no item to take components

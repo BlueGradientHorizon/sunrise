@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_remainder_not_owned/sunrise/item/sample.json: crafting_remainder "other_mod:receipt" is not a vanilla item (minecraft:...) or one of this mod's

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_mob_effect_bad_category/sunrise/mob_effect/sample.json: unknown variant `confusing`, expected one of `beneficial`, `harmful`, `neutral` at line 1 column 24

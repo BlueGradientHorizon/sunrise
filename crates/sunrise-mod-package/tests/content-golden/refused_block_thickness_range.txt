@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_thickness_range/sunrise/block/sample.json: thickness is 2 to 14 pixels

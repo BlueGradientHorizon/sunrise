@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_attachment_length/sunrise/entity_type/sample.json: expected attachment point [x, y, z] or height y at line 1 column 71

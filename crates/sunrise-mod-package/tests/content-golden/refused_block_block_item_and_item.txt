@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_block_item_and_item/sunrise/block/sample.json: block_item is the item this block yields instead of its own, and item is true

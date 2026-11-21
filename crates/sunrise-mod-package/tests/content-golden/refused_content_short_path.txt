@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: "assets/example.json" is not a plain assets/ or data/ path: after assets/ or data/, every part is made of a-z, 0-9, _, . and - (vanilla's resource-location characters, so the path means the same on every OS), and none is . or ..

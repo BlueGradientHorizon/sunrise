@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_link_missing_count/sunrise/menu/sample.json (refused_menu_link_missing_count:sample): missing field `count` at line 1 column 33

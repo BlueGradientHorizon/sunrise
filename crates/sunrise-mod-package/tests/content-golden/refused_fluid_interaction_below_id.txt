@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_fluid_interaction_below_id/sunrise/fluid_interaction/sample.json: below "blue_ice" is an id (namespace:path)

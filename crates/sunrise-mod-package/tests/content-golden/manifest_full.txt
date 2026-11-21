@@ -219,6 +219,9 @@ Manifest {
     },
 }
 
+icon:
+None
+
 content:
 Content {
     source: Dir(

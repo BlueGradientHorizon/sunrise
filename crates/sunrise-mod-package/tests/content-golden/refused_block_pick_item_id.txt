@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_pick_item_id/sunrise/block/sample.json: pick_item is an item id, namespace:path

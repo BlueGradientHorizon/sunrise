@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_sign_glow_template/sunrise/block/sample.json: sign_text_glow needs a vanilla sign template

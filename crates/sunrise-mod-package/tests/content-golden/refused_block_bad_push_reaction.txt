@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_bad_push_reaction/sunrise/block/sample.json: push_reaction: unknown variant `STICK`, expected one of `PUSH_PULL`, `PUSH`, `POPPED`, `IMMOVEABLE`, `IGNORE_ENTITY` at line 1 column 71

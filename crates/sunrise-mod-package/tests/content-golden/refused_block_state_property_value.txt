@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_state_property_value/sunrise/block/sample.json: state property "phase": value "Not a token" is lower case letters, digits and underscores

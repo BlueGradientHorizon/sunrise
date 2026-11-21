@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_link_range/sunrise/menu/sample.json (refused_menu_link_range:sample): linked slots 2..4 must be nonempty and within the 3 container slots

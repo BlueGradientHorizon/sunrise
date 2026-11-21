@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_wall_block_template/sunrise/block/sample.json: wall_block needs a standing or ceiling sign template

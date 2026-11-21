@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_shape_selector/sunrise/block/sample.json: shapes needs distinct properties and values, or a default

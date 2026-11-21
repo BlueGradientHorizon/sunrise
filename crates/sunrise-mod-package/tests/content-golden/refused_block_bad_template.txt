@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_bad_template/sunrise/block/sample.json: template "other_mod:stone" is not a vanilla block (minecraft:...)

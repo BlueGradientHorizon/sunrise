@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: refused_block_wall_pair_pick_item:sample: wall_block refused_block_wall_pair_pick_item:wall picks this sign's item, so it declares no pick_item

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_thickness_without_tag/sunrise/block/sample.json: thickness is a connecting block's (connects_to)

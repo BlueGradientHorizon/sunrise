@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_vertical_offset_range/sunrise/block/sample.json: max_vertical_offset is a finite number from 0 to 0.2

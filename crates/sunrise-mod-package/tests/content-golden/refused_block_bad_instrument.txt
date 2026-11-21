@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_bad_instrument/sunrise/block/sample.json: instrument: unknown NoteBlockInstrument constant KAZOO at line 1 column 69

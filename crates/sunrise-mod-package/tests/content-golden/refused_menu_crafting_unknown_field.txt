@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_crafting_unknown_field/sunrise/menu/sample.json (refused_menu_crafting_unknown_field:sample): unknown field `height`, expected one of `grid`, `size`, `result` at line 1 column 58

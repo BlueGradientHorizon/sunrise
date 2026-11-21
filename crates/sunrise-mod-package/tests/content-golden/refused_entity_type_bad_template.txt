@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_bad_template/sunrise/entity_type/sample.json: template "minecraft:cow" is not one of ["minecraft:snowball", "minecraft:cat", "minecraft:drowned", "minecraft:parrot", "minecraft:skeleton", "minecraft:villager", "minecraft:wandering_trader", "minecraft:wolf", "minecraft:zombie"]

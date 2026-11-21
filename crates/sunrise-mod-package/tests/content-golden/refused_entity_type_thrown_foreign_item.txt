@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_thrown_foreign_item/sunrise/entity_type/sample.json: item "minecraft:snowball" is not one of this mod's items

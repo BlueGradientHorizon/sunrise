@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_resistance_range/sunrise/block/sample.json: explosion_resistance is 0 or more

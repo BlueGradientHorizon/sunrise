@@ -1,6 +1,8 @@
 //! A schema walk over the admitted corpus. Unlike `content_golden`, this test
 //! uses the current reader's schema, not the previous release's.
 
+#[path = "support/content_corpus.rs"]
+mod corpus;
 #[path = "content_keys/forms.rs"]
 mod forms;
 #[path = "content_keys/source_guard.rs"]
@@ -12,15 +14,13 @@ use serde::de::{
     value::{MapDeserializer, SeqDeserializer},
 };
 use serde_json::Value;
-use std::{cell::RefCell, collections::BTreeSet, fs};
+use std::{cell::RefCell, collections::BTreeSet, fs, io::Read, path::Path};
 use sunrise_mod_package::{
     Content, Manifest, Package,
     content::{DECLARATION_KINDS, DYE_COLORS, ENTITY_TEMPLATES, probe_declaration},
     extension_tags,
     manifest::MANIFEST,
 };
-
-const CORPUS: &str = "tests/content-corpus";
 
 /// The corpus and the reader sources are named from the crate root.
 fn at_crate_root() {
@@ -53,15 +53,25 @@ fn content_keys() {
     let mut block_components = BTreeSet::new();
     let mut item_removal = false;
     let mut extension_files = BTreeSet::new();
-    for entry in fs::read_dir(CORPUS).unwrap() {
-        let entry = entry.unwrap();
-        if entry.file_name().to_str().unwrap().starts_with("refused_") {
+    for (entry, path) in corpus::entries() {
+        if entry.starts_with("refused_") {
             continue;
         }
-        let path = entry.path();
-        let manifest_path = path.join(MANIFEST);
-        let mut toml: toml::Value =
-            toml::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        let path = Path::new(&path);
+        let package = Package::read(path).unwrap();
+        let manifest_text = if path.is_dir() {
+            fs::read_to_string(path.join(MANIFEST)).unwrap()
+        } else {
+            // The probe needs the original input, not a reserialized Manifest with defaults.
+            let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+            let mut text = String::new();
+            zip.by_name(MANIFEST)
+                .unwrap()
+                .read_to_string(&mut text)
+                .unwrap();
+            text
+        };
+        let mut toml: toml::Value = toml::from_str(&manifest_text).unwrap();
         // The probe replays the manifest as JSON, which has no `nan` or `inf`: the form is a float
         // either way, and the golden file holds the value.
         if let Some(properties) = toml
@@ -76,10 +86,9 @@ fn content_keys() {
         }
         let value = serde_json::to_value(toml).unwrap();
         Manifest::deserialize(Probe::new("manifest", &value, &coverage))
-            .unwrap_or_else(|e| panic!("{}: {e}", manifest_path.display()));
+            .unwrap_or_else(|e| panic!("{} ({MANIFEST}): {e}", path.display()));
 
-        let package = Package::read(&path).unwrap();
-        let content = Content::read(&path, &package.manifest).unwrap();
+        let content = Content::read(path, &package.manifest).unwrap();
         assert_eq!(content.server_only_refusal(&package.manifest), None);
         let mut reader = content.reader().unwrap();
         for file in &content.files {

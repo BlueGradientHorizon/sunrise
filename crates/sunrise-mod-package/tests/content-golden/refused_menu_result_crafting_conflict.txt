@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_result_crafting_conflict/sunrise/menu/sample.json (refused_menu_result_crafting_conflict:sample): results lists a crafting slot (the result is take-only already)

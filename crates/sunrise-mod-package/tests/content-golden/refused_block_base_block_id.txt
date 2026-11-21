@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_base_block_id/sunrise/block/sample.json: base_block is a block id, namespace:path

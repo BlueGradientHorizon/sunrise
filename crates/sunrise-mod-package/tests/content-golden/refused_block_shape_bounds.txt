@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_shape_bounds/sunrise/block/sample.json: shape needs finite boxes with ordered bounds

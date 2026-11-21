@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_fluid_tint_range/sunrise/fluid/sample.json: invalid value: integer `4294967296`, expected u32 at line 1 column 19

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_owned_count/sunrise/menu/sample.json (refused_menu_owned_count:sample): owned_slots must give one maximum in 1..=99 per container slot

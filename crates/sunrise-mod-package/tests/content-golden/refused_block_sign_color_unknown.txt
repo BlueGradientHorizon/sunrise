@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_sign_color_unknown/sunrise/block/sample.json: sign_text_color is a DyeColor name, such as white or light_blue

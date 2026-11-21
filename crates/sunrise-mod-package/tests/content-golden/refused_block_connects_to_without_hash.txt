@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_connects_to_without_hash/sunrise/block/sample.json: connects_to is a block tag, #namespace:path

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_attachment_type/sunrise/entity_type/sample.json: expected float at line 1 column 79

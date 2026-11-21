@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_thrown_negative_damage/sunrise/entity_type/sample.json: damage is 0 or more

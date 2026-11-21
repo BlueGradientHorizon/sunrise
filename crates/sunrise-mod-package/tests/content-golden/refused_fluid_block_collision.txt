@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_fluid_block_collision/sunrise/fluid/sample.json: block refused_fluid_block_collision:sample is declared twice

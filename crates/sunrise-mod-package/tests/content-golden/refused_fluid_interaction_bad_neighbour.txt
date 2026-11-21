@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_fluid_interaction_bad_neighbour/sunrise/fluid_interaction/sample.json: unknown variant `item`, expected one of `fluid`, `fluid_tag`, `block`, `block_tag` at line 1 column 49

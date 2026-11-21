@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_creative_tab_bad_item_id/sunrise/creative_tab/sample.json: icon and items are item ids (namespace:path)

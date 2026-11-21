@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_link_result_conflict/sunrise/menu/sample.json (refused_menu_link_result_conflict:sample): results lists a linked slot

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_connects_to_template/sunrise/block/sample.json: connects_to needs template minecraft:chorus_plant (a PipeBlock)

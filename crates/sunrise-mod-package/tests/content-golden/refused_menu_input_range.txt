@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_input_range/sunrise/menu/sample.json (refused_menu_input_range:sample): input 2 is outside the 2 container slots

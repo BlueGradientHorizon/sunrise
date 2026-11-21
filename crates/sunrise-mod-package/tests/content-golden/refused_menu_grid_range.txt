@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_grid_range/sunrise/menu/sample.json (refused_menu_grid_range:sample): crafting grid 1..5 and result slot 0 must be within the 4 container slots

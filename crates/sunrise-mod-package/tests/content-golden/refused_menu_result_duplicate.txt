@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_menu_result_duplicate/sunrise/menu/sample.json (refused_menu_result_duplicate:sample): result 1 is listed twice

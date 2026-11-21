@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_bad_rarity_component/sunrise/block/sample.json: component "minecraft:rarity" is common, uncommon, rare or epic

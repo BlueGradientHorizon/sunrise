@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_state_light_key/sunrise/block/sample.json: invalid state_light key "true,false": one value per property

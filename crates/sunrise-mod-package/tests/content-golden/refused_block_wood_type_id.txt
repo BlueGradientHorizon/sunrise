@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_wood_type_id/sunrise/block/sample.json: wood_type is a name, or namespace:path, in lower case

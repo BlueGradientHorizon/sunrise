@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: refused_server_registry_content: a side = "server" mod carries data/refused_server_registry_content/sunrise/block/sample.json, which every client must have; declare side = "both"

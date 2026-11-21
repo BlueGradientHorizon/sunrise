@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_hardness_range/sunrise/block/sample.json: hardness is 0 or more, or -1 (unbreakable)

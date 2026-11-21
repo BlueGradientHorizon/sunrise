@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_bad_arm_pose/sunrise/item/sample.json: unknown variant `crossbow`, expected one of `empty`, `item`, `block`, `bow_and_arrow`, `crossbow_hold`, `crossbow_charge`, `throw_trident`, `toot_horn`, `spyglass`, `spear`, `brush` at line 1 column 54

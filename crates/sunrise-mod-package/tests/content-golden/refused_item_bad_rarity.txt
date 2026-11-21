@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_bad_rarity/sunrise/item/sample.json: unknown variant `mythical`, expected one of `common`, `uncommon`, `rare`, `epic` at line 1 column 52

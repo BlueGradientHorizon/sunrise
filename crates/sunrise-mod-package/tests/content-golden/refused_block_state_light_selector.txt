@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_state_light_selector/sunrise/block/sample.json: state_light needs distinct properties and values, or a default

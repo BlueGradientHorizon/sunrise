@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/sunrise/tags/block/example.json: not a declared Sunrise extension tag; see the SDK extension_tags list and the book's extension tags reference (mod professions use secondary_blocks)

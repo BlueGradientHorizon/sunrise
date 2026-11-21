@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_invalid_json/sunrise/block/sample.json: EOF while parsing a value at line 2 column 0

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_missing_template/sunrise/block/sample.json: missing field `template` at line 1 column 2

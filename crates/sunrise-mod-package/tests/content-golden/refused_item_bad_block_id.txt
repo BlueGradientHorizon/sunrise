@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_bad_block_id/sunrise/item/sample.json: block must be a namespaced block id

@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_gate_sound_id/sunrise/block/sample.json: close_sound.redstone "pling" is a sound event id, namespace:path

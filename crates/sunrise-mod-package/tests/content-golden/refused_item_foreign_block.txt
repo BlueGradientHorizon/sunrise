@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_item_foreign_block/sunrise/item/sample.json: block is a vanilla block or a block in this item's namespace

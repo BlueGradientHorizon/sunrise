@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_bad_offset/sunrise/block/sample.json: offset: unknown variant `Y`, expected one of `NONE`, `XZ`, `XYZ` at line 1 column 60

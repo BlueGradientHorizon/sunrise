@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_living_item/sunrise/entity_type/sample.json: a living type has no item or damage (its template is minecraft:zombie)

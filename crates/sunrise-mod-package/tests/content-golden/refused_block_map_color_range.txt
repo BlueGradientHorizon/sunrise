@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_block_map_color_range/sunrise/block/sample.json: map_color is a MapColor id, 0 to 61

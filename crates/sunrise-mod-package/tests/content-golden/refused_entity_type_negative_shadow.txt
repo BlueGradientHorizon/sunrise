@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_entity_type_negative_shadow/sunrise/entity_type/sample.json: shadow value must be finite and nonnegative at line 1 column 57

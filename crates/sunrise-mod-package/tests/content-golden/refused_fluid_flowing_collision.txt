@@ -31,5 +31,8 @@ Manifest {
     properties: {},
 }
 
+icon:
+None
+
 content:
 refused: data/refused_fluid_flowing_collision/sunrise/fluid/sample.json: fluid name declared twice
