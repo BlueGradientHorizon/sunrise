@@ -78,6 +78,7 @@ pub struct MoveReport {
 #[derive(Clone, Copy, Debug)]
 pub struct CommittedMove {
     pub movement: GuestMove,
+    pub horizontal_collision: bool,
     pub from: [f64; 3],
     pub jump_yaw: Option<f32>,
 }
@@ -177,6 +178,7 @@ impl Hub {
             g.ticks = g.ticks.max(1);
             CommittedMove {
                 movement,
+                horizontal_collision: flags & 2 != 0,
                 from,
                 jump_yaw,
             }

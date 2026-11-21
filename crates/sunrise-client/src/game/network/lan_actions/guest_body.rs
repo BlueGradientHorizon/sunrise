@@ -85,6 +85,7 @@ impl Game<'_> {
     pub(in crate::game) fn guest_accepted_move(&mut self, conn: u32, commit: CommittedMove) {
         let CommittedMove {
             movement: accepted,
+            horizontal_collision,
             from,
             jump_yaw,
         } = commit;
@@ -118,13 +119,15 @@ impl Game<'_> {
             let mut w = motion_world!(game, side, player);
             let [x, y, z] = accepted.delta;
             let movement = Vec3::new(x, y, z);
-            if w.set_on_ground_with_movement(accepted.on_ground, false, movement)
+            if w.set_on_ground_with_movement(accepted.on_ground, horizontal_collision, movement)
                 .is_ok()
                 && !touching_unloaded_chunk(at, dimensions, |x, z| {
                     w.scene.chunks.contains_key(&(x, z))
                 })
             {
                 let landed = (|| -> sunrise_client::Result<_> {
+                    // Entity.doCheckFallDamage queries support again before fallOn.
+                    w.check_supporting_block(accepted.on_ground, movement)?;
                     let pos = w.legacy_on_position()?;
                     let state = w.block_state(pos)?;
                     w.check_guest_fall_damage(y, accepted.on_ground, state, pos)

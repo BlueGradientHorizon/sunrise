@@ -51,6 +51,7 @@ fn run(distance: f64, expected: usize) {
             game.guest_accepted_move(
                 1,
                 CommittedMove {
+                    horizontal_collision: false,
                     from: [1.5, 64.0 + distance, 1.5],
                     jump_yaw: None,
                     movement: GuestMove {

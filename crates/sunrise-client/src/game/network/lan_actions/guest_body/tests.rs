@@ -206,6 +206,7 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
             game.guest_accepted_move(
                 1,
                 CommittedMove {
+                    horizontal_collision: boots,
                     from: [1.5, 64.25, 1.5],
                     jump_yaw: None,
                     movement: sunrise_client::lan::guest::GuestMove {
@@ -217,8 +218,10 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
                 },
             );
             let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let ground = &guest.motion.as_ref().unwrap().ground;
+            assert_eq!(ground.horizontal_collision, boots);
             assert_eq!(
-                guest.motion.as_ref().unwrap().ground.supporting_block,
+                ground.supporting_block,
                 boots.then_some(BlockPos::new(1, 63, 1)),
                 "boots worn: {boots}"
             );
