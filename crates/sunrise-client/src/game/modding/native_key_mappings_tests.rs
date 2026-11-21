@@ -125,6 +125,8 @@ fn a_control_socket_key_counts_as_a_window_key() {
 
         // Reading is_down / consume_click while a screen is open observes live KeyMapping state
         // without suppressing Universal mappings or side-effecting release_all().
+        // Opening a screen releases mappings at the transition, while a subsequent unchanged
+        // build_screen/observe_screen leaves live mappings intact.
         game.set_screen(Screen::Inventory);
         game.mod_keys.input(
             "key.keyboard.z",
@@ -140,6 +142,8 @@ fn a_control_socket_key_counts_as_a_window_key() {
             false,
             0,
         );
+        game.build_screen();
+        game.observe_screen();
         assert!(zoom.is_down(game).unwrap());
         assert!(zoom.consume_click(game).unwrap());
         assert!(!zoom.consume_click(game).unwrap());

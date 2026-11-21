@@ -333,6 +333,55 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
                 ]
             );
 
+            // Quick Actions (KeyG) with no dialog does not release an active use; when a
+            // Quick Actions dialog opens, release_using then on_stop_using run on the same tick.
+            start(game);
+            game.key_pressed(
+                winit::keyboard::KeyCode::KeyG,
+                winit::keyboard::KeyCode::KeyG,
+            )
+            .unwrap();
+            assert!(!game.dialog_open());
+            assert!(game.client_item_use.is_some());
+            {
+                let registries = Arc::make_mut(&mut game.remote.as_mut().unwrap().registries);
+                let mut notice = std::collections::BTreeMap::new();
+                notice.insert(
+                    JavaString::from("type"),
+                    Tag::String(JavaString::from("minecraft:notice")),
+                );
+                notice.insert(
+                    JavaString::from("title"),
+                    Tag::String(JavaString::from("Quick")),
+                );
+                registries.registries.insert(
+                    "minecraft:dialog".into(),
+                    vec![("test:quick".into(), Some(Tag::Compound(notice)))],
+                );
+                registries
+                    .tags
+                    .entry("minecraft:dialog".into())
+                    .or_default()
+                    .insert("minecraft:quick_actions".into(), vec![0]);
+            }
+            game.key_pressed(
+                winit::keyboard::KeyCode::KeyG,
+                winit::keyboard::KeyCode::KeyG,
+            )
+            .unwrap();
+            assert!(game.dialog_open());
+            assert!(game.client_item_use.is_none());
+            game.close_dialogs();
+            key_up(game);
+            assert_eq!(
+                calls.take(),
+                [
+                    original(Phase::Start),
+                    original(Phase::Release(0)),
+                    original(Phase::Stop(0)),
+                ]
+            );
+
             // The death packet retires the capture without waiting for another input tick.
             start(game);
             game.handle_packet(C::SetHealth(play::SetHealth {

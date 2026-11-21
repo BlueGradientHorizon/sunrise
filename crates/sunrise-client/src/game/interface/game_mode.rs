@@ -31,11 +31,17 @@ impl Game<'_> {
                     let _ = self.add_stack_to_inventory(c);
                 }
                 self.screen = Screen::Creative;
+                self.release_mappings_on_screen_open();
                 self.refresh_creative_tabs();
                 self.creative_screen.reopen();
                 self.refresh_saved_hotbars();
             }
-            next if next != self.screen => self.screen = next,
+            next if next != self.screen => {
+                self.screen = next;
+                if next != Screen::Playing {
+                    self.release_mappings_on_screen_open();
+                }
+            }
             _ => {}
         }
     }

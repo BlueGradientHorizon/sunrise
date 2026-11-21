@@ -59,8 +59,7 @@ impl Game<'_> {
         if self.player.is_none() || self.title.is_some() {
             return;
         }
-        self.mod_keys.release_all();
-        self.vanilla_mappings.release_all(self.toggle_options());
+        self.release_mappings_on_screen_open();
         self.keys.clear();
         self.pvp.editor = Some(HudEditor {
             from_options,

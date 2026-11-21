@@ -187,9 +187,12 @@ impl Game<'_> {
             }
             KeyCode::KeyL if self.screen == Screen::Advancements => self.close_advancements(),
             // key.quickActions: only open if a datapack provides dialog actions.
+            // Minecraft.handleKeybinds opens the Quick Actions dialog before the
+            // isUsingItem/releaseUsingItem branch, so a successful transition releases
+            // an active use on the same tick.
             KeyCode::KeyG if self.screen == Screen::Playing => {
-                if self.has_quick_actions() {
-                    self.open_quick_actions();
+                if self.open_quick_actions() {
+                    self.release_use_for_keybind_screen();
                 }
             }
             KeyCode::Slash if self.screen == Screen::Playing => self.open_chat_method("/"),

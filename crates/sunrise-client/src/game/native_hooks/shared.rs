@@ -290,6 +290,7 @@ impl Game<'_> {
                 if let (Some(title), Some(id)) = (self.title.as_mut(), title_target_id(target)) {
                     title.open_by_id(id);
                 }
+                self.release_mappings_on_screen_open();
                 self.build_screen();
             }
         }
@@ -309,6 +310,9 @@ impl Game<'_> {
         self.screen = screen;
         if let Some(owner) = owner {
             self.native_mod_screen = Some(owner.to_owned());
+        }
+        if screen != Screen::Playing {
+            self.release_mappings_on_screen_open();
         }
         if screen == Screen::Mod {
             self.keys.clear();
@@ -397,6 +401,7 @@ impl Game<'_> {
     ) -> bool {
         if !self.screen_hooks_heard() {
             open(self);
+            self.release_mappings_on_screen_open();
             self.screen_state.build.reopened();
             self.build_screen();
             return true;
@@ -431,6 +436,7 @@ impl Game<'_> {
             ScreenDecision::Open => {}
         }
         open(self);
+        self.release_mappings_on_screen_open();
         self.screen_state.build.reopened();
         self.build_screen();
         // Told here, so the frame's `observe_screen` sees no change to announce.
@@ -499,6 +505,7 @@ impl Game<'_> {
                 if let Some(title) = self.title.as_mut() {
                     title.mode = mode;
                 }
+                self.release_mappings_on_screen_open();
                 self.build_screen();
             }
         }
