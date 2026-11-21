@@ -570,6 +570,13 @@ fn saved(pieces: &[PoolPiece]) -> Vec<u8> {
 #[test]
 #[ignore = "daily"]
 fn no_part_fixed_seed_layout_bytes_and_draws_stay_unchanged() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::native_rotate::jigsaw_tests::no_part_fixed_seed_layout_bytes_and_draws_stay_unchanged",
+        "SUNRISE_JIGSAW_FIXED_SEED_CHILD",
+        &["fixed-seed"],
+    ) {
+        return;
+    }
     let _publishing = native_worldgen_parts::PUBLISHING
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
