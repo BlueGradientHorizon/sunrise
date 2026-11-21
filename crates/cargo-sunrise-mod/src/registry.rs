@@ -5,7 +5,7 @@ use crate::options::Options;
 use serde::de::DeserializeOwned;
 use std::path::Path;
 
-mod fit;
+pub(crate) mod fit;
 #[cfg(test)]
 mod tests;
 use sunrise_mod_package::index::{

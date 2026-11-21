@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use sunrise_mod_package::{
     build_data,
-    index::{BuildVerdict, FitVerdict, Index, Kind, UnjudgedBuild},
+    index::{BuildVerdict, FitVerdict, Index, Kind, SunriseRelease, UnjudgedBuild, Version},
     sdk,
 };
 use sunrise_native_build::game_uses;
@@ -51,27 +51,51 @@ pub(super) fn publish(
     if releases.is_empty() && index.nightly_build.is_none() {
         return Ok(());
     }
-    let mut versions = Vec::new();
-    let mut lines = BTreeSet::new();
-    for project in &mut index.projects {
-        let is_native = match project.kind {
-            Kind::NativeMod => true,
-            Kind::Mod => false,
-            _ => continue, // other kinds' independent compatibility rules aren't judged here
-        };
-        for version in &mut project.versions {
-            let Some(tag) = &version.sunrise else {
-                continue;
+    let versions = index.projects.iter_mut().flat_map(|project| {
+        project.versions.iter_mut().filter_map(|version| {
+            let is_native = match project.kind {
+                Kind::NativeMod => true,
+                Kind::Mod => false,
+                _ => return None,
             };
-            let made_for = releases.iter().find(|r| r.tag == *tag).ok_or_else(|| {
-                format!(
-                    "{} {}: use --releases with Sunrise release {tag:?} to compute fit",
-                    project.id, version.version
-                )
-            })?;
-            lines.insert(made_for.line.as_str());
-            versions.push((version, made_for, is_native));
-        }
+            Some((project.id.as_str(), version, is_native))
+        })
+    });
+    judge(
+        versions,
+        releases,
+        index
+            .nightly_build
+            .as_ref()
+            .map(|build| build.commit.as_str()),
+        &mut index.unjudged,
+        files,
+        sdk_data,
+    )
+}
+
+fn judge<'a>(
+    versions: impl Iterator<Item = (&'a str, &'a mut Version, bool)>,
+    releases: &[SunriseRelease],
+    nightly: Option<&str>,
+    unjudged: &mut Vec<UnjudgedBuild>,
+    files: &Path,
+    sdk_data: Option<&Path>,
+) -> Result<(), String> {
+    let mut pinned_versions = Vec::new();
+    let mut lines = BTreeSet::new();
+    for (id, version, is_native) in versions {
+        let Some(tag) = &version.sunrise else {
+            continue;
+        };
+        let made_for = releases.iter().find(|r| r.tag == *tag).ok_or_else(|| {
+            format!(
+                "{id} {}: use --releases with Sunrise release {tag:?} to compute fit",
+                version.version
+            )
+        })?;
+        lines.insert(made_for.line.as_str());
+        pinned_versions.push((version, made_for, is_native));
     }
     let mut targets = BTreeMap::<&str, Vec<(&str, Option<&str>)>>::new();
     for release in releases.iter().filter(|r| lines.contains(r.line.as_str())) {
@@ -80,13 +104,10 @@ pub(super) fn publish(
             .or_default()
             .push((&release.tag, Some(&release.line)));
     }
-    if let Some(nightly) = &index.nightly_build
-        && !versions.is_empty()
+    if let Some(nightly) = nightly
+        && !pinned_versions.is_empty()
     {
-        targets
-            .entry(&nightly.commit)
-            .or_default()
-            .push(("nightly", None));
+        targets.entry(nightly).or_default().push(("nightly", None));
     }
     let Some((&first_commit, first_keys)) = targets.first_key_value() else {
         return Ok(());
@@ -128,16 +149,14 @@ pub(super) fn publish(
             Err(reason) => {
                 let names: Vec<_> = keys.iter().map(|&(name, _)| name).collect();
                 eprintln!("warning: Sunrise {} ({commit}): {reason}", names.join(", "));
-                index
-                    .unjudged
-                    .extend(names.into_iter().map(|name| UnjudgedBuild {
-                        build: name.to_owned(),
-                        reason: reason.to_owned(),
-                    }));
+                unjudged.extend(names.into_iter().map(|name| UnjudgedBuild {
+                    build: name.to_owned(),
+                    reason: reason.to_owned(),
+                }));
                 continue;
             }
         };
-        for (version, made_for, is_native) in &mut versions {
+        for (version, made_for, is_native) in &mut pinned_versions {
             let mut applicable = keys
                 .iter()
                 .filter(|(_, line)| line.is_none_or(|line| line == made_for.line))
@@ -207,6 +226,35 @@ pub(super) fn verify_binaries(
     Ok(())
 }
 
+/// Judge a single author's proposed native build, without requiring its project page or
+/// SDK data for any release other than the source pin and the candidate target.
+pub(crate) fn verify_submission(
+    id: &str,
+    version: &mut Version,
+    releases: &[SunriseRelease],
+    files: &Path,
+    sdk_data: &Path,
+) -> Result<(), String> {
+    judge(
+        std::iter::once((id, &mut *version, true)),
+        releases,
+        None,
+        &mut Vec::new(),
+        files,
+        Some(sdk_data),
+    )
+    .map_err(|e| {
+        format!("{e}; give --sdk-data <dir> with the SDKs for the source pin and the target build")
+    })?;
+    let mut errors = Vec::new();
+    binary_errors(id, version, releases, &mut errors);
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(super::lines(errors))
+    }
+}
+
 /// A verified binary supplies the exact build for an `exact` verdict. It cannot turn a
 /// known break (or missing SDK evidence) into a fit.
 pub(super) fn check_binaries(index: &Index) -> Result<(), String> {
@@ -214,36 +262,43 @@ pub(super) fn check_binaries(index: &Index) -> Result<(), String> {
     let mut errors = Vec::new();
     for project in &index.projects {
         for version in &project.versions {
-            let commits: BTreeSet<_> = version
-                .native_binaries
-                .iter()
-                .map(|b| b.build.as_str())
-                .collect();
-            for commit in commits {
-                let at = |reason| {
-                    format!(
-                        "{} {}: native build {commit}: {reason}",
-                        project.id, version.version
-                    )
-                };
-                let verdict = releases
-                    .iter()
-                    .filter(|r| r.commit == commit)
-                    .find_map(|r| version.verdicts.get(&r.tag));
-                match verdict.map(|v| &v.fit) {
-                    Some(FitVerdict::Breaks { changed }) => {
-                        errors.push(at(format!("source does not fit: {}", changed.join(", "))))
-                    }
-                    None => errors.push(at("no stable fit verdict for this build".to_owned())),
-                    Some(_) => {}
-                }
-            }
+            binary_errors(&project.id, version, releases, &mut errors);
         }
     }
     if errors.is_empty() {
         Ok(())
     } else {
         Err(super::lines(errors))
+    }
+}
+
+fn binary_errors(
+    id: &str,
+    version: &Version,
+    releases: &[SunriseRelease],
+    errors: &mut Vec<String>,
+) {
+    let commits: BTreeSet<_> = version
+        .native_binaries
+        .iter()
+        .map(|b| b.build.as_str())
+        .collect();
+    for commit in commits {
+        let verdict = releases
+            .iter()
+            .filter(|r| r.commit == commit)
+            .find_map(|r| version.verdicts.get(&r.tag));
+        let reason = match verdict.map(|v| &v.fit) {
+            Some(FitVerdict::Breaks { changed }) => {
+                format!("source does not fit: {}", changed.join(", "))
+            }
+            None => "no stable fit verdict for this build".to_owned(),
+            Some(_) => continue,
+        };
+        errors.push(format!(
+            "{id} {}: native build {commit}: {reason}",
+            version.version
+        ));
     }
 }
 

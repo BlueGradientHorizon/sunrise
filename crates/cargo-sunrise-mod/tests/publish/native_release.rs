@@ -1,7 +1,8 @@
-use super::{PAGE, run, success};
+use super::{run, success};
 use serde_json::json;
 use std::{fs, io::Read, path::Path};
 use sunrise_mod_package::{
+    build_data,
     index::{
         self,
         registry::{
@@ -81,30 +82,55 @@ impl Assets {
             .to_string(),
         )
         .unwrap();
-        let sdk_data = dir.join("sdk-data").join(&descriptor.build);
-        fs::create_dir_all(&sdk_data).unwrap();
-        fs::write(sdk_data.join("surface.json"), r#"{"hash":"fixture"}"#).unwrap();
-        for side in [sdk::Side::Client, sdk::Side::Server] {
-            for kind in [sdk::Kind::Api, sdk::Kind::Runtime] {
+        for commit in [COMMIT, &descriptor.build] {
+            let sdk_data = dir.join("sdk-data").join(commit);
+            let data = sdk_data.join("build-data");
+            fs::create_dir_all(&sdk_data).unwrap();
+            fs::write(
+                sdk_data.join("surface.json"),
+                json!({"schema": mod_surface::SCHEMA, "hash": "fixture"}).to_string(),
+            )
+            .unwrap();
+            for side in [sdk::Side::Client, sdk::Side::Server] {
+                for kind in [sdk::Kind::Api, sdk::Kind::Runtime] {
+                    fs::write(
+                        sdk_data.join(sdk::Asset::name(kind, "x86_64-unknown-linux-gnu", side)),
+                        b"unused SDK slice",
+                    )
+                    .unwrap();
+                }
+            }
+            let index = sdk::Index::of_folder(
+                &sdk_data,
+                sdk::Build {
+                    commit: commit.into(),
+                    game: "26.3".into(),
+                    date: "2026-11-20".into(),
+                    nightly: None,
+                },
+                descriptor.rust.clone(),
+            )
+            .unwrap();
+            fs::write(sdk_data.join(sdk::INDEX), index.to_json()).unwrap();
+            fs::create_dir(&data).unwrap();
+            let build = build_data::Build {
+                commit: commit.into(),
+            };
+            for (name, payload) in [
+                (
+                    build_data::FUNCTIONS,
+                    json!({"crates": {}, "functions": {}, "refused": {}}),
+                ),
+                (build_data::INTERNALS, json!({"internals": []})),
+                (build_data::LOOPS, json!({"loops": []})),
+            ] {
                 fs::write(
-                    sdk_data.join(sdk::Asset::name(kind, "x86_64-unknown-linux-gnu", side)),
-                    b"unused SDK slice",
+                    data.join(name),
+                    serde_json::to_vec(&build_data::Document::new(&build, payload)).unwrap(),
                 )
                 .unwrap();
             }
         }
-        let index = sdk::Index::of_folder(
-            &sdk_data,
-            sdk::Build {
-                commit: descriptor.build.clone(),
-                game: "26.3".into(),
-                date: "2026-11-20".into(),
-                nightly: None,
-            },
-            descriptor.rust.clone(),
-        )
-        .unwrap();
-        fs::write(sdk_data.join(sdk::INDEX), index.to_json()).unwrap();
         Self {
             root,
             descriptor,
@@ -130,7 +156,14 @@ impl Assets {
         if let Some(checkout) = checkout {
             args.extend(["--registry", checkout]);
         } else {
-            args.extend(PAGE);
+            args.extend([
+                "--summary",
+                "Native release probe",
+                "--owner",
+                "test-author",
+                "--categories",
+                "library",
+            ]);
             args.extend([
                 "--sunrise",
                 SOURCE_RELEASE,
@@ -220,6 +253,22 @@ fn signed_binaries_stage_with_the_original_source_for_new_and_existing_versions(
     };
     success(fixture.publish("new", None, true));
     fixture.assert_assets_staged("new");
+    fs::create_dir_all(root.join("base/mods")).unwrap();
+    success(run(
+        root,
+        &[
+            "registry",
+            "check",
+            "base",
+            "new",
+            "--files",
+            "new/files",
+            "--releases",
+            "releases.json",
+            "--sdk-data",
+            "sdk-data",
+        ],
+    ));
     assert_eq!(
         fs::read(root.join("new").join(SOURCE)).unwrap(),
         fs::read(root.join("source.smod")).unwrap()
@@ -327,4 +376,46 @@ fn a_reviewed_exact_source_can_add_binaries_without_repacking() {
     assert_eq!(appended, toml::from_str(&original).unwrap());
     assert_eq!(fs::read_to_string(reviewed).unwrap(), original);
     assert!(!root.join("append").join(SOURCE).exists());
+}
+
+#[test]
+#[ignore = "daily"]
+fn binaries_with_a_known_source_break_or_missing_sdk_leave_no_output() {
+    let fixture = Assets::new("author-publish");
+    let root = fixture.path();
+    let data = root.join("sdk-data");
+    fs::rename(data.join(COMMIT), data.join("hidden")).unwrap();
+    let refused = fixture.publish("missing", None, true);
+    assert!(!refused.status.success());
+    let error = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        error.contains("--sdk-data") && error.contains(COMMIT),
+        "{error}"
+    );
+    assert!(!root.join("missing").exists());
+    fs::rename(data.join("hidden"), data.join(COMMIT)).unwrap();
+
+    let index = data.join(&fixture.descriptor.build).join(sdk::INDEX);
+    let saved = fs::read(&index).unwrap();
+    fs::remove_file(&index).unwrap();
+    let refused = fixture.publish("missing-target", None, true);
+    assert!(!refused.status.success());
+    let error = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        error.contains("--sdk-data") && error.contains(&fixture.descriptor.build),
+        "{error}"
+    );
+    assert!(!root.join("missing-target").exists());
+
+    let mut sdk: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+    sdk["content_api"] = "999".into();
+    fs::write(index, sdk.to_string()).unwrap();
+    let refused = fixture.publish("incompatible", None, true);
+    assert!(!refused.status.success());
+    let error = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        error.contains("source does not fit: content-api"),
+        "{error}"
+    );
+    assert!(!root.join("incompatible").exists());
 }

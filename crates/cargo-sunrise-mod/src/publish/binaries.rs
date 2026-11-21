@@ -1,6 +1,7 @@
 //! Read a signed release folder using the same verifier as `registry check`.
 use crate::{
     bounded::{self, Symlinks},
+    registry::fit,
     release,
 };
 use std::{fs, path::Path};
@@ -119,7 +120,17 @@ impl Inputs<'_> {
             });
         }
         put(&version.sha256, source)?;
-        registry::checked_version(
+        let source_tag = version
+            .sunrise
+            .as_deref()
+            .expect("source pin checked before preparing binaries");
+        let fit_releases = self
+            .releases
+            .iter()
+            .filter(|r| r.tag == source_tag || r.tag == release.tag)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut version = registry::checked_version(
             &checked,
             &checked.versions[0],
             &Sources {
@@ -128,7 +139,7 @@ impl Inputs<'_> {
                 release: index::FILE_HOST,
                 site: "https://example.invalid/",
                 generated: String::new(),
-                releases: Some(self.releases),
+                releases: Some(&fit_releases),
                 nightly: None,
                 binary_checks: Some(builds::Checks {
                     sdk_data: self.sdk_data,
@@ -136,6 +147,13 @@ impl Inputs<'_> {
                 }),
             },
             &[],
+        )?;
+        fit::verify_submission(
+            &entry.id,
+            &mut version,
+            &fit_releases,
+            scratch.path(),
+            self.sdk_data,
         )?;
         Ok(Submission {
             build,

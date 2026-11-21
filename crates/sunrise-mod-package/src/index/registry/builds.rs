@@ -249,8 +249,13 @@ pub fn assets<'a>(
 }
 
 pub fn sdk_index(data: &Path, commit: &str) -> Result<sdk::Index, String> {
-    let bytes = read_regular(data, &Path::new(commit).join(sdk::INDEX), MAX_DESCRIPTOR)
-        .map_err(|e| format!("{commit}/{}: {e}", sdk::INDEX))?;
+    let bytes =
+        read_regular(data, &Path::new(commit).join(sdk::INDEX), MAX_DESCRIPTOR).map_err(|e| {
+            format!(
+                "{commit}/{}: {e}; supply the build's SDK under --sdk-data <dir>/{commit}",
+                sdk::INDEX
+            )
+        })?;
     sdk::Index::read_for_fit(&bytes, commit).map_err(|e| e.to_string())
 }
 
