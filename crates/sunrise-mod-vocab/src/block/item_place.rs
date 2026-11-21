@@ -93,10 +93,11 @@ pub enum ItemPlace {
         slot: usize,
     },
     /// Slot `slot` of a player's open menu, `menu`, a fork addition (NeoForge 26.3 has no
-    /// `ItemAccess` for a menu slot): the storage the slot shows ([`MenuRef::slot_backing`]),
-    /// its own slot only, under the slot's own rules first ([`MenuRef::slot_holds`],
-    /// [`MenuRef::slot_gives`]). Nothing where the menu is closed, replaced or its player gone;
-    /// nothing goes into or out of the crafting result.
+    /// `ItemAccess` for a menu slot): the storage the slot shows ([`crate::MenuView::slot_backing`]),
+    /// its own slot only, under the slot's own rules first ([`crate::MenuView::slot_holds`],
+    /// [`crate::MenuView::slot_gives`]). Nothing where the menu is closed, replaced or its player gone;
+    /// nothing goes into or out of the crafting result. The write resolves the menu again and
+    /// checks the current slot; it does not use a backing saved from an earlier read.
     MenuSlot {
         /// The open menu.
         menu: MenuRef,
@@ -555,19 +556,21 @@ impl ItemPlace {
                         lend(ItemStackView::from_stack(&stack));
                         return Some(());
                     }
-                    Self::MenuSlot { menu, slot } => match menu
-                        .with_view(host, |view| view.slot_backing(*slot))
-                        .flatten()
-                    {
-                        // Only the handler owns this stack. Its refusal must not read the mirror.
-                        Some(MenuSlotBacking::Place(place)) => place.handler(host, menu.player)?,
-                        _ => {
-                            let stack =
-                                menu.with_view(host, |view| view.slot(*slot)).flatten()??;
+                    Self::MenuSlot { menu, slot } => {
+                        let (place, stack) =
+                            menu.with_view(host, |view| match view.slot_backing(*slot) {
+                                // Only the handler owns this stack. Its refusal must not read the mirror.
+                                Some(MenuSlotBacking::Place(place)) => (Some(place), None),
+                                _ => (None, view.slot(*slot).flatten()),
+                            })?;
+                        if let Some(place) = place {
+                            place.handler(host, menu.player)?
+                        } else {
+                            let stack = stack?;
                             lend(ItemStackView::from_stack(&stack));
                             return Some(());
                         }
-                    },
+                    }
                     _ => return backend_mut_of(host)?.game_stack(place, lend),
                 };
                 let resource = handler.resource(host, slot)?;
