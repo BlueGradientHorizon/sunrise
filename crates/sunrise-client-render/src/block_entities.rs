@@ -693,9 +693,15 @@ impl BlockEntities {
             ((at - radius - 0.5) / 16.0).floor() as i32
                 ..=((at + radius - 0.5) / 16.0).floor() as i32
         };
+        let xs = chunks(x);
         let zs = chunks(z);
-        chunks(x)
-            .flat_map(move |cx| zs.clone().map(move |cz| (cx, cz)))
+        crate::spans::note_block_entity_item_chunks(|| {
+            let width = |r: &std::ops::RangeInclusive<i32>| {
+                (i64::from(*r.end()) - i64::from(*r.start()) + 1).max(0) as u64
+            };
+            width(&xs).saturating_mul(width(&zs))
+        });
+        xs.flat_map(move |cx| zs.clone().map(move |cz| (cx, cz)))
             .filter_map(|chunk| self.columns.get(&chunk))
             .flatten()
             .filter_map(|pos| Some((pos, self.map.get(pos)?)))
@@ -1091,6 +1097,12 @@ impl BlockEntities {
     /// already at its position (`LevelChunk.setBlockEntity`) drops that one;
     /// its slot is decided by the block state at the next tick.
     pub fn load_chunk(&mut self, entities: Vec<(Pos, BlockEntity)>) {
+        let _load = if entities.is_empty() {
+            None
+        } else {
+            crate::spans::note_block_entity_loads(entities.len());
+            crate::spans::raw_flight_guard("load_block_entities")
+        };
         let order = chunk_map_order(entities.iter().map(|(p, _)| *p));
         for (p, e) in entities {
             self.contents_watches.remove(p);

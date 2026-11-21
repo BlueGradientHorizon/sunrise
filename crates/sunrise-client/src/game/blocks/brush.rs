@@ -313,6 +313,7 @@ impl Game<'_> {
     /// The items [`Self::brushable_geometry`] draws.
     pub(super) fn brushable_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
         use sunrise_assets::item_model::DisplayContext;
+        let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
         let radius = f64::from(reach.view_distance(0));
         for (key, entity) in self.world.block_entities.near(camera.x, camera.z, radius) {

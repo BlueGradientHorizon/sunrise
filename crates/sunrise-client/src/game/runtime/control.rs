@@ -109,6 +109,7 @@ impl Game<'_> {
     pub(super) fn record_streaming_work(
         &mut self,
         rendered: bool,
+        block_entity_work: [u64; 2],
         spans: &[sunrise_client::spans::Span],
     ) {
         if let Some(flight) = self.flight.as_mut().filter(|flight| flight.raw) {
@@ -121,6 +122,7 @@ impl Game<'_> {
                     sorted,
                     merged,
                     mesh_uploads,
+                    block_entity_work,
                     spans,
                 );
             }

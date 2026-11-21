@@ -625,15 +625,28 @@ mod tests {
                 span("order_uploads", 0.5, 0.25),
                 span("upload_queue", 1.0, 0.5),
                 span("upload_queue", 0.125, 0.0625),
+                span("load_block_entities", 0.25, 0.125),
+                span("load_block_entities", 0.125, 0.0625),
+                span("block_entity_items", 0.125, 0.0625),
+                span("block_entity_items", 0.0625, 0.03125),
             ],
             vec![],
-            vec![span("upload", 0.25, 0.125)],
+            vec![
+                span("upload", 0.25, 0.125),
+                span("block_entity_items", 0.25, 0.125),
+            ],
         ];
         let uploads = [[7, 8192], [0, 0], [2, 1024]];
-        for ((ms, spans), uploads) in [4.0, 5.0, 6.0].into_iter().zip(samples).zip(uploads) {
+        let block_entity_work = [[3, 256], [0, 0], [0, 324]];
+        for (((ms, spans), uploads), work) in [4.0, 5.0, 6.0]
+            .into_iter()
+            .zip(samples)
+            .zip(uploads)
+            .zip(block_entity_work)
+        {
             stats.record(ms);
             stats.record_cpu(ms / 2.0);
-            stats.record_streaming_work(5, 13, 23, uploads, &spans);
+            stats.record_streaming_work(5, 13, 23, uploads, work, &spans);
         }
         let mut summary = stats.summary();
         assert!(summary.get("frame_ms").is_none());
@@ -644,6 +657,7 @@ mod tests {
         assert_eq!(summary["frames"], 3);
         assert!(summary.get("streaming_work").is_none());
         assert!(summary.get("streaming_uploads").is_none());
+        assert!(summary.get("streaming_block_entities").is_none());
         assert!(summary.get("streaming_span_ms").is_none());
 
         stats.add_flight_series(&mut summary);
@@ -656,11 +670,17 @@ mod tests {
             serde_json::json!([[7, 8192], [0, 0], [2, 1024]])
         );
         assert_eq!(
+            summary["streaming_block_entities"],
+            serde_json::json!([[3, 256], [0, 0], [0, 324]])
+        );
+        assert_eq!(
             summary["streaming_span_ms"],
             serde_json::json!({
                 "unload_block_entities": [0.375, null, null],
                 "order_uploads": [0.5, null, null],
                 "upload_queue": [1.125, null, null],
+                "load_block_entities": [0.375, null, null],
+                "block_entity_items": [0.1875, null, 0.25],
             })
         );
 
@@ -669,6 +689,7 @@ mod tests {
         stats.add_flight_series(&mut summary);
         assert!(summary.get("streaming_work").is_none());
         assert!(summary.get("streaming_uploads").is_none());
+        assert!(summary.get("streaming_block_entities").is_none());
         assert!(summary.get("streaming_span_ms").is_none());
     }
 
@@ -772,6 +793,8 @@ pub struct FrameStats {
     streaming_work: Vec<[u64; 3]>,
     /// Meshes submitted to the renderer and their bytes at the upload budget's vertex size.
     streaming_uploads: Vec<[u64; 2]>,
+    /// Column-load writes and probes of the item renderers' chunk index, per rendered frame.
+    streaming_block_entities: Vec<[u64; 2]>,
     /// The same frames' wall milliseconds, by streaming span. None when it did not run.
     streaming_spans: Vec<[Option<f32>; STREAMING_SPANS.len()]>,
     static_snapshot_rebuilds: u64,
@@ -794,7 +817,13 @@ pub struct FrameStats {
 /// building the frame's geometry and HUD, and the renderer's own work.
 pub const PHASES: [&str; 4] = ["update", "tick", "prepare", "render"];
 
-const STREAMING_SPANS: [&str; 3] = ["unload_block_entities", "order_uploads", "upload_queue"];
+const STREAMING_SPANS: [&str; 5] = [
+    "unload_block_entities",
+    "order_uploads",
+    "upload_queue",
+    "load_block_entities",
+    "block_entity_items",
+];
 
 fn percentiles(values: &[f32]) -> serde_json::Value {
     let mut sorted = values.to_vec();
@@ -873,12 +902,14 @@ impl FrameStats {
         sorted: usize,
         merged: usize,
         mesh_uploads: [u64; 2],
+        block_entity_work: [u64; 2],
         spans: &[crate::spans::Span],
     ) {
         if self.streaming_work.len() < Self::LIMIT {
             self.streaming_work
                 .push([visited, sorted as u64, merged as u64]);
             self.streaming_uploads.push(mesh_uploads);
+            self.streaming_block_entities.push(block_entity_work);
             let mut times = [None; STREAMING_SPANS.len()];
             for span in spans {
                 if let Some(index) = STREAMING_SPANS.iter().position(|&name| name == span.name) {
@@ -901,6 +932,7 @@ impl FrameStats {
         if !self.streaming_work.is_empty() {
             summary["streaming_work"] = serde_json::json!(self.streaming_work);
             summary["streaming_uploads"] = serde_json::json!(self.streaming_uploads);
+            summary["streaming_block_entities"] = serde_json::json!(self.streaming_block_entities);
             summary["streaming_span_ms"] = STREAMING_SPANS
                 .iter()
                 .enumerate()
@@ -985,6 +1017,7 @@ impl FrameStats {
         self.phases.clear();
         self.streaming_work.clear();
         self.streaming_uploads.clear();
+        self.streaming_block_entities.clear();
         self.streaming_spans.clear();
         self.static_snapshot_rebuilds = 0;
         self.static_snapshot_bytes_built = 0;

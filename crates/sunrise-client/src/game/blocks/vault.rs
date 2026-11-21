@@ -302,6 +302,7 @@ impl Game<'_> {
         alpha: f64,
         mut draw: impl FnMut(BlockItemDraw),
     ) {
+        let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
         let radius = f64::from(reach.view_distance(0));
         for (key, entity) in self.world.block_entities.near(camera.x, camera.z, radius) {

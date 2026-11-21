@@ -119,6 +119,11 @@ impl Game<'_> {
         (x, z): (i32, i32),
         infos: &[sunrise_protocol::chunk::BlockEntityInfo],
     ) {
+        let _load = if infos.is_empty() {
+            None
+        } else {
+            sunrise_client::spans::raw_flight_guard("load_block_entities")
+        };
         for info in infos {
             let pos = (
                 x * 16 + i32::from(info.packed_xz as u8 >> 4),

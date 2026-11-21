@@ -10647,6 +10647,10 @@ impl Game<'_> {
                     } else {
                         Vec::new()
                     };
+                    let block_entity_work = flight_spans.as_ref().map_or(
+                        [0; 2],
+                        sunrise_client::spans::FrameRecording::block_entity_work,
+                    );
                     drop(flight_spans);
                     let mut perf_times = None;
                     if let Some(r) = self.renderer.as_mut() {
@@ -10754,7 +10758,7 @@ impl Game<'_> {
                     if !consumed && let Some(Err(error)) = finished {
                         log::warn!("Sunrise: couldn't save the world icon: {error}");
                     }
-                    self.record_streaming_work(rendered, &frame_spans);
+                    self.record_streaming_work(rendered, block_entity_work, &frame_spans);
                     if rendered {
                         self.frame_stats.record(elapsed.as_secs_f32() * 1000.0);
                         if let Some((cpu, gpu)) = perf_times {

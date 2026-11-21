@@ -13,6 +13,8 @@ thread_local! {
     static SPANS: RefCell<Vec<Span>> = const { RefCell::new(Vec::new()) };
     /// Wall-only recording on this thread: the ongoing setting and the scoped frame override.
     static HERE: Cell<u8> = const { Cell::new(0) };
+    /// Block-entity load writes and item-render chunk probes in this raw-flight frame.
+    static BLOCK_ENTITY_WORK: Cell<[u64; 2]> = const { Cell::new([0; 2]) };
     /// How many timed spans the thread is inside: the next span's [`Span::depth`].
     static DEPTH: Cell<u8> = const { Cell::new(0) };
     /// What this thread's slowest steps were busy with since it last took them ([`note`]).
@@ -62,6 +64,9 @@ pub fn record_here(on: bool) {
 /// Record wall time during a measured frame without changing the ongoing setting.
 pub fn record_frame() -> FrameRecording {
     let previous = HERE.with(|h| h.replace(h.get() | FRAME) & FRAME);
+    if previous == 0 {
+        BLOCK_ENTITY_WORK.set([0; 2]);
+    }
     FrameRecording {
         previous,
         _thread: PhantomData,
@@ -72,6 +77,37 @@ pub fn record_frame() -> FrameRecording {
 pub struct FrameRecording {
     previous: u8,
     _thread: PhantomData<*const ()>,
+}
+
+impl FrameRecording {
+    /// Load writes and item-render chunk probes recorded since the frame started.
+    pub fn block_entity_work(&self) -> [u64; 2] {
+        BLOCK_ENTITY_WORK.get()
+    }
+}
+
+/// Time a span only within a scoped recording for a raw flight.
+#[inline]
+pub fn raw_flight_guard(name: &'static str) -> Option<Guard> {
+    (HERE.get() & FRAME != 0).then(|| guard(name))
+}
+
+/// Count actual inserts or replacements during a column load, not incoming tag entries.
+#[inline]
+pub fn note_block_entity_loads(count: usize) {
+    if HERE.get() & FRAME != 0 {
+        let [loads, probes] = BLOCK_ENTITY_WORK.get();
+        BLOCK_ENTITY_WORK.set([loads + count as u64, probes]);
+    }
+}
+
+/// Count chunk lookups in an item renderer's fully consumed `near` iterator.
+#[inline]
+pub fn note_block_entity_item_chunks(count: impl FnOnce() -> u64) {
+    if HERE.get() & FRAME != 0 {
+        let [loads, probes] = BLOCK_ENTITY_WORK.get();
+        BLOCK_ENTITY_WORK.set([loads, probes + count()]);
+    }
 }
 
 impl Drop for FrameRecording {
@@ -786,6 +822,33 @@ mod tests {
             .map(|span| span.name)
             .collect();
         assert_eq!(names, ["frame", "ongoing"]);
+    }
+
+    #[test]
+    fn block_entity_work_and_spans_are_scoped_to_raw_flight_frames() {
+        let _switch = spans_switch();
+        super::record_here(true);
+        assert!(super::raw_flight_guard("outside_flight").is_none());
+        super::note_block_entity_loads(19);
+        super::note_block_entity_item_chunks(|| panic!("must not count outside a raw flight"));
+        {
+            let frame = super::record_frame();
+            {
+                let _load = super::raw_flight_guard("load_block_entities");
+                super::note_block_entity_loads(1);
+                super::note_block_entity_loads(3);
+            }
+            super::note_block_entity_item_chunks(|| 64);
+            super::note_block_entity_item_chunks(|| 81);
+            assert_eq!(frame.block_entity_work(), [4, 145]);
+        }
+        super::record_here(false);
+        assert_eq!(super::record_frame().block_entity_work(), [0; 2]);
+        let names: Vec<_> = super::take_raw()
+            .into_iter()
+            .map(|span| span.name)
+            .collect();
+        assert_eq!(names, ["load_block_entities"]);
     }
 
     /// Spans of one name add up, the slowest first; a span that waited keeps its small CPU time.
