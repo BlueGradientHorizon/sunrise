@@ -863,9 +863,10 @@ mod tests {
 
     #[test]
     fn sharing_counts_a_section_only_once_across_both_censuses() {
-        let mut section = Section::default();
-        section.light = Light::Sky(Box::new([0; 2048]), 0);
-        let section = Arc::new(section);
+        let section = Arc::new(Section {
+            light: Light::Sky(Box::new([0; 2048]), 0),
+            ..Section::default()
+        });
         // An equal, independently held section isn't shared.
         let independent = Arc::new((*section).clone());
         let counted = shared(
