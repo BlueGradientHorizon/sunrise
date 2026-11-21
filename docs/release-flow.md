@@ -498,16 +498,15 @@ The first release of a line has no API restriction. No label, change note or dis
 The mod API surface comparison judges declarations, not behaviour: a vanilla parity fix that leaves the surface
 alone can ship in a patch.
 
-**Content declarations are held by review and tests in 0.1.x, not by the release check.** A content mod's manifest
-and declarations that loaded in one release of a line load the same in every later patch and minor. What shows a
-change:
+**Content declarations are held by review and tests in the 26.3-0.x line, not by the release check.** A content
+mod's manifest and declarations that loaded in one release of a line load the same in every later patch and minor.
+What shows a change:
 
 - `crates/sunrise-mod-package/tests/content-corpus/` holds manifests and declarations, one mod per entry, as a
   folder or a packed `.smod`, including ones that must be refused.
   `crates/sunrise-mod-package/tests/content-golden/<entry>.txt` holds what the readers make of each: the loaded
   manifest, the icon's bytes and the content, or the refusal text.
-- The `content_golden` test (in `verify`) re-reads the corpus and fails when a golden file differs, so a change in
-  reading is a changed golden file in the pull request that makes it, and never arrives unseen.
+- The `content_golden` test (in `verify`) re-reads the corpus and fails when a dump differs from its committed golden.
   `content_golden_is_deterministic` reads each entry twice and requires the same bytes.
 - The `content_keys` test (in `verify`) takes the declaration keys from the reader types and fails when a key it
   can enumerate appears in no entry: a pull request that adds a key adds its entry. Its source guard lists every
