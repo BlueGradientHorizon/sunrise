@@ -1,6 +1,7 @@
 //! Geometry a mod borrows from a baked model, before resolving its draw-time state.
 use super::*;
 use crate::models::catalog::BakedFace;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use sunrise_assets::{bake::ModelQuad, model::Material};
 
 fn quad(facing: FaceDirection, cull: Option<FaceDirection>, sprite: &str) -> ModelQuad {
@@ -87,6 +88,24 @@ fn a_view_lends_quads_in_bake_order_with_baked_argb_separate_from_tint() {
     assert_eq!(west.tint_index, -1);
     assert_eq!(west.baked_argb, None);
     assert!(quads.next().is_none());
+
+    struct CountedSource<'a>(&'a BakedModel, AtomicUsize);
+    impl BakedQuadSource for CountedSource<'_> {
+        fn quad(&self, index: usize) -> Option<BakedQuad<'_>> {
+            self.1.fetch_add(1, Ordering::Relaxed);
+            self.0.quad(index)
+        }
+    }
+    let source = CountedSource(&model, AtomicUsize::new(0));
+    let view = built::baked_model_view(false, None, &source);
+    let indexed = view.quad(1).unwrap();
+    assert_eq!(source.1.load(Ordering::Relaxed), 1);
+    assert_eq!(indexed.sprite, "minecraft:block/dirt");
+    assert!(std::ptr::eq(
+        indexed.positions,
+        &model.faces[1].quad.positions
+    ));
+    assert!(view.quad(2).is_none());
 }
 
 #[test]
