@@ -2,3 +2,4 @@ sunrise-client game::native_damage_tests::a_sweep_finishes_its_lethal_hit_before
 sunrise-client game::native_damage_tests::guest_protection_consumes_the_item_and_posts_inside_the_hit lib daily resources
 sunrise-client game::native_damage_tests::guest_strike_posts_before_returning_from_the_authoritative_death lib daily resources
 sunrise-client game::native_damage_tests::player_pre_keeps_live_damage_when_resistance_does_not_record_a_reduction lib daily resources
+sunrise-client game::native_damage_tests::splash_water_finishes_a_lethal_hit_before_the_next_target lib daily resources

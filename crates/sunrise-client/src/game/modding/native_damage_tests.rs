@@ -616,6 +616,45 @@ fn a_sweep_finishes_its_lethal_hit_before_the_next_hit() {
 
 #[test]
 #[ignore = "daily"]
+fn splash_water_finishes_a_lethal_hit_before_the_next_target() {
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let mut first = mob(game, 225041, "minecraft:blaze");
+            first.health = 0.5;
+            let second = mob(game, 225042, "minecraft:blaze");
+            game.mobs.push(first);
+            game.mobs.push(second);
+            let water = ItemStack::new("minecraft:splash_potion", 1).with_potion("minecraft:water");
+            game.affect_entities_around(&water, Vec3::ZERO, false);
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", 225041),
+                    ("pre", 225041),
+                    ("death", 225041),
+                    ("death-tail", 225041),
+                    ("post", 225041),
+                    ("incoming", 225042),
+                    ("pre", 225042),
+                    ("post", 225042),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
     use crate::game::native_player_death::tests::add_guest;
     let trace = Arc::new(DeathOrder::default());

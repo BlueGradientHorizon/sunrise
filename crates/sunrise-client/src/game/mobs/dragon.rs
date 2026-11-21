@@ -3002,8 +3002,9 @@ impl Game<'_> {
             // part's list in turn, so Thorns' level and dragon draws follow it.
             for part in 0..4 {
                 for (index, &allowed) in allowed.iter().enumerate() {
+                    let id = self.mobs[index].id;
                     let plan = self.prepare_knockback_credit(
-                        self.mobs[index].id as i32,
+                        id as i32,
                         Some(Who::Mob(frame.dragon_id)),
                         self.combat.attack(),
                     );
@@ -3020,7 +3021,7 @@ impl Game<'_> {
                         allowed,
                         part,
                     ) {
-                        let id = self.mobs[index].id;
+                        self.finish_mob_damage_at(index);
                         self.mob_post_attack(
                             id,
                             Some(sunrise_client::mobs::Who::Mob(frame.dragon_id)),
