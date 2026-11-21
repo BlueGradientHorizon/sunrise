@@ -2612,6 +2612,7 @@ struct GameLevel<'w> {
             >,
         >,
     >,
+    attachment_query_scopes: &'w sunrise_mod_runtime::attachments::AttachmentQueryScopes,
     positions: piston_carry_state::PositionState<'w>,
     border: &'w sunrise_core::geometry::border::BorderGeometry,
     world: &'w mut World,
@@ -5379,6 +5380,7 @@ impl Game<'_> {
                 self.native_client_level()
             },
             part_state_index: self.attachment_indexes.get(&self.dim),
+            attachment_query_scopes: &self.transactions.attachment_query_scopes,
             command_block_transition: None,
             positions: piston_carry_state::PositionState {
                 gateways: &mut self.be_anims.gateway_servers,

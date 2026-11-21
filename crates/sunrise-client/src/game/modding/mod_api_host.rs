@@ -467,6 +467,9 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
         }
         mod_api::LevelHost::block_entity(self.base, pos)
     }
+    fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
+        mod_api::LevelHost::attachment_read_scope(self.base)
+    }
     fn block_entity_part_snapshot(
         &self,
         entity: mod_api::BlockEntityRef,
@@ -607,6 +610,9 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
             .try_into_api()
             .ok()
     }
+    fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
+        mod_api::__private::game::attachment_read_scope(self.attachment_query_scopes)
+    }
     fn block_entity_part_snapshot(
         &self,
         entity: mod_api::BlockEntityRef,
@@ -618,9 +624,9 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
             self.api_level,
             self.native_authoritative,
             self.part_state_index,
+            self.attachment_query_scopes,
             entity,
-            namespace,
-            name,
+            (namespace, name),
         )
     }
     fn block_entity_data(&self, entity: mod_api::BlockEntityRef) -> Option<mod_api::Compound> {
@@ -1054,6 +1060,9 @@ impl<
             return None;
         }
         mod_api::LevelHost::container_stack(&*self.level, at, slot)
+    }
+    fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
+        mod_api::LevelHost::attachment_read_scope(&*self.level)
     }
     fn block_entity_part_snapshot(
         &self,

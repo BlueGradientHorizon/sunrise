@@ -1481,7 +1481,13 @@ pub trait LevelHost {
     fn container_stack(&self, _at: crate::BlockSide, _slot: usize) -> Option<crate::ItemStack> {
         None
     }
+    /// Borrow the host for a snapshot read in the transaction that captured it.
+    /// A level view without transaction state supplies only the unscoped default.
+    fn attachment_read_scope(&self) -> crate::AttachmentReadScope<'_> {
+        crate::AttachmentReadScope::default()
+    }
     /// Capture Part state using the same attachment snapshot as `Host::query`.
+    /// In a transaction it can be used only while the capturing frame is current.
     /// No chunk loading or loot generation. Refuses unloaded or stale holders; clients
     /// have no server Part state. Owning game thread only, never in worker hook bodies.
     // hidden: typed BlockEntityPartState read implementation.

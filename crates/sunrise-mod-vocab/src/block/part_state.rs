@@ -66,9 +66,10 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
     ) -> Result<Self::Data, PartStateError> {
         Ok(Self::state_existing_in(level, entity)?.unwrap_or_else(Self::DATA.default))
     }
-    /// The existing value through a read-only level. No chunk loading or loot generation;
-    /// unloaded/stale holders fail and clients return None. Owning game thread only, never
-    /// reachable from worker-thread hook bodies.
+    /// The existing value through a read-only level, including tentative writes visible in
+    /// its current transaction. No chunk loading or loot generation; unloaded/stale holders
+    /// fail and clients return None. Owning game thread only, never reachable from
+    /// worker-thread hook bodies.
     fn state_existing_in(
         level: &dyn crate::LevelHost,
         entity: BlockEntityRef,
@@ -77,7 +78,10 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
             .block_entity_part_snapshot(entity, Self::DATA.namespace, Self::DATA.name)?
             .query(Self::DATA)
             .map_err(|error| attachment(Self::DATA, error))?
-            .get(AttachmentHolder::BlockEntity(entity))
+            .get(
+                level.attachment_read_scope(),
+                AttachmentHolder::BlockEntity(entity),
+            )
             .map_err(|error| match error {
                 AttachmentRowError::Value(error) => attachment(Self::DATA, error),
                 _ => PartStateError::Stale,
@@ -364,9 +368,10 @@ pub fn read_state<H: PartStateHolder, T: Clone + Send + Sync + 'static>(
     key: &AttachmentType<T>,
 ) -> Result<Option<T>, PartStateError> {
     entity.part_state_holder(host)?;
-    host.query(key)
-        .map_err(|error| attachment(key, error))?
-        .get(entity.attachment_holder())
+    let query = host.query(key).map_err(|error| attachment(key, error))?;
+    let scope = host.attachment_read_scope();
+    scope
+        .and_then(|scope| query.get(scope, entity.attachment_holder()))
         .map_err(|error| match error {
             AttachmentRowError::Value(error) => attachment(key, error),
             _ => PartStateError::Stale,

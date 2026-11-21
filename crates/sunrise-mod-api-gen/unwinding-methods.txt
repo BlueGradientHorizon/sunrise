@@ -840,7 +840,6 @@ mobs::unspawned_mob_kind
 mobs::unspawned_mob_position
 mobs::unspawned_mob_tags
 mod_state::attachment_query
-mod_state::attachment_validate_write
 mod_state::attachments
 mod_state::cancel_task
 mod_state::transaction_close

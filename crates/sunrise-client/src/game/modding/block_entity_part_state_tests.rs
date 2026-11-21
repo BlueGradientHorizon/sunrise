@@ -202,9 +202,12 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         // An inner edit commits into the outer transaction, which then aborts: the value and
         // the chunk's unsaved mark go back, so a chunk that was clean is clean again.
         game.world.modified.clear();
-        let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, _| {
-            assert_eq!(Press::edit_state(host, a, |_, n| *n = 11), Ok(()));
-            assert_eq!(Press::state(host, a), Ok(11), "later steps see it");
+        let aborted: Result<(), ()> = game.transaction(|game, _| {
+            assert_eq!(Press::edit_state(game, a, |_, n| *n = 11), Ok(()));
+            assert_eq!(Press::state(game, a), Ok(11), "later steps see it");
+            game.with_level(|_, level, _| {
+                assert_eq!(Press::state_existing_in(level, a), Ok(Some(11)));
+            });
             assert!(
                 !sunrise_client::join_seq::visibility::passes_settled(),
                 "no save while it is tentative"
@@ -506,7 +509,10 @@ fn indexed(game: &Game<'_>, entity: BlockEntityRef) -> Option<i32> {
     let host: &dyn mod_api::Host = game;
     host.query(&PROGRESS)
         .unwrap()
-        .get(mod_api::AttachmentHolder::BlockEntity(entity))
+        .get(
+            game.attachment_frame_borrow(),
+            mod_api::AttachmentHolder::BlockEntity(entity),
+        )
         .ok()
         .flatten()
 }

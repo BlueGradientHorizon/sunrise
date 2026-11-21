@@ -20,12 +20,17 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 };
 fn values(game: &Game<'_>) -> Vec<i32> {
     let host: &dyn Host = game;
-    host.attachment_query("mirror", "value")
+    let query = host
+        .attachment_query("mirror", "value")
         .unwrap()
         .query(&VALUE)
-        .unwrap()
-        .iter()
-        .map(|r| *r.unwrap().value)
+        .unwrap();
+    let mut rows = query.iter();
+    std::iter::from_fn(|| rows.try_next().unwrap())
+        .map(|row| {
+            row.with_value(game.attachment_frame_borrow(), |value| *value)
+                .unwrap()
+        })
         .collect()
 }
 fn client<'a>(game: &'a mut Game<'_>) -> &'a mut Remote {
@@ -82,15 +87,19 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
         assert_eq!(values(game), [41]);
         let captured = game.attachment_query("mirror", "value").unwrap();
         let query = captured.query(&VALUE).unwrap();
-        let row = query.iter().next().unwrap().unwrap();
+        let row = query.iter().try_next().unwrap().unwrap();
         assert_eq!(
             row.holder,
             mod_api::AttachmentHolder::Level(game.level("test:pocket").unwrap())
         );
-        let token = mod_api::AttachmentWriteToken::from(row.write_token());
+        let token = row.write_token();
         sync(game, Holder::Level, 42);
         assert_eq!(values(game), [42]);
-        assert_eq!(*row.value, 41);
+        assert_eq!(
+            row.with_value(game.attachment_frame_borrow(), |value| *value)
+                .unwrap(),
+            41
+        );
         client(game).attachments.remove(&Holder::Level);
         assert!(values(game).is_empty());
         assert_eq!(
