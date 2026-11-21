@@ -343,22 +343,27 @@ fn load(root: &Path) -> (Vec<Preset>, BTreeSet<String>, BTreeSet<String>) {
         && let Ok(tag) = serde_json::from_str::<Value>(&text)
     {
         fn members(root: &Path, tag: &Value, active: &mut BTreeSet<String>) -> Vec<String> {
-            sunrise_world::tag_layers::TagLayers::from_file(tag).build(|id| {
-                if !active.insert(id.to_owned()) {
-                    return Vec::new();
-                }
-                let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
-                let file = root.join(format!(
-                    "data/{namespace}/tags/worldgen/flat_level_generator_preset/{path}.json"
-                ));
-                let out = std::fs::read(file)
-                    .ok()
-                    .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-                    .map(|v| members(root, &v, active))
-                    .unwrap_or_default();
-                active.remove(id);
-                out
-            })
+            sunrise_world::tag_layers::TagLayers::from_file(tag)
+                .build(
+                    |_| true,
+                    |id| {
+                        if !active.insert(id.to_owned()) {
+                            return Some(Vec::new());
+                        }
+                        let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
+                        let file = root.join(format!(
+                            "data/{namespace}/tags/worldgen/flat_level_generator_preset/{path}.json"
+                        ));
+                        let out = std::fs::read(file)
+                            .ok()
+                            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                            .map(|v| members(root, &v, active))
+                            .unwrap_or_default();
+                        active.remove(id);
+                        Some(out)
+                    },
+                )
+                .unwrap_or_default()
         }
         for id in members(root, &tag, &mut BTreeSet::new()) {
             let Some((namespace, path)) = id.split_once(':') else {

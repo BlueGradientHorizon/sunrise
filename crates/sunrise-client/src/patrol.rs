@@ -220,9 +220,15 @@ impl GameplayAttributes {
         let timelines: std::collections::HashMap<String, Value> =
             list("timeline").into_iter().collect();
         // Tag values with nested tags and removals resolved.
-        fn tag(data: &std::path::Path, name: &str, out: &mut Vec<String>) {
+        fn tag(
+            data: &std::path::Path,
+            timelines: &std::collections::HashMap<String, Value>,
+            name: &str,
+            out: &mut Vec<String>,
+        ) {
             fn resolve(
                 data: &std::path::Path,
+                timelines: &std::collections::HashMap<String, Value>,
                 name: &str,
                 active: &mut std::collections::HashSet<String>,
             ) -> Vec<String> {
@@ -238,13 +244,17 @@ impl GameplayAttributes {
                     .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
                     .map(|v| {
                         sunrise_world::tag_layers::TagLayers::from_file(&v)
-                            .build(|child| resolve(data, child, active))
+                            .build(
+                                |id| timelines.contains_key(id),
+                                |child| Some(resolve(data, timelines, child, active)),
+                            )
+                            .unwrap_or_default()
                     })
                     .unwrap_or_default();
                 active.remove(name);
                 members
             }
-            for id in resolve(data, name, &mut Default::default()) {
+            for id in resolve(data, timelines, name, &mut Default::default()) {
                 if !out.contains(&id) {
                     out.push(id);
                 }
@@ -261,7 +271,7 @@ impl GameplayAttributes {
             }
             let mut names = Vec::new();
             match &v["timelines"] {
-                Value::String(s) if s.starts_with('#') => tag(&data, s, &mut names),
+                Value::String(s) if s.starts_with('#') => tag(&data, &timelines, s, &mut names),
                 Value::String(s) => names.push(s.clone()),
                 Value::Array(a) => {
                     names.extend(a.iter().filter_map(|x| x.as_str()).map(str::to_owned))

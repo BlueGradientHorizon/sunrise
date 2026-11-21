@@ -1242,8 +1242,9 @@ impl SyncData {
             return;
         }
         if let Some(file) = files.get(tag) {
-            let members =
-                sunrise_world::tag_layers::TagLayers::from_file(file).build(|reference| {
+            let members = sunrise_world::tag_layers::TagLayers::from_file(file).build(
+                |id| names.contains_key(id),
+                |reference| {
                     let mut ids = Vec::new();
                     Self::expand(
                         files,
@@ -1252,16 +1253,19 @@ impl SyncData {
                         &mut ids,
                         seen,
                     );
-                    ids.into_iter()
-                        .filter_map(|id| {
-                            names
-                                .iter()
-                                .find(|(_, n)| **n == id)
-                                .map(|(name, _)| (*name).to_owned())
-                        })
-                        .collect()
-                });
-            for member in members {
+                    Some(
+                        ids.into_iter()
+                            .filter_map(|id| {
+                                names
+                                    .iter()
+                                    .find(|(_, n)| **n == id)
+                                    .map(|(name, _)| (*name).to_owned())
+                            })
+                            .collect(),
+                    )
+                },
+            );
+            for member in members.into_iter().flatten() {
                 if let Some(&id) = names.get(qualified(&member).as_str())
                     && !out.contains(&id)
                 {

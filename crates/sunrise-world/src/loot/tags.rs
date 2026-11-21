@@ -62,8 +62,8 @@ pub(super) fn members(
             }
             Step::Exit(name) => {
                 active.remove(name);
-                let members = layers(name).map(|layers| {
-                    layers.build(|tag| built.get(tag).cloned().flatten().unwrap_or_default())
+                let members = layers(name).and_then(|layers| {
+                    layers.build(|_| true, |tag| built.get(tag).cloned().flatten())
                 });
                 built.insert(name, members);
             }

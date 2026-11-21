@@ -864,7 +864,9 @@ pub(crate) fn load_tag_lists(
     }
     fn resolve(name: &str, raw: &HashMap<String, TagLayers>, depth: u32) -> Vec<String> {
         match raw.get(name) {
-            Some(layers) if depth <= 32 => layers.build(|tag| resolve(tag, raw, depth + 1)),
+            Some(layers) if depth <= 32 => layers
+                .build(|_| true, |tag| Some(resolve(tag, raw, depth + 1)))
+                .unwrap_or_default(),
             _ => Vec::new(),
         }
     }

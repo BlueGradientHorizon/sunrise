@@ -78,12 +78,15 @@ impl Tags {
         else {
             return;
         };
-        let members = sunrise_world::tag_layers::TagLayers::from_file(&json).build(|inner| {
-            let mut child = HashSet::new();
-            self.collect(registry, &full_id(inner), &mut child, seen);
-            child.into_iter().collect()
-        });
-        out.extend(members.into_iter().map(|id| full_id(&id)));
+        let members = sunrise_world::tag_layers::TagLayers::from_file(&json).build(
+            |_| true,
+            |inner| {
+                let mut child = HashSet::new();
+                self.collect(registry, &full_id(inner), &mut child, seen);
+                Some(child.into_iter().collect())
+            },
+        );
+        out.extend(members.into_iter().flatten());
         seen.remove(tag);
     }
 }

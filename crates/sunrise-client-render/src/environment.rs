@@ -860,15 +860,12 @@ fn biome_tag(
     {
         out.extend(
             sunrise_world::tag_layers::TagLayers::from_file(&json)
-                .build(|inner| biome_tag(root, inner, cache).into_iter().collect())
+                .build(
+                    |_| true,
+                    |inner| Some(biome_tag(root, inner, cache).into_iter().collect()),
+                )
                 .into_iter()
-                .map(|id| {
-                    if id.contains(':') {
-                        id
-                    } else {
-                        format!("minecraft:{id}")
-                    }
-                }),
+                .flatten(),
         );
     }
     cache.insert(tag.to_owned(), out.clone());
@@ -905,19 +902,21 @@ fn timeline_ids(root: &ResourceSource, json: &Json, out: &mut Vec<String>, depth
                         serde_json::from_slice::<Json>(&bytes).map_err(|e| e.to_string())
                     })
             {
-                let mut members = Vec::new();
-                members.extend(sunrise_world::tag_layers::TagLayers::from_file(&tag).build(
-                    |inner| {
-                        let mut child = Vec::new();
-                        timeline_ids(
-                            root,
-                            &Json::String(format!("#{inner}")),
-                            &mut child,
-                            depth + 1,
-                        );
-                        child
-                    },
-                ));
+                let members = sunrise_world::tag_layers::TagLayers::from_file(&tag)
+                    .build(
+                        |_| true,
+                        |inner| {
+                            let mut child = Vec::new();
+                            timeline_ids(
+                                root,
+                                &Json::String(format!("#{inner}")),
+                                &mut child,
+                                depth + 1,
+                            );
+                            Some(child)
+                        },
+                    )
+                    .unwrap_or_default();
                 if removes {
                     out.retain(|kept| !members.contains(kept));
                 } else {

@@ -260,12 +260,15 @@ fn expand_ordered(
         return;
     }
     if let Some(layers) = raw.get(name) {
-        let members = layers.build(|tag| {
-            let mut child = Vec::new();
-            expand_ordered(tag, raw, &mut child, depth + 1);
-            child
-        });
-        for member in members {
+        let members = layers.build(
+            |_| true,
+            |tag| {
+                let mut child = Vec::new();
+                expand_ordered(tag, raw, &mut child, depth + 1);
+                Some(child)
+            },
+        );
+        for member in members.into_iter().flatten() {
             if !out.contains(&member) {
                 out.push(member);
             }
