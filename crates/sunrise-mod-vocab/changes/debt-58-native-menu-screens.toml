@@ -85,16 +85,14 @@ ids = [
     "handle:MenuScreen::with_draw",
     "handle:MenuScreen::with_click",
     "handle:MenuScreen::with_tooltip",
-    "method:MenusRegistrar::register_menu_screen",
     "method:MenusRegistrar::menu_slot_exclusions",
-    "method:MenusRegistrar::menu_recipe_book",
     "handle:RecipeBookLayout::validate_screen",
     "handle:RecipeBookLayout::validate_exclusions",
     "method:prelude::ScreensClientHost::screen_extra_data",
 ]
 why = "A client window constructs and owns one screen and its callbacks per menu opening. The server owns slot exclusions, recipe destinations and packet validation; it no longer runs a screen factory or interprets screen geometry."
 migrate = """
-In Hooks::register, replace MenuPart::screen and its ScreenEvent with r.register_menu_screen(menu, Arc::new(|host: &dyn ClientHost, open: MenuScreenOpen<'_>| -> Option<MenuScreen> { ... })). Replace Screen { ... } (including Screen::default()) with MenuScreenLayout { ... } (or MenuScreenLayout::default()), and return Some(MenuScreen::new(layout)) after adding the callbacks below. Remove any MenuPart used only for presentation. A custom menu needs its owner's factory. For a stock menu such as minecraft:hopper, the factory runs only for a verified mod opener owned by the registering mod; select your block with open.block. Returning None from the selected factory refuses the opening. MenuScreenLayout, ScreenSlot, RecipeBookToggle and ToggleOrigin are client presentation, not Wire types: build them inside the factory instead of encoding them as payloads.
+In Hooks::register, replace MenuPart::screen and its ScreenEvent with r.register_menu_screen(menu, Arc::new(|host: &dyn ClientHost, open: MenuScreenOpen<'_>| -> Option<MenuScreen> { ... })). Replace Screen { ... } (including Screen::default()) with MenuScreenLayout { ... } (or MenuScreenLayout::default()), and return Some(MenuScreen::new(layout)) after adding the callbacks below. Remove any MenuPart used only for presentation. A custom menu needs its owner's factory to show a screen, not to load. For a stock menu such as minecraft:hopper, the factory runs only for a verified mod opener owned by the registering mod; select your block with open.block. Returning None from the selected factory refuses the opening. MenuScreenLayout, ScreenSlot, RecipeBookToggle and ToggleOrigin are client presentation, not Wire types: build them inside the factory instead of encoding them as payloads.
 
 - MenuPart::screen_draw(host, event) -> .with_draw(move |host, frame, draw| { ... }); use draw instead of event.draw.
 - MenuPart::screen_click(host, event) -> .with_click(move |host, frame, right| { ... }); use right instead of event.right. Return Some(button_id) to consume the press and request the button on the server, or None to pass it on. Keep menu_button_valid, menu_button and menu_still_valid on the MenuPart; a client hit is not server acceptance.

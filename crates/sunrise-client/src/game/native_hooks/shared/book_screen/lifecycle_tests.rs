@@ -37,6 +37,7 @@ type BoundLayoutEdit = fn(&mut mod_api::MenuScreenLayout);
 #[derive(Default)]
 struct BoundBookMod {
     edit: Arc<Mutex<Option<BoundLayoutEdit>>>,
+    no_factory: bool,
 }
 
 struct BoundBookScreen {
@@ -64,15 +65,17 @@ impl mod_api::Hooks for BoundBookMod {
                 },
             )
             .unwrap();
-        registrar
-            .register_menu_screen(
-                "bound:menu",
-                Arc::new(BoundBookScreen {
-                    book,
-                    edit: self.edit.clone(),
-                }),
-            )
-            .unwrap();
+        if !self.no_factory {
+            registrar
+                .register_menu_screen(
+                    "bound:menu",
+                    Arc::new(BoundBookScreen {
+                        book,
+                        edit: self.edit.clone(),
+                    }),
+                )
+                .unwrap();
+        }
     }
 }
 
@@ -217,6 +220,67 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                 );
                 assert_eq!(screen.layout().slots.len(), 3);
                 assert!(screen.layout().slots[2].is_none());
+            });
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_missing_recipe_book_factory_keeps_the_current_window() {
+    use sunrise_protocol::packets::play::{Clientbound, OpenScreen};
+
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "bound",
+        Box::new(BoundBookMod {
+            no_factory: true,
+            ..Default::default()
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_bound_menu_type(|| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                const CHEST: &str = "minecraft:generic_9x3";
+                assert!(mod_api::RecipeBookLayout::registered("bound:menu").is_some());
+                let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(pipe, "Menu replacement").unwrap();
+                Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
+                    .registries
+                    .insert(
+                        "minecraft:menu".into(),
+                        sunrise_protocol::registry::Ids::from_names(vec![
+                            CHEST.into(),
+                            "bound:menu".into(),
+                        ]),
+                    );
+                let open = |game: &mut Game<'_>, container, menu, title: &str| {
+                    game.handle_packet(Clientbound::OpenScreen(OpenScreen {
+                        container,
+                        menu,
+                        title: sunrise_core::nbt::Tag::String(title.into()),
+                    }))
+                    .unwrap();
+                };
+                open(game, 4, 0, "Chest");
+                game.remote_menu_state(4, 15);
+                let key = game.container.expect("chest backing");
+                let generation = game.remote.as_ref().unwrap().menu.generation;
+                let title = game.remote_menu_title().expect("chest title");
+
+                open(game, 5, 1, "Missing factory");
+
+                assert_eq!(game.remote_menu(), (4, CHEST.to_owned()));
+                assert_eq!(game.remote_menu_title(), Some(title));
+                assert_eq!(game.screen, Screen::Inventory);
+                assert_eq!(game.container, Some(key));
+                assert_eq!(
+                    game.world.block_entities.get(&key).unwrap().slots().len(),
+                    27
+                );
+                let remote = game.remote.as_ref().unwrap();
+                assert_eq!(remote.menu.generation, generation);
+                assert_eq!(remote.state_id, 15);
             });
         });
     });
