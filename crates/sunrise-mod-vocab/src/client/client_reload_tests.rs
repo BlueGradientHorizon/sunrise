@@ -69,7 +69,7 @@ fn reload_registration_reports_each_refusal_without_latching_but_a_cycle_fails()
                 && record
                     .args()
                     .to_string()
-                    .contains("unknown reload listener test_mod:repeated_missing")
+                    .contains("mod test_mod hook add_client_reload_listeners: unknown reload listener test_mod:repeated_missing")
             {
                 WARNINGS.set(WARNINGS.get() + 1);
             }
@@ -83,6 +83,11 @@ fn reload_registration_reports_each_refusal_without_latching_but_a_cycle_fails()
     let missing = id("test_mod:repeated_missing");
     let valid = id("test_mod:valid");
     let mut listeners = ClientListenerRegistry::new();
+    let _owner = crate::dispatch_scope::ModGuard::fixture_owner(crate::content::crash::ModCall {
+        id: "test_mod",
+        hook: "add_client_reload_listeners",
+        part: None,
+    });
     for _ in 0..2 {
         assert_eq!(
             listeners.add_dependency(missing.clone(), model.clone()),

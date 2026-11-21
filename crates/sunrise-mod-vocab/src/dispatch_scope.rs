@@ -109,6 +109,14 @@ impl ModGuard {
         }
     }
 
+    /// Vocab-only fixtures have no platform instrumentation backend.
+    #[cfg(test)]
+    pub(crate) fn fixture_owner(call: ModCall) -> Self {
+        let mut guard = Self::empty();
+        guard.owner = Some(crate::content::crash::push(call));
+        guard
+    }
+
     #[inline]
     fn clear(&mut self) {
         if let Some((frame, call)) = self.owner.take() {

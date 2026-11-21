@@ -118,9 +118,7 @@ impl ControllerTickets {
     #[doc(hidden)]
     pub fn register_listener(&mut self, listen: &mut dyn FnMut(&mut dyn TicketValidation) -> bool) {
         if listen(self) && !self.selected.is_empty() {
-            let mut ordered: Vec<Option<ModTicket>> = std::iter::repeat_with(|| None)
-                .take(self.selected.len())
-                .collect();
+            let mut ordered = vec![None; self.selected.len()];
             let mut loaded_index = 0;
             let mut orders = self.selected.values().copied();
             for ticket in self.loaded.extract_if(.., |_| {
@@ -240,6 +238,13 @@ mod tests {
                 _: &mut dyn ServerHost,
                 event: &mut ValidateTicketsEvent<'_>,
             ) {
+                let _owner = crate::dispatch_scope::ModGuard::fixture_owner(
+                    crate::content::crash::ModCall {
+                        id: if self.slot == 0 { "failing" } else { "healthy" },
+                        hook: "validate_tickets",
+                        part: None,
+                    },
+                );
                 let slot = event.controller.slot();
                 let removed = event
                     .validation

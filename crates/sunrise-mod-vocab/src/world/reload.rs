@@ -105,11 +105,10 @@ pub(crate) struct ReloadCore<L: ?Sized> {
 }
 
 fn report_registration_error(error: &ReloadOrderError) {
-    let call = crate::content::crash::current_native_call();
-    let (owner, hook) = call.map_or(("unknown", "reload registration"), |call| {
-        (call.id, call.hook)
-    });
-    log::warn!("mod {owner} hook {hook}: {error}");
+    // Engine-seeded entries return their errors to the reload owner instead.
+    if let Some(call) = crate::content::crash::current_native_call() {
+        log::warn!("mod {} hook {}: {error}", call.id, call.hook);
+    }
 }
 
 impl<L: ?Sized + 'static> ReloadCore<L> {
