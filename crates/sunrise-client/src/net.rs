@@ -180,9 +180,17 @@ impl Event {
             Self::Features(values) => values.owned_heap_bytes(),
             // configure only inserts/replaces before freezing these snapshots.
             Self::Joined {
-                registries, name, ..
-            } => dynamic(registries).saturating_add(name.capacity()),
-            Self::Reconfigured { registries, .. } => dynamic(registries),
+                registries,
+                datapacks,
+                name,
+                ..
+            } => dynamic(registries)
+                .saturating_add(datapacks.owned_heap_bytes())
+                .saturating_add(name.capacity()),
+            Self::Reconfigured {
+                registries,
+                datapacks,
+            } => dynamic(registries).saturating_add(datapacks.owned_heap_bytes()),
             Self::Packet(packet) => {
                 size_of::<play::Clientbound>().saturating_add(packet.as_ref().owned_heap_bytes())
             }
@@ -1090,12 +1098,13 @@ fn run(
         resources,
         payloads,
     )?;
-    let _ = send.send(Event::Joined {
+    send.send(Event::Joined {
         registries: Arc::new(registries),
         datapacks,
         uuid: profile.uuid,
         name: profile.name,
-    });
+    })
+    .map_err(|error| Reason::plain(error.to_string()))?;
     receive_play(
         &mut reader,
         shared_writer,
@@ -1182,7 +1191,8 @@ fn receive_play(
             play::Clientbound::StartConfiguration(_) => {
                 payloads.begin_configuration();
                 configuring.store(true, Ordering::Release);
-                let _ = send.send(Event::Reconfiguring);
+                send.send(Event::Reconfiguring)
+                    .map_err(|error| Reason::plain(error.to_string()))?;
                 if let Some(w) = shared_writer.lock().unwrap().as_mut() {
                     w.transition_protocol(
                         sunrise_protocol::payload_negotiation::Phase::Configuration,
@@ -1201,10 +1211,11 @@ fn receive_play(
                     resources,
                     payloads,
                 )?;
-                let _ = send.send(Event::Reconfigured {
+                send.send(Event::Reconfigured {
                     registries: Arc::new(registries),
                     datapacks,
-                });
+                })
+                .map_err(|error| Reason::plain(error.to_string()))?;
             }
             // ClientCommonPacketListenerImpl.handleRequestCookie: the stored
             // cookie (or none) goes straight back.

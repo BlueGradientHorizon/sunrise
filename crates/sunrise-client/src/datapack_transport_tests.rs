@@ -85,6 +85,8 @@ fn incompressible_large_registry_snapshot_fits_each_frame_and_activates_only_whe
                 if i + 1 == packets.len() { 2 } else { 1 }
             );
         }
+        // A completed configuration event retains the decoded text, not just its inline receiver.
+        assert!(receiver.owned_heap_bytes() >= text.len());
         let set = receiver.received().unwrap();
         let handle = set.handle("large:blob", "large:entry").unwrap();
         assert_eq!(

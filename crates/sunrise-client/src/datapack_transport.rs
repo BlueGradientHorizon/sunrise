@@ -73,6 +73,15 @@ impl Receiver {
         self.received.as_ref()
     }
 
+    pub(crate) fn owned_heap_bytes(&self) -> usize {
+        use sunrise_protocol::retained::OwnedHeap;
+        self.assembly.pending.owned_heap_bytes().saturating_add(
+            self.received
+                .as_deref()
+                .map_or(0, mod_api::__private::queued_datapack_set_bytes),
+        )
+    }
+
     pub(crate) fn finish_transfer(&self) -> Result<(), String> {
         if self.assembly.pending.is_some() {
             Err("Incomplete datapack registry snapshot at the end of configuration.".into())
