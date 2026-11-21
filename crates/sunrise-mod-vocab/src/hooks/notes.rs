@@ -1619,8 +1619,7 @@ one, where vanilla gives the `by` one.
   than predicting them. The packet stays positional (horizon-rust/horizon#9284). A mod may change the sound, its source, volume and pitch, or cancel it. Every
   server sound packet but `/playsound`'s goes through `Game::send_level_sound` (`game/interface/level_sounds.rs`), or the native-sound
   flush for a mod's own, so a new sound site asks the mods by calling it. The tick's sounds are asked as they go out, at the end
-  of the tick. Sounds emitted from inside a level-sound listener are not re-dispatched to level-sound listeners (they are
-  validated and delivered or journaled normally in call order). With no listener, the cost is one `listened` check per sound and nothing is allocated.
+  of the tick. With no listener, the cost is one `listened` check per sound and nothing is allocated.
 - Chunks a player watches, on the server: `chunk_watch(player, chunk)`, `chunk_sent(player, chunk)` and
   `chunk_unwatch(player, chunk)` (NeoForge's `ChunkWatchEvent.Watch`, `Sent` and `UnWatch`). Each chunk that comes into a
   player's view is watched, then sent; it's unwatched when it leaves the view, when the player leaves the level (a portal, a
