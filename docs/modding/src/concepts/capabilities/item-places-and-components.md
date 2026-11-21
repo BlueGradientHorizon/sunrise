@@ -20,7 +20,8 @@ match place.with_stack(host, |stack| stack.project()) {
 ```
 
 Native reads use storage already present: they do not load chunks, initialize a player or
-unpack pending loot, and an item entity's place sees the current block entity tick's proposals.
+unpack pending loot. An item entity's place sees live state, including earlier writes in
+the same transaction.
 For a provider-backed or decoded place, the view lends the value produced for that read. A
 provider-backed menu slot reads its live backing, not the menu's display copy. A dropped
 item narrowed to an `ItemEntityRef` has its own

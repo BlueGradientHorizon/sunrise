@@ -135,7 +135,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
         );
         let drop_id = game.dropped[0].id;
         let item = game.item_entity(game.entity(drop_id).unwrap()).unwrap();
-        let count = item.stack(game).unwrap().count();
+        let count = item.with_stack(game, |stack| stack.count()).unwrap();
         game.world.modified.clear();
         let mut access = access(game, subject);
         let mut scope = BlockEntityTickScope::new(&mut access);
@@ -147,9 +147,17 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
                 })
                 .ok_or(())?;
             let host = scope.host();
-            let rest = item.stack(host).unwrap().shrink(1).unwrap();
+            let rest = item
+                .with_stack(host, |stack| stack.project())
+                .flatten()
+                .unwrap()
+                .shrink(1)
+                .unwrap();
             assert!(item.set_stack(host, rest).unwrap());
-            assert_eq!(item.stack(host).unwrap().count(), count - 1);
+            assert_eq!(
+                item.with_stack(host, |stack| stack.count()),
+                Some(count - 1)
+            );
             scope
                 .with_view(|view| assert_eq!(view.data_slots(), [24]))
                 .ok_or(())?;
@@ -162,7 +170,10 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
                 assert!(view.nbt().is_empty());
             })
             .unwrap();
-        assert_eq!(item.stack(scope.host()).unwrap().count(), count);
+        assert_eq!(
+            item.with_stack(scope.host(), |stack| stack.count()),
+            Some(count)
+        );
     });
 }
 

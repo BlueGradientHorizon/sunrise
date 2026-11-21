@@ -507,7 +507,8 @@ impl ItemPlace {
     /// Lend the stack here to `read` and return its result, or return `None` without calling it
     /// if the place is empty or unavailable. Use [`ItemStackView::project`] to inspect components
     /// or retain an owned stack. Native reads never load chunks, initialize a player, or unpack
-    /// pending loot, and see pending item-entity proposals within a block entity tick.
+    /// pending loot. An item entity read sees live state, including earlier writes in
+    /// the same transaction.
     /// Handler-backed and decoded places lend a view of their provider's or decoder's value.
     /// An occupied place can still refuse projection. To check occupancy without projection,
     /// use [`Self::amount`] and compare it with zero.
