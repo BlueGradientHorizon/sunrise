@@ -1758,3 +1758,468 @@ fn camera_entity_excluded_from_pick_for_all_pickable_kinds_26_3() {
         });
     }
 }
+
+/// Addendum (a): `LevelExtractor.extractVisibleEntities` never draws `LocalPlayer` unless it is
+/// the camera entity (and in third person or sleeping), and hides the camera entity in first
+/// person whatever its kind (body, flames, shadows, name tag).
+#[test]
+#[ignore = "daily"]
+fn camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26_3() {
+    use sunrise_client::camera::CameraType;
+    use sunrise_core::nbt::Tag;
+
+    let witness = parity_witness();
+    let cases = witness["camera_visibility_all_kinds"]["cases"]
+        .as_array()
+        .unwrap();
+    let camera_types = [
+        ("third_person_back", CameraType::ThirdPersonBack),
+        ("third_person_front", CameraType::ThirdPersonFront),
+        ("first_person", CameraType::FirstPerson),
+    ];
+    let cam = glam::DVec3::new(5.5, 64.5, 8.5);
+    let mut failures = Vec::new();
+    let mut next_id = 800i32;
+
+    for tc in cases {
+        let name = tc["name"].as_str().unwrap();
+        let kind = tc["kind"].as_str().unwrap();
+        let data = tc["data"].as_i64().unwrap() as i32;
+        let local_sleeping = tc["local_sleeping"].as_bool().unwrap();
+        let camera_on_self = tc["camera_on_self"].as_bool().unwrap();
+
+        with_client_game(|game| {
+            let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], false);
+            game.view_frustum = None;
+            game.settings.entity_shadows = false;
+            game.settings.extras.own_name_tag = false;
+            game.tick_player_model();
+            game.sleeping = local_sleeping.then_some([0, 64, 0]);
+
+            let cam_id = if camera_on_self {
+                1
+            } else {
+                let id = next_id;
+                next_id += 1;
+                let stone_state = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap()
+                    .0 as i32;
+                let stone_item = game
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .builtin
+                    .get("minecraft:item")
+                    .unwrap()
+                    .id("minecraft:stone")
+                    .unwrap();
+                let spawn_data = if kind == "minecraft:falling_block" {
+                    stone_state
+                } else {
+                    data
+                };
+                add_entity_with_data(game, id, kind, [5.5, 64.0, 5.5], 0.0, 0.0, spawn_data);
+                match kind {
+                    "minecraft:item" => {
+                        game.handle_packet(C::SetEntityData(play::SetEntityData {
+                            id,
+                            values: vec![(
+                                8,
+                                serializer::ITEM_STACK,
+                                EntityDataValue::Item(Some(WireStack::new(stone_item, 1))),
+                            )],
+                        }))
+                        .unwrap();
+                    }
+                    "minecraft:block_display" => {
+                        game.handle_packet(C::SetEntityData(play::SetEntityData {
+                            id,
+                            values: vec![(
+                                23,
+                                serializer::BLOCK_STATE,
+                                EntityDataValue::Id(stone_state),
+                            )],
+                        }))
+                        .unwrap();
+                        game.tick_text_displays();
+                    }
+                    "minecraft:item_display" => {
+                        game.handle_packet(C::SetEntityData(play::SetEntityData {
+                            id,
+                            values: vec![(
+                                23,
+                                serializer::ITEM_STACK,
+                                EntityDataValue::Item(Some(WireStack::new(stone_item, 1))),
+                            )],
+                        }))
+                        .unwrap();
+                        game.tick_text_displays();
+                    }
+                    "minecraft:text_display" => {
+                        game.handle_packet(C::SetEntityData(play::SetEntityData {
+                            id,
+                            values: vec![(
+                                23,
+                                serializer::COMPONENT,
+                                EntityDataValue::Text(Tag::String("HI".into())),
+                            )],
+                        }))
+                        .unwrap();
+                        game.tick_text_displays();
+                    }
+                    _ => {}
+                }
+                game.handle_packet(C::SetCamera(play::SetCamera { camera_id: id }))
+                    .unwrap();
+                id
+            };
+
+            for (ct_name, ct) in camera_types {
+                let want_local = tc["views"][ct_name]["local_player_extracted"]
+                    .as_bool()
+                    .unwrap();
+                let want_cam = tc["views"][ct_name]["camera_entity_extracted"]
+                    .as_bool()
+                    .unwrap();
+                game.camera_type = ct;
+                if game.player_model_shown() != want_local {
+                    failures.push(format!(
+                        "{name} {ct_name}: player_model_shown={} want {want_local}",
+                        game.player_model_shown()
+                    ));
+                }
+                let mut additive = Vec::new();
+                let (verts, _, _, _) =
+                    game.entity_geometry(cam, 1.0, None, Vec::new(), &mut additive);
+                let has_local_run = game
+                    .entity_runs
+                    .iter()
+                    .any(|r| r.family == crate::game::entity::DrawFamily::LocalPlayer);
+                if has_local_run != want_local {
+                    failures.push(format!(
+                        "{name} {ct_name}: LocalPlayer run present={has_local_run} want {want_local}"
+                    ));
+                }
+                if !camera_on_self {
+                    let drew = !verts.is_empty()
+                        || !additive.is_empty()
+                        || !game.see_through_vertices.is_empty();
+                    if drew != want_cam {
+                        failures.push(format!(
+                            "{name} ({kind}, id={cam_id}) {ct_name}: drew={drew} (verts={}, additive={}, see_through={}) want {want_cam}",
+                            verts.len(),
+                            additive.len(),
+                            game.see_through_vertices.len(),
+                        ));
+                    }
+                }
+            }
+
+            // Local player own_name_tag must never show while camera is on another entity.
+            if !camera_on_self && name == "creeper" {
+                game.camera_type = CameraType::ThirdPersonBack;
+                game.settings.extras.own_name_tag = true;
+                let own_name = game.own_profile_name();
+                let tags = game.shown_name_tags(glam::DVec3::new(0.5, 65.5, 4.5));
+                if tags.iter().any(|t| t == &own_name) {
+                    failures.push(format!(
+                        "{name}: local player own_name_tag shown while spectating another entity: {tags:?}"
+                    ));
+                }
+            }
+        });
+    }
+
+    // Flames, shadows, and armor-stand name tags must also be suppressed when camera is hidden in first person.
+    with_client_game(|game| {
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], false);
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(make_chunk(0, 0, 0, 0xF0)));
+        game.world.set(5, 63, 5, stone).unwrap();
+        game.view_frustum = None;
+        game.settings.entity_shadows = true;
+        game.settings.extras.own_name_tag = false;
+        game.tick_player_model();
+
+        let stone_item = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:item")
+            .unwrap()
+            .id("minecraft:stone")
+            .unwrap();
+
+        for (label, kind, id) in [
+            ("burning_shadow_creeper", "minecraft:creeper", 920),
+            ("burning_shadow_item", "minecraft:item", 921),
+            ("burning_named_stand", "minecraft:armor_stand", 922),
+        ] {
+            add_entity_with_data(game, id, kind, [5.5, 64.0, 5.5], 0.0, 0.0, 0);
+            match kind {
+                "minecraft:creeper" => {
+                    game.mobs
+                        .iter_mut()
+                        .find(|m| m.id == id as u32)
+                        .unwrap()
+                        .fire_ticks = 40;
+                }
+                "minecraft:item" => {
+                    game.handle_packet(C::SetEntityData(play::SetEntityData {
+                        id,
+                        values: vec![
+                            (0, serializer::BYTE, EntityDataValue::Byte(1)),
+                            (
+                                8,
+                                serializer::ITEM_STACK,
+                                EntityDataValue::Item(Some(WireStack::new(stone_item, 1))),
+                            ),
+                        ],
+                    }))
+                    .unwrap();
+                    if let Some(i) = game.dropped.iter().position(|d| d.id == id as u32) {
+                        game.dropped.update(i, |d| d.fire_ticks = 40);
+                    }
+                }
+                "minecraft:armor_stand" => {
+                    game.handle_packet(C::SetEntityData(play::SetEntityData {
+                        id,
+                        values: vec![
+                            (0, serializer::BYTE, EntityDataValue::Byte(1)),
+                            (
+                                2,
+                                serializer::OPTIONAL_COMPONENT,
+                                EntityDataValue::OptText(Some(Tag::String("StandTag".into()))),
+                            ),
+                            (3, serializer::BOOLEAN, EntityDataValue::Bool(true)),
+                        ],
+                    }))
+                    .unwrap();
+                }
+                _ => {}
+            }
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: id }))
+                .unwrap();
+
+            game.camera_type = CameraType::ThirdPersonBack;
+            let mut add_tp = Vec::new();
+            let (tp_verts, _, _, _) = game.entity_geometry(cam, 1.0, None, Vec::new(), &mut add_tp);
+            if tp_verts.is_empty() && game.see_through_vertices.is_empty() {
+                failures.push(format!("{label}: third person drew nothing"));
+            }
+
+            game.camera_type = CameraType::FirstPerson;
+            let mut add_fp = Vec::new();
+            let (fp_verts, _, _, _) = game.entity_geometry(cam, 1.0, None, Vec::new(), &mut add_fp);
+            if !fp_verts.is_empty() || !add_fp.is_empty() || !game.see_through_vertices.is_empty() {
+                failures.push(format!(
+                    "{label}: first person leaked geometry (verts={}, additive={}, see_through={})",
+                    fp_verts.len(),
+                    add_fp.len(),
+                    game.see_through_vertices.len(),
+                ));
+            }
+
+            game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![id] }))
+                .unwrap();
+        }
+    });
+
+    assert!(
+        failures.is_empty(),
+        "{} visibility mismatches against real 26.3 LevelExtractor:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// Addendum (b): a spectated entity (mob or non-living) riding a living vehicle — including a
+/// scaled ArmorStand or scale-sanitized HappyGhast — uses the vehicle's sanitized scale and
+/// camera distance in third person, and a scaled ArmorStand camera uses its own scale & distance.
+#[test]
+#[ignore = "daily"]
+fn spectated_rider_mount_attributes_26_3() {
+    use sunrise_client::camera::{Camera, CameraType};
+
+    let witness = parity_witness();
+    let cases = witness["spectated_rider_mount_attributes"]["cases"]
+        .as_array()
+        .unwrap();
+    let mut failures = Vec::new();
+
+    with_client_game(|game| {
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        let scale_id = game
+            .motion
+            .attributes
+            .id("minecraft:scale")
+            .unwrap()
+            .registry_id();
+        let dist_id = game
+            .motion
+            .attributes
+            .id("minecraft:camera_distance")
+            .unwrap()
+            .registry_id();
+
+        let mut next_id = 950i32;
+        for tc in cases {
+            let name = tc["name"].as_str().unwrap();
+            let rider_kind = tc["rider_kind"].as_str().unwrap();
+            let rider_scale = f64::from_bits(hex_f64(&tc["rider_scale_bits"]));
+            let rider_dist = f64::from_bits(hex_f64(&tc["rider_distance_bits"]));
+            let vehicle_kind = tc["vehicle_kind"].as_str();
+            let vehicle_scale = f64::from_bits(hex_f64(&tc["vehicle_scale_bits"]));
+            let vehicle_dist = f64::from_bits(hex_f64(&tc["vehicle_distance_bits"]));
+
+            let rider_id = next_id;
+            next_id += 1;
+            let at = [10.25, 64.0, -3.75];
+            add_entity_with_data(game, rider_id, rider_kind, at, 45.0, 22.5, 0);
+            if rider_kind != "minecraft:oak_boat" {
+                game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+                    id: rider_id,
+                    values: vec![
+                        play::AttributeSnapshot {
+                            attribute: scale_id,
+                            base: rider_scale,
+                            modifiers: vec![],
+                        },
+                        play::AttributeSnapshot {
+                            attribute: dist_id,
+                            base: rider_dist,
+                            modifiers: vec![],
+                        },
+                    ],
+                }))
+                .unwrap();
+            }
+
+            let mut vehicle_id = None;
+            if let Some(vk) = vehicle_kind {
+                let vid = next_id;
+                next_id += 1;
+                vehicle_id = Some(vid);
+                add_entity_with_data(game, vid, vk, at, 0.0, 0.0, 0);
+                game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+                    id: vid,
+                    values: vec![
+                        play::AttributeSnapshot {
+                            attribute: scale_id,
+                            base: vehicle_scale,
+                            modifiers: vec![],
+                        },
+                        play::AttributeSnapshot {
+                            attribute: dist_id,
+                            base: vehicle_dist,
+                            modifiers: vec![],
+                        },
+                    ],
+                }))
+                .unwrap();
+                game.handle_packet(C::SetPassengers(play::SetPassengers {
+                    vehicle: vid,
+                    passengers: vec![rider_id],
+                }))
+                .unwrap();
+            }
+            game.refresh_remote_attributes();
+            game.handle_packet(C::SetCamera(play::SetCamera {
+                camera_id: rider_id,
+            }))
+            .unwrap();
+
+            // Pin exact unquantized yaw/pitch to match the oracle's (45.0, 22.5).
+            let pos = Vec3::new(at[0], at[1], at[2]);
+            if let Some(m) = game.mobs.iter_mut().find(|m| m.id == rider_id as u32) {
+                (m.position, m.previous) = (pos, pos);
+                (m.yaw, m.previous_yaw, m.head_yaw, m.previous_head_yaw) = (45.0, 45.0, 45.0, 45.0);
+                (m.head_pitch, m.previous_head_pitch) = (22.5, 22.5);
+            }
+            if let Some(a) = game
+                .armor_stands
+                .iter_mut()
+                .find(|a| a.id == rider_id as u32)
+            {
+                (a.position, a.previous) = (pos, pos);
+                (a.yaw, a.previous_yaw, a.pitch) = (45.0, 45.0, 22.5);
+            }
+            game.boats.for_each_mut(|b| {
+                if b.id == rider_id as u32 {
+                    (b.position, b.previous, b.yaw, b.previous_yaw, b.pitch) =
+                        (pos, pos, 45.0, 45.0, 22.5);
+                }
+            });
+
+            let snap = game
+                .spectated_camera_snapshot()
+                .unwrap_or_else(|| panic!("{name}: missing spectated camera snapshot"));
+            let want_eye = hex_f32(&tc["rider_eye_height_bits"]);
+            if snap.eye_height.to_bits() != want_eye {
+                failures.push(format!(
+                    "{name}: eye_height {:08x} ({}) want {:08x} ({})",
+                    snap.eye_height.to_bits(),
+                    snap.eye_height,
+                    want_eye,
+                    f32::from_bits(want_eye)
+                ));
+            }
+
+            for (ct_name, ct) in [
+                ("first_person", CameraType::FirstPerson),
+                ("third_person_back", CameraType::ThirdPersonBack),
+            ] {
+                let mut cam = Camera::default();
+                for _ in 0..40 {
+                    cam.tick(Some(snap.eye_height), 1.0);
+                }
+                cam.align_with_entity(&snap, 1.0, ct, |_, _| None);
+                let want = &tc[ct_name];
+                let want_pos = vec3_bits_expected(&want["pos_bits"]);
+                let got_pos = cam.position.map(f64::to_bits);
+                if got_pos != want_pos {
+                    failures.push(format!(
+                        "{name} {ct_name}: pos {:?} want {:?}",
+                        cam.position,
+                        want_pos.map(f64::from_bits)
+                    ));
+                }
+                if cam.x_rot.to_bits() != hex_f32(&want["xRot_bits"])
+                    || cam.y_rot.to_bits() != hex_f32(&want["yRot_bits"])
+                    || cam.detached != want["detached"].as_bool().unwrap()
+                {
+                    failures.push(format!(
+                        "{name} {ct_name}: rot/detached mismatch ({}, {}, {})",
+                        cam.x_rot, cam.y_rot, cam.detached
+                    ));
+                }
+            }
+
+            let mut to_remove = vec![rider_id];
+            if let Some(vid) = vehicle_id {
+                to_remove.push(vid);
+            }
+            game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: to_remove }))
+                .unwrap();
+        }
+    });
+
+    assert!(
+        failures.is_empty(),
+        "{} mount attribute mismatches against real 26.3:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}

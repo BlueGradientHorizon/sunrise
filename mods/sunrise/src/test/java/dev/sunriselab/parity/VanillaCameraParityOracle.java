@@ -338,6 +338,7 @@ public final class VanillaCameraParityOracle {
     static final class StubLocalPlayer extends LocalPlayer {
         boolean spectatorFlag;
         boolean underWaterFlag;
+        boolean sleepingFlag;
         float waterVision = 1.0F;
         ClientAvatarState avatar = new ClientAvatarState();
 
@@ -349,7 +350,8 @@ public final class VanillaCameraParityOracle {
         @Override public boolean isUnderWater() { return underWaterFlag; }
         @Override public float getWaterVision() { return waterVision; }
         @Override public ClientAvatarState avatarState() { return avatar; }
-        @Override public boolean isSleeping() { return false; }
+        @Override public boolean isSleeping() { return sleepingFlag; }
+        @Override public Optional<BlockPos> getSleepingPos() { return sleepingFlag ? Optional.of(BlockPos.ZERO) : Optional.empty(); }
         @Override public boolean isDeadOrDying() { return false; }
         @Override public boolean isDescending() { return false; }
         @Override public boolean isInvisible() { return false; }
@@ -433,6 +435,9 @@ public final class VanillaCameraParityOracle {
         p.setBoundingBox(dims.makeBoundingBox(x, y, z));
         field(Entity.class, "passengers").set(p, com.google.common.collect.ImmutableList.of());
         field(LivingEntity.class, "activeEffects").set(p, new HashMap<Holder<net.minecraft.world.effect.MobEffect>, MobEffectInstance>());
+        field(LivingEntity.class, "attributes").set(
+            p, new net.minecraft.world.entity.ai.attributes.AttributeMap(Player.createAttributes().build())
+        );
         var ab = new Abilities();
         ab.mayBuild = true;
         field(Player.class, "abilities").set(p, ab);
@@ -1744,6 +1749,189 @@ public final class VanillaCameraParityOracle {
         return out;
     }
 
+    static JsonObject recordCameraVisibilityAllKinds() throws Exception {
+        var out = new JsonObject();
+        var align = method(Camera.class, "alignWithEntity", float.class);
+        var extractVisible = method(
+            LevelExtractor.class, "extractVisibleEntities",
+            Camera.class, Frustum.class, DeltaTracker.class, LevelRenderState.class
+        );
+
+        Holder<PaintingVariant> kebab = ParityData.access
+            .lookupOrThrow(Registries.PAINTING_VARIANT)
+            .getOrThrow(PaintingVariants.KEBAB);
+
+        record VisKind(String name, String kind, int data, boolean localSleeping, boolean cameraOnSelf) {}
+        List<VisKind> kinds = List.of(
+            new VisKind("local_player_awake", "minecraft:player", 0, false, true),
+            new VisKind("local_player_sleeping", "minecraft:player", 0, true, true),
+            new VisKind("local_sleeping_spectating_creeper", "minecraft:creeper", 0, true, false),
+            new VisKind("minecart", "minecraft:minecart", 0, false, false),
+            new VisKind("painting", "minecraft:painting", 3, false, false),
+            new VisKind("end_crystal", "minecraft:end_crystal", 0, false, false),
+            new VisKind("item", "minecraft:item", 0, false, false),
+            new VisKind("experience_orb", "minecraft:experience_orb", 0, false, false),
+            new VisKind("falling_block", "minecraft:falling_block", 0, false, false),
+            new VisKind("block_display", "minecraft:block_display", 0, false, false),
+            new VisKind("item_display", "minecraft:item_display", 0, false, false),
+            new VisKind("text_display", "minecraft:text_display", 0, false, false),
+            new VisKind("arrow", "minecraft:arrow", 0, false, false),
+            new VisKind("trident", "minecraft:trident", 0, false, false),
+            new VisKind("firework_rocket", "minecraft:firework_rocket", 0, false, false),
+            new VisKind("oak_boat", "minecraft:oak_boat", 0, false, false),
+            new VisKind("item_frame", "minecraft:item_frame", 3, false, false),
+            new VisKind("tnt", "minecraft:tnt", 0, false, false),
+            new VisKind("armor_stand", "minecraft:armor_stand", 0, false, false),
+            new VisKind("creeper", "minecraft:creeper", 0, false, false)
+        );
+
+        CameraType[] cameraTypes = {
+            CameraType.FIRST_PERSON,
+            CameraType.THIRD_PERSON_BACK,
+            CameraType.THIRD_PERSON_FRONT
+        };
+        String[] ctNames = { "first_person", "third_person_back", "third_person_front" };
+
+        var records = new JsonArray();
+        int nextId = 800;
+        for (VisKind vk : kinds) {
+            var lvl = newLevel();
+            var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            local.sleepingFlag = vk.localSleeping;
+            minecraft.player = local;
+            minecraft.level = lvl;
+
+            Entity camEntity;
+            if (vk.cameraOnSelf) {
+                camEntity = local;
+            } else {
+                int id = nextId++;
+                camEntity = spawnViaPacketWithData(lvl, vk.kind, id, 5.5, 64.0, 5.5, 0.0F, 0.0F, 0.0F, vk.data);
+                if (camEntity instanceof Painting p) {
+                    p.getEntityData().assignValues(List.of(
+                        SynchedEntityData.DataValue.create(paintingVariantAccessor(), kebab)
+                    ));
+                }
+            }
+
+            var views = new JsonObject();
+            for (int i = 0; i < cameraTypes.length; i++) {
+                options.setCameraType(cameraTypes[i]);
+                var cam = attachCamera(lvl, camEntity);
+                cam.tick();
+                align.invoke(cam, 1.0F);
+
+                var dispatcher = make(StubEntityRenderDispatcher.class);
+                dispatcher.extractedIds = new HashSet<>();
+                var levelRenderer = make(LevelRenderer.class);
+                field(LevelRenderer.class, "entityRenderDispatcher").set(levelRenderer, dispatcher);
+                var extractor = make(StubLevelExtractor.class);
+                field(LevelExtractor.class, "minecraft").set(extractor, minecraft);
+                field(LevelExtractor.class, "level").set(extractor, lvl);
+                field(LevelExtractor.class, "levelRenderer").set(extractor, levelRenderer);
+                var lrs = new LevelRenderState();
+                extractVisible.invoke(extractor, cam, null, new FixedDelta(1.0F, 1.0F, 1.0F), lrs);
+
+                var v = new JsonObject();
+                v.addProperty("local_player_extracted", dispatcher.extractedIds.contains(local.getId()));
+                v.addProperty("camera_entity_extracted", dispatcher.extractedIds.contains(camEntity.getId()));
+                views.add(ctNames[i], v);
+            }
+
+            var row = new JsonObject();
+            row.addProperty("name", vk.name);
+            row.addProperty("kind", vk.kind);
+            row.addProperty("data", vk.data);
+            row.addProperty("local_sleeping", vk.localSleeping);
+            row.addProperty("camera_on_self", vk.cameraOnSelf);
+            row.add("views", views);
+            records.add(row);
+        }
+        out.add("cases", records);
+        return out;
+    }
+
+    static JsonObject recordSpectatedRiderMountAttributes() throws Exception {
+        var out = new JsonObject();
+        var align = method(Camera.class, "alignWithEntity", float.class);
+        var refreshDirty = method(LivingEntity.class, "refreshDirtyAttributes");
+
+        record MountCase(
+            String name,
+            String riderKind, double riderScale, double riderDist,
+            String vehicleKind, double vehicleScale, double vehicleDist
+        ) {}
+        List<MountCase> cases = List.of(
+            new MountCase("zombie_riding_scaled_armor_stand", "minecraft:zombie", 1.0, 4.0, "minecraft:armor_stand", 2.0, 8.0),
+            new MountCase("zombie_riding_scaled_happy_ghast", "minecraft:zombie", 2.0, 4.0, "minecraft:happy_ghast", 1.5, 10.0),
+            new MountCase("scaled_armor_stand_camera", "minecraft:armor_stand", 2.0, 6.0, null, 1.0, 4.0),
+            new MountCase("boat_riding_scaled_armor_stand", "minecraft:oak_boat", 1.0, 4.0, "minecraft:armor_stand", 2.0, 7.0)
+        );
+
+        var records = new JsonArray();
+        int nextId = 950;
+        for (MountCase mc : cases) {
+            var lvl = newLevel();
+            var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            minecraft.player = local;
+            minecraft.level = lvl;
+
+            int riderId = nextId++;
+            Entity rider = spawnViaPacket(lvl, mc.riderKind, riderId, 10.25, 64.0, -3.75, 45.0F, 22.5F, 45.0F);
+            rider.xo = 10.25; rider.yo = 64.0; rider.zo = -3.75;
+            rider.yRotO = 45.0F; rider.xRotO = 22.5F;
+            if (rider instanceof LivingEntity le) {
+                le.yHeadRot = 45.0F;
+                le.yHeadRotO = 45.0F;
+                le.getAttribute(Attributes.SCALE).setBaseValue(mc.riderScale);
+                le.getAttribute(Attributes.CAMERA_DISTANCE).setBaseValue(mc.riderDist);
+                refreshDirty.invoke(le);
+            }
+
+            if (mc.vehicleKind != null) {
+                int vehicleId = nextId++;
+                Entity vehicle = spawnViaPacket(lvl, mc.vehicleKind, vehicleId, 10.25, 64.0, -3.75, 0.0F, 0.0F, 0.0F);
+                if (vehicle instanceof LivingEntity vle) {
+                    vle.getAttribute(Attributes.SCALE).setBaseValue(mc.vehicleScale);
+                    vle.getAttribute(Attributes.CAMERA_DISTANCE).setBaseValue(mc.vehicleDist);
+                    refreshDirty.invoke(vle);
+                }
+                field(Entity.class, "vehicle").set(rider, vehicle);
+                field(Entity.class, "passengers").set(vehicle, com.google.common.collect.ImmutableList.of(rider));
+            }
+
+            var row = new JsonObject();
+            row.addProperty("name", mc.name);
+            row.addProperty("rider_kind", mc.riderKind);
+            row.addProperty("rider_scale_bits", db(mc.riderScale));
+            row.addProperty("rider_distance_bits", db(mc.riderDist));
+            row.addProperty("vehicle_kind", mc.vehicleKind);
+            row.addProperty("vehicle_scale_bits", db(mc.vehicleScale));
+            row.addProperty("vehicle_distance_bits", db(mc.vehicleDist));
+            row.addProperty("rider_eye_height_bits", fb(rider.getEyeHeight()));
+
+            for (var entry : List.of(
+                Map.entry("first_person", CameraType.FIRST_PERSON),
+                Map.entry("third_person_back", CameraType.THIRD_PERSON_BACK)
+            )) {
+                options.setCameraType(entry.getValue());
+                var cam = attachCamera(lvl, rider);
+                for (int t = 0; t < 40; t++) cam.tick();
+                align.invoke(cam, 1.0F);
+                var snap = new JsonObject();
+                snap.add("pos_bits", vec3Bits(cam.position()));
+                snap.addProperty("xRot_bits", fb(cam.xRot()));
+                snap.addProperty("yRot_bits", fb(cam.yRot()));
+                snap.add("rotation_bits", quatBits(cam.rotation()));
+                snap.addProperty("detached", cam.isDetached());
+                row.add(entry.getKey(), snap);
+            }
+            records.add(row);
+        }
+        out.add("cases", records);
+        return out;
+    }
+
     public static void main(String[] args) throws Exception {
         ParityData.init();
         var u = Class.forName("sun.misc.Unsafe");
@@ -1772,6 +1960,8 @@ public final class VanillaCameraParityOracle {
         root.add("sleeping_spectated_camera", recordSleepingSpectatedCamera());
         root.add("camera_player_fov_modifier", recordCameraPlayerFovModifier());
         root.add("camera_pick_exclusion", recordCameraPickExclusion());
+        root.add("camera_visibility_all_kinds", recordCameraVisibilityAllKinds());
+        root.add("spectated_rider_mount_attributes", recordSpectatedRiderMountAttributes());
 
         var gson = new GsonBuilder().setPrettyPrinting().serializeNulls().create();
         Files.writeString(Path.of(args[0]), gson.toJson(root) + "\n", StandardCharsets.UTF_8);

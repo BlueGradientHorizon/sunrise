@@ -2572,5 +2572,601 @@
         "hit_with_target_id": 900
       }
     ]
+  },
+  "camera_visibility_all_kinds": {
+    "cases": [
+      {
+        "name": "local_player_awake",
+        "kind": "minecraft:player",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": true,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": true,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": true,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "local_player_sleeping",
+        "kind": "minecraft:player",
+        "data": 0,
+        "local_sleeping": true,
+        "camera_on_self": true,
+        "views": {
+          "first_person": {
+            "local_player_extracted": true,
+            "camera_entity_extracted": true
+          },
+          "third_person_back": {
+            "local_player_extracted": true,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": true,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "local_sleeping_spectating_creeper",
+        "kind": "minecraft:creeper",
+        "data": 0,
+        "local_sleeping": true,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "minecart",
+        "kind": "minecraft:minecart",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "painting",
+        "kind": "minecraft:painting",
+        "data": 3,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "end_crystal",
+        "kind": "minecraft:end_crystal",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "item",
+        "kind": "minecraft:item",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "experience_orb",
+        "kind": "minecraft:experience_orb",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "falling_block",
+        "kind": "minecraft:falling_block",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "block_display",
+        "kind": "minecraft:block_display",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "item_display",
+        "kind": "minecraft:item_display",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "text_display",
+        "kind": "minecraft:text_display",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "arrow",
+        "kind": "minecraft:arrow",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "trident",
+        "kind": "minecraft:trident",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "firework_rocket",
+        "kind": "minecraft:firework_rocket",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "oak_boat",
+        "kind": "minecraft:oak_boat",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "item_frame",
+        "kind": "minecraft:item_frame",
+        "data": 3,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "tnt",
+        "kind": "minecraft:tnt",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "armor_stand",
+        "kind": "minecraft:armor_stand",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      },
+      {
+        "name": "creeper",
+        "kind": "minecraft:creeper",
+        "data": 0,
+        "local_sleeping": false,
+        "camera_on_self": false,
+        "views": {
+          "first_person": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": false
+          },
+          "third_person_back": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          },
+          "third_person_front": {
+            "local_player_extracted": false,
+            "camera_entity_extracted": true
+          }
+        }
+      }
+    ]
+  },
+  "spectated_rider_mount_attributes": {
+    "cases": [
+      {
+        "name": "zombie_riding_scaled_armor_stand",
+        "rider_kind": "minecraft:zombie",
+        "rider_scale_bits": "3ff0000000000000",
+        "rider_distance_bits": "4010000000000000",
+        "vehicle_kind": "minecraft:armor_stand",
+        "vehicle_scale_bits": "4000000000000000",
+        "vehicle_distance_bits": "4020000000000000",
+        "rider_eye_height_bits": "3fdeb852",
+        "first_person": {
+          "pos_bits": [
+            "4024800000000000",
+            "40506f5c29000000",
+            "c00e000000000000"
+          ],
+          "xRot_bits": "41b40000",
+          "yRot_bits": "42340000",
+          "rotation_bits": [
+            "bd98e636",
+            "3f67f7f7",
+            "3e3890d2",
+            "3ec02b4c"
+          ],
+          "detached": false
+        },
+        "third_person_back": {
+          "pos_bits": [
+            "4034b3d770000000",
+            "4051f73a55000000",
+            "c02c67ae80000000"
+          ],
+          "xRot_bits": "41b40000",
+          "yRot_bits": "42340000",
+          "rotation_bits": [
+            "bd98e636",
+            "3f67f7f7",
+            "3e3890d2",
+            "3ec02b4c"
+          ],
+          "detached": true
+        }
+      },
+      {
+        "name": "zombie_riding_scaled_happy_ghast",
+        "rider_kind": "minecraft:zombie",
+        "rider_scale_bits": "4000000000000000",
+        "rider_distance_bits": "4010000000000000",
+        "vehicle_kind": "minecraft:happy_ghast",
+        "vehicle_scale_bits": "3ff8000000000000",
+        "vehicle_distance_bits": "4024000000000000",
+        "rider_eye_height_bits": "405eb852",
+        "first_person": {
+          "pos_bits": [
+            "4024800000000000",
+            "4050deb852000000",
+            "c00e000000000000"
+          ],
+          "xRot_bits": "41b40000",
+          "yRot_bits": "42340000",
+          "rotation_bits": [
+            "bd98e636",
+            "3f67f7f7",
+            "3e3890d2",
+            "3ec02b4c"
+          ],
+          "detached": false
+        },
+        "third_person_back": {
+          "pos_bits": [
+            "4030c866a8000000",
+            "4051d3a32e000000",
+            "c02490cd10000000"
+          ],
+          "xRot_bits": "41b40000",
+          "yRot_bits": "42340000",
+          "rotation_bits": [
+            "bd98e636",
+            "3f67f7f7",
+            "3e3890d2",
+            "3ec02b4c"
+          ],
+          "detached": true
+        }
+      },
+      {
+        "name": "scaled_armor_stand_camera",
+        "rider_kind": "minecraft:armor_stand",
+        "rider_scale_bits": "4000000000000000",
+        "rider_distance_bits": "4018000000000000",
+        "vehicle_kind": null,
+        "vehicle_scale_bits": "3ff0000000000000",
+        "vehicle_distance_bits": "4010000000000000",
+        "rider_eye_height_bits": "4063851f",
+        "first_person": {
+          "pos_bits": [
+            "4024800000000000",
+            "4050e3851e000000",
+            "c00e000000000000"
+          ],
+          "xRot_bits": "41b40000",
+          "yRot_bits": "42340000",
+          "rotation_bits": [
+            "bd98e636",
+            "3f67f7f7",
+            "3e3890d2",
+            "3ec02b4c"
+          ],
+          "detached": false
+        },
+        "third_person_back": {
+          "pos_bits": [
+            "403216e190000000",
+            "4052096bbe000000",
+            "c0272dc2e0000000"
+          ],
+          "xRot_bits": "41b40000",
+          "yRot_bits": "42340000",
+          "rotation_bits": [
+            "bd98e636",
+            "3f67f7f7",
+            "3e3890d2",
+            "3ec02b4c"
+          ],
+          "detached": true
+        }
+      },
+      {
+        "name": "boat_riding_scaled_armor_stand",
+        "rider_kind": "minecraft:oak_boat",
+        "rider_scale_bits": "3ff0000000000000",
+        "rider_distance_bits": "4010000000000000",
+        "vehicle_kind": "minecraft:armor_stand",
+        "vehicle_scale_bits": "4000000000000000",
+        "vehicle_distance_bits": "401c000000000000",
+        "rider_eye_height_bits": "3f100000",
+        "first_person": {
+          "pos_bits": [
+            "4024800000000000",
+            "4050240000000000",
+            "c00e000000000000"
+          ],
+          "xRot_bits": "41b40000",
+          "yRot_bits": "42340000",
+          "rotation_bits": [
+            "bd98e636",
+            "3f67f7f7",
+            "3e3890d2",
+            "3ec02b4c"
+          ],
+          "detached": false
+        },
+        "third_person_back": {
+          "pos_bits": [
+            "4033655c80000000",
+            "40517ae266000000",
+            "c029cab8c0000000"
+          ],
+          "xRot_bits": "41b40000",
+          "yRot_bits": "42340000",
+          "rotation_bits": [
+            "bd98e636",
+            "3f67f7f7",
+            "3e3890d2",
+            "3ec02b4c"
+          ],
+          "detached": true
+        }
+      }
+    ]
   }
 }
