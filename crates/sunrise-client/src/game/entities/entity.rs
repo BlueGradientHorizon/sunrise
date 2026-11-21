@@ -1361,12 +1361,12 @@ impl Game<'_> {
     /// `LevelExtractor.extractVisibleEntities` follows), whatever their family.
     ///
     /// The window sees a client level, including when the server is integrated. Its packet
-    /// handlers append freshly joined bodies, removing old copies without reordering the
-    /// survivors. A dropped item reserves its sequence at AddEntity and is inserted at that
-    /// place when its stack arrives. Client ticks restore lifted rows before nested spawns
-    /// and put a lent mount back at its old index. Respawn either keeps the lists or clears
-    /// them for a new level. The server's save loads, level swaps, and tick-specific list
-    /// reorders never feed this merge; they publish to the window through packets.
+    /// handlers append freshly joined bodies without reordering survivors. A dropped item
+    /// reserves its sequence at AddEntity and takes that slot when its stack arrives. Client
+    /// ticks restore lifted rows before nested spawns and put a lent mount back at its old
+    /// index. Respawn either keeps the lists or clears them for a new level. The server's
+    /// save loads, level swaps, and tick-specific list reorders never feed this merge; they
+    /// publish to the window through packets.
     pub(super) fn ordered_draw_runs(&self, runs: &mut Vec<DrawRun>) {
         // A first-person body can draw into the shadow pass only.
         let local_player = self
