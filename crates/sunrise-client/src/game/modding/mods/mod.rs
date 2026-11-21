@@ -129,7 +129,7 @@ impl ModsState {
         }));
     }
 
-    fn apply_code_switches(&self, disabled: &std::collections::BTreeSet<String>) {
+    pub(super) fn apply_code_switches(&self, disabled: &std::collections::BTreeSet<String>) {
         for id in mod_api::__private::installed_code_ids() {
             mod_api::__private::set_mod_enabled(id, !disabled.contains(id));
         }
@@ -227,8 +227,6 @@ pub(super) fn install_registration_data(
 ) -> sunrise_client::Result<()> {
     let packages = mod_api::__private::loaded_mods();
     let directory = Game::game_dir();
-    let directory = mod_api::InstanceDirectory::from_path(&directory)
-        .expect("the host's paths have an encoding the mod API carries");
     (mod_api::__private::platform::platform()?.install_registration_data)(
         mod_api::__private::RegistrationData::new(
             builtin_registry_names(root)?,
@@ -1461,6 +1459,7 @@ fn register_menu_types(
             crafting,
             links,
             m.player_inventory,
+            m.owned_slots.clone(),
         )
     }));
     if !set
@@ -2434,6 +2433,7 @@ mod tests {
                 save_policy: mod_api::GeneralSavePolicy::Save,
                 summonable: true,
                 pickable: false,
+                piston_push_reaction: mod_api::PushReaction::PushPull,
                 tracking_chunks: 8,
                 update_interval: 3,
                 payload_version: 1,

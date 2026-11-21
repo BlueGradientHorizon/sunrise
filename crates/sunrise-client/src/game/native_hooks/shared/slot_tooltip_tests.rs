@@ -163,6 +163,7 @@ fn filled_slot_tooltip_replaces_lines_but_keeps_item_image_and_visibility() {
                         None,
                         None,
                         true,
+                        None,
                     )],
                     || {
                         seed_native_menu(game, 1, MENU);

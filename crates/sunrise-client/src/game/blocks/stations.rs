@@ -659,7 +659,7 @@ impl Game<'_> {
         if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
             return;
         }
-        let Some(left) = s.inputs[0].clone() else {
+        let Some(left) = s.inputs[0].as_ref() else {
             return;
         };
         match &s.anvil_answer {
@@ -667,16 +667,13 @@ impl Game<'_> {
                 s.anvil = answer.clone();
             }
             _ => {
-                let mut update = crate::menu::AnvilUpdate::new(
+                let inputs = crate::menu::AnvilUpdateInputs {
                     left,
-                    s.inputs[1].clone(),
-                    Some(name.clone()),
-                    &s.anvil,
-                );
-                let mut cancel = false;
+                    right: s.inputs[1].as_ref(),
+                    name: Some(&name),
+                };
                 let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
-                self.api_anvil_update(player, entity_id, s.pos, &mut update, &mut cancel);
-                update.answer(cancel, &mut s.anvil);
+                self.api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
                 s.anvil_answer = Some((s.inputs.clone(), name, s.anvil.clone()));
             }
         }
@@ -1934,15 +1931,17 @@ impl Game<'_> {
             push(&mut lines, text, gray);
         }
         details.start("minecraft:entity_data", lines.len());
-        // TypedEntityData.addToTooltip: a spawn egg of a monster in Peaceful.
+        // TypedEntityData.addToTooltip: a type disallowed in Peaceful.
+        let entity_data = block_entity_item::item_entity_data(stack, self.items());
         if let Some(text) = sunrise_client::item_tooltip::spawn_egg_peaceful_line(
-            stack,
+            entity_data.as_ref().map(|data| data.kind.as_str()),
             self.ui.difficulty == 0,
             &display,
             &|id| {
-                self.res.mob_types().get(id).is_none_or(|t| {
-                    sunrise_client::mobs::spawn_rules::allowed_in_peaceful(t.species)
-                })
+                self.res
+                    .mob_types()
+                    .get(id)
+                    .is_none_or(|t| t.allowed_in_peaceful())
             },
             &translate,
         ) {
@@ -2038,7 +2037,8 @@ impl Game<'_> {
             && self.ui.registries.permission >= 2
             && (item_info.is_some_and(|i| i.block.is_some())
                 && block_entity_item::op_warning(stack)
-                || block_entity_item::spawn_egg_op_warning(stack))
+                || stack.item.ends_with("_spawn_egg")
+                    && entity_data.is_some_and(|data| data.op_only()))
         {
             for (i, (key, fallback)) in [
                 ("item.op_warning.line1", "Warning:"),
@@ -2556,6 +2556,32 @@ impl Game<'_> {
 mod tests {
     #[test]
     #[ignore = "daily"]
+    fn spawn_egg_tooltip_warns_for_the_mod_type_in_peaceful() {
+        use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
+        use sunrise_client::hud::rgba;
+
+        peaceful_tests::with_types(ExecutionRole::Client, |game| {
+            let egg = peaceful_tests::trader_egg();
+            let message = game
+                .pack
+                .names
+                .display_get("item.spawn_egg.peaceful")
+                .unwrap_or_else(|| "item.spawn_egg.peaceful".into());
+            let warns = |game: &super::Game<'_>| {
+                game.stack_tooltip_lines(&egg, false, false)
+                    .iter()
+                    .any(|(text, color)| {
+                        text.plain() == message && *color == rgba(255, 85, 85, 255)
+                    })
+            };
+            assert!(warns(game));
+            game.set_difficulty_forced(2);
+            assert!(!warns(game));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn anvil_subscriber_probe_and_answer_cache() {
         use mod_api::{self, AnvilUpdateEvent, Flow, HookId, Hooks, HostSide, ModEntry};
         use std::sync::{
@@ -2571,7 +2597,7 @@ mod tests {
         impl Hooks for Listener {
             fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
                 self.0.fetch_add(1, Ordering::Relaxed);
-                event.update.xp_cost = -7;
+                event.edits.xp_cost = -7;
                 Flow::Continue
             }
         }
@@ -2605,6 +2631,84 @@ mod tests {
             });
         });
     }
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_update_validates_only_a_changed_output() {
+        use super::{AnvilResult, ItemStack, Kind, Station};
+        use mod_api::{
+            AnvilUpdateEvent, Flow, Hooks, HostSide, ItemStack as ApiStack, ModEntry, StackResult,
+        };
+
+        struct Listener;
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+                assert_eq!(event.inputs.left.count(), 2, "captured an over-limit stack");
+                assert_eq!(event.edits.output, StackResult::Keep);
+                assert_eq!((event.edits.xp_cost, event.edits.material_cost), (1, 1));
+                event.edits.xp_cost = -7;
+                event.edits.material_cost = -2;
+                let item = event.inputs.left.item();
+                match event.inputs.name {
+                    Some("same") => {
+                        event.edits.output = StackResult::Set(event.inputs.vanilla_output.cloned());
+                    }
+                    Some("replace") => {
+                        event.edits.output = StackResult::Set(Some(ApiStack::of(item)));
+                    }
+                    Some("clear") => event.edits.output = StackResult::Set(None),
+                    Some("invalid") => {
+                        let invalid = ApiStack::new(item, 3).unwrap();
+                        event.edits.output = StackResult::Set(Some(invalid));
+                        event.edits.material_cost = 4;
+                    }
+                    Some("cancel") => return Flow::Cancel,
+                    _ => {}
+                }
+                Flow::Continue
+            }
+        }
+
+        let mods = vec![ModEntry::new("listener", Box::new(Listener))].into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                let mut station = Station::new(Kind::Anvil, [0; 3]);
+                let sword = |count| ItemStack::new("minecraft:iron_sword", count);
+                station.inputs[0] = Some(sword(2));
+                let vanilla = AnvilResult {
+                    result: Some(sword(2)),
+                    cost: 1,
+                    repair_item_count_cost: 1,
+                    only_renaming: true,
+                };
+                for (name, output, only_renaming) in [
+                    ("keep", Some(2), true),
+                    ("same", Some(2), true),
+                    ("replace", Some(1), false),
+                    ("clear", None, false),
+                ] {
+                    station.anvil = vanilla.clone();
+                    game.update_anvil_answer(&mut station, name.into());
+                    assert_eq!(
+                        station.anvil,
+                        AnvilResult {
+                            result: output.map(sword),
+                            cost: -7,
+                            repair_item_count_cost: 0,
+                            only_renaming,
+                        },
+                        "{name}",
+                    );
+                }
+                for name in ["invalid", "cancel"] {
+                    station.anvil = vanilla.clone();
+                    game.update_anvil_answer(&mut station, name.into());
+                    assert_eq!(station.anvil, AnvilResult::default(), "{name}");
+                }
+            });
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn resource_tooltip_uses_inventory_lines_and_explicit_flags() {

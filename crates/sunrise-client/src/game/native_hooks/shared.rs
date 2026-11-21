@@ -3214,12 +3214,16 @@ pub(super) fn debug_takes(corner: Corner, debug: bool, charts: [bool; 2]) -> boo
         }
 }
 
-/// A menu of `MOD_MENUS` or a content mod's menu type, by its name.
+/// A supported type for a block's container menu. A transient container is never block-backed.
 pub(super) fn mod_menu(name: &str) -> Option<(&'static str, usize)> {
     MOD_MENUS
         .into_iter()
         .find(|(menu, _)| *menu == name)
-        .or_else(|| sunrise_client::containers::mod_menu_type(name).map(|m| (m.id, m.slots)))
+        .or_else(|| {
+            sunrise_client::containers::mod_menu_type(name)
+                .filter(|menu| menu.owned_slots.is_none())
+                .map(|menu| (menu.id, menu.slots))
+        })
 }
 
 /// `state` with its property `key` set to `value`; none when the block has

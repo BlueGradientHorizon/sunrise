@@ -264,6 +264,25 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
     installed().is_some_and(|installed| is_poisoned(installed, hook, id))
 }
 
+/// How many listeners of `hook` are poisoned for the session.
+pub(crate) fn poisoned_count(hook: generated::HookId) -> usize {
+    installed().map_or(0, |installed| {
+        if installed
+            .poison_free
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return 0;
+        }
+        installed
+            .poisons
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .and_then(|poisons| poisons[hook as usize].as_ref())
+            .map_or(0, |poisoned| poisoned.len())
+    })
+}
+
 /// Record a mod callback panic under the unified dispatch failure rule.
 ///
 /// On the first panic for `(hook_id, mod_id)`, disables that mod's callback for that hook for the
@@ -613,7 +632,16 @@ pub(crate) fn entered_with_id(
     hook_id: generated::HookId,
     hook: &'static str,
 ) -> impl Iterator<Item = (&'static str, &'static dyn Hooks)> {
-    entered_subscribers(hook_id, hook).map(|entry| (entry.id, &*entry.hooks))
+    entered_with_id_matching(hook_id, hook, |_| true)
+}
+
+/// Enter only accepted subscribers, retaining the ID for the shared callback boundary.
+pub(crate) fn entered_with_id_matching<'a>(
+    hook_id: generated::HookId,
+    hook: &'static str,
+    allow: impl FnMut(&str) -> bool + 'a,
+) -> impl Iterator<Item = (&'static str, &'static dyn Hooks)> + 'a {
+    entered_subscribers_matching(hook_id, hook, allow).map(|entry| (entry.id, &*entry.hooks))
 }
 
 /// A hook's enabled subscribers in dispatch order (descending priority, then dependency order),
@@ -623,9 +651,17 @@ pub(crate) fn entered_subscribers(
     hook_id: generated::HookId,
     hook: &'static str,
 ) -> impl Iterator<Item = &'static ModEntry> {
+    entered_subscribers_matching(hook_id, hook, |_| true)
+}
+
+fn entered_subscribers_matching<'a>(
+    hook_id: generated::HookId,
+    hook: &'static str,
+    allow: impl FnMut(&str) -> bool + 'a,
+) -> impl Iterator<Item = &'static ModEntry> + 'a {
     let mut crash_guard = crate::dispatch_scope::ModGuard::empty();
     let scope = crate::dispatch_scope::snapshot();
-    listening(hook_id).map(move |(_, entry)| {
+    listening_matching(hook_id, allow).map(move |(_, entry)| {
         scope.replace(
             &mut crash_guard,
             crate::content::crash::ModCall {
@@ -778,23 +814,37 @@ pub(crate) fn receives_cancelled(hook: generated::HookId) -> bool {
 pub(crate) fn listening(
     hook_id: generated::HookId,
 ) -> impl Iterator<Item = (bool, &'static ModEntry)> {
-    installed().into_iter().flat_map(move |installed| {
-        installed
-            .subscribers
-            .subscribers(hook_id as usize)
-            .filter(move |subscriber| {
-                !installed.disabled[subscriber.index].load(std::sync::atomic::Ordering::Relaxed)
-                    && !is_poisoned(installed, hook_id, installed.mods[subscriber.index].id)
-            })
-            .map(move |subscriber| {
-                // Every listener of a hook the loop reaches is one more entered: scoped
-                // resources end the previous listener's lease on it.
-                bump_listener_serial();
-                (
-                    subscriber.receives_cancelled,
-                    &installed.mods[subscriber.index],
-                )
-            })
+    listening_matching(hook_id, |_| true)
+}
+
+/// Like [`listening`], skipping any subscriber that `allow` rejects before entering it or
+/// advancing the listener serial.
+pub(crate) fn listening_matching<'a>(
+    hook_id: generated::HookId,
+    mut allow: impl FnMut(&str) -> bool + 'a,
+) -> impl Iterator<Item = (bool, &'static ModEntry)> + 'a {
+    let mut subscribers = installed().map(|installed| {
+        (
+            installed,
+            installed.subscribers.subscribers(hook_id as usize),
+        )
+    });
+    std::iter::from_fn(move || {
+        let (installed, subscribers) = subscribers.as_mut()?;
+        for subscriber in subscribers.by_ref() {
+            if installed.disabled[subscriber.index].load(std::sync::atomic::Ordering::Relaxed) {
+                continue;
+            }
+            let entry = &installed.mods[subscriber.index];
+            if is_poisoned(installed, hook_id, entry.id) || !allow(entry.id) {
+                continue;
+            }
+            // Every listener of a hook the loop reaches is one more entered: scoped
+            // resources end the previous listener's lease on it.
+            bump_listener_serial();
+            return Some((subscriber.receives_cancelled, entry));
+        }
+        None
     })
 }
 

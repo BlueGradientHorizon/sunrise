@@ -10,7 +10,7 @@ pub enum BlockScreenEffect {
     Fire,
     /// The camera is inside a view-blocking block: its particle texture.
     Block,
-    /// The eye is under water: the underwater texture.
+    /// The eye is under water in first person: the underwater texture.
     Water,
 }
 
@@ -19,8 +19,11 @@ pub enum BlockScreenEffect {
 /// Reuse a static renderer rather than allocating one at every extraction.
 pub trait BlockScreenEffectRenderer: Sync {
     /// Submit this overlay with read-only access to the client. Return `true` to suppress
-    /// its vanilla quads, or `false` to leave them after yours unless extraction canceled them.
-    /// Neither the host nor the drawing context can outlive the call.
+    /// its vanilla quads, or `false` to leave them after yours. For block and water,
+    /// cancellation at extraction still suppresses vanilla quads. For fire, only this
+    /// return value decides once a renderer was selected. A phase refusal discards every
+    /// quad emitted by that submission and leaves the vanilla drawing decision unchanged.
+    /// Neither borrow outlives the call.
     fn submit(&self, host: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool;
 }
 
@@ -66,7 +69,8 @@ impl ExtractBlockScreenEffectEvent<'_> {
     /// Select a renderer for this overlay. The last eligible listener to select one wins;
     /// listeners that do not select one leave the previous choice in place. Cancellation
     /// skips subsequent listeners unless they opt into `#[listener(receive_cancelled)]`.
-    /// The selected renderer still submits even if the overlay is canceled.
+    /// The selected renderer still submits even if the overlay is canceled. In particular,
+    /// it replaces the no-op that would otherwise suppress canceled fire.
     pub fn set_custom_renderer(&mut self, renderer: &'static dyn BlockScreenEffectRenderer) {
         *self.renderer = Some(SelectedBlockScreenEffectRenderer {
             owner: crate::content::crash::current_native_mod(),
@@ -87,18 +91,22 @@ pub struct SelectedBlockScreenEffectRenderer {
 }
 
 impl SelectedBlockScreenEffectRenderer {
-    /// Submit the selected overlay under the selecting listener's mod scope.
-    pub fn submit(self, host: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {
+    /// Submit under the selecting listener's mod scope, returning no answer on failure.
+    pub fn submit(
+        self,
+        host: &dyn ClientHost,
+        render: BlockScreenEffectRender<'_>,
+    ) -> Option<bool> {
         let _scope = self
             .owner
             .map(|id| crate::mark_mod(id, "block_screen_effect_renderer::submit"));
         match crate::runtime::refusable(crate::runtime::outside_world(), || {
             self.renderer.submit(host, render)
         }) {
-            Ok(replace) => replace,
+            Ok(replace) => Some(replace),
             Err(refusal) => {
-                refusal.report();
-                false
+                log::warn!("native refusal in block_screen_effect_renderer::submit: {refusal}");
+                None
             }
         }
     }

@@ -110,7 +110,7 @@ pub struct Parts {
     pub(crate) recipe_types: HashMap<Box<str>, usize>,
     /// Serializer IDs, their produced recipe types and retained owners.
     pub(crate) recipe_serializers:
-        HashMap<Box<str>, (usize, String, Arc<dyn crate::CraftingRecipeHandler>)>,
+        HashMap<Box<str>, (usize, String, crate::__private::RegisteredRecipeSerializer)>,
     /// Entity selector tokens the mods registered, by name, in registration order.
     pub(crate) entity_selectors: Vec<EntitySelectorInfo>,
     /// Frozen raw payload declarations and their sole receiving owners.

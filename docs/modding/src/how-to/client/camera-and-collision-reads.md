@@ -94,13 +94,17 @@ fn camera_submersion(&self, _host: &dyn ClientHost, event: &mut CameraSubmersion
 }
 ```
 
-Every client reader of the camera's fluid reads the answer: the field of view in a fluid, the frame's
-fog, the sky pass and the overworld sky's dark disc (skipped under water), the screen overlays, water
-vision and conduit power's underwater vision, and a shader pack's `isEyeInWater`. The hook fires once per
-reader, several times a frame, and not always at the same point: the fog asks at the camera, the overlays
-at the eye. Nothing keeps the first answer, so answer from the event alone, the same way for the same
-position. The position can't be changed. Server and gameplay fluid checks (an entity in water, drowning,
-swimming, the sculk vibrations' water test) don't read it.
+Camera fluid readers include the field of view in a fluid, the frame's fog, the sky pass and the
+sky's dark disc, water and conduit vision, and a shader pack's `isEyeInWater`. The first-person water
+overlay also lets this hook override whether it appears, but it asks at the player's eye and starts
+with the player's tick sample: `Water` if the eye was in water, `Atmospheric` otherwise. After the
+local player is removed on death tick 20, the overlay keeps using that last sample until respawn.
+The overlay uses `Water` to show and any other answer to hide. `state_at_viewpoint` affects camera
+geometry reads, not the overlay's tick sample.
+
+The hook fires once per reader, several times a frame. The position and the input can differ between
+reads, even at the same point. The position can't be changed. Server and gameplay fluid checks (an
+entity in water, drowning, swimming, the sculk vibrations' water test) don't read it.
 
 ## Block changes in the client level
 

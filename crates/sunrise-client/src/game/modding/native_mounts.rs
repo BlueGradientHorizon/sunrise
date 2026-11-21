@@ -20,6 +20,34 @@ impl Game<'_> {
         }
     }
 
+    /// Run effects before `Entity.setRemoved`. Keep the entity accessible to
+    /// callbacks, but refuse another removal of it while the effects run.
+    pub(super) fn with_removal_preparation(
+        &mut self,
+        target: Target,
+        effects: impl FnOnce(&mut Self),
+    ) -> Option<()> {
+        if self.target_removed(&target) || !self.persist.preparing_vehicle_removals.insert(target) {
+            return None;
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| effects(self)));
+        self.persist.preparing_vehicle_removals.remove(&target);
+        if let Err(payload) = result {
+            std::panic::resume_unwind(payload);
+        }
+        Some(())
+    }
+
+    pub(super) fn with_vehicle_removal_effects<R>(
+        &mut self,
+        target: Target,
+        effects: impl FnOnce(&mut Self),
+        remove: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
+        self.with_removal_preparation(target, effects)?;
+        self.with_destroying_vehicle(target, remove)
+    }
+
     /// `Entity.setRemoved` makes a vehicle invisible before notifying riders.
     /// The owning list is kept stable while callbacks run.
     pub(super) fn with_destroying_vehicle<R>(
@@ -27,11 +55,20 @@ impl Game<'_> {
         target: Target,
         action: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
-        if !self.persist.destroying_vehicles.insert(target) {
+        let id = self.network_entity_id(target)? as u32;
+        let y = self.target_position(target)?[1];
+        if self.persist.preparing_vehicle_removals.contains(&target)
+            || !self.persist.destroying_vehicles.insert(target)
+        {
             return None;
         }
         self.retire_vehicle_registration(target);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(self)));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if !self.persist.notified_vehicle_removals.remove(&id) {
+                self.dismount_removed_passengers(id, y);
+            }
+            action(self)
+        }));
         self.persist.destroying_vehicles.remove(&target);
         match result {
             Ok(value) => Some(value),
@@ -69,6 +106,8 @@ impl Game<'_> {
             "minecraft:cushion".into()
         } else if let Some(m) = self.mob_object(id) {
             mob_kind(m)
+        } else if self.tnts.iter().any(|t| t.id == id) {
+            "minecraft:tnt".into()
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             self.target_type(Target::Stand(id))
         } else if self.others.iter().any(|o| o.id == id) {

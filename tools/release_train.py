@@ -22,7 +22,8 @@ fast-forwards it to each fully green commit and a Nightly builds its head instea
 `<target>-<semver>` (26.3-0.1.0 first), builds the approved head of `release/<target>`, which must have a completed
 real daily run that passed every leg on exactly that commit, on main or the branch (daily_passed). Only main and
 those two branches publish (PUBLISHES): `authorize` decides it exactly for a workflow, and `--ref` (a real run's
-GITHUB_REF) refuses a kind its ref may not publish.
+GITHUB_REF) refuses a kind its ref may not publish. A break-glass patch release takes the daily legs its changes select
+instead (break_glass_problems) and two people's approvals (`break-glass-approvals`).
 
 A kind releases when a pull request merged into main since its last published release changed one of its
 player-facing paths (GAME_PATHS), once BATCH of them are waiting and the newest merged at least
@@ -50,10 +51,13 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import subprocess
 import sys
 import time
+import tomllib
+import typing
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = os.environ.get("GITHUB_REPOSITORY", "sunrise-org/sunrise")
@@ -535,6 +539,19 @@ def origin_commit(ref):
     return refs.get(ref + "^{}", refs.get(ref, ""))
 
 
+def origin_tags():
+    """Every tag on origin and the commit it names (annotated tags peeled)."""
+    refs = {}
+    for line in run("git", "ls-remote", "--tags", "origin").splitlines():
+        sha, name = line.split("\t")
+        name = name.removeprefix("refs/tags/")
+        if name.endswith("^{}"):
+            refs[name[:-3]] = sha
+        else:
+            refs.setdefault(name, sha)
+    return refs
+
+
 def daily_green_commit():
     """The commit origin's tag `daily-green` points to (the newest fully green daily run), or "" when origin has none."""
     return origin_commit(f"refs/tags/{DAILY_GREEN}")
@@ -590,6 +607,14 @@ FULL_SHA = re.compile(r"[0-9a-f]{40}", re.ASCII)
 RUN_ATTEMPT = re.compile(r"[1-9][0-9]*/[1-9][0-9]*", re.ASCII)
 
 
+def attempt_jobs(entry):
+    """{name: conclusion} of the completed jobs of the run's own attempt."""
+    attempt = entry["run_attempt"]
+    pages = gh_json("api", "--paginate", f"repos/{REPO}/actions/runs/{entry['id']}/attempts/{attempt}/jobs?per_page=100")
+    return {job["name"]: job["conclusion"] for page in pages for job in page["jobs"]
+            if job["status"] == "completed" and job["run_id"] == entry["id"] and job["run_attempt"] == attempt}
+
+
 def daily_run_green(entry, sha, running=False):
     """The run's URL when it is a real success (or `running`: in progress) at head_sha `sha` with its own attempt's green job."""
     finished = entry["status"] == "completed" and entry["conclusion"] == "success"
@@ -597,15 +622,17 @@ def daily_run_green(entry, sha, running=False):
     real = (entry["path"] == DAILY_WORKFLOW and entry["repository"]["full_name"] == REPO
             and entry["event"] == PUBLISHING_EVENT and entry["head_branch"] in DAILY_BRANCHES
             and entry["head_sha"] == sha and not entry["display_title"].endswith("(dry run)"))
-    if not (real and (finished or underway)):
-        return ""
-    attempt = entry["run_attempt"]
-    jobs = gh_json("api", "--paginate", f"repos/{REPO}/actions/runs/{entry['id']}/attempts/{attempt}/jobs?per_page=100")
-    if any(job["name"] == f"green {sha}" and job["status"] == "completed" and job["conclusion"] == "success"
-           and job["run_id"] == entry["id"] and job["run_attempt"] == attempt
-           for page in jobs for job in page["jobs"]):
+    if real and (finished or underway) and attempt_jobs(entry).get(f"green {sha}") == "success":
         return entry["html_url"]
     return ""
+
+
+def completed_dailies(now=None):
+    """The completed daily.yml dispatches of the last DAILY_EVIDENCE_DAYS, newest first."""
+    since = ((now or dt.datetime.now(dt.timezone.utc)) - dt.timedelta(days=DAILY_EVIDENCE_DAYS)).date().isoformat()
+    pages = gh_json("api", "--paginate", f"repos/{REPO}/actions/workflows/daily.yml/runs?event={PUBLISHING_EVENT}"
+                    f"&status=completed&created=%3E%3D{since}&per_page=100")
+    return [entry for page in pages for entry in page["workflow_runs"]]
 
 
 def daily_passed(sha, now=None, this_run=""):
@@ -618,10 +645,7 @@ def daily_passed(sha, now=None, this_run=""):
         run_id, attempt = this_run.split("/")
         entry = gh_json("api", f"repos/{REPO}/actions/runs/{run_id}/attempts/{attempt}")
         return daily_run_green(entry, sha, running=True) if entry and str(entry["run_attempt"]) == attempt else ""
-    since = ((now or dt.datetime.now(dt.timezone.utc)) - dt.timedelta(days=DAILY_EVIDENCE_DAYS)).date().isoformat()
-    pages = gh_json("api", "--paginate", f"repos/{REPO}/actions/workflows/daily.yml/runs?event={PUBLISHING_EVENT}"
-                    f"&status=completed&created=%3E%3D{since}&per_page=100")
-    for entry in (entry for page in pages for entry in page["workflow_runs"]):
+    for entry in completed_dailies(now):
         if url := daily_run_green(entry, sha):
             return url
     return ""
@@ -663,11 +687,12 @@ def next_stable_tag(tags, target=TARGET, version="", own=""):
     return f"{target}-{major}.{minor}.{patch}"
 
 
-def release_head(head="", dry_run=False):
+def release_head(head="", dry_run=False, daily=True):
     """The commit a stable release builds, or exits naming the check it failed. A real release takes the full SHA
     approved in the release-candidate check, which must be the head of the release branch (refused while the branch
     is missing) and have a real daily run that passed every leg on exactly it (daily_passed). A dry run takes the
-    branch's head or any `head`, and only warns when that run is missing, so the build can be tried first."""
+    branch's head or any `head`, and only warns when that run is missing, so the build can be tried first.
+    `daily=False` is a break-glass release's, which checks its own evidence instead (break_glass_problems)."""
     if not dry_run and not re.fullmatch(r"[0-9a-f]{40}", head or ""):
         raise SystemExit("::error::refused: a real stable release names the full 40-character commit approved in the "
                          f"release-candidate check (`base`), not {head or 'nothing'}")
@@ -681,6 +706,8 @@ def release_head(head="", dry_run=False):
     if branch and sha != branch:
         raise SystemExit(f"::error::refused: {sha} is not the head of {RELEASE_BRANCH} ({branch}); a release builds "
                          "only that head")
+    if not daily:
+        return sha
     evidence = daily_passed(sha)
     if not evidence:
         problem = (f"{sha} has no completed real daily run that passed every leg on it (main or {RELEASE_BRANCH}); "
@@ -693,22 +720,262 @@ def release_head(head="", dry_run=False):
     return sha
 
 
+# Break-glass patch releases (docs/release-flow.md "Break-glass patch releases"): a stable patch whose cherry-picks
+# need only some daily legs, approved by two people through GitHub environments. The daily legs each changed path
+# selects (daily.yml's job names), the first row matching it deciding: a row ending in `/` is that folder (or a file
+# or link replacing it), any other an exact path. A path no row matches needs the full daily (fail closed), and so
+# does any change to the code that judges a release (judge_graph) or to the root manifest's [patch] and [replace]
+# (changed_since). The SDK legs (BREAK_GLASS_ALWAYS) always run: sdk-publish waits for them
+# (daily_summary.SDK_LEGS), and a release ships only after its SDK. A game crate's change runs every leg that tests
+# the game (the ignored-test shards, the Windows rows and the parity harnesses) and is booted headless by the release
+# build's own smoke test, which publishing requires.
+BREAK_GLASS_ALWAYS = ("sdk", "machine-sample", "fn-replace-check")
+BREAK_GLASS_LEGS = (
+    ("docs/modding/", ("book-quickstart",)),
+    ("tools/book_quickstart.py", ("book-quickstart",)),
+    ("docs/", ()),
+    ("crates/", ("cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases")),
+    ("Cargo.toml", ("cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases")),
+    ("Cargo.lock", ("cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases")),
+)
+# Who approves a break-glass release: each environment's one required reviewer, by GitHub's numeric user id (a login
+# can be renamed or taken over), UMCEKO and arismoko. nightly-build.yml binds one job to each environment: GitHub lets
+# any one of an environment's reviewers approve, so two people take two environments. On the release branch this
+# table changes only through a reviewed pull request, like the code that reads it.
+BREAK_GLASS_APPROVERS = {"break-glass-umceko": 11256132, "break-glass-aria": 19542195}
+
+
+class Release(typing.NamedTuple):
+    """A published stable release: its tag, commit and publication time."""
+    tag: str
+    sha: str
+    published_at: str
+
+
+def break_glass_legs(paths):
+    """The daily legs a break-glass release changing `paths` needs, sorted, and the paths that need the full daily."""
+    legs, unmapped = set(BREAK_GLASS_ALWAYS), []
+    for path in paths:
+        row = next((selected for prefix, selected in BREAK_GLASS_LEGS
+                    if path == prefix or prefix.endswith("/") and (path.startswith(prefix) or path == prefix[:-1])),
+                   None)
+        if row is None:
+            unmapped.append(path)
+        else:
+            legs.update(row)
+    return sorted(legs), unmapped
+
+
+# The crates that judge a release: its mod API surface (sunrise-stage), its packages and its signature.
+JUDGES = ("crates/sunrise-mod-api-gen", "crates/sunrise-mod-surface", "crates/sunrise-mod-package",
+          "crates/sunrise-release-sign")
+DEPENDENCY_KINDS = ("dependencies", "build-dependencies")
+
+
+def manifest(sha, path):
+    """The TOML file `path` of commit `sha`, or {} where it has none."""
+    text = run("git", "show", f"{sha}:{path}", check=False)
+    return tomllib.loads(text) if text else {}
+
+
+def judge_graph(sha):
+    """What JUDGES build from at `sha`: (their folders and those of every local crate they build from, their package
+    names, the names they take from the root's [workspace.dependencies]). Local crates are path dependencies of every
+    kind but dev and every target, directly or through [workspace.dependencies], and every crate the root's [patch]
+    or [replace] puts in place of a registry one, followed through their own."""
+    root = manifest(sha, "Cargo.toml")
+    shared = root.get("workspace", {}).get("dependencies", {})
+    patched = [spec for table in root.get("patch", {}).values() for spec in table.values()]
+    patched += list(root.get("replace", {}).values())
+    todo = list(JUDGES) + [posixpath.normpath(spec["path"]) for spec in patched if isinstance(spec, dict) and "path" in spec]
+    folders, packages, inherited = set(), set(), set()
+    while todo:
+        folder = todo.pop()
+        if folder in folders:
+            continue
+        folders.add(folder)
+        crate = manifest(sha, f"{folder}/Cargo.toml")
+        if name := crate.get("package", {}).get("name"):
+            packages.add(name)
+        tables = [crate.get(kind, {}) for kind in DEPENDENCY_KINDS]
+        tables += [target.get(kind, {}) for target in crate.get("target", {}).values() for kind in DEPENDENCY_KINDS]
+        for name, spec in ((name, spec) for table in tables for name, spec in table.items()):
+            base = folder
+            if isinstance(spec, dict) and spec.get("workspace"):
+                inherited.add(name)
+                base, spec = "", shared.get(name)
+            if isinstance(spec, dict) and "path" in spec:
+                todo.append(posixpath.normpath(posixpath.join(base, spec["path"])))
+    return folders, packages, inherited
+
+
+def locked_closure(sha, packages):
+    """The Cargo.lock entries of `packages` at `sha` and of everything they depend on, as comparable tuples: a judge
+    built from another crates.io version builds other code."""
+    entries = manifest(sha, "Cargo.lock").get("package", [])
+    by_name = {}
+    for entry in entries:
+        by_name.setdefault(entry["name"], []).append(entry)
+    found, todo = set(), [name for name in packages if name in by_name]
+    while todo:
+        name, _, version = todo.pop().partition(" ")
+        version = version.split(" ")[0]
+        for entry in by_name.get(name, []):
+            if version and entry["version"] != version:
+                continue
+            key = (entry["name"], entry["version"], entry.get("source"), entry.get("checksum"))
+            if key not in found:
+                found.add(key)
+                todo += entry.get("dependencies", [])
+    return found
+
+
+def changed_since(parent_sha, sha):
+    """The paths that differ between the two commits (a rename's old and new names both), and those no row may map:
+    a symbolic link or submodule on either side, a name holding a line break, anything in the code that judges a
+    release on either side (judge_graph), the root manifest when its [patch], [replace] or a [workspace.dependencies]
+    entry the judges take changed, and Cargo.lock when it changed what the judges build from."""
+    out = run("git", "-c", "core.quotePath=false", "diff", "-z", "--raw", "--no-renames", parent_sha, sha)
+    graphs = [judge_graph(commit) for commit in (parent_sha, sha)]
+    judged = graphs[0][0] | graphs[1][0]
+    packages, inherited = graphs[0][1] | graphs[1][1], graphs[0][2] | graphs[1][2]
+    pins, locks = [], []
+    for commit in (parent_sha, sha):
+        root = manifest(commit, "Cargo.toml")
+        shared = root.get("workspace", {}).get("dependencies", {})
+        pins.append((root.get("patch"), root.get("replace"), {name: shared.get(name) for name in inherited}))
+        locks.append(locked_closure(commit, packages))
+    fields, plain, special = out.split("\0"), [], []
+    for meta, path in zip(fields[0::2], fields[1::2]):
+        modes = meta.split()[:2]
+        odd = (any(mode.lstrip(":") in ("120000", "160000") for mode in modes) or "\n" in path or "\r" in path
+               or any(path == folder or path.startswith(folder + "/") for folder in judged)
+               or path == "Cargo.toml" and pins[0] != pins[1] or path == "Cargo.lock" and locks[0] != locks[1])
+        (special if odd else plain).append(path)
+    return plain, special
+
+
+def break_glass_runs():
+    """[(run, {job name: conclusion} of its own attempt)] for every completed real daily dispatch of the evidence
+    window, newest first. A run is known by its jobs' names, which carry the commit it tested: its head_sha is the
+    branch's head when it was dispatched with `commit`, and the branch may have moved on since."""
+    return [(entry, attempt_jobs(entry)) for entry in completed_dailies()
+            if entry["path"] == DAILY_WORKFLOW and entry["repository"]["full_name"] == REPO
+            and entry["event"] == PUBLISHING_EVENT and entry["head_branch"] in DAILY_BRANCHES]
+
+
+def legs_passed(sha, legs, runs):
+    """The URL of a successful real daily run on the release branch that passed at least `legs` on sha (one job
+    `legs <sha> <leg>` per leg, which daily.yml runs only once the run's selected legs and its SDK passed), else ""."""
+    for entry, jobs in runs:
+        if (entry["head_branch"] == RELEASE_BRANCH and entry["conclusion"] == "success"
+                and all(jobs.get(f"legs {sha} {leg}") == "success" for leg in legs)):
+            return entry["html_url"]
+    return ""
+
+
+def full_dailies(sha, runs):
+    """[(run, passed)] of the real full daily runs of sha, newest first: a run that succeeded or failed whose job
+    `summary <sha>` finished; it passed when the run succeeded and its `green <sha>` job did. Runs that tested nothing
+    of sha (a cancelled run, a scheduled run that skipped it, a dry or break-glass run, whose summaries are named
+    apart) don't count."""
+    return [(entry, entry["conclusion"] == "success" and jobs.get(f"green {sha}") == "success")
+            for entry, jobs in runs
+            if entry["conclusion"] in ("success", "failure") and jobs.get(f"summary {sha}") in ("success", "failure")]
+
+
+def newest_full_daily(sha, runs, since=""):
+    """(URL, passed) of the newest real full daily run of sha created at or after `since`, or None."""
+    return next(((entry["html_url"], passed) for entry, passed in full_dailies(sha, runs)
+                 if entry["created_at"] >= since), None)
+
+
+def break_glass_problems(sha, tag, parent):
+    """Why `sha` may not ship as the break-glass patch release `tag` (empty when it may), and the daily legs its
+    changes select. `parent` is the newest published stable release before it (Release), or None: the one parent
+    nightly.stable_parent resolves for every check, stable-mod-api's surface comparison included.
+    The rules never waived: a patch of that release, descending from it; dyna-checks' gate passed on a release-branch
+    push of exactly `sha`; a daily run of `sha` that passed every leg its changed paths select (break_glass_legs), the
+    SDK published, and no full daily of `sha` that failed; and the parent's newest full daily passed, run after its
+    publication (nightly-build.yml's full-daily dispatches it after every stable release), whatever kind of release
+    the parent was: a run created after the publication ran entirely after it. The surface (unchanged
+    `surface.json`, an `identical` diff, the content API) is stable-mod-api's, run at the pick and again before the
+    tag."""
+    if not parent:
+        return [f"there is no published stable release on {TARGET} to patch; a first release takes a full daily"], []
+    problems, legs, runs = [], [], break_glass_runs()
+    if stable_version(tag)[1][:2] != stable_version(parent.tag)[1][:2]:
+        problems.append(f"{tag} is not a patch release of {parent.tag}; a minor or major release takes a full daily")
+    if sha == parent.sha or subprocess.run(["git", "merge-base", "--is-ancestor", parent.sha, sha], cwd=ROOT).returncode:
+        problems.append(f"{sha} is not a new commit descending from {parent.tag} ({parent.sha})")
+    else:
+        plain, special = changed_since(parent.sha, sha)
+        legs, unmapped = break_glass_legs(plain)
+        if unmapped or special:
+            problems.append("these changes need the full daily: " + ", ".join(f"`{path!r}`" for path in unmapped + special))
+        elif not legs_passed(sha, legs, runs):
+            problems.append(f"{sha} has no real daily run that passed the legs its changes select ({', '.join(legs)}); "
+                            f"run `gh workflow run daily.yml --ref {RELEASE_BRANCH} -f dry_run=false -f break_glass=true`")
+    if (own := newest_full_daily(sha, runs)) and not own[1]:
+        problems.append(f"the newest full daily run of {sha} failed ({own[0]})")
+    found = newest_full_daily(parent.sha, runs, parent.published_at)
+    if not found or not found[1]:
+        problems.append(f"the newest full daily run of {parent.tag} ({parent.sha}) since its publication "
+                        f"({parent.published_at}) "
+                        + (f"failed ({found[0]})" if found else f"is missing in the last {DAILY_EVIDENCE_DAYS} days")
+                        + f"; run `gh workflow run daily.yml --ref {RELEASE_BRANCH} -f dry_run=false -f commit={parent.sha}`")
+    if not fork_gate_passed(sha, RELEASE_BRANCH):
+        problems.append(f"dyna-checks' gate jobs ({', '.join(sorted(GATE))}) did not all pass on a {RELEASE_BRANCH} "
+                        f"push of {sha}")
+    return problems, legs
+
+
+def break_glass_approvals(run_id, attempt):
+    """`@login (environment): comment` for each of BREAK_GLASS_APPROVERS' environments, or exits. Only a run's first
+    attempt counts: the approvals API returns every attempt's history with no attempt on a record, so a re-run could
+    reuse an earlier approval (a new dispatch is a new approval). Each environment has exactly one record, approved,
+    by its own approver, a user: a rejection, a second record or anyone else refuses, and an environment with no
+    reviewer configured records nothing, so it refuses too."""
+    if attempt != "1":
+        raise SystemExit(f"::error::refused: a break-glass release counts only its run's first attempt's approvals, "
+                         f"not attempt {attempt}'s: dispatch a new run")
+    pages = gh_json("api", "--paginate", f"repos/{REPO}/actions/runs/{run_id}/approvals?per_page=100")
+    by = {}
+    for record in (record for page in pages for record in page):
+        for name in (environment["name"] for environment in record["environments"]):
+            if name not in BREAK_GLASS_APPROVERS:
+                continue
+            if record["state"] != "approved" or name in by:
+                raise SystemExit(f"::error::refused: {name} was {record['state']} by @{record['user']['login']}"
+                                 + (" after another review" if name in by else ""))
+            by[name] = record
+    lines = []
+    for name, approver in BREAK_GLASS_APPROVERS.items():
+        user = by[name]["user"] if name in by else None
+        if not user or user["id"] != approver or user["type"] != "User":
+            who = f"@{user['login']} ({user['type']} {user['id']})" if user else "nobody"
+            raise SystemExit(f"::error::refused: {name} needs the approval of user {approver}, not {who}")
+        comment = " ".join((by[name]["comment"] or "").split()) or "no comment"
+        lines.append(f"@{user['login']} ({name}): {comment}")
+    return lines
+
+
 GATE_WAIT = 150 * 60  # seconds: a gate run's queue wait and its longest job, lint (about 25 min), with room
 GATE_POLL = 60
 
 
-def push_gate_run(sha):
-    """The newest dyna-checks main-push run on sha (its API record), or None."""
+def push_gate_run(sha, branch="main"):
+    """The newest dyna-checks push run of `branch` on sha (its API record), or None."""
     pages = gh_json("api", "--paginate",
-                    f"repos/{REPO}/actions/workflows/dyna-ci.yml/runs?branch=main&event=push&head_sha={sha}&per_page=100")
+                    f"repos/{REPO}/actions/workflows/dyna-ci.yml/runs?branch={branch}&event=push&head_sha={sha}&per_page=100")
     runs = [entry for page in pages for entry in page["workflow_runs"]
-            if entry["head_sha"] == sha and entry["head_branch"] == "main" and entry["event"] == "push"]
+            if entry["head_sha"] == sha and entry["head_branch"] == branch and entry["event"] == "push"]
     return runs[0] if runs else None
 
 
-def fork_gate_passed(sha):
-    """Whether the newest dyna-checks main-push run on sha passed every gate job (the snapshot's check)."""
-    found = push_gate_run(sha)
+def fork_gate_passed(sha, branch="main"):
+    """Whether the newest dyna-checks push run of `branch` (main: the snapshot's check) on sha passed every gate job."""
+    found = push_gate_run(sha, branch)
     return found is not None and gate_jobs_passed(found["id"], GATE)
 
 
@@ -817,7 +1084,7 @@ def write_outputs(values):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["decide", "notes", "gate", "authorize"])
+    parser.add_argument("command", choices=["decide", "notes", "gate", "authorize", "break-glass-approvals"])
     parser.add_argument("--kind", choices=["game"], default="game")
     parser.add_argument("--head", help="the commit to release (default: the newest commit on main whose checks passed)")
     parser.add_argument("--daily", action="store_true",
@@ -847,6 +1114,22 @@ def main():
         print(f"{args.publish_kind}: {'publishes' if allowed else 'dry run'} (dry_run={args.dry_run!r}, "
               f"ref {os.environ.get('GITHUB_REF', '')!r}, event {os.environ.get('GITHUB_EVENT_NAME', '')!r})")
         write_outputs({"publish": str(allowed).lower(), "dry_run": str(not allowed).lower()})
+        return 0
+    if args.command == "break-glass-approvals":
+        # The break-glass job of nightly-build.yml, after both environments' jobs: why, and who approved. A dry run
+        # binds no environment, so it has nothing to report.
+        reason = " ".join(os.environ.get("BREAK_GLASS_REASON", "").split())
+        if os.environ.get("PUBLISH") == "true":
+            lines = break_glass_approvals(os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"])
+            write_outputs({"note": "; ".join(lines)})
+        else:
+            lines = ["Dry run: no environment is bound and nothing is approved; a real run waits for "
+                     + " and ".join(BREAK_GLASS_APPROVERS) + "."]
+        text = f"### Break-glass release\nWhy: {reason}\n\n" + "".join(f"- {line}\n" for line in lines)
+        print(text)
+        if os.environ.get("GITHUB_STEP_SUMMARY"):
+            with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+                summary.write(text)
         return 0
     if args.ref and args.channel:
         require_ref(args.ref, args.channel)

@@ -14,6 +14,7 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
         None,
         None,
         true,
+        None,
     )];
     sunrise_client::containers::with_mod_menu_types(menus, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {

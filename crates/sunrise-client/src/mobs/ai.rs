@@ -1384,7 +1384,7 @@ fn ai_and_finish_tick(
     if m.no_ai {
         update_fall_flying(m, w, events);
         reset_effect_fall_distance(m);
-        // Mob.aiStep still runs without AI: undead burn, endermites age.
+        // Mob.aiStep still runs without AI: tagged mobs can burn, endermites age.
         burn_undead(m, w, events);
         if m.species() == Species::Endermite {
             super::hostile::endermite_lifetime(m);
@@ -3039,8 +3039,8 @@ fn push_entities(
     }
     super::world::give_push_targets(targets);
 }
-/// `Mob.aiStep` -> `Mob.burnUndead`: undead burn in daylight. It runs with
-/// or without AI (`NoAI` only skips `serverAiStep`).
+/// `Mob.aiStep` -> `Mob.burnUndead`: mobs in `minecraft:burn_in_daylight`
+/// can burn in daylight even with `NoAI`.
 fn burn_undead(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if m.kind.flags.burns_in_day && m.alive() && sun_burn_tick(m, w) {
         if m.item_by_slot(m.sun_protection_slot()).is_some() {
@@ -3590,7 +3590,7 @@ fn check_despawn(m: &mut Mob, w: &MobWorld) -> bool {
         _ => {}
     }
     // Mob.checkDespawn discards disallowed types even when persistent or NoAI.
-    if w.difficulty.effective == 0.0 && !super::spawn_rules::allowed_in_peaceful(m.species()) {
+    if w.difficulty.effective == 0.0 && !m.kind.allowed_in_peaceful() {
         return false;
     }
     let Some(p) = w.nearest_player else {
