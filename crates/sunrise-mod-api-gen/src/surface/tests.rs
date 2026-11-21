@@ -655,6 +655,26 @@ fn multiple_glob_paths_to_the_same_definition_are_not_ambiguous() {
 }
 
 #[test]
+fn a_private_named_type_blocks_only_its_own_workspace_glob_binding() {
+    let bridge = "mod hidden { pub struct Option; }
+        mod fallback { pub struct Option; pub struct Other; }
+        pub mod bridge { use crate::hidden::Option; pub use crate::fallback::*; }";
+    let engine = ("engine-fixture/src/lib.rs", "pub struct Secret;", bridge);
+    let safe = "use engine::bridge::*;
+        pub fn safe() -> Option<u8> { unimplemented!() }
+        /// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", safe), engine], HOOKS)
+        .expect("the private import shadows fallback::Option, leaving the prelude Option");
+
+    let leak = safe.replace("fn safe() -> Option<u8>", "fn leak() -> Other");
+    let error = try_export_fixture(&[(LIB, "/// A colour.", &leak), engine], HOOKS)
+        .err()
+        .expect("the same glob still imports the unrelated public type");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::fallback::Other"), "{error}");
+}
+
+#[test]
 fn a_cfg_disabled_workspace_glob_does_not_shadow_the_prelude() {
     let edited = "#[cfg(feature = \"extra\")] use engine_library::*;\npub fn safe() -> Result<u32, u8> { unimplemented!() }\n/// A colour.";
     try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)

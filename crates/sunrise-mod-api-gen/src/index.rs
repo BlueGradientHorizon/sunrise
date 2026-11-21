@@ -469,36 +469,38 @@ impl OutsideSeam {
         })
     }
 
-    /// Finds a type among the names a module actually exports. `Index::resolve` deliberately
-    /// sees private aliases too, which is useful inside a crate but wrong for an imported glob.
-    fn exported_external_type(
+    /// Resolves the type-namespace binding visible to every glob holder, without letting
+    /// the outside module-alias fallback revive a hidden name.
+    fn exported_glob_binding(
         &self,
         index: &mut Index<'_>,
         module: usize,
         name: &str,
+        holders: &mut Vec<usize>,
         resolving: &mut Resolving,
-    ) -> Option<Vec<String>> {
-        resolving.follow(Lookup::ExportedType(module, name.to_owned()), |resolving| {
-            let items = index.modules.get(module)?.items.clone();
-            for (position, item) in items.iter().enumerate() {
-                if let Some((ident, visibility, attrs)) = type_item(item)
-                    && ident == name
-                    && default_build(attrs)
-                {
-                    if matches!(visibility, syn::Visibility::Public(_)) {
-                        return self.indexed_external_path(
-                            index,
-                            crate::index::ItemId {
-                                module,
-                                item: position,
-                            },
-                        );
-                    }
-                    // A compiled private type shadows imports in the type namespace.
-                    return None;
-                }
+    ) -> Option<(Vec<String>, Option<usize>)> {
+        let indexed = match index.visible_type_binding(module, name, holders).ok()? {
+            Binding::Hidden => return None,
+            Binding::Ambiguous(first, second) => {
+                resolving
+                    .error
+                    .get_or_insert_with(|| index.ambiguous_type(name, first, second));
+                return None;
             }
-
+            Binding::Found(Found::Item(id)) => Some(id),
+            Binding::Missing | Binding::Found(Found::External { .. }) => None,
+        };
+        if let Some(target) = self.exported_external_module(index, module, name, resolving) {
+            return Some((Self::indexed_module_path(index, target), Some(target)));
+        }
+        if let Some(id) = indexed {
+            return index.item_path(id).map(|path| (path, None));
+        }
+        if !self.crates.contains(&index.modules[module].krate) {
+            return None;
+        }
+        resolving.follow(Lookup::ExportedType(module, name.to_owned()), |resolving| {
+            let items = index.modules[module].items.clone();
             for item in &items {
                 let Item::Use(import) = item else { continue };
                 if !matches!(import.vis, syn::Visibility::Public(_))
@@ -529,7 +531,7 @@ impl OutsideSeam {
                         && let Some(external) = self.indexed_external_path(index, id)
                         && is_public_external_type(index, id)
                     {
-                        return Some(external);
+                        return Some((external, None));
                     }
                 }
                 for path in globs {
@@ -546,10 +548,12 @@ impl OutsideSeam {
                         Self::module_target(index, module, &path, import.leading_colon.is_some())
                     };
                     let Some(target) = target else { continue };
-                    if let Some(external) =
-                        self.exported_external_type(index, target, name, resolving)
-                    {
-                        return Some(external);
+                    holders.push(module);
+                    let binding =
+                        self.exported_glob_binding(index, target, name, holders, resolving);
+                    holders.pop();
+                    if binding.is_some() {
+                        return binding;
                     }
                 }
             }
@@ -674,6 +678,7 @@ impl OutsideSeam {
             }
         }
         let mut binding: Option<(Vec<String>, Option<usize>)> = None;
+        let mut holders = vec![module];
         for (glob, rooted) in globs {
             let target = if let Some(path) =
                 self.follow_external_path(index, module, &glob, rooted, resolving)
@@ -684,26 +689,9 @@ impl OutsideSeam {
                 Self::module_target(index, module, &glob, rooted)
             };
             let Some(target) = target else { continue };
-            let candidate = if let Some(module) =
-                self.exported_external_module(index, target, name, resolving)
+            if let Some((path, target)) =
+                self.exported_glob_binding(index, target, name, &mut holders, resolving)
             {
-                Some((Self::indexed_module_path(index, module), Some(module)))
-            } else {
-                match index.visible_type_binding(target, name, module).ok()? {
-                    Binding::Found(Found::Item(id)) => index.item_path(id).map(|path| (path, None)),
-                    Binding::Ambiguous(first, second) => {
-                        resolving
-                            .error
-                            .get_or_insert_with(|| index.ambiguous_type(name, first, second));
-                        return None;
-                    }
-                    _ if self.crates.contains(&index.modules[target].krate) => self
-                        .exported_external_type(index, target, name, resolving)
-                        .map(|path| (path, None)),
-                    _ => None,
-                }
-            };
-            if let Some((path, target)) = candidate {
                 if let Some((first, _)) = &binding {
                     if first != &path {
                         resolving.record_ambiguous_binding(name, first, &path);
@@ -785,7 +773,7 @@ impl OutsideSeam {
             }
             return self.follow_external_path(index, target, rest, false, resolving);
         }
-        match index.visible_type_binding(scope, first, scope) {
+        match index.visible_type_binding(scope, first, &[scope]) {
             Ok(Binding::Found(Found::External {
                 module,
                 path,
@@ -816,6 +804,7 @@ impl OutsideSeam {
                     .get_or_insert_with(|| index.ambiguous_type(first, a, b));
                 return None;
             }
+            Ok(Binding::Hidden) => return None,
             _ => {}
         }
         if self.crates.contains(first) {

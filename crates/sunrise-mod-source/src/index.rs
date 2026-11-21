@@ -150,6 +150,8 @@ pub enum Found {
 /// The outcome of looking up a name without picking an arbitrary glob binding.
 pub enum Binding {
     Missing,
+    /// A definition or explicit import shadows this module's globs, but is not visible here.
+    Hidden,
     Found(Found),
     Ambiguous(ItemId, ItemId),
 }
@@ -159,7 +161,7 @@ impl Binding {
         match self {
             Self::Found(found) => Ok(found),
             Self::Ambiguous(first, second) => Err(index.ambiguous_type(name, first, second)),
-            Self::Missing => {
+            Self::Missing | Self::Hidden => {
                 let m = &index.modules[module];
                 Err(format!(
                     "{name} not found in {}::{}",
@@ -467,22 +469,22 @@ impl<'a> Index<'a> {
     /// What type `name` means in `module`, following named and glob imports in the type namespace.
     /// A named import of a value does not hide a type provided by a glob import.
     pub fn resolve_type(&mut self, module: usize, name: &str) -> Result<Found, String> {
-        self.visible_type_binding(module, name, module)?
+        self.visible_type_binding(module, name, &[module])?
             .require(self, module, name)
     }
 
-    /// The type binding that `importer` can bring into scope by globbing `module`.
+    /// The type binding visible through a chain of glob imports held by `holders`.
     pub fn visible_type_binding(
         &mut self,
         module: usize,
         name: &str,
-        importer: usize,
+        holders: &[usize],
     ) -> Result<Binding, String> {
         self.lookup(
             module,
             name,
             Namespace::Type,
-            &mut vec![importer],
+            &mut holders.to_vec(),
             &mut Vec::new(),
         )
     }
@@ -563,7 +565,7 @@ impl<'a> Index<'a> {
             return if *open {
                 self.resolve_path_in_namespace(module, path, *rooted, Namespace::Any, active)
             } else {
-                Ok(Binding::Missing)
+                Ok(Binding::Hidden)
             };
         }
         let mut external_named = None;
@@ -577,11 +579,11 @@ impl<'a> Index<'a> {
                 }
                 Ok(ambiguous @ Binding::Ambiguous(..)) if open => return Ok(ambiguous),
                 Ok(Binding::Found(_) | Binding::Ambiguous(..)) => shadowed = true,
-                Ok(Binding::Missing) | Err(_) => {}
+                Ok(Binding::Missing | Binding::Hidden) | Err(_) => {}
             }
         }
         if shadowed {
-            return Ok(Binding::Missing);
+            return Ok(Binding::Hidden);
         }
         if let Some(found) = external_named {
             return Ok(Binding::Found(found));
@@ -609,7 +611,7 @@ impl<'a> Index<'a> {
                     candidate.get_or_insert(found);
                 }
                 ambiguous @ Binding::Ambiguous(..) => return Ok(ambiguous),
-                Binding::Missing => {}
+                Binding::Missing | Binding::Hidden => {}
             }
         }
         Ok(candidate.map_or(Binding::Missing, Binding::Found))
