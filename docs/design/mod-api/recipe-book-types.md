@@ -240,26 +240,14 @@ and a category selected in another book cannot be reused as a tab here.
 
 ### Hosting the panel in a mod screen
 
-Construct `MenuScreenLayout` with the geometry your menu needs and use struct update syntax
-for fields you do not set. This keeps the literal compiling when optional fields
-are added; it does not make the default geometry suitable for your menu.
-
-```rust
-let screen = mod_api::MenuScreenLayout {
-    width: 176.0,
-    height: 166.0,
-    slots: vec![Some([44.0, 35.0]), Some([116.0, 35.0])],
-    inventory_x: 8.0,
-    inventory_y: 84.0,
-    ..mod_api::MenuScreenLayout::default()
-};
-```
-
-Set `MenuScreenLayout.recipe_book` to `Some(key.clone())` in the menu's registered screen factory. Leave it `None` for a screen without a recipe book. The key must
-belong to the categories' `target_menu`; a different menu cannot display that
-book. The green book button sits just outside the menu's right edge so it does
-not cover slots chosen by the mod. The open panel uses the normal narrow-window
-coverage and wide-window menu shift.
+Register a client factory for the menu. The window uses that factory to build a fresh
+`MenuScreen` with local `MenuScreenLayout` geometry; see the
+[recipe-bound example](../../modding/src/how-to/items/recipe-book-categories.md#binding-a-book-to-a-menu).
+Set `layout.recipe_book` to the registered key. A bound menu must name its bound key,
+and a different menu cannot display that book. Leave the field `None` for an unbound
+screen without a book. Use struct update syntax for optional layout fields; the defaults
+do not provide valid dimensions or populate slots. The open panel uses the normal
+narrow-window coverage and wide-window menu shift.
 
 The panel is disabled until the connection has an authoritative settings
 snapshot for the registered key. Opening and filtering submit requests through
@@ -310,7 +298,8 @@ amplification without leaving a lost resnapshot or pending UI intent unresolved.
 menu's top edge (`from: Menu`) or below the window's centre (`from: ScreenCentre`, vanilla's
 `height / 2` with integer division, so `leftPos + 5, height / 2 - 49` is `x: 5.0, y: -49.0`).
 Like vanilla's screen-specific button positions, this is space the screen author must keep
-clear of slots and labels. The optional value is part of the Wire declaration.
+clear of slots and labels. The anchor and its coordinate origin are local to the window,
+not part of the transmitted recipe-book declaration.
 
 Without an anchor, the client tries an external right, left, then above-menu
 gutter, rejecting positions covered by the overlay panel. Menus wider than 176
@@ -360,7 +349,8 @@ open, just as it does for other mod menus. A bound menu's layout must name the
 registered book and supply finite coordinates for all visible backing slots.
 A layout that disagrees with the mask or extends beyond the backing, supplies
 invalid dimensions or coordinates, or names an unknown empty-slot sprite is refused
-at open. The server's slot policy is independent of client geometry.
+at open. Every excluded slot retains its backing index; the server's mask and
+recipe destinations are independent of any local screen move or hide.
 
 The shared mapper uses vanilla `PlaceRecipeHelper`: a 1 by 1 shaped recipe in
 a 3 by 3 grid is centered; a 2 by 2 recipe starts at the upper left and retains

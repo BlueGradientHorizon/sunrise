@@ -1,5 +1,19 @@
 # Menu slots
 
+## Backing indices and screen slots
+
+A menu's slot indices belong to the menu, not the window. Register permanent exclusions
+with `MenusRegistrar::menu_slot_exclusions` for the menu and, where needed, its verified
+opener. Those slots stay in the backing order but are unavailable to menu clicks and
+quick-move; subsequent slots are not renumbered. The
+[screen factory](../../how-to/world/machine-menu-data.md#the-menus-screen) leaves those
+indices empty in its layout. Recipe book roles cannot use permanently excluded slots.
+
+The screen's owner can move or hide a visible slot through
+[`ClientHost::set_screen_slot`](../../how-to/client/screens.md#moving-or-hiding-a-mod-screens-slots)
+while this opening is shown. That change affects only the client; the server can still
+quick-move items into a locally hidden slot, and the slot's acceptance rules still apply.
+
 ## Mod-created recipe input sets
 
 `Hooks::recipe_property_sets` runs once after recipes resolve for each load and again after
@@ -229,7 +243,7 @@ change slots.
 Server hooks can also read the acting player's supported menu through
 `player.container_menu(host)`. Inventory, equipment, cursor and ender contents come from
 that player's current turn state, not the temporarily swapped-out record. The unsupported
-menu kinds, hidden-slot refusal and stale-generation checks still apply.
+menu kinds, permanent exclusions and stale-generation checks still apply.
 
 Mutable client hooks can submit a vanilla click with
 `menu.click(host, &[mod_api::MenuClick::QuickMove { slot }])`. The slot is the same menu-order

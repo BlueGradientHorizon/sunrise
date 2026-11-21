@@ -161,6 +161,8 @@ pub trait MenusRegistrar {
     /// Register one client constructor for a namespaced menu type. A custom menu must
     /// be in your namespace. For a stock menu, the constructor is called only when
     /// a verified mod block owned by your package opens that menu.
+    /// The factory builds a fresh screen on the client for each opening. The
+    /// window owns its callbacks and local slot moves until close or replacement.
     /// A duplicate or out-of-scope registration refuses installation, even if its
     /// error is ignored. A package with a factory cannot declare `side = "server"`.
     fn register_menu_screen(
@@ -178,7 +180,8 @@ pub trait MenusRegistrar {
     /// An empty slice is an explicit empty mask.
     /// A duplicate or out-of-scope declaration refuses installation even if the error
     /// is ignored. An index outside the actual container backing refuses the open.
-    /// Screen layouts leave these positions empty; local hides never change this mask.
+    /// Screen layouts leave these positions empty, without renumbering later slots.
+    /// Local hides never change this mask or server-side slot validation.
     fn menu_slot_exclusions(
         &mut self,
         menu: &str,
@@ -191,7 +194,8 @@ pub trait MenusRegistrar {
     /// actual container slots, crafting declaration and every permanent mask
     /// declared with [`Self::menu_slot_exclusions`].
     /// Register a screen factory for this menu with [`Self::register_menu_screen`].
-    /// Its layout must set `MenuScreenLayout::recipe_book` to this `book`. The
+    /// Its layout must set [`crate::MenuScreenLayout::recipe_book`] to this `book`.
+    /// Geometry is checked when the client constructs the screen, not here. The
     /// declaring mod owns the screen's presentation callbacks and slot controls.
     /// This does not turn display candidates into ingredient predicates.
     /// Invalid ownership, unknown books, duplicate menus or malformed roles

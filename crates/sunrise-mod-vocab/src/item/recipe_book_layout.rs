@@ -1,5 +1,8 @@
 //! Menu-owned destination roles, not recipe ingredient semantics.
-/// Menu-owned roles, never indices into the appended player inventory.
+/// Recipe destinations at physical container indices, never indices into the
+/// appended player inventory. The menu owns these roles; the registered screen
+/// factory supplies client geometry separately. Local slot moves and hides do
+/// not change the destination of a recipe.
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: the four destination maps cover the five vanilla displays, and `Mod` hands the rest to the mod
 pub enum RecipeBookLayout {
@@ -41,7 +44,8 @@ impl RecipeBookLayout {
             .map(|binding| binding.owner)
     }
     /// Check that a permanent exclusion mask leaves every declared role
-    /// available at its backing index. Local screen hides are not exclusions.
+    /// available at its backing index. Loading checks the default and every
+    /// opener-specific mask. Local screen hides are not exclusions.
     pub fn validate_exclusions(&self, excluded: &[u16]) -> Result<(), String> {
         self.check_roles(|slot, role| {
             if excluded.contains(&slot) {
@@ -74,7 +78,8 @@ impl RecipeBookLayout {
     }
 
     /// Check role indices against the content menu's container slot count.
-    /// Loading must call this with the actual count, before publishing a layout.
+    /// The count includes permanently excluded slots. Exclusion masks are
+    /// checked separately with [`Self::validate_exclusions`].
     pub fn validate(&self, slot_count: u16) -> Result<(), String> {
         if slot_count == 0 || slot_count > 256 {
             return Err("container slot count must be in 1..=256".into());

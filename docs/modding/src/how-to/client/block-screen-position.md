@@ -1,9 +1,10 @@
 # Reading the level from a block screen
 
-In a menu screen factory, `open.pos` is the opener position and `open.block` is
-the verified mod block ID, if there is one. Capture the position and any other
-opening values needed by the draw callback. Decode one-time payloads from `open.extra`
-in the factory; live values arrive separately in `MenuScreenFrame::data`. Without a
+In a menu screen factory, `open.pos` is the position for this opening and `open.block` is
+the verified mod block ID, if there is one. Capture the position by value with
+`MenuScreen::with_draw(move |host, frame, draw| ...)`. Decode one-time payloads
+from `open.extra` in the factory; once the window is shown those bytes are no
+longer available. Live values arrive separately in `frame.data`. Without a
 matching server payload, only a verified clicked opener supplies a position. A menu
 explicitly opened without a position reports `None`, not a fabricated origin.
 

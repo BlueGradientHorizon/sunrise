@@ -9,7 +9,8 @@ type Tooltip =
 // no wire: a window-owned presentation with client-only callbacks.
 /// Presentation of one open menu. The window owns it and its callbacks until
 /// that opening closes. Capture owned values from [`MenuScreenOpen`] in the
-/// callbacks; read current pointer coordinates and menu data from each frame.
+/// callbacks; read current pointer coordinates and live menu data from each
+/// [`MenuScreenFrame`]. Opening bytes do not persist on the client host.
 pub struct MenuScreen {
     layout: MenuScreenLayout,
     draw: Option<RefCell<Box<Draw>>>,
@@ -41,8 +42,9 @@ impl MenuScreen {
     }
 
     /// Handle a press that did not hit a slot. The boolean is true for right click,
-    /// false for left click. Return `Some(id)` to send a menu button to the server
-    /// for validation and consume the press, or `None` to let normal handling continue.
+    /// false for left click. Return `Some(id)` to consume the press and send a
+    /// menu button to the server. The server still validates the window, menu
+    /// and ID before `MenuPart::menu_button`. Return `None` to pass the press on.
     pub fn with_click(
         mut self,
         click: impl FnMut(&dyn ClientHost, MenuScreenFrame<'_>, bool) -> Option<i32> + Send + 'static,
@@ -227,8 +229,9 @@ pub struct MenuScreenOpen<'a> {
     pub data_slots: usize,
     /// Permanent container backing indices left empty by the layout. Indices do not move.
     pub excluded_slots: &'a [u16],
-    /// The server's one-time menu payload, empty if absent. Decode it here; retain only
-    /// owned values needed by the screen. No borrowed data survives the factory call.
+    /// The server's one-time payload for this opening, or an empty slice if no
+    /// payload matched. Decode it in the factory and retain only owned values.
+    /// Read live updates from [`MenuScreenFrame::data`], not from these bytes.
     pub extra: &'a [u8],
 }
 
@@ -237,7 +240,9 @@ pub struct MenuScreenOpen<'a> {
 pub trait MenuScreenFactory: Send + Sync + 'static {
     /// Build the screen for `open`, or return `None` to decline the opening.
     /// Called on the client before the screen is installed. `host` reads client state;
-    /// controls that require a shown screen are not available yet.
+    /// controls for the new screen (such as local slot moves) are not available yet.
+    /// Only the content menu's owner, or the verified mod opener's owner for a
+    /// stock menu, supplies a factory.
     fn create(&self, host: &dyn crate::ClientHost, open: MenuScreenOpen<'_>) -> Option<MenuScreen>;
 }
 

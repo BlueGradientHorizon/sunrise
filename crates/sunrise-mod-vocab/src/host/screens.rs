@@ -17,8 +17,9 @@ pub trait ScreensClientHost {
     #[access(ClientSetup)]
     fn set_preset_editor_dimensions(&self, dimensions: Compound) -> bool;
     /// Side: client.
-    /// The opener position of the currently shown mod menu, if supplied.
-    /// When a server explicitly omits the position, returns `None`.
+    /// The position of the currently shown mod menu opening. Use
+    /// [`crate::MenuScreenOpen::pos`] while constructing its screen instead.
+    /// An explicit absent position from the server stays `None`.
     #[access(ClientSetup)]
     fn screen_pos(&self) -> Option<[i32; 3]>;
     /// Side: client.
@@ -37,10 +38,11 @@ pub trait ScreensClientHost {
     #[access(ClientSetup)]
     fn screen_hovered_item(&self) -> Option<ItemKey>;
     /// Side: client.
-    /// Where the open screen of mod menu type `menu` puts container slot `slot` from the next
+    /// Where this mod's shown menu screen puts backing slot `slot` from the next
     /// frame (`Slot.x`, `Slot.y` in GUI pixels from the screen's top left, the item's top left
     /// corner): where `set_screen_slot` last put it, else where the screen declared it. None
-    /// for a hidden slot, another menu type's or another mod's screen, or none open.
+    /// for an excluded or locally hidden slot, another menu type's or another mod's screen,
+    /// or no shown mod screen.
     #[access(ClientSetup)]
     fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]>;
     /// Side: client.
@@ -53,13 +55,11 @@ pub trait ScreensClientHost {
     /// The change lasts for this opening; a replacement starts from the declared layout,
     /// even if it reuses the same window id. Only the mod whose factory made the open screen
     /// moves its slots. A bound recipe book keeps that ownership with its declaring mod.
-    /// Nothing is sent and the server's mask does not change:
-    /// a locally hidden slot keeps its item and a shift-click may still fill it, as a
-    /// deactivated Java slot does. A slot excluded at registration cannot be shown.
-    /// It takes `&self`, so a screen callback may call
-    /// it every frame; repeating a slot's current place changes nothing and costs no layout
-    /// work. Each refusal changes nothing and is named by `ScreenSlotRefusal`: `NoScreen`,
-    /// `NoSuchSlot`, `HiddenAtOpen`, `BadPosition` and `Unavailable`.
+    /// This is client-only: a locally hidden slot keeps its item and a shift-click may
+    /// still fill it. A permanently excluded slot keeps its backing index but cannot be
+    /// shown. It takes `&self`, so a screen callback may call it every frame; repeating
+    /// a slot's current place changes nothing and costs no layout work. Each
+    /// [`ScreenSlotRefusal`] leaves the layout unchanged.
     #[access(ClientSetup)]
     fn set_screen_slot(
         &self,

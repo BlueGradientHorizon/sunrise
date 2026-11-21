@@ -71,14 +71,18 @@ an offer, buy anything, or send packets; the server still decides every trade.
 
 ## Frame coordinates
 
-Each callback installed with `MenuScreen::with_draw`, `with_click` or `with_tooltip`
-receives a `MenuScreenFrame`. Its `pointer: [i32; 2]` and `gui_size: [i32; 2]`
+A [registered menu screen factory](../world/machine-menu-data.md#the-menus-screen)
+gives one opening its own callbacks. Use `with_draw(|host, frame, draw| ...)`,
+`with_click(|host, frame, right| ...)`, or
+`with_tooltip(|host, frame, slot, lines| ...)` on the returned `MenuScreen`.
+Each callback receives a `MenuScreenFrame`. Its `pointer: [i32; 2]` and `gui_size: [i32; 2]`
 are the current absolute pointer and window size in scaled GUI pixels. The absolute
 pointer truncates toward zero, including outside the panel. `origin: [f32; 2]`
 is the panel's top-left; `at: [f32; 2]` is the pointer relative to that origin,
 without truncation. Use these values for hover regions and layout after a resize
-or panel move. `data` borrows the current menu's live data slots, which may not
-have arrived yet.
+or panel move. `frame.data` borrows the current menu's live data slots, which may
+not have arrived yet. It is not the opening payload: decode `open.extra` in the
+factory and capture only the owned values the callbacks need.
 
 To draw a sprite from synchronized menu data, see
 [Draw a progress bar and a fuel gauge](menu-gauges.md).
@@ -105,12 +109,12 @@ over the screen override.
 
 ## Moving or hiding a mod screen's slots
 
-The [menu screen factory](../world/machine-menu-data.md#the-menus-screen) declares where each slot sits in `MenuScreenLayout::slots`. Keep the original backing indices:
-only [registered slot exclusions](../world/machine-menu-data.md#the-menus-screen) may be `None` or omitted
-at the end of the list. A screen whose layout changes while it is open (tabs, a collapsing panel, a scrolling
-slot grid, Tinkers' station laying its inputs out for the tool
-being built) moves or hides a slot afterwards with `ClientHost::set_screen_slot`, as a Java screen sets
-`Slot.x`/`Slot.y` or deactivates a slot:
+The [menu screen factory](../world/machine-menu-data.md#the-menus-screen) puts geometry in
+`MenuScreenLayout::slots` at the original backing indices. Only
+[permanent exclusions](../world/machine-menu-data.md#opening-a-stock-menu-from-a-mod-block)
+may be `None` or omitted from the end of the list. A layout that changes while open (tabs,
+a collapsing panel or a scrolling slot grid) moves or hides slots afterwards with
+`ClientHost::set_screen_slot`, as a Java screen sets `Slot.x`/`Slot.y` or deactivates a slot:
 
 ```rust,ignore
 const MENU: &str = "mymod:station";
@@ -118,6 +122,7 @@ const MENU: &str = "mymod:station";
 host.set_screen_slot(MENU, 3, Some([62.0, 18.0]))?;
 // This layout doesn't use slot 4.
 host.set_screen_slot(MENU, 4, None)?;
+// Show it again on another tab with set_screen_slot(MENU, 4, Some([x, y])).
 // Where slot 3 is from the next frame.
 assert_eq!(host.screen_slot(MENU, 3), Some([62.0, 18.0]));
 ```
@@ -157,7 +162,7 @@ Each refusal changes nothing and is named by `ScreenSlotRefusal`:
 
 | Refusal | When |
 |---|---|
-| `NoScreen` | No mod screen is open, or the open one is another menu type's |
+| `NoScreen` | No mod screen is shown, or the shown one belongs to another menu type or mod |
 | `NoSuchSlot` | `slot` is outside the menu's container backing |
 | `HiddenAtOpen` | A position for a permanently excluded slot |
 | `BadPosition` | An `x` or `y` that is NaN or infinite |

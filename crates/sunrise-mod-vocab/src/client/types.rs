@@ -876,13 +876,13 @@ pub enum ScreenTarget {
     DirectConnect,
 }
 
+// no wire: toggle geometry is chosen by the client screen factory.
 /// Where a mod menu's recipe-book toggle sits: `x` GUI pixels right of the menu's left edge and
 /// `y` below the line `from` names. Vanilla screens place theirs either way:
 /// `leftPos + 5, topPos + 34` is `x: 5.0, y: 34.0, from: Menu`, and
 /// `leftPos + 5, height / 2 - 49` is `x: 5.0, y: -49.0, from: ScreenCentre`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 // exhaustive: mods build it with a literal and the game reads every field
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct RecipeBookToggle {
     /// Pixels right of the menu's left edge.
     pub x: f32,
@@ -892,10 +892,10 @@ pub struct RecipeBookToggle {
     pub from: ToggleOrigin,
 }
 
+// no wire: the toggle's coordinate origin is used only by client layout.
 /// The line a recipe-book toggle's `y` counts from.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 // exhaustive: the two lines vanilla's screens measure from, matched without a wildcard
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum ToggleOrigin {
     /// The menu's top edge.
     #[default]
@@ -1001,6 +1001,7 @@ impl ColoredLight {
     }
 }
 
+// no wire: screen geometry is constructed and consumed in the client window.
 /// Layout for a window's [`crate::MenuScreen`]: its size, where
 /// each of the container's slots is (`Slot.x`, `Slot.y`), and the player
 /// inventory's first row (vanilla's is 84; the hotbar is 58 below it) and
@@ -1008,7 +1009,6 @@ impl ColoredLight {
 /// take server clicks; see [`crate::MenusRegistrar::menu_slot_exclusions`].
 #[derive(Clone, Debug, Default, PartialEq)]
 // exhaustive: mods build it with a literal and the game reads every field
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct MenuScreenLayout {
     /// Positive finite width in GUI pixels. Vanilla's container screens are 176 wide.
     pub width: f32,
@@ -1016,7 +1016,8 @@ pub struct MenuScreenLayout {
     pub height: f32,
     /// Slot geometry at its original backing index. Every nonexcluded slot
     /// needs geometry; `None` (including an omitted trailing entry) is valid
-    /// only for a registered exclusion. There are no entries past the backing.
+    /// only for a registered exclusion. An excluded slot still has a physical
+    /// index; don't compact this list. There are no entries past the backing.
     pub slots: Vec<Option<ScreenSlot>>,
     /// The y of the player inventory's first row; vanilla's is 84.
     pub inventory_y: f32,
@@ -1051,10 +1052,11 @@ pub struct MenuScreenLayout {
     pub recipe_book_big_result: bool,
 }
 
+// no wire: a slot's coordinates and empty icon are local screen presentation.
 /// One visible container slot, including vanilla's `Slot.getNoItemIcon`.
+/// Its index in [`MenuScreenLayout::slots`] is the menu's backing index.
 #[derive(Clone, Debug, Default, PartialEq)]
 // exhaustive: mods declare both geometry and the optional empty-slot sprite
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct ScreenSlot {
     /// Top-left in GUI pixels relative to the screen.
     pub position: [f32; 2],

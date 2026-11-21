@@ -11,8 +11,8 @@ pub trait PlayerMenusBackend {
     /// On a client, only the local player's menu is available: its slots and carried stack
     /// are the client's view (server updates plus local prediction), not server authority.
     /// On a server, refuses crafting tables, merchants, workstations, lecterns, mounts,
-    /// block-backed menus with slots hidden at open, stale players and players held out by
-    /// another active turn. Slots hidden at open do not refuse code-opened native windows.
+    /// stale players and players held out by another active turn. Permanently excluded
+    /// slots retain their indices but cannot be accessed through the menu handle.
     /// Reads for the acting player use their current inventory, equipment, cursor and ender
     /// contents. On a client, refuses stale players and unsupported menu layouts.
     #[access(WorldOnly)]
@@ -39,9 +39,10 @@ pub trait PlayerMenusBackendMut {
     /// block (`ServerPlayer.openMenu(provider, extraDataWriter)`): an item's use, an entity,
     /// a command. The menu replaces the one they had open. Its container slots show empty
     /// and their clicks go to the mods (`native_menu_clicked`), as `open_menu`'s do. `extra`
-    /// (at most 32 KiB) is the one-time context in `MenuScreenOpen::extra`. `pos`, when given, is offered
-    /// to the factory and available later through `screen_pos`. `data` has exactly the menu type's `data_slots` values;
-    /// the client receives them after the new window opens. The menu's owning mod can change
+    /// (at most 32 KiB) is available only during construction in [`crate::MenuScreenOpen::extra`].
+    /// `pos`, when given, is offered to the factory and available later through `screen_pos`.
+    /// `data` has exactly the menu type's `data_slots` values; they arrive after opening and
+    /// are read through [`crate::MenuScreenFrame::data`]. The menu's owning mod can change
     /// them with [`MenuRef::set_data_slot`]. The old menu closes on the server as a close does (its
     /// `removed`, `player_container_close`, the cursor stack and crafting grids back to the
     /// inventory) before the new one is built; `replace` says whether the client is first sent

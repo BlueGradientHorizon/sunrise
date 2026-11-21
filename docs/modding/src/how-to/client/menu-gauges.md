@@ -13,8 +13,10 @@ For a custom menu, also set `"data_slots": 4` in the [menu type definition](../c
 Without it the server sends zero data slots and neither gauge draws, even if
 the block entity has all four values. The open menu sends the values to its
 viewers. The client reads them in `frame.data`; some or all can be missing
-before the first updates arrive.
-Use values that fit in a signed 16-bit integer: larger values wrap on the wire.
+before the first updates arrive. Do not put changing values in `open.extra`; it
+is read once, while constructing the screen.
+For a block-backed menu, use values that fit in a signed 16-bit integer: larger
+values wrap on the wire. A blockless mod menu's live data supports full `i32`.
 
 ## Crop the sprite and the destination
 
