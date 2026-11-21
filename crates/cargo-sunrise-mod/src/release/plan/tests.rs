@@ -550,6 +550,20 @@ fn a_dangling_plan_parent_cannot_become_valid_when_sdk_data_is_written() {
 }
 
 #[test]
+fn a_directory_shaped_plan_output_does_not_replace_an_existing_file() {
+    let scratch = tempfile::tempdir().unwrap();
+    let base = sdk_fetch::Base::Folder(scratch.path().to_owned());
+    let data = scratch.path().join("sdk-data");
+    let file = scratch.path().join("plan.json");
+    fs::write(&file, b"keep this plan\r\n").unwrap();
+    for suffix in ["plan.json/", "plan.json/."] {
+        let error = stage(None, &base, &[], &data, &scratch.path().join(suffix)).unwrap_err();
+        assert!(error.contains("--out"), "{error}");
+        assert_eq!(fs::read(&file).unwrap(), b"keep this plan\r\n");
+    }
+}
+
+#[test]
 fn no_rebuild_writes_a_null_plan_without_reading_an_sdk() {
     let scratch = tempfile::tempdir().unwrap();
     let data = scratch.path().join("sdk-data");

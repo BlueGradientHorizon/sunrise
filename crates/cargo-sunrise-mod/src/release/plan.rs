@@ -434,6 +434,18 @@ fn stage(
     data: &Path,
     out: &Path,
 ) -> Result<(), String> {
+    let raw = out.as_os_str().as_encoded_bytes();
+    if raw
+        .last()
+        .is_some_and(|&b| std::path::is_separator(char::from(b)))
+        || (raw.last() == Some(&b'.')
+            && (raw.len() == 1 || std::path::is_separator(char::from(raw[raw.len() - 2]))))
+    {
+        return Err(format!(
+            "--out {}: name an output file, not a directory",
+            out.display()
+        ));
+    }
     let out = through_existing_parent("--out", out)?;
     if inside(&out, &through_existing_parent("--sdk-data", data)?) {
         return Err("--out must be outside --sdk-data".into());
