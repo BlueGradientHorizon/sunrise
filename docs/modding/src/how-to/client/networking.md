@@ -2,6 +2,21 @@
 
 Call `host.disconnect(reason)` through `ClientHost` to leave the joined server or world at the end of the frame, outside hooks. Pass `Some(Text)` to show a disconnect reason or `None` for the normal leave flow. The disconnect screen renders the reason in the player's language, like other translatable text: a translatable component shows its translated text and a plain-text reason is unchanged. The call returns `Result<(), DisconnectError>`: `Unavailable` means no world is joined, it is closing, or a save is pending, and `Text` reports an invalid reason (a malformed or too-deep component is refused by that name and nothing changes). A pending request belongs to its current world epoch and cannot leave a later world. Server code continues to use the separate player disconnect operation.
 
+## Moving work to the client thread
+
+In a live client callback such as `client_setup`, call `host.client_executor()` to get a
+`ClientExecutor`. Clone it into a network handler or another worker. Call
+`executor.execute(Box::new(move |host| { /* use the client host here */ }))` with owned data.
+The executor does not run the closure inline. The next client task drain runs queued work in
+submission order and lends each callback a live `&mut dyn ClientHost`. Work submitted after
+shutdown starts is dropped, as is any work that has not run by then. A panic in a task is logged
+and shown in an error toast naming the mod; only that mod's executor callbacks are disabled.
+
+The executor belongs to the client application, not to a connection or level. Keep using
+`IPayloadContext::enqueue_work` if the work needs the payload's original epoch, player, reply or
+configuration controls. A `ClientExecutor` task receives no payload context. Check any retained
+entity or level handle when the task runs; a disconnect or dimension change may have made it stale.
+
 ## Holding outgoing play packets
 
 Call `host.hold_packets()` to start an ordered hold and receive its opaque `HoldId`.

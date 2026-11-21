@@ -890,7 +890,6 @@ pub(super) struct Remote {
     chunk_center: (i32, i32),
     /// Received events a frame left for the next one, in order, and when
     /// the oldest of them first waited (`poll_remote`).
-    backlog: VecDeque<Received>,
     backlog_since: Option<Instant>,
     /// `ClientboundTransferPacket`'s target: when the connection ends the
     /// game connects here, the stored cookies carried over (`TransferState`).
@@ -1400,7 +1399,6 @@ impl Game<'_> {
             overworld_clock: None,
             clock_game_time: 0,
             chunk_center: (0, 0),
-            backlog: VecDeque::new(),
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
@@ -1654,7 +1652,6 @@ impl Game<'_> {
             overworld_clock: None,
             clock_game_time: 0,
             chunk_center: (0, 0),
-            backlog: VecDeque::new(),
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
@@ -2299,7 +2296,9 @@ impl Game<'_> {
     /// Received events left for the next frame (`poll_remote`): until they
     /// are handled, the terrain the server sent is not all there.
     pub(super) fn remote_backlog(&self) -> usize {
-        self.remote.as_ref().map_or(0, |r| r.backlog.len())
+        self.remote
+            .as_ref()
+            .map_or(0, |_| self.client_backlog.len())
     }
 
     /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
@@ -2346,7 +2345,7 @@ impl Game<'_> {
     /// vanilla's does. A batch's `ChunkBatchReceived` is not among them: the
     /// network thread answers it (`net::receive_play`).
     pub(in crate::game) fn poll_remote_before_tick(&mut self) -> Result<()> {
-        if self.remote.as_ref().is_none_or(|r| r.backlog.is_empty()) {
+        if self.client_backlog.is_empty() {
             return Ok(());
         }
         self.poll_remote_with(true)

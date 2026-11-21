@@ -284,35 +284,20 @@ impl AudioStreamRef {
     /// `entity`, its position is not finite, or once the stream has stopped. Stereo streams
     /// accept any tracked entity and play un-spatialized.
     ///
-    /// A clientbound `Network`-thread payload handler that already holds an `EntityRef` can
-    /// submit [payload work](crate::IPayloadContext::enqueue_work) to the client thread.
-    /// Move the stream handle and entity into the work, not the payload context. The work
-    /// gets a client host when it runs, and `set_entity` checks tracking at that point.
+    /// Obtain a [`ClientExecutor`](crate::ClientExecutor) from `host.client_executor()` in a
+    /// client callback, then clone it into a network-thread producer holding an `EntityRef`.
+    /// It can retarget the stream without borrowing a host or a live payload context:
     ///
     /// ```
-    /// use mod_api::{AudioStreamRef, EntityRef, IPayloadContext, PayloadWork};
-    /// use std::sync::Arc;
-    ///
-    /// struct Retarget {
-    ///     stream: Arc<AudioStreamRef>,
-    ///     entity: EntityRef,
-    /// }
-    ///
-    /// impl PayloadWork for Retarget {
-    ///     fn run(&self, cx: &mut dyn IPayloadContext) -> Result<(), String> {
-    ///         let host = cx.client_host().map_err(|error| format!("{error:?}"))?;
-    ///         if !self.stream.set_entity(host, self.entity) {
-    ///             eprintln!("audio retarget refused: stream stopped or entity unavailable");
-    ///         }
-    ///         Ok(())
+    /// # use mod_api::{AudioStreamRef, ClientExecutor, EntityRef};
+    /// # use std::sync::Arc;
+    /// # fn retarget(executor: &ClientExecutor, stream: Arc<AudioStreamRef>, entity: EntityRef) {
+    /// let executor = executor.clone();
+    /// executor.execute(Box::new(move |host| {
+    ///     if !stream.set_entity(host, entity) {
+    ///         eprintln!("Audio retarget refused: stream stopped or entity unavailable");
     ///     }
-    /// }
-    ///
-    /// # fn receive(cx: &mut dyn IPayloadContext, stream: Arc<AudioStreamRef>, entity: EntityRef)
-    /// #     -> Result<(), mod_api::PayloadContextError> {
-    /// // In the clientbound network handler:
-    /// cx.enqueue_work(Arc::new(Retarget { stream, entity }))?;
-    /// # Ok(())
+    /// }));
     /// # }
     /// ```
     pub fn set_entity(&self, host: &dyn ClientHost, entity: EntityRef) -> bool {

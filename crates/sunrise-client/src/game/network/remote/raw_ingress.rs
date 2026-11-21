@@ -1,47 +1,52 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
 use super::*;
 
-impl Remote {
-    fn receive_credited_backlog(
-        &mut self,
-        inbox: &sunrise_client::net::ClientInbox,
-        events: &mut VecDeque<Received>,
-    ) {
-        // Chunk packets start decoding now; the frame that reaches one in
-        // order inserts its column.
-        for receipt in inbox.poll() {
-            let (queued, credit) = receipt.into_parts();
-            if queued.serial != self.session.serial() {
-                continue;
-            }
-            let event = queued.event;
-            events.push_back(match event {
-                Event::Packet(p) if matches!(*p, C::LevelChunkWithLight(_)) => {
-                    match self.decoder.submit(self.chunk_format.clone(), p) {
-                        None => Received::Chunk(self.chunk_format.clone(), credit),
-                        Some(p) => Received::Event(Event::Packet(p), credit),
-                    }
-                }
-                event => Received::Event(event, credit),
-            });
-        }
-    }
-}
-
 impl Game<'_> {
-    /// Handle what the server sent, in order. `before_tick`: a tick is about to
-    /// run, so what an earlier poll left for later is taken whole (no frame
-    /// budget, each column waited for) and nothing newer is received.
+    /// Drain local executor work and current-connection events in publication order.
+    /// Before a tick we take only what the frame left behind, with no chunk budget.
     pub(super) fn poll_remote_events(&mut self, before_tick: bool) -> Result<()> {
-        let Some(r) = self.remote.as_mut() else {
-            return Ok(());
-        };
-        let mut events = std::mem::take(&mut r.backlog);
-        if !before_tick {
-            r.receive_credited_backlog(&self.client_inbox, &mut events);
+        let serial = self.remote.as_ref().map(|remote| remote.session.serial());
+        let mut events = std::mem::take(&mut self.client_backlog);
+        if self.client_backlog_serial != serial {
+            // The executor belongs to the client, including across disconnects or transfers.
+            // Old packets (including queued payload work) belong only to their connection.
+            events.retain(|item| matches!(item, Received::Event(Event::ClientTask(_), _)));
+            self.client_backlog_serial = serial;
         }
-        let overdue = r
-            .backlog_since
+        if !before_tick {
+            for receipt in self.client_inbox.poll() {
+                let (queued, credit) = receipt.into_parts();
+                if queued.serial.is_some() && queued.serial != serial {
+                    continue;
+                }
+                // Decode the columns in parallel, but apply each at its ordered slot.
+                events.push_back(match (self.remote.as_mut(), queued.event) {
+                    (Some(remote), Event::Packet(packet))
+                        if matches!(*packet, C::LevelChunkWithLight(_)) =>
+                    {
+                        match remote.decoder.submit(remote.chunk_format.clone(), packet) {
+                            None => Received::Chunk(remote.chunk_format.clone(), credit),
+                            Some(packet) => Received::Event(Event::Packet(packet), credit),
+                        }
+                    }
+                    (_, event) => Received::Event(event, credit),
+                });
+            }
+        }
+        let result = self.dispatch_client_events(&mut events, before_tick);
+        self.client_backlog = events;
+        result
+    }
+
+    fn dispatch_client_events(
+        &mut self,
+        events: &mut VecDeque<Received>,
+        before_tick: bool,
+    ) -> Result<()> {
+        let overdue = self
+            .remote
+            .as_ref()
+            .and_then(|r| r.backlog_since)
             .is_some_and(|since| since.elapsed() >= BACKLOG_LIMIT);
         let mut chunks = Duration::ZERO;
         // A run of ForgetLevelChunk (thousands when the server's view moves far: a
@@ -276,6 +281,10 @@ impl Game<'_> {
                     self.leave_server(Some(Text::literal(reason)))?;
                     return Ok(());
                 }
+                Event::ClientTask(task) => {
+                    self.run_client_task(task);
+                    continue;
+                }
                 Event::RawPayload(incoming) => {
                     if let Some(remote) = self.remote.as_ref() {
                         self.run_payload(remote.session.payload_endpoint(), *incoming);
@@ -304,7 +313,6 @@ impl Game<'_> {
             } else {
                 Some(r.backlog_since.unwrap_or_else(Instant::now))
             };
-            r.backlog = events;
         }
         self.send_suggestion_request();
         Ok(())

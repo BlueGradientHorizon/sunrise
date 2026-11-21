@@ -126,6 +126,16 @@ pub fn channel<T>(capacity: usize) -> Result<(Sender<T>, Receiver<T>), InvalidCa
 }
 
 impl<T> Sender<T> {
+    /// Publish in FIFO order without spending the transport byte budget. Only for local
+    /// engine work that does not originate as retained network input.
+    pub fn send_local(&self, value: T) -> Result<(), T> {
+        Permit {
+            shared: self.0.clone(),
+            charge: 0,
+        }
+        .publish(value)
+    }
+
     /// Never waits for capacity. Overflowing charges are refused as full.
     /// `owned_bytes` must cover all heap storage retained by `value`.
     pub fn try_send(&self, value: T, owned_bytes: usize) -> Result<(), TrySendError<T>> {
@@ -325,6 +335,21 @@ impl<T> Drop for Receiver<T> {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn local_work_shares_fifo_without_using_transport_credit() {
+        let charge = message_overhead::<&str>();
+        let (tx, rx) = channel(charge).unwrap();
+        tx.send_local("first task").unwrap();
+        tx.try_send("packet", 0).unwrap();
+        tx.send_local("second task").unwrap();
+        assert_eq!(tx.stats().reserved_bytes, charge);
+        assert_eq!(rx.try_recv().unwrap(), "first task");
+        assert_eq!(tx.stats().reserved_bytes, charge);
+        assert_eq!(rx.try_recv().unwrap(), "packet");
+        assert_eq!(rx.try_recv().unwrap(), "second task");
+        assert_eq!(tx.stats().reserved_bytes, 0);
+    }
 
     #[test]
     fn owned_dequeue_keeps_credit_until_lease_drop() {

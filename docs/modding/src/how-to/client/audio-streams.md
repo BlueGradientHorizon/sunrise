@@ -99,11 +99,19 @@ resolve a handle in the current level. If it returns `None`, skip the frame. Oth
 to the current level and connection; do not carry pending frames into a new level. A network-thread
 handler can feed a mod-owned buffer read by an already-opened `AudioStream` on the pull worker and
 can call `set_flat`, `set_position`, `set_volume`, `state` and `stop` directly without a host.
-To change the followed entity from a clientbound network-thread payload handler, put the
-`Arc<AudioStreamRef>` and the local `EntityRef` in a `PayloadWork` and pass it to
-`cx.enqueue_work(Arc::new(work))`. In `PayloadWork::run` on the client thread, get the host with
-`cx.client_host()` and call `stream.set_entity(host, entity)`. Check its return value: the entity
-may have stopped being tracked while the work was queued.
+To change the followed entity from a network-thread producer, clone a
+[`ClientExecutor`](networking.md#moving-work-to-the-client-thread) into it. Move the owned stream
+handle (or its `Arc` clone) and the local `EntityRef` into the task, not the payload context:
+
+```rust,ignore
+executor.execute(Box::new(move |host| {
+    if !stream.set_entity(host, entity) {
+        eprintln!("Audio retarget refused: stream stopped or entity unavailable");
+    }
+}));
+```
+
+`set_entity` checks tracking when the task runs, not when it is submitted.
 
 ## Threading
 

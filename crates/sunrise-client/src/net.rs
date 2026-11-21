@@ -9,7 +9,7 @@
 use crate::auth::AuthSession;
 mod client_inbox;
 mod held_packets;
-pub use client_inbox::{ClientInbox, EventSender, QueuedEvent};
+pub use client_inbox::{ClientInbox, ClientTask, EventSender, QueuedEvent};
 pub mod ingress;
 mod known_packs;
 use known_packs::{fill_known_entries, select_known_packs};
@@ -107,6 +107,8 @@ pub enum Event {
     Packet(Box<play::Clientbound>),
     /// Registered application bytes, owned until the receiving root transaction ends.
     RawPayload(Box<crate::raw_payloads::Incoming>),
+    /// Locally submitted main-thread work, independent of the active session.
+    ClientTask(ClientTask),
     /// A packet that failed to decode (skipped, like vanilla's skippable packets).
     DecodeError(String),
     /// The server sent us back to configuration (`ClientboundStartConfigurationPacket`):
@@ -171,7 +173,8 @@ impl Event {
             | Self::CustomBooks
             | Self::Reconfiguring
             | Self::ClearDialog
-            | Self::PackPop(_) => 0,
+            | Self::PackPop(_)
+            | Self::ClientTask(_) => 0,
             Self::FarTerrain(crate::lod_net::Offer {
                 distance: _,
                 in_flight: _,
@@ -668,6 +671,7 @@ impl Session {
     /// doesn't wake a read already waiting, so joining it held the window until
     /// the server dropped the connection, many seconds later.
     pub fn disconnect(&mut self) {
+        self.payload_events.close();
         self.payloads.close();
         if let Some(w) = self.writer.lock().unwrap().take() {
             w.shutdown();

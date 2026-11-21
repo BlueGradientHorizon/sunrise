@@ -272,6 +272,8 @@ mod client_ambient;
 mod client_attack_targets;
 #[path = "game/modding/client_cracks.rs"]
 mod client_cracks;
+#[path = "game/modding/client_executor.rs"]
+mod client_executor;
 #[path = "game/modding/client_item_extensions.rs"]
 mod client_item_extensions;
 #[path = "game/interface/client_reload/mod.rs"]
@@ -4010,6 +4012,9 @@ struct Game<'a> {
     /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
     remote: Option<remote::Remote>,
     client_inbox: sunrise_client::net::ClientInbox,
+    client_backlog: std::collections::VecDeque<raw_backlog::Received>,
+    client_backlog_serial: Option<u64>,
+    client_executor: client_executor::State,
     /// The current connection came from Realms (retained for reconnect).
     realm_session: bool,
     /// The server this window connected to last over the network: kept while something may
@@ -7080,6 +7085,7 @@ impl Game<'_> {
         // The ToastManager draws over every screen, the title and the
         // options included: the narrator's toast follows the player there.
         self.draw_narrator_toast(&mut batch);
+        self.draw_client_task_errors(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
@@ -12813,6 +12819,10 @@ impl Game<'_> {
                     if self.title.is_none() {
                         sunrise_client::spans::time("update_world", || self.update_world());
                         sunrise_client::spans::time("spawn_player", || self.spawn_player())?;
+                    } else if let Err(e) =
+                        sunrise_client::spans::time("poll_remote", || self.poll_remote())
+                    {
+                        log::warn!("Sunrise: {e}");
                     }
                     let updated = Instant::now();
                     self.track_toggle_screens();
@@ -13596,6 +13606,9 @@ impl<'a> Game<'a> {
             attachment_indexes: Default::default(),
             remote: None,
             client_inbox: Default::default(),
+            client_backlog: Default::default(),
+            client_backlog_serial: None,
+            client_executor: Default::default(),
             realm_session: false,
             last_connection: None,
             connection_open: false,

@@ -28,6 +28,11 @@ pub trait ServicesServerHost {
 /// The client host's methods of the `services` area, implemented by the game and reached through [`crate::ClientHost`].
 #[sunrise_mod_api_macros::host_area]
 pub trait ServicesClientHost {
+    /// The calling mod's handle for submitting work to the client thread from any thread.
+    /// Obtain it in a live client callback (for example, `client_setup`) and clone it into
+    /// workers that cannot borrow a host. None when the client loop is unavailable or closing.
+    #[access(ClientSetup)]
+    fn client_executor(&self) -> Option<ClientExecutor>;
     /// Persistent model groups.
     #[access(PublishedResources)]
     #[service]

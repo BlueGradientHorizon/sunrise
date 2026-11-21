@@ -266,6 +266,7 @@ impl Game<'_> {
 
     /// The loop ended: close the pads' output, save the world.
     pub(super) fn shut_down(&mut self) {
+        self.close_client_tasks();
         if self.error.is_none()
             && let Some(renderer) = &mut self.renderer
         {
