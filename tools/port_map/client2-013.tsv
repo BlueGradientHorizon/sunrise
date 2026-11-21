@@ -81,7 +81,7 @@ GuiRenderer.prepareItemAtlas	skip:other		item atlas creation and resize; Sunrise
 GuiRenderer.getGuiScaleInvalidatingItemAtlasIfChanged	skip:other		item atlas invalidation on GUI scale change; Sunrise has no item atlas
 GuiRenderer.executeDraw	port	crates/sunrise-client-render/src/hud.rs::HudRenderer::draw_range	one pipeline, vertex buffer, scissor and index range draw
 GuiRenderer.scissorChanged	skip:other		batching compare of scissor rectangles
-GuiRenderer.enableScissor	port	crates/sunrise-client-render/src/hud.rs::HudBatch::clip_since	gap: minor: the rectangle arrives already intersected with the outer scissor (GuiGraphicsExtractor); a nested clip replaces the outer one in paint
+GuiRenderer.enableScissor	port	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::clip_since	gap: minor: the rectangle arrives already intersected with the outer scissor (GuiGraphicsExtractor); a nested clip replaces the outer one in paint
 GuiRenderer.close	skip:other		GPU resource release
 TextureSetup.singleTextureWithLightmap	skip:other		GPU texture binding with the lightmap; Sunrise's lighting is in the mesh
 TextureSetup.getSortKey	skip:other		draw sort key for batching; Sunrise appends in order
