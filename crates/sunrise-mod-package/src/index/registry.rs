@@ -226,7 +226,9 @@ impl Entry {
         self.check_page(self.nightly.is_some() && self.versions.is_empty() && self.repo.is_none())
     }
 
-    fn check_page(&self, nightly_only: bool) -> Vec<String> {
+    /// Who the project is: checked for every entry, also one that publishes nothing yet and only
+    /// holds its id.
+    fn check_identity(&self) -> Vec<String> {
         let id = &self.id;
         let mut errors = Vec::new();
         if !valid_id(id) {
@@ -238,18 +240,24 @@ impl Entry {
         if let Err(e) = open(&self.kind) {
             errors.push(format!("{id}: {e}"));
         }
+        if self.owners.is_empty() {
+            errors.push(format!("{id}: needs at least one owner (a GitHub login)"));
+        }
+        if let Some(error) = owner_ids_error(&self.owners, &self.owner_ids) {
+            errors.push(format!("{id}: {error}"));
+        }
+        errors
+    }
+
+    fn check_page(&self, nightly_only: bool) -> Vec<String> {
+        let id = &self.id;
+        let mut errors = self.check_identity();
         if self.repo.as_deref().is_some_and(|r| !valid_repo(r)) {
             errors.push(format!("{id}: repo must be owner/name on GitHub"));
         }
         if let Some(nightly) = &self.nightly
             && let Err(error) = check_nightly_source(&nightly.repo, nightly.path.as_deref())
         {
-            errors.push(format!("{id}: {error}"));
-        }
-        if self.owners.is_empty() {
-            errors.push(format!("{id}: needs at least one owner (a GitHub login)"));
-        }
-        if let Some(error) = owner_ids_error(&self.owners, &self.owner_ids) {
             errors.push(format!("{id}: {error}"));
         }
         for (field, value) in [("license", &self.license), ("source", &self.source)] {
@@ -427,9 +435,22 @@ impl Checkout {
         })
     }
 
+    /// The identity errors of the entries that publish nothing yet: [`Checkout::listed`] skips
+    /// them, so their page is never checked.
+    fn check_unlisted(&self) -> Vec<String> {
+        let unlisted = |entry: &&Entry| {
+            entry.nightly.is_none() && !has_versions(entry, self.caches.get(&entry.id))
+        };
+        self.entries
+            .iter()
+            .filter(unlisted)
+            .flat_map(Entry::check_identity)
+            .collect()
+    }
+
     /// Validate release declarations and Nightly entries for a review without package files.
     pub fn check_declarations(&self, releases: Option<&[SunriseRelease]>) -> Vec<String> {
-        let mut errors = Vec::new();
+        let mut errors = self.check_unlisted();
         let empty = Cache::default();
         for (entry, cache) in self.listed() {
             let cache = cache.unwrap_or(&empty);
@@ -836,14 +857,22 @@ fn image(
 }
 
 impl EntryVersion {
+    /// The stable release this row names. A row that names one is never accepted unchecked: the
+    /// registry needs the releases to compare its pin with. A row that names none has no release.
     fn release<'a>(
         &self,
         releases: Option<&'a [SunriseRelease]>,
     ) -> Result<Option<&'a SunriseRelease>, String> {
-        if let Some(tag) = &self.sunrise {
-            check_stable_tag(tag, &self.game)?;
+        let Some(tag) = &self.sunrise else {
+            return Ok(None);
+        };
+        check_stable_tag(tag, &self.game)?;
+        if releases.is_none() {
+            return Err(format!(
+                "sunrise {tag:?} cannot be checked without the Sunrise releases: supply them"
+            ));
         }
-        find_release(releases, self.sunrise.as_deref())
+        find_release(releases, Some(tag))
     }
 }
 
@@ -1110,6 +1139,7 @@ pub fn build(src: &Sources) -> Result<Index, Vec<String>> {
 pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String>> {
     let mut projects = Vec::new();
     let (collections, mut errors) = checkout.collection_pages(src);
+    errors.extend(checkout.check_unlisted());
     let empty = Cache::default();
     for (entry, cache) in checkout.listed() {
         match project_with_cache(entry, cache.unwrap_or(&empty), src, &checkout.revoked) {
@@ -1444,11 +1474,16 @@ pub fn review_with_revoked(
                     if w.sha256 != v.sha256
                         || w.file != v.file
                         || w.signature != v.signature
-                        || w.sunrise != v.sunrise
                         || w.game != v.game
                     {
                         r.errors.push(format!(
-                            "{} {}: a published file or source pin never changes: publish a new version",
+                            "{} {}: a published file never changes: publish a new version",
+                            old.id, v.version
+                        ));
+                    }
+                    if v.sunrise.is_some() && w.sunrise != v.sunrise {
+                        r.errors.push(format!(
+                            "{} {}: the stable release a published version names never changes: publish a new version",
                             old.id, v.version
                         ));
                     }

@@ -196,6 +196,18 @@ fn a_stable_native_version_must_pin_the_named_release_commit() {
     };
     assert!(verify(&index).is_ok());
 
+    // A row that names a stable release is never published unchecked.
+    for unchecked in [
+        r.run("check", &["base", "head"], &[]).unwrap_err(),
+        r.build(&[]).unwrap_err(),
+    ] {
+        assert!(
+            unchecked.contains("coords 1.0.0")
+                && unchecked.contains("without the Sunrise releases"),
+            "{unchecked}"
+        );
+    }
+
     let wrong = "f".repeat(40);
     index.releases.as_mut().unwrap()[0].commit = wrong.clone();
     write_release(RELEASE_TAG, &wrong);
@@ -273,6 +285,40 @@ fn a_project_waiting_to_publish_keeps_its_id_out_of_the_index() {
     assert_eq!(r.review(), Ok(()));
     let index = r.build(&[]).unwrap();
     assert!(index.projects.is_empty() && index.left_out.is_empty());
+
+    // It publishes no page, but who holds the id is still checked.
+    for (id, page, problem) in [
+        (
+            "submit",
+            PROJECT_PAGE.replace("'example'", "'submit'"),
+            "reserved",
+        ),
+        (
+            "example",
+            PROJECT_PAGE.replace("['author']", "[]"),
+            "at least one owner",
+        ),
+        (
+            "example",
+            format!("{PROJECT_PAGE}owner_ids=[1, 2]\n"),
+            "owner_ids",
+        ),
+    ] {
+        let path = r.0.path().join(format!("head/mods/{id}.toml"));
+        std::fs::write(&path, page).unwrap();
+        assert!(r.bare_review().is_err());
+        for result in [
+            r.run("check", &["base", "head"], &[]),
+            r.build(&[]).map(drop),
+        ] {
+            let err = result.unwrap_err();
+            assert!(err.contains(problem), "{err}");
+        }
+        std::fs::write(r.0.path().join("head/mods/example.toml"), PROJECT_PAGE).unwrap();
+        if id != "example" {
+            std::fs::remove_file(path).unwrap();
+        }
+    }
 }
 
 #[test]
