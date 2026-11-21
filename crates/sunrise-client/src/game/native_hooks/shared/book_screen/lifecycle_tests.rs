@@ -817,3 +817,192 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
         })
     });
 }
+
+const REOPENED_MENU: &str = "reopened:menu";
+type ScreenTrace = Arc<Mutex<Vec<(&'static str, i32, i32)>>>;
+
+struct OpeningProbe {
+    trace: ScreenTrace,
+    window: i32,
+    marker: i32,
+}
+impl OpeningProbe {
+    fn record(&self, event: &'static str) {
+        self.trace
+            .lock()
+            .unwrap()
+            .push((event, self.window, self.marker));
+    }
+}
+impl Drop for OpeningProbe {
+    fn drop(&mut self) {
+        self.record("drop");
+    }
+}
+
+struct ReopenedMod(ScreenTrace);
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for ReopenedMod {
+    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        let trace = self.0.clone();
+        registrar
+            .register_menu_screen(
+                REOPENED_MENU,
+                Arc::new(
+                    move |_: &dyn mod_api::ClientHost, open: mod_api::MenuScreenOpen<'_>| {
+                        let marker = i32::from_be_bytes(open.extra.try_into().ok()?);
+                        let probe = Arc::new(OpeningProbe {
+                            trace: trace.clone(),
+                            window: open.window,
+                            marker,
+                        });
+                        probe.record("open");
+                        let draw = probe.clone();
+                        let press = probe.clone();
+                        Some(
+                            mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                                width: 176.0,
+                                height: 166.0,
+                                own_labels: true,
+                                own_background: true,
+                                ..Default::default()
+                            })
+                            .with_draw(move |_, _, _| draw.record("draw"))
+                            .with_click(move |_, frame, right| {
+                                assert!(right);
+                                assert_eq!(frame.at, [17.0, 25.0]);
+                                press.record("press");
+                                Some(press.marker)
+                            })
+                            .with_tooltip(move |_, _, slot, lines| {
+                                assert_eq!(slot, None);
+                                probe.record("tooltip");
+                                lines.push((
+                                    mod_api::Text::literal(probe.marker.to_string()),
+                                    u32::MAX,
+                                ));
+                            }),
+                        )
+                    },
+                ),
+            )
+            .unwrap();
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_reopened_window_uses_only_its_new_screen_instance() {
+    use sunrise_protocol::{
+        menu_extra::{self, CHANNEL, LIVE_DATA_REVISION},
+        packets::{
+            configuration::CustomPayload,
+            play::{Clientbound as C, ContainerClose, OpenScreen, Serverbound as S},
+        },
+        registry::Ids,
+    };
+
+    let trace = ScreenTrace::default();
+    let mods = vec![mod_api::ModEntry::new(
+        "reopened",
+        Box::new(ReopenedMod(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        sunrise_client::containers::with_mod_menu_types(
+            [(
+                REOPENED_MENU.into(),
+                "reopened".into(),
+                0,
+                0,
+                vec![],
+                vec![],
+                None,
+                None,
+                false,
+            )],
+            || {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
+                    let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
+                    let remote = game.remote.as_mut().unwrap();
+                    Arc::make_mut(&mut remote.registries).menu_extra_revision = LIVE_DATA_REVISION;
+                    Arc::make_mut(&mut remote.builtin).registries.insert(
+                        "minecraft:menu".into(),
+                        Ids::from_names(vec![REOPENED_MENU.into()]),
+                    );
+                    let open = |game: &mut Game<'_>, marker: i32| {
+                        game.handle_packet(C::CustomPayload(CustomPayload {
+                            channel: CHANNEL.into(),
+                            data: menu_extra::encode(&menu_extra::Message {
+                                window: 23,
+                                pos: None,
+                                data: marker.to_be_bytes().to_vec(),
+                            })
+                            .unwrap(),
+                        }))
+                        .unwrap();
+                        game.handle_packet(C::OpenScreen(OpenScreen {
+                            container: 23,
+                            menu: 0,
+                            title: sunrise_core::nbt::Tag::String("Reopened".into()),
+                        }))
+                        .unwrap();
+                        game.shown_native_screen()
+                            .expect("screen is shown")
+                            .menu
+                            .generation
+                    };
+                    let first = open(game, 301);
+                    assert_eq!(trace.lock().unwrap().clone(), [("open", 23, 301)]);
+                    assert_ne!(open(game, 742), first);
+                    assert_eq!(
+                        trace.lock().unwrap().clone(),
+                        [("open", 23, 301), ("drop", 23, 301), ("open", 23, 742)]
+                    );
+
+                    let mut batch = HudBatch::scratch([512, 512]);
+                    let (ox, oy) = game.inventory_origin(&batch);
+                    game.cursor = (ox + 17.0, oy + 25.0);
+                    assert!(game.draw_native_screen(&mut batch, ox, oy));
+                    assert!(game.native_screen_press_at(&batch, true));
+                    let packet = (0..32)
+                        .find_map(|_| {
+                            let (id, body) = peer.recv().ok()?;
+                            match S::decode(id, &body).unwrap() {
+                                S::ContainerButtonClick(click) => Some(click),
+                                _ => None,
+                            }
+                        })
+                        .expect("the replacement sent its menu button");
+                    assert_eq!((packet.container, packet.button), (23, 742));
+                    let mut lines = Vec::new();
+                    game.native_screen_tooltip_lines(&batch, None, &mut lines);
+                    assert_eq!(
+                        lines,
+                        [(sunrise_client::text::Text::literal("742"), u32::MAX)]
+                    );
+
+                    game.handle_packet(C::ContainerClose(ContainerClose { container: 23 }))
+                        .unwrap();
+                    assert!(!game.draw_native_screen(&mut batch, ox, oy));
+                    assert!(!game.native_screen_press_at(&batch, true));
+                    lines.clear();
+                    game.native_screen_tooltip_lines(&batch, None, &mut lines);
+                    assert!(lines.is_empty());
+                    assert_eq!(
+                        trace.lock().unwrap().clone(),
+                        [
+                            ("open", 23, 301),
+                            ("drop", 23, 301),
+                            ("open", 23, 742),
+                            ("draw", 23, 742),
+                            ("press", 23, 742),
+                            ("tooltip", 23, 742),
+                            ("drop", 23, 742),
+                        ]
+                    );
+                })
+            },
+        );
+    });
+}

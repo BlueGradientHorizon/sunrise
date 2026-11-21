@@ -56,7 +56,7 @@ pub trait ScreensClientHost {
     /// Nothing is sent and the server's mask does not change:
     /// a locally hidden slot keeps its item and a shift-click may still fill it, as a
     /// deactivated Java slot does. A slot excluded at registration cannot be shown.
-    /// It takes `&self`, so a screen hook may call
+    /// It takes `&self`, so a screen callback may call
     /// it every frame; repeating a slot's current place changes nothing and costs no layout
     /// work. Each refusal changes nothing and is named by `ScreenSlotRefusal`: `NoScreen`,
     /// `NoSuchSlot`, `HiddenAtOpen`, `BadPosition` and `Unavailable`.

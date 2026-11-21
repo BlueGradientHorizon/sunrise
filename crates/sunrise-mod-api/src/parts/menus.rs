@@ -127,19 +127,6 @@ impl MenusRegistrar for PartRegistrar {
                 return Err("explicit recipe type namespace required".into());
             }
             layout.validate(256)?;
-            if let Some(other) = self
-                .parts
-                .menus
-                .get(menu)
-                .into_iter()
-                .flatten()
-                .find(|other| other.mod_id != self.mod_id && presents_menu_screen(&*other.part))
-            {
-                return Err(format!(
-                    "recipe-book screen conflicts with {} of mod {}",
-                    other.type_name, other.mod_id
-                ));
-            }
             self.menu_recipe_books.insert(
                 menu.into(),
                 MenuBookDeclaration {
@@ -158,35 +145,6 @@ impl MenusRegistrar for PartRegistrar {
         })
     }
     fn attach_menu_part(&mut self, menu: &str, kind: &'static str, part: Arc<dyn MenuPart>) {
-        if presents_menu_screen(&*part) {
-            if let Some(book) = self.menu_recipe_books.get(menu)
-                && book.owner != self.mod_id
-            {
-                self.refused.push(format!(
-                    "{kind} of mod {} conflicts with the recipe-book screen on menu {menu:?} owned by mod {}",
-                    self.mod_id, book.owner
-                ));
-                return;
-            }
-            // One part answers the presentation hooks: a second would split drawing and input.
-            if let Some(other) = self
-                .parts
-                .menus
-                .get(menu)
-                .into_iter()
-                .flatten()
-                .find(|other| {
-                    presents_menu_screen(&*other.part)
-                        && screens_shared(menu, other.mod_id, self.mod_id)
-                })
-            {
-                self.refused.push(format!(
-                    "{kind} of {} and {} of {} both present menu type {menu}'s screen",
-                    self.mod_id, other.type_name, other.mod_id
-                ));
-                return;
-            }
-        }
         self.attach(|p| &mut p.menus, kind, menu, part);
     }
 }

@@ -2827,18 +2827,14 @@ registration path.
   the current transaction, rolls back on abort, and uses the normal menu broadcast to viewers.
   `level.set_block` uses the level's normal update path.
 
-- Screens a mod draws for its menu types: `r.register_menu_screen(menu, factory)` registers the constructor. It receives `MenuScreenOpen` (including borrowed one-time `extra`) and returns `MenuScreen::new(layout)` once per client opening. `MenuPart::screen_draw` draws it with the mod's GUI textures (`assets/<namespace>/textures/gui`).
+- Screens a mod draws for its menu types: `r.register_menu_screen(menu, factory)` registers the constructor. It receives `MenuScreenOpen` (including borrowed one-time `extra`) and returns `MenuScreen::new(layout)` once per client opening. `MenuScreen::with_draw` installs its drawing callback for the mod's GUI textures (`assets/<namespace>/textures/gui`).
   The factory goes with the menu type, as a `RegisterMenuScreensEvent` constructor does, whatever opened the menu: a block's use or `player_open_mod_menu` from an item, an entity or a command. For a stock menu, only the actual mod block's owner supplies a factory. `block` is `None` without a verified opener.
   The server skips only the backing slots declared via `r.menu_slot_exclusions(menu, block, indices)`. Layout holes must match that mask; local slot movement and hiding do not change it. A bound recipe book requires a factory from its declaring mod: name the book in the layout and supply geometry for every mapped slot.
 
-- Buttons, tooltips and item icons on mod screens: `screen_click` and `screen_tooltip` (the client), `menu_button`
-  (a button press on the server, on the menu type, with an optional backing block entity) and the helpers `native_item`, `native_screen_title`, `LevelRef::block`,
-  `LevelRef::block_property` and `native_cursor`. A mod inserts items through the block's item capability,
-  `level.capability(host, &ITEMS, pos, side)`.
+- Buttons and tooltips on mod screens: install client callbacks with `MenuScreen::with_click` and `MenuScreen::with_tooltip`. Screen callbacks borrow the current `MenuScreenFrame`, including the live menu data. An accepted button reaches the menu's server-side `menu_button`, with its backing block entity if it has one. A mod inserts items through the block's item capability, `level.capability(host, &ITEMS, pos, side)`.
 - `menu.click_button(host, button)`, on a client `MenuRef`, presses button `button` of the open menu as a click on one of its buttons does
   (`MultiPlayerGameMode.handleInventoryButtonClick`, `ServerboundContainerButtonClickPacket`); the server's menu decides what it does
-  (`clickMenuButton`, and `menu_button` for a mod's menu). It is for a client mod's own input on a menu's screen where `screen_click`
-  doesn't come, such as a key or the wheel (`screen_key_pressed_pre`, `screen_mouse_scrolled_pre`). It returns `false` for a stale
+  (`clickMenuButton`, and `menu_button` for a mod's menu). It is for a client mod's own input on a menu's screen other than a press, such as a key or the wheel (`screen_key_pressed_pre`, `screen_mouse_scrolled_pre`). It returns `false` for a stale
   handle and for the inventory menu, which no server opened.
 
 - What a server mod needs to guard land and move players. `right_click_block` hears a player's right

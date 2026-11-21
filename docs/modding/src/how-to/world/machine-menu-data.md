@@ -272,7 +272,7 @@ title returns `OpenMenuError`. Neither a refused nor a cancelled open closes the
 
 For a slotless status screen, declare `data/mymod/sunrise/menu/status.json` as
 `{ "slots": 0, "player_inventory": false, "data_slots": 2 }`. Register a screen factory
-for `mymod:status` with an empty slot layout, and attach a `MenuPart` for drawing or menu behavior. Open it with two signed values, in index order:
+for `mymod:status` with an empty slot layout. Add a draw callback to the screen for its presentation; attach a `MenuPart` for server menu behavior. Open it with two signed values, in index order:
 
 ```rust,ignore
 player.open_mod_menu(
@@ -281,8 +281,8 @@ player.open_mod_menu(
 )?;
 ```
 
-The initial values are sent after the new window opens. In `screen_draw`, read
-`event.data.get(index)`; the values are not available before they arrive. The owning mod
+The initial values are sent after the new window opens. In the draw callback, read
+`frame.data.get(index)`; the values are not available before they arrive. The owning mod
 gets the live `MenuRef` from `player.container_menu(host)` or the open event and calls, for
 example, `menu.set_data_slot(host, 0, 120_000)?`. It returns `true` for a changed value,
 `false` for a repeat, and refuses unsupported, stale or foreign menus and undeclared indices.
@@ -345,9 +345,11 @@ actual mod block's owner runs. An ordinary vanilla opener keeps its usual screen
 register for the same stock menu; a second registration by the same mod is refused. A custom
 menu accepts a factory only from its owner.
 
-Attach a `MenuPart` for `screen_draw`, `screen_click` or `screen_tooltip` as needed. Those
-presentation hooks go to the screen's owner; they do not construct it and cannot read the raw
-opening bytes. Live integer updates still arrive separately in `event.data`.
+Add only the callbacks the new screen uses: `with_draw(|host, frame, draw| ...)`,
+`with_click(|host, frame, right| ...)` and `with_tooltip(|host, frame, slot, lines| ...)`.
+The window owns the callbacks until the screen is closed or replaced. Decode `open.extra`
+in the factory and move any needed owned values into the callbacks. Live integer updates
+arrive separately in `frame.data`.
 
 To exclude slots permanently, register the original backing indices. For example, if
 `mymod:machine` opens `minecraft:hopper` but uses only its first two slots, call this in
@@ -365,8 +367,9 @@ slot geometry at its original index and leave `None` for each exclusion (you may
 trailing exclusions). An out-of-range mask or a client layout that disagrees with the
 mask refuses the opening.
 
-For a menu type with a `MenuPart`, a button returned by `screen_click` reaches
-`menu_button` on the server. A block-backed menu also supplies its backing block entity;
+A click callback returns `None` to leave the press alone or `Some(id)` to consume it and
+send that button to the server. The active menu's server `MenuPart` handles accepted IDs
+in `menu_button` after `menu_button_valid` and the normal menu checks. A block-backed menu also supplies its backing block entity;
 a menu opened without a block supplies `None` for both `event.entity` and `event.context.pos`.
 A [bound recipe book](../items/recipe-book-categories.md#binding-a-book-to-a-menu) works for
 blockless menus when its recipe slots have native slot backing. The declaring mod supplies the

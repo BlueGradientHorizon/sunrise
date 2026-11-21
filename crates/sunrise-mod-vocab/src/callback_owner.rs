@@ -1,6 +1,10 @@
 //! Owner enablement, attribution and panic containment for retained resources.
 use std::sync::atomic::{AtomicBool, Ordering};
 
+pub(crate) fn enabled(index: usize, poisoned: &AtomicBool) -> bool {
+    crate::mod_index_on(index) && !poisoned.load(Ordering::Acquire)
+}
+
 pub(crate) fn call<T>(
     owner: &'static str,
     index: usize,
@@ -9,7 +13,7 @@ pub(crate) fn call<T>(
     operation: &'static str,
     invoke: impl FnOnce() -> T,
 ) -> Result<T, String> {
-    if !crate::mod_index_on(index) || poisoned.load(Ordering::Acquire) {
+    if !enabled(index, poisoned) {
         return Err(format!("{kind} owner is disabled"));
     }
     let _guard = crate::mark_mod(owner, operation);

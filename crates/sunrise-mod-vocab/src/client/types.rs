@@ -1029,11 +1029,10 @@ pub struct MenuScreenLayout {
     /// `None` uses `[8, height - 94]`, independently of inventory slot positions.
     /// Ignored when `own_labels` is true.
     pub inventory_label: Option<[f32; 2]>,
-    /// The mod draws the title and the "Inventory" label itself
-    /// (`screen_draw`); Sunrise leaves them out.
+    /// Sunrise leaves the title and inventory label for the screen's draw callback.
     pub own_labels: bool,
-    /// The mod draws its own background (`screen_draw`), so Sunrise
-    /// leaves out the plain panel and the slot frames.
+    /// Leave the background to the screen's draw callback, omitting the
+    /// default panel and slot frames.
     pub own_background: bool,
     /// The registered recipe book hosted beside this menu. Its declarations must
     /// target this menu; no panel is enabled until authoritative settings arrive.

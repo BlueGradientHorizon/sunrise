@@ -11,7 +11,7 @@ struct Frame {
 
 #[derive(Default)]
 struct ScreenEvents {
-    /// The block whose menu it is and the position heard by `screen_draw`.
+    /// The block and position captured by the drawn screen's factory.
     draw: Vec<(Option<String>, Option<[i32; 3]>)>,
     frames: Vec<Frame>,
     tooltip_at: Vec<[f32; 2]>,
@@ -42,42 +42,39 @@ impl mod_api::MenuScreenFactory for Position {
                 .collect(),
             None => Vec::new(),
         };
-        Some(mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
-            width: 176.0,
-            height: if open.block.is_some() { 166.0 } else { 133.0 },
-            inventory_x: 8.0,
-            inventory_y: 84.0,
-            slots,
-            own_labels: true,
-            own_background: true,
-            ..Default::default()
-        }))
-    }
-}
-#[mod_api::sunrise_part]
-impl mod_api::MenuPart for Position {
-    fn screen_draw(&self, _: &dyn mod_api::ClientHost, event: &mut mod_api::ScreenDrawEvent<'_>) {
-        let mut seen = self.0.lock().unwrap();
-        seen.draw.push((event.block.map(str::to_owned), event.pos));
-        seen.data.push(event.data.to_vec());
-        seen.frames.push(Frame {
-            pointer: event.pointer,
-            size: event.gui_size,
-            origin: event.origin,
-        });
-    }
-
-    fn screen_tooltip(
-        &self,
-        _: &dyn mod_api::ClientHost,
-        event: &mut mod_api::ScreenTooltipEvent<'_>,
-    ) {
-        let mut seen = self.0.lock().unwrap();
-        let draw = seen.frames.last().unwrap();
-        assert_eq!(event.pointer, draw.pointer);
-        assert_eq!(event.gui_size, draw.size);
-        assert_eq!(event.origin, draw.origin);
-        seen.tooltip_at.push(event.at);
+        let (block, pos) = (open.block.map(str::to_owned), open.pos);
+        let draw_seen = self.0.clone();
+        let tooltip_seen = self.0.clone();
+        Some(
+            mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                width: 176.0,
+                height: if block.is_some() { 166.0 } else { 133.0 },
+                inventory_x: 8.0,
+                inventory_y: 84.0,
+                slots,
+                own_labels: true,
+                own_background: true,
+                ..Default::default()
+            })
+            .with_draw(move |_, frame, _| {
+                let mut seen = draw_seen.lock().unwrap();
+                seen.draw.push((block.clone(), pos));
+                seen.data.push(frame.data.to_vec());
+                seen.frames.push(Frame {
+                    pointer: frame.pointer,
+                    size: frame.gui_size,
+                    origin: frame.origin,
+                });
+            })
+            .with_tooltip(move |_, frame, _, _| {
+                let mut seen = tooltip_seen.lock().unwrap();
+                let draw = seen.frames.last().unwrap();
+                assert_eq!(frame.pointer, draw.pointer);
+                assert_eq!(frame.gui_size, draw.size);
+                assert_eq!(frame.origin, draw.origin);
+                seen.tooltip_at.push(frame.at);
+            }),
+        )
     }
 }
 struct Listener(Seen, &'static [u16]);
@@ -87,10 +84,8 @@ impl mod_api::Hooks for Listener {
         r.menu_slot_exclusions(PACK, None, self.1).unwrap();
         r.register_menu_screen("minecraft:generic_9x3", Arc::new(Position(self.0.clone())))
             .unwrap();
-        r.menu_part("minecraft:generic_9x3", Position(self.0.clone()));
         r.register_menu_screen(PACK, Arc::new(Position(self.0.clone())))
             .unwrap();
-        r.menu_part(PACK, Position(self.0.clone()));
     }
 
     fn screen_opening(
@@ -346,7 +341,6 @@ impl mod_api::Hooks for CrateMod {
             .unwrap();
         r.register_menu_screen("minecraft:generic_9x3", Arc::new(Position(self.0.clone())))
             .unwrap();
-        r.menu_part("minecraft:generic_9x3", Position(self.0.clone()));
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
         event
@@ -515,11 +509,10 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
     );
 }
 
-/// What the hopper screens' parts heard, as (the part's mod, the hook).
+/// What the hopper screens heard, as (the screen's mod, the callback).
 type Heard = Arc<Mutex<Vec<(&'static str, &'static str)>>>;
 /// Mod `owner`'s screen on vanilla's `minecraft:hopper` for its machine: it hides slot
-/// `HIDDEN`, its button is `HIDDEN` and its tooltip line names it. Each mod's is its own
-/// kind, as two mods' parts are.
+/// `HIDDEN`, its button is `HIDDEN` and its tooltip names the owner.
 #[derive(Clone)]
 struct HopperScreen<const HIDDEN: usize> {
     owner: &'static str,
@@ -534,39 +527,37 @@ impl<const HIDDEN: usize> mod_api::MenuScreenFactory for HopperScreen<HIDDEN> {
         assert_eq!(open.backing_slots, 5);
         assert_eq!(open.player_slots, 36);
         assert_eq!(open.excluded_slots, &[HIDDEN as u16]);
-        self.heard.lock().unwrap().push((self.owner, "create"));
-        Some(mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
-            width: 176.0,
-            height: 133.0,
-            slots: (0..5)
-                .map(|i| (i != HIDDEN).then(mod_api::ScreenSlot::default))
-                .collect(),
-            own_labels: true,
-            own_background: true,
-            ..Default::default()
-        }))
-    }
-}
-#[mod_api::sunrise_part]
-impl<const HIDDEN: usize> mod_api::MenuPart for HopperScreen<HIDDEN> {
-    fn screen_draw(&self, _: &dyn mod_api::ClientHost, _: &mut mod_api::ScreenDrawEvent<'_>) {
-        self.heard.lock().unwrap().push((self.owner, "draw"));
-    }
-    fn screen_click(
-        &self,
-        _: &dyn mod_api::ClientHost,
-        _: &mut mod_api::ScreenClickEvent<'_>,
-    ) -> Option<i32> {
-        self.heard.lock().unwrap().push((self.owner, "click"));
-        Some(HIDDEN as i32)
-    }
-    fn screen_tooltip(
-        &self,
-        _: &dyn mod_api::ClientHost,
-        event: &mut mod_api::ScreenTooltipEvent<'_>,
-    ) {
-        self.heard.lock().unwrap().push((self.owner, "tooltip"));
-        event.lines.push((mod_api::Text::literal(self.owner), 0));
+        let owner = self.owner;
+        self.heard.lock().unwrap().push((owner, "create"));
+        let draw = self.heard.clone();
+        let click = self.heard.clone();
+        let tooltip = self.heard.clone();
+        Some(
+            mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                width: 176.0,
+                height: 133.0,
+                slots: (0..5)
+                    .map(|i| (i != HIDDEN).then(mod_api::ScreenSlot::default))
+                    .collect(),
+                own_labels: true,
+                own_background: true,
+                ..Default::default()
+            })
+            .with_draw(move |host, _, _| {
+                assert_eq!(mod_api::content::crash::current_native_mod(), Some(owner));
+                let slot = usize::from(HIDDEN == 0);
+                assert_eq!(host.screen_slot("minecraft:hopper", slot), Some([0.0, 0.0]));
+                draw.lock().unwrap().push((owner, "draw"));
+            })
+            .with_click(move |_, _, _| {
+                click.lock().unwrap().push((owner, "click"));
+                Some(HIDDEN as i32)
+            })
+            .with_tooltip(move |_, _, _, lines| {
+                tooltip.lock().unwrap().push((owner, "tooltip"));
+                lines.push((mod_api::Text::literal(owner), 0));
+            }),
+        )
     }
 }
 /// Mod `owner`: its block `<owner>:machine`, whose container opens `minecraft:hopper`,
@@ -589,7 +580,6 @@ impl<const HIDDEN: usize> mod_api::Hooks for HopperMod<HIDDEN> {
             .unwrap();
         r.register_menu_screen("minecraft:hopper", Arc::new(self.0.clone()))
             .unwrap();
-        r.menu_part("minecraft:hopper", self.0.clone());
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
         let id = format!("{}:machine", self.0.owner);
@@ -635,8 +625,8 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
             root.prepared().to_owned(),
             crate::game::execution_role::ExecutionRole::Client,
             |game| {
-                let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-                game.connect_local(pipe, "Hopper screens").unwrap();
+                use sunrise_protocol::packets::play::Serverbound;
+                let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
@@ -658,34 +648,23 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                     let ids: Vec<_> = shown.iter().map(|i| 300 + i).collect();
                     assert_eq!(game.native_screen_slots(), Some(ids));
                     let block = Some(block.as_str());
-                    let mut batch = HudBatch::scratch([8, 8]);
-                    let mut draw = crate::game::host::draw::GameDrawContext::new(game, &mut batch);
-                    game.native_screen_draw(mod_api::__private::ScreenDrawCall {
-                        menu: &menu,
-                        block,
-                        pos: None,
-                        data: &[],
-                        draw: &mut draw,
-                        origin: [0.0; 2],
-                        pointer: [0; 2],
-                        gui_size: [8; 2],
+                    let mut batch = HudBatch::scratch([512, 512]);
+                    let (ox, oy) = game.inventory_origin(&batch);
+                    game.cursor = (ox + 90.0, oy + 105.0);
+                    assert!(game.draw_native_screen(&mut batch, ox, oy));
+                    assert!(game.native_screen_press_at(&batch, false));
+                    let click = (0..32).find_map(|_| {
+                        let (id, body) = peer.recv().ok()?;
+                        match Serverbound::decode(id, &body).unwrap() {
+                            Serverbound::ContainerButtonClick(click) => Some(click),
+                            _ => None,
+                        }
                     });
-                    let mut button = None;
-                    game.native_screen_click(&menu, block, &[], [0.0; 2], false, &mut button);
-                    assert_eq!(button, Some(hidden as i32));
+                    let click = click.expect("the active hopper's button");
+                    assert_eq!((click.container, click.button), (x, hidden as i32));
                     let mut lines = Vec::new();
-                    game.native_screen_tooltip(mod_api::__private::ScreenTooltipCall {
-                        menu: &menu,
-                        block,
-                        data: &[],
-                        at: [0.0; 2],
-                        slot: None,
-                        origin: [0.0; 2],
-                        pointer: [0; 2],
-                        gui_size: [8; 2],
-                        lines: &mut lines,
-                    });
-                    assert_eq!(lines, [(mod_api::Text::literal(owner), 0)]);
+                    game.native_screen_tooltip_lines(&batch, None, &mut lines);
+                    assert_eq!(lines, [(sunrise_client::text::Text::literal(owner), 0)]);
                     let hooks = ["create", "draw", "click", "tooltip"];
                     let only_owner: Vec<_> = hooks.iter().map(|&hook| (owner, hook)).collect();
                     assert_eq!(*heard.lock().unwrap(), only_owner);
@@ -702,7 +681,7 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                         let _call = mod_api::content::crash::enter_native_mod(
                             mod_api::content::crash::ModCall {
                                 id: calling,
-                                hook: "screen_draw",
+                                hook: "menu_screen_draw",
                                 part: None,
                             },
                         );

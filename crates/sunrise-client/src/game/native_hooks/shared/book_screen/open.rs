@@ -20,7 +20,7 @@ impl Game<'_> {
         Some(hidden)
     }
     /// The mod block at `pos` when its container opens menu type `menu`, the
-    /// `block` its screen hooks are told. Only when this is the menu that
+    /// `block` its screen factory is told. Only when this is the menu that
     /// block opens: a position outlives the use that set it, so another menu
     /// opened later (a command's, another mod's) is not the last clicked
     /// machine's. Read the declaration directly, as a client's world has no
@@ -106,7 +106,7 @@ impl Game<'_> {
                 return false;
             }
         };
-        let screen = mod_api::__private::menu_screen_layout_mut(&mut instance);
+        let screen = instance.layout_mut();
         if let Some((book, _, _)) = &binding
             && screen.recipe_book.as_ref() != Some(book)
         {
@@ -174,7 +174,6 @@ impl Game<'_> {
                 mod_type,
                 data: Vec::new(),
             },
-            owner,
             slot_moves: Default::default(),
             layout_revision: {
                 static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);

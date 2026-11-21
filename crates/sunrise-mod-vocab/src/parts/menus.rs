@@ -1,4 +1,5 @@
 use super::*;
+use crate::client::menu_screen::OwnedMenuScreen;
 
 // no wire: frozen registration storage; each boundary value has its own Wire derive.
 #[derive(Clone)]
@@ -44,7 +45,7 @@ pub fn create_menu_screen(
     host: &dyn crate::ClientHost,
     open: crate::MenuScreenOpen<'_>,
     menu_owner: Option<&str>,
-) -> Option<(&'static str, Result<Option<crate::MenuScreen>, String>)> {
+) -> Option<(&'static str, Result<Option<OwnedMenuScreen>, String>)> {
     let registration = menu_screen_factory(open.menu, menu_owner, open.block)?;
     let screen = crate::callback_owner::call(
         registration.owner,
@@ -52,7 +53,12 @@ pub fn create_menu_screen(
         &registration.panicked,
         "menu screen factory",
         "menu_screen_factory",
-        || registration.factory.create(host, open),
+        || {
+            registration
+                .factory
+                .create(host, open)
+                .map(|screen| OwnedMenuScreen::new(registration.owner, registration.index, screen))
+        },
     );
     Some((registration.owner, screen))
 }
@@ -76,7 +82,7 @@ impl HookParts {
         let owner = crate::RecipeBookLayout::declaring_mod(menu);
         let namespace = match owner {
             Some(owner) => owner,
-            None if vanilla_menu(menu) => {
+            None if menu.starts_with("minecraft:") => {
                 let Some((namespace, _)) = block.and_then(|b| b.split_once(':')) else {
                     return &[];
                 };
@@ -97,34 +103,6 @@ impl HookParts {
             None => &[],
         }
     }
-}
-
-/// The presentation hooks a menu type's screen can answer.
-const SCREEN_HOOKS: [HookId; 3] = [
-    HookId::ScreenDraw,
-    HookId::ScreenClick,
-    HookId::ScreenTooltip,
-];
-
-/// Whether `part` answers one of the menu screen presentation hooks.
-pub fn presents_menu_screen(part: &dyn MenuPart) -> bool {
-    let mut subscribed = part.menu_subscribed().iter().flatten();
-    subscribed.any(|&hook| {
-        SCREEN_HOOKS
-            .iter()
-            .any(|&screen| screen as usize == hook as usize)
-    })
-}
-
-/// Whether screen parts of mods `a` and `b` on menu type `menu` would own the same screens,
-/// which registration refuses: always on a mod's menu type, and on one of vanilla's only for
-/// one mod, as each mod's blocks get their own mod's part (`HookParts::menu_screen`).
-pub fn screens_shared(menu: &str, a: &str, b: &str) -> bool {
-    !vanilla_menu(menu) || a == b
-}
-
-fn vanilla_menu(menu: &str) -> bool {
-    menu.starts_with("minecraft:")
 }
 
 /// Whether the Parts attached to the menu type `menu` subscribe to `hook`; the game
@@ -170,7 +148,9 @@ pub fn menu_slot_exclusion_masks(
 }
 
 impl dyn Registrar + '_ {
-    /// Attach `part` to the menu type `menu`: a mod's, or one of vanilla's that a mod block opens.
+    /// Attach gameplay behavior to `menu`: a mod's, or one of vanilla's that
+    /// a mod block opens. Register the client screen separately with
+    /// [`MenusRegistrar::register_menu_screen`].
     pub fn menu_part<P: MenuPart>(&mut self, menu: &str, part: P) {
         self.attach_menu_part(menu, type_name::<P>(), Arc::new(part));
     }

@@ -7,37 +7,62 @@ use std::sync::{
 const MENU: &str = "tips:chest";
 
 struct SlotTip {
+    enabled: bool,
     mode: Arc<AtomicU8>,
     calls: Arc<AtomicUsize>,
 }
-#[mod_api::sunrise_part]
-impl mod_api::MenuPart for SlotTip {
-    fn screen_tooltip(
+impl mod_api::MenuScreenFactory for SlotTip {
+    fn create(
         &self,
         _: &dyn mod_api::ClientHost,
-        event: &mut mod_api::ScreenTooltipEvent<'_>,
-    ) {
-        // Player inventory slot 9 is menu slot 27 in a three-row chest.
-        assert_eq!(event.slot, Some(27));
-        assert_eq!(event.gui_size, [512, 512]);
-        assert_eq!(event.origin, [168.0, 173.0]);
-        assert_eq!(event.pointer, [184, 265]);
-        assert_eq!(event.at, [16.0, 92.0]);
-        assert!(
-            event
-                .lines
-                .iter()
-                .any(|(line, _)| *line == mod_api::Text::literal("item hook tail"))
-        );
-        self.calls.fetch_add(1, Ordering::Relaxed);
-        match self.mode.load(Ordering::Relaxed) {
-            1 => *event.lines = vec![(mod_api::Text::literal("replacement"), u32::MAX)],
-            2 => event.lines.clear(),
-            3 => event
-                .lines
-                .push((mod_api::Text::literal("slot hint"), u32::MAX)),
-            _ => {}
+        open: mod_api::MenuScreenOpen<'_>,
+    ) -> Option<mod_api::MenuScreen> {
+        let screen = mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+            width: 176.0,
+            height: 166.0,
+            inventory_x: 8.0,
+            inventory_y: 84.0,
+            slots: (0..open.backing_slots)
+                .map(|index| {
+                    Some(mod_api::ScreenSlot {
+                        position: [
+                            8.0 + (index % 9) as f32 * 18.0,
+                            18.0 + (index / 9) as f32 * 18.0,
+                        ],
+                        no_item_icon: None,
+                    })
+                })
+                .collect(),
+            ..Default::default()
+        });
+        if !self.enabled {
+            return Some(screen);
         }
+        let (mode, calls) = (self.mode.clone(), self.calls.clone());
+        Some(screen.with_tooltip(move |_, frame, slot, lines| {
+            // Player inventory slot 9 is menu slot 27 in a three-row chest.
+            assert_eq!(slot, Some(27));
+            assert_eq!(frame.gui_size, [512, 512]);
+            assert_eq!(frame.origin, [168.0, 173.0]);
+            assert_eq!(frame.pointer, [184, 265]);
+            assert_eq!(frame.at, [16.0, 92.0]);
+            assert!(
+                lines
+                    .iter()
+                    .any(|(line, _)| *line == mod_api::Text::literal("item hook tail"))
+            );
+            calls.fetch_add(1, Ordering::Relaxed);
+            match mode.load(Ordering::Relaxed) {
+                1 => *lines = vec![(mod_api::Text::literal("replacement"), u32::MAX)],
+                2 => lines.clear(),
+                3 => lines.push((mod_api::Text::literal("slot hint"), u32::MAX)),
+                4 => {
+                    lines.clear();
+                    panic!("fixture tooltip panic after editing")
+                }
+                _ => {}
+            }
+        }))
     }
 }
 struct Image(Arc<AtomicUsize>);
@@ -72,39 +97,13 @@ impl mod_api::Hooks for Listener {
         r.item_part(item, Image(self.painted.clone()));
         r.register_menu_screen(
             MENU,
-            Arc::new(
-                |_: &dyn mod_api::ClientHost, open: mod_api::MenuScreenOpen<'_>| {
-                    Some(mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
-                        width: 176.0,
-                        height: 166.0,
-                        inventory_x: 8.0,
-                        inventory_y: 84.0,
-                        slots: (0..open.backing_slots)
-                            .map(|index| {
-                                Some(mod_api::ScreenSlot {
-                                    position: [
-                                        8.0 + (index % 9) as f32 * 18.0,
-                                        18.0 + (index / 9) as f32 * 18.0,
-                                    ],
-                                    no_item_icon: None,
-                                })
-                            })
-                            .collect(),
-                        ..Default::default()
-                    }))
-                },
-            ),
+            Arc::new(SlotTip {
+                enabled: self.enabled,
+                mode: self.mode.clone(),
+                calls: self.calls.clone(),
+            }),
         )
         .unwrap();
-        if self.enabled {
-            r.menu_part(
-                MENU,
-                SlotTip {
-                    mode: self.mode.clone(),
-                    calls: self.calls.clone(),
-                },
-            );
-        }
     }
     fn item_tooltip(&self, _: &dyn mod_api::ClientHost, event: &mut mod_api::ItemTooltipEvent<'_>) {
         event
@@ -255,6 +254,17 @@ fn filled_slot_tooltip_replaces_lines_but_keeps_item_image_and_visibility() {
                         game.draw_slot_tooltip(&mut batch);
                         assert!(drawn.lock().unwrap().is_empty());
                         assert_eq!(calls.load(Ordering::Relaxed), before);
+                        game.carried = None;
+                        if enabled {
+                            mode.store(4, Ordering::Relaxed);
+                            game.draw_slot_tooltip(&mut batch);
+                            assert!(drawn.lock().unwrap().pop().unwrap() == original);
+                            assert_eq!(calls.load(Ordering::Relaxed), before + 1);
+                            mode.store(1, Ordering::Relaxed);
+                            game.draw_slot_tooltip(&mut batch);
+                            assert!(drawn.lock().unwrap().pop().unwrap() == original);
+                            assert_eq!(calls.load(Ordering::Relaxed), before + 1);
+                        }
                     },
                 );
             });

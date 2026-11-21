@@ -3,7 +3,7 @@
 A screen can show a living entity standing in a box, turned toward the cursor or by a turn of its own: a mob
 page in a recipe viewer, an entity icon, the mob of a data model. This is vanilla's
 `InventoryScreen.renderEntityInInventoryFollowsMouse` and `renderEntityInInventory`. Draw it with
-`DrawContext::entity` from a drawing hook (`screen_draw`, `gui_render_post`).
+`DrawContext::entity` from a menu screen's `with_draw` callback or from `gui_render_post`.
 
 ```rust,ignore
 use mod_api::*;

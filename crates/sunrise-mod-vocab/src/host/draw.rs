@@ -175,8 +175,8 @@ pub trait DrawContext {
     /// world too, its `spin` parts turning with the game time. What lies
     /// outside the box is cut off, and the scene has a depth of its own, so
     /// it never covers the screen's other drawing or is covered by it but in
-    /// the order drawn. Draw it from a screen's drawing hook
-    /// (`screen_draw`). A client's call; on a server it is refused.
+    /// the order drawn. Draw it from a client screen callback such as
+    /// one installed with [`crate::MenuScreen::with_draw`].
     ///
     /// The scene may live too: entities standing in it (`scene.entities`, the
     /// descriptions [`entity`](Self::entity) takes, prepared and drawn by the same
@@ -222,8 +222,8 @@ pub trait DrawContext {
     /// its type's renderer as in the world (a mod's `register_entity_renderers`
     /// renderer and `register_entity_layers` layers included, else the vanilla
     /// model), full bright, lit by `Lighting.ENTITY_IN_UI`'s two lights, with a
-    /// depth of its own and cut off at the box. A client's call from a drawing
-    /// hook (`screen_draw`, `gui_render_post`); on a server it is refused.
+    /// depth of its own and cut off at the box. A client's call, available
+    /// with [`crate::MenuScreen::with_draw`] or `gui_render_post`.
     fn entity(&mut self, entity: &GuiEntity, view: GuiEntityView) -> Result<(), GuiEntityError> {
         Err(GuiEntityError::Unavailable)
     }
@@ -243,9 +243,9 @@ pub trait DrawContext {
     ///   is no z input. Both are cut by the clips opened with [`DrawContext::push_clip`], as
     ///   `fill` is.
     ///
-    /// A client's call from a drawing hook (`screen_draw`, `gui_render_post`); on a server it is
-    /// refused. Per call it draws the subject's baked quads, the cached model a slot's item
-    /// uses, with nothing on the tick path.
+    /// A client's call, available with [`crate::MenuScreen::with_draw`] or
+    /// `gui_render_post`. Per call it draws the subject's baked quads, the cached
+    /// model a slot's item uses, with nothing on the tick path.
     fn model_3d(&mut self, subject: Gui3dSubject, view: Gui3dView) -> Result<(), Gui3dError> {
         Err(Gui3dError::Unavailable)
     }

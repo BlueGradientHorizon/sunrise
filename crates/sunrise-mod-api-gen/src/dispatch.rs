@@ -357,8 +357,8 @@ pub(super) fn emit<'a>(
                         .collect::<String>()
                         == "Option<BlockEntityRef>"
             });
-        // A menu hook told the mod block whose menu it is reaches only the part
-        // that owns that open screen (`HookParts::menu_for_opener`).
+        // Menu button hooks name the opener block and reach only the active
+        // menu's owner (`HookParts::menu_for_opener`).
         let opener_routed = hook
             .scope
             .as_ref()

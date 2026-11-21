@@ -1,5 +1,10 @@
 # Reading the level from a block screen
 
-`MenuPart::screen_draw` exposes `event.pos: Option<[i32; 3]>`, alongside the menu type, the block identifier (`event.block`, `None` for a menu opened without a block), synchronized integer data slots and drawing origin. The same position and block ID are available in `MenuScreenOpen` when the factory constructs the screen. Use `open.extra` there to decode any one-time payload. Without a matching server payload, only a verified clicked opener supplies a position. A menu explicitly opened without a position reports `None`, not a fabricated origin.
+In a menu screen factory, `open.pos` is the opener position and `open.block` is
+the verified mod block ID, if there is one. Capture the position and any other
+opening values needed by the draw callback. Decode one-time payloads from `open.extra`
+in the factory; live values arrive separately in `MenuScreenFrame::data`. Without a
+matching server payload, only a verified clicked opener supplies a position. A menu
+explicitly opened without a position reports `None`, not a fabricated origin.
 
 Use this position with the existing both-sided level reads through the client host to inspect the client level view, for example the block beneath a machine. This view may lag the server and is not a substitute for authoritative menu data. The draw callback remains read-only and fires beneath items and labels.

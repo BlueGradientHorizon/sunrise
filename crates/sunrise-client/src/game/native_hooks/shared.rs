@@ -671,13 +671,12 @@ fn shake_pose(shake: Shake) -> glam::Mat4 {
         * glam::Mat4::from_rotation_y(shake.yaw.to_radians())
 }
 
-/// The layout and local slot state of the mod screen on this client.
+/// This client's window-owned mod screen and its local slot state.
 pub(super) struct OpenNativeScreen {
     /// Fixed for the opening; slot moves have their own revision.
     pub(super) layout_revision: u64,
     slot_moves: SlotMoves,
-    screen: mod_api::MenuScreen,
-    owner: &'static str,
+    screen: mod_api::__private::OwnedMenuScreen,
     menu: OpenNativeMenu,
     /// Installed as the window's screen, not merely staged for ScreenOpening.
     shown: bool,
@@ -689,7 +688,7 @@ struct OpenNativeMenu {
     key: Pos,
     window: i32,
     generation: u64,
-    /// The menu's type, which its screen hooks are keyed by.
+    /// The menu's type, which its screen factory is keyed by.
     name: String,
     /// The mod block whose matching container opened the menu, if any.
     block: Option<String>,
@@ -713,7 +712,7 @@ fn seed_native_menu(game: &mut Game<'_>, window: i32, name: &str) -> u64 {
 }
 
 /// Where a mod moved the open screen's slots after it opened, over the
-/// positions its `MenuScreenLayout` declared. Interior state, as the screen hooks that
+/// positions its `MenuScreenLayout` declared. Interior state, as the screen callbacks that
 /// move slots hold `&self`. A move is pending until the layout build commits
 /// it, so drawing and hit-testing read one position within a frame and both
 /// take a move together from the next.
@@ -807,12 +806,27 @@ const STOCK_NATIVE_DATA_CAPACITY: usize = 256;
 
 impl OpenNativeScreen {
     fn layout(&self) -> &mod_api::MenuScreenLayout {
-        mod_api::__private::menu_screen_layout(&self.screen)
+        self.screen.layout()
     }
 
     #[cfg(test)]
     fn layout_mut(&mut self) -> &mut mod_api::MenuScreenLayout {
-        mod_api::__private::menu_screen_layout_mut(&mut self.screen)
+        self.screen.layout_mut()
+    }
+
+    fn frame(
+        &self,
+        batch: &HudBatch,
+        (ox, oy): (f32, f32),
+        (x, y): (f32, f32),
+    ) -> mod_api::MenuScreenFrame<'_> {
+        mod_api::MenuScreenFrame {
+            origin: [ox, oy],
+            pointer: [x as i32, y as i32],
+            gui_size: [batch.width as i32, batch.height as i32],
+            at: [x - ox, y - oy],
+            data: &self.menu.data,
+        }
     }
 
     /// How many slot moves changed a position, so a layout built before the
@@ -2748,11 +2762,11 @@ impl Game<'_> {
         s.slot_moves.latest(&s.layout().slots, slot)
     }
     /// The open screen of menu type `menu`, when the mod calling (if one is)
-    /// owns it: another mod's part on a shared vanilla type moves no slot of it.
+    /// owns it: another mod sharing the vanilla menu type cannot move its slots.
     fn owned_native_screen(&self, menu: &str) -> Option<&OpenNativeScreen> {
         let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
         mod_api::content::crash::current_native_mod()
-            .is_none_or(|calling| s.owner == calling)
+            .is_none_or(|calling| s.screen.owner() == calling)
             .then_some(s)
     }
     /// Moves container slot `slot` of the open screen of menu type `menu` to `pos`
@@ -2830,19 +2844,10 @@ impl Game<'_> {
                 );
             }
         }
-        if mod_api::__private::has_scoped_hook(mod_api::HookId::ScreenDraw) {
-            let gui_size = [batch.width as i32, batch.height as i32];
+        if s.screen.has_draw() {
+            let frame = s.frame(batch, (ox, oy), self.cursor);
             let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
-            self.native_screen_draw(mod_api::__private::ScreenDrawCall {
-                menu: &s.menu.name,
-                block: s.menu.block.as_deref(),
-                pos: s.menu.pos,
-                data: &s.menu.data,
-                origin: [ox, oy],
-                pointer: [self.cursor.0 as i32, self.cursor.1 as i32],
-                gui_size,
-                draw: &mut draw,
-            });
+            s.screen.draw(self, frame, &mut draw);
         }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         if s.layout().own_labels {
@@ -2914,39 +2919,42 @@ impl Game<'_> {
         self.api_menu_button(menu, block, &context, Some(&mut taken), carried);
         self.put_back_mod_block_entity(pos, taken, &items);
     }
-    /// A press on the open mod screen's own button (`native_screen_click`)
-    /// goes to the server as a menu button click (true).
+    /// A press consumed by the shown screen goes to the server as a menu button click.
     pub(super) fn native_screen_press(&mut self, right: bool) -> bool {
-        if self.inventory_target().0.is_some() {
-            return false;
-        }
-        let (Some(screen), Some(r)) = (self.shown_native_screen(), self.renderer.as_ref()) else {
+        let Some(r) = self.renderer.as_ref() else {
             return false;
         };
         let batch = HudBatch::new(
             [r.config.width, r.config.height],
             self.settings.gui_scale_inputs(),
         );
-        let (ox, oy) = self.inventory_origin(&batch);
-        let at = [self.cursor.0 - ox, self.cursor.1 - oy];
-        let mut button = None;
-        self.native_screen_click(
-            &screen.menu.name,
-            screen.menu.block.as_deref(),
-            &screen.menu.data,
-            at,
-            right,
-            &mut button,
-        );
-        let Some(button) = button else {
+        self.native_screen_press_at(&batch, right)
+    }
+    /// Dispatch a press in the given GUI viewport, with inventory slots taking priority.
+    fn native_screen_press_at(&mut self, batch: &HudBatch, right: bool) -> bool {
+        let Some(screen) = self.shown_native_screen() else {
             return false;
         };
-        // No menu open: the click still sounds.
-        let _ = self.remote_button_click(button);
+        if self.slot_at(batch, self.cursor.0, self.cursor.1).is_some() {
+            return false;
+        }
+        let opening = (screen.menu.window, screen.menu.generation);
+        let frame = screen.frame(batch, self.inventory_origin(batch), self.cursor);
+        let Some(button) = screen.screen.click(self, frame, right) else {
+            return false;
+        };
+        // Numeric container IDs can be reused. Send only for the opening that heard the press.
+        if !self
+            .shown_native_screen()
+            .is_some_and(|screen| (screen.menu.window, screen.menu.generation) == opening)
+            || !self.remote_button_click(button)
+        {
+            return false;
+        }
         self.audio.play_button_click();
         true
     }
-    /// The open mod screen's tooltip under the cursor (`native_screen_tooltip`).
+    /// The open mod screen's tooltip under the cursor.
     pub(super) fn draw_native_screen_tooltip(&mut self, batch: &mut HudBatch) {
         // Over no item: an empty slot still gets the mod's hint (which fuel it takes).
         // A carried stack hides only slot tooltips, as AbstractContainerScreen's;
@@ -2967,36 +2975,25 @@ impl Game<'_> {
         slot: Option<usize>,
         lines: &mut Vec<(sunrise_client::text::Text, u32)>,
     ) {
-        // Scoped hooks subscribe through Parts, not the global Hooks subscriber table.
-        if !mod_api::__private::has_scoped_hook(mod_api::HookId::ScreenTooltip) {
+        let Some(screen) = self
+            .shown_native_screen()
+            .filter(|s| s.screen.has_tooltip())
+        else {
             return;
-        }
-        let Some(screen) = self.shown_native_screen() else {
+        };
+        use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+        // Keep the original tooltip if the callback or either conversion fails.
+        // An item's text can fail on every frame, so do not log conversion refusals here.
+        let Ok(mut snapshot) = lines.try_into_api() else {
             return;
         };
         let menu_slot = slot.and_then(|slot| {
             Self::menu_slot_index(&screen.menu.name, slot).map(|slot| slot as u32)
         });
-        let (ox, oy) = self.inventory_origin(batch);
-        let at = [self.cursor.0 - ox, self.cursor.1 - oy];
-        use crate::game::api_values::{TryIntoApi, TryIntoEngine};
-        // Keep the original tooltip if either conversion fails. A hovered
-        // item's text can fail on every frame, so do not log the refusal here.
-        let Ok(mut snapshot) = lines.try_into_api() else {
-            return;
-        };
-        self.native_screen_tooltip(mod_api::__private::ScreenTooltipCall {
-            menu: &screen.menu.name,
-            block: screen.menu.block.as_deref(),
-            data: &screen.menu.data,
-            at,
-            slot: menu_slot,
-            origin: [ox, oy],
-            pointer: [self.cursor.0 as i32, self.cursor.1 as i32],
-            gui_size: [batch.width as i32, batch.height as i32],
-            lines: &mut snapshot,
-        });
-        if let Ok(replacement) = snapshot.try_into_engine(&()) {
+        let frame = screen.frame(batch, self.inventory_origin(batch), self.cursor);
+        if screen.screen.tooltip(self, frame, menu_slot, &mut snapshot)
+            && let Ok(replacement) = snapshot.try_into_engine(&())
+        {
             *lines = replacement;
         }
     }

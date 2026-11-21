@@ -71,24 +71,26 @@ an offer, buy anything, or send packets; the server still decides every trade.
 
 ## Frame coordinates
 
-`screen_draw` version 4 and `screen_tooltip` version 3 carry `pointer: [i32; 2]`
-and `gui_size: [i32; 2]`, the current frame's absolute pointer and window size
-in scaled GUI pixels. Pointer components truncate toward zero, including outside
-the panel. Both carry `origin: [f32; 2]`, the panel's top-left; tooltip `at`
-remains relative to that origin. Use these values for hover regions and layout:
-they reflect this frame's resize and panel positioning, not a cached window size.
+Each callback installed with `MenuScreen::with_draw`, `with_click` or `with_tooltip`
+receives a `MenuScreenFrame`. Its `pointer: [i32; 2]` and `gui_size: [i32; 2]`
+are the current absolute pointer and window size in scaled GUI pixels. The absolute
+pointer truncates toward zero, including outside the panel. `origin: [f32; 2]`
+is the panel's top-left; `at: [f32; 2]` is the pointer relative to that origin,
+without truncation. Use these values for hover regions and layout after a resize
+or panel move. `data` borrows the current menu's live data slots, which may not
+have arrived yet.
 
 To draw a sprite from synchronized menu data, see
 [Draw a progress bar and a fuel gauge](menu-gauges.md).
 
 ## Replacing a mod container slot's tooltip
 
-`MenuPart::screen_tooltip` runs for a hovered filled slot as well
-as an empty slot or screen space. `event.slot` is the **menu index**, including
+A screen callback installed with `MenuScreen::with_tooltip` runs for a hovered filled slot as well
+as an empty slot or screen space. `slot` is the **menu index**, including
 the player inventory, or `None` outside a mapped slot. It is not the engine's
-internal slot encoding. `event.at` remains GUI pixels from the screen's origin.
+internal slot encoding. `frame.at` gives GUI pixels from the screen's origin.
 
-On a filled slot, `event.lines` starts as the item's tooltip after item tooltip
+On a filled slot, `lines` starts as the item's tooltip after item tooltip
 hooks. Edit, replace or clear those lines: the final list replaces the screen's
 `getTooltipFromContainerItem` result before the stack's tooltip image and
 `RenderTooltipEvent.GatherComponents`. Empty slots and screen space start with
@@ -171,7 +173,7 @@ independently of slot positions. `Some([x, y])` is relative to the screen image'
 top-left corner, in GUI pixels. `None` uses vanilla's defaults: title `[8, 6]` and
 inventory `[8, height - 94]`. Moving `inventory_x` or `inventory_y` moves slots,
 not labels. `own_labels: true` suppresses both engine labels even when positions
-are supplied; draw them yourself from `screen_draw` instead.
+are supplied; draw them in the callback you install with `MenuScreen::with_draw`.
 
 The default inventory label is at y 72 for a standard 166-high screen and y 39
 for a 133-high hopper layout. Chest layouts use `height - 94`; a shulker box's

@@ -11,11 +11,13 @@ When a scene block includes a mod block entity, `block_entity_submit` draws it u
 that supplied entity data and full-bright lighting. The hook's `pos` is relative to
 the scene; it does not identify a block in the client level.
 
+Use the draw context from the screen callback, for example one installed with `MenuScreen::with_draw`.
+
 ```rust
 use mod_api::{GuiEntity, Scene, SceneClock, SceneEntity, SceneView};
 
 // Blocks alone: no clock, no state.
-event.batch.draw_scene(rect, &Scene::new(blocks.clone()), view)?;
+draw.draw_scene(rect, &Scene::new(blocks.clone()), view)?;
 
 // Build a living scene once and keep it. Change only its clock from frame to frame.
 let mut scene = Scene::new(blocks)
@@ -24,13 +26,13 @@ let mut scene = Scene::new(blocks)
         SceneEntity::new(GuiEntity::kind("minecraft:cow"), [1.5, 0.0, 0.5]).turned(135.0, 150.0, 0.0),
     ]);
 
-// In `screen_draw`: the page's own tick count, 20 a second, and the frame's partial tick.
+// In the draw callback: the page's own tick count, 20 a second, and the frame's partial tick.
 if let Some(clock) = &mut scene.clock {
     clock.tick = page_ticks;
     clock.partial = partial;
 }
 let view = SceneView::new([1.0, 0.5, 0.5], 225.0, 30.0, 18.0);
-if let Err(why) = event.batch.draw_scene([12.0, 20.0, 140.0, 110.0], &scene, view) {
+if let Err(why) = draw.draw_scene([12.0, 20.0, 140.0, 110.0], &scene, view) {
     log::warn!("scene not drawn whole: {why:?}");
 }
 ```

@@ -257,7 +257,7 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
                 let _other = mod_platform::content::crash::enter_native_mod(
                     mod_api::content::crash::ModCall {
                         id: "other",
-                        hook: "screen_click",
+                        hook: "menu_screen_click",
                         part: None,
                     },
                 );
@@ -277,7 +277,7 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
                 let _own = mod_platform::content::crash::enter_native_mod(
                     mod_api::content::crash::ModCall {
                         id: "keys",
-                        hook: "screen_click",
+                        hook: "menu_screen_click",
                         part: None,
                     },
                 );
