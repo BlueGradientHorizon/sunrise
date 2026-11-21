@@ -1046,39 +1046,15 @@ pub fn write_mob(
             }
         }
     }
-    // AbstractFish/Axolotl.addAdditionalSaveData always write the flag.
+    // AbstractFish.addAdditionalSaveData always writes the flag.
     // Tadpole.fromBucket is always true, and its setter ignores loaded input.
     let from_bucket = match m.species() {
         S::Tadpole => Some(true),
-        S::Cod | S::Salmon | S::Pufferfish | S::TropicalFish | S::Axolotl => {
-            Some(m.extra.from_bucket)
-        }
+        S::Cod | S::Salmon | S::Pufferfish | S::TropicalFish => Some(m.extra.from_bucket),
         _ => None,
     };
     if let Some(value) = from_bucket {
         map.insert(("FromBucket").into(), Tag::Byte(i8::from(value)));
-    }
-    // `NeutralMob.addPersistentAngerSaveData`: the anger ends at an
-    // absolute game time, and the target is the entity the mob is angry at.
-    if persistent_anger(m.species()) {
-        map.insert(
-            ("anger_end_time").into(), // The absolute value as it is, also zero or one already past.
-            Tag::Long(m.extra.anger_end),
-        );
-        // `angry_at` only while there is an anger target: the UUID of the one
-        // the level has (`uuid_of`). A mob target read from the save that is
-        // not in the world (`Who::Mob(0)`) keeps the loaded UUID.
-        match m.extra.angry_at {
-            Some(crate::mobs::Who::Mob(0)) => map.retain("angry_at"),
-            target => match target.and_then(|who| who_uuid(who, &mut uuid_of)) {
-                Some(uuid) => {
-                    map.insert("angry_at".into(), Tag::IntArray(uuid.to_vec()));
-                }
-                None => {
-                    map.remove(&"angry_at".into());
-                }
-            },
-        }
     }
     // What the mob's class saves: a content mod's living type saves as its
     // template does (the `id` written above stays its own).
@@ -1111,6 +1087,36 @@ pub fn write_mob(
             map.remove(&"LoveCause".into());
         }
     }
+    // Zombie.addAdditionalSaveData precedes every Zombie subclass.
+    if crate::mobs::doors::is_zombie(species) {
+        map.insert("IsBaby".into(), Tag::Byte(i8::from(m.is_baby())));
+        map.insert(
+            "CanBreakDoors".into(),
+            Tag::Byte(i8::from(m.extra.can_break_doors)),
+        );
+        // ConversionTracker writes the conversion time before the affliction time.
+        if matches!(species, S::Zombie | S::Husk) {
+            map.insert("DrownedConversionTime".into(), Tag::Int(conversion_time(m)));
+        } else {
+            map.entry("DrownedConversionTime".into())
+                .or_insert(Tag::Int(-1));
+        }
+        if !m.fluids.eye_in_water {
+            map.insert("InWaterTime".into(), Tag::Int(-1));
+        } else if matches!(species, S::Zombie | S::Husk) {
+            map.insert("InWaterTime".into(), Tag::Int(m.extra.counter));
+        } else if species == S::Drowned {
+            map.entry("InWaterTime".into()).or_insert(Tag::Int(-1));
+        } else {
+            map.retain("InWaterTime");
+        }
+    }
+    // PatrollingMonster and Raider write before their subclasses.
+    crate::mobs::raider::write_nbt(m, map);
+    if matches!(species, S::Villager | S::WanderingTrader) {
+        // AbstractVillager writes offers before its inventory.
+        put_offers(map, m, items);
+    }
     // InventoryCarrier.writeInventoryToTag: the occupied stacks, even when empty.
     if matches!(id, "minecraft:pillager" | "minecraft:wandering_trader") {
         map.insert(
@@ -1124,7 +1130,22 @@ pub fn write_mob(
             ),
         );
     }
-    let species = m.species();
+    // TamableAnimal precedes Cat, Wolf and Parrot.
+    if matches!(species, S::Cat | S::Wolf | S::Parrot) {
+        if let Some(owner) = m.extra.owner {
+            map.insert("Owner".into(), Tag::IntArray(owner.to_vec()));
+        } else {
+            map.remove(&"Owner".into());
+        }
+        map.insert("Sitting".into(), Tag::Byte(i8::from(m.extra.sitting)));
+    }
+    if species == S::Wolf {
+        map.insert("CollarColor".into(), Tag::Byte(m.extra.color as i8));
+    }
+    if species == S::Chicken {
+        crate::mobs::riders::write_nbt(m, map);
+        map.insert("EggLayTime".into(), Tag::Int(m.extra.egg_time));
+    }
     // `VariantUtils.writeVariant`: only the species that store the name. A
     // mooshroom saves `Type` (below), a fox `Type`, a horse and a llama a
     // packed `Variant` int, so those report the component but save no name.
@@ -1134,8 +1155,8 @@ pub fn write_mob(
     {
         map.insert("variant".into(), string(&variant));
     }
-    if species == crate::mobs::Species::Chicken {
-        map.insert("EggLayTime".into(), Tag::Int(m.extra.egg_time));
+    if species == S::Wolf {
+        write_persistent_anger(m, map, &mut uuid_of);
     }
     let sounds = crate::mobs::finalize::sound_variants(species);
     if !sounds.is_empty() {
@@ -1147,11 +1168,8 @@ pub fn write_mob(
         );
     }
     match id {
-        // Fox.addAdditionalSaveData; Sunrise models only the type, the
-        // flags and no trusted players yet.
+        // Fox.addAdditionalSaveData.
         "minecraft:fox" => {
-            let kind = if m.extra.variant == 1 { "snow" } else { "red" };
-            map.insert("Type".into(), string(kind));
             // The trusted UUIDs (`Fox.TRUSTED_LIST_CODEC`: a list of int arrays).
             map.insert(
                 "Trusted".into(),
@@ -1161,8 +1179,16 @@ pub fn write_mob(
                         .collect(),
                 ),
             );
+            map.insert(
+                "Sleeping".into(),
+                Tag::Byte(i8::from(crate::mobs::fox::flag(
+                    m,
+                    crate::mobs::fox::SLEEPING,
+                ))),
+            );
+            let kind = if m.extra.variant == 1 { "snow" } else { "red" };
+            map.insert("Type".into(), string(kind));
             for (key, bit) in [
-                ("Sleeping", crate::mobs::fox::SLEEPING),
                 ("Sitting", crate::mobs::fox::SITTING),
                 ("Crouching", crate::mobs::fox::CROUCHING),
             ] {
@@ -1204,12 +1230,12 @@ pub fn write_mob(
         }
         "minecraft:goat" => crate::mobs::goat::write_nbt(m, map),
         "minecraft:creeper" => {
+            map.insert("powered".into(), Tag::Byte(i8::from(m.extra.charged)));
             map.insert("Fuse".into(), Tag::Short(m.max_swell as i16));
             map.insert(
                 "ExplosionRadius".into(),
                 Tag::Byte(m.extra.explosion_radius),
             );
-            map.insert("powered".into(), Tag::Byte(i8::from(m.extra.charged)));
             map.insert("ignited".into(), Tag::Byte(i8::from(m.extra.flag)));
         }
         // `Ocelot.addAdditionalSaveData`.
@@ -1217,21 +1243,6 @@ pub fn write_mob(
             map.insert("Trusting".into(), Tag::Byte(i8::from(m.extra.trusting)));
         }
         "minecraft:cat" => {
-            if let Some(owner) = m.extra.owner {
-                map.insert("Owner".into(), Tag::IntArray(owner.to_vec()));
-            } else {
-                map.remove(&"Owner".into());
-            }
-            map.insert("Sitting".into(), Tag::Byte(i8::from(m.extra.sitting)));
-            map.insert("CollarColor".into(), Tag::Byte(m.extra.color as i8));
-        }
-        "minecraft:wolf" => {
-            if let Some(owner) = m.extra.owner {
-                map.insert("Owner".into(), Tag::IntArray(owner.to_vec()));
-            } else {
-                map.remove(&"Owner".into());
-            }
-            map.insert("Sitting".into(), Tag::Byte(i8::from(m.extra.sitting)));
             map.insert("CollarColor".into(), Tag::Byte(m.extra.color as i8));
         }
         "minecraft:panda" => {
@@ -1247,12 +1258,6 @@ pub fn write_mob(
             }
         }
         "minecraft:piglin" | "minecraft:piglin_brute" | "minecraft:hoglin" => {
-            if id == "minecraft:piglin_brute" {
-                map.remove(&"CannotHunt".into());
-            } else if id == "minecraft:piglin" {
-                let hunt = m.extra.piglin.cannot_hunt as i8;
-                map.insert("CannotHunt".into(), Tag::Byte(hunt));
-            }
             map.insert(
                 "IsImmuneToZombification".into(),
                 Tag::Byte(i8::from(m.extra.flag2)),
@@ -1264,7 +1269,14 @@ pub fn write_mob(
                     Tag::Byte(m.extra.cannot_be_hunted as i8),
                 );
             }
-            if id == "minecraft:piglin" {
+            if species == S::PiglinBrute {
+                map.remove(&"CannotHunt".into());
+            } else if species == S::Piglin {
+                map.insert("IsBaby".into(), Tag::Byte(i8::from(m.is_baby())));
+                map.insert(
+                    "CannotHunt".into(),
+                    Tag::Byte(m.extra.piglin.cannot_hunt as i8),
+                );
                 crate::mobs::piglin::write_guarded_anger(m, map);
                 // InventoryCarrier.writeInventoryToTag.
                 map.insert(
@@ -1285,14 +1297,30 @@ pub fn write_mob(
         | "minecraft:skeleton_horse"
         | "minecraft:zombie_horse"
         | "minecraft:llama"
-        | "minecraft:trader_llama" => {
-            map.insert("Tame".into(), Tag::Byte(i8::from(m.extra.tame)));
-            map.insert("Temper".into(), Tag::Int(m.extra.equine_temper));
+        | "minecraft:trader_llama"
+        | "minecraft:camel"
+        | "minecraft:camel_husk" => {
+            // AbstractHorse records these before any subclass fields.
+            let camel = matches!(species, S::Camel | S::CamelHusk);
+            if camel {
+                map.insert("EatingHaystack".into(), Tag::Byte(i8::from(m.extra.flag)));
+            } else {
+                map.entry("EatingHaystack".into()).or_insert(Tag::Byte(0));
+            }
             map.insert("Bred".into(), Tag::Byte(i8::from(m.extra.bred)));
-            // AbstractHorse.addAdditionalSaveData; the eating haystack is not modelled yet.
-            map.entry("EatingHaystack".into()).or_insert(Tag::Byte(0));
-            if let Some(owner) = m.extra.owner {
+            map.insert("Temper".into(), Tag::Int(m.extra.equine_temper));
+            map.insert("Tame".into(), Tag::Byte(i8::from(m.extra.tame)));
+            if !camel && let Some(owner) = m.extra.owner {
                 map.insert("Owner".into(), Tag::IntArray(owner.to_vec()));
+            } else {
+                map.retain("Owner");
+            }
+            if camel {
+                // LastPoseTick is negative while sitting.
+                map.insert(
+                    "LastPoseTick".into(),
+                    Tag::Long(crate::mobs::camel::synced_pose_tick(m, game_time)),
+                );
             }
             if id == "minecraft:horse" {
                 let loaded = map.get(&"Variant".into()).and_then(int_value);
@@ -1301,20 +1329,23 @@ pub fn write_mob(
                 map.insert("Variant".into(), Tag::Int(v));
             }
             let llama = crate::mobs::llama::is_llama(m.species());
-            if llama {
-                crate::mobs::llama::to_nbt(m, map);
-            }
             // Only llamas, donkeys and mules carry chests.
             if llama || matches!(id, "minecraft:donkey" | "minecraft:mule") {
                 map.insert("ChestedHorse".into(), Tag::Byte(i8::from(m.extra.chested)));
             }
-            if m.extra.chested && !m.extra.items.is_empty() {
+            if !camel && m.extra.chested && !m.extra.items.is_empty() {
                 map.insert(
                     "Items".into(),
                     crate::save::encode_items(&m.extra.items, items),
                 );
-            } else {
+            } else if !camel {
                 map.remove(&"Items".into());
+            }
+            // Llama and TraderLlama follow the AbstractChestedHorse fields.
+            if llama {
+                crate::mobs::llama::to_nbt(m, map);
+            } else if species == S::SkeletonHorse {
+                crate::mobs::riders::write_nbt(m, map);
             }
         }
         "minecraft:bat" => {
@@ -1323,10 +1354,10 @@ pub fn write_mob(
             map.insert("BatFlags".into(), Tag::Byte(flags as i8));
         }
         "minecraft:turtle" => {
-            map.insert("has_egg".into(), Tag::Byte(i8::from(m.extra.flag)));
             if let Some(home) = m.extra.home {
                 map.insert("home_pos".into(), Tag::IntArray(home.to_vec()));
             }
+            map.insert("has_egg".into(), Tag::Byte(i8::from(m.extra.flag)));
         }
         "minecraft:creaking" => {
             // home_pos: the heart it is bound to.
@@ -1338,22 +1369,11 @@ pub fn write_mob(
         }
         "minecraft:zombie_villager" => {
             map.insert("VillagerData".into(), villager_data(m));
-            let xp = m.extra.trade.as_deref().map_or(0, |t| t.xp);
-            map.insert("Xp".into(), Tag::Int(xp));
-            put_offers(map, m, items);
-            crate::mobs::zombie_villager::write_nbt(m, map);
+            crate::mobs::zombie_villager::write_nbt(m, map, items);
         }
         "minecraft:villager" => {
-            map.insert("VillagerData".into(), villager_data(m));
-            // A loaded villager with VillagerData is finalized.
-            map.insert("VillagerDataFinalized".into(), Tag::Byte(1));
-            let t = m.extra.trade.as_deref().cloned().unwrap_or_default();
-            map.insert("Xp".into(), Tag::Int(t.xp));
-            map.insert("LastRestock".into(), Tag::Long(t.last_restock));
-            map.insert("RestocksToday".into(), Tag::Int(t.restocks_today));
-            put_offers(map, m, items);
-            put_memories(map, m);
             crate::mobs::villager::write_nbt(m, map, items);
+            put_memories(map, m);
         }
         // Dolphin.addAdditionalSaveData: the fish it was fed, and how wet it is.
         "minecraft:dolphin" => {
@@ -1361,7 +1381,6 @@ pub fn write_mob(
             map.insert("Moistness".into(), Tag::Int(m.extra.counter));
         }
         "minecraft:wandering_trader" => {
-            put_offers(map, m, items);
             // WanderingTrader.addAdditionalSaveData: the visit's countdown and
             // the place it is walking to, a BlockPos codec (an int array).
             map.insert("DespawnDelay".into(), Tag::Int(m.extra.ints[5]));
@@ -1384,18 +1403,16 @@ pub fn write_mob(
                 "Variant".into(),
                 Tag::Int(i32::from(m.extra.variant.min(4))),
             );
+            map.insert(
+                "FromBucket".into(),
+                Tag::Byte(i8::from(m.extra.from_bucket)),
+            );
         }
         "minecraft:parrot" => {
             map.insert(
                 "Variant".into(),
                 Tag::Int(i32::from(m.extra.variant.min(4))),
             );
-            if let Some(owner) = m.extra.owner {
-                map.insert("Owner".into(), Tag::IntArray(owner.to_vec()));
-            } else {
-                map.remove(&"Owner".into());
-            }
-            map.insert("Sitting".into(), Tag::Byte(i8::from(m.extra.sitting)));
         }
         "minecraft:salmon" => {
             let size = SALMON_SIZES[usize::from(m.extra.variant).min(2)];
@@ -1475,18 +1492,6 @@ pub fn write_mob(
                 Tag::compound([("memories", Tag::compound(memories))]),
             );
         }
-        "minecraft:camel" | "minecraft:camel_husk" => {
-            // AbstractHorse.addAdditionalSaveData, including Camel.isTamed.
-            map.insert("Tame".into(), Tag::Byte(i8::from(m.extra.tame)));
-            map.insert("Temper".into(), Tag::Int(m.extra.equine_temper));
-            map.insert("Bred".into(), Tag::Byte(i8::from(m.extra.bred)));
-            map.insert("EatingHaystack".into(), Tag::Byte(i8::from(m.extra.flag)));
-            // LastPoseTick: the pose change time, negative while sitting.
-            map.insert(
-                "LastPoseTick".into(),
-                Tag::Long(crate::mobs::camel::synced_pose_tick(m, game_time)),
-            );
-        }
         "minecraft:nautilus" | "minecraft:zombie_nautilus" => {
             crate::mobs::nautilus::to_nbt(m, map);
         }
@@ -1502,6 +1507,10 @@ pub fn write_mob(
                 "PlayerCreated".into(),
                 Tag::Byte(i8::from(m.extra.player_created)),
             );
+            write_persistent_anger(m, map, &mut uuid_of);
+        }
+        "minecraft:polar_bear" | "minecraft:zombified_piglin" => {
+            write_persistent_anger(m, map, &mut uuid_of);
         }
         // SnowGolem.addAdditionalSaveData: whether it still wears its pumpkin.
         "minecraft:snow_golem" => {
@@ -1513,8 +1522,8 @@ pub fn write_mob(
         // entity a suspect is is named by its UUID, not by a live id.
         "minecraft:warden" => {
             if let Some(st) = &m.extra.warden {
-                map.insert("listener".into(), st.vibration.to_nbt());
                 map.insert("anger".into(), warden_anger_to_nbt(&st.anger, &mut uuid_of));
+                map.insert("listener".into(), st.vibration.to_nbt());
             }
             write_warden_owned_memories(m, map);
         }
@@ -1522,13 +1531,13 @@ pub fn write_mob(
         // the state it is in, which is always written (`idle` when it is not
         // rolled up).
         "minecraft:armadillo" => {
-            map.insert("scute_time".into(), Tag::Int(m.extra.egg_time));
             map.insert(
                 "state".into(),
                 string(crate::mobs::armadillo::state_name(
                     crate::mobs::armadillo::state(m),
                 )),
             );
+            map.insert("scute_time".into(), Tag::Int(m.extra.egg_time));
         }
         "minecraft:ravager" => {
             map.insert("AttackTick".into(), Tag::Int(m.extra.counter));
@@ -1541,18 +1550,21 @@ pub fn write_mob(
         }
         // Enderman.addAdditionalSaveData: the block it carries, saved only
         // while it carries one.
-        "minecraft:enderman" => match (m.extra.carried, registry) {
-            (Some(state), Some(registry)) => {
-                map.insert("carriedBlockState".into(), state_to_nbt(registry, state));
+        "minecraft:enderman" => {
+            match (m.extra.carried, registry) {
+                (Some(state), Some(registry)) => {
+                    map.insert("carriedBlockState".into(), state_to_nbt(registry, state));
+                }
+                // Nothing carries a block state out without the registry, and a
+                // caller without one keeps what the loaded compound had, so the
+                // key is only dropped when a registry could have written it.
+                (_, None) => map.retain("carriedBlockState"),
+                (None, Some(_)) => {
+                    map.remove(&"carriedBlockState".into());
+                }
             }
-            // Nothing carries a block state out without the registry, and a
-            // caller without one keeps what the loaded compound had, so the
-            // key is only dropped when a registry could have written it.
-            (Some(_), None) | (None, None) => {}
-            (None, Some(_)) => {
-                map.remove(&"carriedBlockState".into());
-            }
-        },
+            write_persistent_anger(m, map, &mut uuid_of);
+        }
         "minecraft:shulker" => {
             map.insert("AttachFace".into(), Tag::Byte(m.extra.variant3 as i8));
             map.insert("Peek".into(), Tag::Byte(m.extra.counter as i8));
@@ -1574,7 +1586,6 @@ pub fn write_mob(
         // `storeNullable` writes nothing for a phantom that has none, so its
         // save carries no `anchor_pos` at all.
         "minecraft:phantom" => {
-            map.insert("size".into(), Tag::Int(m.extra.size));
             match m.extra.home {
                 Some(anchor) => {
                     map.insert("anchor_pos".into(), Tag::IntArray(anchor.to_vec()));
@@ -1583,46 +1594,28 @@ pub fn write_mob(
                     map.remove(&"anchor_pos".into());
                 }
             }
+            map.insert("size".into(), Tag::Int(m.extra.size));
         }
         "minecraft:slime" | "minecraft:magma_cube" => {
             map.insert("Size".into(), Tag::Int(m.extra.size.max(1) - 1));
             map.insert("wasOnGround".into(), Tag::Byte(i8::from(m.extra.flag2)));
         }
-        // Zombie and Skeleton.addAdditionalSaveData (a husk keeps Zombie's):
-        // `ConversionTracker`'s conversion and affliction times, -1 when it is
-        // not converting or not afflicted.
-        // The tracker ticks for these, so the live counters win over the loaded
-        // values: one that left the water or the snow saves -1.
-        "minecraft:zombie" | "minecraft:husk" => {
-            for (key, value) in [
-                ("DrownedConversionTime", conversion_time(m)),
-                ("InWaterTime", m.extra.counter),
-            ] {
-                map.insert(key.into(), Tag::Int(value));
-            }
-        }
         "minecraft:skeleton" => {
-            for (key, value) in [
-                ("StrayConversionTime", conversion_time(m)),
-                ("FreezingTime", m.extra.counter),
-            ] {
-                map.insert(key.into(), Tag::Int(value));
-            }
+            map.insert("StrayConversionTime".into(), Tag::Int(conversion_time(m)));
+            let time = if m.in_powder_snow {
+                m.extra.counter
+            } else {
+                -1
+            };
+            map.insert("FreezingTime".into(), Tag::Int(time));
         }
-        // Drowned.convertsInWater is false, so its tracker never ticks: vanilla
-        // saves -1 for both.
-        "minecraft:drowned" => {
-            for (key, value) in [
-                ("DrownedConversionTime", Tag::Int(-1)),
-                ("InWaterTime", Tag::Int(-1)),
-            ] {
-                map.entry(key.into()).or_insert(value);
-            }
+        "minecraft:zoglin" => {
+            map.insert("IsBaby".into(), Tag::Byte(i8::from(m.is_baby())));
         }
         // Sheep.addAdditionalSaveData: its wool as it is now.
         "minecraft:sheep" => {
-            map.insert("Color".into(), Tag::Byte((m.extra.color & 15) as i8));
             map.insert("Sheared".into(), Tag::Byte(i8::from(m.extra.sheared)));
+            map.insert("Color".into(), Tag::Byte((m.extra.color & 15) as i8));
         }
         // CopperGolem.addAdditionalSaveData.
         "minecraft:copper_golem" => {
@@ -1645,51 +1638,6 @@ pub fn write_mob(
     if m.species() == S::Bogged {
         map.insert("sheared".into(), Tag::Byte(i8::from(m.extra.sheared)));
     }
-    // Zombie.addAdditionalSaveData: CanBreakDoors.
-    if crate::mobs::doors::is_zombie(m.species()) {
-        map.insert(
-            "CanBreakDoors".into(),
-            Tag::Byte(i8::from(m.extra.can_break_doors)),
-        );
-        // ConversionTracker.addAdditionalSaveData reads isAfflicted at save
-        // time. Zombie supplies its cached isEyeInFluid(WATER), even with NoAI.
-        if !m.fluids.eye_in_water {
-            map.insert("InWaterTime".into(), Tag::Int(-1));
-        }
-        // ZombieVillager and ZombifiedPiglin save Zombie's tracker too; Sunrise
-        // never starts their water conversion, so its time is -1.
-        if matches!(m.species(), S::ZombieVillager | S::ZombifiedPiglin) {
-            map.entry("DrownedConversionTime".into())
-                .or_insert(Tag::Int(-1));
-        }
-    }
-    // Skeleton supplies its cached isInPowderSnow to the same isAfflicted check.
-    if m.species() == S::Skeleton && !m.in_powder_snow {
-        map.insert("FreezingTime".into(), Tag::Int(-1));
-    }
-    if matches!(
-        id,
-        "minecraft:zombie"
-            | "minecraft:husk"
-            | "minecraft:drowned"
-            | "minecraft:zombie_villager"
-            | "minecraft:zombified_piglin"
-            | "minecraft:piglin"
-            | "minecraft:zoglin"
-    ) {
-        map.insert("IsBaby".into(), Tag::Byte(i8::from(m.is_baby())));
-    }
-    // NeutralMob.addPersistentAngerSaveData; the bee saves its own.
-    if matches!(
-        id,
-        "minecraft:iron_golem"
-            | "minecraft:wolf"
-            | "minecraft:polar_bear"
-            | "minecraft:zombified_piglin"
-            | "minecraft:enderman"
-    ) {
-        map.entry("anger_end_time".into()).or_insert(Tag::Long(-1));
-    }
     // SpellcasterIllager.addAdditionalSaveData: save the live casting timer,
     // including zero and negative values, rather than stale loaded NBT.
     if matches!(m.species(), S::Evoker | S::Illusioner) {
@@ -1704,10 +1652,33 @@ pub fn write_mob(
             map.remove(&"Johnny".into());
         }
     }
-    crate::mobs::raider::write_nbt(m, map);
-    crate::mobs::riders::write_nbt(m, map);
     if m.death_canceled {
         map.insert("sunrise:death_canceled".into(), Tag::Byte(1));
+    }
+}
+/// `NeutralMob.addPersistentAngerSaveData` at the class's own save slot.
+fn write_persistent_anger(
+    m: &Mob,
+    map: &mut EntityTagWriter,
+    uuid_of: &mut impl FnMut(u32) -> Option<[i32; 4]>,
+) {
+    map.insert(
+        "anger_end_time".into(), // Keep the absolute value even after the time has passed.
+        Tag::Long(m.extra.anger_end),
+    );
+    // `angry_at` only while there is an anger target: the UUID of the one
+    // the level has (`uuid_of`). A mob target read from the save that is
+    // not in the world (`Who::Mob(0)`) keeps the loaded UUID.
+    match m.extra.angry_at {
+        Some(crate::mobs::Who::Mob(0)) => map.retain("angry_at"),
+        target => match target.and_then(|who| who_uuid(who, uuid_of)) {
+            Some(uuid) => {
+                map.insert("angry_at".into(), Tag::IntArray(uuid.to_vec()));
+            }
+            None => {
+                map.remove(&"angry_at".into());
+            }
+        },
     }
 }
 const MODEL_PARTS: [&str; 7] = [
@@ -4152,7 +4123,7 @@ pub fn ground_from_nbt(tag: &Tag) -> (bool, f64) {
 
 use crate::mobs::villager::professions::save::villager_data;
 /// `AbstractVillager` "Offers" (`MerchantOffers.CODEC`).
-fn put_offers(map: &mut EntityTagWriter, m: &Mob, items: &crate::items::Items) {
+pub(crate) fn put_offers(map: &mut EntityTagWriter, m: &Mob, items: &crate::items::Items) {
     let Some(t) = m.extra.trade.as_ref().filter(|t| !t.unset) else {
         return;
     };

@@ -991,29 +991,47 @@ pub fn eat_and_digest_in(m: &mut Mob, w: &MobWorld) {
     }
 }
 
-/// The saved fields (`FoodLevel`, `Gossips`, `LastGossipDecay`, `Inventory`,
-/// `LivingEntity`'s `sleeping_pos` and the sleep and golem memories).
+/// `AbstractVillager` writes inventory after offers, before the `Villager` fields.
 pub fn write_nbt(
     m: &Mob,
     map: &mut crate::entity_nbt::EntityTagWriter,
     items: &crate::items::Items,
 ) {
     use sunrise_core::nbt::Tag;
-    let Some(e) = ext(m) else { return };
+    let extra = ext(m);
+    if let Some(e) = extra {
+        map.insert(
+            "Inventory".into(),
+            Tag::List(
+                e.inventory
+                    .iter()
+                    .map(|stack| crate::save::item_to_nbt(stack, items))
+                    .collect(),
+            ),
+        );
+    }
+    map.insert("VillagerData".into(), professions::save::villager_data(m));
+    // A loaded villager with VillagerData is finalized.
+    map.insert("VillagerDataFinalized".into(), Tag::Byte(1));
+    if let Some(e) = extra {
+        map.insert(
+            "FoodLevel".into(),
+            Tag::Byte(e.food_level.clamp(-128, 127) as i8),
+        );
+        map.insert("Gossips".into(), e.gossips.to_nbt());
+    }
+    let trade = m.extra.trade.as_deref();
+    map.insert("Xp".into(), Tag::Int(trade.map_or(0, |t| t.xp)));
     map.insert(
-        "FoodLevel".into(),
-        Tag::Byte(e.food_level.clamp(-128, 127) as i8),
+        "LastRestock".into(),
+        Tag::Long(trade.map_or(0, |t| t.last_restock)),
     );
-    map.insert("Gossips".into(), e.gossips.to_nbt());
-    map.insert("LastGossipDecay".into(), Tag::Long(e.last_gossip_decay));
+    if let Some(e) = extra {
+        map.insert("LastGossipDecay".into(), Tag::Long(e.last_gossip_decay));
+    }
     map.insert(
-        "Inventory".into(),
-        Tag::List(
-            e.inventory
-                .iter()
-                .map(|stack| crate::save::item_to_nbt(stack, items))
-                .collect(),
-        ),
+        "RestocksToday".into(),
+        Tag::Int(trade.map_or(0, |t| t.restocks_today)),
     );
 }
 /// The memories of `Brain.memories` the villager keeps besides positions.

@@ -160,19 +160,26 @@ pub fn constructor_draws(m: &mut Mob) {
     }
     let _yaw = m.random.next_float();
 }
-/// The saved fields: the finalized flag, the cure and the gossip.
-pub fn write_nbt(m: &Mob, map: &mut crate::entity_nbt::EntityTagWriter) {
+/// The subclass fields after `Zombie.addAdditionalSaveData` and `VillagerData`.
+pub fn write_nbt(
+    m: &Mob,
+    map: &mut crate::entity_nbt::EntityTagWriter,
+    items: &crate::items::Items,
+) {
     let finalized = villager::ext(m).is_some_and(|e| e.data_finalized);
     map.insert(
         "VillagerDataFinalized".into(),
         Tag::Byte(i8::from(finalized)),
     );
-    put_cure(map, cure(m).copied());
+    crate::entity_nbt::put_offers(map, m, items);
     if let Some(e) = villager::ext(m)
         && !e.gossips.is_empty()
     {
         map.insert("Gossips".into(), e.gossips.to_nbt());
     }
+    put_cure(map, cure(m).copied());
+    let xp = m.extra.trade.as_deref().map_or(0, |t| t.xp);
+    map.insert("Xp".into(), Tag::Int(xp));
 }
 /// `ZombieVillager.readAdditionalSaveData`: a save with neither
 /// `VillagerDataFinalized` nor `VillagerData` keeps the constructor's random
