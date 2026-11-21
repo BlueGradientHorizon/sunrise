@@ -13,7 +13,7 @@
 //! through a portal.
 
 use super::commands::Target;
-use super::entity_residency::{define_resident_access, resident_owners};
+use super::entity_residency::{ResolvedResident, define_resident_access, resident_owners};
 use super::{
     Dim, ExperienceOrb, FallingBlock, Game, ItemEntity, Mob, boats, commands,
     creaking::CreakingState, dragon, fireworks, lightning, machines, minecarts,
@@ -221,19 +221,26 @@ impl Game<'_> {
         &self,
         at: Location,
     ) -> Option<SourceEntity<(Target, bool)>> {
+        self.locate_server_resident_row(at)
+            .map(ResolvedResident::target_source)
+    }
+
+    fn locate_server_resident_row(
+        &self,
+        at: Location,
+    ) -> Option<SourceEntity<ResolvedResident<'_>>> {
         if matches!(
             at.owner.kind,
             sunrise_client::join_seq::residency::Kind::Player
                 | sunrise_client::join_seq::residency::Kind::Hook
         ) {
-            return self.locate_specialized_resident_owner(at);
+            return self.locate_specialized_resident_row(at);
         }
         if at.owner.dimension == self.dim.key() {
             // An open transaction's removal reads as gone already.
-            return self.locate_resident_owner(at).map(|mut source| {
-                source.value.1 &= !self.removal_pending(&source.value.0);
-                source
-            });
+            let mut source = self.locate_resident_row(at)?;
+            source.value.visible &= !self.removal_pending(&source.value.target);
+            return Some(source);
         }
         let dim = match at.owner.dimension {
             DimensionKey::OVERWORLD => Dim::Overworld,
@@ -242,14 +249,9 @@ impl Game<'_> {
             key => Dim::Extra(key),
         };
         // The transactions stay with the game when a level is parked: its pending removals too.
-        self.levels
-            .parked
-            .get(&dim)?
-            .locate_resident_owner(at)
-            .map(|mut source| {
-                source.value.1 &= !self.removal_pending_in(dim, &source.value.0);
-                source
-            })
+        let mut source = self.levels.parked.get(&dim)?.locate_resident_row(at)?;
+        source.value.visible &= !self.removal_pending_in(dim, &source.value.target);
+        Some(source)
     }
 
     /// Whether `target` counts as removed in the level in place: a mod removed it, or an open
@@ -276,6 +278,14 @@ impl Game<'_> {
         {
             return false;
         }
+        self.resident_target_not_removed(dimension, target)
+    }
+
+    pub(super) fn resident_target_not_removed(
+        &self,
+        dimension: DimensionKey,
+        target: Target,
+    ) -> bool {
         if dimension == self.dim.key() {
             return !self.target_removed(&target);
         }
@@ -355,21 +365,27 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
+        match self.server_resident_lookup(id) {
+            EntityLookup::Found { location, value } => EntityLookup::Found {
+                location,
+                value: value.target,
+            },
+            EntityLookup::Missing => EntityLookup::Missing,
+            EntityLookup::Taken => EntityLookup::Taken,
+        }
+    }
+
+    /// Validate and return the physical row; the residency table's borrow ends before the caller
+    /// can lend any fields or re-enter entity lookup.
+    pub(super) fn server_resident_lookup(&self, id: u32) -> EntityLookup<ResolvedResident<'_>> {
         let found = self
             .resident_entities
             .table
             .borrow_mut()
-            .server_entity_lookup(id, |at| self.locate_server_resident_owner(at));
+            .server_entity_lookup(id, |at| self.locate_server_resident_row(at));
         match found {
-            EntityLookup::Found {
-                location,
-                value: (value, true),
-            } => EntityLookup::Found { location, value },
-            EntityLookup::Found {
-                value: (_, false), ..
-            }
-            | EntityLookup::Missing => EntityLookup::Missing,
-            EntityLookup::Taken => EntityLookup::Taken,
+            EntityLookup::Found { ref value, .. } if !value.visible => EntityLookup::Missing,
+            found => found,
         }
     }
     /// Find the canonical level without swapping or probing physical families.

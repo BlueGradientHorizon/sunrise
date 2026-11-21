@@ -1,7 +1,6 @@
 //! Target dispatch: the level, position and type a command's target names,
 //! by family. Moved out of `mod.rs` unchanged (#2791's discipline).
 use super::*;
-use sunrise_client::join_seq::residency::{Source, table::Location};
 
 impl Game<'_> {
     /// The level `t` is in (`Entity.level`): a server's players have their
@@ -17,15 +16,6 @@ impl Game<'_> {
             .map_or(self.dim, |g| Dim::from_id(&g.dimension))
     }
     pub(in crate::game) fn target_position(&self, t: Target) -> Option<[f64; 3]> {
-        self.target_position_at(t, None)
-    }
-
-    /// Project position for a command target, reusing its validated location when one was lent.
-    pub(in crate::game) fn target_position_at(
-        &self,
-        t: Target,
-        location: Option<Location>,
-    ) -> Option<[f64; 3]> {
         match t {
             Target::Player => self
                 .player
@@ -105,14 +95,7 @@ impl Game<'_> {
                 .find(|c| c.id == id)
                 .map(|c| [c.position.x, c.position.y, c.position.z]),
             Target::DragonPart(id) => {
-                let (dragon, index) = match location {
-                    Some(Location {
-                        source: Source::DragonPart(index),
-                        ..
-                    }) => (self.dragon.as_ref()?, usize::from(index)),
-                    Some(_) => return None,
-                    None => self.resident_dragon_part(id)?,
-                };
+                let (dragon, index) = self.resident_dragon_part(id)?;
                 let p = dragon.parts[index].0;
                 Some([p.x, p.y, p.z])
             }
@@ -133,18 +116,7 @@ impl Game<'_> {
                 .map(|r| [r.position.x, r.position.y, r.position.z]),
             Target::Cloud(id) => self.breath_clouds.iter().find(|c| c.id == id).map(|c| c.at),
             Target::Hook(id) => {
-                use crate::game::player_residency::SpecializedSource;
-                let hook = match location {
-                    Some(location) => {
-                        let (SpecializedSource::Hook(hook), _) =
-                            self.specialized_resident_source(location)?.value
-                        else {
-                            return None;
-                        };
-                        hook
-                    }
-                    None => self.fishing_hook_by_id(id)?.0,
-                };
+                let (hook, _) = self.fishing_hook_by_id(id)?;
                 let p = hook.position;
                 Some([p.x, p.y, p.z])
             }
@@ -160,13 +132,7 @@ impl Game<'_> {
                 .find(|s| s.id == id)
                 .map(|s| s.position),
             Target::Knot(id) => {
-                let fence = match location {
-                    Some(location) => {
-                        let knots = &self.resident_entities.knots;
-                        knots[knots.locate(location.join)?].fence
-                    }
-                    None => self.natural_knot(id)?,
-                };
+                let fence = self.natural_knot(id)?;
                 let p = sunrise_client::mobs::leash::knot_state(fence).position;
                 Some([p.x, p.y, p.z])
             }
