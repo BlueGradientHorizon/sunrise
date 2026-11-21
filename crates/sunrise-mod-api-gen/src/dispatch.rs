@@ -2603,16 +2603,18 @@ mod tests {
             })
             .unwrap();
         let function = function.to_token_stream().to_string();
+        let guard = "if mod_entry . id != event . mod_id { continue ; }";
+        assert_eq!(
+            function.matches(guard).count(),
+            1,
+            "the broadcast control must remove exactly one owner guard"
+        );
+        let broadcast = function.replace(guard, "");
         let dir = root.join("target/setting-owner-test");
         std::fs::create_dir_all(&dir).unwrap();
-        for (name, function, succeeds) in [
-            ("owner", function.clone(), true),
-            (
-                "broadcast",
-                function.replace("if owner . id != event . mod_id { continue ; }", ""),
-                false,
-            ),
-        ] {
+        for (name, function, succeeds) in
+            [("owner", function, true), ("broadcast", broadcast, false)]
+        {
             let program = format!(
                 r#"
 #![allow(dead_code, unused_variables)]
