@@ -2548,41 +2548,23 @@ fn allay_hand(model: &Part, base: glam::Mat4, poses: &Poses) -> Option<glam::Mat
             * glam::Mat4::from_translation(glam::Vec3::new(0.0625, 0.0, 0.0)),
     )
 }
-/// The hand of a mob in model space, up to the item's own transform
-/// (`ItemInHandLayer.submitArmWithItem`).
-fn hand_base(
+/// `ArmedModel.translateToHand`: a mob's hand in model space, as
+/// `ItemInHandLayer.submitArmWithItem` has it before its item rotations. That is the
+/// arm's part matrix, moved by the slim or skeleton offset, or the Allay's, Vex's or
+/// Copper Golem's own hand. `hand_base` applies vanilla's item rotations and the hand
+/// offset after it. A native mod takes the hand here through `[[native.mixin]]`, where a
+/// Java mod's mixin on `submitArmWithItem` turns the pose stack before those rotations
+/// (#3970). A pack's `attachments` anchor replaces the whole hand and doesn't come
+/// through here.
+#[sunrise_mod_api_macros::replaceable]
+pub fn translate_to_hand(
     m: &Mob,
     model: &Part,
     base: glam::Mat4,
     poses: &Poses,
-    anchors: &[(String, String, [f32; 3])],
     left: bool,
 ) -> Option<glam::Mat4> {
-    // A pack's `attachments` anchor (`right_handheld_item`...) replaces the whole hand
-    // anchor: the walk to the part that declares it and its offset, none of the vanilla
-    // hand's own transforms — EMF's one-off override during `translateToHand`. Without one
-    // the vanilla anchor stays.
-    if let Some(t) = attachment_matrix(
-        model,
-        base,
-        poses,
-        anchors,
-        if left {
-            "left_handheld_item"
-        } else {
-            "right_handheld_item"
-        },
-    ) {
-        return Some(t);
-    }
-    let skeleton = matches!(
-        m.species(),
-        Species::Skeleton
-            | Species::Stray
-            | Species::Bogged
-            | Species::Parched
-            | Species::WitherSkeleton
-    );
+    let skeleton = skeleton_arms(m.species());
     let arm = if left { "left_arm" } else { "right_arm" };
     // `SkeletonModel.translateToHand` shifts the arm by 1, `PlayerModel.translateToHand`
     // by 0.5 for slim arms: the hand is the middle of the arm.
@@ -2618,6 +2600,47 @@ fn hand_base(
                 * glam::Mat4::from_translation(glam::Vec3::new(-0.125, 0.3125, -0.1875));
         }
     }
+    Some(t)
+}
+/// The skeleton family, whose `SkeletonModel.translateToHand` shifts the arm by 1.
+fn skeleton_arms(species: Species) -> bool {
+    matches!(
+        species,
+        Species::Skeleton
+            | Species::Stray
+            | Species::Bogged
+            | Species::Parched
+            | Species::WitherSkeleton
+    )
+}
+/// The hand of a mob in model space, up to the item's own transform
+/// (`ItemInHandLayer.submitArmWithItem`).
+fn hand_base(
+    m: &Mob,
+    model: &Part,
+    base: glam::Mat4,
+    poses: &Poses,
+    anchors: &[(String, String, [f32; 3])],
+    left: bool,
+) -> Option<glam::Mat4> {
+    // A pack's `attachments` anchor (`right_handheld_item`...) replaces the whole hand
+    // anchor: the walk to the part that declares it and its offset, none of the vanilla
+    // hand's own transforms — EMF's one-off override during `translateToHand`. Without one
+    // the vanilla anchor stays.
+    if let Some(t) = attachment_matrix(
+        model,
+        base,
+        poses,
+        anchors,
+        if left {
+            "left_handheld_item"
+        } else {
+            "right_handheld_item"
+        },
+    ) {
+        return Some(t);
+    }
+    let mut t = translate_to_hand(m, model, base, poses, left)?;
     let (ox, oy, oz) = if m.is_baby() {
         (0.0, 1.0, -4.5)
     } else {
@@ -4436,6 +4459,75 @@ mod random_texture_tests {
             assert!(
                 (length - 1.875).abs() < 1.0e-5,
                 "{axis:?} scales by {length}, not 2 * 0.9375"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod translate_to_hand_tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    /// A zombie whose model is a root with two posed arms.
+    fn armed() -> (Mob, Part) {
+        let mut kind = crate::mobs::sensor_scan_tests::kind();
+        Arc::make_mut(&mut kind).species = Species::Zombie;
+        let model = Part::parse(
+            "root",
+            &json!({"children": {
+                "right_arm": {"pose": [-5.0, 2.0, 0.0, -0.4, 0.1, 0.05, 1.0, 1.0, 1.0]},
+                "left_arm": {"pose": [5.0, 2.0, 0.0, 0.3, -0.1, -0.05, 1.0, 1.0, 1.0]}
+            }}),
+        );
+        (
+            Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0),
+            model,
+        )
+    }
+
+    /// `ItemInHandLayer.submitArmWithItem`: `translateToHand`, then the two item rotations
+    /// and the hand offset. The hand `hand_base` places an item in is the one
+    /// `translate_to_hand` returns, with only those three steps after it, so a mixin that
+    /// turns the returned matrix turns the item before vanilla's rotations (#3970).
+    #[test]
+    fn the_item_rotations_and_hand_offset_come_after_translate_to_hand() {
+        let (m, model) = armed();
+        let poses = Poses::new(&model);
+        let base = glam::Mat4::from_translation(glam::Vec3::new(0.25, 1.5, -0.75))
+            * glam::Mat4::from_rotation_y(0.7);
+        for left in [false, true] {
+            let hand = translate_to_hand(&m, &model, base, &poses, left).unwrap();
+            let arm = if left { "left_arm" } else { "right_arm" };
+            // A zombie's `translateToHand` is its arm's own `translateAndRotate`.
+            assert_eq!(hand, part_matrix(&model, base, &poses, arm, 0.0).unwrap());
+            let expected = hand
+                * (glam::Mat4::from_rotation_x((-90.0f32).to_radians())
+                    * glam::Mat4::from_rotation_y(PI))
+                * glam::Mat4::from_translation(glam::Vec3::new(
+                    if left { -1.0 } else { 1.0 } / 16.0,
+                    2.0 / 16.0,
+                    -10.0 / 16.0,
+                ));
+            assert_eq!(
+                hand_base(&m, &model, base, &poses, &[], left).unwrap(),
+                expected
+            );
+        }
+    }
+
+    /// The skeleton family's `translateToHand` shifts the arm by 1 (outwards on each side).
+    #[test]
+    fn a_skeleton_hand_is_its_arm_shifted_by_one() {
+        let (mut m, model) = armed();
+        Arc::make_mut(&mut m.kind).species = Species::Skeleton;
+        let poses = Poses::new(&model);
+        let base = glam::Mat4::IDENTITY;
+        for (left, arm, shift) in [(false, "right_arm", 1.0), (true, "left_arm", -1.0)] {
+            assert_eq!(
+                translate_to_hand(&m, &model, base, &poses, left).unwrap(),
+                part_matrix(&model, base, &poses, arm, shift).unwrap()
             );
         }
     }
