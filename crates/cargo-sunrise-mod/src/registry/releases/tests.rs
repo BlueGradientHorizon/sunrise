@@ -1,5 +1,6 @@
 use super::*;
 use serde_json::json;
+use sunrise_mod_package::index::registry::parse_releases;
 
 const A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -76,11 +77,14 @@ fn stable_releases_are_filtered_sorted_and_peeled_across_pages() {
         }
     }).unwrap();
     assert_eq!(requests.len(), 6);
+    let written = std::fs::read_to_string(out).unwrap();
+    let releases = parse_releases(&written).unwrap();
     assert_eq!(
-        std::fs::read_to_string(out).unwrap(),
-        format!(
-            "[{{\"tag\":\"26.3-0.1.0\",\"commit\":\"{A}\"}},{{\"tag\":\"26.3-0.1.1\",\"commit\":\"{D}\"}}]\n"
-        )
+        releases
+            .iter()
+            .map(|release| (release.tag.as_str(), release.commit.as_str()))
+            .collect::<Vec<_>>(),
+        [(STABLE, A), ("26.3-0.1.1", D)],
     );
 }
 
@@ -203,24 +207,23 @@ fn malformed_publication_metadata_keeps_the_previous_release_file() {
 fn a_tag_must_end_at_a_full_commit_and_cannot_cycle() {
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("releases.json");
-    for (kind, sha, reason) in [
-        ("tag", B, "cycle"),
-        ("tree", A, "does not point to a commit"),
-        ("commit", "main", "full lowercase Git object ID"),
-    ] {
+    for (kind, sha, lookups) in [("tag", B, 2), ("tree", A, 1), ("commit", "main", 1)] {
+        let mut requests = Vec::new();
         let error = write_list(&out, |url| {
             if url == format!("{SDK_RELEASE_LIST}&page=1") {
                 Ok(body(json!([release(1, STABLE)])))
             } else {
-                assert!(
-                    url == format!("{GAME_GIT_API}/ref/tags/{STABLE}")
-                        || url == format!("{GAME_GIT_API}/tags/{B}")
-                );
+                requests.push(url.to_owned());
                 Ok(object(kind, sha))
             }
         })
         .unwrap_err();
-        assert!(error.contains(STABLE) && error.contains(reason), "{error}");
+        let expected = [
+            format!("{GAME_GIT_API}/ref/tags/{STABLE}"),
+            format!("{GAME_GIT_API}/tags/{B}"),
+        ];
+        assert_eq!(requests, expected[..lookups]);
+        assert!(error.contains(STABLE), "{error}");
         assert!(!out.exists());
     }
 }

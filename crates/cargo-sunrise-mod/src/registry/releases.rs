@@ -4,10 +4,7 @@ use serde::Deserialize;
 use std::{collections::BTreeSet, env, io::Read, path::Path, time::Duration};
 use sunrise_addresses::{GAME_GIT_API, SDK_RELEASE_LIST};
 use sunrise_mod_package::{
-    index::{
-        registry::{ReleaseInput, parse_releases},
-        stable_tag,
-    },
+    index::{registry::ReleaseInput, stable_tag},
     manifest::revision,
 };
 
@@ -82,7 +79,6 @@ fn write_list(
 ) -> Result<(), String> {
     let releases = discover(fetch)?;
     let mut text = serde_json::to_string(&releases).map_err(|e| e.to_string())?;
-    parse_releases(&text)?;
     text.push('\n');
     atomic_write(out, text)?;
     println!("Wrote {}", out.display());

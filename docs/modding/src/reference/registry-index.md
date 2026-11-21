@@ -320,11 +320,14 @@ a hyphen, and Sunrise's `X.Y.Z` without prerelease or build metadata. This field
 `registry check`, `registry review` and `registry build` accept `--releases <file>`: a JSON array of objects with
 `tag` and `commit` (40 hex digits, published as lowercase), one per stable release. With that file, declared tags must be in the
 list. When package files are checked, a native package's `[native] sunrise` pin must match the named commit. The
-workflow supplies the file. Use `cargo sunrise-mod registry releases --out releases.json` to fetch it from
-`sunrise-org/sunrise`: it lists published, non-draft stable releases (no prereleases), resolves lightweight
-and annotated tags to full commits, and sorts the rows by tag. A failed listing or tag lookup leaves the
-output unchanged. The command uses `GH_TOKEN`, then `GITHUB_TOKEN`, if set; public releases can also be read
-without a token. `registry check`, `review` and `build` remain offline and take the resulting file as input.
+workflow supplies the file.
+
+`cargo sunrise-mod registry releases --out releases.json` discovers published, non-draft stable releases
+from `sunrise-org/sunrise` (no prereleases), resolves lightweight and annotated tags to full commits, and
+sorts the rows by tag. A failed listing or tag lookup leaves the output unchanged. The command uses
+`GH_TOKEN`, then `GITHUB_TOKEN`, if set; public releases can also be read without a token. Discovery does
+not verify an SDK signature. The workflow must verify the corresponding signed SDK separately before
+supplying its data to the offline `registry check`, `review` and `build` commands.
 
 ### Nightly source
 
