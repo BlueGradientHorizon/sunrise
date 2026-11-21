@@ -50,6 +50,15 @@ use sunrise_world::{
 /// `Vertex::normal` of a baked-colour quad of an `entitySolid` model: the render type culls
 /// back faces, which the entity pipelines here do not, so `entity.wgsl` discards them.
 pub const CULL_BACK: [i8; 4] = [0, 0, 0, 1];
+const _: () = {
+    assert!(CtmFace::ALL.len() == 6);
+    assert!(CtmFace::Down as u8 == ModelDirection::Down as u8);
+    assert!(CtmFace::Up as u8 == ModelDirection::Up as u8);
+    assert!(CtmFace::North as u8 == ModelDirection::North as u8);
+    assert!(CtmFace::South as u8 == ModelDirection::South as u8);
+    assert!(CtmFace::West as u8 == ModelDirection::West as u8);
+    assert!(CtmFace::East as u8 == ModelDirection::East as u8);
+};
 /// `Vertex::normal.w` of a shaded quad of an `entityCutoutCull` model (the bat): shaded by the
 /// normal like -127, and `entity.wgsl` also discards its back-facing pixels.
 pub const SHADED_CULL_W: i8 = -126;
@@ -2406,8 +2415,6 @@ impl Mesher<'_> {
         interior_leaf: bool,
     ) {
         let q = &face.quad;
-        let ctm_face = CtmFace::from_direction_index(q.facing as u8)
-            .expect("a model quad faces one of the six directions");
         // A quad's own light (a model's glowing part) may raise the tier; whether it
         // shines all over stays the block's.
         let tier = (state.tier & !WHOLE).max(hdr_tier("", q.light[0])) | state.tier & WHOLE;
@@ -2474,6 +2481,8 @@ impl Mesher<'_> {
         };
         let neighbour = |n: [i32; 3]| pad.blocks[(cell as isize + step_index(n)) as usize];
         let fused = face.fusion.and_then(|rule| {
+            let ctm_face = CtmFace::from_direction_index(q.facing as u8)
+                .expect("a model quad faces one of the six directions");
             fusion.pick(
                 rule,
                 id,
@@ -2494,6 +2503,8 @@ impl Mesher<'_> {
         } else if connected.is_empty() {
             Pick::Keep
         } else {
+            let ctm_face = CtmFace::from_direction_index(q.facing as u8)
+                .expect("a model quad faces one of the six directions");
             let tints = &*tints;
             connected.pick(
                 id,

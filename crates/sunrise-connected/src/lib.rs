@@ -100,14 +100,11 @@ impl Face {
 
     /// The face at `Direction` ordinal `index` (the position [`Self::bit`] shifts by), if any.
     pub const fn from_direction_index(index: u8) -> Option<Face> {
-        match index {
-            0 => Some(Face::Down),
-            1 => Some(Face::Up),
-            2 => Some(Face::North),
-            3 => Some(Face::South),
-            4 => Some(Face::West),
-            5 => Some(Face::East),
-            _ => None,
+        let idx = index as usize;
+        if idx < Face::ALL.len() {
+            Some(Face::ALL[idx])
+        } else {
+            None
         }
     }
 }
@@ -464,7 +461,7 @@ pub fn repeat_index(pos: Vec3, axes: Axes, width: u32, height: u32) -> usize {
 pub fn symmetric_face(face: Face, symmetry: Symmetry) -> Face {
     match symmetry {
         Symmetry::None => face,
-        Symmetry::Opposite => face.opposite(),
+        Symmetry::Opposite => Face::ALL[face as usize & !1],
         Symmetry::All => Face::Down,
     }
 }
@@ -635,9 +632,12 @@ mod tests {
     #[test]
     fn symmetry() {
         assert_eq!(symmetric_face(Face::South, Symmetry::None), Face::South);
+        assert_eq!(symmetric_face(Face::North, Symmetry::Opposite), Face::North);
         assert_eq!(symmetric_face(Face::South, Symmetry::Opposite), Face::North);
-        assert_eq!(symmetric_face(Face::East, Symmetry::Opposite), Face::West);
+        assert_eq!(symmetric_face(Face::Down, Symmetry::Opposite), Face::Down);
         assert_eq!(symmetric_face(Face::Up, Symmetry::Opposite), Face::Down);
+        assert_eq!(symmetric_face(Face::West, Symmetry::Opposite), Face::West);
+        assert_eq!(symmetric_face(Face::East, Symmetry::Opposite), Face::West);
         assert_eq!(symmetric_face(Face::East, Symmetry::All), Face::Down);
     }
 
@@ -697,12 +697,22 @@ mod tests {
 
     #[test]
     fn opposite_faces_are_across_the_block() {
+        let pairs = [
+            (Face::Down, Face::Up),
+            (Face::North, Face::South),
+            (Face::West, Face::East),
+        ];
+        for (first, second) in pairs {
+            assert_eq!(first.opposite(), second);
+            assert_eq!(second.opposite(), first);
+            assert_eq!(symmetric_face(first, Symmetry::Opposite), first);
+            assert_eq!(symmetric_face(second, Symmetry::Opposite), first);
+        }
         for face in Face::ALL {
             let opposite = face.opposite();
             assert_ne!(face, opposite, "{face:?}");
             assert_eq!(opposite.opposite(), face, "{face:?}");
             assert_eq!(opposite.normal(), neg(face.normal()), "{face:?}");
-            assert_eq!(symmetric_face(face, Symmetry::Opposite), opposite);
         }
     }
 
