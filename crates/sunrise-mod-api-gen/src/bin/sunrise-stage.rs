@@ -99,13 +99,14 @@ fn read_surface(path: &std::path::Path) -> Surface {
 
 /// `surface-read IN OUT`: IN as this tool reads it, written to OUT (the fields and collections it
 /// doesn't know left out). Refuses a document it can't read, or whose stored hashes are not the
-/// ones it gives their contracts ([`Surface::unsealed`]).
+/// ones it gives their contracts ([`Surface::read_sealed`]).
 fn surface_read(args: &[PathBuf]) -> ! {
     let [input, out] = args else {
         fail("usage: sunrise-stage surface-read IN OUT")
     };
-    let surface = read_surface(input);
-    let unsealed = surface.unsealed();
+    let bytes = std::fs::read(input).unwrap_or_else(|e| fail(format!("{}: {e}", input.display())));
+    let (surface, unsealed) =
+        Surface::read_sealed(&bytes).unwrap_or_else(|e| fail(format!("{}: {e}", input.display())));
     if !unsealed.is_empty() {
         fail(format!(
             "{}: these hashes are not what their contracts give: {}",

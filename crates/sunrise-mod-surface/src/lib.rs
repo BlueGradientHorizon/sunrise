@@ -595,9 +595,8 @@ impl Surface {
         digest(&text)
     }
 
-    /// The ids whose stored hash is not the one this reader's constructors give their contract,
-    /// `surface` for the document's own: a hook's argument records are compared whole with the
-    /// ones its contract gives. A newer writer that hashes contract fields this reader doesn't
+    /// The ids whose stored hash is not the one this reader's constructors give their contract: a
+    /// hook's argument records are compared whole with the ones its contract gives. A newer writer that hashes contract fields this reader doesn't
     /// know fails here too, so a release judged by an older tool keeps that tool's hashes.
     /// (`fields_hash` is outside: it also covers fields no record lists.)
     pub fn unsealed(&self) -> Vec<String> {
@@ -729,11 +728,26 @@ impl Surface {
                 (e.id.as_str(), e.hash.as_str(), hash)
             }),
         );
-        sealed(
-            &mut out,
-            [("surface", self.hash.as_str(), self.document_hash())],
-        );
         out
+    }
+
+    /// [`Self::read`], and the ids it finds unsealed: [`Self::unsealed`]'s records, and `surface`
+    /// when the document's own hash is not [`Self::document_hash`]. That one is checked only when
+    /// the document holds no list this reader doesn't know, since a newer writer's collection may
+    /// count toward it.
+    pub fn read_sealed(bytes: &[u8]) -> Result<(Self, Vec<String>), ReadError> {
+        let surface = Self::read(bytes)?;
+        let mut unsealed = surface.unsealed();
+        let raw: BTreeMap<String, serde_json::Value> =
+            serde_json::from_slice(bytes).map_err(|e| ReadError::Json(e.to_string()))?;
+        let known = serde_json::to_value(&surface).expect("a surface serializes");
+        let unknown_list = raw.iter().any(|(key, value)| {
+            value.is_array() && key != "engine_items" && known.get(key).is_none()
+        });
+        if !unknown_list && surface.hash != surface.document_hash() {
+            unsealed.push("surface".to_owned());
+        }
+        Ok((surface, unsealed))
     }
 
     /// The identifiers a mod's source may contain for each id: its [`leaf`], and a capability

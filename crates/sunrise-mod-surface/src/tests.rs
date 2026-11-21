@@ -608,7 +608,6 @@ fn a_stored_hash_its_contract_does_not_give_is_unsealed() {
     changed.traits[0].contract.side = Side::Server;
     changed.traits[0].methods[0].contract.signature = "fn a(&mut self)".into();
     changed.hooks[0].contract.arguments[0].ty = "u8".into();
-    changed.hash = "0".repeat(32);
     assert_eq!(
         changed.unsealed(),
         [
@@ -617,7 +616,27 @@ fn a_stored_hash_its_contract_does_not_give_is_unsealed() {
             &changed.traits[0].methods[0].id,
             &changed.functions[0].id,
             "type:Block.state",
-            "surface",
         ]
     );
+}
+
+#[test]
+fn the_document_hash_is_checked_unless_a_newer_writers_list_may_count_toward_it() {
+    let mut surface = sample();
+    surface.hash = surface.document_hash();
+    let read = |value: &serde_json::Value| {
+        Surface::read_sealed(value.to_string().as_bytes())
+            .unwrap()
+            .1
+    };
+    let mut value = serde_json::to_value(&surface).unwrap();
+    assert!(read(&value).is_empty());
+    value["hash"] = "0".repeat(32).into();
+    assert_eq!(read(&value), ["surface"]);
+    // A newer writer's collection, counted in its document hash: this reader can't recompute it.
+    value["later"] = serde_json::json!([{"id": "later:x", "hash": "h"}]);
+    assert!(read(&value).is_empty());
+    // A field it doesn't know is no list of records: the hash is checked still.
+    value["later"] = serde_json::json!("note");
+    assert_eq!(read(&value), ["surface"]);
 }
