@@ -170,6 +170,6 @@ fn a_change_of_level_and_a_respawn_clear_a_guests_exclusions() {
     hub.guests
         .update(0, |g| g.collision_exclusions.set(&OPENING))
         .unwrap();
-    hub.respawn(0, [0.5, 64.0, 0.5], None, &ctx);
+    hub.respawn(0, [0.5, 64.0, 0.5], None, false, &ctx);
     assert_eq!(boxes(&hub), 0, "a respawn");
 }

@@ -97,6 +97,20 @@ impl OpenTransactions {
         self.levels.iter().map(|level| level.token).collect()
     }
 
+    /// Move checkpoints off the UUID before that UUID starts naming a new attachment owner.
+    pub(super) fn take_original_attachment_journal(
+        &mut self,
+        uuid: u128,
+    ) -> Vec<(u64, Attachments)> {
+        self.levels
+            .iter_mut()
+            .filter_map(|level| {
+                let kept = level.attachments.remove(&Holder::Player(uuid))?;
+                Some((level.token, kept.contents))
+            })
+            .collect()
+    }
+
     pub(super) fn push_retained_original(
         &mut self,
         slot: std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>,
@@ -1178,11 +1192,14 @@ impl Game<'_> {
         } else {
             None
         };
+        // The fresh player will publish at placement, not on a clone callback's first write.
+        // An outer abort after placement must restore contents without retiring that publication.
+        let cloning = matches!(holder, Holder::Player(uuid) if self.player_state.cloning_players.contains(&uuid));
         let Ok(kept) = self
             .attachment_slot(holder, mod_api::AttachmentAccess::Existing)
             .map(|map| KeptAttachments {
                 contents: map.clone(),
-                indexed: entity_bound.unwrap_or_else(|| map.has_index_binding()),
+                indexed: cloning || entity_bound.unwrap_or_else(|| map.has_index_binding()),
             })
         else {
             return;

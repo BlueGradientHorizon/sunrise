@@ -159,6 +159,12 @@ impl Game<'_> {
             return;
         }
         let areas = self.streaming.extra.len();
+        let dim = self.dim;
+        self.streaming.extra.extend(
+            self.server_trips
+                .iter()
+                .flat_map(|trip| trip.clone_destination_areas(dim)),
+        );
         let waiting = std::mem::take(&mut self.spawn_wait);
         self.streaming
             .extra

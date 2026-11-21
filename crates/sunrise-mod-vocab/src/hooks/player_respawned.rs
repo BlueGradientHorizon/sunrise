@@ -7,18 +7,16 @@ pub trait Hooks {
     /// spawn's free column. `original_level` and `original_position` are that
     /// point; `missing_respawn_block` says the bed or anchor was gone, so the
     /// player came back at the world spawn. Change `level`, `position`, `yaw`
-    /// and `pitch` to send them elsewhere: within the level a teleport, into
-    /// another level a level change. `copy_original_spawn_position` (default:
-    /// the block wasn't missing) says whether they keep their respawn point for
-    /// next time. Sunrise places the player first and finds the point once its
-    /// chunks have loaded, so this fires then, before `player_respawned` only
-    /// when no chunks had to load. Not for the End exit, which isn't a respawn
-    /// here (as for `player_respawned`). Server-side.
+    /// and `pitch` to choose their final destination; no preliminary placement is made.
+    /// `copy_original_spawn_position` (default: the block wasn't missing) says whether
+    /// they keep their respawn point. Runs on the original player before `player_clone`
+    /// and placement, on death respawn and the respawn after the End credits. Server-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_respawn_position",
         dispatch = "api_carrier",
         side = "server",
         contract = "listen",
+        version = 2,
         neoforge = "PlayerRespawnPositionEvent"
     )]
     fn player_respawn_position(

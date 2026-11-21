@@ -14,10 +14,10 @@ pub trait Hooks {
     /// so aborts roll back both holders), `with_inventory` over the 43-slot
     /// vanilla inventory, `persistent_data`, health, experience, active
     /// effects, position, source dimension and source level. `player` is the
-    /// replacement's UUID, already assigned its destination level/dimension
-    /// before placement. Heard after old-player cleanup (carried drop, menu
-    /// close) and attachment/data copy and before placement on a server,
-    /// without swapping a player's state in. Not cancellable.
+    /// replacement's UUID, already assigned its final level, including any
+    /// `player_respawn_position` redirect. Heard after removal of the old
+    /// player's menus and after the data copy, before placement or bulk
+    /// attachment publication. Old bulk tokens are stale. Not cancellable.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_clone",
         dispatch = "flat",

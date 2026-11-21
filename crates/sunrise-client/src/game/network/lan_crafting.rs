@@ -25,12 +25,20 @@ use sunrise_client::{
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-/// `AbstractContainerMenu.dropOrPlaceInInventory`: actual network disconnects
-/// drop inputs; a live close still returns them to the inventory.
+/// `AbstractContainerMenu.dropOrPlaceInInventory`: killed or disconnected players
+/// drop inputs, while a live close or a dimension change returns them.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum MenuRemoval {
     Live,
+    ChangedDimension,
+    Killed,
     Disconnected,
+}
+
+impl MenuRemoval {
+    pub(super) fn drops_items(self) -> bool {
+        matches!(self, Self::Killed | Self::Disconnected)
+    }
 }
 
 /// The guest's menus the game runs: kept between clicks, so a drag (quick
@@ -1805,7 +1813,7 @@ impl Game<'_> {
         closed
     }
 
-    /// Remove only input slots; disconnected players drop their inputs.
+    /// Remove only input slots; killed and disconnected players drop their inputs.
     pub(super) fn lan_crafting_removed(
         &mut self,
         conn: u32,
@@ -1835,9 +1843,10 @@ impl Game<'_> {
             }
         };
         if !grid.is_empty() {
-            match removal {
-                MenuRemoval::Live => self.lan_place_back(gi, grid),
-                MenuRemoval::Disconnected => self.drop_guest_items(gi, grid),
+            if removal.drops_items() {
+                self.drop_guest_items(gi, grid);
+            } else {
+                self.lan_place_back(gi, grid);
             }
         }
         true

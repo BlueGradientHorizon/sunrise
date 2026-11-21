@@ -602,7 +602,18 @@ impl Game<'_> {
     /// The guest closed the trading window (or it is closed for them):
     /// MerchantMenu.removed, then the villager gets its state back.
     pub(super) fn lan_merchant_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
-        if !self.lan_merchant_op(conn, window, false, |menu, env| menu.merchant_close(env)) {
+        self.lan_merchant_removed(conn, window, super::lan_crafting::MenuRemoval::Live)
+    }
+
+    pub(super) fn lan_merchant_removed(
+        &mut self,
+        conn: u32,
+        window: Option<i32>,
+        removal: super::lan_crafting::MenuRemoval,
+    ) -> bool {
+        if !self.lan_merchant_op(conn, window, false, |menu, env| {
+            menu.merchant_removed(env, removal != super::lan_crafting::MenuRemoval::Live);
+        }) {
             return false;
         }
         let Some(mut gm) = self

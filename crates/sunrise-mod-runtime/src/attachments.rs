@@ -329,6 +329,9 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         form: AttachmentForm,
     ) -> Result<(), AttachmentError> {
         AttachmentHost::validate_attachment(self, namespace, name, form.policy.sync)?;
+        if form.policy.copy_on_death && form.encoded.is_none() {
+            return Err(AttachmentError::InvalidCopyPolicy);
+        }
         let AttachmentForm {
             encoded,
             policy,
@@ -866,12 +869,11 @@ impl Attachments {
         registration
     }
 
-    /// Replace content (including saved data and queued sync) without detaching the
-    /// current live registration, returning the detached previous contents. Any
-    /// binding on `replacement` is discarded, not retired. Unchanged entries keep
-    /// their index slots and shared row backing.
+    /// Restore content (including saved data and queued sync) without detaching the
+    /// current live registration. Any binding on `replacement` is discarded, not
+    /// retired. Unchanged entries keep their index slots and shared row backing.
     #[doc(hidden)]
-    pub fn swap_contents(&mut self, mut replacement: Self) -> Self {
+    pub fn replace_contents(&mut self, mut replacement: Self) {
         replacement.registration = self.registration.take();
         let previous = std::mem::replace(self, replacement);
         if let Some(registration) = &self.registration {
@@ -887,15 +889,6 @@ impl Attachments {
                 .collect();
             registration.publisher.publish(&changes);
         }
-        previous
-    }
-
-    /// Restore content (including saved data and queued sync) without detaching the
-    /// current live registration. Any binding on `replacement` is discarded, not
-    /// retired. Unchanged entries keep their index slots and shared row backing.
-    #[doc(hidden)]
-    pub fn replace_contents(&mut self, replacement: Self) {
-        let _ = self.swap_contents(replacement);
     }
 
     // All canonical entry mutations publish the same Arc the map keeps. Retain the
@@ -988,7 +981,7 @@ impl Attachments {
     /// (End credits return), every serializable entry is copied. Codec-less entries
     /// are never copied, and copied entries start encoded rather than sharing decoded
     /// `Arc` bindings with the source map.
-    pub fn copy_for_clone(&self, is_death: bool) -> Result<Self, AttachmentError> {
+    pub fn copy_for_clone(&self, is_death: bool) -> Self {
         let mut copy = Self::default();
         for (key, entry) in &self.entries {
             let encoded = match &entry.state {
@@ -998,9 +991,9 @@ impl Attachments {
                 {
                     Some(saved.clone())
                 }
-                Entry::Decoded(value) if !is_death => envelope(value),
-                Entry::Decoded(value) if value.policy.copy_on_death => {
-                    Some(envelope(value).ok_or(AttachmentError::InvalidCopyPolicy)?)
+                Entry::Decoded(value) if !is_death || value.policy.copy_on_death => {
+                    // AttachmentStore requires an encoding for every copy-on-death value.
+                    envelope(value)
                 }
                 _ => None,
             };
@@ -1009,11 +1002,11 @@ impl Attachments {
                     .insert(key.clone(), Arc::new(AttachmentEntry::raw(encoded)));
             }
         }
-        Ok(copy)
+        copy
     }
     /// Copy opted-in values through their disk encoding for a player respawn.
     pub fn copy_on_death(&self) -> Result<Self, AttachmentError> {
-        self.copy_for_clone(true)
+        Ok(self.copy_for_clone(true))
     }
     /// The shared immutable binding, without decoding or inserting a value.
     #[doc(hidden)]
@@ -1913,7 +1906,7 @@ mod tests {
         KEEP_ON_DEATH.set(&mut source, Holder::Level, 22).unwrap();
         UNSERIALIZED.set(&mut source, Holder::Level, 33).unwrap();
 
-        let mut end_copy = source.copy_for_clone(false).unwrap();
+        let mut end_copy = source.copy_for_clone(false);
         assert_eq!(UNSERIALIZED.has(&mut end_copy, Holder::Level), Ok(false));
         assert!(end_copy.decoded("test", "counter").unwrap().is_none());
         assert!(end_copy.decoded("test", "keep_on_death").unwrap().is_none());
@@ -1930,7 +1923,7 @@ mod tests {
         let copy_arc = end_copy.decoded("test", "counter").unwrap().unwrap();
         assert!(!Arc::ptr_eq(&src_arc, &copy_arc));
 
-        let mut death_copy = source.copy_for_clone(true).unwrap();
+        let mut death_copy = source.copy_for_clone(true);
         assert_eq!(UNSERIALIZED.has(&mut death_copy, Holder::Level), Ok(false));
         assert_eq!(COUNTER.has(&mut death_copy, Holder::Level), Ok(false));
         assert!(
@@ -1945,65 +1938,28 @@ mod tests {
         );
     }
     #[test]
-    fn swap_contents_returns_detached_previous_map_with_normal_host_operations() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static DECODES: AtomicUsize = AtomicUsize::new(0);
-        let counting = AttachmentType {
-            namespace: "test",
-            name: "counter",
-            default: || 0,
-            codec: Some(AttachmentCodec {
-                encode,
-                decode: |saved| {
-                    DECODES.fetch_add(1, Ordering::Relaxed);
-                    decode(saved)
-                },
-            }),
-            copy_on_death: false,
-            sync: false,
+    fn store_refuses_copy_on_death_without_encoding() {
+        let mut map = Attachments::default();
+        let form = AttachmentForm {
+            encoded: None,
+            policy: AttachmentPolicy {
+                copy_on_death: true,
+                sync: false,
+            },
+            write: AttachmentWrite::Set,
         };
-        let mut seed = Attachments::default();
-        COUNTER.set(&mut seed, Holder::Level, 42).unwrap();
-        let mut live = Attachments::from_nbt(seed.to_nbt());
-        let index = Arc::new(Mutex::new(index::AttachmentIndex::default()));
-        live.bind_index(&index, 1);
-
-        let mut replacement = Attachments::default();
-        COUNTER.set(&mut replacement, Holder::Level, 100).unwrap();
-        let mut previous = live.swap_contents(replacement);
-
-        assert!(!previous.has_index_binding());
-        assert!(live.has_index_binding());
-        assert_eq!(indexed_values(&index, &COUNTER), [(1, 100)]);
-        assert!(rows(&index, &SYNCED).is_empty());
-
-        let holder = Holder::Player(1);
-        assert!(previous.decoded("test", "counter").unwrap().is_none());
-        assert_eq!(counting.get_existing(&mut previous, holder), Ok(Some(42)));
-        assert_eq!(counting.get_existing(&mut previous, holder), Ok(Some(42)));
-        assert_eq!(DECODES.load(Ordering::Relaxed), 1);
-        assert!(previous.decoded("test", "counter").unwrap().is_some());
-
-        assert_eq!(SYNCED.has(&mut previous, holder), Ok(false));
-        assert_eq!(SYNCED.get(&mut previous, holder), Ok(7));
-        assert_eq!(SYNCED.has(&mut previous, holder), Ok(true));
-        assert_eq!(SYNCED.get_existing(&mut previous, holder), Ok(Some(7)));
-
-        COUNTER.set(&mut previous, holder, 55).unwrap();
-        assert_eq!(COUNTER.get_existing(&mut previous, holder), Ok(Some(55)));
-
-        assert_eq!(COUNTER.remove(&mut previous, holder), Ok(Some(55)));
-        assert_eq!(COUNTER.has(&mut previous, holder), Ok(false));
-        assert_eq!(SYNCED.remove(&mut previous, holder), Ok(Some(7)));
-        assert_eq!(SYNCED.has(&mut previous, holder), Ok(false));
-
-        assert_eq!(indexed_values(&index, &COUNTER), [(1, 100)]);
-        assert!(rows(&index, &SYNCED).is_empty());
-        assert_eq!(COUNTER.get_existing(&mut live, holder), Ok(Some(100)));
-        assert_eq!(SYNCED.has(&mut live, holder), Ok(false));
-
-        COUNTER.set(&mut live, holder, 101).unwrap();
-        assert_eq!(indexed_values(&index, &COUNTER), [(1, 101)]);
+        assert_eq!(
+            AttachmentStore::store(
+                &mut map,
+                Holder::Level,
+                "test",
+                "invalid",
+                Arc::new(10_i32),
+                form
+            ),
+            Err(AttachmentError::InvalidCopyPolicy),
+        );
+        assert!(map.entry("test", "invalid").unwrap().is_none());
     }
 
     #[test]

@@ -433,7 +433,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_dimension_change_ejects_a_mob_riding_the_player() {
         ejected(|game, conn| {
-            game.start_server_trip(conn, super::super::Dim::Nether, None, false);
+            game.start_server_trip(conn, super::super::Dim::Nether, None);
         });
     }
 

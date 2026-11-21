@@ -3018,14 +3018,23 @@ impl Menu {
     /// `MerchantMenu.removed` for a living player: the payment goes back to
     /// the inventory (`placeItemBackInInventory`), or is dropped.
     pub fn merchant_close(&mut self, env: &Env) {
+        self.merchant_removed(env, false);
+    }
+
+    /// MerchantMenu.removed: payment drops when the player has already been removed.
+    /// The caller handles the removed player's cursor through AbstractContainerMenu.removed.
+    pub fn merchant_removed(&mut self, env: &Env, drop_payment: bool) {
         self.touch();
-        // AbstractContainerMenu.removed: the carried stack first.
         if let Some(mut carried) = self.state.carried.take() {
             self.place_back(env, &mut carried);
         }
         for slot in [0usize, 1] {
             if let Some(mut stack) = self.state.containers[MAIN][slot].take() {
-                self.place_back(env, &mut stack);
+                if drop_payment {
+                    self.dropped.push(stack);
+                } else {
+                    self.place_back(env, &mut stack);
+                }
             }
         }
     }

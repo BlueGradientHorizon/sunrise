@@ -184,7 +184,10 @@ saved entry once without inserting a default), `with_decoded_attachment`, `set_a
 and `remove_attachment` follow normal attachment-holder semantics on the retained old player
 without touching the replacement, and participate in `host.transaction` so an aborted
 transaction rolls back writes, removals, default insertions and decode caching on both
-holders together.
+holders together. The replacement is already assigned its final respawn level, including
+any `player_respawn_position` redirect. It has not been placed or published in the bulk
+attachment index yet. Requery after placement: a bulk write token for the old player is
+stale even though the replacement reuses that player's UUID.
 
 The same `OriginalPlayer<'_>` view exposes `uuid`, `position`, `dimension`, `level`,
 `health`, `experience`, `effects`, `persistent_data`, and `with_inventory` for the pre-copy

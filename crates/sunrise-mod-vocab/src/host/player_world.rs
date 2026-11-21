@@ -85,8 +85,8 @@ pub trait PlayerWorldBackendMut {
     /// Respawns a dead player as their client's Respawn button does
     /// (`ServerGamePacketListenerImpl.handleClientCommand`'s `PERFORM_RESPAWN`, then
     /// `PlayerList.respawn`): at their respawn point, else the world spawn, with
-    /// `player_respawned` heard. It is a call for outside every player's hook, and it
-    /// returns once the player is alive again. Each refusal changes nothing and is named by
+    /// `player_respawned` heard. Call outside any player's hook. A successful request may
+    /// wait for the destination chunks before the player is alive again. Each refusal is named by
     /// `RespawnRefusal`, checked in this order: `Client`, `InPlayerHook` (a player's state is
     /// swapped in; call it from `server_tick`), `Stale` (no player on this server behind the
     /// handle), `NoConnection` (a fake player, or the world's own player in a single-player

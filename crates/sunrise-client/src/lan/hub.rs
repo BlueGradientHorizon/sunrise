@@ -4856,7 +4856,14 @@ impl Hub {
     /// start" event and the chunk under the player, so the packets follow vanilla's order.
     /// `rotation` is the facing a mod's `player_respawn_position` chose; none
     /// is the level's respawn direction.
-    pub fn respawn(&mut self, i: usize, at: [f64; 3], rotation: Option<[f32; 2]>, ctx: &TickCtx) {
+    pub fn respawn(
+        &mut self,
+        i: usize,
+        at: [f64; 3],
+        rotation: Option<[f32; 2]>,
+        keep_attributes: bool,
+        ctx: &TickCtx,
+    ) {
         let info = self.spawn_info(i, 0, ctx.sea_level);
         self.close_container_for(i);
         let id = self.guests.update(i, |g| {
@@ -4898,11 +4905,9 @@ impl Hub {
             g.place(at);
             g.send(&C::Respawn(play::Respawn {
                 spawn: info,
-                keep: 0,
+                keep: i8::from(keep_attributes),
             }));
-            // The respawned player is a new one, without effects; so is the
-            // client's (ClientPacketListener.handleRespawn).
-            g.effects = Default::default();
+            // The client's new body needs the full replacement effect state.
             g.sent_effects.clear();
             g.center = None;
             g.sent_chunks.clear();
@@ -4929,6 +4934,7 @@ impl Hub {
             g.post_effects_dirty = false;
             g.send(&C::PostEffects(play::PostEffects { effects: list }));
         });
+        self.send_active_effects(i);
         self.send_level_info(i, ctx, true);
         self.send_permission_level(i);
         // ServerLevel.addRespawnedPlayer: the chunk tracking starts again at the player.
@@ -5004,23 +5010,6 @@ impl Hub {
         ctx: &TickCtx,
     ) {
         let left = self.guests[i].dimension.clone();
-        self.change_level_from(i, &left, at, yaw, pitch, portal, portal_cooldown, ctx);
-    }
-
-    /// Like [`Self::change_level`], with the departed dimension passed explicitly when the
-    /// replacement player's dimension was already updated before placement (End credits return).
-    #[allow(clippy::too_many_arguments)]
-    pub fn change_level_from(
-        &mut self,
-        i: usize,
-        left: &str,
-        at: [f64; 3],
-        yaw: f32,
-        pitch: Option<f32>,
-        portal: bool,
-        portal_cooldown: i32,
-        ctx: &TickCtx,
-    ) {
         let info = self.spawn_info(i, portal_cooldown, ctx.sea_level);
         self.close_container_for(i);
         self.before_travel(i);
@@ -5046,7 +5035,7 @@ impl Hub {
             }));
         });
         // Its chunks, queues and entities left behind, or kept as a viewed level (#3716).
-        self.leave_level(i, left);
+        self.leave_level(i, &left);
         self.guests[i].send(&C::ChangeDifficulty(play::ChangeDifficulty {
             difficulty: ctx.difficulty,
             locked: ctx.difficulty_locked,
@@ -5531,7 +5520,7 @@ mod tests {
         hub.guests.update(0, |g| g.sneaking = true);
         hub.sync_player_state(0);
         drain(&rx);
-        hub.respawn(0, [0.5, 64.0, 0.5], Some([0.0; 2]), &ctx);
+        hub.respawn(0, [0.5, 64.0, 0.5], Some([0.0; 2]), false, &ctx);
         assert_eq!(drain(&rx).1, [0]);
         assert_eq!(hub.guests[0].sent_pose, Pose::Standing);
         hub.sync_player_state(0);
@@ -6277,7 +6266,7 @@ mod tests {
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
         open(&mut hub);
-        hub.respawn(0, [0.5, 64.0, 0.5], None, &ctx);
+        hub.respawn(0, [0.5, 64.0, 0.5], None, false, &ctx);
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
     }

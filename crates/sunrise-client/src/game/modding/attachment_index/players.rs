@@ -24,6 +24,15 @@ impl Game<'_> {
         }
         let dim = Dim::from_id(&guest.dimension);
         let uuid = guest.uuid;
+        if self.player_state.cloning_players.contains(&uuid)
+            || self
+                .lan
+                .as_ref()
+                .and_then(|host| host.play.get(&conn))
+                .is_some_and(|play| play.won_game)
+        {
+            return;
+        }
         let holder = AttachmentHolder::Player(mod_api::__private::game::player_ref(
             EntityRef::new(epoch, guest.entity_id as u32),
             uuid,

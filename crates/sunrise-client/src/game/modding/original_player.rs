@@ -33,8 +33,9 @@ impl OriginalAttachmentSlot {
         }
     }
 
-    fn set_active_frames(&mut self, frames: Vec<u64>) {
+    fn inherit_journal(&mut self, frames: Vec<u64>, journal: Vec<(u64, Attachments)>) {
         self.active_frames = frames;
+        self.journal = journal;
     }
 
     pub(in crate::game) fn open_frame(&mut self, token: u64) {
@@ -234,6 +235,19 @@ impl OriginalPlayerAccess for RetainedOriginalPlayer {
 }
 
 impl Game<'_> {
+    /// Retire the old player's bulk rows and stop watching its source chunks before cloning.
+    pub(super) fn retire_cloning_player(&mut self, conn: u32) {
+        if let Some(host) = self.lan.as_mut()
+            && let Some(i) = host.hub.guests.connection_index(conn)
+        {
+            host.hub.unwatch_guest_chunks(i);
+            if let Some(map) = host.hub.guests.attachments_mut(conn) {
+                map.retire();
+                map.unbind_index();
+            }
+        }
+    }
+
     /// Common `ServerPlayer.restoreFrom` boundary for death respawn (`was_death = true`)
     /// and End credits return (`was_death = false`).
     ///
@@ -249,6 +263,7 @@ impl Game<'_> {
         destination: Dim,
         was_death: bool,
         restore_replacement: impl FnOnce(&mut sunrise_client::lan::guest::Guest),
+        after_clone: impl FnOnce(&mut Self),
     ) -> bool {
         let Some((i, uuid, name)) = self.lan.as_ref().and_then(|host| {
             let i = host.hub.guests.iter().position(|g| g.conn == conn)?;
@@ -257,36 +272,58 @@ impl Game<'_> {
         }) else {
             return false;
         };
-        if let Some(host) = self.lan.as_mut() {
-            host.hub.unwatch_guest_chunks(i);
-        }
-        // NeoForge `AttachmentInternals.copyEntityAttachments`: copy serializable entries
-        // (`copy_on_death` only on death, all serializable entries on End return) into a fresh
-        // encoded map on the replacement even when no mod listens to `player_clone`.
-        let previous = self
+        self.retire_cloning_player(conn);
+        let Some(map) = self
             .lan
             .as_mut()
             .and_then(|host| host.hub.guests.attachments_mut(conn))
-            .and_then(|attachments| {
-                attachments
-                    .copy_for_clone(was_death)
-                    .ok()
-                    .map(|copy| attachments.swap_contents(copy))
-            });
-        let original = previous.and_then(|prev| self.retain_original_player(conn, prev));
+        else {
+            return false;
+        };
+        let previous = std::mem::take(&mut **map);
+        let original_journal = self.transactions.take_original_attachment_journal(uuid);
+        let replacement = previous.copy_for_clone(was_death);
+        let mut original = self.retain_original_player(conn, previous);
         // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
         self.keep_only_player_persisted(conn);
-        if let Some(host) = self.lan.as_mut()
-            && let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn)
-        {
+        if let Some(host) = self.lan.as_mut() {
             host.hub.guests.update(i, |g| {
                 g.dimension = destination.id().to_owned();
                 restore_replacement(g);
             });
+            if let Some(map) = host.hub.guests.attachments_mut(conn) {
+                **map = replacement;
+            }
         }
-        self.reinitialize_server_player(uuid, conn);
-        if let Some(original) = original {
-            self.dispatch_player_clone_with_original(original, uuid, &name, was_death);
+        if let Some(original) = &mut original {
+            original
+                .attachments
+                .slot
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .inherit_journal(self.transactions.open_tokens(), original_journal);
+            self.transactions
+                .push_retained_original(Arc::clone(&original.attachments.slot));
+        }
+        self.player_state.cloning_players.push(uuid);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.reinitialize_server_player(uuid, conn);
+            if let Some(original) = &mut original {
+                self.native_player_clone(
+                    uuid,
+                    &name,
+                    was_death,
+                    mod_api::OriginalPlayer::new(original),
+                );
+            }
+            after_clone(self);
+        }));
+        self.player_state.cloning_players.pop();
+        if original.is_some() {
+            self.transactions.pop_retained_original();
+        }
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
         }
         true
     }
@@ -328,40 +365,6 @@ impl Game<'_> {
             .cloned(),
             attachments: RetainedOriginalAttachments::new(detached_attachments),
         })
-    }
-
-    /// Dispatch `player_clone`, keeping `player` resolvable before placement and dropping
-    /// `original` immediately when the hook ends or unwinds.
-    pub(in crate::game) fn dispatch_player_clone_with_original(
-        &mut self,
-        mut original: RetainedOriginalPlayer,
-        player: u128,
-        name: &str,
-        was_death: bool,
-    ) {
-        let open_tokens = self.transactions.open_tokens();
-        original
-            .attachments
-            .slot
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .set_active_frames(open_tokens);
-        self.transactions
-            .push_retained_original(Arc::clone(&original.attachments.slot));
-        self.player_state.cloning_players.push(player);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.native_player_clone(
-                player,
-                name,
-                was_death,
-                mod_api::OriginalPlayer::new(&mut original),
-            );
-        }));
-        self.player_state.cloning_players.pop();
-        self.transactions.pop_retained_original();
-        if let Err(panic) = result {
-            std::panic::resume_unwind(panic);
-        }
     }
 }
 
@@ -632,6 +635,7 @@ mod tests {
                 host.hub.guests.update(0, |guest| {
                     guest.dimension = dimension.id().to_owned();
                     guest.position = [7.0, 64.0, -9.0];
+                    guest.spawn = Some([3.5, 64.0, 5.5]);
                     guest.dead = death;
                     guest.health = if death { 0.0 } else { 13.0 };
                     guest.xp_level = 7;
@@ -722,10 +726,16 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn death_clone_sees_menu_close_inventory_and_filters_close_listener_attachments() {
+    fn clone_removes_menus_and_retires_old_attachment_owner_before_copy() {
+        use mod_api::{AttachmentHolder, AttachmentRowError, AttachmentWriteToken};
+        use sunrise_mod_runtime::attachments::index::AttachmentIndex;
+        type OldIndex = Arc<Mutex<AttachmentIndex<AttachmentHolder>>>;
+
         struct CloseAndClone {
+            death: bool,
             closed: Arc<Mutex<usize>>,
             cloned: Arc<Mutex<usize>>,
+            source: Arc<Mutex<Option<(OldIndex, AttachmentWriteToken)>>>,
         }
 
         #[mod_api::__subscriptions]
@@ -750,62 +760,280 @@ mod tests {
             }
 
             fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
+                assert_eq!(event.was_death, self.death);
                 assert_eq!(*self.closed.lock().unwrap(), 1);
-                // Crafting inputs returned by menu close appear on the retained original's inventory.
-                let returned_count = event
+                let expected = if self.death { 0 } else { 10 };
+                let count = event
                     .original
                     .with_inventory(|inv| inv.iter().map(|(_, stack)| stack.count()).sum::<u32>());
-                assert_eq!(returned_count, 3);
-                // Attachments written during menu close belong to the old player and are filtered
-                // by copy_on_death before reaching the replacement.
+                assert_eq!(count, expected);
+                let replacement = host.player(event.player).unwrap();
+                assert_eq!(
+                    replacement.with_inventory(host, |inv| inv
+                        .iter()
+                        .map(|(_, s)| s.count())
+                        .sum::<u32>()),
+                    Some(expected)
+                );
+
                 assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(55)));
                 assert_eq!(event.original.existing_attachment(&SAVED), Ok(Some(66)));
                 assert_eq!(event.original.existing_attachment(&RETAINED), Ok(Some(77)));
                 assert_eq!(VALUE.has(host, Holder::Player(event.player)), Ok(false));
-                assert_eq!(SAVED.has(host, Holder::Player(event.player)), Ok(false));
+                assert_eq!(
+                    SAVED.has(host, Holder::Player(event.player)),
+                    Ok(!self.death)
+                );
                 assert_eq!(RETAINED.get(host, Holder::Player(event.player)), Ok(77));
+                VALUE.set(host, Holder::Player(event.player), 999).unwrap();
+                let source = self.source.lock().unwrap();
+                let (source_index, old_token) = source.as_ref().unwrap();
+                assert_eq!(
+                    host.attachment_validate_write(old_token.clone()),
+                    Err(AttachmentRowError::StaleHolder)
+                );
+                assert!(
+                    source_index
+                        .lock()
+                        .unwrap()
+                        .snapshot_named("clone", "retained")
+                        .is_empty()
+                );
+                let batch = host.attachment_query("clone", "unsaved").unwrap();
+                assert_eq!(
+                    batch.query(&VALUE).unwrap().iter().count(),
+                    0,
+                    "clone writes are unpublished until placement"
+                );
                 *self.cloned.lock().unwrap() += 1;
             }
         }
 
         crate::game::native_entity_refs::tests::run_with_game_stack(|| {
-            let closed = Arc::new(Mutex::new(0));
-            let cloned = Arc::new(Mutex::new(0));
-            let mods = vec![mod_api::ModEntry::new(
-                "clone",
-                Box::new(CloseAndClone {
-                    closed: closed.clone(),
-                    cloned: cloned.clone(),
-                }),
-            )]
-            .into();
-            mod_platform::testing::with_mods(mods, || {
-                with_guests(|game| {
-                    game.options.dedicated = Some(Vec::new());
-                    game.lan_open_crafting(12, [0, 64, 0]);
-                    {
+            for death in [true, false] {
+                let closed = Arc::new(Mutex::new(0));
+                let cloned = Arc::new(Mutex::new(0));
+                let source = Arc::new(Mutex::new(None));
+                let mods = vec![mod_api::ModEntry::new(
+                    "clone",
+                    Box::new(CloseAndClone {
+                        death,
+                        closed: closed.clone(),
+                        cloned: cloned.clone(),
+                        source: source.clone(),
+                    }),
+                )]
+                .into();
+                mod_platform::testing::with_mods(mods, || {
+                    with_guests(|game| {
+                        game.options.dedicated = Some(Vec::new());
+                        let dim = if death { Dim::Overworld } else { Dim::End };
+                        game.enter_level(dim).unwrap();
+                        game.streaming.insert_remote(
+                            &mut game.world,
+                            sunrise_client::chunk::Chunk::empty(0, 0),
+                        );
+                        if !death {
+                            assert!(
+                                game.set_state_named([0, 64, 0], "minecraft:end_portal", &[])
+                                    .unwrap()
+                            );
+                        }
                         let host = game.lan.as_mut().unwrap();
-                        let table = host
-                            .menus
+                        host.hub.guests.update(0, |guest| {
+                            guest.dimension = dim.id().to_owned();
+                            guest.position = [0.5, 64.0, 0.5];
+                            guest.spawn = Some([3.5, 64.0, 5.5]);
+                            guest.craft_grid[0] = Some(ItemStack::new("minecraft:oak_planks", 5));
+                            guest.dead = death;
+                            guest.health = if death { 0.0 } else { 20.0 };
+                        });
+                        let attachments = host.hub.guests.attachments_mut(12).unwrap();
+                        VALUE.set(attachments, Holder::Level, 19).unwrap();
+                        RETAINED.set(attachments, Holder::Level, 17).unwrap();
+                        game.bind_player_attachments(12, false);
+                        let index = game.attachment_indexes[&dim].clone();
+                        let rows = index.lock().unwrap().snapshot_named("clone", "retained");
+                        let batch: mod_api::AttachmentBatch =
+                            sunrise_mod_runtime::attachments::AttachmentBatch::new(rows).into();
+                        let query = batch.query(&RETAINED).unwrap();
+                        let old = query.iter().next().unwrap().unwrap();
+                        let token = AttachmentWriteToken::from(old.write_token());
+                        assert_eq!(game.attachment_validate_write(token.clone()), Ok(()));
+                        *source.lock().unwrap() = Some((index, token));
+                        game.lan_open_crafting(12, [0, 64, 0]);
+                        let host = game.lan.as_mut().unwrap();
+                        host.menus
                             .get_mut(&12)
                             .unwrap()
                             .crafting
                             .table
                             .as_mut()
-                            .expect("crafting table opened");
-                        table
+                            .unwrap()
                             .2
                             .load_slot(1, Some(ItemStack::new("minecraft:stick", 3)));
                         host.hub.guests.update(0, |guest| {
-                            guest.dead = true;
-                            guest.health = 0.0;
+                            guest.carried = Some(ItemStack::new("minecraft:apple", 2));
                         });
-                    }
-                    game.guest_respawn(12);
-                    assert_eq!(*closed.lock().unwrap(), 1);
-                    assert_eq!(*cloned.lock().unwrap(), 1);
+                        if death {
+                            let txn = game.transaction_open();
+                            game.guest_respawn(12);
+                            let mut drops: Vec<_> = game
+                                .dropped
+                                .iter()
+                                .map(|item| (item.stack.item.to_string(), item.stack.count))
+                                .collect();
+                            drops.sort();
+                            assert_eq!(
+                                drops,
+                                [
+                                    ("minecraft:apple".to_owned(), 2),
+                                    ("minecraft:oak_planks".to_owned(), 5),
+                                    ("minecraft:stick".to_owned(), 3)
+                                ]
+                            );
+                            game.transaction_close(&txn, false);
+                            assert_eq!(
+                                VALUE.has(game, Holder::Player(12)),
+                                Ok(false),
+                                "the old UUID checkpoint must not restore over the replacement"
+                            );
+                            assert_eq!(RETAINED.get(game, Holder::Player(12)), Ok(77));
+                        } else {
+                            game.handle_server_portal(12);
+                            assert!(game.lan.as_ref().unwrap().play[&12].won_game);
+                            assert_eq!(*closed.lock().unwrap(), 1, "menu closes at credits entry");
+                            assert_eq!(*cloned.lock().unwrap(), 0);
+                            let player = game.player(12).unwrap();
+                            player.respawn(game).unwrap();
+                            game.handle_server_portal(12);
+                        }
+                        let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                        assert_eq!(
+                            guest
+                                .inventory
+                                .iter()
+                                .flatten()
+                                .map(|stack| stack.count)
+                                .sum::<u32>(),
+                            if death { 0 } else { 10 }
+                        );
+                        assert_eq!(*closed.lock().unwrap(), 1);
+                        assert_eq!(*cloned.lock().unwrap(), 1);
+                    });
                 });
-            });
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn direct_respawn_clones_in_the_resolved_level_not_the_callers_level() {
+        use sunrise_client::chunk::Chunk;
+        use sunrise_core::dimension::Dimension;
+
+        struct Destination {
+            missing: bool,
+            heard: Arc<Mutex<Vec<String>>>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for Destination {
+            fn player_respawn_position(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut mod_api::PlayerRespawnPositionEvent<'_>,
+            ) {
+                assert_eq!(event.missing_respawn_block, self.missing);
+                assert_eq!(event.original_level, Dimension::Overworld);
+                if self.missing {
+                    *event.level = Dimension::End;
+                    *event.position = [2.5, 90.0, 4.5];
+                }
+            }
+
+            fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
+                assert_eq!(
+                    event.original.level().unwrap().dimension_id(),
+                    Dim::Overworld.id()
+                );
+                self.heard.lock().unwrap().push(
+                    host.player(event.player)
+                        .unwrap()
+                        .level(host)
+                        .unwrap()
+                        .dimension_id()
+                        .to_owned(),
+                );
+            }
+        }
+
+        crate::game::native_entity_refs::tests::run_with_game_stack(|| {
+            for missing in [false, true] {
+                let heard = Arc::new(Mutex::new(Vec::new()));
+                let mods = vec![mod_api::ModEntry::new(
+                    "clone",
+                    Box::new(Destination {
+                        missing,
+                        heard: heard.clone(),
+                    }),
+                )]
+                .into();
+                mod_platform::testing::with_mods(mods, || {
+                    with_guests(|game| {
+                        game.options.dedicated = Some(Vec::new());
+                        game.level.world_spawn = Some([0, 100, 0]);
+                        assert!(game.ui.rules.set_string("respawn_radius", "0"));
+                        if missing {
+                            for x in -2..=2 {
+                                for z in -2..=2 {
+                                    game.streaming
+                                        .insert_remote(&mut game.world, Chunk::empty(x, z));
+                                }
+                            }
+                        }
+                        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                            g.dead = true;
+                            g.health = 0.0;
+                            g.spawn = (!missing).then_some([7.5, 64.0, 5.5]);
+                            g.respawn_elsewhere = missing.then(|| {
+                                (Dim::Nether.id().to_owned(), [0, 100, 0], 0.0, 0.0, false)
+                            });
+                        });
+                        game.enter_level(Dim::End).unwrap();
+                        let player = game.player(12).unwrap();
+                        player.respawn(game).unwrap();
+                        assert_eq!(game.dim, Dim::End, "the caller's tick level is restored");
+                        if missing {
+                            assert!(
+                                heard.lock().unwrap().is_empty(),
+                                "do not clone before checking the Nether point"
+                            );
+                            game.enter_level(Dim::Nether).unwrap();
+                            for x in -2..=2 {
+                                for z in -2..=2 {
+                                    game.streaming
+                                        .insert_remote(&mut game.world, Chunk::empty(x, z));
+                                }
+                            }
+                            game.tick_server_travel();
+                        }
+                        let wanted = if missing { Dim::End } else { Dim::Overworld };
+                        assert_eq!(*heard.lock().unwrap(), [wanted.id().to_owned()]);
+                        let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                        assert_eq!(guest.dimension, wanted.id());
+                        assert_eq!(
+                            guest.position,
+                            if missing {
+                                [2.5, 90.0, 4.5]
+                            } else {
+                                [7.5, 64.0, 5.5]
+                            }
+                        );
+                        assert!(!guest.dead);
+                    })
+                });
+            }
         });
     }
 
@@ -832,6 +1060,7 @@ mod tests {
                     let host = game.lan.as_mut().unwrap();
                     host.hub.guests.update(0, |guest| {
                         guest.dimension = Dim::End.id().to_owned();
+                        guest.spawn = Some([3.5, 64.0, 5.5]);
                     });
                     let attachments = host.hub.guests.attachments_mut(12).unwrap();
                     VALUE.set(attachments, Holder::Level, 73).unwrap();
@@ -955,6 +1184,7 @@ mod tests {
                     host.hub.guests.update(0, |guest| {
                         guest.dead = true;
                         guest.health = 0.0;
+                        guest.spawn = Some([3.5, 64.0, 5.5]);
                     });
                     let attachments = host.hub.guests.attachments_mut(12).unwrap();
                     RETAINED.set(attachments, Holder::Level, 17).unwrap();

@@ -1,8 +1,6 @@
 //! `player_respawn_position` (NeoForge's `PlayerRespawnPositionEvent`): where
-//! a respawning server player ends up. Vanilla finds the point inside
-//! `PlayerList.respawn`, loading chunks as it goes. Sunrise places the player
-//! first and finds the point once its level has loaded around it (the respawn
-//! and world-spawn trips of `server_travel.rs`), so the mods hear it there.
+//! a respawning server player ends up. As in `PlayerList.respawn`, the destination
+//! and any redirect are resolved before the replacement is created.
 use super::respawn_anchor::RespawnConfig;
 use super::server_travel::LevelTeleport;
 use super::{Dim, Game};
