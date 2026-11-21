@@ -1305,9 +1305,8 @@ pieces.
   complete `BlockState` values seen (`palette`), the blocks as indexes into it, and each column's biome JSON water
   colour (`water_colors`, `0xRRGGBB`, at the column's top). Blocks outside the level's height, and every block of a
   column not loaded, read as air (its water colour as 0). `below + above` must be 1 to the level's height, and the
-  read at most 1,048,576 blocks. Colormap-derived grass and foliage tints are client-only: read blended biome tints
-  on the client with `BlockAndTintGetter::block_tint` inside block tint callbacks or `ClientHost::biome_tint`
-  in other client hooks.
+  read at most 1,048,576 blocks. Read blended grass and foliage tints on the client with
+  `BlockAndTintGetter::block_tint` inside tint callbacks or `ClientHost::biome_tint` in other hooks.
 
 ### Chat and commands a client mod sends
 
