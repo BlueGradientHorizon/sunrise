@@ -1088,14 +1088,14 @@ mod tests {
         let mut release = nightly.clone();
         release["tag_name"] = json!("v0.2.95");
         assert!(pick(&release, serving(TONIGHT, TONIGHT), &[key.public()]).is_err());
-        // A genuine snapshot (its title, its own valid signatures) served as the Nightly, or under
-        // its own tag: refused, so no server updates to a snapshot.
-        const SNAPSHOT: &str = "snapshot-2026-10-28-0c02067";
-        let mut snapshot = nightly.clone();
-        snapshot["name"] = json!("Snapshot 2026-10-28 · 0c02067");
-        assert!(pick(&snapshot, serving("snapshot", SNAPSHOT), &[key.public()]).is_err());
-        snapshot["tag_name"] = json!(SNAPSHOT);
-        assert!(pick(&snapshot, serving("snapshot", SNAPSHOT), &[key.public()]).is_err());
+        // A genuine Dev build (its title, its own valid signatures) served as the Nightly, or under
+        // its own tag: refused, so no server updates to a Dev build.
+        const DEV: &str = "dev-2026-10-28-0c02067";
+        let mut dev = nightly.clone();
+        dev["name"] = json!("Dev 2026-10-28 · 0c02067");
+        assert!(pick(&dev, serving("dev", DEV), &[key.public()]).is_err());
+        dev["tag_name"] = json!(DEV);
+        assert!(pick(&dev, serving("dev", DEV), &[key.public()]).is_err());
     }
 
     #[test]
