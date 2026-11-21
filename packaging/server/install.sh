@@ -76,18 +76,47 @@ else
   else die "sha256sum or shasum is needed"; fi
 
   api() { curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases/$1"; }
-  # Every release's tag, from every page of the release list (one field per line whatever GitHub's layout: a tag holds
-  # no comma or quote). A page that fails stops the install: a short list could
-  # pick an older stable release.
-  release_tags() {
+  # GitHub's JSON decoded, whatever its layout: one token per line (sed splits after each string, punctuation mark or
+  # bare word, left to right), then awk walks them. For a release list (an array) or one release (an object), one
+  # line per release, `<tag_name>\t<prerelease>\t<draft>` (a field it lacks is empty; a value that is not a string or
+  # a literal is `?`), then `ok` once the whole document was read. Nothing is trusted without that `ok`.
+  releases() {
+    sed -E 's/("([^"\\]|\\.)*"|[][{}:,]|[^][{}:,[:space:]]+)/&\
+/g' | sed -E 's/^[[:space:]]+//; /^$/d' | awk '
+      function value(t) { return t ~ /^"/ ? substr(t, 2, length(t) - 2) : t }
+      NR == 1 { at = $0 == "[" ? 2 : $0 == "{" ? 1 : 0; if (!at) bad = 1 }
+      $0 == "{" || $0 == "[" {
+        kind[++depth] = $0
+        if (depth == at) { tag = pre = draft = ""; if ($0 != "{") bad = 1 }
+        last = $0; next
+      }
+      $0 == "}" || $0 == "]" {
+        if (!depth || ($0 == "}") != (kind[depth] == "{")) bad = 1
+        if (depth == at && !bad) printf "%s\t%s\t%s\n", tag, pre, draft
+        depth--; last = $0; if (!depth) done++; next
+      }
+      depth == at && ($0 ~ /^"/) && (last == "{" || last == ",") { key = value($0); last = "key"; next }
+      depth == at && last == ":" {
+        if (key == "tag_name") tag = $0 ~ /^"[^"\\]*"$/ ? value($0) : "?"
+        if (key == "prerelease") pre = $0 ~ /^(true|false)$/ ? $0 : "?"
+        if (key == "draft") draft = $0 ~ /^(true|false)$/ ? $0 : "?"
+      }
+      { last = $0 }
+      END { if (!bad && done == 1 && !depth) print "ok" }'
+  }
+  # Every published (not pre-release, not draft) release's tag, from every page of the release list. A page that
+  # fails or can't be read stops the install, and only an empty list ends it: a short list could pick an older
+  # stable release.
+  published_tags() {
     PAGE=1
     while :; do
       LIST=$(curl -fsSL -H "Accept: application/vnd.github+json" \
         "https://api.github.com/repos/$REPO/releases?per_page=100&page=$PAGE") \
         || die "could not list the releases on GitHub (page $PAGE)"
-      NAMES=$(printf '%s\n' "$LIST" | tr ',' '\n' | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
-      [ -n "$NAMES" ] || break
-      printf '%s\n' "$NAMES"
+      LIST=$(printf '%s\n' "$LIST" | releases)
+      [ "$(printf '%s\n' "$LIST" | tail -n 1)" = ok ] || die "could not read the releases GitHub listed (page $PAGE)"
+      [ "$LIST" != ok ] || break
+      printf '%s\n' "$LIST" | awk -F'\t' '$2 == "false" && $3 == "false" { print $1 }'
       PAGE=$((PAGE + 1))
     done
   }
@@ -102,24 +131,24 @@ else
   if [ "$VERSION" = latest ]; then
     JSON=$(api tags/nightly) || JSON=$(api latest) || die "no release on GitHub"
   elif [ "$VERSION" = stable ]; then
-    # The newest stable release that is published (not a pre-release or draft) under exactly its own tag. Its line is
-    # what `sunrise-server update` then follows.
-    TAGS=$(release_tags)
-    JSON=
-    for STABLE in $(stable_newest_first "$TAGS"); do
-      FOUND=$(api "tags/$STABLE") || die "could not read release $STABLE on GitHub"
-      [ "$(printf '%s\n' "$FOUND" | tr ',' '\n' | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)" = "$STABLE" ] \
-        || die "GitHub's release $STABLE names another tag: not installed"
-      if printf '%s\n' "$FOUND" | grep -q '"prerelease": *false' && ! printf '%s\n' "$FOUND" | grep -q '"draft": *true'; then
-        JSON=$FOUND; break
-      fi
-    done
-    [ -n "$JSON" ] || die "no stable release on GitHub yet: install the Nightly (--version latest)"
+    # The newest stable release published under exactly its own tag. Its line is what `sunrise-server update` follows.
+    TAGS=$(published_tags) || exit 1
+    STABLE=$(stable_newest_first "$TAGS" | head -n 1)
+    [ -n "$STABLE" ] || die "no stable release on GitHub yet: install the Nightly (--version latest)"
+    JSON=$(api "tags/$STABLE") || die "could not read release $STABLE on GitHub"
   else
     JSON=$(api "tags/$VERSION") || die "no release $VERSION on GitHub"
   fi
 
-  TAG=$(printf '%s\n' "$JSON" | sed -n 's/^  "tag_name": "\([^"]*\)".*/\1/p' | head -n 1)
+  # The release's tag, decoded: the one its signature is checked for and it installs under. A stable release must be
+  # the one chosen, and still published.
+  RELEASE=$(printf '%s\n' "$JSON" | releases)
+  [ "$(printf '%s\n' "$RELEASE" | sed -n 2p)" = ok ] || die "could not read the release GitHub sent"
+  TAG=$(printf '%s\n' "$RELEASE" | head -n 1 | cut -f1)
+  case "$TAG" in ''|'?') die "could not read the release's tag" ;; esac
+  if [ "$VERSION" = stable ] && [ "$(printf '%s\n' "$RELEASE" | head -n 1)" != "$(printf '%s\tfalse\tfalse' "$STABLE")" ]; then
+    die "GitHub's release $STABLE names another tag, or is not published: not installed"
+  fi
   [ -n "$TAG" ] || die "could not read the release's tag"
   RAWTAG=$TAG
   case "$TAG" in

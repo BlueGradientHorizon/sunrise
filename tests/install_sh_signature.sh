@@ -169,29 +169,46 @@ done
 d=$W/legacy; make_release "$d" v1.2.3; with_key "$d"; json "$d" v1.2.3 no
 run "$d" "$P" --version v1.2.3; verdict "unsigned release: installs, says so" 0 "no signed checksums" "$d"
 
-# 10. --version stable: the newest stable release from every page, numbers compared as numbers (0.1.1000000000 is newer
-# than 0.1.999999999, which a padded-string sort gets wrong), whatever the JSON's layout; not an rc or a nightly.
+# 10. --version stable: the newest published stable release from every page, numbers compared as numbers
+# (0.1.1000000000 is newer than 0.1.999999999, which a padded-string sort gets wrong), whatever the JSON's layout;
+# never an rc, a leading zero, a pre-release, a draft or a release whose flags are missing.
 d=$W/stable; make_release "$d" 26.3-0.1.1000000000; with_key "$d"
-printf '[{"tag_name":"26.3-0.1.999999999","prerelease":false},{"tag_name":"nightly","prerelease":true}]\n' > "$d/page-1.json"
-printf '[\n  {\n    "tag_name": "26.3-0.1.1000000000"\n  },\n  {\n    "tag_name": "26.3-0.2.0-rc.1"\n  },\n  {\n    "tag_name": "26.3-01.0.0"\n  }\n]\n' > "$d/page-2.json"
+printf '[{"tag_name":"26.3-0.1.999999999","prerelease":false,"draft":false,"body":"a, \\"b\\": [c]"},' > "$d/page-1.json"
+printf '{"tag_name":"nightly","prerelease":true,"draft":false}]\n' >> "$d/page-1.json"
+cat > "$d/page-2.json" <<'PAGE'
+[
+  {
+    "tag_name": "26.3-0.1.1000000000",
+    "assets": [ { "name": "x", "draft": true } ],
+    "draft": false,
+    "prerelease": false
+  },
+  { "tag_name": "26.3-0.9.0", "draft": false, "prerelease": true },
+  { "tag_name": "26.3-0.8.0", "draft": true, "prerelease": false },
+  { "tag_name": "26.3-0.7.0", "prerelease": false },
+  { "tag_name": "26.3-0.6.0", "draft": null, "prerelease": false },
+  { "tag_name": "26.3-0.2.0-rc.1", "draft": false, "prerelease": false },
+  { "tag_name": "26.3-01.0.0", "draft": false, "prerelease": false }
+]
+PAGE
 printf '[]\n' > "$d/page-3.json"
-run "$d" "$P" --version stable; verdict "--version stable: the newest stable release, from a later page" 0 "Downloading Sunrise 26.3-0.1.1000000000 " "$d"
+run "$d" "$P" --version stable; verdict "--version stable: the newest published stable release, from a later page" 0 "Downloading Sunrise 26.3-0.1.1000000000 " "$d"
 
-# 10b. The newest stable tag is a pre-release when asked by tag: the next one installs.
-d=$W/stable-pre; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
-printf '[{"tag_name":"26.3-0.3.0"}]\n' > "$d/page-3.json"; printf '[]\n' > "$d/page-4.json"
-sed -e 's/26.3-0.1.1000000000/26.3-0.3.0/' -e 's/"prerelease": false/"prerelease": true/' "$d/release.json" > "$d/tag-26.3-0.3.0.json"
-run "$d" "$P" --version stable; verdict "--version stable: a pre-release is passed over" 0 "Downloading Sunrise 26.3-0.1.1000000000 " "$d"
-
-# 10c. A later page that fails stops the install, rather than picking from a short list.
+# 10b. A later page that fails, or that can't be read, stops the install rather than choosing from a short list.
 d=$W/stable-short; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin" "$d/page-2.json"; with_key "$d"
 run "$d" "$P" --version stable; verdict "--version stable: a failed page stops the install" 1 "could not list the releases on GitHub (page 2)" "$d"
 [ ! -e "$d/inst/current" ] || { echo "FAIL installed from a short list"; fails=$((fails+1)); }
+d=$W/stable-cut; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
+head -c 60 "$W/stable/page-2.json" > "$d/page-2.json"
+run "$d" "$P" --version stable; verdict "--version stable: a page cut short stops the install" 1 "could not read the releases GitHub listed (page 2)" "$d"
 
-# 10d. The release served for the chosen tag names another one: refused before any download.
+# 10c. The release served for the chosen tag names another one, or is no longer published: refused before any download.
 d=$W/stable-swap; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
 sed 's/26.3-0.1.1000000000/26.4-1.0.0/' "$d/release.json" > "$d/tag-26.3-0.1.1000000000.json"
 run "$d" "$P" --version stable; verdict "--version stable: a release under another tag refused" 1 "names another tag" "$d"
+d=$W/stable-draft; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
+sed 's/"draft": false/"draft": null/' "$d/release.json" > "$d/tag-26.3-0.1.1000000000.json"
+run "$d" "$P" --version stable; verdict "--version stable: a release whose draft flag isn't false refused" 1 "not published" "$d"
 
 # 11. A Dev build is refused by name: servers don't install one.
 d=$W/dev; make_release "$d" dev-2026-11-21-0c02067; with_key "$d"

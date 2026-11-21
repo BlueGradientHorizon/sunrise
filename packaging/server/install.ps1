@@ -47,21 +47,31 @@ switch ($Architecture) {
 function Get-Release([string]$Path) {
     Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/$Path" -Headers @{ Accept = "application/vnd.github+json" }
 }
-# The stable tags among every page of the release list (`<Minecraft version>-<semver>`, docs/release-flow.md "Release
-# branches"), newest first, each number compared as a number, as release_train.stable_key and `sunrise-server update`
-# order them. A page that fails stops the install: a short list could pick an older stable release.
+# A release GitHub lists or sends is published only when both flags were sent and are the boolean false: a missing or
+# null flag is not false.
+function Test-Published($Release) {
+    $Release.prerelease -is [bool] -and -not $Release.prerelease -and $Release.draft -is [bool] -and -not $Release.draft
+}
+# The published stable tags among every page of the release list (`<Minecraft version>-<semver>`, docs/release-flow.md
+# "Release branches"), newest first, each number compared as a number, as release_train.stable_key and
+# `sunrise-server update` order them. A page that fails or isn't a list of releases stops the install, and only an
+# empty list ends it: a short list could pick an older stable release.
 function Get-StableTags {
     $Stable = @()
     for ($Page = 1; ; $Page++) {
         # Not wrapped in @(): Windows PowerShell 5.1 writes the whole JSON array as one object.
         $List = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=100&page=$Page" `
             -Headers @{ Accept = "application/vnd.github+json" }
-        if ($null -eq $List -or $List.Count -eq 0) { break }
-        $Stable += $List | ForEach-Object {
-            if (-not ($_.tag_name -cmatch '^(\d+)\.(\d+)(?:\.(\d+))?-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')) { return }
+        if ($null -eq $List) { throw "Could not read the releases GitHub listed (page $Page)" }
+        $Items = @($List | ForEach-Object { $_ })
+        if ($Items.Count -eq 0) { break }
+        foreach ($Item in $Items) {
+            if (-not ($Item.tag_name -is [string])) { throw "Could not read the releases GitHub listed (page $Page)" }
+            if (-not (Test-Published $Item)) { continue }
+            if (-not ($Item.tag_name -cmatch '^(\d+)\.(\d+)(?:\.(\d+))?-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')) { continue }
             $Third = if ($Matches[3]) { [bigint]::Parse($Matches[3]) } else { [bigint]::MinusOne }
-            [pscustomobject]@{
-                Tag = $_.tag_name
+            $Stable += [pscustomobject]@{
+                Tag = $Item.tag_name
                 G1 = [bigint]::Parse($Matches[1]); G2 = [bigint]::Parse($Matches[2]); G3 = $Third
                 V1 = [bigint]::Parse($Matches[4]); V2 = [bigint]::Parse($Matches[5]); V3 = [bigint]::Parse($Matches[6])
             }
@@ -72,15 +82,13 @@ function Get-StableTags {
 if ($Version -eq "latest") {
     try { $Release = Get-Release "tags/nightly" } catch { $Release = Get-Release "latest" }
 } elseif ($Version -eq "stable") {
-    # The newest stable release that is published (not a pre-release or draft) under exactly its own tag. Its line is
-    # what `sunrise-server update` then follows.
-    $Release = $null
-    foreach ($Candidate in @(Get-StableTags)) {
-        $Found = Get-Release "tags/$Candidate"
-        if ($Found.tag_name -cne $Candidate) { throw "GitHub's release $Candidate names another tag: not installed" }
-        if (-not $Found.prerelease -and -not $Found.draft) { $Release = $Found; break }
+    # The newest stable release published under exactly its own tag. Its line is what `sunrise-server update` follows.
+    $Stable = @(Get-StableTags) | Select-Object -First 1
+    if (-not $Stable) { throw "No stable release on GitHub yet: install the Nightly (-Version latest)" }
+    $Release = Get-Release "tags/$Stable"
+    if (-not ($Release.tag_name -is [string]) -or $Release.tag_name -cne $Stable -or -not (Test-Published $Release)) {
+        throw "GitHub's release $Stable names another tag, or is not published: not installed"
     }
-    if (-not $Release) { throw "No stable release on GitHub yet: install the Nightly (-Version latest)" }
 } else {
     $Release = Get-Release "tags/$Version"
 }
