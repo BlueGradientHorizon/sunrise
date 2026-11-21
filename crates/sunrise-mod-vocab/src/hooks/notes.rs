@@ -1268,10 +1268,12 @@ devices probes each one: ask from setup or a settings screen, not every frame.
   vanilla discards on its first tick in `FallingBlockEntity.tick`), with no per-level count cap.
 - The block at `pos` stays: take it away first with `level.set_block` to make a block fall out of the world, as an
   explosion's debris or a collapsing tower would.
-- It runs `entity_constructing` and `entity_join_level` (held until root commit inside a transaction, rolled back on
-  abort) and returns `Ok(Some(EntityRef))` when admitted, `Ok(None)` for non-finite coordinates or velocity, a
-  position outside `Level.isInSpawnableBounds`, an unloaded chunk, exhausted entity ids, or a cancelled join, and
-  `Err(LevelWriteError)` for a stale handle, a client or parked level, an unknown block state, or a wrong phase.
+- The named open level can be parked. The call neither requires nor loads the destination chunk;
+  section visibility and ticking govern when the admitted entity is active.
+- It runs `entity_constructing` and `entity_join_level` at the call. A transaction in the destination level
+  delays the join until root commit and makes the returned handle stale on abort or a veto at commit.
+  `Ok(None)` means non-finite coordinates or velocity, exhausted entity ids, or an immediate join veto.
+  `Err(LevelWriteError)` means a stale or closed level, a client, an unknown block state, or a wrong phase.
 
 ### Bulk block edits
 

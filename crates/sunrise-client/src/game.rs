@@ -6106,7 +6106,9 @@ impl Game<'_> {
                         f64::from(pos.y),
                         f64::from(pos.z) + 0.5,
                     );
-                    self.spawn_falling_block_entity(state, p, Vec3::ZERO, true, damage);
+                    // Admit before returning to the next scheduled block tick.
+                    // A join veto does not undo the source replacement.
+                    let _ = self.spawn_falling_block_entity(state, p, Vec3::ZERO, true, damage);
                 }
                 LevelEvent::Player { pos, effect, .. } => match effect {
                     PlayerEffect::OpenMenu => self.open_block_effect_menu([pos.x, pos.y, pos.z]),

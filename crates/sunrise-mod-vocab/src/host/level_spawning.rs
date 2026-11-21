@@ -125,15 +125,18 @@ pub trait LevelSpawningBackendMut {
     /// valid block state including air (which vanilla discards on its first tick in
     /// `FallingBlockEntity.tick`), and imposes no per-level count cap.
     ///
+    /// Uses the named open server level, including one that is parked. A chunk need not
+    /// be loaded, and the call does not load it: section visibility and ticking decide
+    /// when the entity becomes active, not whether it can join (`ServerLevel.addFreshEntity`).
+    ///
     /// Returns `Err(LevelWriteError::Stale)` for a stale handle or closed level,
-    /// `Err(LevelWriteError::Unavailable)` on a client, for a parked level, or outside the
-    /// world phase, and `Err(LevelWriteError::InvalidState(_))` for an unknown block state.
-    /// Returns `Ok(None)`, with nothing left in the level, for a position or velocity that is
-    /// not finite, a position outside `Level.isInSpawnableBounds`, an unloaded chunk,
-    /// exhausted entity ids, or a falling block a mod kept out in `entity_join_level`. Inside
-    /// a transaction its join waits for the root commit, so a mod keeping the falling block
-    /// out is not known at the call: the handle is returned and reads stale from the commit
-    /// on.
+    /// `Err(LevelWriteError::Unavailable)` on a client or outside the world phase,
+    /// and `Err(LevelWriteError::InvalidState(_))` for an unknown block state.
+    /// Returns `Ok(None)` for a non-finite position or velocity, exhausted entity ids,
+    /// or a join veto in `entity_join_level`. Outside a transaction in the destination
+    /// level, the join decision is made before this call returns. Within that level's
+    /// transaction the returned handle is provisional: the join waits for the root commit
+    /// and the handle becomes stale on abort or a veto at commit.
     #[access(WorldOnly)]
     fn level_spawn_falling_block(
         &mut self,

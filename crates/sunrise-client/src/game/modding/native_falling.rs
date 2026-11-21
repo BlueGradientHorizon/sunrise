@@ -1,17 +1,14 @@
 //! Falling blocks for native server mods (docs/modding/src/how-to/world/spawning.md,
 //! "Spawning from a level"): `LevelRef::spawn_falling_block` and the canonical
-//! `FallingBlockEntity` constructor shared with `LevelEvent::FallingBlock`.
-use super::{FallingBlock, Game};
+//! `FallingBlockEntity` construction and admission shared with `LevelEvent::FallingBlock`.
+use super::{Dim, FallingBlock, Game, entity::EntityHandle};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
-    /// Canonical falling-block entity construction shared by world events
-    /// (`LevelEvent::FallingBlock`, matching `FallingBlockEntity.fall`) and
-    /// [`Self::level_spawn_falling_block`]. Sets `start_pos` from `position`
-    /// (`FallingBlockEntity` constructor's `this.setStartPos(this.blockPosition())`),
-    /// keeps `velocity` exact (`Entity.setDeltaMovement`), allocates the next entity id,
-    /// and appends the live row to `self.falling`.
+    /// The fresh `FallingBlockEntity` constructor and `ServerLevel.addFreshEntity`
+    /// path, shared by natural falls and `LevelRef::spawn_falling_block`. The
+    /// position supplies `start_pos`; `Entity.setDeltaMovement` keeps live velocity exact.
     pub(super) fn spawn_falling_block_entity(
         &mut self,
         state: BlockStateId,
@@ -19,20 +16,19 @@ impl Game<'_> {
         velocity: Vec3,
         drop_item: bool,
         damage: sunrise_client::falling_block::Damage,
-    ) -> u32 {
+    ) -> Option<u32> {
+        if self.entity_ids_exhausted() {
+            return None;
+        }
         let id = self.take_entity_id();
-        let start_pos = BlockPos::new(
-            position.x.floor() as i32,
-            position.y.floor() as i32,
-            position.z.floor() as i32,
-        );
+        let slot = EntityHandle::Falling(self.falling.len());
         self.falling.push(FallingBlock {
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
             id,
             state,
-            start_pos,
+            start_pos: BlockPos::containing(position),
             position,
             previous: position,
             velocity,
@@ -48,18 +44,12 @@ impl Game<'_> {
             saved: None,
             portal: Default::default(),
         });
-        id
+        self.announce_fresh_join(slot, id).then_some(id)
     }
 
-    /// `LevelRef::spawn_falling_block`: spawns a `FallingBlockEntity` of `state` at `pos`
-    /// (its bottom centre) with `velocity` (blocks a tick, `Entity.setDeltaMovement`) in
-    /// `level` without modifying the block at `pos`.
-    ///
-    /// Typed errors distinguish stale/closed levels (`Stale`), client or parked levels
-    /// (`Unavailable`), and unknown block states (`InvalidState`). Returns `Ok(None)` for
-    /// exhausted entity ids, non-finite position or velocity, a position outside
-    /// `Level.isInSpawnableBounds`, an unloaded chunk, or a join cancelled by
-    /// `entity_join_level`.
+    /// `LevelRef::spawn_falling_block`: spawn in the named open server level,
+    /// leaving its block at `pos` alone. Admission does not require a loaded
+    /// chunk: `ServerLevel.addFreshEntity` does not use `/summon`'s placement checks.
     pub(super) fn level_spawn_falling_block(
         &mut self,
         level: mod_api::LevelRef,
@@ -68,44 +58,34 @@ impl Game<'_> {
         velocity: [f64; 3],
         falling: mod_api::Falling,
     ) -> Result<Option<mod_api::EntityRef>, mod_api::LevelWriteError> {
-        let _ = self.native_level_world_result(level)?;
-        if self.dim.key() != level.dimension() {
-            return Err(mod_api::LevelWriteError::Unavailable);
-        }
-        if self.pack.assets.registry.state(state).is_none() {
-            return Err(mod_api::LevelWriteError::InvalidState(
-                mod_api::BlockStateError::UnknownState,
-            ));
-        }
-        if self.entity_ids_exhausted() || !pos.iter().chain(&velocity).all(|v| v.is_finite()) {
+        self.native_level_world_result(level)?;
+        if !pos.iter().chain(&velocity).all(|v| v.is_finite()) {
             return Ok(None);
         }
-        // BlockPos.containing. `as` saturates, and a value past `i32` is out of bounds.
-        let block = pos.map(|v| v.floor() as i32);
-        if self.level_in_spawnable_bounds(level, block) != Some(true)
-            || !self.world.loaded(block[0], block[2])
-        {
-            return Ok(None);
-        }
-        let mut damage =
-            sunrise_client::falling_block::Damage::falling(&self.res.facts().get(state).name);
-        if falling.hurts {
-            damage.hurt_entities = true;
-            damage.per_distance = 2.0;
-            damage.max = 40;
-        }
-        let id = self.spawn_falling_block_entity(
-            state,
-            Vec3::new(pos[0], pos[1], pos[2]),
-            Vec3::new(velocity[0], velocity[1], velocity[2]),
-            falling.drop_item,
-            damage,
-        );
-        // The join as any fresh spawn's: told now, so a mod's veto refuses
-        // the call, or at the root commit inside a transaction.
-        Ok(self
-            .native_joins_flush(false, id)
-            .then(|| mod_api::EntityRef::new(level.epoch(), id)))
+        let dim = match level.dimension() {
+            mod_api::DimensionKey::OVERWORLD => Dim::Overworld,
+            mod_api::DimensionKey::NETHER => Dim::Nether,
+            mod_api::DimensionKey::END => Dim::End,
+            key => Dim::Extra(key),
+        };
+        self.with_level_in_place(dim, |game| {
+            let mut damage =
+                sunrise_client::falling_block::Damage::falling(&game.res.facts().get(state).name);
+            if falling.hurts {
+                damage.hurt_entities = true;
+                damage.per_distance = 2.0;
+                damage.max = 40;
+            }
+            game.spawn_falling_block_entity(
+                state,
+                Vec3::new(pos[0], pos[1], pos[2]),
+                Vec3::new(velocity[0], velocity[1], velocity[2]),
+                falling.drop_item,
+                damage,
+            )
+            .map(|id| mod_api::EntityRef::new(level.epoch(), id))
+        })
+        .ok_or(mod_api::LevelWriteError::Stale)
     }
 }
 
@@ -354,7 +334,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn level_spawn_falling_block_preserves_state_flags_unclamped_velocity_and_bounds() {
+    fn level_spawn_falling_block_preserves_state_flags_and_exact_velocity() {
         use crate::game::api_values::TryIntoApi;
         use mod_api::{
             BlockState, BlockStateError, Falling, LevelRef, LevelWriteError, WorldEpoch,
@@ -416,17 +396,11 @@ mod tests {
             }
 
             // Live velocity is kept unclamped (past the old 3.9 clamp), and flags are preserved.
+            let mut flags = Falling::default();
+            flags.drop_item = false;
+            flags.hurts = true;
             let thrown = level
-                .spawn_falling_block(
-                    game,
-                    api_sand,
-                    [1.5, 70.0, 2.5],
-                    [0.5, 9.0, -9.0],
-                    Falling {
-                        drop_item: false,
-                        hurts: true,
-                    },
-                )
+                .spawn_falling_block(game, api_sand, [1.5, 70.0, 2.5], [0.5, 9.0, -9.0], flags)
                 .unwrap()
                 .unwrap();
             assert_eq!(
@@ -502,7 +476,7 @@ mod tests {
             }
             assert!(game.falling.len() >= 1030);
 
-            // Refusals: stale handle, non-finite coordinates/velocity, spawnable bounds, unloaded chunk.
+            // Stale handles and non-finite coordinates or velocity leave no new entity.
             let count = game.falling.len();
             let stale = LevelRef::new(WorldEpoch::new(0), game.dim.key());
             assert_eq!(
@@ -515,25 +489,11 @@ mod tests {
                 ),
                 Err(LevelWriteError::Stale)
             );
-            assert_eq!(
-                game.level_spawn_falling_block(
-                    level,
-                    BlockStateId(u32::MAX),
-                    [1.5, 70.0, 1.5],
-                    [0.0; 3],
-                    Falling::default(),
-                ),
-                Err(LevelWriteError::InvalidState(BlockStateError::UnknownState))
-            );
             for (pos, vel) in [
                 ([f64::NAN, 70.0, 1.5], [0.0; 3]),
                 ([1.5, f64::INFINITY, 1.5], [0.0; 3]),
                 ([1.5, 70.0, 1.5], [0.0, f64::NAN, 0.0]),
                 ([1.5, 70.0, 1.5], [f64::INFINITY, 0.0, 0.0]),
-                ([1.0e300, 70.0, 1.5], [0.0; 3]),
-                ([1.5, 20_000_000.0, 1.5], [0.0; 3]),
-                ([1.5, -20_000_001.0, 1.5], [0.0; 3]),
-                ([1000.5, 70.0, 1.5], [0.0; 3]),
             ] {
                 assert_eq!(
                     level.spawn_falling_block(game, api_sand, pos, vel, Falling::default()),
@@ -542,21 +502,6 @@ mod tests {
                 );
             }
             assert_eq!(game.falling.len(), count);
-
-            // Parked dimension refuses with Unavailable.
-            let home = game.dim;
-            game.enter_level(super::super::Dim::Nether).unwrap();
-            assert_eq!(
-                level.spawn_falling_block(
-                    game,
-                    api_sand,
-                    [1.5, 70.0, 1.5],
-                    [0.0; 3],
-                    Falling::default(),
-                ),
-                Err(LevelWriteError::Unavailable)
-            );
-            game.enter_level(home).unwrap();
         });
 
         // Client side refuses with Unavailable.
@@ -579,6 +524,263 @@ mod tests {
                 ),
                 Err(LevelWriteError::Unavailable)
             );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn fresh_fall_does_not_require_summon_bounds_or_a_loaded_chunk() {
+        use mod_api::Falling;
+        use sunrise_client::join_seq::JoinSeq;
+
+        super::super::native_entity_refs::tests::with_game(|game| {
+            let level = game.level(game.dim.id()).unwrap();
+            let host: &dyn mod_api::Host = game;
+            let sand = host.block_state_id("minecraft:sand").unwrap();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+
+            let above_summon_bounds = [0.5, 20_000_000.0, 0.5];
+            let high = level
+                .spawn_falling_block(
+                    game,
+                    sand,
+                    above_summon_bounds,
+                    [0.0; 3],
+                    Falling::default(),
+                )
+                .unwrap()
+                .unwrap();
+            assert_eq!(game.entity_position(high), Some(above_summon_bounds));
+
+            let unloaded = [1000.5, 70.0, 0.5];
+            assert!(!game.world.loaded(1000, 0));
+            let hidden = level
+                .spawn_falling_block(game, sand, unloaded, [0.0; 3], Falling::default())
+                .unwrap()
+                .unwrap();
+            assert_eq!(game.entity_position(hidden), Some(unloaded));
+            assert!(!game.world.loaded(1000, 0));
+            game.begin_ordered_ticks();
+            game.run_ordered_ticks(JoinSeq::MAX, true).unwrap();
+            let row = game.falling.iter().find(|f| f.id == hidden.id()).unwrap();
+            assert_eq!(
+                row.age, 0,
+                "an admitted entity in a non-ticking section does not tick"
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn parked_falling_spawn_uses_the_destination_journal() {
+        use mod_api::{EntityJoinLevelEvent, Falling, Flow, Hooks, ServerHost};
+
+        struct Listener(Arc<Mutex<Vec<String>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn entity_join_level(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut EntityJoinLevelEvent<'_>,
+            ) -> Flow {
+                if event.kind == "minecraft:falling_block" {
+                    self.0.lock().unwrap().push(event.dimension.to_owned());
+                }
+                Flow::Continue
+            }
+        }
+
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "parked-falling-join",
+            Box::new(Listener(heard.clone())),
+        )]
+        .into();
+        super::super::native_entity_refs::tests::with_game(|game| {
+            mod_platform::testing::with_mods(mods, || {
+                let home = game.dim;
+                let level = game.level(home.id()).unwrap();
+                let host: &dyn mod_api::Host = game;
+                let sand = host.block_state_id("minecraft:sand").unwrap();
+                let home_seal = game.transaction_open();
+                game.enter_level(Dim::Nether).unwrap();
+                let at = [1.5, 70.0, 1.5];
+                let pending = level
+                    .spawn_falling_block(game, sand, at, [0.0; 3], Falling::default())
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(game.dim, Dim::Nether);
+                assert!(game.falling.is_empty());
+                assert!(heard.lock().unwrap().is_empty());
+                game.enter_level(home).unwrap();
+                assert_eq!(game.entity_position(pending), Some(at));
+                game.transaction_close(&home_seal, false);
+                assert!(game.falling.is_empty());
+
+                game.enter_level(Dim::Nether).unwrap();
+                let caller_seal = game.transaction_open();
+                let joined = level
+                    .spawn_falling_block(game, sand, at, [0.0; 3], Falling::default())
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(game.dim, Dim::Nether);
+                assert!(game.falling.is_empty());
+                assert_eq!(*heard.lock().unwrap(), [home.id()]);
+                game.transaction_close(&caller_seal, false);
+                game.enter_level(home).unwrap();
+                assert_eq!(game.entity_position(joined), Some(at));
+                assert_eq!(game.falling.len(), 1);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn natural_falling_join_veto_runs_before_the_next_scheduled_tick() {
+        use mod_api::{BlockUpdateFlags, EntityJoinLevelEvent, Flow, Hooks, ServerHost};
+        use sunrise_core::ticks::TickPriority;
+
+        const FIRST: BlockPos = BlockPos::new(1, 70, 1);
+        const SECOND: BlockPos = BlockPos::new(3, 70, 1);
+        struct Listener(Arc<Mutex<Vec<[f64; 3]>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn entity_join_level(
+                &self,
+                host: &mut dyn ServerHost,
+                event: &mut EntityJoinLevelEvent<'_>,
+            ) -> Flow {
+                if event.kind != "minecraft:falling_block" {
+                    return Flow::Continue;
+                }
+                self.0.lock().unwrap().push(event.pos);
+                let level = host.level(event.dimension).unwrap();
+                let stone = host.block_state_id("minecraft:stone").unwrap();
+                assert_eq!(
+                    level.set_block(
+                        host,
+                        [SECOND.x, SECOND.y - 1, SECOND.z],
+                        stone,
+                        BlockUpdateFlags::NONE,
+                    ),
+                    Ok(true)
+                );
+                Flow::Cancel
+            }
+        }
+
+        let joins = Arc::new(Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "natural-falling-veto",
+            Box::new(Listener(joins.clone())),
+        )]
+        .into();
+        super::super::native_entity_refs::tests::with_game(|game| {
+            mod_platform::testing::with_mods(mods, || {
+                for x in -1..=1 {
+                    for z in -1..=1 {
+                        let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                        chunk.lit = true;
+                        game.world.chunks.insert((x, z), Arc::new(chunk));
+                    }
+                }
+                game.tickets
+                    .update(Some(sunrise_client::ticket_levels::Sources {
+                        forced: vec![(0, 0)],
+                        ..Default::default()
+                    }));
+                let registry = game.pack.assets.registry;
+                let sand = registry.default_state("minecraft:sand").unwrap();
+                let air = registry.default_state("minecraft:air").unwrap();
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                for pos in [FIRST, SECOND] {
+                    game.world.set(pos.x, pos.y, pos.z, sand).unwrap();
+                }
+                game.with_level(|b, level, ticks| {
+                    ticks
+                        .add_chunk(FIRST.chunk(), Default::default(), Default::default())
+                        .unwrap();
+                    for (pos, priority) in
+                        [(FIRST, TickPriority::High), (SECOND, TickPriority::Normal)]
+                    {
+                        ticks.schedule_block(level.game_time(), pos, b.block(sand), 0, priority);
+                    }
+                });
+
+                game.tick_scheduled().unwrap();
+                assert_eq!(game.world.block(FIRST.x, FIRST.y, FIRST.z), air);
+                assert_eq!(game.world.block(SECOND.x, SECOND.y, SECOND.z), sand);
+                assert_eq!(game.world.block(SECOND.x, SECOND.y - 1, SECOND.z), stone);
+                assert!(game.falling.is_empty());
+                game.native_joins_flush(false, 0);
+                assert_eq!(*joins.lock().unwrap(), [[1.5, 70.0, 1.5]]);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn toss_listener_gets_the_falling_join_veto_before_its_spawn_returns() {
+        use mod_api::{EntityJoinLevelEvent, Falling, Flow, Hooks, ItemTossEvent, ServerHost};
+
+        struct Listener(Arc<Mutex<Vec<&'static str>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn item_toss(&self, host: &mut dyn ServerHost, _: &mut ItemTossEvent) -> Flow {
+                let level = host.level("minecraft:overworld").unwrap();
+                let sand = host.block_state_id("minecraft:sand").unwrap();
+                assert_eq!(
+                    level.spawn_falling_block(
+                        host,
+                        sand,
+                        [1.5, 70.0, 1.5],
+                        [0.0; 3],
+                        Falling::default()
+                    ),
+                    Ok(None)
+                );
+                self.0.lock().unwrap().push("spawn returned");
+                Flow::Continue
+            }
+            fn entity_join_level(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut EntityJoinLevelEvent<'_>,
+            ) -> Flow {
+                match event.kind {
+                    "minecraft:falling_block" => {
+                        self.0.lock().unwrap().push("falling join");
+                        Flow::Cancel
+                    }
+                    "minecraft:item" => {
+                        self.0.lock().unwrap().push("item join");
+                        Flow::Continue
+                    }
+                    _ => Flow::Continue,
+                }
+            }
+        }
+
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "toss-falling-veto",
+            Box::new(Listener(order.clone())),
+        )]
+        .into();
+        super::super::native_entity_refs::tests::with_game(|game| {
+            mod_platform::testing::with_mods(mods, || {
+                let item = sunrise_client::items::ItemStack::new("minecraft:dirt", 1);
+                let tossed = game.toss_item(item, [0.5, 70.0, 0.5], [0.0; 3], None);
+                assert!(tossed.is_some());
+                assert!(game.falling.is_empty());
+                game.native_joins_flush(false, 0);
+                assert_eq!(
+                    *order.lock().unwrap(),
+                    ["falling join", "spawn returned", "item join"]
+                );
+            });
         });
     }
 
@@ -658,6 +860,7 @@ mod tests {
                     .unwrap()
                     .unwrap();
                 assert!(game.falling.iter().any(|f| f.id == kept.id()));
+                game.native_joins_flush(false, 0);
                 assert_eq!(
                     *heard.lock().unwrap(),
                     [
