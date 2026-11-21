@@ -417,18 +417,6 @@ mod tests {
                     }
                     game.lan.as_mut().unwrap().hub.guests.push(player);
                     game.entity_section_joined(LANDING, start);
-                    game.tick_lan_packets();
-                    let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
-                    assert_eq!(
-                        guest.moves.len(),
-                        1 + usize::from(matches!(later, Some(S::MovePlayerPos(_))))
-                    );
-                    if matches!(later, Some(S::PlayerInput(_))) {
-                        assert!(
-                            !guest.sneaking,
-                            "the release must be applied before the drain"
-                        );
-                    }
                     health
                 } else {
                     let mob_kind = if matches!(body, Body::Cat { .. }) {
@@ -473,7 +461,20 @@ mod tests {
                 }
                 let drops = game.dropped.len();
                 if player {
-                    game.guest_server_tick(1, true);
+                    game.tick_lan_packets();
+                    let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    assert_eq!(guest.moves.len(), 1);
+                    if matches!(later, Some(S::PlayerInput(_))) {
+                        assert!(!guest.sneaking, "the later release still runs");
+                    }
+                    if matches!(later, Some(S::MovePlayerPos(_))) {
+                        // ServerPlayer.teleportRelative lifts the player onto dirt. A
+                        // later move without its teleport confirmation cannot move them.
+                        assert_eq!(
+                            guest.awaiting_teleport.map(|(_, at)| at),
+                            Some([1.5, 64.0, 1.5])
+                        );
+                    }
                 } else {
                     game.tick_creature_entities().unwrap();
                 }
@@ -499,15 +500,7 @@ mod tests {
                     air,
                     "listener writes rolled back"
                 );
-                let final_y = match later {
-                    Some(S::MovePlayerPos(m)) => {
-                        let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
-                        assert_eq!(guest.position, [m.x, m.y, m.z]);
-                        m.y
-                    }
-                    _ => y_after,
-                };
-                assert_eq!(landing_y, final_y);
+                assert_eq!(landing_y, y_after);
                 assert_eq!(game.mob_object(OTHER).unwrap().position.y, y_after);
                 assert_eq!(game.mob_object(OUTSIDE).unwrap().position.y, LANDING_Y);
                 assert_eq!(

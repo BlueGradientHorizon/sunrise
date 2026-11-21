@@ -93,7 +93,11 @@ fn scene(resources: &mut Option<Arc<crate::game::Resources>>) -> Game<'_> {
 }
 
 /// One server tick in which the guest's client sent these positions, one per client tick.
-fn tick_with_moves(g: &mut Game<'_>, heights: &[f64]) {
+fn tick_with_moves(
+    g: &mut Game<'_>,
+    heights: &[f64],
+    before_level: (f64, Option<[f64; 3]>, [bool; 3]),
+) {
     g.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
         guest
             .inbox
@@ -117,6 +121,7 @@ fn tick_with_moves(g: &mut Game<'_>, heights: &[f64]) {
     let guest = &g.lan.as_ref().unwrap().hub.guests[0];
     assert_eq!(guest.moves.len(), heights.len(), "every move is accepted");
     assert_eq!(guest.position[1], *heights.last().unwrap());
+    assert_eq!(fall(g), before_level, "state before the level tick");
     g.tick_lan(false);
 }
 
@@ -141,21 +146,25 @@ fn a_guest_move_that_goes_up_ends_its_fall() {
     let mut resources = None;
     let mut g = scene(&mut resources);
     // One block down: a fall of 1, tracked from where the tick left the guest.
-    tick_with_moves(&mut g, &[109.0]);
+    tick_with_moves(&mut g, &[109.0], (1.0, None, [false; 3]));
     assert_eq!(fall(&g), (1.0, Some([12.5, 109.0, 12.5]), [false; 3]));
     // Half a block up: no fall left, and the fall of half a block is awarded.
-    tick_with_moves(&mut g, &[109.5]);
+    tick_with_moves(&mut g, &[109.5], (0.0, None, [true, true, false]));
     assert_eq!(fall(&g), (0.0, None, [true, true, false]));
 
     for name in ["any", "short"] {
         assert!(g.run_command(&format!("advancement revoke {NAME} only fall:{name}")));
     }
-    tick_with_moves(&mut g, &[108.5]);
+    tick_with_moves(&mut g, &[108.5], (1.0, None, [false; 3]));
     assert_eq!(fall(&g), (1.0, Some([12.5, 108.5, 12.5]), [false; 3]));
     // Three moves in one server tick: down to 104, up to 104.5, down to 103.5. The move up
     // ends the fall where it is, 4 blocks below its start, not at the tick's end, 5 below.
     // The last move starts a new fall of 1.
-    tick_with_moves(&mut g, &[104.0, 104.5, 103.5]);
+    tick_with_moves(
+        &mut g,
+        &[104.0, 104.5, 103.5],
+        (1.0, None, [true, false, false]),
+    );
     assert_eq!(
         fall(&g),
         (1.0, Some([12.5, 103.5, 12.5]), [true, false, false])
@@ -172,7 +181,7 @@ fn a_guest_move_that_goes_up_ends_its_fall() {
         g.tick_lan(false);
     }
     assert!(g.run_command("setblock 12 105 12 minecraft:stone"));
-    tick_with_moves(&mut g, &[104.0]);
+    tick_with_moves(&mut g, &[104.0], (0.0, None, [true, true, false]));
     let guest = &g.lan.as_ref().unwrap().hub.guests[0];
     assert!(
         guest.health <= 0.0,

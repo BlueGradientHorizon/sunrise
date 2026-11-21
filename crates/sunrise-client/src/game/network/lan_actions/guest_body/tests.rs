@@ -201,16 +201,21 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
                 .update_guest(1, |guest| {
                     guest.armor[3] = boots.then(|| ItemStack::new("minecraft:leather_boots", 1));
                     guest.on_ground = true;
-                    guest.moves_from_ground = false;
-                    guest.moves.push(sunrise_client::lan::guest::GuestMove {
-                        position: guest.position,
+                })
+                .unwrap();
+            game.guest_accepted_move(
+                1,
+                CommittedMove {
+                    from: [1.5, 64.25, 1.5],
+                    jump_yaw: None,
+                    movement: sunrise_client::lan::guest::GuestMove {
+                        position: [1.5, 64.0, 1.5],
                         delta: [0.0, -0.25, 0.0],
                         on_ground: true,
                         sneaking: false,
-                    });
-                })
-                .unwrap();
-            game.guest_server_tick(1, true);
+                    },
+                },
+            );
             let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
             assert_eq!(
                 guest.motion.as_ref().unwrap().ground.supporting_block,
@@ -308,22 +313,8 @@ fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
                 ));
                 guest.armor[0] = Some(ItemStack::new("minecraft:turtle_helmet", 1));
                 guest.armor[1] = Some(ItemStack::new("minecraft:diamond_chestplate", 1));
+                guest.on_ground = true;
                 game.lan.as_mut().unwrap().hub.guests.push(guest);
-                game.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .update_guest(1, |guest| {
-                        guest.on_ground = true;
-                        guest.moves_from_ground = false;
-                        guest.moves.push(sunrise_client::lan::guest::GuestMove {
-                            position: guest.position,
-                            delta: [0.0, -0.25, 0.0],
-                            on_ground: true,
-                            sneaking: false,
-                        });
-                    })
-                    .unwrap();
                 game.guest_server_tick(1, true);
                 let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 left = (
