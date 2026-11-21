@@ -73,7 +73,7 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) player_credit:
         &'a mut std::collections::HashMap<u32, super::super::combat::PlayerCredit>,
     pub(super) path_writes: &'a mut Vec<((i32, i32, i32), u32, u32)>,
-    pub(super) gone: &'a mut Vec<(u32, Vec3, f64, f64, Option<Mob>)>,
+    pub(super) gone: &'a mut Vec<(u32, Vec3, f64, f64)>,
     pub(super) lent: sunrise_client::health::LentLevel,
     pub(super) laps: &'a mut sunrise_client::spans::Laps,
     pub(super) uuid: Option<[i32; 4]>,
@@ -183,7 +183,7 @@ impl Game<'_> {
             let mut pause = None;
             let mut air_answer = None;
             let mut retry_rider = None;
-            let mut breed = None;
+            let mut split = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -209,6 +209,9 @@ impl Game<'_> {
                 // reusable base empty lets its reference fields remain copyable between rows.
                 base.section_writer = None;
                 base.passenger_objects = passenger_objects;
+                // The owning game completes live births at the goal/behaviour site even
+                // without a listener. Hostless probes still emit an ordinary breed event.
+                base.asks_baby_spawn = true;
                 let mut level = sunrise_client::health::DamageLevel::lent(
                     &self.world,
                     self.pack.assets.registry,
@@ -555,6 +558,17 @@ impl Game<'_> {
                                 &mut trample,
                             )
                         }
+                        Some(Pause::Breeding { resume, .. }) => {
+                            sunrise_client::mobs::riders::resume_after_birth(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                resume,
+                                &mut events,
+                                &mut trample,
+                            )
+                        }
                         Some(Pause::Trample) => sunrise_client::mobs::riders::resume_after_trample(
                             &mut mobs,
                             i,
@@ -614,6 +628,16 @@ impl Game<'_> {
                     let kept = match progress {
                         sunrise_client::mobs::ai::TickProgress::Complete(kept) => kept,
                         sunrise_client::mobs::ai::TickProgress::Paused(paused) => {
+                            if matches!(paused, Pause::Breeding { .. }) {
+                                // In particular AnimalMakeLove's earlier lock-gaze is already
+                                // visible to the partner when spawnChildFromBreeding runs.
+                                sunrise_client::mobs::apply_brain_events(
+                                    &mut mobs,
+                                    &mut level,
+                                    &mut events,
+                                    from,
+                                );
+                            }
                             // Return every player loan before ending the world borrow.
                             if seen_guest.is_none() {
                                 base.player = w.player;
@@ -705,21 +729,16 @@ impl Game<'_> {
                     // LivingEntity.tickDeath: after twenty ticks the body is removed.
                     if !kept && !m.removed && !m.alive() && m.death_time >= 20 {
                         let (width, height) = (f64::from(m.width()), f64::from(m.height()));
-                        // 🤖 Agent: `AbstractCubeMob.remove` splits a grown cube into
-                        // its smaller halves when it is removed, twenty ticks after
-                        // the death. The parent leaves the list before the split
-                        // runs, so its size, position, kind and persistence are
-                        // captured here, as they are at the removal.
-                        let split = if matches!(
+                        gone.push((m.id, m.position, width, height));
+                        // AbstractCubeMob.remove splits before super.remove. Yield here
+                        // while the dying parent still has an owning row and a Host handle.
+                        if matches!(
                             m.species(),
                             Species::Slime | Species::MagmaCube | Species::SulfurCube
                         ) && m.extra.size > 1
                         {
-                            Some(m.clone())
-                        } else {
-                            None
-                        };
-                        gone.push((m.id, m.position, width, height, split));
+                            split = Some(m.join);
+                        }
                     }
                     route_player_events(
                         &mut events,
@@ -748,16 +767,6 @@ impl Game<'_> {
                     snapshot[slot].alive &= kept;
                     snapshot[slot].removed |= !kept;
                     grid.update(slot, snapshot[slot].bounds);
-                    // The listened birth needs the real Game and must run before the
-                    // next mob ticks. Take it out before the normal brain-event pass
-                    // can cool the partner or erase its breeding target.
-                    if base.asks_live_birth(m.species())
-                        && let Some(index) = events[from..]
-                            .iter()
-                            .position(|event| matches!(event, MobEvent::Breed { .. }))
-                    {
-                        breed = Some(events.remove(from + index));
-                    }
                     sunrise_client::mobs::apply_brain_events(
                         &mut mobs,
                         &mut level,
@@ -765,7 +774,7 @@ impl Game<'_> {
                         from,
                     );
                     cursor += 1;
-                    if section_yield || tell_post.is_some() || breed.is_some() {
+                    if section_yield || tell_post.is_some() || split.is_some() {
                         break;
                     }
                 }
@@ -776,7 +785,7 @@ impl Game<'_> {
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
-                && breed.is_none()
+                && split.is_none()
             {
                 break;
             }
@@ -802,11 +811,12 @@ impl Game<'_> {
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 mobs.retain(|m| {
-                    index
-                        .get(&m.id)
-                        .and_then(|&slot| keep.get(slot as usize))
-                        .copied()
-                        .unwrap_or(true)
+                    Some(m.join) == split
+                        || index
+                            .get(&m.id)
+                            .and_then(|&slot| keep.get(slot as usize))
+                            .copied()
+                            .unwrap_or(true)
                 });
                 gone_rows = false;
             }
@@ -838,9 +848,27 @@ impl Game<'_> {
                         &mut section_moves,
                     );
                 }
+                let breeding = matches!(pause, Some(Pause::Breeding { .. }));
+                if (split.is_some() || breeding)
+                    && sections_in_game.is_none()
+                    && let Some(sections) = section_table.as_ref()
+                {
+                    std::mem::swap(
+                        &mut self.native_lifecycle.entity_sections,
+                        &mut sections.borrow_mut(),
+                    );
+                    sections_in_game = Some(sections);
+                }
+                if split.is_some() || breeding {
+                    // Consume completed removals before calling a listener which can unwind.
+                    self.emit_death_poofs(gone.drain(..));
+                }
+                if let Some(join) = split {
+                    self.complete_cube_removal(join);
+                }
                 if let Some(id) = retry_rider {
                     self.dismount_mob(id);
-                } else if let Some(paused) = pause.as_ref() {
+                } else if let Some(paused) = pause.as_mut() {
                     match paused {
                         Pause::Consumption { decision, .. } => {
                             self.apply_fox_consumption(decision);
@@ -848,23 +876,16 @@ impl Game<'_> {
                         Pause::Breathing { air, .. } => {
                             air_answer = self.ask_mob_breath(air);
                         }
+                        Pause::Breeding { event, .. } => {
+                            if let Some(event) = event.take() {
+                                self.deliver_breed(*event, true);
+                            }
+                        }
                         Pause::Trample => {
                             let trample = trample.as_ref().expect("the trample pause was stored");
                             self.trample_farmland(trample.mob, false, trample.decision());
                         }
                     }
-                }
-                if let Some(event) = breed {
-                    if sections_in_game.is_none()
-                        && let Some(sections) = section_table.as_ref()
-                    {
-                        std::mem::swap(
-                            &mut self.native_lifecycle.entity_sections,
-                            &mut sections.borrow_mut(),
-                        );
-                        sections_in_game = Some(sections);
-                    }
-                    self.deliver_breed(event, true);
                 }
                 if let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);

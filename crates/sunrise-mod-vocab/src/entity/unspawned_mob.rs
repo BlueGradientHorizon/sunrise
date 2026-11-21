@@ -75,7 +75,8 @@ pub trait UnspawnedMobWrite: UnspawnedMobRead {
     fn set_custom_name(&mut self, name: Option<Text>) -> Result<(), UnspawnedMobError>;
 }
 
-/// A read-only scoped borrow of a mob the game has made but not yet added to a level.
+/// A read-only scoped borrow of a spawn candidate. `spawn_cluster_size` lends the mob after
+/// the insertion attempt; other spawn hooks lend it before insertion.
 ///
 /// The borrow lasts only for the hook or part call that receives it. Where the site does not
 /// construct the mob ahead of time (chunk-generation packs, spawners with entity data, or the
@@ -100,7 +101,7 @@ impl<'a> UnspawnedMobView<'a> {
         self.inner.kind()
     }
 
-    /// Where the mob will join the level.
+    /// The candidate’s current position.
     pub fn position(&self) -> Result<[f64; 3], UnspawnedMobError> {
         self.inner.position()
     }

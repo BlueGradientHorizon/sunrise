@@ -1106,8 +1106,42 @@ pub enum Pause {
         /// `Entity.computeSpeed`, read before the tick moved the mob.
         known_speed: Vec3,
     },
+    /// A breeding goal or brain behaviour finished its decision. Deliver the action before
+    /// resuming any later goal, movement or age and love ticks.
+    Breeding {
+        event: Option<Box<MobEvent>>,
+        resume: BreedingResume,
+    },
     /// The caller's trample slot holds the continuation.
     Trample,
+}
+
+#[derive(Debug)]
+pub struct BreedingResume {
+    phase: BreedingPhase,
+    was_on_fire: bool,
+}
+
+#[derive(Debug)]
+enum BreedingPhase {
+    Goal(super::goals::GoalBreed),
+    Brain(super::animal_brain::BrainBreed),
+}
+
+enum AiPause {
+    Trample(TramplePhase),
+    Breed(Box<MobEvent>, BreedingPhase),
+}
+
+impl From<super::goals::GoalPause> for AiPause {
+    fn from(pause: super::goals::GoalPause) -> Self {
+        match pause {
+            super::goals::GoalPause::Trample(pause) => Self::Trample(TramplePhase::Goal(pause)),
+            super::goals::GoalPause::Breed(event, pause) => {
+                Self::Breed(event, BreedingPhase::Goal(pause))
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -1201,8 +1235,8 @@ pub fn tick(
                 let breath = Some(air.step.vanilla);
                 resume_after_breathing(m, w, level, events, air, known_speed, breath, None)
             }
-            TickProgress::Paused(Pause::Trample) => {
-                unreachable!("hostless travel cannot pause")
+            TickProgress::Paused(Pause::Trample | Pause::Breeding { .. }) => {
+                unreachable!("a hostless tick cannot pause for trample or breeding")
             }
         };
     }
@@ -1454,19 +1488,84 @@ fn ai_and_finish_tick(
         if m.species() == Species::TraderLlama {
             super::caravan::trader_llama_tick(m, w);
         }
-    } else if let Some(phase) = ai_step(m, w, level, events, trample.is_some()) {
-        *trample.expect("only a game-owned tick pauses a trample") = Some(MobTrample {
-            phase,
+    } else if let Some(pause) = ai_step(m, w, level, events, trample.is_some()) {
+        return tick_pause(
+            m,
             was_on_fire,
-            join: m.join,
-            mob: m.id,
-        });
-        return TickProgress::Paused(Pause::Trample);
+            pause,
+            trample.expect("only a game-owned tick pauses AI"),
+        );
     }
     if m.no_ai && m.species() == Species::Fox {
         super::fox::finish_ai_step(m, w, events);
     }
     TickProgress::Complete(finish_tick(m, w, level, was_on_fire, events))
+}
+
+fn tick_pause(
+    m: &Mob,
+    was_on_fire: bool,
+    pause: AiPause,
+    trample: &mut Option<MobTrample>,
+) -> TickProgress {
+    match pause {
+        AiPause::Trample(phase) => {
+            *trample = Some(MobTrample {
+                phase,
+                was_on_fire,
+                join: m.join,
+                mob: m.id,
+            });
+            TickProgress::Paused(Pause::Trample)
+        }
+        AiPause::Breed(event, phase) => TickProgress::Paused(Pause::Breeding {
+            event: Some(event),
+            resume: BreedingResume { phase, was_on_fire },
+        }),
+    }
+}
+
+/// Resume the rest of the selector or brain, then movement and the rest of this tick.
+pub(super) fn resume_after_birth(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    resume: BreedingResume,
+    trample: &mut Option<MobTrample>,
+) -> TickProgress {
+    if m.removed {
+        return TickProgress::Complete(false);
+    }
+    let next = match resume.phase {
+        BreedingPhase::Goal(goal) => {
+            let paused = {
+                let BorrowedGoalSelectors { mob, goals, .. } = &mut BorrowedGoalSelectors::new(m);
+                goals.resume_after_birth(mob, &mut Cx { w, level, events }, goal)
+            };
+            paused
+                .map(AiPause::from)
+                .or_else(|| finish_server_ai_step(m, w, level, events, true))
+        }
+        BreedingPhase::Brain(brain) => {
+            if let Some((event, resume)) =
+                super::animal_brain::resume_after_birth(m, w, level, events, brain)
+            {
+                Some(AiPause::Breed(event, BreedingPhase::Brain(resume)))
+            } else {
+                server_ai_controls(m, w, level, events, false);
+                None
+            }
+        }
+    };
+    if let Some(pause) = next.or_else(|| {
+        ai_step_after_goals(m, w, level, events, true)
+            .err()
+            .map(|travel| AiPause::Trample(TramplePhase::Travel(travel)))
+    }) {
+        return tick_pause(m, resume.was_on_fire, pause, trample);
+    }
+    TickProgress::Complete(finish_tick(m, w, level, resume.was_on_fire, events))
 }
 
 /// Resume the exact move, then the remainder of `LivingEntity.aiStep` and the tick.
@@ -1493,22 +1592,17 @@ pub(super) fn resume_after_trample(
                 let BorrowedGoalSelectors { mob, goals, .. } = &mut BorrowedGoalSelectors::new(m);
                 goals.resume_after_trample(mob, &mut Cx { w, level, events }, goal)
             };
-            if let Some(goal) = paused {
-                Some(TramplePhase::Goal(goal))
-            } else {
-                finish_server_ai_step(m, w, level, events);
+            paused.map(AiPause::from).or_else(|| {
+                finish_server_ai_step(m, w, level, events, false);
                 ai_step_after_goals(m, w, level, events, true)
                     .err()
-                    .map(TramplePhase::Travel)
-            }
+                    .map(|travel| AiPause::Trample(TramplePhase::Travel(travel)))
+            })
         }
     };
     match progress {
         None => TickProgress::Complete(finish_tick(m, w, level, paused.was_on_fire, events)),
-        Some(phase) => {
-            *trample = Some(MobTrample { phase, ..paused });
-            TickProgress::Paused(Pause::Trample)
-        }
+        Some(pause) => tick_pause(m, paused.was_on_fire, pause, trample),
     }
 }
 
@@ -2756,7 +2850,7 @@ fn ai_step(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_trample: bool,
-) -> Option<TramplePhase> {
+) -> Option<AiPause> {
     if m.species() == Species::Parrot {
         super::parrot::ai_step(m, w, level.random(), events);
     }
@@ -2803,8 +2897,8 @@ fn ai_step(
         super::piglin::before_goals(m, w, level.random(), events);
     }
     if m.alive() && !immobile {
-        if let Some(paused) = server_ai_until_trample(m, w, level, events, pause_trample) {
-            return Some(TramplePhase::Goal(paused));
+        if let Some(paused) = server_ai_until_pause(m, w, level, events, pause_trample) {
+            return Some(paused);
         }
     } else {
         m.ai.jumping = false;
@@ -2813,7 +2907,7 @@ fn ai_step(
     }
     ai_step_after_goals(m, w, level, events, pause_trample)
         .err()
-        .map(TramplePhase::Travel)
+        .map(|travel| AiPause::Trample(TramplePhase::Travel(travel)))
 }
 
 fn ai_step_after_goals(
@@ -3311,17 +3405,17 @@ pub(super) fn server_ai_step(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) {
-    server_ai_until_trample(m, w, level, events, false);
+    server_ai_until_pause(m, w, level, events, false);
 }
 
-/// Mob.serverAiStep through the running goals, one of which may move the mob.
-fn server_ai_until_trample(
+/// Mob.serverAiStep through goals, brain and controls, lending the owner at an inline action.
+fn server_ai_until_pause(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_trample: bool,
-) -> Option<super::goals::GoalTrample> {
+) -> Option<AiPause> {
     // A Java `int`: past `i32::MAX` it wraps, as there.
     m.ai.no_action_time = m.ai.no_action_time.wrapping_add(1);
     // A happy ghast set up for its age (ageBoundaryReached runs at once).
@@ -3339,6 +3433,7 @@ fn server_ai_until_trample(
     // Of the built-in goals, only the dolphin's rider-follow goal calls
     // `Entity.move` directly. Dynamic goals cannot install that native goal.
     let pause_goals = pause_trample && m.species() == Species::Dolphin;
+    let pause_birth = pause_trample && w.asks_live_birth(m.species());
     {
         let BorrowedGoalSelectors {
             mob,
@@ -3352,9 +3447,9 @@ fn server_ai_until_trample(
         } else {
             targets.tick_running(mob, &mut cx, false);
         }
-        if pause_goals {
-            if let Some(paused) = goals.tick_until_trample(mob, &mut cx, force) {
-                return Some(paused);
+        if pause_goals || pause_birth {
+            if let Some(paused) = goals.tick_until_pause(mob, &mut cx, force, pause_birth) {
+                return Some(paused.into());
             }
         } else if force {
             goals.tick(mob, &mut cx);
@@ -3362,8 +3457,7 @@ fn server_ai_until_trample(
             goals.tick_running(mob, &mut cx, false);
         }
     }
-    finish_server_ai_step(m, w, level, events);
-    None
+    finish_server_ai_step(m, w, level, events, pause_birth)
 }
 
 fn finish_server_ai_step(
@@ -3371,7 +3465,8 @@ fn finish_server_ai_step(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-) {
+    pause_birth: bool,
+) -> Option<AiPause> {
     // A creaking looked at stands still: its navigation, move, look and jump
     // controls wait (CreakingPathNavigation and the Creaking*Control).
     let frozen = super::creaking::is_creaking(m) && !super::creaking::can_move(m);
@@ -3397,14 +3492,27 @@ fn finish_server_ai_step(
     }
     // Sniffer and HappyGhast.customServerAiStep: the brain (a happy ghast's
     // only while it is a ghastling), then updateActivity.
-    if m.species() == Species::Sniffer
+    if (m.species() == Species::Sniffer
         || m.species() == Species::HappyGhast && m.is_baby()
         || m.species() == Species::CopperGolem
         || m.species() == Species::Axolotl
-        || m.species() == Species::Tadpole
+        || m.species() == Species::Tadpole)
+        && let Some((event, resume)) =
+            super::animal_brain::tick_until_birth(m, w, level, events, pause_birth)
     {
-        super::animal_brain::tick(m, w, level, events);
+        return Some(AiPause::Breed(event, BreedingPhase::Brain(resume)));
     }
+    server_ai_controls(m, w, level, events, frozen);
+    None
+}
+
+fn server_ai_controls(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    frozen: bool,
+) {
     {
         let mut cx = Cx { w, level, events };
         custom_server_ai_step(m, &mut cx);

@@ -8,6 +8,7 @@ use super::{
     Game,
     commands::{Target, place_summoned, strip_finalize_tree},
 };
+use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::{Compound, Tag};
 
@@ -237,6 +238,25 @@ impl Game<'_> {
         removed: &[u32],
         through: Option<sunrise_client::join_seq::JoinSeq>,
     ) -> bool {
+        self.flush_join_admissions(loaded_from_disk, watch, removed, through, None)
+    }
+
+    /// NaturalSpawner still passes a rejected candidate to its post-insertion spawn callback.
+    /// Return that exact mob, including edits made during admission, without its world state.
+    pub(super) fn admit_natural_spawn(&mut self, watch: u32) -> Option<Mob> {
+        let mut rejected = None;
+        self.flush_join_admissions(false, watch, &[], None, Some(&mut rejected));
+        rejected
+    }
+
+    fn flush_join_admissions(
+        &mut self,
+        loaded_from_disk: bool,
+        watch: u32,
+        removed: &[u32],
+        through: Option<sunrise_client::join_seq::JoinSeq>,
+        mut rejected: Option<&mut Option<Mob>>,
+    ) -> bool {
         if self.remote.is_some() || mod_api::__private::mods().is_empty() || !self.joins_pending() {
             return true;
         }
@@ -272,27 +292,45 @@ impl Game<'_> {
             let (kind, at) = self.slot_kind_and_position(slot);
             let mut canceled = false;
             let dimension = self.dim.id();
-            self.construct_joining(id, &kind);
-            self.native_entity_join_level(
-                dimension,
-                id,
-                &kind,
-                [at.x, at.y, at.z],
-                loaded_from_disk,
-                &mut canceled,
-            );
+            let admission = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.construct_joining(id, &kind);
+                self.native_entity_join_level(
+                    dimension,
+                    id,
+                    &kind,
+                    [at.x, at.y, at.z],
+                    loaded_from_disk,
+                    &mut canceled,
+                );
+            }));
             let spawn = self
                 .native_lifecycle
                 .pending_item_spawns
                 .iter()
                 .position(|entry| entry.0 == id)
                 .map(|index| self.native_lifecycle.pending_item_spawns.remove(index));
-            if canceled {
-                self.persist.joins_canceled += 1;
+            if canceled || admission.is_err() {
+                // A listener may have written other rows before unwinding. Retire this
+                // admission only, and do not use an index that may now name another row.
+                if let Some(slot) = self.refresh_join_slot(id, slot) {
+                    if id == watch
+                        && admission.is_ok()
+                        && let Some(rejected) = rejected.as_deref_mut()
+                        && let Slot::Walk(super::entity::EntityHandle::Mob(index)) = slot
+                    {
+                        let mut mob = self.mobs.remove(index);
+                        mob.extra.spawn_tags = self.tags_of(Target::Mob(id));
+                        mob.join = Default::default();
+                        *rejected = Some(mob);
+                    } else {
+                        self.discard_slot(slot);
+                    }
+                }
                 self.forget_entity(id);
-                // Handles are indexes: the entity is taken out before any
-                // other change to its list.
-                self.discard_slot(slot);
+                if let Err(payload) = admission {
+                    std::panic::resume_unwind(payload);
+                }
+                self.persist.joins_canceled += 1;
                 kept &= id != watch;
             } else {
                 self.remember_join(id, kind.into_owned());
@@ -448,6 +486,42 @@ impl Game<'_> {
                 self.dragon.as_ref().map_or(Vec3::ZERO, |d| d.position),
             ),
         }
+    }
+    fn refresh_join_slot(&self, id: u32, slot: Slot) -> Option<Slot> {
+        let apart = match slot {
+            Slot::Walk(handle) => return self.refresh_entity_handle(id, handle).map(Slot::Walk),
+            Slot::Apart(Apart::Crystal(_)) => self
+                .crystals
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Crystal),
+            Slot::Apart(Apart::Cushion(_)) => self
+                .cushions
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Cushion),
+            Slot::Apart(Apart::Painting(_)) => self
+                .paintings
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Painting),
+            Slot::Apart(Apart::Frame(_)) => self
+                .item_frames
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Frame),
+            Slot::Apart(Apart::Other(_)) => self
+                .others
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Other),
+            Slot::Apart(Apart::Dragon) => self
+                .dragon
+                .as_ref()
+                .filter(|e| e.id == id)
+                .map(|_| Apart::Dragon),
+        };
+        apart.map(Slot::Apart)
     }
     /// Takes the entity out of the level, before it ever ticked.
     fn discard_slot(&mut self, slot: Slot) {

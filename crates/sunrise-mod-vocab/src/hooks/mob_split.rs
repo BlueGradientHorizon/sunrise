@@ -4,7 +4,8 @@ pub trait Hooks {
     /// A slime, magma cube or sulfur cube is dying and about to split into
     /// smaller ones (NeoForge's `MobSplitEvent`, vanilla's
     /// `AbstractCubeMob.remove`): `dimension` is the level it dies in (a
-    /// `PendingMobSpec` for a new child names it), `parent` its entity id, `kind` its type,
+    /// `PendingMobSpec` for a new child names it), `parent` its entity id (still resolvable
+    /// with `host.entity(parent)`), `kind` its type,
     /// `size` its size and `child_size` the size of the children (half of
     /// it). The children vanilla made (2 to 4 for a slime or magma cube, 2
     /// for an unprimed sulfur cube, or 0 for a primed sulfur cube above size 1)
@@ -22,7 +23,7 @@ pub trait Hooks {
     /// list is cleanly discarded when dropped.
     /// Set `cancel` (or return `Flow::Cancel`, or leave the list empty) to
     /// spawn no children: the construction draws stay spent and the parent still dies.
-    /// If accepted, children join once each in list order through the usual join. Only for a parent above
+    /// If accepted, children join once each in list order before the parent is removed. Only for a parent above
     /// size 1, once its children are made. With no listener nothing is allocated
     /// for the list. On the server.
     #[notes = r#"## Mob split

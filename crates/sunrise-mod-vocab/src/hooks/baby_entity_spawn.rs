@@ -18,7 +18,8 @@ pub trait Hooks {
     /// or remove it (`event.child.take()` / `event.child.clear()`). Any detached
     /// [`UnspawnedMob`] not left in the slot is cleanly discarded when dropped.
     /// A replacement must be an `AgeableMob` (`minecraft:fox` for fox breeding), but need
-    /// not start as a baby. This hook runs before either parent's breeding cooldown.
+    /// not start as a baby. This hook runs inside the breeding goal or brain behavior, before
+    /// either parent's cooldown and before the initiating animal's movement and age/love tick.
     /// On acceptance, ordinary animals set the child's baby age and snap it to the
     /// initiating parent's live position with zero yaw and pitch before awarding credit.
     /// Foxes grant breeder trust and award credit using the child's pre-snap age and position,

@@ -16,6 +16,7 @@ use mod_api::{
     UnspawnedMobError,
 };
 use std::sync::{Arc, Mutex};
+use sunrise_client::mobs::goals::{Cx, Goal};
 use sunrise_core::random::LegacyRandom;
 
 const IGNORE: &str = "needs prepared resources in SUNRISE_TEST_RESOURCES";
@@ -586,6 +587,7 @@ pub(super) fn breed_pair_credited(
         None,
         None,
         sunrise_client::mobs::BreedExperience::Deferred,
+        true,
     );
     (base + 1, base + 2, child)
 }
@@ -726,12 +728,11 @@ fn clearing_the_baby_without_cancel_leaves_parents_and_credit_untouched() {
     with_baby(
         move |host, event| {
             seen.fetch_add(1, Ordering::Relaxed);
-            for (id, love) in [(event.parent, 599), (event.partner, 600)] {
+            for id in [event.parent, event.partner] {
                 let nbt = host.entity(id).unwrap().nbt(host).unwrap();
                 assert_eq!(nbt.get(&"Age".into()), Some(&mod_api::Tag::Int(0)));
-                // The initiating cow has just ticked; the partner has not ticked yet and
-                // must not be cooled down by the pre-dispatch pass.
-                assert_eq!(nbt.get(&"InLove".into()), Some(&mod_api::Tag::Int(love)));
+                // BreedGoal.tick runs before Animal.aiStep decrements the love clock.
+                assert_eq!(nbt.get(&"InLove".into()), Some(&mod_api::Tag::Int(600)));
             }
             assert!(event.child.take().is_some());
             Flow::Continue
@@ -816,6 +817,7 @@ fn breeding_dispatches_when_proposed_child_is_none_and_accepts_replacement() {
             None,
             None,
             sunrise_client::mobs::BreedExperience::Deferred,
+            true,
         );
         (base + 1, base + 2, child)
     };
@@ -1589,8 +1591,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
                 );
             }
 
-            // 3. Panic during 2nd child's entity_join_level: 1st child remains joined,
-            // and the 3rd (unjoined) child's issued state is cleaned up.
+            // A failed admission is retired along with the untouched tail; the first join stands.
             game.mobs.clear();
             trace.lock().unwrap().clear();
             *mode.lock().unwrap() = Mode::PanicSecondJoin;
@@ -1602,15 +1603,147 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             assert!(unwound.is_err());
             assert!(game.entity_initialization.active.is_none());
             assert!(game.mobs.iter().any(|m| m.id == first));
-            let third = first + 2;
-            assert!(!game.mobs.iter().any(|m| m.id == third));
-            assert!(!game.entity_attachments.contains_key(&third));
-            assert!(
-                !game
-                    .entity_initialization
-                    .initialized
-                    .contains(&Holder::Entity(third))
-            );
+            assert_eq!(SPLIT_MARKER.get(game, Holder::Entity(first)), Ok(7));
+            for id in [first + 1, first + 2] {
+                assert!(!game.mobs.iter().any(|m| m.id == id));
+                assert!(!game.entity_attachments.contains_key(&id));
+                assert!(!game.persist.uuids.contains_key(&id));
+                assert!(
+                    !game
+                        .entity_initialization
+                        .initialized
+                        .contains(&Holder::Entity(id))
+                );
+            }
         });
+    });
+}
+
+// Preload the ordinary goal's delay within its first real selector tick. The final tick still
+// runs Breed::tick, then the real Game handoff and the remainder of the normal mob tick.
+#[derive(Clone, Debug)]
+struct ReadyBreed(sunrise_client::mobs::goals::Breed);
+impl Goal for ReadyBreed {
+    fn can_use(&mut self, mob: &mut Mob, cx: &mut Cx) -> bool {
+        self.0.can_use(mob, cx)
+    }
+    fn tick(&mut self, mob: &mut Mob, cx: &mut Cx) {
+        for _ in 0..sunrise_client::mobs::goals::reduced(60) {
+            self.0.tick(mob, cx);
+        }
+    }
+    fn box_clone(&self) -> Box<dyn Goal> {
+        Box::new(self.clone())
+    }
+}
+
+fn add_ready_pair(game: &mut Game<'_>) -> u32 {
+    let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
+    let parent = game.next_entity + 1;
+    game.next_entity += 2;
+    for (id, x) in [(parent, 0.5), (parent + 1, 1.5)] {
+        let mut mob = Mob::new(id, kind.clone(), Vec3::new(x, 80.0, 0.5), 0.0);
+        mob.persistent = true;
+        mob.no_gravity = true;
+        mob.random = LegacyRandom::new(42);
+        mob.extra.in_love = 600;
+        mob.velocity.x = 0.125;
+        mob.ai.goals.clear();
+        mob.ai.targets.clear();
+        if id == parent {
+            mob.ai
+                .goals
+                .add(2, ReadyBreed(sunrise_client::mobs::goals::Breed::new(1.0)));
+        }
+        game.mobs.push(mob);
+    }
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+    game.native_joins_skip();
+    parent
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_noop_birth_listener_leaves_goal_position_age_and_random_unchanged() {
+    let tick = |game: &mut Game<'_>| {
+        let parent = add_ready_pair(game);
+        game.tick_creature_entities().unwrap();
+        let m = find(game, parent);
+        let baby = game.mobs.iter().find(|m| m.extra.age < 0).unwrap();
+        assert_eq!(baby.position, Vec3::new(0.5, 80.0, 0.5));
+        assert_eq!(m.extra.age, 5999);
+        m.random.state()
+    };
+    let mut ordinary = None;
+    mod_platform::testing::with_mods(Vec::new().into(), || {
+        with_game(|game| ordinary = Some(tick(game)))
+    });
+    with_baby(
+        |host, event| {
+            let nbt = host.entity(event.parent).unwrap().nbt(host).unwrap();
+            assert_eq!(nbt.get(&"InLove".into()), Some(&mod_api::Tag::Int(600)));
+            Flow::Continue
+        },
+        |game| assert_eq!(Some(tick(game)), ordinary),
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_split() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    let mods: mod_api::Mods = vec![
+        mod_api::ModEntry::new(
+            "split",
+            Box::new(Split(Box::new(move |host, event| {
+                assert!(
+                    host.entity(event.parent).is_some(),
+                    "the dying parent still belongs to the level"
+                );
+                seen.fetch_add(1, Ordering::Relaxed);
+                Flow::Continue
+            }))),
+        ),
+        mod_api::ModEntry::new(
+            "baby",
+            Box::new(Baby(Box::new(|_, _| panic!("later birth")))),
+        ),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let mut dying = cube(game, "minecraft:slime", 4, SEED);
+            let cube_id = dying.id;
+            dying.position = Vec3::new(10.0, 80.0, 10.0);
+            dying.health = 0.0;
+            dying.death_time = 19;
+            dying.persistent = true;
+            game.mobs.push(dying);
+            let parent = add_ready_pair(game);
+            let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                game.tick_creature_entities()
+            }));
+            assert!(attempt.is_err());
+            assert_eq!(calls.load(Ordering::Relaxed), 1);
+            assert!(!game.mobs.iter().any(|m| m.id == cube_id));
+            assert_eq!(
+                game.mobs
+                    .iter()
+                    .filter(|m| m.species() == Species::Slime)
+                    .count(),
+                3
+            );
+            for mob in &mut game.mobs {
+                if mob.id == parent || mob.id == parent + 1 {
+                    mob.no_ai = true;
+                }
+            }
+            game.tick_creature_entities().unwrap();
+            assert_eq!(calls.load(Ordering::Relaxed), 1);
+        })
     });
 }

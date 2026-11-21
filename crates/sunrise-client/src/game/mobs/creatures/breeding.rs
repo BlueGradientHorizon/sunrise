@@ -2,7 +2,7 @@
 use super::*;
 
 impl Game<'_> {
-    /// Deliver the breed event either at the listened mob's tick boundary or in the normal batch.
+    /// Deliver the breed event either at the mob's breeding goal or behaviour or in the normal batch.
     pub(super) fn deliver_breed(&mut self, event: MobEvent, at_tick_boundary: bool) {
         let MobEvent::Breed {
             parent,
@@ -22,6 +22,7 @@ impl Game<'_> {
             parent_variant,
             wolf_voice,
             experience,
+            at_tick_boundary,
         );
         if at_tick_boundary {
             // AnimalMakeLove clears the memories after spawning (even when there is no child).

@@ -1210,10 +1210,8 @@ impl Game<'_> {
         let kind = mob.kind.id.clone();
         self.finalize_spawn_lent(&kind, at, reason, spawner, difficulty, Some(mob), group)
     }
-    /// `Mob.getMaxSpawnClusterSize` as the entity parts of the finalized `mob`'s type answer it
-    /// (`EntityPart::spawn_cluster_size`), asked with `mob` lent as it stands before it joins the
-    /// level: the first part in dispatch order to answer wins, and none answering leaves vanilla's
-    /// `vanilla` to the spawner. A type with no part costs one table lookup. Server-side.
+    /// `Mob.getMaxSpawnClusterSize`, asked after natural-spawn admission and accounting. The
+    /// first part of the candidate's type to answer wins; no answer keeps the vanilla limit.
     pub(super) fn spawn_cluster_size(
         &self,
         mob: &Mob,
@@ -1225,13 +1223,17 @@ impl Game<'_> {
             return None;
         }
         let parts = mod_api::__private::entity_parts();
-        let kind = mob.kind.id.clone();
-        let list = parts.entity_parts(&kind);
+        let kind = mob.kind.id.as_str();
+        let list = parts.entity_parts(kind);
         if list.is_empty() {
             return None;
         }
         let at = [mob.position.x, mob.position.y, mob.position.z];
-        let borrowed = self.borrowed_unspawned_mob(&kind, at, Some(mob));
+        let mut borrowed = self.borrowed_unspawned_mob(kind, at, Some(mob));
+        if mob.join.is_joined() {
+            borrowed.live_tags =
+                Some(self.saved_entity_tags(super::super::commands::Target::Mob(mob.id)));
+        }
         let view = mod_api::UnspawnedMobView::new(&borrowed);
         list.iter().find_map(|attached| {
             let _guard =
@@ -1501,10 +1503,7 @@ impl Game<'_> {
         let mut player_credit = std::mem::take(&mut self.last_hurt_by_player);
         // The block writes since the last tick: mobs re-path around them.
         let mut path_writes = std::mem::take(self.world.path_writes.get_or_insert_with(Vec::new));
-        // The mobs whose bodies go this tick: (id, feet, width, height, split).
-        // 🤖 Agent: the last field is the grown slime, magma cube or sulfur
-        // cube the body leaves behind (`AbstractCubeMob.remove`), captured as
-        // the body goes because it has left the list by the time it splits.
+        // The mobs whose bodies go this tick: (id, feet, width, height).
         let mut gone = Vec::new();
         // The level's random and attachments, lent to the mobs (brain behaviours draw from
         // the random, and a hit's damage hooks get both) and taken back after their ticks.
@@ -1590,22 +1589,11 @@ impl Game<'_> {
         self.creatures.pending.insert(level_id, pending);
         self.creatures.event_buf = events;
         if let Some(payload) = dispatch_panic {
-            // Restoration may itself panic and replace this payload; a second
-            // destructor panic may abort. panic=abort cannot recover at all.
+            self.emit_death_poofs(gone);
             std::panic::resume_unwind(payload);
         }
         self.native_tick_post_batch(round);
-        // ... and entity event 60 goes out as it is: the poof.
-        // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
-        // broadcasts event 60 before it calls `remove`.
-        for (id, at, width, height, split) in gone {
-            let at = [at.x, at.y, at.z];
-            self.lan_entity_event(id as i32, 60, at);
-            self.death_poof(at, width, height);
-            if let Some(m) = split {
-                self.split_dead_cube(m);
-            }
-        }
+        self.emit_death_poofs(gone);
         laps.lap("creature_retain");
         self.sync_riders();
         self.tick_skeleton_traps();
@@ -1705,6 +1693,14 @@ impl Game<'_> {
         // And for the sizes the ticks changed (a pose, a baby grown, a scale).
         self.native_mob_sizes();
         Ok(())
+    }
+    /// `LivingEntity.tickDeath` tells clients to poof before removing the body.
+    fn emit_death_poofs(&mut self, gone: impl IntoIterator<Item = (u32, Vec3, f64, f64)>) {
+        for (id, at, width, height) in gone {
+            let at = [at.x, at.y, at.z];
+            self.lan_entity_event(id as i32, 60, at);
+            self.death_poof(at, width, height);
+        }
     }
     /// `LivingEntity.makePoofParticles` (entity event 60) about a mob's box.
     pub(super) fn death_poof(&mut self, at: [f64; 3], width: f64, height: f64) {
@@ -1827,7 +1823,25 @@ impl Game<'_> {
         );
         self.finish_mob_death(m, &mut dying, source);
     }
-    /// `AbstractCubeMob.remove`: split only as the dead body is removed.
+    /// `AbstractCubeMob.remove`: announce children while the parent is still present, then
+    /// retire the parent. A failed callback cannot leave the removal queued for another tick.
+    fn complete_cube_removal(&mut self, join: sunrise_client::join_seq::JoinSeq) {
+        let Some(index) = self.mobs.locate(join) else {
+            return;
+        };
+        let mut dying = self.mobs[index].clone();
+        let split = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.split_cube_children(&mut dying)
+        }));
+        if let Some(index) = self.mobs.locate(join) {
+            self.mobs.remove(index);
+        }
+        if let Err(payload) = split {
+            std::panic::resume_unwind(payload);
+        }
+    }
+
+    #[cfg(test)]
     fn split_dead_cube(&mut self, mut dying: Mob) {
         if matches!(
             dying.species(),
@@ -3888,6 +3902,7 @@ impl Game<'_> {
         parent_variant: Option<bool>,
         wolf_voice: Option<u8>,
         experience: sunrise_client::mobs::BreedExperience,
+        at_tick_boundary: bool,
     ) -> Option<u32> {
         let p = self.mobs.iter().find(|m| m.id == parent).cloned()?;
         let q = self.mobs.iter().find(|m| m.id == partner).cloned();
@@ -4170,7 +4185,13 @@ impl Game<'_> {
                 parent_cause.map(sunrise_client::lan::playerdata::uuid_ints),
                 partner_cause.map(sunrise_client::lan::playerdata::uuid_ints),
             );
-            self.finalize_breeding(&live_parent, partner, Some(&child), order, listened);
+            self.finalize_breeding(
+                &live_parent,
+                partner,
+                Some(&child),
+                order,
+                listened || at_tick_boundary,
+            );
         }
         sunrise_client::mobs::finalize::set_baby(&mut child, true);
         sunrise_client::mobs::living::teleports::snap_to(&mut child, live_parent.position);
@@ -4184,7 +4205,13 @@ impl Game<'_> {
         child.previous_head_pitch = 0.0;
         // Animal.spawnChildFromBreeding credits the child after setting its baby age and pose.
         if !fox {
-            self.finalize_breeding(&live_parent, partner, Some(&child), order, listened);
+            self.finalize_breeding(
+                &live_parent,
+                partner,
+                Some(&child),
+                order,
+                listened || at_tick_boundary,
+            );
         }
         let at = [
             live_parent.position.x,

@@ -533,13 +533,17 @@ pub struct Bx<'a, 'w, 'l> {
 }
 
 /// `Brain.tick` then `updateActivity` (from `customServerAiStep`).
-pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<MobEvent>) {
+pub(super) fn tick_until_birth(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    breed: bool,
+) -> Option<(Box<MobEvent>, BrainBreed)> {
     if brain(m).is_none() {
         let seed = i64::from(m.id);
         init(m, seed);
-        if brain(m).is_none() {
-            return;
-        }
+        brain(m)?;
     }
     // forgetOutdatedMemories
     mem(m).tick();
@@ -557,13 +561,57 @@ pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut
             e.b.try_start(m, &mut cx);
         }
     }
-    for e in list.iter_mut() {
-        if e.b.running() {
-            e.b.tick_or_stop(m, &mut cx);
+    brain_mut(m).list = list;
+    tick_running(m, &mut cx, 0, breed)
+}
+
+#[derive(Debug)]
+pub(super) struct BrainBreed(usize);
+
+pub(super) fn resume_after_birth(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    paused: BrainBreed,
+) -> Option<(Box<MobEvent>, BrainBreed)> {
+    tick_running(
+        m,
+        &mut Bx {
+            w,
+            level,
+            events,
+            now: w.game_time,
+        },
+        paused.0,
+        true,
+    )
+}
+
+fn tick_running(
+    m: &mut Mob,
+    cx: &mut Bx<'_, '_, '_>,
+    start: usize,
+    breed: bool,
+) -> Option<(Box<MobEvent>, BrainBreed)> {
+    let mut list = std::mem::take(&mut brain_mut(m).list);
+    for (slot, e) in list.iter_mut().enumerate().skip(start) {
+        if !e.b.running() {
+            continue;
+        }
+        let before = cx.events.len();
+        e.b.tick_or_stop(m, cx);
+        if breed
+            && cx.events.len() > before
+            && matches!(cx.events.last(), Some(MobEvent::Breed { .. }))
+        {
+            let event = Box::new(cx.events.pop().unwrap());
+            brain_mut(m).list = list;
+            return Some((event, BrainBreed(slot + 1)));
         }
     }
     brain_mut(m).list = list;
-    update_activity(m, w);
+    update_activity(m, cx.w);
     m.ai.panicking = is_panicking(m);
     if m.species() == Species::Axolotl {
         m.extra.axolotl.playing_dead = mem(m)
@@ -572,6 +620,7 @@ pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut
             .is_some_and(|ticks| ticks > 0);
         m.ai.target = mem(m).attack_target.value();
     }
+    None
 }
 
 /// `SnifferAi.updateActivity` / `HappyGhastAi.updateActivity`:

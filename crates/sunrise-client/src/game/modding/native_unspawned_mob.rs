@@ -1,5 +1,4 @@
-//! A mob the game has made but not yet added to a level, lent to one hook call
-//! (`finalize_spawn`'s `mob`, `mob_spawn_position_check`'s `mob`, `spawn_cluster_size`'s `mob`):
+//! A mob lent during finalization or the position check, or just after a natural spawn attempt:
 //! the scoped read-only view ([`BorrowedUnspawnedMob`]) and mutable editor
 //! ([`BorrowedUnspawnedMobMut`]), the shared read/write helpers used by pending children, and
 //! the spawn group data at the API boundary (`SpawnGroup`).
@@ -28,6 +27,7 @@ pub(in crate::game) struct BorrowedUnspawnedMob<'a> {
     kind: &'a str,
     position: [f64; 3],
     mob: Option<&'a Mob>,
+    pub(super) live_tags: Option<mod_api::EntityTags<'a>>,
     attributes: &'a Arc<Catalog>,
 }
 
@@ -67,6 +67,9 @@ impl UnspawnedMobRead for BorrowedUnspawnedMob<'_> {
     }
 
     fn tags(&self) -> Result<Vec<String>, UnspawnedMobError> {
+        if let Some(tags) = &self.live_tags {
+            return Ok(tags.iter_utf16().map(String::from_utf16_lossy).collect());
+        }
         read_mob_tags(self.mob.ok_or(UnspawnedMobError::Unsupported)?)
     }
 
@@ -423,6 +426,7 @@ impl Game<'_> {
             kind,
             position,
             mob,
+            live_tags: None,
             attributes: &self.motion.attributes,
         }
     }

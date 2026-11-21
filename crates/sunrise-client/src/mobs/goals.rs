@@ -128,6 +128,18 @@ pub(super) struct GoalTrample {
     force: bool,
 }
 
+#[derive(Debug)]
+pub(super) struct GoalBreed {
+    next: usize,
+    force: bool,
+}
+
+#[derive(Debug)]
+pub(super) enum GoalPause {
+    Trample(GoalTrample),
+    Breed(Box<MobEvent>, GoalBreed),
+}
+
 impl GoalSelector {
     pub fn add(&mut self, priority: i32, goal: impl Goal + 'static) {
         self.add_boxed(priority, Box::new(goal));
@@ -233,16 +245,17 @@ impl GoalSelector {
             }
         }
     }
-    pub(super) fn tick_until_trample(
+    pub(super) fn tick_until_pause(
         &mut self,
         m: &mut Mob,
         cx: &mut Cx,
         force: bool,
-    ) -> Option<GoalTrample> {
+        breed: bool,
+    ) -> Option<GoalPause> {
         if force {
             self.prepare_tick(m, cx);
         }
-        self.tick_from(m, cx, force, 0)
+        self.tick_from(m, cx, force, 0, breed)
     }
 
     fn tick_from(
@@ -251,20 +264,43 @@ impl GoalSelector {
         cx: &mut Cx,
         force: bool,
         start: usize,
-    ) -> Option<GoalTrample> {
+        breed: bool,
+    ) -> Option<GoalPause> {
         for (slot, g) in self.goals.iter_mut().enumerate().skip(start) {
-            if g.running
-                && (force || g.goal.every_tick())
-                && let Some(movement) = g.goal.tick_until_trample(m, cx)
-            {
-                return Some(GoalTrample {
+            if !g.running || !(force || g.goal.every_tick()) {
+                continue;
+            }
+            let before = cx.events.len();
+            if let Some(movement) = g.goal.tick_until_trample(m, cx) {
+                return Some(GoalPause::Trample(GoalTrample {
                     movement,
                     slot,
                     force,
-                });
+                }));
+            }
+            if breed
+                && cx.events.len() > before
+                && matches!(cx.events.last(), Some(MobEvent::Breed { .. }))
+            {
+                return Some(GoalPause::Breed(
+                    Box::new(cx.events.pop().unwrap()),
+                    GoalBreed {
+                        next: slot + 1,
+                        force,
+                    },
+                ));
             }
         }
         None
+    }
+
+    pub(super) fn resume_after_birth(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+        paused: GoalBreed,
+    ) -> Option<GoalPause> {
+        self.tick_from(m, cx, paused.force, paused.next, true)
     }
 
     pub(super) fn resume_after_trample(
@@ -272,7 +308,7 @@ impl GoalSelector {
         m: &mut Mob,
         cx: &mut Cx,
         paused: GoalTrample,
-    ) -> Option<GoalTrample> {
+    ) -> Option<GoalPause> {
         paused.movement.resume(m, cx.w, cx.level, cx.events);
         // An owning-host listener can remove or shift the running goal. Only
         // the still-resident goal holding this pause can finish its path update.
@@ -281,7 +317,7 @@ impl GoalSelector {
             .iter_mut()
             .position(|g| g.goal.after_trample(m, cx))
             .map_or(paused.slot, |slot| slot + 1);
-        self.tick_from(m, cx, paused.force, next)
+        self.tick_from(m, cx, paused.force, next, false)
     }
 
     pub fn stop_all(&mut self, m: &mut Mob, cx: &mut Cx) {
