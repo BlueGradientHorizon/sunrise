@@ -101,7 +101,7 @@ fn panicking_server_reload_registration_discards_only_its_ordered_and_retained_t
     let mut listeners = ServerListenerRegistry::new();
     let functions = VanillaServerListeners::functions();
     let seeded = ListenerKey::new(id("test_mod:seeded"));
-    let shared = ListenerKey::new(id("test_mod:shared"));
+    let shared = ListenerKey::<Stored>::new(id("test_mod:shared"));
     (&mut listeners as &mut dyn ServerReloadListeners)
         .add_retained_listener(&seeded, files(), Arc::new(Stored("seeded")))
         .unwrap();

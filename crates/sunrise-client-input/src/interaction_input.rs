@@ -198,7 +198,7 @@ mod tests {
             callback: true,
             ..Default::default()
         };
-        for tick in 0..2 {
+        for invocation in 0..2 {
             world.events.clear();
             tick(&mut world);
             assert_eq!(
@@ -207,7 +207,7 @@ mod tests {
                     .iter()
                     .filter(|&&event| event == "attack")
                     .count(),
-                if tick == 0 { 0 } else { 1025 }
+                if invocation == 0 { 0 } else { 1025 }
             );
         }
     }

@@ -293,7 +293,7 @@ mod tests {
 
         let owned = OwnedMenuScreen::new("screen_mod", 0, screen);
         let host = crate::testing::FakeHost::new();
-        let frame = MenuScreenFrame {
+        let frame = || MenuScreenFrame {
             origin: [0.0, 0.0],
             pointer: [10, 10],
             gui_size: [320, 240],
@@ -305,20 +305,20 @@ mod tests {
         assert!(owned.has_draw());
         assert!(owned.has_tooltip());
 
-        owned.draw(&host, frame, &mut ctx);
+        owned.draw(&host, frame(), &mut ctx);
         assert_eq!(draw_runs.load(Ordering::Relaxed), 1);
         assert!(!owned.has_draw(), "panicking draw must be disabled");
 
         // Second draw is skipped.
-        owned.draw(&host, frame, &mut ctx);
+        owned.draw(&host, frame(), &mut ctx);
         assert_eq!(draw_runs.load(Ordering::Relaxed), 1);
 
         // Click and tooltip on the same opening remain enabled and functional.
-        assert_eq!(owned.click(&host, frame, false), Some(1));
-        assert_eq!(owned.click(&host, frame, true), Some(2));
+        assert_eq!(owned.click(&host, frame(), false), Some(1));
+        assert_eq!(owned.click(&host, frame(), true), Some(2));
         assert!(owned.has_tooltip());
         let mut lines = Vec::new();
-        assert!(owned.tooltip(&host, frame, Some(0), &mut lines));
+        assert!(owned.tooltip(&host, frame(), Some(0), &mut lines));
         assert_eq!(lines.len(), 1);
     }
 }

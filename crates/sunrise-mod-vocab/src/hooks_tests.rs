@@ -1072,11 +1072,7 @@ fn world_phase_cloned_event_fields_roll_back_on_panic() {
     struct Panicker;
     #[crate::__subscriptions]
     impl Hooks for Panicker {
-        fn broadcast_message(
-            &self,
-            _: &dyn ServerHost,
-            event: &mut BroadcastMessageEvent<'_>,
-        ) -> Flow {
+        fn broadcast_message(&self, _: &dyn Host, event: &mut BroadcastMessageEvent<'_>) -> Flow {
             *event.line = Text::literal("corrupted");
             panic!("boom in broadcast_message");
         }
@@ -1084,11 +1080,7 @@ fn world_phase_cloned_event_fields_roll_back_on_panic() {
     struct Observer(Arc<std::sync::Mutex<Option<Text>>>);
     #[crate::__subscriptions]
     impl Hooks for Observer {
-        fn broadcast_message(
-            &self,
-            _: &dyn ServerHost,
-            event: &mut BroadcastMessageEvent<'_>,
-        ) -> Flow {
+        fn broadcast_message(&self, _: &dyn Host, event: &mut BroadcastMessageEvent<'_>) -> Flow {
             *self.0.lock().unwrap() = Some(event.line.clone());
             *event.line = Text::literal("clean");
             Flow::Continue

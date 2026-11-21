@@ -994,13 +994,7 @@ mod tests {
         let sneak = VanillaMappingSlot::by_name("key.sneak").unwrap();
         let screenshot = VanillaMappingSlot::by_name("key.screenshot").unwrap();
 
-        mappings.key_event(
-            &binds,
-            "key.keyboard.t",
-            KeyAction::Press,
-            false,
-            [false; 4],
-        );
+        mappings.key_event(&binds, "key.keyboard.t", KeyAction::Press, false);
         assert!(mappings.is_down(chat));
         assert_eq!(mappings.pending_clicks(chat), 1);
         assert!(mappings.consume_click(chat));

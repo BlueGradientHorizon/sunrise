@@ -174,12 +174,19 @@ fn duplicate_objects_cannot_make_the_reverse_lookup_ambiguous() {
 
 #[test]
 fn registration_panic_discards_its_listeners_and_edges_before_later_subscribers() {
+    struct Context;
+    impl crate::ClientReloadListenerContext for Context {
+        fn math_profile(&self) -> crate::MathProfile {
+            crate::MathProfile::HotSpotX86_64
+        }
+    }
+
     struct Broken;
     #[mod_api::__subscriptions]
     impl crate::Hooks for Broken {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn crate::ClientHost,
+            _: &dyn crate::ClientReloadListenerContext,
             event: &mut crate::AddClientReloadListenersEvent<'_>,
         ) {
             let key = id("registration_probe:discarded");
@@ -199,7 +206,7 @@ fn registration_panic_discards_its_listeners_and_edges_before_later_subscribers(
     impl crate::Hooks for Healthy {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn crate::ClientHost,
+            _: &dyn crate::ClientReloadListenerContext,
             event: &mut crate::AddClientReloadListenersEvent<'_>,
         ) {
             assert!(event.listeners.get_graph().is_empty());
@@ -218,10 +225,9 @@ fn registration_panic_discards_its_listeners_and_edges_before_later_subscribers(
         || {
             for load in 0..2 {
                 let mut registry = ClientListenerRegistry::new();
-                crate::dispatch_add_client_reload_listeners(
-                    &crate::testing::FakeHost::new(),
-                    |listen| registry.register_listener(listen),
-                );
+                crate::dispatch_add_client_reload_listeners(&Context, |listen| {
+                    registry.register_listener(listen)
+                });
                 assert!(registry.get_graph().is_empty());
                 assert_eq!(
                     registry.get_registry(),
