@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::game::native_entity_refs::tests::with_client_game;
+    use crate::game::{Screen, native_entity_refs::tests::with_client_game};
+    use mod_api::__private::{ModPhase, PhaseOwner};
     use mod_api::MappingError;
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
@@ -10,6 +11,7 @@ mod tests {
     #[ignore = "daily"]
     fn mapping_physical_down_follows_the_binding_and_ignores_the_logical_state() {
         with_client_game(|game| {
+            let _phase = PhaseOwner::scope(ModPhase::World);
             let forward_mapping = game.vanilla_key_mapping("key.forward").unwrap();
             let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -58,19 +60,32 @@ mod tests {
     #[ignore = "daily"]
     fn stale_vanilla_mapping_ref_refuses_foreign_client() {
         with_client_game(|game| {
-            let old = game.vanilla_key_mapping("key.forward").unwrap();
-            assert_eq!(old.binding(game), Ok("key.keyboard.w"));
+            let _phase = PhaseOwner::scope(ModPhase::World);
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            game.screen = Screen::Playing;
+            game.title = None;
+            let old = game.vanilla_key_mapping("key.attack").unwrap();
+            assert_eq!(old.binding(game), Ok("key.mouse.left"));
 
             // A new client input store resolves the same fixed vanilla slot with a new identity.
             game.native_input.mappings = sunrise_client::keymapping::ModKeys::default();
-            game.settings.keys.set("key.forward", "key.keyboard.up");
+            game.settings.keys.set("key.attack", "key.keyboard.r");
             assert_eq!(old.binding(game), Err(MappingError::Stale));
             assert_eq!(old.is_down(game), Err(MappingError::Stale));
             assert_eq!(old.physical_down(game), Err(MappingError::Stale));
             assert_eq!(old.translated_key_message(game), Err(MappingError::Stale));
+            assert_eq!(old.set_down(game, true), Err(MappingError::Stale));
+            assert_eq!(old.click(game), Err(MappingError::Stale));
 
-            let current = game.vanilla_key_mapping("key.forward").unwrap();
-            assert_eq!(current.binding(game), Ok("key.keyboard.up"));
+            let current = game.vanilla_key_mapping("key.attack").unwrap();
+            assert_eq!(current.binding(game), Ok("key.keyboard.r"));
+            assert_eq!(current.is_down(game), Ok(false));
+            assert_eq!(game.attack_clicks.count(), 0);
+            // A live handle can still write with the same player and phase.
+            current.set_down(game, true).unwrap();
+            current.click(game).unwrap();
+            assert_eq!(current.is_down(game), Ok(true));
+            assert_eq!(game.attack_clicks.count(), 1);
         });
     }
 }

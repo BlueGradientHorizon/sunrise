@@ -63,47 +63,11 @@ pub trait ClientInputClientHost {
     fn playing(&self) -> bool;
     /// Side: client.
     /// Resolve a vanilla mapping name such as `key.jump`, not a binding name such as
-    /// `key.keyboard.space`. Keep the handle for subsequent reads. An unknown name returns
+    /// `key.keyboard.space`. Keep the handle for subsequent reads and writes. An unknown name returns
     /// [`MappingError::Unknown`]; a host or phase without client input returns
     /// [`MappingError::Unavailable`].
     #[access(ClientSetup)]
     fn vanilla_key_mapping(&self, name: &str) -> Result<VanillaKeyMappingRef, MappingError>;
-    /// Side: client.
-    /// Holds the vanilla gameplay mapping `key` down or lets it go (`KeyMapping.setDown`): the
-    /// held state its key gives it, without the click a press adds. For a hold-style mapping
-    /// this replaces its logical state until the next input for that mapping. It does not press
-    /// or release the physical key or add a separate hold that can outlast its release.
-    /// `key` is a mapping of the movement, gameplay or inventory category
-    /// (`key.attack`, `key.use`, `key.sprint`,
-    /// `key.forward`, `key.hotbar.1`...); a toggled mapping (sneak, sprint, attack, use with their
-    /// toggle option on) flips on `true`, as `ToggleKeyMapping.setDown` does. The client tick's
-    /// key step acts on it with all its checks: a held use repeats every four ticks, a held attack
-    /// goes on breaking the block. With a screen or overlay open a press does nothing, and opening
-    /// one lets go of every mapping, as `KeyMapping.releaseAll` does. `key_mapping_pre` is not
-    /// asked: it is about physical keys. `key.pickItem` is click-only; this call returns
-    /// [`MappingError::ClickOnly`] for it. Outside the world phase this returns
-    /// [`MappingError::Unavailable`].
-    #[access(WorldOnly)]
-    fn set_mapping_down(&mut self, key: &str, down: bool) -> Result<(), MappingError>;
-    /// Side: client.
-    /// Adds one click to the vanilla gameplay mapping `key` (`KeyMapping.click`), as a press of
-    /// its key does: the attack, use or pick a click starts on a subsequent client tick, through the
-    /// checks of `startAttack` and `startUseItem` (the miss cooldown, busy hands, the item, the
-    /// target under the crosshair) and the packets the player's own click sends; the hotbar slot,
-    /// drop, inventory or hand swap of the inventory keys. With a screen or overlay open the click
-    /// is dropped, as `KeyMapping.releaseAll` drops it. `interaction_key_mapping_triggered` fires
-    /// at the action as for the player's click; `key_mapping_pre` is not asked.
-    /// Queued actions drain oldest first, at most 64 entries per queue per drain, with at most
-    /// 1024 pending. Excess entries wait for later drains (normally later client ticks). The
-    /// hotbar is the exception: each number key keeps its own click counter, up to 1024 pending
-    /// clicks per key, and a selection drain consumes one click per key, in order from key 1 to
-    /// key 9, so the highest key clicked wins. Selection can drain more than once per tick: there
-    /// is no once-per-tick guard. A full queue refuses the new entry and returns normally,
-    /// logging only its first refusal for that queue's lifetime. These bounds also apply to
-    /// physical input queued through the same routes. Outside the world phase this returns
-    /// [`MappingError::Unavailable`].
-    #[access(WorldOnly)]
-    fn click_mapping(&mut self, key: &str) -> Result<(), MappingError>;
     /// Side: client.
     /// Milliseconds on the game's own clock (`Util.getMillis`), counting from the game's start:
     /// what a text field's cursor blinks by and what tells a double click from two clicks.
@@ -175,4 +139,56 @@ pub trait ClientInputClientBackend {
         &self,
         mapping: VanillaKeyMappingRef,
     ) -> Result<Text, MappingError>;
+}
+
+/// The live client writes behind [`VanillaKeyMappingRef`].
+// hidden: a handle's backend, reached through `ClientBackendMut`; mods call the handle, never this trait
+#[doc(hidden)]
+#[sunrise_mod_api_macros::host_area]
+pub trait ClientInputClientBackendMut {
+    /// Side: client.
+    /// Holds this vanilla gameplay mapping down or lets it go (`KeyMapping.setDown`), without
+    /// adding a click. For a hold-style mapping this replaces its logical state until the next
+    /// input for that mapping. It does not press or release the physical key or add a separate
+    /// hold that can outlast its release. Sneak, sprint, attack and use with their toggle option
+    /// on flip only on `true`, as `ToggleKeyMapping.setDown` does.
+    ///
+    /// The client tick's key step acts on the mapping with all its checks: a held use repeats
+    /// every four ticks, and a held attack goes on breaking the block. With a screen or overlay
+    /// open a press does nothing, and opening one releases the mappings (`KeyMapping.releaseAll`).
+    /// `key_mapping_pre` is not asked: it is about physical keys.
+    ///
+    /// Accepts movement, gameplay and inventory mappings only ([`MappingError::NotGameplay`]).
+    /// `key.pickItem` is click-only ([`MappingError::ClickOnly`]); use [`VanillaKeyMappingRef::click`].
+    /// An unavailable backend or phase returns [`MappingError::Unavailable`], a handle from
+    /// another client returns [`MappingError::Stale`], and no player returns [`MappingError::NoWorld`].
+    #[access(WorldOnly)]
+    fn vanilla_key_mapping_set_down(
+        &mut self,
+        mapping: VanillaKeyMappingRef,
+        down: bool,
+    ) -> Result<(), MappingError>;
+    /// Side: client.
+    /// Adds one click to this vanilla gameplay mapping (`KeyMapping.click`), without holding it.
+    /// An attack, use or pick click acts on a subsequent client tick, through the checks of
+    /// `startAttack` and `startUseItem` (the miss cooldown, busy hands, the item and the target
+    /// under the crosshair), sending the same packets as the player's own click. Inventory
+    /// mappings select a hotbar slot, drop an item, open the inventory or swap hands as usual.
+    /// With a screen or overlay open the click is dropped. `interaction_key_mapping_triggered`
+    /// fires at the action as for the player's click; `key_mapping_pre` is not asked.
+    ///
+    /// Queued actions drain oldest first, at most 64 entries per queue per drain, with at most
+    /// 1024 pending. Excess entries wait for later drains (normally later client ticks). Each
+    /// hotbar key has its own click counter, up to 1024 pending clicks per key. A selection drain
+    /// takes one click per key, in order from key 1 to key 9, so the highest key clicked wins.
+    /// Selection can drain more than once per tick. A full queue refuses the new entry and
+    /// returns normally, logging only its first refusal for that queue's lifetime. These bounds
+    /// also apply to physical input queued through the same routes.
+    ///
+    /// Refusals are as for [`VanillaKeyMappingRef::set_down`], except that `key.pickItem` can be clicked.
+    #[access(WorldOnly)]
+    fn vanilla_key_mapping_click(
+        &mut self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<(), MappingError>;
 }

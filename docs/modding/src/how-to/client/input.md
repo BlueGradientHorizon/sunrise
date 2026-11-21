@@ -4,17 +4,27 @@ A client mod can press the player's vanilla gameplay mappings as their keys do: 
 it go, or click it. The game then acts through its own key handling, with every check it makes for the
 player's keys, so the server sees only the packets of a normal client, at the vanilla moments.
 
+Resolve each mapping once during `client_setup` and store its `VanillaKeyMappingRef`:
+
 ```rust
-// Hold sprint, and attack once on the next tick.
-host.set_mapping_down("key.sprint", true)?;
-host.click_mapping("key.attack")?;
+use mod_api::prelude::*;
+
+let sprint = host.vanilla_key_mapping("key.sprint")?;
+let attack = host.vanilla_key_mapping("key.attack")?;
 ```
 
-`ClientHost::set_mapping_down(key, down)` sets the held state (`KeyMapping.setDown`), without the click a
+In a world-phase callback, use those same handles to hold sprint and attack once:
+
+```rust
+sprint.set_down(host, true)?;
+attack.click(host)?;
+```
+
+`mapping.set_down(host, down)` sets the held state (`KeyMapping.setDown`), without the click a
 press adds. For a hold-style mapping, `false` releases the mapping even if the player is holding
 its key or controller button; `true` holds the mapping without creating a second device hold.
 Neither changes the physical input, and the next input for that mapping takes over again.
-`ClientHost::click_mapping(key)` adds one click (`KeyMapping.click`), without holding the mapping.
+`mapping.click(host)` adds one click (`KeyMapping.click`), without holding the mapping.
 A press of the key itself does both; a mod that wants a held attack that also starts at once calls both.
 
 Queued actions are taken oldest first, at most **64 entries per queue per drain**, with at most
@@ -28,18 +38,19 @@ lifetime, and the call returns normally (`Ok(())`), like a lost physical press. 
 input does not reset that diagnostic. Physical input using these queues has the same limits; ordinary
 input below the limits keeps its order and timing.
 
-`key` is a vanilla mapping of the movement, gameplay or inventory category: `key.forward`, `key.left`,
-`key.back`, `key.right`, `key.jump`, `key.sneak`, `key.sprint`, `key.attack`, `key.use`, `key.pickItem`,
-`key.drop`, `key.inventory`, `key.swapOffhand` and `key.hotbar.1` to `key.hotbar.9`. Both return
+Writes accept vanilla movement, gameplay and inventory mappings such as `key.jump`, `key.attack`,
+and `key.hotbar.1`. They act on the mapping, not its current physical binding. Both return
 `Result<(), MappingError>`:
 
 | Error | When |
 |---|---|
-| `MappingError::ClickOnly { key }` | `set_mapping_down` on `key.pickItem`; use `click_mapping` instead |
+| `MappingError::ClickOnly { key }` | `set_down` on `key.pickItem`; use `click` instead |
 | `MappingError::NoWorld` | no player is in a world |
-| `MappingError::Unavailable` | the call is outside the world phase |
-| `MappingError::Unknown { key }` | no vanilla mapping has that name (`"nope"`) |
+| `MappingError::Unavailable` | the client backend is unavailable or the call is outside the world phase |
+| `MappingError::Stale` | the handle does not belong to the current client; resolve its name again |
 | `MappingError::NotGameplay { key }` | a vanilla mapping of another category (`key.screenshot`, `key.fullscreen`, `key.chat`...) |
+
+An unknown name fails at resolution (`MappingError::Unknown { key }`), not at either write.
 
 ## What the game does with them
 
@@ -52,7 +63,7 @@ the rest:
 - An attack on a block sends the break start with its prediction sequence, then the punch packet; an
   attack on nothing sends the punch packet and sets the miss cooldown to 10 ticks (not in creative).
   With the attack mapping not held, the same tick lets go of the break and clears the cooldown, as a
-  tap between two ticks does: hold it (`set_mapping_down("key.attack", true)`) for a break that goes on.
+  tap between two ticks does: hold it (`attack.set_down(host, true)`) for a break that goes on.
 - A held use repeats every four ticks and does nothing more while the item is in use; letting go
   releases it (a bow shoots).
 - A click on an inventory key acts as its key's press: a hotbar slot is selected on a subsequent tick, and

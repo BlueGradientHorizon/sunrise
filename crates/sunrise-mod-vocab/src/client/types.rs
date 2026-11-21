@@ -83,22 +83,22 @@ pub struct VanillaKeyMappingRef {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum MappingError {
-    /// No player is in a world.
+    /// A gameplay write needs a player in a world.
     NoWorld,
-    /// No vanilla mapping has this name.
+    /// Resolution found no vanilla mapping with the given name.
     Unknown {
         /// The name asked for.
         key: String,
     },
-    /// A vanilla mapping a player does not play with: one outside the movement, gameplay and
-    /// inventory categories (`key.screenshot`, `key.fullscreen`, `key.chat`...).
+    /// The resolved mapping cannot be pressed as a movement, gameplay or inventory mapping
+    /// (`key.screenshot`, `key.fullscreen`, `key.chat`...).
     NotGameplay {
-        /// The name asked for.
+        /// The mapping's canonical name.
         key: String,
     },
     /// The mapping accepts a click but has no held state (`key.pickItem`).
     ClickOnly {
-        /// The name asked for.
+        /// The mapping's canonical name.
         key: String,
     },
     /// The handle does not belong to the current client or no longer identifies a mapping.
