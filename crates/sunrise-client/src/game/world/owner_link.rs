@@ -18,6 +18,7 @@ use std::{
         mpsc::{Receiver, Sender, SyncSender},
     },
 };
+use sunrise_client::server_perf::MemoryCost;
 use sunrise_core::geometry::Vec3;
 use sunrise_perf_format::v1::StopReason;
 
@@ -113,7 +114,10 @@ pub(super) enum ControlRequest {
         reply: Reply<Result<Option<Value>, String>>,
     },
     /// The memory report: the server's own parts.
-    ServerSide(Reply<ServerSide>),
+    ServerSide {
+        reply: Reply<ServerSide>,
+        cost: Option<MemoryCost>,
+    },
     /// `lan op NAME LEVEL`: whether a guest of that name was found.
     SetOp {
         name: String,
@@ -242,8 +246,13 @@ impl Game<'_> {
                     self.in_owner_level(|g| g.block_command(&words).map_err(|e| e.to_string()));
                 let _ = reply.send(out);
             }
-            ControlRequest::ServerSide(reply) => {
-                let _ = reply.send(self.server_side());
+            ControlRequest::ServerSide { reply, cost } => {
+                let collect = || self.server_side();
+                let side = match cost {
+                    Some(cost) => cost.measure(collect),
+                    None => collect(),
+                };
+                let _ = reply.send(side);
             }
             ControlRequest::SetOp { name, level, reply } => {
                 let _ = reply.send(self.lan_set_op(&name, level));

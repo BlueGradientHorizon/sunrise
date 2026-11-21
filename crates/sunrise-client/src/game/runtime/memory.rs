@@ -9,11 +9,15 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::mem::size_of;
-use std::sync::Arc;
-use sunrise_client::chunk::ColumnCensus;
+use std::sync::{
+    Arc,
+    mpsc::{Receiver, TryRecvError, sync_channel},
+};
+use std::task::Poll;
+use sunrise_client::chunk::{Chunk, ColumnCensus, Section};
 use sunrise_client::fast_hash::FxHashSet;
 use sunrise_client::lan::hub::Hub;
-use sunrise_client::world::World;
+use sunrise_client::server_perf::MemoryCost;
 
 const MB: f64 = 1048576.0;
 /// Entity types and players listed apart; the rest only count in the totals.
@@ -37,17 +41,14 @@ fn string_bytes(s: &Option<String>) -> usize {
     s.as_ref().map_or(0, String::capacity)
 }
 
-/// The columns of `worlds`, each section counted once however many columns
-/// (or worlds) share it.
-fn census<'a>(worlds: impl IntoIterator<Item = &'a World>) -> ColumnCensus {
+/// Counts each section once however many columns (or worlds) share it.
+fn census(chunks: &[Arc<Chunk>]) -> (ColumnCensus, FxHashSet<*const Section>) {
     let mut census = ColumnCensus::default();
     let mut seen = FxHashSet::default();
-    for world in worlds {
-        for chunk in world.chunks.values() {
-            chunk.census(&mut census, &mut seen);
-        }
+    for chunk in chunks {
+        chunk.census(&mut census, &mut seen);
     }
-    census
+    (census, seen)
 }
 
 #[derive(Serialize)]
@@ -90,24 +91,21 @@ impl Columns {
 
 /// The sections of `worlds` that are also in `others` (by address), and
 /// their heap bytes: what one copy of them costs.
-fn shared<'a>(
-    worlds: impl IntoIterator<Item = &'a World>,
-    others: &FxHashSet<usize>,
-) -> (usize, usize) {
-    let mut seen = FxHashSet::default();
-    let (mut count, mut bytes) = (0, 0);
-    for world in worlds {
-        for chunk in world.chunks.values() {
-            for section in &chunk.sections {
-                let at = Arc::as_ptr(section) as usize;
-                if others.contains(&at) && seen.insert(at) {
-                    count += 1;
-                    bytes += section.heap_bytes();
-                }
+fn shared(chunks: &[Arc<Chunk>], mut others: FxHashSet<*const Section>) -> SharedSections {
+    let (mut sections, mut bytes) = (0, 0);
+    for chunk in chunks {
+        for section in &chunk.sections {
+            if others.remove(&Arc::as_ptr(section)) {
+                sections += 1;
+                bytes += section.heap_bytes();
             }
         }
     }
-    (count, bytes)
+    SharedSections {
+        sections,
+        mb: mb(bytes),
+        bytes,
+    }
 }
 
 #[derive(Serialize)]
@@ -258,8 +256,7 @@ struct Renderer {
 
 /// A serving game's own parts: the columns it holds, its generation, entities, players, chunk send caches and queues.
 pub(super) struct ServerSide {
-    columns: Columns,
-    addresses: FxHashSet<usize>,
+    chunks: Vec<Arc<Chunk>>,
     generation: Generation,
     entities: Entities,
     players: Players,
@@ -272,8 +269,7 @@ pub(super) struct ServerSide {
 impl ServerSide {
     /// The bytes of every part this side names.
     fn bytes(&self) -> usize {
-        self.columns.bytes
-            + self.generation.bytes
+        self.generation.bytes
             + self.entities.bytes
             + self.players.bytes
             + self.chunk_send.bytes
@@ -312,6 +308,73 @@ pub(super) struct MemoryReport {
     named_mb: f64,
     /// Resident memory minus `named_mb`: what no census reaches (it can be negative where the parts overlap).
     unattributed_mb: Option<f64>,
+}
+
+/// Values that must be read on the window thread. The copy-on-write chunks can be
+/// counted elsewhere, and keep shared section identities alive until the comparison.
+struct MemoryInputs {
+    resident: Option<u64>,
+    process: Process,
+    allocator: Allocator,
+    render_distance: i32,
+    client: Option<Vec<Arc<Chunk>>>,
+    renderer: Option<(Renderer, usize)>,
+    far: Option<(FarTiles, usize)>,
+    heap_by_tag_mb: Option<Vec<(String, f64)>>,
+}
+
+impl MemoryInputs {
+    fn report(self, server: Option<ServerSide>) -> MemoryReport {
+        let window = self
+            .client
+            .as_ref()
+            .map(|chunks| Columns::new(&census(chunks).0));
+        let (server_columns, shared_with_server) = server.as_ref().map_or((None, None), |s| {
+            let (columns, sections) = census(&s.chunks);
+            let shared = self.client.as_ref().map(|chunks| shared(chunks, sections));
+            (Some(Columns::new(&columns)), shared)
+        });
+        let named = window.as_ref().map_or(0, |c| c.bytes)
+            + server_columns.as_ref().map_or(0, |c| c.bytes)
+            + server.as_ref().map_or(0, ServerSide::bytes)
+            + self.renderer.as_ref().map_or(0, |r| r.1)
+            + self.far.as_ref().map_or(0, |f| f.1);
+        let named = named.saturating_sub(shared_with_server.as_ref().map_or(0, |s| s.bytes));
+        let (columns, server_columns) = if window.is_some() {
+            (None, server_columns)
+        } else {
+            (server_columns, None)
+        };
+        let mut report = MemoryReport {
+            process: self.process,
+            allocator: self.allocator,
+            render_distance: self.render_distance,
+            client_columns: window,
+            columns,
+            server_columns,
+            shared_with_server,
+            server_generation: None,
+            entities: None,
+            players: None,
+            chunk_send: None,
+            light_queue: None,
+            generation_queue: None,
+            far_tiles: self.far.map(|f| f.0),
+            renderer: self.renderer.map(|r| r.0),
+            heap_by_tag_mb: self.heap_by_tag_mb,
+            named_mb: mb(named),
+            unattributed_mb: unattributed(self.resident, named),
+        };
+        if let Some(s) = server {
+            report.server_generation = Some(s.generation);
+            report.entities = Some(s.entities);
+            report.players = Some(s.players);
+            report.chunk_send = Some(s.chunk_send);
+            report.light_queue = Some(s.light_queue);
+            report.generation_queue = Some(s.generation_queue);
+        }
+        report
+    }
 }
 
 /// `resident - named` in megabytes, None without a resident size.
@@ -431,18 +494,11 @@ fn chunk_send_census(hub: &Hub) -> ChunkSend {
 }
 
 impl Game<'_> {
-    fn all_worlds(&self) -> impl Iterator<Item = &World> {
-        std::iter::once(&self.world).chain(self.levels.parked_worlds())
-    }
-    /// The census of this game's levels: the one in place and the parked ones.
-    fn level_census(&self) -> ColumnCensus {
-        census(self.all_worlds())
-    }
-    /// The addresses of this game's sections.
-    fn section_addresses(&self) -> FxHashSet<usize> {
-        self.all_worlds()
-            .flat_map(|w| w.chunks.values())
-            .flat_map(|c| c.sections.iter().map(|s| Arc::as_ptr(s) as usize))
+    /// Copy one Arc per column, not its sections or block data.
+    fn census_chunks(&self) -> Vec<Arc<Chunk>> {
+        std::iter::once(&self.world)
+            .chain(self.levels.parked_worlds())
+            .flat_map(|w| w.chunks.values().cloned())
             .collect()
     }
 
@@ -525,8 +581,7 @@ impl Game<'_> {
             light = (light.0 + q.light.0, light.1 + q.light.1);
         }
         ServerSide {
-            columns: Columns::new(&self.level_census()),
-            addresses: self.section_addresses(),
+            chunks: self.census_chunks(),
             generation: Generation::of(&self.streaming),
             entities: self.entity_census(),
             players,
@@ -543,30 +598,10 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn memory_report(&self) -> MemoryReport {
+    fn memory_inputs(&self) -> MemoryInputs {
         let (commit, peak_commit) = sunrise_threads::allocator_commit();
         let live = sunrise_threads::allocator_stats::live_bytes();
         let resident = sunrise_threads::process_memory::resident_bytes();
-        let dedicated = self.options.dedicated.is_some();
-        // The single-player server thread's own levels: a second copy of the
-        // columns both hold, unless they share sections.
-        let server = if dedicated {
-            Some(self.server_side())
-        } else {
-            self.integrated.as_ref().and_then(|i| {
-                i.ask(|reply| OwnerRequest::Control(ControlRequest::ServerSide(reply)))
-            })
-        };
-        let window = (!dedicated).then(|| self.level_census());
-        // The window's sections the server thread holds too (lan/handoff.rs).
-        let shared = server.as_ref().filter(|_| !dedicated).map(|s| {
-            let (sections, bytes) = shared(self.all_worlds(), &s.addresses);
-            SharedSections {
-                sections,
-                mb: mb(bytes),
-                bytes,
-            }
-        });
         let renderer = self.renderer.as_ref().map(|r| {
             let [arenas, vertices] = r.section_vertex_bytes();
             let cpu = r.cpu_census();
@@ -603,12 +638,8 @@ impl Game<'_> {
             };
             (tiles, kept_bytes)
         });
-        let named = window.as_ref().map_or(0, ColumnCensus::total_bytes)
-            + server.as_ref().map_or(0, ServerSide::bytes)
-            + renderer.as_ref().map_or(0, |r| r.1)
-            + far.as_ref().map_or(0, |f| f.1);
-        let named = named.saturating_sub(shared.as_ref().map_or(0, |s| s.bytes));
-        let mut report = MemoryReport {
+        MemoryInputs {
+            resident,
             process: Process {
                 resident_mb: resident.map(mb),
                 allocator_commit_mb: mb(commit),
@@ -621,18 +652,13 @@ impl Game<'_> {
                 overhead_mb: live.map(|live| mb(commit.saturating_sub(live))),
             },
             render_distance: self.streaming.radius,
-            client_columns: window.as_ref().map(Columns::new),
-            columns: None,
-            server_columns: None,
-            shared_with_server: shared,
-            server_generation: None,
-            entities: None,
-            players: None,
-            chunk_send: None,
-            light_queue: None,
-            generation_queue: None,
-            far_tiles: far.map(|f| f.0),
-            renderer: renderer.map(|r| r.0),
+            client: self
+                .options
+                .dedicated
+                .is_none()
+                .then(|| self.census_chunks()),
+            renderer,
+            far,
             heap_by_tag_mb: sunrise_threads::HEAP_CENSUS.then(|| {
                 sunrise_threads::heap_census::census()
                     .into_iter()
@@ -640,35 +666,142 @@ impl Game<'_> {
                     .map(|(tag, bytes)| (tag.to_string(), mb(bytes.max(0) as u64)))
                     .collect()
             }),
-            named_mb: mb(named),
-            unattributed_mb: unattributed(resident, named),
-        };
-        if let Some(s) = server {
-            if dedicated {
-                report.columns = Some(s.columns);
-            } else {
-                report.server_columns = Some(s.columns);
-            }
-            report.server_generation = Some(s.generation);
-            report.entities = Some(s.entities);
-            report.players = Some(s.players);
-            report.chunk_send = Some(s.chunk_send);
-            report.light_queue = Some(s.light_queue);
-            report.generation_queue = Some(s.generation_queue);
         }
-        report
     }
 
-    /// The report as JSON, for the control socket and the capture's rows.
+    pub(super) fn memory_report(&self) -> MemoryReport {
+        let inputs = self.memory_inputs();
+        let server = if self.options.dedicated.is_some() {
+            Some(self.server_side())
+        } else {
+            self.integrated.as_ref().and_then(|i| {
+                i.ask(|reply| {
+                    OwnerRequest::Control(ControlRequest::ServerSide { reply, cost: None })
+                })
+            })
+        };
+        inputs.report(server)
+    }
+
+    /// The report as JSON, for a manual control-socket request or a dedicated capture.
     pub(super) fn memory_value(&self) -> Value {
         serde_json::to_value(self.memory_report()).unwrap_or(Value::Null)
     }
 }
 
+type MemoryRows = Vec<(String, f64)>;
+
+/// Each capture owns its own receiver. Dropping it abandons the result without
+/// joining the worker or making a reply available to the next capture.
+pub(super) struct PendingMemory {
+    cost: MemoryCost,
+    phase: MemoryPhase,
+}
+
+enum MemoryPhase {
+    Server(Receiver<ServerSide>),
+    Worker(Receiver<MemoryRows>),
+}
+
+impl PendingMemory {
+    pub(super) fn start(game: &Game<'_>, cost: MemoryCost) -> Option<Self> {
+        let phase = if let Some(server) = &game.integrated {
+            let (reply, rx) = sync_channel(1);
+            if !cost.measure(|| {
+                server.tell(OwnerRequest::Control(ControlRequest::ServerSide {
+                    reply,
+                    cost: Some(cost.clone()),
+                }))
+            }) {
+                return None;
+            }
+            MemoryPhase::Server(rx)
+        } else {
+            MemoryPhase::Worker(Self::worker(game, None, &cost)?)
+        };
+        Some(Self { cost, phase })
+    }
+
+    pub(super) fn poll(&mut self, game: &Game<'_>) -> Poll<Option<MemoryRows>> {
+        match &self.phase {
+            MemoryPhase::Server(rx) => match rx.try_recv() {
+                Ok(server) => {
+                    let Some(rx) = Self::worker(game, Some(server), &self.cost) else {
+                        return Poll::Ready(None);
+                    };
+                    self.phase = MemoryPhase::Worker(rx);
+                    Poll::Pending
+                }
+                Err(TryRecvError::Empty) => Poll::Pending,
+                Err(TryRecvError::Disconnected) => Poll::Ready(None),
+            },
+            MemoryPhase::Worker(rx) => match rx.try_recv() {
+                Ok(rows) => Poll::Ready(Some(rows)),
+                Err(TryRecvError::Empty) => Poll::Pending,
+                Err(TryRecvError::Disconnected) => Poll::Ready(None),
+            },
+        }
+    }
+
+    fn worker(
+        game: &Game<'_>,
+        server: Option<ServerSide>,
+        cost: &MemoryCost,
+    ) -> Option<Receiver<MemoryRows>> {
+        cost.measure(|| {
+            let inputs = game.memory_inputs();
+            let cost = cost.clone();
+            let (send, receive) = sync_channel(1);
+            match std::thread::Builder::new()
+                .name("perf-memory".into())
+                .spawn(move || {
+                    sunrise_client::server_perf::profiler_thread();
+                    let rows = cost.measure(|| {
+                        let report =
+                            serde_json::to_value(inputs.report(server)).unwrap_or(Value::Null);
+                        flatten_report(&report)
+                    });
+                    let _ = send.send(rows);
+                }) {
+                Ok(_) => Some(receive),
+                Err(error) => {
+                    log::warn!("Sunrise: could not start the memory census: {error}");
+                    None
+                }
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{biggest, flatten_report, unattributed};
+    use super::{biggest, census, flatten_report, shared, unattributed};
     use serde_json::json;
+    use std::sync::Arc;
+    use sunrise_client::chunk::{Chunk, Light, Section};
+
+    #[test]
+    fn sharing_counts_a_section_only_once_across_both_censuses() {
+        let mut chunk = Chunk::empty(0, 0);
+        let a = Arc::make_mut(&mut chunk.sections[0]);
+        a.light = Light::Sky(Box::new([0; 2048]), 0);
+        let section = Arc::clone(&chunk.sections[0]);
+        let bytes = section.heap_bytes();
+        let chunk = Arc::new(chunk);
+        let mut other = Chunk::empty(1, 0);
+        other.sections.fill(Arc::new(Section::default()));
+        other.sections[0] = section.clone();
+        other.sections[1] = section;
+        // An equal, independently held section isn't shared.
+        other.sections[2] = Arc::new((*other.sections[1]).clone());
+        let client = [Arc::new(other)];
+        let (server, sections) = census(&[chunk]);
+        assert_eq!(server.columns, 1);
+        assert_eq!(server.light_arrays, 1);
+        let counted = shared(&client, sections);
+        assert_eq!(counted.sections, 1);
+        assert_eq!(counted.bytes, bytes);
+    }
 
     #[test]
     fn unattributed_is_resident_minus_the_named_bytes_and_may_be_negative() {
