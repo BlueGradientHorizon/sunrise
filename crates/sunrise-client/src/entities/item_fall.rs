@@ -88,6 +88,7 @@ mod tests {
         item.on_ground = true;
         let mut step = ItemStep {
             old_velocity: Vec3::ZERO,
+            restitution: None,
             landed: Some((BlockPos::new(0, 0, 0), 12.0)),
             movement: Some(Vec3::new(0.0, -2.0, 0.0)),
             vertical_contact: None,

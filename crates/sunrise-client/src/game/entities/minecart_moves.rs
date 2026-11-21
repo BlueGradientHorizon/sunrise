@@ -59,17 +59,25 @@ impl Game<'_> {
                 c.position.z + moved.z,
             );
             c.on_ground = delta.y < 0.0 && moved.y > delta.y;
-            c.horizontal_collision =
-                (moved.x - delta.x).abs() > 1.0e-7 || (moved.z - delta.z).abs() > 1.0e-7;
-            if (moved.x - delta.x).abs() > 1.0e-7 {
-                c.velocity.x = 0.0;
-            }
-            if (moved.z - delta.z).abs() > 1.0e-7 {
-                c.velocity.z = 0.0;
-            }
-            if (moved.y - delta.y).abs() > 1.0e-7 {
-                c.velocity.y = 0.0;
-            }
+            let differs = sunrise_world::entity_move::different;
+            c.horizontal_collision = differs(moved.x, delta.x) || differs(moved.z, delta.z);
+            let side = game_side!(self);
+            let motion = sunrise_client::motion::BodyMotion {
+                world: &self.world,
+                collision: self.collision,
+                facts: self.res.facts(),
+                blocks: Some(&self.motion.blocks),
+                context: &self.loop_context,
+                side: Some(&side),
+            };
+            let effect = motion.effect_block(
+                c.position,
+                c.bounds(),
+                c.on_ground,
+                moved,
+                sunrise_world::collision_context::CollisionContext::empty(false),
+                None,
+            );
             // Entity.checkFallDamage: the move's drop counts (not in water, as of
             // the tick before: `isInWater` is `wasTouchingWater`),
             // and a landing hands the whole fall to causeFallDamage, which
@@ -85,6 +93,16 @@ impl Game<'_> {
                 }
                 c.fall_distance = 0.0;
             }
+            motion.restitute(
+                (c.id, c.kind.id()),
+                false,
+                delta,
+                moved,
+                effect,
+                sunrise_client::entity_rules::EntityRules::get_gravity(c),
+                0.95_f32,
+                &mut c.velocity,
+            );
         }
         // OldMinecartBehavior applies block effects here and at tick end.
         // NewMinecartBehavior applies them after recording each track step.

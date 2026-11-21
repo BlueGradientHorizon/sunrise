@@ -95,7 +95,7 @@ pub(super) trait Entity: EntityRules {
     /// name yet. Required, so a new kind states which.
     fn selector_target(&self) -> Option<Target>;
     /// The entity type id a native mod's join hook names (`minecraft:oak_boat`).
-    fn native_type(&self) -> Cow<'static, str>;
+    fn native_type(&self) -> Cow<'_, str>;
     /// Saves entity `index` of this kind into its chunk's entity list: the
     /// chunk and the NBT when it lies in `keys` and is saved with its chunk.
     /// Required, so a new kind states how it saves.
@@ -954,6 +954,20 @@ impl Game<'_> {
         sunrise_client::block_contact::inside_written(state, at, writes);
     }
 
+    pub(super) fn body_motion<'a>(
+        &'a self,
+        side: &'a dyn sunrise_client::motion::SideLevel,
+    ) -> sunrise_client::motion::BodyMotion<'a> {
+        sunrise_client::motion::BodyMotion {
+            world: &self.world,
+            collision: self.collision,
+            facts: self.res.facts(),
+            blocks: Some(&self.res.motion().blocks),
+            context: &self.loop_context,
+            side: Some(side),
+        }
+    }
+
     pub(super) fn tick_item_with_block_contacts(
         &mut self,
         item: &mut ItemEntity,
@@ -988,6 +1002,7 @@ impl Game<'_> {
         if !client && let Some((on, distance)) = step.landed() {
             self.item_fall_on(item.id, on, distance);
         }
+        item.apply_move_restitution(self.body_motion(&game_side!(self)), step);
         if !client {
             // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
             self.sweep_item_inside(item);
@@ -1844,7 +1859,7 @@ impl Entity for Mob {
         self.previous_yaw = self.yaw;
         self.previous_head_pitch = self.head_pitch;
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         super::native_hooks::mob_kind(self).into()
     }
     fn save_nbt(
@@ -1974,7 +1989,7 @@ impl Entity for ItemEntity {
     fn fluid_eye_y(&self) -> f64 {
         ItemEntity::fluid_eye_y(self)
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:item".into()
     }
     fn save_nbt(
@@ -2062,7 +2077,7 @@ impl Entity for ExperienceOrb {
     fn ticks_after_projectiles(&self) -> bool {
         true
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:experience_orb".into()
     }
     fn save_nbt(
@@ -2142,8 +2157,8 @@ impl Entity for Boat {
         self.yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
     }
-    fn native_type(&self) -> Cow<'static, str> {
-        self.entity_type().into()
+    fn native_type(&self) -> Cow<'_, str> {
+        self.entity_type_name().into()
     }
     fn save_nbt(
         game: &mut Game<'_>,
@@ -2237,7 +2252,7 @@ impl Entity for Minecart {
         self.yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         self.kind.id().into()
     }
     fn save_nbt(
@@ -2347,7 +2362,7 @@ impl Entity for ArmorStand {
     fn fluid_eye_y(&self) -> f64 {
         ArmorStand::fluid_eye_y(self)
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         super::armor_stands::TYPE_ID.into()
     }
     fn save_nbt(
@@ -2495,7 +2510,7 @@ impl Entity for PrimedTnt {
     fn waits_for_spawn_packet(&self) -> bool {
         true
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:tnt".into()
     }
     fn save_nbt(
@@ -2592,7 +2607,7 @@ impl Entity for FallingBlock {
     fn waits_for_spawn_packet(&self) -> bool {
         true
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:falling_block".into()
     }
     fn save_nbt(
@@ -2667,7 +2682,7 @@ impl Entity for Projectile {
     fn set_on_ground(&mut self, on_ground: bool) {
         self.on_ground = on_ground;
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         self.entity_type().into()
     }
     fn save_nbt(
@@ -2839,7 +2854,7 @@ impl Entity for Rocket {
     fn set_on_ground(&mut self, on_ground: bool) {
         self.on_ground = on_ground;
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:firework_rocket".into()
     }
     fn save_nbt(
@@ -2922,7 +2937,7 @@ impl Entity for ThrownTrident {
     fn set_on_ground(&mut self, on_ground: bool) {
         self.on_ground = on_ground;
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:trident".into()
     }
     fn save_nbt(

@@ -1,0 +1,1 @@
+sunrise-client game::item_contact_tests::item_restitution_uses_the_legacy_contact_on_both_simulating_sides lib daily resources

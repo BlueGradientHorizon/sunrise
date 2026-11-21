@@ -174,6 +174,7 @@ impl PrimedTnt {
         }
         tops
     }
+    #[cfg(test)]
     pub(super) fn tick(
         &mut self,
         world: &sunrise_client::world::World,
@@ -194,6 +195,7 @@ impl PrimedTnt {
             context,
             border,
             blocks,
+            None,
             &[],
         )
         .map(|(tops, _)| tops)
@@ -212,6 +214,7 @@ impl PrimedTnt {
         context: &sunrise_world::native_load_context::LoopContext,
         border: Option<&sunrise_core::geometry::border::BorderGeometry>,
         blocks: Option<&sunrise_world::movement_properties::BoundMovementProperties>,
+        side: Option<&dyn sunrise_client::motion::SideLevel>,
         entities: &[Aabb],
     ) -> Result<(Vec<BlockPos>, bool)> {
         // `Entity.tickCount` is raised before the rest of the tick, and is not saved.
@@ -266,29 +269,33 @@ impl PrimedTnt {
             );
         }
         self.on_ground = wanted.y < 0.0 && moved.y != wanted.y;
+        let motion = sunrise_client::motion::BodyMotion {
+            world,
+            collision,
+            facts,
+            blocks,
+            context,
+            side,
+        };
+        let effect = motion.effect_block(
+            self.position,
+            self.bounds(),
+            self.on_ground,
+            moved,
+            self.collision_context(),
+            Some(self.powder_snow_subject()),
+        );
         let landed = self.check_fall_damage(moved.y);
-        if moved.x != wanted.x {
-            self.velocity.x = 0.0;
-        }
-        if moved.z != wanted.z {
-            self.velocity.z = 0.0;
-        }
-        if moved.y != wanted.y {
-            // Entity.restituteMovementAfterCollisions: slime bounces it.
-            let below = world.block(
-                self.position.x.floor() as i32,
-                (self.position.y - f64::from(1.0e-5_f32)).floor() as i32,
-                self.position.z.floor() as i32,
-            );
-            // Restitution reads the velocity, at rest after a stuck move.
-            self.velocity.y = sunrise_client::entities::vertical_collision_velocity(
-                self.velocity.y,
-                moved.y,
-                0.04,
-                wanted.y < 0.0,
-                &*facts.get(below).name == "minecraft:slime_block",
-            );
-        }
+        motion.restitute(
+            (self.id, "minecraft:tnt"),
+            false,
+            wanted,
+            moved,
+            effect,
+            self.get_gravity(),
+            0.98_f32,
+            &mut self.velocity,
+        );
         // Entity.move's last step: soul sand and honey slow the TNT's
         // horizontal speed. `blocks` is None only for the isolated unit tests.
         if let Some(blocks) = blocks {
@@ -444,12 +451,7 @@ impl Game<'_> {
     /// skipped if tiny): its fall and the block speed factor, then
     /// `moveEntityByPiston`'s `applyEffectsFromBlocks(previousPos, position)`,
     /// so powder snow it was pushed into makes it stuck.
-    pub(super) fn finish_tnt_piston_move(&mut self, i: usize, from: Vec3, moved: Vec3) {
-        let t = &mut self.tnts[i];
-        if t.check_fall_damage(moved.y) {
-            let (position, bounds) = (t.position, t.bounds());
-            self.post_landing_event(position, bounds, false);
-        }
+    pub(super) fn finish_tnt_piston_move(&mut self, i: usize, from: Vec3) {
         let t = &mut self.tnts[i];
         let factor = sunrise_client::motion::block_speed_factor_at(
             &self.world,
@@ -494,6 +496,7 @@ impl Game<'_> {
     /// `i` is its place in the list; the caller has checked it is ticking.
     /// `entities` are the boxes that stop its move (`Game::entity_collisions` with `Mover::Passive`).
     pub(super) fn tick_one_tnt(&mut self, i: usize, entities: &[Aabb]) -> Result<()> {
+        let side = game_side!(self);
         let t = &mut self.tnts[i];
         let (tops, landed) = t.tick_among(
             &self.world,
@@ -504,6 +507,7 @@ impl Game<'_> {
             &self.loop_context,
             Some(self.border.geometry()),
             Some(&self.res.motion().blocks),
+            Some(&side),
             entities,
         )?;
         let (id, snow) = (t.id, (t.previous, t.position, t.bounds(), t.velocity));

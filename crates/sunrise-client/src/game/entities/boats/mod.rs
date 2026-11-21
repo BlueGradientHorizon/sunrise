@@ -154,29 +154,6 @@ fn wrap_degrees_f64(angle: f64) -> f64 {
     }
     a
 }
-/// `restituteMovementAfterCollisions` for a boat, which doesn't bounce: each axis the
-/// move was blocked on stops, a sideways one told by `Mth.equal`, the vertical one by
-/// any difference (`verticalCollision`), as `Entity.move` tells them.
-fn stop_blocked_axes(velocity: Vec3, movement: Vec3, moved: Vec3) -> Vec3 {
-    use sunrise_world::entity_move::different;
-    Vec3::new(
-        if different(movement.x, moved.x) {
-            0.0
-        } else {
-            velocity.x
-        },
-        if moved.y != movement.y {
-            0.0
-        } else {
-            velocity.y
-        },
-        if different(movement.z, moved.z) {
-            0.0
-        } else {
-            velocity.z
-        },
-    )
-}
 /// `ChestBoat.CONTAINER_SIZE`.
 pub(super) const CHEST_SLOTS: usize = 27;
 /// `AbstractBoat.BUBBLE_TIME`: the ticks over a bubble column before it
@@ -1081,7 +1058,36 @@ impl Game<'_> {
             );
             b.on_ground = movement.y < 0.0 && moved.y > movement.y;
             b.fall_distance = self.boat_fall(&b, moved.y);
-            b.velocity = stop_blocked_axes(b.velocity, movement, moved);
+            let side = game_side!(self);
+            let motion = sunrise_client::motion::BodyMotion {
+                world: &self.world,
+                collision: self.collision,
+                facts: self.res.facts(),
+                blocks: Some(&self.motion.blocks),
+                context: &self.loop_context,
+                side: Some(&side),
+            };
+            let effect = motion.effect_block(
+                b.position,
+                b.bounds(),
+                b.on_ground,
+                moved,
+                sunrise_world::collision_context::CollisionContext::empty(false),
+                None,
+            );
+            // Damage and the later block effects still belong to AbstractBoat.tick.
+            let mut velocity = b.velocity;
+            motion.restitute(
+                (b.id, b.entity_type_name()),
+                false,
+                movement,
+                moved,
+                effect,
+                b.get_gravity(),
+                1.0_f32,
+                &mut velocity,
+            );
+            b.velocity = velocity;
         }
         // AbstractBoat.tick's applyEffectsFromBlocks: powder snow or a cobweb makes the
         // boat stuck, which slows its next move, and resets its fall.
@@ -2369,18 +2375,6 @@ mod tests {
             assert_eq!(steps[2].2, (b.position, b.yaw, b.pitch));
             assert!(b.lerp.is_none());
         });
-    }
-
-    /// Entity.move's collision tests: a vertical move cut short by any amount stops the
-    /// boat's fall, a sideways one only when it is off by `Mth.equal`'s 1e-5 or more.
-    #[test]
-    fn a_boat_stops_on_the_axes_vanilla_counts_as_blocked() {
-        let velocity = Vec3::new(0.3, -1.0e-8, 0.2);
-        let moved = Vec3::new(0.3 - 1.0e-6, 0.0, 0.2 - 1.0e-4);
-        assert_eq!(
-            stop_blocked_axes(velocity, velocity, moved),
-            Vec3::new(0.3, 0.0, 0.0)
-        );
     }
 
     #[test]

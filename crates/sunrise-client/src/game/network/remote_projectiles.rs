@@ -6,11 +6,8 @@ use super::{FallStep, FallingBlock, Game, fireworks::fireworks_of};
 use crate::game::native_ticks::{TickRound, places_of, slot_place};
 use sunrise_client::items::ItemStack;
 use sunrise_client::join_seq::{JoinList, RestoreOrder};
+use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
-use sunrise_client::{
-    collisions::SceneCollisions,
-    particles::{ParticleOptions, ParticleType},
-};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 use sunrise_protocol::entity_data::Value;
 use sunrise_world::registry::BlockStateId;
@@ -580,9 +577,10 @@ impl Game<'_> {
             Some(self.border.geometry()),
             Some(&self.res.motion().blocks),
         );
+        let side = game_side!(self);
         self.tnts.retain_mut(|t| {
             // A fluid lookup that fails leaves it where its move put it.
-            let _ = t.tick(
+            let _ = t.tick_among(
                 world,
                 collision,
                 assets,
@@ -591,6 +589,8 @@ impl Game<'_> {
                 &self.loop_context,
                 border,
                 blocks,
+                Some(&side),
+                &[],
             );
             t.fuse > 0
         });
@@ -717,14 +717,7 @@ impl Game<'_> {
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::RemoteRocket);
         for r in &mut rockets {
-            r.remote_step(
-                &mut SceneCollisions {
-                    world: &self.world,
-                    binding: self.collision,
-                    subject: None,
-                },
-                &self.loop_context,
-            );
+            r.remote_step(self.body_motion(&game_side!(self)));
             if let Some(target) = r.attached_to {
                 if me == Some(target) {
                     continue;

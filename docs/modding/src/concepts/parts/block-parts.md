@@ -151,6 +151,17 @@ template block writes still call the rotation Part at their placed world positio
 
 ## Landing writes
 
+`BlockPart::bounce_restitution` answers the block's coefficient for a qualifying downward collision,
+including those of dropped items and other nonliving bodies. `event.pos` and `event.state` are the paired
+`Entity.move` effect contact from `getOnPosLegacy`: its column follows support, but its cell can differ
+from the one supporting the body. Set `event.factor` to edit the block's coefficient. For a nonliving
+body the engine multiplies it by `0.8` in `f32`, then takes the greater of that and the body's own
+bounciness. A zero answer is not a veto. Slow falls and contacts that suppress bounce do not ask.
+
+This runs on whichever side simulates the move. Keep it a pure read of `LevelSide` and the event so
+prediction and replay produce the same answer. It does not run for packet interpolation, projectile
+impacts or a piston's direct slime launch.
+
 `BlockPart::fall_on` runs at vanilla's landing moment on a read-only level random host.
 Hook version 2 exposes writable `event.distance` and `event.damage_multiplier`, not calculated
 damage. Vanilla blocks supply their own pair: hay uses 0.2, beds 0.5, slime 0,

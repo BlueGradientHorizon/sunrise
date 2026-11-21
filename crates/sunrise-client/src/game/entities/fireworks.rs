@@ -217,14 +217,19 @@ impl Rocket {
     /// One tick of a server's client: the rocket flies on by itself between
     /// the server's updates (a rocket that follows an entity is placed by the
     /// caller).
-    pub(super) fn remote_step(
-        &mut self,
-        scene: &mut SceneCollisions,
-        context: &sunrise_world::native_load_context::LoopContext,
-    ) {
+    pub(super) fn remote_step(&mut self, motion: sunrise_client::motion::BodyMotion<'_>) {
         self.previous = self.position;
         if self.attached_to.is_none() {
-            let _ = self.free_flight(scene, context);
+            let mut scene = SceneCollisions {
+                world: motion.world,
+                binding: motion.collision,
+                subject: None,
+            };
+            if let Some((_, wanted, moved, restored)) = self.free_flight(&mut scene, motion.context)
+            {
+                self.restitute_flight(motion, wanted, moved);
+                self.velocity = restored;
+            }
         }
         self.life += 1;
     }
@@ -281,10 +286,11 @@ impl Rocket {
         &mut self,
         scene: &mut SceneCollisions,
         context: &sunrise_world::native_load_context::LoopContext,
-    ) -> Option<(Vec3, Vec3, Vec3)> {
+    ) -> Option<(Vec3, Vec3, Vec3, Vec3)> {
         let bounds = self.bounds();
         let motion = self.next_motion();
         let mut wanted = motion;
+        self.velocity = motion;
         if self.stuck.length_squared() > 1.0e-7 {
             wanted = Vec3::new(
                 wanted.x * self.stuck.x,
@@ -292,6 +298,7 @@ impl Rocket {
                 wanted.z * self.stuck.z,
             );
             self.stuck = Vec3::ZERO;
+            self.velocity = Vec3::ZERO;
         }
         let from = self.position;
         let mut gate = sunrise_client::move_gate::armed(
@@ -307,7 +314,6 @@ impl Rocket {
         else {
             return None;
         };
-        let horizontal = (moved.x - wanted.x).abs() > 1e-7 || (moved.z - wanted.z).abs() > 1e-7;
         // Entity.move: on the ground when a move down was stopped.
         self.on_ground = wanted.y < 0.0 && moved.y != wanted.y;
         self.position = Vec3::new(
@@ -315,13 +321,34 @@ impl Rocket {
             self.position.y + moved.y,
             self.position.z + moved.z,
         );
-        // setDeltaMovement(movement2): the motion before the move's scaling.
-        self.velocity = if horizontal {
-            Vec3::new(self.velocity.x, motion.y, self.velocity.z)
-        } else {
-            motion
-        };
-        Some((from, wanted, moved))
+        Some((from, wanted, moved, motion))
+    }
+
+    fn restitute_flight(
+        &mut self,
+        motion: sunrise_client::motion::BodyMotion<'_>,
+        wanted: Vec3,
+        moved: Vec3,
+    ) {
+        let effect = motion.effect_block(
+            self.position,
+            self.bounds(),
+            self.on_ground,
+            moved,
+            sunrise_world::collision_context::CollisionContext::empty(false),
+            None,
+        );
+        // FireworkRocketEntity inherits Entity.getDefaultGravity (zero) and getAirDrag.
+        motion.restitute(
+            (self.id, "minecraft:firework_rocket"),
+            false,
+            wanted,
+            moved,
+            effect,
+            0.0,
+            0.98_f32,
+            &mut self.velocity,
+        );
     }
     /// Position and motion (the dispenser parity fixture).
     pub(super) fn motion(&self) -> (Vec3, Vec3) {
@@ -391,7 +418,7 @@ impl Game<'_> {
     fn rocket_moved(
         &mut self,
         r: &mut Rocket,
-        (from, wanted, moved): (Vec3, Vec3, Vec3),
+        (from, wanted, moved, restored): (Vec3, Vec3, Vec3, Vec3),
         water: bool,
     ) {
         r.fall_distance = self.vehicle_fall_reset(r.fall_distance, from, moved);
@@ -416,6 +443,7 @@ impl Game<'_> {
             }
             r.fall_distance = 0.0;
         }
+        r.restitute_flight(self.body_motion(&game_side!(self)), wanted, moved);
         let length = moved.length_squared();
         let recorded = length > 1.0e-7 || wanted.length_squared() - length < 1.0e-7;
         let (world, facts) = (&self.world, self.res.facts());
@@ -430,7 +458,7 @@ impl Game<'_> {
         };
         let stuck = sunrise_client::falling_block::apply_effects_from_blocks_of(
             effects,
-            &mut r.velocity.clone(),
+            &mut r.velocity,
             &mut r.fall_distance,
             &mut tops,
             |p| {
@@ -451,6 +479,8 @@ impl Game<'_> {
         for pos in tops {
             self.bubble_column_particles(pos);
         }
+        // FireworkRocketEntity.tick restores the pre-move delta after block effects.
+        r.velocity = restored;
     }
     /// A rocket built from `own`, the rocket's own random (`Entity.random`): the
     /// UUID, the motion and the lifetime draw from it in that order, and a rocket

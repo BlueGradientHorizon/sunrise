@@ -132,3 +132,183 @@ fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entit
         });
     });
 }
+
+type BounceContact = (bool, i32, String, [i32; 3]);
+
+#[derive(Clone, Default)]
+struct BounceProbe {
+    calls: Arc<Mutex<Vec<BounceContact>>>,
+}
+
+#[mod_api::sunrise_part]
+impl BlockPart for BounceProbe {
+    fn bounce_restitution(
+        &self,
+        level: mod_api::LevelSide<'_>,
+        event: &mut mod_api::BounceRestitutionEvent<'_>,
+    ) {
+        let (client, host) = match level {
+            mod_api::LevelSide::Client(host) => (true, host),
+            mod_api::LevelSide::Server(host) => (false, host),
+        };
+        let pos = [event.pos.x, event.pos.y, event.pos.z];
+        assert_eq!(host.block_state(pos), Some(event.state));
+        self.calls
+            .lock()
+            .unwrap()
+            .push((client, event.entity, event.kind.into(), pos));
+        event.factor = 0.67_f32;
+    }
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for BounceProbe {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        for block in [
+            "minecraft:glass",
+            "minecraft:white_carpet",
+            "minecraft:honey_block",
+        ] {
+            let key = r.block_key(block);
+            r.block_part(key, self.clone());
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::item_restitution_uses_the_legacy_contact_on_both_simulating_sides",
+        || {
+            use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+            let part = BounceProbe::default();
+            let mods: mod_api::Mods =
+                vec![mod_api::ModEntry::new("bounce", Box::new(part.clone()))].into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_hooks::install_block_contact_hooks();
+                let run = |game: &mut Game<'_>, client| {
+                    let registry = game.pack.assets.registry;
+                    let block = |name| registry.default_state(name).unwrap();
+                    let glass = block("minecraft:glass");
+                    let carpet = block("minecraft:white_carpet");
+                    let stone = block("minecraft:stone");
+                    let slime = block("minecraft:slime_block");
+                    let honey = block("minecraft:honey_block");
+                    let cases = [
+                        // The item's centre lies outside the block; its moved footprint does not.
+                        (
+                            glass,
+                            None,
+                            None,
+                            3.99,
+                            64.25,
+                            -0.96,
+                            64.0,
+                            Some(0.67_f32),
+                            true,
+                        ),
+                        // The carpet supports the box, but getOnPosLegacy addresses the glass below it.
+                        (
+                            glass,
+                            Some(carpet),
+                            None,
+                            4.5,
+                            64.3125,
+                            -0.96,
+                            64.0625,
+                            Some(0.67),
+                            true,
+                        ),
+                        (
+                            stone,
+                            Some(carpet),
+                            None,
+                            4.5,
+                            64.3125,
+                            -0.96,
+                            64.0625,
+                            None,
+                            false,
+                        ),
+                        (slime, None, None, 4.5, 64.25, -0.96, 64.0, Some(1.0), false),
+                        (honey, None, None, 4.5, 64.25, -0.96, 63.9375, None, false),
+                        (glass, None, None, 4.5, 64.03125, 0.0, 64.0, None, false),
+                        // A ceiling collision addresses the carpet cell but never queries its factor.
+                        (
+                            stone,
+                            Some(carpet),
+                            Some(glass),
+                            4.5,
+                            64.5,
+                            1.0,
+                            64.75,
+                            None,
+                            false,
+                        ),
+                    ];
+                    for (floor, above, ceiling, x, y, vy, landed_y, factor, calls) in cases {
+                        game.world = World::new(game.res.facts().air, 1);
+                        game.world
+                            .chunks
+                            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                        game.world.set(4, 63, 4, floor).unwrap();
+                        if let Some(above) = above {
+                            game.world.set(4, 64, 4, above).unwrap();
+                        }
+                        if let Some(ceiling) = ceiling {
+                            game.world.set(4, 65, 4, ceiling).unwrap();
+                        }
+                        game.dropped.clear();
+                        part.calls.lock().unwrap().clear();
+                        game.spawn_item(
+                            ItemStack::new("minecraft:iron_ingot", 1),
+                            [x, y, 4.5],
+                            [0.0, vy, 0.0],
+                            20,
+                        );
+                        let mut item = game.dropped[0].clone();
+                        assert_eq!(
+                            game.tick_item_with_block_contacts(
+                                &mut item,
+                                None,
+                                &[],
+                                client,
+                                &mut |_| {}
+                            ),
+                            (true, false)
+                        );
+                        assert_eq!(item.position.y, landed_y);
+                        let expected = factor.map_or(0.0, |f| {
+                            let speed = vy - 0.04;
+                            let portion = (landed_y - y) / speed;
+                            let drag = f64::from(0.98_f32);
+                            (portion * 0.04 - speed)
+                                * (1.0 + portion * (drag - 1.0))
+                                * f64::from(f * 0.8_f32)
+                                * drag
+                        });
+                        assert_eq!(item.velocity.y, expected, "floor {floor:?}, start {y}");
+                        let got = part.calls.lock().unwrap();
+                        if calls {
+                            assert_eq!(
+                                *got,
+                                [(
+                                    client,
+                                    item.id as i32,
+                                    "minecraft:item".to_owned(),
+                                    [4, 63, 4]
+                                )]
+                            );
+                        } else {
+                            assert!(got.is_empty(), "unexpected query: {got:?}");
+                        }
+                    }
+                };
+                with_game(|game| run(game, false));
+                with_client_game(|game| run(game, true));
+            });
+        },
+    );
+}

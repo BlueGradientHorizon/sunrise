@@ -409,7 +409,7 @@ impl Game<'_> {
         self.persist.live.insert(index, (id, kind, true));
     }
     /// The type id and position a mod is told of.
-    fn slot_kind_and_position(&self, slot: Slot) -> (std::borrow::Cow<'static, str>, Vec3) {
+    fn slot_kind_and_position(&self, slot: Slot) -> (std::borrow::Cow<'_, str>, Vec3) {
         use super::entity::Entity;
         let block = |p: [i32; 3]| {
             Vec3::new(

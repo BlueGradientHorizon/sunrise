@@ -1327,13 +1327,21 @@ impl Game<'_> {
             0.0,
             h.on_ground,
         ) {
-            let horizontal =
-                (moved.x - wanted.x).abs() > 1.0e-7 || (moved.z - wanted.z).abs() > 1.0e-7;
+            let differs = sunrise_world::entity_move::different;
+            let horizontal = differs(moved.x, wanted.x) || differs(moved.z, wanted.z);
             h.on_ground = wanted.y < 0.0 && moved.y > wanted.y;
             h.position = Vec3::new(
                 h.position.x + moved.x,
                 h.position.y + moved.y,
                 h.position.z + moved.z,
+            );
+            self.restitute_bobber(
+                h.id,
+                h.position,
+                h.on_ground,
+                wanted,
+                moved,
+                &mut h.velocity,
             );
             if h.state == State::Flying && (h.on_ground || horizontal) {
                 h.velocity = Vec3::ZERO;
@@ -1346,6 +1354,36 @@ impl Game<'_> {
             h.velocity.z * 0.92,
         );
         Some(h)
+    }
+    fn restitute_bobber(
+        &self,
+        id: u32,
+        position: Vec3,
+        on_ground: bool,
+        wanted: Vec3,
+        moved: Vec3,
+        velocity: &mut Vec3,
+    ) {
+        let side = game_side!(self);
+        let motion = self.body_motion(&side);
+        let effect = motion.effect_block(
+            position,
+            bounds(position),
+            on_ground,
+            moved,
+            sunrise_world::collision_context::CollisionContext::empty(false),
+            None,
+        );
+        motion.restitute(
+            (id, "minecraft:fishing_bobber"),
+            false,
+            wanted,
+            moved,
+            effect,
+            f64::from(0.03_f32),
+            0.98_f32,
+            velocity,
+        );
     }
     /// The players a hook can catch: everyone but spectators and the dead
     /// (`Projectile.canHitEntity`), the host and the guests in the level.
@@ -2220,14 +2258,15 @@ impl Game<'_> {
             0.0,
             on_ground,
         ) {
-            let horizontal =
-                (moved.x - wanted.x).abs() > 1.0e-7 || (moved.z - wanted.z).abs() > 1.0e-7;
+            let differs = sunrise_world::entity_move::different;
+            let horizontal = differs(moved.x, wanted.x) || differs(moved.z, wanted.z);
             on_ground = wanted.y < 0.0 && moved.y > wanted.y;
             position = Vec3::new(
                 position.x + moved.x,
                 position.y + moved.y,
                 position.z + moved.z,
             );
+            self.restitute_bobber(id, position, on_ground, wanted, moved, &mut velocity);
             if state == State::Flying && (on_ground || horizontal) {
                 velocity = Vec3::ZERO;
             }

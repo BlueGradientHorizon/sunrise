@@ -293,6 +293,7 @@ impl Game<'_> {
                             Some(self.border.geometry()),
                             &self.res.motion().fluids,
                             &self.loop_context,
+                            Some(&self.res.motion().blocks),
                             &side,
                             &mut on_sound,
                             &nearby,

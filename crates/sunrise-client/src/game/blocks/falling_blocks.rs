@@ -206,16 +206,26 @@ impl Game<'_> {
         }
         let from = f.position;
         f.position = next;
-        // Entity.move stops it on the axes it collided on.
-        if movement.x != wanted.x {
-            f.velocity.x = 0.0;
+        let effect = sunrise_client::motion::BodyMotion {
+            world: &self.world,
+            collision: self.collision,
+            facts: self.res.facts(),
+            blocks: Some(&self.res.motion().blocks),
+            context: &self.loop_context,
+            side: None,
         }
-        if movement.y != wanted.y {
-            f.velocity.y = 0.0;
-        }
-        if movement.z != wanted.z {
-            f.velocity.z = 0.0;
-        }
+        .effect_block(
+            f.position,
+            sunrise_client::falling_block::bounds(f.position),
+            on_ground,
+            movement,
+            context,
+            Some(collisions::PowderSnowSubject {
+                fall_distance: f.fall_distance,
+                falling_block: true,
+                ..Default::default()
+            }),
+        );
         if on_ground {
             self.falling_block_impact(f);
             if f.fall_distance > 0.0 {
@@ -227,6 +237,25 @@ impl Game<'_> {
             }
             f.fall_distance = 0.0;
         }
+        let side = game_side!(self);
+        sunrise_client::motion::BodyMotion {
+            world: &self.world,
+            collision: self.collision,
+            facts: self.res.facts(),
+            blocks: Some(&self.res.motion().blocks),
+            context: &self.loop_context,
+            side: Some(&side),
+        }
+        .restitute(
+            (f.id, "minecraft:falling_block"),
+            false,
+            wanted,
+            movement,
+            effect,
+            sunrise_client::entity_rules::EntityRules::get_gravity(f),
+            0.98_f32,
+            &mut f.velocity,
+        );
         // applyEffectsFromBlocks: WebBlock.entityInside makes it stuck
         // (Entity.makeStuckInBlock), BubbleColumnBlock.entityInside lifts or
         // drags it. Entity.move records the move unless it was blocked short

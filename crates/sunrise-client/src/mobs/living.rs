@@ -11,7 +11,7 @@ use sunrise_core::{
     position::BlockPos,
     random::RandomSource,
 };
-use sunrise_world::native_load_context::{LoopContext, LoopSide};
+use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::{
     block_landing::{FarmlandTrample, LandingEntityKind},
     entity_fluid::{CurrentAccumulator, CurrentTarget},
@@ -1038,9 +1038,9 @@ impl Mob {
             // Entity.getOnPos(0.2F): the block whose bounce this move sees, the supporting
             // block's column where one holds the mob (a fence or wall's own position).
             let [x, y, z] = self.block_on_legacy(w);
-            let on = (x, y, z);
             let input = RestitutionInput {
-                block: w.world.block(on.0, on.1, on.2),
+                block: w.world.block(x, y, z),
+                effect_position: BlockPos::new(x, y, z),
                 collided_x: x_hit,
                 collided_z: z_hit,
                 vertical_collision: vertical,
@@ -1056,7 +1056,6 @@ impl Mob {
                     mob: self,
                     world: w,
                     level,
-                    on: BlockPos::new(on.0, on.1, on.2),
                 },
                 input,
             );
@@ -2448,8 +2447,6 @@ struct MobRestitution<'a, 'w, 'l> {
     mob: &'a mut Mob,
     world: &'a MobWorld<'w>,
     level: &'a mut DamageLevel<'l>,
-    /// `Entity.getOnPosLegacy`: the block whose bounce this move sees.
-    on: BlockPos,
 }
 impl<'a, 'w, 'l> MobRestitution<'a, 'w, 'l> {
     /// The block's movement data: its coefficients and its bounce tag.
@@ -2487,17 +2484,32 @@ impl RestitutionWorld for MobRestitution<'_, '_, '_> {
     /// `Entity.getBlockBounciness`: the restitution of the block under the
     /// entity, so a mob landing on a slime block or a bed bounces too, after
     /// the block's parts, on the side that ticks the mob.
-    fn block_bounce_restitution(&mut self, state: BlockStateId) -> Result<f32, ()> {
+    fn block_bounce_restitution(
+        &mut self,
+        state: BlockStateId,
+        position: BlockPos,
+    ) -> Result<f32, ()> {
         let own = self.movement(state)?.coefficients.bounce_restitution;
-        let client_side = self.world.loop_context.side() == LoopSide::Client;
         let contact = crate::block_contact::Contact {
             entity: self.mob.id as i32,
             kind: &self.mob.kind.id,
             state,
-            position: self.on,
+            position,
         };
         Ok(crate::block_contact::bounce_restitution(
-            &mut self.level.reborrow().on_client(client_side),
+            crate::motion::FrictionLevel {
+                world: self.world.world,
+                registry: self.world.collision.registry(),
+                context: self.world.loop_context,
+                side: self.world.side,
+                coefficient: &|id| {
+                    self.world
+                        .movement
+                        .get(id)
+                        .ok()
+                        .map(|p| p.coefficients.friction)
+                },
+            },
             contact,
             own,
         ))

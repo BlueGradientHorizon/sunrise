@@ -22,6 +22,7 @@ use crate::game::collision_source::Mover;
 use sunrise_client::collisions::{
     EntityCollisions, SceneCollisions, no_collision_empty, with_piston_noclip,
 };
+use sunrise_client::entity_rules::EntityRules;
 use sunrise_client::join_seq::{JoinSeq, Joined};
 use sunrise_client::mobs::Species;
 use sunrise_client::motion::MotionWorld;
@@ -1272,11 +1273,6 @@ impl Game<'_> {
         {
             self.mobs[i].on_ground = limited.y < 0.0 && limited.y != resolved.y;
         }
-        let tnt_after_move =
-            tnt.is_some() && !self.options.execution_role.is_client() && self.remote.is_none();
-        if mob.is_none() && !tnt_after_move {
-            self.restitute_piston(target, limited, resolved);
-        }
         let moved = resolved.length_squared() > 1.0e-7
             || limited.length_squared() - resolved.length_squared() < 1.0e-7;
         if moved {
@@ -1309,11 +1305,18 @@ impl Game<'_> {
             if let Err(payload) = result {
                 std::panic::resume_unwind(payload);
             }
-        } else if tnt_after_move {
-            self.restitute_piston(target, limited, resolved);
-        }
-        if let Some((i, from, ..)) = tnt {
-            self.finish_tnt_piston_move(i, from, resolved);
+        } else if let Some((i, from, subject, context)) = tnt {
+            if !self.options.execution_role.is_client() && self.remote.is_none() {
+                let t = &mut self.tnts[i];
+                if t.check_fall_damage(resolved.y) {
+                    let (position, bounds) = (t.position, t.bounds());
+                    self.post_landing_event(position, bounds, false);
+                }
+            }
+            self.restitute_piston(target, limited, resolved, Some((subject, context)));
+            self.finish_tnt_piston_move(i, from);
+        } else {
+            self.restitute_piston(target, limited, resolved, None);
         }
         if let MoveWho::Entity(EntityHandle::Falling(i)) = target {
             self.finish_falling_piston_move(i, resolved);
@@ -1330,46 +1333,71 @@ impl Game<'_> {
         self.piston_cactus_contact(target, before, after, pricked);
     }
 
-    /// `Entity.restituteMovementAfterCollisions` after a block's push, for a
-    /// server entity (`canSimulateMovement`; a player's own client moves it):
-    /// an axis the collision cut off stops (no entity bounces off walls), and
-    /// a cut-off vertical push stops the fall or rise, except a fall onto
-    /// slime fast enough to bounce. The bounce is of the entity's own
-    /// velocity, scaled by the part of the push that was made. The ground
-    /// flag is set by `set_pushed_on_ground`.
-    fn restitute_piston(&mut self, target: MoveWho, limited: Vec3, resolved: Vec3) {
+    /// `Entity.move(PISTON)` shares the normal block restitution query, after the move
+    /// has placed the body. `PistonMovingBlockEntity.causeBounce` is a separate launch.
+    fn restitute_piston(
+        &mut self,
+        target: MoveWho,
+        limited: Vec3,
+        resolved: Vec3,
+        tnt: Option<(
+            sunrise_client::collisions::PowderSnowSubject<'static>,
+            sunrise_world::collision_context::CollisionContext<'static>,
+        )>,
+    ) {
         let MoveWho::Entity(handle) = target else {
             return;
         };
-        // `Mth.equal` horizontally, exact vertically, as `Entity.move` compares.
-        let collided_x = (limited.x - resolved.x).abs() >= 1.0e-5;
-        let collided_z = (limited.z - resolved.z).abs() >= 1.0e-5;
-        let moved_vertically = limited.y.abs() > 0.0;
-        let vertical = limited.y != resolved.y;
-        if !(collided_x || collided_z || moved_vertically && vertical) {
+        let both = matches!(
+            handle,
+            EntityHandle::Item(_)
+                | EntityHandle::Tnt(_)
+                | EntityHandle::Orb(_)
+                | EntityHandle::Falling(_)
+                | EntityHandle::Projectile(_)
+                | EntityHandle::Rocket(_)
+                | EntityHandle::Trident(_)
+        );
+        if !both && (self.options.execution_role.is_client() || self.remote.is_some()) {
             return;
         }
-        let below = vertical && limited.y < 0.0;
+        let differs = sunrise_world::entity_move::different;
+        if limited.y == resolved.y
+            && !differs(limited.x, resolved.x)
+            && !differs(limited.z, resolved.z)
+        {
+            return;
+        }
+        let side = game_side!(self);
+        let motion = sunrise_client::motion::BodyMotion {
+            world: &self.world,
+            collision: self.collision,
+            facts: self.res.facts(),
+            blocks: Some(&self.res.motion().blocks),
+            context: &self.loop_context,
+            side: Some(&side),
+        };
+        let drag = match handle {
+            EntityHandle::Boat(_) => 1.0_f32,
+            EntityHandle::Cart(_) => 0.95_f32,
+            _ => 0.98_f32,
+        };
         with_entity_mut!(self, handle, entity => {
-            let pos = entity.position();
-            // `getOnPosLegacy`: the block 0.2 under the feet.
-            let on = self.world.block(
-                pos.x.floor() as i32,
-                (pos.y - 0.2).floor() as i32,
-                pos.z.floor() as i32,
-            );
-            let slime = &*self.res.facts().get(on).name == "minecraft:slime_block";
-            let velocity = entity.velocity_mut();
-            if collided_x {
-                velocity.x = 0.0;
-            }
-            if collided_z {
-                velocity.z = 0.0;
-            }
-            if vertical {
-                velocity.y = crate::entities::vertical_collision_velocity(
-                    velocity.y, resolved.y, 0.04, below, slime,
+            if !entity.is_removed() {
+                let (subject, context) = tnt.map_or_else(
+                    || (None, sunrise_world::collision_context::CollisionContext::empty(false)),
+                    |(subject, context)| (Some(subject), context),
                 );
+                let effect = motion.effect_block(
+                    entity.position(), entity.bounds(), limited.y < 0.0 && limited.y != resolved.y,
+                    resolved, context, subject,
+                );
+                let mut velocity = entity.velocity();
+                motion.restitute(
+                    (entity.id(), &entity.native_type()), entity.is_living(), limited, resolved,
+                    effect, entity.get_gravity(), drag, &mut velocity,
+                );
+                *entity.velocity_mut() = velocity;
             }
         });
     }
@@ -2077,7 +2105,8 @@ mod order_tests {
             (stone, 200.5, -0.4, 200.0, 0.0),
             (slime, 200.0, -0.4, 200.0, 0.3200000047683716),
             (slime, 200.00001, -0.4, 200.00001, 0.32000064476813395),
-            (slime, 200.5, 0.3, 200.0, 0.0),
+            // With zero restitution, (0.0 - 0.3) * 1.0 * 0.0 is negative zero.
+            (slime, 200.5, 0.3, 200.0, -0.0),
         ] {
             game.world.set(5, 199, 5, floor).unwrap();
             game.block_ticks.moving_pistons = vec![(BlockPos::new(5, 200, 5), piston)];
@@ -2407,11 +2436,8 @@ mod h255_mob_piston_ground_tests {
                 assert_eq!(game.tnts[0].position.y, 200.5);
                 assert_eq!(game.tnts[0].velocity.y, -0.4);
                 push(game, &mut budget, Vec3::new(0.0, -0.51, 0.0));
-                let expected = if role.is_client() {
-                    0.0_f64
-                } else {
-                    0.3510000138133766
-                };
+                // PrimedTnt.getMoveSimulationType is SERVER_AND_CLIENT, also on a piston move.
+                let expected = 0.3510000138133766_f64;
                 assert_eq!(game.tnts[0].velocity.y.to_bits(), expected.to_bits());
                 game.tnts[0].position.y = 200.5;
                 game.tnts[0].velocity.y = -0.4;

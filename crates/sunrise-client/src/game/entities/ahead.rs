@@ -91,6 +91,17 @@ impl ItemTables<'_> {
             );
             if hit { 0.0 } else { fall }
         });
+        item.apply_move_restitution(
+            sunrise_client::motion::BodyMotion {
+                world: self.world,
+                collision: self.collision,
+                facts: self.facts,
+                blocks: Some(&self.motion.blocks),
+                context: self.context,
+                side: None,
+            },
+            step,
+        );
         step
     }
     /// The rest of the move after its vertical contact: block effects, bubble columns, settling
