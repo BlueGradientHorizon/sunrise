@@ -730,12 +730,12 @@ impl BlockEntities {
         pos: &Pos,
         accepts: impl FnOnce(&BlockEntity) -> bool,
     ) -> Option<&mut BlockEntity> {
-        let entity = self.map.get_mut(pos)?;
-        if !accepts(entity) {
+        if !accepts(self.map.get(pos)?) {
             return None;
         }
         self.asleep.remove(pos);
-        Some(entity)
+        self.wake_below(pos);
+        self.map.get_mut(pos)
     }
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&Pos, &mut BlockEntity)> {
         self.asleep.clear();
@@ -752,6 +752,19 @@ impl BlockEntities {
     }
     pub fn is_asleep(&self, pos: &Pos) -> bool {
         self.asleep.contains(pos)
+    }
+    /// Whether any block entity sleeps (a cheap gate for scans that wake them).
+    pub fn any_asleep(&self) -> bool {
+        !self.asleep.is_empty()
+    }
+    /// Wakes the block entity at `pos`, if it sleeps.
+    pub fn wake(&mut self, pos: &Pos) {
+        self.asleep.remove(pos);
+    }
+    /// Wakes the block entity directly below `pos`: a hopper sleeping there
+    /// reads the container above it, so a change up here is a change for it.
+    pub fn wake_below(&mut self, pos: &Pos) {
+        self.asleep.remove(&(pos.0, pos.1 - 1, pos.2));
     }
     fn replace_taken(&mut self, pos: Pos) {
         if self.out.remove(&pos).is_some() {
@@ -791,6 +804,7 @@ impl BlockEntities {
         let new_box = shows_box(&entity);
         self.note_sign_editor(pos, &entity);
         self.asleep.remove(&pos);
+        self.wake_below(&pos);
         let old = self.map.insert(pos, entity);
         if self.on_load_enabled && new_identity && new_is_mod {
             self.on_load.push_back((pos, self.generations[&pos]));
@@ -1056,6 +1070,7 @@ impl BlockEntities {
     /// `old` to `new`: a ticker made, kept or dropped.
     pub fn state_changed(&mut self, pos: Pos, old: u32, new: u32) {
         self.asleep.remove(&pos);
+        self.wake_below(&pos);
         if self.states.is_empty() || !self.map.contains_key(&pos) {
             return;
         }
@@ -1261,6 +1276,32 @@ mod tests {
         b.sleep(p);
         b.clear();
         assert!(!b.is_asleep(&p));
+    }
+    /// A hopper reads the container above it, so a write or state change up
+    /// there wakes the hopper sleeping below before its next tick.
+    #[test]
+    fn a_sleeping_block_entity_wakes_when_the_block_above_changes() {
+        let p = (1, 64, 1);
+        let above = (p.0, p.1 + 1, p.2);
+        let mut b = level();
+        b.insert(p, hopper());
+        assert!(!b.any_asleep());
+        b.sleep(p);
+        assert!(b.any_asleep());
+        b.insert(above, BlockEntity::Chest(vec![None; 27]));
+        assert!(!b.is_asleep(&p), "a container placed above wakes it");
+        b.sleep(p);
+        b.get_mut(&above);
+        assert!(!b.is_asleep(&p), "a slot write above wakes it");
+        b.sleep(p);
+        b.wake(&above);
+        assert!(b.is_asleep(&p), "waking another position leaves it asleep");
+        b.state_changed(above, 1, 1);
+        assert!(!b.is_asleep(&p), "a state change above wakes it");
+        b.sleep(p);
+        b.wake_below(&above);
+        assert!(!b.is_asleep(&p));
+        assert!(!b.any_asleep());
     }
     #[test]
     fn mod_block_entities_are_listed_by_chunk_until_they_go() {
