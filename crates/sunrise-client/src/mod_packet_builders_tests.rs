@@ -1,7 +1,7 @@
 use super::*;
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_items::items::ItemStack as EngineStack;
-use sunrise_protocol::{buf::Reader, item::Component, packets::play::Serverbound};
+use sunrise_protocol::{buf::Reader, item::Component};
 
 fn builtin() -> Builtin {
     Builtin::parse(r#"{"minecraft:item":{"entries":{"minecraft:stick":{"protocol_id":4}}},"minecraft:data_component_type":{"entries":{"minecraft:damage":{"protocol_id":3},"minecraft:lore":{"protocol_id":11}}}}"#).unwrap()

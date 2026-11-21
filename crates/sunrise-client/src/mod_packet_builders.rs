@@ -1,13 +1,29 @@
 //! Host-owned container packet construction; the protocol owns stack codecs and hashes.
 use mod_api::{ContainerClickRequest, PacketBuildError, ServerboundPlayPacket};
 use std::cell::RefCell;
-use sunrise_core::vanilla_bytes::Writer;
 use sunrise_protocol::{
-    buf::Codec,
+    ids,
     item::{Hashed, Stack},
-    packets::play::ContainerClick,
+    packets::play::{ContainerClick, Serverbound},
     registry::{Builtin, Dynamic, SyncedNames},
 };
+
+fn encode_serverbound(packet: Serverbound) -> Result<ServerboundPlayPacket, PacketBuildError> {
+    let name = usize::try_from(packet.id())
+        .ok()
+        .and_then(|id| ids::play::serverbound::NAMES.get(id).copied())
+        .ok_or_else(|| PacketBuildError::OutOfRange {
+            packet: packet.name().into(),
+            field: "id".into(),
+        })?;
+    let id = mod_api::Identifier::from_parts("minecraft", name).map_err(|_| {
+        PacketBuildError::OutOfRange {
+            packet: name.into(),
+            field: "id".into(),
+        }
+    })?;
+    Ok(ServerboundPlayPacket::new(id, packet.encode_payload()))
+}
 
 fn component_error(field: impl Into<String>) -> PacketBuildError {
     PacketBuildError::ComponentCannotEncode {
@@ -157,11 +173,7 @@ pub fn encode_container_click(
         changed,
         carried: stack(&request.carried, "carried")?,
     };
-    let mut writer = Writer::new();
-    ContainerClick::write(&packet, &mut writer);
-    let id =
-        mod_api::Identifier::from_parts("minecraft", "container_click").map_err(|_| range("id"))?;
-    Ok(ServerboundPlayPacket::new(id, writer.data))
+    encode_serverbound(Serverbound::ContainerClick(packet))
 }
 
 fn checked_hash(

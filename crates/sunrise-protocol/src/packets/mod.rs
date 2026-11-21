@@ -89,15 +89,18 @@ macro_rules! packet_enum {
                 }
                 Ok(self.encode())
             }
+            fn write_payload(&self, w: &mut ::sunrise_core::vanilla_bytes::Writer) {
+                match self {
+                    $(Self::$variant(p) => <$crate::packet_codec!($ty $(, $codec)?) as $crate::buf::Codec<$ty>>::write(p, w),)*
+                    Self::Unknown(_, payload) => w.bytes(payload),
+                }
+            }
             /// The packet body: VarInt id then payload, for trusted values.
             /// Use `try_encode` for values supplied by mods or other untrusted producers.
             pub fn encode(&self) -> Vec<u8> {
                 let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
                 w.varint(self.id());
-                match self {
-                    $(Self::$variant(p) => <$crate::packet_codec!($ty $(, $codec)?) as $crate::buf::Codec<$ty>>::write(p, &mut w),)*
-                    Self::Unknown(_, payload) => w.bytes(payload),
-                }
+                self.write_payload(&mut w);
                 w.data
             }
         }
