@@ -193,36 +193,13 @@ impl Control {
     fn lock(&self) -> MutexGuard<'_, Held> {
         self.held.lock().unwrap_or_else(|e| e.into_inner())
     }
-    fn place(&self, placement: &StreamPlacement, entity_pos: Option<[f64; 3]>) {
-        let mut held = self.lock();
-        match *placement {
-            StreamPlacement::Flat => {
-                *held = Held::Flat;
-                self.publish(&held, View::default());
-            }
-            StreamPlacement::At(at) => {
-                *held = Held::At;
-                self.publish(
-                    &held,
-                    View {
-                        positional: true,
-                        at,
-                    },
-                );
-            }
-            StreamPlacement::Entity(entity) => {
-                if let Some(at) = entity_pos {
-                    *held = Held::Entity(entity);
-                    self.publish(
-                        &held,
-                        View {
-                            positional: true,
-                            at,
-                        },
-                    );
-                }
-            }
+    fn place(&self, mut held: MutexGuard<'_, Held>, placement: Held, view: View) -> bool {
+        if self.closed.load(Acquire) {
+            return false;
         }
+        *held = placement;
+        self.publish(&held, view);
+        true
     }
     /// Places an entity-following stream at its entity's position as `resolve` finds it now,
     /// under the lock a `set_placement` takes: an older resolution can never overwrite a newer
@@ -252,17 +229,24 @@ impl Control {
 fn check_placement(
     placement: &StreamPlacement,
     entity_pos: Option<[f64; 3]>,
-) -> Result<(), SpecFault> {
-    match placement {
-        StreamPlacement::Flat => Ok(()),
-        StreamPlacement::At(at) if at.iter().all(|v| v.is_finite()) => Ok(()),
-        StreamPlacement::Entity(_)
-            if entity_pos.is_some_and(|at| at.iter().all(|v| v.is_finite())) =>
-        {
-            Ok(())
+) -> Result<(Held, View), SpecFault> {
+    let (held, at) = match *placement {
+        StreamPlacement::Flat => return Ok((Held::Flat, View::default())),
+        StreamPlacement::At(at) => (Held::At, at),
+        StreamPlacement::Entity(entity) => {
+            (Held::Entity(entity), entity_pos.ok_or(SpecFault::Position)?)
         }
-        StreamPlacement::At(_) | StreamPlacement::Entity(_) => Err(SpecFault::Position),
+    };
+    if !at.iter().all(|v| v.is_finite()) {
+        return Err(SpecFault::Position);
     }
+    Ok((
+        held,
+        View {
+            positional: true,
+            at,
+        },
+    ))
 }
 
 /// A mod's end of a stream: what `AudioStreamRef` calls. Dropping it stops the stream.
@@ -273,11 +257,10 @@ pub(super) struct StreamHandle {
 impl AudioStreamSource for StreamHandle {
     fn set_placement(&self, placement: &StreamPlacement, entity_pos: Option<[f64; 3]>) -> bool {
         let c = &*self.control;
-        if c.closed.load(Acquire) || check_placement(placement, entity_pos).is_err() {
+        let Ok((placement, view)) = check_placement(placement, entity_pos) else {
             return false;
-        }
-        c.place(placement, entity_pos);
-        true
+        };
+        c.place(c.lock(), placement, view)
     }
     fn set_volume(&self, volume: f32) -> bool {
         if self.control.closed.load(Acquire) || volume.is_nan() {
@@ -404,9 +387,8 @@ impl StreamPool {
         if !(spec.range.is_finite() && spec.range > 0.0) {
             return fault(SpecFault::Range);
         }
-        if let Err(f) = check_placement(&spec.placement, entity_pos) {
-            return fault(f);
-        }
+        let (placement, view) =
+            check_placement(&spec.placement, entity_pos).map_err(AudioRefusal::BadSpec)?;
         self.reap(mixer);
         let mut state = self.state();
         if state.lost {
@@ -470,10 +452,10 @@ impl StreamPool {
             job_retired: AtomicBool::new(false),
             voice_reaped: AtomicBool::new(false),
             pull: demand.clone(),
-            held: Mutex::new(Held::Flat),
+            held: Mutex::new(placement),
             sequence: AtomicU64::new(0),
-            positional: AtomicBool::new(false),
-            position: Default::default(),
+            positional: AtomicBool::new(view.positional),
+            position: view.at.map(|at| AtomicU64::new(at.to_bits())),
         });
         if let Err(job) = worker.admit(PullJob::new(control.clone(), demand, ring.clone(), source))
         {
@@ -484,21 +466,9 @@ impl StreamPool {
             );
             return Err(AudioRefusal::WorkerUnavailable);
         }
-        control.place(&spec.placement, entity_pos);
         // If the mixer cannot accept the voice, this handle closes the job on its worker.
         let handle = StreamHandle {
             control: control.clone(),
-        };
-        let initial_view = match spec.placement {
-            StreamPlacement::Flat => View::default(),
-            StreamPlacement::At(at) => View {
-                positional: true,
-                at,
-            },
-            StreamPlacement::Entity(_) => View {
-                positional: true,
-                at: entity_pos.unwrap_or([0.0; 3]),
-            },
         };
         let voice = StreamVoice {
             control: control.clone(),
@@ -506,10 +476,7 @@ impl StreamPool {
             primed: false,
             current: [0.0; 2],
             fraction: 0.0,
-            // The placement just published: a voice is never heard Flat while its real placement
-            // is not in. Should the callback find a writer in the middle of a change before it
-            // has read any, it keeps this initial placement.
-            view: control.view().unwrap_or(initial_view),
+            view,
         };
         match mixer.lock() {
             Ok(mut mixer) => mixer.streams.push(voice),
@@ -1233,6 +1200,42 @@ mod tests {
         let (after, _) = heard(true);
         assert!(alone > 0.0);
         assert_eq!(after, alone);
+    }
+
+    #[test]
+    fn moving_to_flat_loses_if_entity_removal_won_the_placement_lock() {
+        use std::{sync::mpsc::sync_channel, thread};
+
+        let rig = Rig::new();
+        let entity = EntityRef::new(mod_api::WorldEpoch::new(1), 7);
+        let stream = rig
+            .open_at_entity(
+                "mod",
+                &spec().with_placement(StreamPlacement::Entity(entity)),
+                Some([0.0; 3]),
+            )
+            .unwrap();
+        let control = rig.pool.state().controls[0].clone();
+        let (resolving, resolver_entered) = sync_channel(0);
+        let (moving, move_entered) = sync_channel(0);
+        thread::scope(|s| {
+            let control = &control;
+            s.spawn(move || {
+                control.follow(&mut |old| {
+                    assert_eq!(old, entity);
+                    resolving.send(()).unwrap();
+                    move_entered.recv().unwrap();
+                    None
+                })
+            });
+            resolver_entered.recv().unwrap();
+            let (placement, view) = check_placement(&StreamPlacement::Flat, None).unwrap();
+            // The move has validated its placement, but can't enter its critical section
+            // until follow has resolved the old entity and stopped the stream.
+            moving.send(()).unwrap();
+            assert!(!control.place(control.lock(), placement, view));
+        });
+        assert_eq!(stream.state(), AudioStreamState::Stopped);
     }
 
     #[test]

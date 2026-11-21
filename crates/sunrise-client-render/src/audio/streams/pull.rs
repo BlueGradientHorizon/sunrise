@@ -131,19 +131,11 @@ impl Worker {
 }
 
 /// Runs last when a [`PullJob`] drops, after its source and PCM ring have been released.
-pub(super) struct JobRetirement {
-    control: Arc<Control>,
-    demand: Arc<Demand>,
-}
+struct JobRetirement(Arc<Control>);
 
 impl Drop for JobRetirement {
     fn drop(&mut self) {
-        // A job that leaves without EOF (invalid count, shutdown or worker unwinding) cannot
-        // produce again. Only an EOF voice should stay open to drain.
-        if !self.demand.eof.load(Relaxed) {
-            self.control.stop();
-        }
-        self.control.job_retired.store(true, Release);
+        self.0.job_retired.store(true, Release);
     }
 }
 
@@ -155,6 +147,15 @@ pub(super) struct PullJob {
     _retire: JobRetirement,
 }
 
+impl Drop for PullJob {
+    fn drop(&mut self) {
+        // Silence non-EOF exits before dropping mod code. Only EOF drains queued samples.
+        if !self.demand.eof.load(Relaxed) {
+            self.control.stop();
+        }
+    }
+}
+
 impl PullJob {
     pub(super) fn new(
         control: Arc<Control>,
@@ -162,10 +163,7 @@ impl PullJob {
         ring: Arc<Ring>,
         source: Box<dyn AudioStream>,
     ) -> Self {
-        let retire = JobRetirement {
-            control: control.clone(),
-            demand: demand.clone(),
-        };
+        let retire = JobRetirement(control.clone());
         Self {
             source,
             ring,
@@ -415,6 +413,76 @@ mod tests {
         assert_eq!(ring.producer_window().1, 0);
         assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
         assert_eq!(rig.play::<4>(), [0.0; 4]);
+    }
+
+    #[test]
+    fn invalid_read_silences_queued_pcm_before_source_disposal() {
+        struct Invalid {
+            first: bool,
+            dropping: SyncSender<()>,
+            finish: mpsc::Receiver<()>,
+        }
+
+        impl AudioStream for Invalid {
+            fn read(&mut self, pcm: &mut [i16]) -> usize {
+                if std::mem::take(&mut self.first) {
+                    pcm[..2].fill(16_384);
+                    1
+                } else {
+                    usize::MAX
+                }
+            }
+        }
+
+        impl Drop for Invalid {
+            fn drop(&mut self) {
+                let _ = self.dropping.send(());
+                let _ = self.finish.recv();
+            }
+        }
+
+        let (dropping, drop_started) = mpsc::sync_channel(1);
+        let (finish, finish_drop) = mpsc::sync_channel(1);
+        let pool = StreamPool::default();
+        let (worker, queued_jobs) = Worker::test_pair();
+        pool.state().worker = Some(worker);
+        let mixer = Mutex::new(Mixer {
+            stream_gain: [1.0; 11],
+            ..Mixer::default()
+        });
+        let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
+        let stream = pool
+            .open(
+                &mixer,
+                "mod",
+                &spec,
+                None,
+                Box::new(Invalid {
+                    first: true,
+                    dropping,
+                    finish: finish_drop,
+                }),
+            )
+            .unwrap();
+        let mut job = queued_jobs.try_recv().unwrap();
+        let mut out = [0.0; 4];
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
+        assert!(job.refill(&mut [0; 16]));
+        assert_eq!(job.ring.producer_window().1, 1);
+        job.demand.frames.store(2, Release);
+        let control = job.control.clone();
+        let worker = thread::spawn(move || {
+            assert!(!job.refill(&mut [0; 16]));
+            drop(job);
+        });
+        drop_started.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(!control.job_retired.load(Acquire));
+        assert_eq!(stream.state(), AudioStreamState::Stopped);
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
+        assert_eq!(out, [0.0; 4]);
+        finish.send(()).unwrap();
+        worker.join().unwrap();
+        assert!(control.job_retired.load(Acquire));
     }
 
     #[test]
