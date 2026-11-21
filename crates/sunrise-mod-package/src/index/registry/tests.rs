@@ -229,11 +229,13 @@ fn stable_source_uses_an_author_url_but_the_index_uses_the_registry_mirror() {
     entry.versions[0] = row;
     let mut changed = entry.clone();
     changed.versions[0].file = changed.versions[0].file.replace("/v0.1.0/", "/retagged/");
+    let review = review(&[entry], &[changed], "author");
     assert!(
-        review(&[entry], &[changed], "author")
+        review
             .errors
             .iter()
-            .any(|e| e.contains("published file or source pin never changes"))
+            .any(|e| e.contains("coords_hud 0.1.0") && e.contains("published file")),
+        "{review:?}"
     );
 }
 
