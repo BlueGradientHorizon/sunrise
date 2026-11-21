@@ -1,5 +1,9 @@
 //! Parsed resource models for one startup or resource-pack reload.
-use crate::{Result, resource_source::ResourceSource};
+use crate::{
+    Result,
+    mod_model_loaders::{ModelLoaderTable, decode_model_with_loaders, installed_loaders},
+    resource_source::ResourceSource,
+};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -21,11 +25,12 @@ pub struct ParsedModels {
 fn read_model(
     source: &ResourceSource,
     path: &str,
+    loaders: Option<&ModelLoaderTable>,
 ) -> std::result::Result<Arc<CuboidModel>, String> {
     let text = source
         .read_to_string(path)
         .map_err(|error| error.to_string())?;
-    crate::mod_model_loaders::decode_model(&text)
+    decode_model_with_loaders(&text, loaders)
         .map(Arc::new)
         .map_err(|error| error.to_string())
 }
@@ -53,6 +58,14 @@ impl AssetReader for RootAssets {
 impl ParsedModels {
     /// Every `models/**.json` of a namespace directory, by identifier.
     pub fn load(source: &ResourceSource) -> Self {
+        Self::load_with_loaders(source, installed_loaders())
+    }
+
+    /// Scan this source with exactly the supplied table, including on the parsing workers.
+    pub(crate) fn load_with_loaders(
+        source: &ResourceSource,
+        loaders: Option<&ModelLoaderTable>,
+    ) -> Self {
         let files: Vec<_> = source
             .list_under("assets", &["models"])
             .into_iter()
@@ -62,7 +75,7 @@ impl ParsedModels {
                 Some((format!("{namespace}:{path}"), name))
             })
             .collect();
-        let parsed = crate::par::par_map(&files, |(_, path)| read_model(source, path));
+        let parsed = crate::par::par_map(&files, |(_, path)| read_model(source, path, loaders));
         let mut models = BTreeMap::new();
         let mut rejected = BTreeSet::new();
         for ((id, _), result) in files.into_iter().zip(parsed) {
@@ -121,7 +134,11 @@ impl ParsedModels {
                     .split_once(':')
                     .ok_or_else(|| "invalid model identifier".to_owned())
                     .and_then(|(namespace, path)| {
-                        read_model(source, &format!("assets/{namespace}/models/{path}.json"))
+                        read_model(
+                            source,
+                            &format!("assets/{namespace}/models/{path}.json"),
+                            installed_loaders(),
+                        )
                     }),
             };
             match model {

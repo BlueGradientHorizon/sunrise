@@ -1,7 +1,11 @@
 //! Bind prepared registry states to model choices; bake each transformed model
 //! once and share its geometry across positions. Resource failure recovery and
 //! resource-pack reloads remain separate work.
-use crate::{Result, sprites::Sprites};
+use crate::{
+    Result,
+    mod_block_state_models::{BlockStateModelTable, installed_definitions, instantiate},
+    sprites::Sprites,
+};
 use mod_api::{__private::game::standalone_model_bake_context, StandaloneModelBakeError};
 use serde_json::Value;
 use std::{
@@ -284,6 +288,7 @@ fn bind_layer(
     block: &str,
     schema: &PropertySchema,
     possible: &[Properties],
+    definitions: Option<&BlockStateModelTable>,
 ) -> std::result::Result<(BlockStateDefinition, Vec<Option<SelectedModels>>), String> {
     match BlockStateFile::from_json(text).map_err(|e| e.to_string())? {
         BlockStateFile::Vanilla(definition) => {
@@ -293,7 +298,7 @@ fn bind_layer(
             Ok((definition, bound))
         }
         BlockStateFile::Typed { kind, config } => {
-            crate::mod_block_state_models::instantiate(&kind, block, &config, possible)
+            instantiate(definitions, &kind, block, &config, possible)
                 .map(BlockStateDefinition::from_picks)
         }
     }
@@ -333,13 +338,14 @@ impl StateModels {
         sprites: &mut Sprites,
         facts: &BTreeMap<String, Value>,
     ) -> Result<Self> {
-        Self::from_facts_with_models(
+        Self::from_facts_with_definitions(
             root,
             registry,
             blocks,
             sprites,
             facts,
             &crate::model_library::ParsedModels::default(),
+            installed_definitions(),
         )
     }
     pub(crate) fn from_facts_with_models(
@@ -349,6 +355,26 @@ impl StateModels {
         sprites: &mut Sprites,
         facts: &BTreeMap<String, Value>,
         models: &crate::model_library::ParsedModels,
+    ) -> Result<Self> {
+        Self::from_facts_with_definitions(
+            root,
+            registry,
+            blocks,
+            sprites,
+            facts,
+            models,
+            installed_definitions(),
+        )
+    }
+
+    pub(crate) fn from_facts_with_definitions(
+        root: &crate::resource_source::ResourceSource,
+        registry: &BlockRegistry,
+        blocks: &[&str],
+        sprites: &mut Sprites,
+        facts: &BTreeMap<String, Value>,
+        models: &crate::model_library::ParsedModels,
+        definitions: Option<&BlockStateModelTable>,
     ) -> Result<Self> {
         let mut choices = Vec::new();
         let mut states = vec![None; registry.len()];
@@ -421,7 +447,7 @@ impl StateModels {
             };
             let mut loaded = Vec::with_capacity(layers.len());
             for text in &layers {
-                match bind_layer(text, &name, &schema, &possible) {
+                match bind_layer(text, &name, &schema, &possible, definitions) {
                     Ok(layer) => loaded.push(layer),
                     Err(e) => log::warn!("Sunrise: blockstate definition {file} not loaded: {e}"),
                 }

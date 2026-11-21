@@ -17,17 +17,12 @@ struct BoundSpriteSource {
     list: Arc<SpriteSourceFn>,
 }
 
-static SOURCES: RwLock<BTreeMap<String, Arc<BoundSpriteSource>>> = RwLock::new(BTreeMap::new());
+type SpriteSourceTable = BTreeMap<String, Arc<BoundSpriteSource>>;
 
-#[cfg(test)]
-static SOURCES_FIXTURE: std::sync::Mutex<Option<BTreeMap<String, Arc<BoundSpriteSource>>>> =
-    std::sync::Mutex::new(None);
-
-#[cfg(test)]
-static FIXTURE_CHANGED: std::sync::Condvar = std::sync::Condvar::new();
+static SOURCES: RwLock<SpriteSourceTable> = RwLock::new(BTreeMap::new());
 
 fn bind_into(
-    bound: &mut BTreeMap<String, Arc<BoundSpriteSource>>,
+    bound: &mut SpriteSourceTable,
     sources: Vec<Answered<SpriteSourceRegistration>>,
 ) -> Vec<String> {
     let mut kept = Vec::new();
@@ -72,59 +67,42 @@ pub fn register(sources: Vec<Answered<SpriteSourceRegistration>>) -> Vec<String>
     bind_into(&mut bound, sources)
 }
 
-fn lookup(kind: &str) -> Option<Arc<BoundSpriteSource>> {
-    #[cfg(test)]
-    if let Some(fixture) = SOURCES_FIXTURE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .as_ref()
-    {
-        return fixture.get(kind).cloned();
-    }
-    SOURCES
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(kind)
-        .cloned()
+struct SourceReader<'a> {
+    /// A load-local table, or `None` to read the installed providers.
+    table: Option<&'a SpriteSourceTable>,
+    answer: bool,
 }
 
-fn is_registered(kind: &str) -> bool {
-    #[cfg(test)]
-    if let Some(fixture) = SOURCES_FIXTURE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .as_ref()
-    {
-        return fixture.contains_key(kind);
+impl<'a> SourceReader<'a> {
+    const fn declared(table: Option<&'a SpriteSourceTable>) -> Self {
+        Self {
+            table,
+            answer: false,
+        }
     }
-    SOURCES
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .contains_key(kind)
+
+    const fn registered(table: Option<&'a SpriteSourceTable>) -> Self {
+        Self {
+            table,
+            answer: true,
+        }
+    }
+
+    fn read<T>(&self, read: impl FnOnce(&SpriteSourceTable) -> T) -> T {
+        match self.table {
+            Some(table) => read(table),
+            None => read(
+                &SOURCES
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            ),
+        }
+    }
 }
 
-/// The native mods' source types, declared but never answered: for a load that draws nothing.
-pub struct Declared;
-impl ModSources for Declared {
+impl ModSources for SourceReader<'_> {
     fn is_registered(&self, kind: &str) -> bool {
-        is_registered(kind)
-    }
-    fn ask(
-        &self,
-        _: &Identifier,
-        _: &str,
-        _: &Tag,
-        _: &Arc<dyn ResourceReader>,
-    ) -> Vec<SpriteSourceOutput> {
-        Vec::new()
-    }
-}
-
-/// The native mods' bound sprite source providers, invoked on the resource loader as registrations.
-pub struct Registered;
-impl ModSources for Registered {
-    fn is_registered(&self, kind: &str) -> bool {
-        is_registered(kind)
+        self.read(|table| table.contains_key(kind))
     }
     fn ask(
         &self,
@@ -133,7 +111,11 @@ impl ModSources for Registered {
         config: &Tag,
         resources: &Arc<dyn ResourceReader>,
     ) -> Vec<SpriteSourceOutput> {
-        let Some(entry) = lookup(kind) else {
+        if !self.answer {
+            return Vec::new();
+        }
+        // Keep the entry, not the registry's read guard, while invoking the provider.
+        let Some(entry) = self.read(|table| table.get(kind).cloned()) else {
             return Vec::new();
         };
         let _phase =
@@ -159,6 +141,40 @@ impl ModSources for Registered {
     }
 }
 
+/// The native mods' source types, declared but never answered: for a load that draws nothing.
+pub struct Declared;
+impl ModSources for Declared {
+    fn is_registered(&self, kind: &str) -> bool {
+        SourceReader::declared(None).is_registered(kind)
+    }
+    fn ask(
+        &self,
+        atlas: &Identifier,
+        kind: &str,
+        config: &Tag,
+        resources: &Arc<dyn ResourceReader>,
+    ) -> Vec<SpriteSourceOutput> {
+        SourceReader::declared(None).ask(atlas, kind, config, resources)
+    }
+}
+
+/// The native mods' bound sprite source providers, invoked on the resource loader as registrations.
+pub struct Registered;
+impl ModSources for Registered {
+    fn is_registered(&self, kind: &str) -> bool {
+        SourceReader::registered(None).is_registered(kind)
+    }
+    fn ask(
+        &self,
+        atlas: &Identifier,
+        kind: &str,
+        config: &Tag,
+        resources: &Arc<dyn ResourceReader>,
+    ) -> Vec<SpriteSourceOutput> {
+        SourceReader::registered(None).ask(atlas, kind, config, resources)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,37 +186,6 @@ mod tests {
         RegistrationContext,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
-
-    struct SourcesFixture;
-
-    impl SourcesFixture {
-        fn from_registrations(
-            sources: Vec<Answered<SpriteSourceRegistration>>,
-        ) -> (Self, Vec<String>) {
-            let mut bound = BTreeMap::new();
-            let kept = bind_into(&mut bound, sources);
-            let mut fixture = SOURCES_FIXTURE
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            while fixture.is_some() {
-                fixture = FIXTURE_CHANGED
-                    .wait(fixture)
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-            }
-            *fixture = Some(bound);
-            (Self, kept)
-        }
-    }
-
-    impl Drop for SourcesFixture {
-        fn drop(&mut self) {
-            let mut fixture = SOURCES_FIXTURE
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *fixture = None;
-            FIXTURE_CHANGED.notify_all();
-        }
-    }
 
     fn id(text: &str) -> Identifier {
         Identifier::parse(text).unwrap()
@@ -278,22 +263,25 @@ mod tests {
             mod_api::ModEntry::new("later_src", Box::new(Later)),
         ]
         .into();
-        let (_fixture, kept) = mod_platform::testing::with_mods(mods, || {
+        let (table, kept) = mod_platform::testing::with_mods(mods, || {
             let mut registrations = Vec::new();
             mod_api::dispatch_register_sprite_sources(
                 &RegistrationContext::new(),
                 &mut registrations,
             );
-            SourcesFixture::from_registrations(registrations)
+            let mut table = SpriteSourceTable::new();
+            let kept = bind_into(&mut table, registrations);
+            (table, kept)
         });
         assert_eq!(
             kept,
             ["srcreg:shared", "minecraft:single", "minecraft:custom"]
         );
+        let declared = SourceReader::declared(Some(&table));
         assert!(
-            Declared.is_registered("srcreg:shared")
-                && Declared.is_registered("minecraft:single")
-                && Declared.is_registered("minecraft:custom")
+            declared.is_registered("srcreg:shared")
+                && declared.is_registered("minecraft:single")
+                && declared.is_registered("minecraft:custom")
         );
         let source = crate::resource_source::ResourceSource::indexed(
             [
@@ -315,7 +303,7 @@ mod tests {
             ]
             .into(),
         );
-        let listing = Listing::build(&source, &Registered);
+        let listing = Listing::build(&source, &SourceReader::registered(Some(&table)));
         assert_eq!(
             listing
                 .sprites("minecraft:blocks")
@@ -394,16 +382,19 @@ mod tests {
             mod_api::ModEntry::new("src_healthy", Box::new(Healthy(Arc::clone(&healthy_calls)))),
         ]
         .into();
-        let (_fixture, kept) = mod_platform::testing::with_mods(mods, || {
+        let (table, kept) = mod_platform::testing::with_mods(mods, || {
             let mut registrations = Vec::new();
             mod_api::dispatch_register_sprite_sources(
                 &RegistrationContext::new(),
                 &mut registrations,
             );
-            SourcesFixture::from_registrations(registrations)
+            let mut table = SpriteSourceTable::new();
+            let kept = bind_into(&mut table, registrations);
+            (table, kept)
         });
         assert_eq!(kept, ["srctest:panics", "srctest:flaky", "srctest:healthy"]);
 
+        let registered = SourceReader::registered(Some(&table));
         let atlas_source = |kind: &str| {
             crate::resource_source::ResourceSource::indexed(
                 [(
@@ -417,7 +408,7 @@ mod tests {
         };
 
         let _ = take_callback_panic_notices();
-        let first_panic = Listing::build(&atlas_source("srctest:panics"), &Registered);
+        let first_panic = Listing::build(&atlas_source("srctest:panics"), &registered);
         assert!(first_panic.sprites("minecraft:blocks").is_empty());
         assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
         let notices = take_callback_panic_notices();
@@ -429,17 +420,17 @@ mod tests {
         );
 
         // Disabled after panic: a second load does not invoke the panicking callback again.
-        let second_panic = Listing::build(&atlas_source("srctest:panics"), &Registered);
+        let second_panic = Listing::build(&atlas_source("srctest:panics"), &registered);
         assert!(second_panic.sprites("minecraft:blocks").is_empty());
         assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
 
         // Non-panic Err does not latch or queue a panic notice.
-        let first_flaky = Listing::build(&atlas_source("srctest:flaky"), &Registered);
+        let first_flaky = Listing::build(&atlas_source("srctest:flaky"), &registered);
         assert!(first_flaky.sprites("minecraft:blocks").is_empty());
         assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
         assert!(take_callback_panic_notices().is_empty());
 
-        let second_flaky = Listing::build(&atlas_source("srctest:flaky"), &Registered);
+        let second_flaky = Listing::build(&atlas_source("srctest:flaky"), &registered);
         assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
         assert_eq!(
             second_flaky
@@ -450,7 +441,7 @@ mod tests {
         );
 
         // Another mod's provider is unaffected by the panic.
-        let healthy = Listing::build(&atlas_source("srctest:healthy"), &Registered);
+        let healthy = Listing::build(&atlas_source("srctest:healthy"), &registered);
         assert_eq!(healthy_calls.load(Ordering::Relaxed), 1);
         assert_eq!(
             healthy

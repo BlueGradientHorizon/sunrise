@@ -17,18 +17,13 @@ struct BoundBlockStateModel {
     instantiate: Arc<BlockStateDefinitionFn>,
 }
 
-static DEFINITIONS: OnceLock<Arc<BTreeMap<String, BoundBlockStateModel>>> = OnceLock::new();
+pub(crate) struct BlockStateModelTable(BTreeMap<String, BoundBlockStateModel>);
 
-#[cfg(test)]
-static DEFINITIONS_FIXTURE: std::sync::Mutex<Option<Arc<BTreeMap<String, BoundBlockStateModel>>>> =
-    std::sync::Mutex::new(None);
-
-#[cfg(test)]
-static FIXTURE_CHANGED: std::sync::Condvar = std::sync::Condvar::new();
+static DEFINITIONS: OnceLock<BlockStateModelTable> = OnceLock::new();
 
 fn freeze(
     definitions: Vec<Answered<BlockStateDefinitionRegistration>>,
-) -> (BTreeMap<String, BoundBlockStateModel>, Vec<String>) {
+) -> (BlockStateModelTable, Vec<String>) {
     let mut bound = BTreeMap::new();
     let mut kept = Vec::new();
     for Answered { answer, mod_id, .. } in definitions {
@@ -53,7 +48,7 @@ fn freeze(
             kept.push(key);
         }
     }
-    (bound, kept)
+    (BlockStateModelTable(bound), kept)
 }
 
 /// Binds the block-state definition providers native mods registered once at start, before
@@ -62,38 +57,28 @@ fn freeze(
 /// naming both mods. Returns the unique ids kept, in first-registration order.
 pub fn register(definitions: Vec<Answered<BlockStateDefinitionRegistration>>) -> Vec<String> {
     let (bound, kept) = freeze(definitions);
-    if DEFINITIONS.set(Arc::new(bound)).is_err() {
+    if DEFINITIONS.set(bound).is_err() {
         log::warn!("block state definition types were registered already; these are left out");
         return Vec::new();
     }
     kept
 }
 
-fn active_definitions() -> Option<Arc<BTreeMap<String, BoundBlockStateModel>>> {
-    #[cfg(test)]
-    if let Some(fixture) = DEFINITIONS_FIXTURE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
-    {
-        return Some(fixture);
-    }
-    DEFINITIONS.get().cloned()
+pub(crate) fn installed_definitions() -> Option<&'static BlockStateModelTable> {
+    DEFINITIONS.get()
 }
 
 /// Each state's variant, by index into `states`, as the bound provider for definition type `kind`
 /// picks them for `block` from the file's JSON `config`. It runs on the resource loader, as a
 /// registration. An error says why the file is refused; the caller names the file.
-pub fn instantiate(
+pub(crate) fn instantiate(
+    definitions: Option<&BlockStateModelTable>,
     kind: &str,
     block: &str,
     config: &Value,
     states: &[Properties],
 ) -> Result<Vec<Option<Variant>>, String> {
-    let Some(definitions) = active_definitions() else {
-        return Err(format!("unknown block state definition type {kind}"));
-    };
-    let Some(entry) = definitions.get(kind) else {
+    let Some(entry) = definitions.and_then(|table| table.0.get(kind)) else {
         return Err(format!("unknown block state definition type {kind}"));
     };
     let block = Identifier::parse(block).map_err(|e| format!("block {block}: {e}"))?;
