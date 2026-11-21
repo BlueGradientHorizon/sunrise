@@ -463,6 +463,7 @@ pub(super) fn put_saved_entity(
 pub(super) enum RemovingBlockEntity {
     Saved,
     Resident {
+        generation: Option<u64>,
         kind: PreRemove,
         neighbor_updates: u8,
     },
@@ -850,6 +851,7 @@ impl GameLevel<'_> {
         ) {
             return RemovingBlockEntity::OwnTick;
         }
+        let generation = self.world.block_entities.generation(&key);
         // A mod's block entity answers its parts in place (its slot, so its
         // attachments, stay until `put`), as vanilla's override runs on `this`.
         // One out for its own tick or menu button, which an empty id stands in
@@ -975,6 +977,7 @@ impl GameLevel<'_> {
             }
         }
         RemovingBlockEntity::Resident {
+            generation,
             kind,
             neighbor_updates: neighbour_updates,
         }
@@ -987,6 +990,17 @@ impl GameLevel<'_> {
         removal: RemovingBlockEntity,
     ) -> u8 {
         let key = (pos.x, pos.y, pos.z);
+        // A drop's join listener can replace the row, even with one for the same block state.
+        // Don't unregister that row or clear its metadata; only finish the pre-removal updates.
+        if let RemovingBlockEntity::Resident {
+            generation,
+            neighbor_updates,
+            ..
+        } = removal
+            && self.world.block_entities.generation(&key) != generation
+        {
+            return neighbor_updates;
+        }
         // Headless levels cannot rely on a renderer to discard a replaced gateway.
         if &*self.facts.get(old).name == "minecraft:end_gateway" {
             self.positions.gateways.remove(&[pos.x, pos.y, pos.z]);
@@ -996,6 +1010,7 @@ impl GameLevel<'_> {
             RemovingBlockEntity::Resident {
                 kind,
                 neighbor_updates,
+                ..
             } => (kind, neighbor_updates),
         };
         let entity = self.world.block_entities.remove(&key);

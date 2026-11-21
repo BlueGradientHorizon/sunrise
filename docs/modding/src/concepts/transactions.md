@@ -63,8 +63,11 @@ in that level. Removal uses the block entity as it stood at replacement, includi
 any edits made before the replacement. For a direct write, the resident row's drops
 join before it is removed and before neighbor notifications. The drops already own
 the stacks they carry: a join listener that replaces the same position again does
-not spill those stacks a second time. On abort, the journal restores the original
-entity and undoes those edits. `host.edit_blocks` also restores the original blocks and
+not spill those stacks a second time. The first write only removes the original
+block entity. If the listener installs a new block entity at that position, its
+items and saved data survive even if the position returns to the state the first
+write requested. On abort, the journal restores the original entity and undoes
+those edits. `host.edit_blocks` also restores the original blocks and
 block entities on abort; it publishes whole chunks on commit without drops or
 neighbor updates. If both kinds of write touch one position, they replay in call
 order; a later bulk edit cannot substitute its new block entity for the ordinary

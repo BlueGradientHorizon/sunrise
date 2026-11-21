@@ -4,8 +4,8 @@ use crate::game::native_entity_refs::tests::{
 };
 use mod_api::{
     BlockEdit, BlockEntityPart, BlockEntityTickEvent, BlockPart, BlockRun, BlockUpdateFlags,
-    EntityJoinLevelEvent, Flow, Hooks, HostTransaction, ItemSpawnEvent, LevelHost, ModEntry,
-    NeighborNotifyEvent, Registrar,
+    Direction, EntityJoinLevelEvent, Flow, Hooks, HostTransaction, ItemResource, ItemSpawnEvent,
+    LevelHost, ModEntry, NeighborNotifyEvent, Registrar, STORAGE,
 };
 use std::sync::{
     Arc, Mutex,
@@ -421,6 +421,117 @@ fn reentrant_removal_does_not_spill_the_same_saved_pot_twice() {
             );
             let spilled: u32 = game.dropped.iter().map(|drop| drop.stack.count).sum();
             assert_eq!(spilled, 64);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::spill_join_keeps_the_replacement_furnace_and_its_contents";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_REPLACEMENT_FURNACE", &["run"]) {
+        return;
+    }
+
+    const LABEL: &str = "Restocked furnace";
+    struct Listener {
+        replacement: Arc<Mutex<Option<BlockEntityRef>>>,
+        lock: Compound,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Listener {
+        fn entity_join_level(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut EntityJoinLevelEvent<'_>,
+        ) -> Flow {
+            if event.kind == "minecraft:item" {
+                let level = host.level("minecraft:overworld").unwrap();
+                let furnace = level.block_state(host, AT).unwrap();
+                let stone = host.block_state_id("minecraft:stone").unwrap();
+                // Install a new row, but leave the state the outer write was already setting.
+                assert_eq!(
+                    level.set_block(host, AT, stone, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                assert_eq!(
+                    level.set_block(host, AT, furnace, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                let replacement = level.block_entity(host, AT).unwrap();
+                let storage = level
+                    .capability(host, &STORAGE, AT, Some(Direction::Up))
+                    .unwrap();
+                let stock = ItemStack::new("minecraft:raw_iron", 1)
+                    .try_into_api()
+                    .unwrap();
+                host.transaction(|host, tx| {
+                    assert_eq!(storage.insert(host, tx, &ItemResource::of(&stock), 7), 7);
+                    assert_eq!(replacement.set_name(host, Some(LABEL)), Ok(true));
+                    assert_eq!(
+                        replacement.set_lock(host, Some(self.lock.clone())),
+                        Ok(true)
+                    );
+                    Ok::<_, ()>(())
+                })
+                .unwrap();
+                *self.replacement.lock().unwrap() = Some(replacement);
+            }
+            Flow::Continue
+        }
+    }
+
+    let replacement = Arc::new(Mutex::new(None));
+    let lock = Compound::from([("items".into(), Tag::String("minecraft:stick".into()))]);
+    let mods = vec![ModEntry::new(
+        "removal_replacement",
+        Box::new(Listener {
+            replacement: replacement.clone(),
+            lock: lock.clone(),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert(CHUNK, Arc::new(Chunk::empty(0, 0)));
+            let registry = game.pack.assets.registry;
+            let chest = registry.default_state("minecraft:chest").unwrap();
+            let furnace = registry.default_state("minecraft:furnace").unwrap();
+            game.world.set(POS.0, POS.1, POS.2, chest).unwrap();
+            let spilled = ItemStack::new("minecraft:diamond", 1);
+            let mut row = BlockEntity::for_block("minecraft:chest").unwrap();
+            row.slots_mut()[0] = Some(spilled.clone());
+            game.world.block_entities.insert(POS, row);
+            let level = game.level("minecraft:overworld").unwrap();
+            let original = game.block_entity(level, AT).unwrap();
+
+            assert_eq!(
+                game.level_set_block(level, AT, furnace, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+
+            let replacement = replacement
+                .lock()
+                .unwrap()
+                .expect("listener installed a furnace");
+            assert_ne!(replacement, original);
+            assert_eq!(game.block_entity(level, AT), Some(replacement));
+            assert_eq!(game.world.block(POS.0, POS.1, POS.2), furnace);
+            let row = game.world.block_entities.get(&POS).unwrap();
+            assert!(matches!(row, BlockEntity::Furnace(_)));
+            assert_eq!(
+                row.slots(),
+                [Some(ItemStack::new("minecraft:raw_iron", 7)), None, None]
+            );
+            assert_eq!(replacement.name(game).as_deref(), Some(LABEL));
+            assert_eq!(replacement.lock(game), Some(&lock));
+            let [drop] = game.dropped.as_slice() else {
+                panic!("expected exactly one drop, from the original chest");
+            };
+            assert_eq!(drop.stack, spilled);
         });
     });
 }

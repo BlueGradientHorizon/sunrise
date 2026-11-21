@@ -84,6 +84,8 @@ pub trait LevelBlocksBackendMut {
     /// including earlier edits. A direct write joins its resident row's drops before removing
     /// the row and notifying neighbors. A join listener can replace the same position again
     /// without dropping stacks that already belong to the first replacement's drops.
+    /// The first write only removes the original row; it leaves the listener's replacement
+    /// block entity, its contents and its saved data intact, even at the same block state.
     /// A strict bulk edit at the same position does not change which row this write removes.
     /// Aborting restores the original state and undoes those edits.
     #[access(WorldOnly)]

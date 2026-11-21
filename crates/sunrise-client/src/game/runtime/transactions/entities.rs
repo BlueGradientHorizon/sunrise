@@ -344,7 +344,7 @@ impl Game<'_> {
     }
     /// Publish an item spawned by `preRemoveSideEffects` before returning to the block
     /// write. At commit, tell the already-queued batches first, excluding pending removes.
-    pub(super) fn flush_removal_join(&mut self, watch: u32) -> bool {
+    pub(in crate::game) fn flush_removal_join(&mut self, watch: u32) -> bool {
         let Some(frame) = self
             .transactions
             .committing
