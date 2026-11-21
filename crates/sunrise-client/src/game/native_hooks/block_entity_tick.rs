@@ -50,6 +50,7 @@ impl Game<'_> {
         let mut access = TickAccess {
             game: self,
             subject,
+            checked: Some(live_state),
         };
         Self::native_block_entity_tick(kind, BlockEntityTickScope::new(&mut access));
         self.world
@@ -74,6 +75,10 @@ fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
 struct TickAccess<'g, 'w> {
     game: &'g mut Game<'w>,
     subject: BlockEntityRef,
+    /// The live state this instance was last found valid on. Validity depends only on the
+    /// state's block and the instance's fixed type, and the loan already pins the instance,
+    /// so a borrow over the same state needs no second `BlockEntityType.isValid`.
+    checked: Option<BlockStateId>,
 }
 
 impl BlockEntityTickAccess for TickAccess<'_, '_> {
@@ -103,8 +108,11 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
         else {
             return;
         };
-        if !valid_tick_subject(&self.game.res.facts().get(live_state).name, loan.entity) {
-            return;
+        if self.checked != Some(live_state) {
+            if !valid_tick_subject(&self.game.res.facts().get(live_state).name, loan.entity) {
+                return;
+            }
+            self.checked = Some(live_state);
         }
         let mut data = TickData {
             dim: self.game.dim,
