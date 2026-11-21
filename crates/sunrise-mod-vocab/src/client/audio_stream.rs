@@ -24,7 +24,7 @@ pub trait AudioStream: Send + 'static {
     /// stream's [`StreamSpec`] format. `pcm` is zeroed before each call.
     ///
     /// - Returning `0` signals EOF: already-queued frames drain, then the stream stops.
-    /// - Returning `1..=pcm.len() / channels` publishes that many whole interleaved frames;
+    /// - Returning `1..=pcm.len() / channels` supplies that many whole interleaved frames;
     ///   return `n > 0` without writing to `pcm` for temporary silence.
     /// - Returning `> pcm.len() / channels` stops the stream immediately without publishing.
     fn read(&mut self, pcm: &mut [i16]) -> usize;
@@ -178,8 +178,8 @@ pub enum AudioRefusal {
     ModStreamLimit,
     /// [`AUDIO_STREAMS_TOTAL`] streams are open across every mod: stop one first.
     TooManyStreams,
-    /// The stream pool's PCM buffer memory budget is exhausted or ring allocation failed: stop a
-    /// stream first.
+    /// The mod's or the pool's PCM buffer memory budget is exhausted, or ring allocation failed.
+    /// Stopped streams still count while the worker is disposing of their source and ring.
     MemoryLimit,
     /// The pull worker could not start or admit this source.
     WorkerUnavailable,
@@ -199,7 +199,7 @@ impl std::fmt::Display for AudioRefusal {
                 write!(f, "{AUDIO_STREAMS_TOTAL} audio streams are already open")
             }
             Self::MemoryLimit => {
-                f.write_str("the audio stream pool cannot allocate another PCM buffer")
+                f.write_str("the mod or audio stream pool cannot allocate another PCM buffer")
             }
             Self::WorkerUnavailable => f.write_str("the audio pull worker cannot accept a source"),
         }

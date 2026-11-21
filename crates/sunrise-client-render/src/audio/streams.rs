@@ -17,10 +17,10 @@ use mod_api::{
 use pull::{Demand, PullJob, Worker};
 use std::sync::{
     Arc, Mutex, MutexGuard,
-    atomic::{AtomicBool, AtomicI16, AtomicU32, AtomicU64, AtomicUsize, Ordering::*, fence},
+    atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering::*, fence},
 };
 
-/// Internal capacity of the worker-to-callback PCM ring, in milliseconds of source audio.
+/// Internal capacity of the worker-to-callback PCM ring, in milliseconds at the source rate.
 const RING_MAX_MS: u64 = 1_000;
 /// Minimum ring capacity in frames so the resampler has room for a frame and lookahead.
 const MIN_RING_FRAMES: u64 = 2;
@@ -28,6 +28,8 @@ const MIN_RING_FRAMES: u64 = 2;
 const MAX_RING_FRAMES: u64 = 384_000;
 /// Aggregate PCM buffer memory cap across all live voices and pending worker jobs (64 MiB).
 const MAX_POOL_PCM_BYTES: usize = 64 * 1024 * 1024;
+/// One mod cannot exhaust the shared PCM budget, even with jobs awaiting retirement.
+const MAX_MOD_PCM_BYTES: usize = MAX_POOL_PCM_BYTES / 2;
 
 fn try_reserve_pcm_bytes(counter: &AtomicUsize, limit: usize, bytes: usize) -> bool {
     let mut current = counter.load(Acquire);
@@ -45,9 +47,14 @@ fn try_reserve_pcm_bytes(counter: &AtomicUsize, limit: usize, bytes: usize) -> b
     }
 }
 
-/// A stream's samples: written by one producer, read by the output callback.
+fn pcm(sample: i16) -> f32 {
+    f32::from(sample) / 32768.0
+}
+
+/// A stream's samples: written by one producer, read by the output callback. Use f32 bits
+/// so interpolation on the worker doesn't quantize a downsampled stream back to i16.
 pub(super) struct Ring {
-    samples: Vec<AtomicI16>,
+    samples: Vec<AtomicU32>,
     /// Samples written and consumed since the stream opened; the index is the count modulo the
     /// length. Only the producer moves `tail`, only the callback moves `head`.
     head: AtomicU64,
@@ -59,6 +66,7 @@ pub(super) struct Ring {
 
 impl Drop for Ring {
     fn drop(&mut self) {
+        drop(std::mem::take(&mut self.samples));
         self.pool_bytes.fetch_sub(self.bytes, Release);
     }
 }
@@ -71,7 +79,7 @@ impl Ring {
         limit: usize,
     ) -> Option<Self> {
         let sample_count = frames.checked_mul(channels)?;
-        let bytes = sample_count.checked_mul(std::mem::size_of::<AtomicI16>())?;
+        let bytes = sample_count.checked_mul(std::mem::size_of::<AtomicU32>())?;
         if !try_reserve_pcm_bytes(&pool_bytes, limit, bytes) {
             return None;
         }
@@ -80,7 +88,7 @@ impl Ring {
             pool_bytes.fetch_sub(bytes, Release);
             return None;
         }
-        samples.resize_with(sample_count, || AtomicI16::new(0));
+        samples.resize_with(sample_count, || AtomicU32::new(0));
         Some(Self {
             samples,
             head: AtomicU64::new(0),
@@ -106,12 +114,13 @@ impl Ring {
 
     /// Write whole frames that the producer has checked fit in its window. No other producer
     /// may write between taking the window and publishing its samples.
-    fn publish_frames(&self, tail: u64, samples: &[i16]) {
+    fn publish_frames(&self, mut tail: u64, samples: impl IntoIterator<Item = f32>) {
         let len = self.samples.len() as u64;
-        for (i, sample) in samples.iter().enumerate() {
-            self.samples[((tail + i as u64) % len) as usize].store(*sample, Relaxed);
+        for sample in samples {
+            self.samples[(tail % len) as usize].store(sample.to_bits(), Relaxed);
+            tail += 1;
         }
-        self.tail.store(tail + samples.len() as u64, Release);
+        self.tail.store(tail, Release);
     }
 }
 
@@ -137,6 +146,8 @@ pub(super) struct Control {
     category: usize,
     range: f32,
     owner: String,
+    /// Charges this ring's bytes to its owner until the voice and job have both retired.
+    pcm_bytes: usize,
     volume: AtomicU32,
     closed: AtomicBool,
     /// Set by `PullJob`'s retirement guard once the worker has dropped the source and ring.
@@ -399,9 +410,12 @@ impl StreamPool {
             log::warn!("mod `{owner}` hit total audio stream limit ({AUDIO_STREAMS_TOTAL})");
             return Err(AudioRefusal::TooManyStreams);
         }
-        if state.controls.iter().filter(|c| c.owner == owner).count()
-            >= AUDIO_STREAMS_PER_MOD as usize
-        {
+        let (owned, owned_bytes) = state
+            .controls
+            .iter()
+            .filter(|c| c.owner == owner)
+            .fold((0, 0), |(count, bytes), c| (count + 1, bytes + c.pcm_bytes));
+        if owned >= AUDIO_STREAMS_PER_MOD as usize {
             drop(state);
             log::warn!("mod `{owner}` hit per-mod audio stream limit ({AUDIO_STREAMS_PER_MOD})");
             return Err(AudioRefusal::ModStreamLimit);
@@ -409,15 +423,21 @@ impl StreamPool {
         let channels = spec.channels as usize;
         let ring_frames = (u64::from(spec.rate) * RING_MAX_MS / 1000)
             .clamp(MIN_RING_FRAMES, MAX_RING_FRAMES) as usize;
+        let requested = ring_frames * channels * std::mem::size_of::<AtomicU32>();
+        if owned_bytes + requested > MAX_MOD_PCM_BYTES {
+            drop(state);
+            log::warn!(
+                "mod `{owner}` hit its audio stream PCM memory limit \
+                 (requested {requested} bytes, used {owned_bytes}/{MAX_MOD_PCM_BYTES} bytes)"
+            );
+            return Err(AudioRefusal::MemoryLimit);
+        }
         let Some(ring) = Ring::try_new(
             ring_frames,
             channels,
             self.pcm_bytes.clone(),
             self.max_pcm_bytes,
         ) else {
-            let requested = ring_frames
-                .saturating_mul(channels)
-                .saturating_mul(std::mem::size_of::<AtomicI16>());
             let used = self.pcm_bytes.load(Relaxed);
             let max_pcm_bytes = self.max_pcm_bytes;
             drop(state);
@@ -447,6 +467,7 @@ impl StreamPool {
             category: spec.category.index(),
             range: spec.range,
             owner: owner.to_owned(),
+            pcm_bytes: ring.bytes,
             volume: AtomicU32::new(spec.volume.clamp(0.0, 1.0).to_bits()),
             closed: AtomicBool::new(false),
             job_retired: AtomicBool::new(false),
@@ -564,7 +585,7 @@ impl StreamPool {
     }
 }
 
-/// After consuming a whole output buffer, ask for enough source frames for the next one,
+/// After consuming a whole output buffer, ask for enough ring frames for the next one,
 /// including interpolation's lookahead. One wake suffices for the pool's shared worker.
 pub(super) fn request_pull(streams: &[StreamVoice], output_frames: usize, rate: u32) {
     if output_frames == 0 {
@@ -574,8 +595,15 @@ pub(super) fn request_pull(streams: &[StreamVoice], output_frames: usize, rate: 
     for voice in streams {
         let control = &voice.control;
         if !control.closed.load(Acquire) && !control.pull.eof.load(Acquire) {
+            let mut ring_rate = control.pull.ring_rate.load(Relaxed);
+            if ring_rate == 0 {
+                // Pin the rate at first demand. If the output device's rate changes later,
+                // the mixer resamples these same queued frames at the new ratio.
+                ring_rate = control.rate.min(rate);
+                control.pull.ring_rate.store(ring_rate, Relaxed);
+            }
             let frames = (output_frames as u64)
-                .saturating_mul(u64::from(control.rate))
+                .saturating_mul(u64::from(ring_rate))
                 .div_ceil(u64::from(rate))
                 .saturating_add(1);
             let capacity = voice.ring.samples.len() / voice.ring.channels;
@@ -625,9 +653,8 @@ pub(super) fn mix(
         // The frame at this offset from the ring head at the start of the buffer.
         let frame_at = |frame: u64| -> [f32; 2] {
             let base = head + frame * ch as u64;
-            let sample = |i: u64| {
-                f32::from(ring.samples[((base + i) % len) as usize].load(Relaxed)) / 32768.0
-            };
+            let sample =
+                |i: u64| f32::from_bits(ring.samples[((base + i) % len) as usize].load(Relaxed));
             let left = sample(0);
             [left, if ch > 1 { sample(1) } else { left }]
         };
@@ -696,7 +723,8 @@ pub(super) fn mix(
             }
         };
         let [left, right, mono] = [left, right, mono].map(|g| if g.is_finite() { g } else { 0.0 });
-        let step = f64::from(c.rate) / f64::from(rate);
+        let ring_rate = c.pull.ring_rate.load(Relaxed);
+        let step = f64::from(ring_rate) / f64::from(rate);
         if left == 0.0 && right == 0.0 && mono == 0.0 {
             // Inaudible (muted, no volume, out of range): no interpolation or mixing.
             // Advance the resampler and ring head as far as audible output would have taken them.
@@ -830,19 +858,18 @@ mod tests {
         }
         /// Publishes whole interleaved frames straight into the last opened voice's ring.
         fn feed_last(&self, samples: &[i16]) -> usize {
-            let ring = self
-                .mixer
-                .lock()
-                .unwrap()
-                .streams
-                .last()
-                .unwrap()
-                .ring
-                .clone();
+            let mixer = self.mixer.lock().unwrap();
+            let voice = mixer.streams.last().unwrap();
+            // Bypass the worker: these samples are already at the ring rate used in this rig.
+            let c = &voice.control;
+            if c.pull.ring_rate.load(Relaxed) == 0 {
+                c.pull.ring_rate.store(c.rate, Relaxed);
+            }
+            let ring = &voice.ring;
             let channels = ring.channels;
             let (tail, _, free) = ring.producer_window();
             let frames = (samples.len() / channels).min(free);
-            ring.publish_frames(tail, &samples[..frames * channels]);
+            ring.publish_frames(tail, samples[..frames * channels].iter().copied().map(pcm));
             frames
         }
         /// The next `frames` of stereo output at 48 kHz.
@@ -1561,11 +1588,44 @@ mod tests {
     }
 
     #[test]
+    fn an_owners_high_rate_pcm_budget_includes_unretired_jobs_and_leaves_room_for_others() {
+        let pool = StreamPool::default();
+        let mixer = Mutex::new(Mixer::default());
+        let (worker, receiver) = Worker::test_pair();
+        pool.state().worker = Some(worker);
+        let extreme = StreamSpec::new(SoundSource::Voice, 2, u32::MAX);
+        // Ten maximum stereo rings take 30,720,000 bytes; an eleventh exceeds 32 MiB.
+        // Leave the worker's queue alone: even though their voices are reaped, this owner's
+        // stopped streams still occupy PCM memory until the jobs release their rings.
+        for _ in 0..10 {
+            let stream = pool
+                .open(&mixer, "large", &extreme, None, Box::new(Silent))
+                .unwrap();
+            stream.stop();
+        }
+        pool.reap(&mixer);
+        assert!(mixer.lock().unwrap().streams.is_empty());
+        assert!(matches!(
+            pool.open(&mixer, "large", &extreme, None, Box::new(Silent)),
+            Err(AudioRefusal::MemoryLimit)
+        ));
+        let other = pool
+            .open(&mixer, "other", &spec(), None, Box::new(Silent))
+            .unwrap();
+        assert_eq!(other.state(), AudioStreamState::Playing);
+
+        drop(receiver.try_recv().unwrap());
+        let recovered = pool
+            .open(&mixer, "large", &extreme, None, Box::new(Silent))
+            .unwrap();
+        assert_eq!(recovered.state(), AudioStreamState::Playing);
+    }
+
+    #[test]
     fn aggregate_pcm_budget_bounds_live_and_pending_jobs_and_ring_allocation_is_fallible() {
-        // Budget of 4 MiB fits two maximum-size stereo rings (2 * 1,536,000 = 3,072,000 bytes)
-        // but refuses a third (4,608,000 > 4,194,304).
-        let budget = 4 * 1024 * 1024;
-        let max_stereo_ring_bytes = MAX_RING_FRAMES as usize * 2 * std::mem::size_of::<AtomicI16>();
+        let max_stereo_ring_bytes = MAX_RING_FRAMES as usize * 2 * std::mem::size_of::<AtomicU32>();
+        // Enough for two maximum-size stereo rings plus a small ring, but not a third maximum.
+        let budget = 8 * 1024 * 1024;
         let mixer = Mutex::new(Mixer {
             stream_gain: [1.0; 11],
             ..Mixer::default()

@@ -30,8 +30,8 @@ volumes outside `0.0..=1.0` are clamped instead of refused; only `NaN` is refuse
 `set_volume` returning `false`).
 - Sample rate validation: removed the scalar constants `AUDIO_STREAM_RATE_MIN` and \
 `AUDIO_STREAM_RATE_MAX`; any positive sample rate (`> 0` Hz) is accepted (`SpecFault::Rate` fires only \
-for `0`), with fallible ring allocation bounded by an aggregate pool PCM memory cap returning \
-`AudioRefusal::MemoryLimit`.
+for `0`), and the worker downsamples high-rate PCM in bounded reads before queueing it, retaining the source \
+position across reads and draining the correct duration at EOF.
 - Position validation matching vanilla `Channel.setSelfPosition`: removed the 30-million-block coordinate \
 cap; any finite `At([x, y, z])` coordinate is accepted.
 - Stereo playback matching OpenAL multi-channel direct playback: removed `SpecFault::StereoPositioned` so \
@@ -42,14 +42,17 @@ stereo streams accept any valid placement and play un-spatialized without pannin
 `Minecraft.updateLevelInEngines` -> `SoundEngine.stopAll`: removed `AudioStreamState::Unplaced`; \
 `StreamPlacement::Entity` is resolved eagerly at open and `AudioStreamRef::set_entity`, entity streams \
 check lifetime and stop when untracked or removed even while muted, and all streams stop on level leave, \
-configuration re-entry, dimension change, or sound engine stop/reload.
+configuration re-entry, dimension change, or sound engine stop/reload. NeoForge's `LevelEvent.Unload` \
+in `Minecraft.setLevel` and disconnect precedes the sound stop, so it includes streams opened during \
+teardown.
 - Host-free placement controls: replaced `AudioStreamRef::set_placement` with `set_flat` and \
 `set_position` (callable from any thread with no `ClientHost`) plus `set_entity(host, entity)` (requiring \
 `&dyn ClientHost` only for eager entity resolution).
 - Starvation guards: raised the scalar constants `AUDIO_STREAMS_PER_MOD` (32 -> 256) and \
 `AUDIO_STREAMS_TOTAL` (64 -> 1,024), keep counting stopped streams against their owner until the pull \
-worker retires their job, and bound aggregate PCM ring storage (`AudioRefusal::MemoryLimit`), logging a \
-warning naming the mod whenever a limit is hit."""
+worker retires their job, and bound both per-mod and aggregate PCM ring storage \
+(`AudioRefusal::MemoryLimit`) so one owner cannot exhaust shared memory. Every limit refusal logs a \
+warning naming the mod."""
 migrate = """
 - Delete `AudioRead` imports and `AudioRead::Frames` / `AudioRead::Eof` uses. Update \
 `AudioStream::read(&mut self, pcm: &mut [i16])` to return `usize`: map `AudioRead::Frames(n)` for `n > 0` \
@@ -69,8 +72,9 @@ tests), remove `fn push` and update \
 `fn set_placement(&self, placement: &StreamPlacement, entity_pos: Option<[f64; 3]>) -> bool`.
 - Remove `AudioStreamState::Unplaced` and `SpecFault::StereoPositioned` match arms; `AudioStreamState` is \
 now only `Playing` or `Stopped`.
-- Handle `AudioRefusal::MemoryLimit` like any other opening failure (returned when the pool's aggregate \
-PCM ring memory budget is exhausted or ring allocation fails).
+- Handle `AudioRefusal::MemoryLimit` like any other opening failure (returned when your mod's or the \
+pool's PCM ring budget is exhausted or ring allocation fails). End a stream to release its PCM budget; \
+its bytes still count until the worker retires its job.
 - Remove imports of the removed scalar constants `AUDIO_STREAM_RATE_MIN` and `AUDIO_STREAM_RATE_MAX`; any \
 `rate > 0` is accepted and `SpecFault::Rate` reports only `rate == 0`. `AUDIO_STREAMS_PER_MOD` is now 256 \
 and `AUDIO_STREAMS_TOTAL` is now 1,024 (per-mod and total limits also include stopped streams until the \
@@ -83,4 +87,6 @@ pull worker retires their jobs).
 calling `stream.set_entity(host, entity)` (otherwise open returns `SpecFault::Position` and `set_entity` \
 returns `false`). Streams now stop instead of becoming `Unplaced` when their entity is removed/untracked \
 (even while mod audio is muted) or when the client leaves the level, re-enters configuration, changes \
-dimensions, or reloads/stops sound; reopen a new stream when playback should resume."""
+dimensions, or reloads/stops sound. Start any replacement stream after teardown, not from the unload \
+or disconnecting callback. If a stream stops while following an entity, a concurrent move that loses \
+that race returns `false`; reopen a stream when playback should resume."""

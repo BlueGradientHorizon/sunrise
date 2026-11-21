@@ -49,13 +49,13 @@ For audio that arrives independently of the mixer — such as proximity voice ch
 
 ## Format and controls
 
-`ClientHost::open_audio_stream` is available to the calling mod from client setup onward. It refuses with `AudioRefusal`, without opening anything, if the client has no sound output, the call is unavailable in this context, the spec is invalid, the pool reaches `AUDIO_STREAMS_PER_MOD` open or unretired streams for the calling mod or `AUDIO_STREAMS_TOTAL` across all mods, the pool's aggregate PCM buffer budget is exhausted or ring allocation fails (`AudioRefusal::MemoryLimit`), or the pull worker cannot start or admit the source (`AudioRefusal::WorkerUnavailable`).
+`ClientHost::open_audio_stream` is available to the calling mod from client setup onward. It refuses with `AudioRefusal`, without opening anything, if the client has no sound output, the call is unavailable in this context, the spec is invalid, the pool reaches `AUDIO_STREAMS_PER_MOD` open or unretired streams for the calling mod or `AUDIO_STREAMS_TOTAL` across all mods, the mod's or the pool's PCM buffer budget is exhausted or ring allocation fails (`AudioRefusal::MemoryLimit`), or the pull worker cannot start or admit the source (`AudioRefusal::WorkerUnavailable`).
 
 | `StreamSpec` field | Meaning |
 |---|---|
 | `category` | The mixer group, scaled by master times the group like every sound. Voice chat uses `SoundSource::Voice`, the “Voice/Speech” slider. |
 | `channels` | 1 or 2. Both mono and stereo accept any placement; mono is spatialized and stereo plays un-spatialized. |
-| `rate` | Any positive sample rate (`> 0` Hz); `0` is refused with `SpecFault::Rate`. The mixer resamples to the output's rate. |
+| `rate` | Any positive sample rate (`> 0` Hz); `0` is refused with `SpecFault::Rate`. The game resamples to the output rate. High-rate sources are downsampled in bounded reads on the worker. |
 | `placement` | `Flat`, `At([x, y, z])` (any finite coordinates) or `Entity(entity)` (a currently tracked entity), in the client's current level. |
 | `range` | Positive, finite distance in blocks at which a positioned mono stream fades to silence, in a straight line (`AL_LINEAR_DISTANCE`, as a sound's range). |
 | `volume` | The stream's own volume before the group's and the master's. Finite values are clamped to `0.0..=1.0`; `NaN` is refused with `SpecFault::Volume`. |
@@ -74,7 +74,7 @@ With Sunrise Extras' “Mod audio streams” switch off, streams still open, adv
 - A **mono** stream may be `Flat` (at the listener, no panning and no fading), `At([x, y, z])` with any finite coordinates, or `Entity(entity)`. Positioned mono streams are panned and fade linearly to silence at `range`.
 - A **stereo** stream accepts any valid placement (`Flat`, `At`, or `Entity`) and plays un-spatialized with no panning or distance attenuation, matching OpenAL. `At` coordinates are still validated to be finite and `Entity` must still be currently tracked.
 - An `Entity` stream resolves its entity's position eagerly at `open_audio_stream` and at `AudioStreamRef::set_entity(host, entity)`. If the entity is not currently tracked, `open_audio_stream` refuses with `SpecFault::Position` and `set_entity` returns `false` without changing placement. Each frame the mixer follows the entity even while muted; if the entity becomes untracked, unloaded or removed, the stream stops.
-- Leaving the level, re-entering configuration, changing dimensions, or reloading/stopping the sound engine stops all open streams. Open a new stream in the new level if playback should continue.
+- Leaving the level, re-entering configuration, changing dimensions, or reloading/stopping the sound engine stops all open streams. Level teardown also stops streams opened from its unload callbacks; open a new stream after the level transition if playback should continue.
 
 ## Network audio
 
