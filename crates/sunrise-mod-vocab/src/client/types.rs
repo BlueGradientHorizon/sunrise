@@ -635,16 +635,17 @@ pub struct SoundPlay {
     pub identifier: String,
     /// The mixer group it plays on.
     pub source: SoundSource,
-    /// Its own volume, before the source's and the master's.
+    /// Base volume, before sound-file scaling and `SoundEngine.calculateVolume`. A volume
+    /// above 1 can increase attenuation distance before the final volume is clamped.
     pub volume: f32,
-    /// Its pitch, 1.0 unchanged.
+    /// Base pitch, 1.0 unchanged. `SoundEngine.calculatePitch` clamps the pitch after sound-file scaling.
     pub pitch: f32,
-    /// Where it plays, in blocks; meaningless when `relative`.
+    /// Where it plays, in world blocks or as an offset from the listener when `relative`.
     pub position: [f64; 3],
     /// It restarts when it ends.
     pub looping: bool,
-    /// Ticks between a looping sound's repeats (`SoundInstance.getDelay`): 0 loops it
-    /// seamlessly, more plays it again that many ticks after it ends.
+    /// A positive value schedules a repeat that many ticks after a looping sound ends.
+    /// Zero or a negative value loops automatically (`SoundEngine.requiresManualLooping`).
     pub delay: i32,
     /// How it fades with distance.
     pub attenuation: SoundAttenuation,
@@ -802,7 +803,7 @@ impl SoundPlay {
     pub fn with_effects(self, effects: SoundEffects) -> Self {
         Self { effects, ..self }
     }
-    /// The same sound looping, `delay` ticks between its repeats.
+    /// The same sound looping, with a pause of `delay` ticks between repeats if positive.
     pub fn looping(self, delay: i32) -> Self {
         Self {
             looping: true,
@@ -812,8 +813,8 @@ impl SoundPlay {
     }
 }
 
-/// A sound a client mod started with `play_local_sound`, to follow and control: `state`, `stop`
-/// and `fade`. Each handle names one play and is never reused. Once the sound has ended, been
+/// A sound a client mod started with `play_local_sound`, to follow and control: `state`, `stop`,
+/// `fade`, `move_to` and `set_pitch`. Each handle names one play and is never reused. Once the sound has ended, been
 /// stopped or been cleared (leaving or changing levels stops every sound), the handle is stale: it
 /// reads [`SoundState::Stopped`] and its writes do nothing. It stays valid across a change of
 /// output device, which keeps the sounds playing.
@@ -837,7 +838,7 @@ pub enum SoundState {
     Waiting,
     /// Playing (`SoundEngine.isActive`).
     Playing,
-    /// Over: it ended, was stopped, faded to 0 or was cleared. It never plays again.
+    /// Over: it ended, was stopped, faded out or was cleared. It never plays again.
     Stopped,
 }
 

@@ -1074,8 +1074,17 @@ fn mix(mixer: &mut Mixer, data: &mut [f32], channels: usize, rate: u32) {
                 (gain, [left * gain, right * gain])
             }
         };
+        // Extreme source distances can overflow the float panner even when each
+        // coordinate fits. Keep an unreadable voice out of the shared output and
+        // reverb buses, but keep advancing its playhead.
+        let gains = [left, right, gain];
+        let gains = if gains.into_iter().all(f32::is_finite) {
+            gains
+        } else {
+            [0.0; 3]
+        };
         let step = f64::from(*source_rate) / f64::from(rate) * f64::from(c.pitch.max(0.0));
-        voices.push((*id, [left, right, gain], step));
+        voices.push((*id, gains, step));
     }
     // A mod's muffle: the sounds it doesn't exempt mix into a bus of their own first.
     let muffling = mixer.muffle.active();
@@ -1983,7 +1992,8 @@ impl Audio {
             let level = fade.level();
             if fade.left == 0 {
                 self.muffle = None;
-                self.engine.set_unmuffled(Vec::new(), &mut self.backend);
+                self.engine
+                    .set_unmuffled(Default::default(), &mut self.backend);
             }
             self.set_muffle_level(level);
         }
@@ -2027,7 +2037,7 @@ impl Audio {
                 .map(|e| crate::sound_events::normalize(e))
                 .collect()
         } else {
-            Vec::new()
+            Default::default()
         };
         self.engine.set_unmuffled(exempt, &mut self.backend);
         self.muffle = on.then_some(MuffleFade {
@@ -2146,7 +2156,7 @@ impl Audio {
         let instance =
             SoundInstance::at(&event, source, volume, pitch, LegacyRandom::new(seed), at);
         let id = self.engine.add(instance, false);
-        self.engine.play_delayed(id, ticks);
+        self.engine.play_delayed(id, i64::from(ticks));
     }
     /// A client mod's sound (`ClientHost::play_local_sound`), as its `SoundPlay` gives it,
     /// starting `after` sound-engine ticks from now (`SoundEngine.playDelayed`) or at once.
@@ -2178,7 +2188,7 @@ impl Audio {
         } else {
             self.sync_volumes();
             let id = self.engine.add(instance, false);
-            self.engine.play_delayed(id, after as i32);
+            self.engine.play_delayed(id, i64::from(after));
             id
         }
     }
@@ -2190,7 +2200,7 @@ impl Audio {
     pub fn stop_mod_sound(&mut self, id: InstanceId) {
         self.engine.stop_for_good(id, &mut self.backend);
     }
-    /// A client mod's `SoundRef::fade`; a fade to 0 at once stops it as `stop_mod_sound` does.
+    /// A client mod's `SoundRef::fade`; an immediate nonpositive target stops the sound.
     pub fn fade_mod_sound(&mut self, id: InstanceId, volume: f32, ticks: u32) {
         if ticks == 0 && volume <= 0.0 {
             self.stop_mod_sound(id);
@@ -2216,7 +2226,7 @@ impl Audio {
         *self.heard.entry(instance.identifier.clone()).or_default() += 1;
         self.sync_volumes();
         let id = self.engine.add(instance, false);
-        self.engine.play_delayed(id, ticks);
+        self.engine.play_delayed(id, i64::from(ticks));
     }
     /// `play` for this client only: a sound a packet's handler plays
     /// (`playLocalSound`), which the guests play from that packet themselves.
@@ -2811,6 +2821,27 @@ mod tests {
             unmuffled: false,
             fx: fx::VoiceFx::default(),
         }
+    }
+
+    #[test]
+    fn an_unreadable_pan_does_not_silence_other_voices() {
+        let clear = || stereo_channel(vec![0.25; 6], None, [0.0; 3], false);
+        let mut mixer = Mixer::default();
+        mixer.listener_pitch = 45.0;
+        mixer.channels.insert(1, clear());
+        let mut plain = [0.0; 4];
+        mix(&mut mixer, &mut plain, 2, 48_000);
+        assert_eq!(plain, [0.25; 4]);
+
+        mixer.channels.insert(1, clear());
+        let at = [f32::MAX, f32::MAX, -f32::MAX];
+        mixer
+            .channels
+            .insert(2, channel(vec![0.5; 4], None, at, false));
+        let mut mixed = [0.0; 4];
+        mix(&mut mixer, &mut mixed, 2, 48_000);
+        assert_eq!(mixed, plain);
+        assert_eq!(mixer.channels[&2].position, 2.0);
     }
 
     /// A channel whose buffer is interleaved stereo.
@@ -3591,7 +3622,12 @@ mod tests {
         // Two sounds already playing, and one exempt sound started under the muffle.
         audio.play("ambient.cave", None, 1.0, 1.0);
         audio.play("hztest:ear.ringing", None, 1.0, 1.0);
-        assert!(audio.muffle(0.8, 1.0, 4, &["hztest:ear.ringing"]));
+        let exempt: Vec<_> = (0..65)
+            .map(|n| format!("hztest:other.{n}"))
+            .chain(std::iter::once("hztest:ear.ringing".to_owned()))
+            .collect();
+        let exempt: Vec<_> = exempt.iter().map(String::as_str).collect();
+        assert!(audio.muffle(0.8, 1.0, 4, &exempt));
         audio.play("hztest:ear.ringing", None, 1.0, 1.0);
         assert_eq!(marks(&audio), [(1, false), (2, true), (3, true)]);
         assert!(close(level(&audio), [0.8, 1.0]));
@@ -3646,8 +3682,14 @@ mod tests {
         let ctx = TickContext::default();
         let click = mod_api::SoundPlay::ui("minecraft:ui.button.click");
         let sound = audio.play_mod_sound(&click, 2);
+        let long = audio.play_mod_sound(&click, u32::MAX);
         assert_eq!(audio.mod_sound_state(sound), Waiting);
         audio.tick(false, &ctx);
+        assert_eq!(
+            audio.mod_sound_state(long),
+            Waiting,
+            "the long delay did not wrap"
+        );
         assert_eq!(audio.mod_sound_state(sound), Waiting, "one tick of two");
         audio.tick(false, &ctx);
         assert_eq!(audio.mod_sound_state(sound), Playing);
@@ -3673,17 +3715,29 @@ mod tests {
         let play = mod_api::SoundPlay::at(
             "minecraft:ui.button.click",
             mod_api::SoundSource::Blocks,
-            [1.0, 2.0, 3.0],
+            [31_000_000.0, 2.0, 3.0],
         )
-        .looping(0);
+        .with_volume(-1.0)
+        .with_pitch(3.0)
+        .looping(-1);
         let sound = audio.play_mod_sound(&play, 0);
-        audio.move_mod_sound(sound, [10.0, 20.0, 30.0]);
-        audio.set_mod_sound_pitch(sound, 1.5);
+        let channel = audio.engine.channel(sound).unwrap();
+        {
+            let mixer = audio.backend.mixer.lock().unwrap();
+            let voice = &mixer.channels[&channel];
+            assert_eq!(voice.at, [31_000_000.0, 2.0, 3.0]);
+            assert_eq!((voice.gain, voice.pitch), (0.0, 2.0));
+            assert!(voice.looping);
+        }
+        audio.move_mod_sound(sound, [10.0, 32_000_000.0, 30.0]);
+        audio.set_mod_sound_pitch(sound, -1.0);
         audio.tick(false, &ctx);
-        let instance = audio.engine.instance(sound).expect("the same instance");
-        assert_eq!(instance.position, [10.0, 20.0, 30.0]);
-        assert_eq!(instance.pitch, 1.5);
-        assert_eq!(audio.mod_sound_state(sound), Playing, "not restarted");
+        assert_eq!(audio.engine.channel(sound), Some(channel), "not restarted");
+        let mixer = audio.backend.mixer.lock().unwrap();
+        let voice = &mixer.channels[&channel];
+        assert_eq!(voice.at, [10.0, 32_000_000.0, 30.0]);
+        assert_eq!(voice.pitch, 0.5);
+        assert_eq!(audio.mod_sound_state(sound), Playing);
     }
 
     #[test]
@@ -3720,7 +3774,7 @@ mod tests {
         let other = audio.play_mod_sound(&mod_api::SoundPlay::ui("minecraft:ui.button.click"), 0);
         audio.fade_mod_sound(other, 0.3, 0);
         assert_eq!(volume_of(&audio, other), Some(0.3));
-        audio.fade_mod_sound(other, 0.0, 0);
+        audio.fade_mod_sound(other, -1.0, 0);
         for _ in 0..2 {
             audio.tick(false, &ctx);
         }
@@ -3752,6 +3806,19 @@ mod tests {
         audio.stop_mod_sound(sound);
         audio.tick(false, &ctx);
         assert_eq!(audio.mod_sound_state(sound), Stopped);
+    }
+
+    #[test]
+    fn a_fade_between_extreme_finite_volumes_stays_finite() {
+        let mut audio = live_audio();
+        let ctx = TickContext::default();
+        let play = mod_api::SoundPlay::ui("minecraft:ui.button.click").with_volume(-f32::MAX);
+        let sound = audio.play_mod_sound(&play, 0);
+        audio.fade_mod_sound(sound, f32::MAX, 2);
+        audio.tick(false, &ctx);
+        assert_eq!(volume_of(&audio, sound), Some(0.0));
+        audio.tick(false, &ctx);
+        assert_eq!(volume_of(&audio, sound), Some(f32::MAX));
     }
 
     /// A mod sound at volume 0 starts silent and keeps its handle, so a fade raises it.

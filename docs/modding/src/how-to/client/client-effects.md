@@ -97,16 +97,24 @@ meshed so far and nothing where a section is not meshed yet.
 - Both effects start at full strength and fade linearly over `ticks` client ticks. The fade waits while the game is paused.
 - The sound events in `exempt` keep their direct sound clear, including ones already playing, but their shared reverb tail is still muffled. Use this for the mod's ringing sound. Other sounds already playing, music and interface clicks are muffled too.
 
-A new call replaces the current muffle; `ticks` of 0 ends it immediately. The effect belongs to the client’s sound output. The call refuses an amount or strength outside 0 to 1, more than 64 exempt events, or an exempt event that is not a namespaced sound ID, without changing the output. Server code cannot call this client-only service.
+A new call replaces the current muffle; `ticks` of 0 ends it immediately. The effect belongs to the client’s sound
+output. The call refuses an amount or strength outside 0 to 1, or an exempt event that is not a namespaced sound ID,
+without changing the output. There is no limit on the number of events in `exempt`.
 
-Play the accompanying sound through `ClientHost::play_local_sound` with a `SoundPlay`.
+Play the accompanying sound with `ClientHost::play_local_sound(&sound, after)`. The `after` delay is counted from the
+next audio update in unpaused sound-engine ticks. The sound engine calculates final volume and pitch after applying the
+sound file's own settings. A finite negative base volume can start a silent sound, and a finite negative base pitch
+reaches the engine's minimum pitch. A positive repeat gap waits between plays; zero or a negative gap loops automatically.
 
-The `SoundRef` it returns controls that play: `state`, `stop`, `fade(host, volume, ticks)`, and the live changes
-`move_to(host, position)` and `set_pitch(host, pitch)`. Both changes land at the next audio update on the same
-instance, so a looping sound is not restarted: use them to follow a moving machine or a rising whine. `move_to`
-takes a position in the client's level (finite, within 30 million blocks) and has no effect on a sound played at the
-listener (`SoundPlay::ui`); `set_pitch` takes a pitch at or above 0, as `SoundPlay::pitch`. Each returns `false`,
-changing nothing, for a bad value or a sound that is over.
+The `SoundRef` it returns follows and controls the same instance without restarting it:
+
+- `state(host)` tells you whether it is waiting, playing or stopped; `stop(host)` stops it for good.
+- `fade(host, volume, ticks)` changes the volume to a finite target. A target of zero or less stops it when the fade ends.
+- `move_to(host, position)` changes its position, in world blocks or as an offset from the listener for relative sounds.
+  The position must be finite in the mixer's float coordinates; it is not checked against the world border.
+- `set_pitch(host, pitch)` changes its finite base pitch. The engine applies the final pitch clamp.
+
+The writes take effect from the next audio update and return `false` for an unreadable parameter or a sound that is over.
 
 ### A sound's own effects
 

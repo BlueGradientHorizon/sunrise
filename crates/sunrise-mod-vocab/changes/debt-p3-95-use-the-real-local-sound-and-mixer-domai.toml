@@ -1,0 +1,14 @@
+ids = [
+    "method:prelude::EffectsClientHost::play_local_sound",
+    "method:prelude::EffectsClientHost::muffle_sounds",
+    "handle:SoundRef::move_to",
+    "handle:SoundRef::set_pitch",
+    "handle:SoundRef::fade",
+    "type:SoundPlay.volume",
+    "type:SoundPlay.pitch",
+    "type:SoundPlay.position",
+    "type:SoundPlay.delay",
+    "handle:SoundPlay::looping",
+]
+why = "Vanilla ClientLevel.playLocalSound hands off to SoundEngine.play or playDelayed without a world-border or one-minute admission limit. SoundEngine.calculateVolume and calculatePitch process the final scaled parameters, SoundEngine.requiresManualLooping tests for a positive repeat delay, and Channel.setSelfPosition takes float coordinates. NeoForge's PlaySoundEvent passes the sound instance to that same engine. Sunrise's muffle has no vanilla counterpart; its mixer consumes an exemption set without a fixed count."
+migrate = "Keep calling host.play_local_sound(&sound, after) and pass the desired u32 delay directly instead of bounding it to one minute. Pass positions directly to SoundPlay::at or sound.move_to(host, position) as long as they stay finite in float mixer coordinates. Pass finite base volume and pitch directly, including to sound.set_pitch(host, pitch); the engine computes the final playback values. SoundPlay::looping(delay) now also accepts negative repeat delays for automatic looping. A finite target of zero or less in sound.fade(host, volume, ticks) stops the sound at the end of the fade. Pass the full namespaced exemption list to host.muffle_sounds(amount, lowpass, ticks, exempt) in one call. If you used any former refusal to enforce your own policy, enforce it in your mod instead."
