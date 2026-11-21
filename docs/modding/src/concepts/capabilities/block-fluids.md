@@ -30,6 +30,8 @@ request 334 mB to move one level into a tank with 500 mB of room.
 
 ## Cauldron contents
 
+`register_cauldron_fluid_content` publishes a listener's entries only after [successful registration](../load-phases.md#registration-and-setup).
+
 To inspect a cauldron without probing its capability, use the `fluids` host reads
 `host.cauldron_content_for_block(block_key)` and `host.cauldron_content_for_fluid(fluid_key)`.
 Both return `Option<CauldronContent>`: typed `block` and `fluid` keys, full `total` in

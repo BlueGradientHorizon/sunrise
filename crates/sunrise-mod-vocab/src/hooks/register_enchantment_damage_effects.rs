@@ -5,6 +5,7 @@ pub trait Hooks {
     /// Callbacks receive a read-only ServerHost, actual attacker and victim handles and the
     /// pre-hit weapon snapshot. Vanilla nodes and requirements retain their traversal and RNG
     /// order. This is vanilla EnchantmentHelper.modifyDamage, not an incoming-damage event.
+    /// If this listener panics or a phase call is refused, none of its registrations take effect.
     #[notes = r#"## Custom enchantment damage values
 
 `register_enchantment_damage_effects` registers an `EnchantmentDamageEffect` under a non-vanilla
@@ -25,8 +26,9 @@ nodes retain the vanilla evaluator without constructing API weapon snapshots."#]
         receiver = "associated",
         dispatch = "flat",
         side = "server",
-        contract = "collect",
-        out = "effects",
+        version = 2,
+        contract = "listen",
+        staged_surface = "effects",
         context = "registration",
         neoforge = "RegisterEvent"
     )]

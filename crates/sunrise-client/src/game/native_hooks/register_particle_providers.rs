@@ -13,6 +13,8 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         providers: &mut mod_api::ParticleProviderRegistry,
     ) {
-        Self::fire_register_particle_providers(context, providers);
+        Self::fire_register_particle_providers(context, |listen| {
+            providers.register_listener(listen)
+        });
     }
 }

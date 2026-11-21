@@ -60,6 +60,11 @@ duplicates before freezing the component registry.
 Scoped registration events are borrowed only for the listener call. Their registration methods
 add entries in dispatch order without letting a listener read, edit or remove earlier registrations.
 If the phase gate refuses a listener, its additions are discarded and earlier registrations stand.
+For block tints, colour resolvers, cauldron contents, enchantment damage effects, villager professions,
+entity renderers and particle providers, registration is committed only when the listener succeeds.
+A panic discards that listener’s registrations and any attempted replacements; earlier registrations
+stand and later listeners still run. The panicking listener is disabled for that hook for the session.
+A phase refusal is reported each time and does not disable the listener.
 
 A callback registered on the event cannot borrow the event or the context. Capture owned inputs
 for its `Send + Sync + 'static` closure. A model layer supplier runs once at the startup freeze;

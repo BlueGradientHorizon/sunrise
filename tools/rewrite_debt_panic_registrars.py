@@ -25,8 +25,9 @@ REGISTRARS = {
 }
 
 
-def replace(source, old, new, path):
-    before, after = source.count(old), source.count(new)
+def replace(source, old, new, path, *formatted):
+    before = source.count(old)
+    after = sum(source.count(pattern) for pattern in (new, *formatted))
     if (before, after) == (1, 0):
         return source.replace(old, new)
     if (before, after) == (0, 1):
@@ -48,6 +49,7 @@ def main():
         hook = f"register_{suffix}"
         path = NATIVE / f"{hook}.rs"
         source = path.read_text()
+        formatted = ()
         if args.command == "ingress":
             if suffix == "game_tests":
                 source = replace(source, "use mod_api::GameTests;\n", "use mod_api::GameTestFunctions;\n", path)
@@ -63,7 +65,10 @@ def main():
             prefix = f"self.fire_{hook}(" if suffix == "game_tests" else f"Self::fire_{hook}(context, "
             old = f"{prefix}{argument});"
             new = f"{prefix}|listen| {argument}.register_listener(listen));"
-        pending[path] = replace(source, old, new, path)
+            formatted = (
+                f"{prefix}|listen| {{\n            {argument}.register_listener(listen)\n        }});",
+            )
+        pending[path] = replace(source, old, new, path, *formatted)
 
     for path, source in pending.items():
         if source != path.read_text():

@@ -325,17 +325,118 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
-    let outcome = {
-        let _scope = DispatchPanicScope::enter();
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call)))
-    };
-    match outcome {
+    let _scope = DispatchPanicScope::enter();
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
             record_hook_panic(hook_id, hook, mod_id, &*payload);
+            dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }
+    }
+}
+
+// A mod's panic payload may itself panic on drop. Stay in DispatchPanicScope and do not
+// recursively destroy a secondary payload that may repeat the same panic.
+#[cold]
+fn dispose_panic_payload(payload: Box<dyn std::any::Any + Send>) {
+    if let Err(secondary) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
+    {
+        std::mem::forget(secondary);
+    }
+}
+
+/// Drop one mod-owned registration value after deciding whether to publish its batch. Never
+/// let one destructor unwind across other entries or the next listener, and keep a replaced
+/// value attributed to its original mod rather than to the mod that replaced it.
+pub(crate) fn discard_registration<T>(
+    (hook_id, hook): (generated::HookId, &'static str),
+    owner: Option<&'static str>,
+    value: T,
+) {
+    let current = crate::content::crash::current_native_mod();
+    let _owner = owner
+        .filter(|&id| Some(id) != current)
+        .map(|id| mark_mod(id, hook));
+    if let DispatchOutcome::Refused(refusal) = invoke(
+        hook_id,
+        hook,
+        owner.unwrap_or("unknown"),
+        outside_world(),
+        || drop(value),
+    ) {
+        refusal.report();
+    }
+}
+
+/// A single listener's keyed edits, in order of first insertion. A repeat replaces only
+/// a pending value, so its destructor still runs inside that listener's invocation fence.
+pub(crate) struct RegistrationEdits<T>(std::collections::BTreeMap<String, (usize, T)>);
+
+impl<T> Default for RegistrationEdits<T> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T> RegistrationEdits<T> {
+    pub(crate) fn insert(&mut self, key: String, value: T) {
+        use std::collections::btree_map::Entry;
+        let index = self.0.len();
+        match self.0.entry(key) {
+            Entry::Vacant(entry) => {
+                entry.insert((index, value));
+            }
+            Entry::Occupied(mut entry) => drop(std::mem::replace(&mut entry.get_mut().1, value)),
+        }
+    }
+
+    pub(crate) fn ordered(self) -> impl Iterator<Item = (String, T)> {
+        let mut rows: Vec<_> = self.0.into_iter().collect();
+        rows.sort_unstable_by_key(|(_, (index, _))| *index);
+        rows.into_iter().map(|(key, (_, value))| (key, value))
+    }
+}
+
+/// Last registration wins. Keep the declaring owner until publication is complete so retiring
+/// an earlier value can run its destructor under the appropriate mod's scope.
+pub(crate) struct RegistrationMap<T>(std::collections::BTreeMap<String, (Option<&'static str>, T)>);
+
+impl<T> Default for RegistrationMap<T> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T> RegistrationMap<T> {
+    pub(crate) fn finish(
+        &mut self,
+        site: (generated::HookId, &'static str),
+        publish: bool,
+        edits: impl IntoIterator<Item = (String, T)>,
+    ) {
+        let owner = crate::content::crash::current_native_mod();
+        if publish {
+            let retired: Vec<_> = edits
+                .into_iter()
+                .filter_map(|(key, value)| self.0.insert(key, (owner, value)))
+                .collect();
+            for (owner, value) in retired {
+                discard_registration(site, owner, value);
+            }
+        } else {
+            for (_, value) in edits {
+                discard_registration(site, owner, value);
+            }
+        }
+    }
+
+    pub(crate) fn into_values(self) -> std::collections::BTreeMap<String, T> {
+        self.0
+            .into_iter()
+            .map(|(key, (_, value))| (key, value))
+            .collect()
     }
 }
 

@@ -172,6 +172,8 @@ pub struct Hook {
     pub collect_validator: Option<String>,
     /// Hide the output vector of a registration collector behind append-only methods.
     pub registration_append: Option<RegistrationAppend>,
+    /// Mutable registrar field whose engine owner stages each listener's edits.
+    pub staged_surface: Option<String>,
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.
     pub inert: Option<String>,
@@ -356,6 +358,7 @@ struct ModApiEntry {
     owner: Option<String>,
     collect_validator: Option<String>,
     registration_append: Option<RegistrationAppend>,
+    staged_surface: Option<String>,
     isolate: Option<bool>,
     output_validator: Option<String>,
 }
@@ -500,6 +503,17 @@ impl Hook {
         if api.owner.is_some() && (api.contract != Contract::Listen || scope.is_some()) {
             return Err(CatalogError::OwnerNeedsGlobalListener(name));
         }
+        if let Some(field) = &api.staged_surface
+            && (api.contract != Contract::Listen
+                || scope.is_some()
+                || api.owner.as_ref() == Some(field))
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name,
+                error: "staged_surface requires a global listener and cannot be the owner filter"
+                    .into(),
+            });
+        }
         // A validator checks the entries a mod edits in place; an answered collector's mods
         // only push into their own batch.
         if let Some(validator) = &api.collect_validator
@@ -545,6 +559,7 @@ impl Hook {
             owner: api.owner,
             collect_validator: api.collect_validator,
             registration_append: api.registration_append,
+            staged_surface: api.staged_surface,
             inert: entry.inert,
             isolate,
             output_validator: api.output_validator,
@@ -834,6 +849,7 @@ impl Declared {
                             "owner",
                             "collect_validator",
                             "registration_append",
+                            "staged_surface",
                             "isolate",
                             "output_validator",
                         ] {
@@ -1008,6 +1024,7 @@ impl Hook {
             owner: None,
             collect_validator: None,
             registration_append: None,
+            staged_surface: None,
             inert: None,
             isolate: false,
             output_validator: None,

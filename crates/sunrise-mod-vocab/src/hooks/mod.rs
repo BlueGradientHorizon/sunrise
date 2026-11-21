@@ -26,6 +26,7 @@
 //! | `side` | `"server"`, `"client"` or `"both"`; required |
 //! | `contract` | `"listen"`, `"cancel"`, `"collect"` or `"replace"`; required |
 //! | `out` | the event field a cancel, collect or replace hook writes; not for `"listen"` |
+//! | `staged_surface` | engine-only: a flat global listener's mutable registrar field; fire lends the engine a thunk for one listener so the registrar can stage and commit that listener's edits. Not for draw surfaces. |
 //! | `scope`, `key` | a Part method: the kind of Part (`"block"`, `"block_entity"`, `"item"`, `"menu"`, `"fluid"`, `"entity"`) and the hook argument naming what it is attached to |
 //! | `answered_by` | `"mod"`: a global replace hook whose output also names the mod that answered, or a global collect hook whose output is `Vec<Answered<T>>`: each mod pushes `T`s into its own empty batch and dispatch names that mod on each entry |
 //! | `isolate` | `true` on a global cancel hook: every hook already catches panics, disables the panicking mod's callback for that hook for the rest of the session, and reports it once; `isolate` additionally snapshots outputs before the call, rolls them back to the **requested** values on a panic, and stops the current invocation so no later listener runs on that call (#2414 ruling) |

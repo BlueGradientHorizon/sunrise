@@ -12,6 +12,6 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         renderers: &mut mod_api::EntityRendererRegistry,
     ) {
-        Self::fire_register_entity_renderers(context, renderers);
+        Self::fire_register_entity_renderers(context, |listen| renderers.register_listener(listen));
     }
 }

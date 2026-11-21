@@ -5,6 +5,8 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         contents: &mut mod_api::CauldronFluidContentRegistry,
     ) {
-        Self::fire_register_cauldron_fluid_content(context, contents);
+        Self::fire_register_cauldron_fluid_content(context, |listen| {
+            contents.register_listener(listen)
+        });
     }
 }

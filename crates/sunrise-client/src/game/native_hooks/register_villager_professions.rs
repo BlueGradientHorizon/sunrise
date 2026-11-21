@@ -4,6 +4,8 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         professions: &mut mod_api::ProfessionDeclarations,
     ) {
-        Self::fire_register_villager_professions(context, professions);
+        Self::fire_register_villager_professions(context, |listen| {
+            professions.register_listener(listen)
+        });
     }
 }

@@ -10,6 +10,6 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         resolvers: &mut mod_api::ColorResolverRegistry,
     ) {
-        Self::fire_register_color_resolvers(context, resolvers);
+        Self::fire_register_color_resolvers(context, |listen| resolvers.register_listener(listen));
     }
 }

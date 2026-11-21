@@ -131,6 +131,35 @@ pub(super) fn emit<'a>(
         let entered = fresh_name("_entered", &mut used);
         let batch = fresh_name("batch", &mut used);
         let contract = hook.contract;
+        let staged = if let Some(field) = &hook.staged_surface {
+            let Some((_, ty)) = args.iter().find(|(arg, _)| arg == field) else {
+                return Err(format!("{name}: missing staged_surface field {field}"));
+            };
+            if hook.context == Some(PhaseContext::ChunkDisk)
+                || !in_game
+                || is_render
+                || hook.dispatch != DispatchStyle::Flat
+                || args.iter().any(|(_, ty)| DrawContext::of(contexts, ty).is_some())
+                || args.iter().any(|(arg, ty)| {
+                    arg != field
+                        && matches!(ty, Type::Reference(reference) if reference.mutability.is_some())
+                })
+                || !matches!(ty, Type::Reference(reference)
+                    if reference.mutability.is_some() && matches!(*reference.elem, Type::TraitObject(_)))
+            {
+                return Err(format!(
+                    "{name}: staged_surface needs a flat global game listener with a single mutable registrar and no draw surface"
+                ));
+            }
+            let stage = fresh_name("stage_listener", &mut used);
+            let signature = format!(
+                "impl FnMut(&mut dyn FnMut({}) -> bool)",
+                ty.to_token_stream()
+            );
+            Some((field, stage, signature))
+        } else {
+            None
+        };
         let out = hook.out.as_deref();
         let answered = hook.answered_by_mod;
         let output = if let Some(out) = out {
@@ -427,7 +456,14 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
-            dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
+            if let Some((_, stage, signature)) = staged
+                .as_ref()
+                .filter(|(field, _, _)| field.as_str() == name.as_str())
+            {
+                dispatch_params.push(format!("mut {stage}: {signature}"));
+            } else {
+                dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
+            }
             if collect_cancel && name == "cancel" {
                 continue;
             }
@@ -563,6 +599,8 @@ pub(super) fn emit<'a>(
         };
         let wire_comment = if registration_append.is_some() {
             "// no wire: this event borrows the registration staging vector.\n"
+        } else if staged.is_some() {
+            "// no wire: this event borrows the current listener's registrar.\n"
         } else {
             ""
         };
@@ -688,7 +726,14 @@ pub(super) fn emit<'a>(
                     ));
                 } else {
                     for (arg, ty) in &engine {
-                        parameter(arg, &ty.to_token_stream().to_string());
+                        if let Some((_, _, signature)) = staged
+                            .as_ref()
+                            .filter(|(field, _, _)| field.as_str() == arg.as_str())
+                        {
+                            parameter(arg, signature);
+                        } else {
+                            parameter(arg, &ty.to_token_stream().to_string());
+                        }
                     }
                 }
                 let crossing = stack_crossing_routed(
@@ -762,6 +807,13 @@ pub(super) fn emit<'a>(
             } else {
                 "self."
             };
+            if let Some((field, _, _)) = &staged
+                && let Some(argument) = forwarded
+                    .iter_mut()
+                    .find(|argument| argument.as_str() == field.as_str())
+            {
+                *argument = format!("|listen| {field}.register_listener(listen)");
+            }
             fills.push(Fill {
                 native,
                 call: format!("{receiver}fire_{name}({});", forwarded.join(", ")),
@@ -899,7 +951,9 @@ pub(super) fn emit<'a>(
         // Each listener gets a fresh event with the original inputs. Writable borrowed
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.
-        let (build, local_event) = if hook.event_per_listener {
+        let (build, local_event) = if staged.is_some() {
+            (String::new(), build)
+        } else if hook.event_per_listener {
             // A replace answer is returned outside the event. A regular collect
             // output borrows one slot, reborrowed for each listener above. Answered
             // collect batches and cancellation do not use this mode.
@@ -1008,6 +1062,14 @@ pub(super) fn emit<'a>(
         };
         // One callee's call: a mod's, or a scoped hook's part's.
         let call = |callee: &str, mod_id_expr: &str, on_abort: &str, exit: &str| {
+            if let Some((field, stage, _)) = &staged {
+                let accepted = run(
+                    mod_id_expr,
+                    "false",
+                    &format!("{{ {callee}.{name}({invoke}); true }}"),
+                );
+                return format!("{stage}(&mut |{field}| {{ {local_event} {accepted} }});");
+            }
             // Early exits must validate while the listener still owns the scope.
             let exit = format!("{stack_after} {exit}");
             let answer_call = if scoped_write_replace {
@@ -1189,14 +1251,21 @@ pub(super) fn emit<'a>(
                     call(&mod_item, "owner.id", "return;", ""),
                 ),
             ),
-            None if hook.owner.is_some() => (
-                String::new(),
-                format!(
-                    "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, owner) in super::listening(HookId::{hook_id}) {{ if owner.id != {event}.{owner} {{ continue; }} let {mod_item} = {entered}.enter(owner, \"{name}\"); {} }} }}",
-                    call(&mod_item, "owner.id", "continue;", "break"),
-                    owner = hook.owner.as_deref().unwrap(),
-                ),
-            ),
+            None if hook.owner.is_some() => {
+                let owner_field = hook.owner.as_deref().unwrap();
+                let owner_filter = if staged.is_some() {
+                    owner_field.to_owned()
+                } else {
+                    format!("{event}.{owner_field}")
+                };
+                (
+                    String::new(),
+                    format!(
+                        "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if {mod_entry}.id != {owner_filter} {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {} }} }}",
+                        call(&mod_item, &format!("{mod_entry}.id"), "continue;", "break"),
+                    ),
+                )
+            }
             None if mod_cancel && hook.isolate => (
                 String::new(),
                 format!(
@@ -2601,6 +2670,35 @@ fn main() {{ game::run(std::env::args_os().nth(1).unwrap().into()); }}
                 .unwrap()
                 .success()
         );
+    }
+
+    #[test]
+    fn staged_surface_requires_a_flat_mutable_non_draw_registrar() {
+        let mut hook = Hook {
+            name: "probe".into(),
+            owner: Some("owner".into()),
+            staged_surface: Some("sink".into()),
+            call: vec![
+                ("owner".into(), "&str".into()),
+                ("sink".into(), "&mut dyn Sink".into()),
+            ],
+            dispatch: DispatchStyle::Flat,
+            ..Hook::sample(
+                "sunrise_client::game::native_hooks::probe::Game<'_>::native_probe",
+                Side::Server,
+            )
+        };
+        assert!(emit(std::iter::once(&hook), &[], true).is_ok());
+        let contexts = [DrawContext {
+            surface: "DrawBatch".into(),
+            trait_name: "Sink".into(),
+        }];
+        assert!(emit(std::iter::once(&hook), &contexts, true).is_err());
+        hook.dispatch = DispatchStyle::Carrier;
+        assert!(emit(std::iter::once(&hook), &[], true).is_err());
+        hook.dispatch = DispatchStyle::Flat;
+        hook.call[1].1 = "&mut u32".into();
+        assert!(emit(std::iter::once(&hook), &[], true).is_err());
     }
 
     #[test]

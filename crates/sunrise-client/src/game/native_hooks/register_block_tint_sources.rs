@@ -13,6 +13,6 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         sources: &mut mod_api::BlockTintRegistry,
     ) {
-        Self::fire_register_block_tint_sources(context, sources);
+        Self::fire_register_block_tint_sources(context, |listen| sources.register_listener(listen));
     }
 }

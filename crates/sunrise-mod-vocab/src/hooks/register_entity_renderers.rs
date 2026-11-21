@@ -15,6 +15,7 @@ pub trait Hooks {
     /// the item or map on its face);
     /// general entity types draw only through their renderer, if registered. Other entity
     /// families keep their own drawing.
+    /// If this listener panics or a phase call is refused, none of its registrations take effect.
     #[notes = r#"## Entity renderers
 
 An entity renderer (NeoForge's `EntityRenderersEvent.RegisterRenderers` and `EntityRenderer`) gives an
@@ -88,7 +89,9 @@ dropped, and until then its type draws as it would without one."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "listen",
+        staged_surface = "renderers",
         context = "registration",
         neoforge = "EntityRenderersEvent.RegisterRenderers"
     )]

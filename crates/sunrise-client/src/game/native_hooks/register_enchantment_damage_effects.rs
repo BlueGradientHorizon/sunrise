@@ -5,7 +5,9 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         effects: &mut mod_api::EnchantmentDamageRegistry,
     ) {
-        Self::fire_register_enchantment_damage_effects(context, effects);
+        Self::fire_register_enchantment_damage_effects(context, |listen| {
+            effects.register_listener(listen)
+        });
     }
 }
 

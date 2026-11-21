@@ -73,6 +73,18 @@ pub struct CauldronFluidContentRegistry {
     entries: Vec<CauldronFluidContent>,
 }
 impl CauldronFluidContentRegistry {
+    /// Append this listener's contents only if its registration succeeds.
+    #[doc(hidden)]
+    pub fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn CauldronFluidContents) -> bool,
+    ) {
+        let mut tail = Self::default();
+        if listen(&mut tail) {
+            self.entries.append(&mut tail.entries);
+        }
+    }
+
     /// Engine-owned entries, in registration order.
     // hidden: the engine consumes registrations after collecting the hook; not part of the mod API
     #[doc(hidden)]
