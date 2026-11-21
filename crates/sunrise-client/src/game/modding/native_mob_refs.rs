@@ -1,7 +1,16 @@
 //! Mob handles for native server mods.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, LivingRef, MobRef};
-use sunrise_client::mobs::{self, Mob, Species, Who, ai::brain_target};
+use sunrise_client::{
+    mobs::{self, Mob, MobWorld, Species, Who, ai::brain_target},
+    scoreboard::Team,
+};
+use sunrise_core::geometry::{Aabb, Axis};
+
+fn warden_mob_target_bounds(mob: &Mob) -> Option<Aabb> {
+    (!mob.removed && mob.alive() && !mob.is_invulnerable() && mob.species() != Species::Warden)
+        .then(|| mob.bounds())
+}
 
 /// What decides whether a player can be a mob's target.
 pub(super) struct PlayerFacts {
@@ -109,7 +118,7 @@ impl Game<'_> {
     /// [`Mob::valid_target`] (#1175) a goal tick's view shares.
     pub(super) fn native_mob_valid_target(&self, mob: &Mob, target: Target) -> bool {
         if mob.species() == Species::Warden {
-            return self.warden_valid_target(mob, target);
+            return self.warden_valid_target(self.mob_team_of(mob), target);
         }
         match target {
             Target::Mob(id) => {
@@ -160,13 +169,37 @@ impl Game<'_> {
     }
     /// `Warden.getTarget` resolves the stored entity and validates the read;
     /// the brain memory is not changed when that entity becomes invalid.
-    pub(super) fn warden_attack_target(&self, mob: &Mob) -> Option<(u32, Target)> {
+    pub(super) fn warden_attack_target(
+        &self,
+        mob: &Mob,
+        scope: Option<(&Mob, &MobWorld<'_>)>,
+    ) -> Option<(u32, Target)> {
         use sunrise_client::join_seq::residency::table::EntityLookup;
         let id = mobs::warden::brain_target_id(mob)?;
+        let own_team = scope.map_or_else(
+            || self.mob_team_of(mob),
+            |(actor, world)| self.mob_team_scoped(mob, actor, world),
+        );
+        if let Some((actor, world)) = scope {
+            // The actor and disjoint mob loan are not in Game's resident list
+            // during a tick. Players and the dragon remain on the level.
+            let loaned = if id == actor.id {
+                Some(actor)
+            } else {
+                world.live_mobs.and_then(|mobs| mobs.find(id))
+            };
+            if let Some(other) = loaned {
+                let bounds = warden_mob_target_bounds(other)?;
+                let team = self.mob_team_scoped(other, actor, world);
+                return self
+                    .warden_target_in_bounds(bounds, own_team, team)
+                    .then_some((id, Target::Mob(id)));
+            }
+        }
         match self.server_resident_entity(id) {
             EntityLookup::Found { location, value }
                 if location.owner.dimension == self.dim.key()
-                    && self.warden_valid_target(mob, value) =>
+                    && self.warden_valid_target(own_team, value) =>
             {
                 Some((id, value))
             }
@@ -175,17 +208,16 @@ impl Game<'_> {
     }
 
     /// `Warden.canTargetEntity`, which overrides the usual `Mob.canAttack`.
-    pub(super) fn warden_valid_target(&self, mob: &Mob, target: Target) -> bool {
-        use sunrise_core::geometry::Axis;
+    fn warden_valid_target(&self, own_team: Option<&Team>, target: Target) -> bool {
         let (bounds, team) = match target {
             Target::Mob(id) => {
-                let Some(other) = self.mobs.iter().find(|m| m.id == id && !m.removed) else {
+                let Some(other) = self.mobs.iter().find(|m| m.id == id) else {
                     return false;
                 };
-                if !other.alive() || other.is_invulnerable() || other.species() == Species::Warden {
+                let Some(bounds) = warden_mob_target_bounds(other) else {
                     return false;
-                }
-                (other.bounds(), self.mob_team(id))
+                };
+                (bounds, self.mob_team_of(other))
             }
             Target::Dragon(id) => {
                 let Some((_, target)) = self
@@ -231,8 +263,17 @@ impl Game<'_> {
             }
             _ => return false,
         };
+        self.warden_target_in_bounds(bounds, own_team, team)
+    }
+
+    fn warden_target_in_bounds(
+        &self,
+        bounds: Aabb,
+        own: Option<&Team>,
+        other: Option<&Team>,
+    ) -> bool {
         let border = self.border.geometry();
-        !sunrise_client::scoreboard::teams_allied(self.mob_team(mob.id), team)
+        !sunrise_client::scoreboard::teams_allied(own, other)
             && border.is_within_bounds(bounds.min(Axis::X), bounds.min(Axis::Z), 0.0)
             && border.is_within_bounds(
                 bounds.max(Axis::X) - f64::from(1.0e-5_f32),
@@ -271,7 +312,7 @@ impl Game<'_> {
         };
         let mob = self.mobs.iter().find(|m| m.id == id)?;
         if mob.species() == Species::Warden {
-            let (id, _) = self.warden_attack_target(mob)?;
+            let (id, _) = self.warden_attack_target(mob, None)?;
             return Some(LivingRef::new(EntityRef::new(
                 self.native_lifecycle.epoch()?,
                 id,

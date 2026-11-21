@@ -320,6 +320,7 @@ fn spawn_test_projectile(
 fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() {
     use crate::game::{
         commands::{Target, data::DataRef},
+        native_goal_ticks::live_read_tests::read_borrowed_target,
         native_living_flags::tests::{guest, guest_server},
     };
     use mod_api::{ExplosionInteraction, ExplosionSettings};
@@ -502,9 +503,12 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         let warden = game.mob(game.entity(warden_id).unwrap()).unwrap();
         let check_target = |game: &mut Game<'_>, expected: Option<mod_api::LivingRef>| {
             assert_eq!(warden.target(game), expected);
+            // Keep guest 23 selected in the tick even when the stored target is 22.
+            assert_eq!(read_borrowed_target(game, warden, pig_id, 23), expected);
             let selector = match expected.map(|living| living.entity().id()) {
                 Some(22) => "@s[name=guest22]",
                 Some(23) => "@s[name=guest23]",
+                Some(id) if id == pig_id => "@s[type=minecraft:pig]",
                 Some(_) => "@s[type=minecraft:ender_dragon]",
                 None => "@s",
             };
@@ -579,6 +583,20 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         )));
         assert_eq!(cooldown(game), None);
         check_target(game, None);
+
+        let pig = game.living(game.entity(pig_id).unwrap()).unwrap();
+        reset_warden(game);
+        assert!(hurt(game, 1.0, Some(Target::Mob(pig_id))));
+        game.mobs
+            .iter_mut()
+            .find(|mob| mob.id == pig_id)
+            .unwrap()
+            .invulnerable = 20;
+        check_target(game, Some(pig)); // Damage cooldown is not entity immunity.
+        assert!(game.entity_set_invulnerable_time(pig.entity(), 5));
+        check_target(game, None);
+        assert!(game.entity_set_invulnerable_time(pig.entity(), 0));
+        check_target(game, Some(pig));
 
         assert!(game.run_command("summon ender_dragon 8.5 64 8.5 {UUID:[I;84,0,0,7]}"));
         let (dragon_id, _) = game.dragon_target().unwrap();

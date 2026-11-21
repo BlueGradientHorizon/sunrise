@@ -881,7 +881,9 @@ impl Game<'_> {
                         .and_then(|m| {
                             use sunrise_client::mobs::{Species, Who, ai::brain_target};
                             if !attacker && m.species() == Species::Warden {
-                                return self.warden_attack_target(m).map(|(_, target)| target);
+                                return self
+                                    .warden_attack_target(m, None)
+                                    .map(|(_, target)| target);
                             }
                             let who = if attacker {
                                 m.ai.last_hurt_by
