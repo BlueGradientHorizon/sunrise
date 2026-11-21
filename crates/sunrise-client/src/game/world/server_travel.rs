@@ -63,6 +63,9 @@ pub(super) struct Trip {
     /// (`EndPortalBlock.getPortalDestination` from another level); else an
     /// exit, the credits respawn's too.
     entering: bool,
+    /// The End-credit return creates a new `ServerPlayer`; an ordinary respawn
+    /// point is a teleport of the existing player.
+    credits_respawn: bool,
     /// The Nether portal plan, whose exit is found or built on arrival.
     plan: Option<Plan>,
     /// The vehicle the player rides, which travels with it
@@ -281,6 +284,7 @@ impl Game<'_> {
             vehicle: None,
             gateway: None,
             respawn: None,
+            credits_respawn: false,
             consume: false,
             world_spawn: false,
             finder: None,
@@ -1018,6 +1022,7 @@ impl Game<'_> {
             vehicle,
             gateway: None,
             respawn: None,
+            credits_respawn,
             consume: false,
             world_spawn: false,
             missing: None,
@@ -1069,6 +1074,7 @@ impl Game<'_> {
             vehicle: None,
             gateway: None,
             respawn: Some(config),
+            credits_respawn: false,
             consume: true,
             world_spawn: false,
             missing: None,
@@ -1142,6 +1148,7 @@ impl Game<'_> {
             vehicle: None,
             gateway: None,
             respawn: None,
+            credits_respawn: false,
             consume: false,
             world_spawn: true,
             missing,
@@ -1203,6 +1210,7 @@ impl Game<'_> {
             vehicle: None,
             gateway: Some(job),
             respawn: None,
+            credits_respawn: false,
             consume: false,
             world_spawn: false,
             missing: None,
@@ -1427,11 +1435,12 @@ impl Game<'_> {
                 if let Some(pitch) = pitch {
                     g.pitch = pitch;
                 }
-                // A respawn, including the End credits, creates a new ServerPlayer and
-                // therefore resets Entity.tickCount. Other arrivals keep the same player,
-                // even though Sunrise rebuilds its motion body at the exit.
-                if trip.respawn.is_some() {
-                    g.new_body(false);
+                // The End-credit return creates a new ServerPlayer, but its ordinary
+                // respawn point is still a teleport of the existing player. Keep the full
+                // restore in both cases; the new identity only resets Entity.tickCount.
+                if trip.credits_respawn {
+                    g.new_body(true);
+                    g.carried_tick_count = None;
                 } else if !trip.hold {
                     g.new_body(true);
                 }
@@ -1639,6 +1648,7 @@ impl Game<'_> {
                 vehicle: None,
                 gateway: None,
                 respawn: None,
+                credits_respawn: false,
                 consume: false,
                 world_spawn: false,
                 missing: None,

@@ -1125,6 +1125,7 @@ impl Guest {
     pub fn new_body(&mut self, restore_all: bool) -> Option<Box<PlayerMotion>> {
         self.travel_vetoed = false;
         if !restore_all {
+            self.carried_tick_count = None;
             self.carried_hit = None;
             self.death_canceled = false;
             self.death_time = 0;

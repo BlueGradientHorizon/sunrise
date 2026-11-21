@@ -158,6 +158,8 @@ fn entity_tick_count_moves_through_teleport_bodies_but_respawn_starts_at_zero() 
     assert!(initialize(&resources, &mut guest));
     assert_eq!(guest.motion.as_ref().unwrap().health.tick_count, 123);
 
+    guest.new_body(true);
+    assert_eq!(guest.carried_tick_count, Some(123));
     guest.new_body(false);
     assert_eq!(guest.carried_tick_count, None);
     assert!(initialize(&resources, &mut guest));
