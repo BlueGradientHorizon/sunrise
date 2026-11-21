@@ -4153,20 +4153,90 @@ pub(super) mod tests {
                 Ok(0)
             );
 
-            // An invalid initial stack fails before the closure runs.
-            let mut oversized = bucket;
-            oversized.set_count(17).unwrap();
-            let invalid = host.scratch_stack(oversized, |_, _, _| -> Result<(), ()> {
+            // Oversized initial stacks are admitted and preserved (matching `StackItemAccess`
+            // and `ItemStacksResourceHandler`), while further inserts cap at max stack (16).
+            let mut oversized = bucket.clone();
+            oversized.set_count(20).unwrap();
+            let over_single = host.scratch_stack(oversized.clone(), |host, tx, place| {
+                assert_eq!(place.amount(host), 20);
+                assert_eq!(place.insert(host, tx, &buckets, 1), 0);
+                assert_eq!(place.extract(host, tx, &buckets, 2), 2);
+                assert_eq!(place.amount(host), 18);
+                assert_eq!(place.insert(host, tx, &buckets, 1), 0);
+                Ok::<_, ()>(())
+            });
+            assert_eq!(over_single, Ok(((), Some(api("minecraft:bucket", 18)))));
+
+            let over_slots = host.scratch_slots(oversized, |host, tx, place| {
+                assert_eq!(place.amount(host), 20);
+                assert_eq!(place.extract(host, tx, &buckets, 2), 2);
+                assert_eq!(place.insert(host, tx, &buckets, 1), 1);
+                assert_eq!(place.amount(host), 18);
+                Ok::<_, ()>(())
+            });
+            assert_eq!(
+                over_slots,
+                Ok((
+                    (),
+                    (
+                        Some(api("minecraft:bucket", 18)),
+                        Some(api("minecraft:bucket", 1)),
+                    )
+                ))
+            );
+
+            // An invalid initial stack (e.g. max_stack_size = 0) fails before the closure runs.
+            let mut invalid_max = bucket;
+            invalid_max
+                .set_components(
+                    [(
+                        sunrise_core::nbt::JavaString::from("minecraft:max_stack_size"),
+                        sunrise_core::nbt::Tag::Int(0),
+                    )]
+                    .into(),
+                )
+                .unwrap();
+            let invalid = host.scratch_stack(invalid_max, |_, _, _| -> Result<(), ()> {
                 panic!("invalid scratch stack must not run closure");
             });
             assert_eq!(
                 invalid,
-                Err(ScratchError::Stack(StackWriteError::CountExceeded {
-                    maximum: 16,
-                }))
+                Err(ScratchError::Stack(StackWriteError::InvalidMaximum))
             );
 
             assert_eq!(game.world.block(2, 64, 0), cauldron);
+            assert_eq!(game.live_scratch_count(), 0);
+        });
+
+        // A handle leaked out of one `Game` never aliases a newly created successor `Game`'s
+        // scratch loan even if allocator addresses are reused.
+        let mut leaked = None;
+        with_game(|game| {
+            let bucket = ItemStack::new("minecraft:bucket", 1)
+                .try_into_api()
+                .unwrap();
+            let host: &mut dyn ServerHost = game;
+            let (place, _) = host
+                .scratch_stack(bucket, |_, _, place| Ok::<_, ()>(place.clone()))
+                .unwrap();
+            leaked = Some(place);
+        });
+        let leaked = leaked.unwrap();
+        with_game(|game| {
+            let bucket = ItemStack::new("minecraft:bucket", 4)
+                .try_into_api()
+                .unwrap();
+            let buckets = ItemResource::of(&bucket);
+            let host: &mut dyn ServerHost = game;
+            let res = host.scratch_stack(bucket.clone(), |host, tx, place| {
+                assert_ne!(place, &leaked);
+                assert_eq!(leaked.amount(host), 0);
+                assert_eq!(leaked.insert(host, tx, &buckets, 1), 0);
+                assert_eq!(leaked.extract(host, tx, &buckets, 1), 0);
+                assert_eq!(place.amount(host), 4);
+                Ok::<_, ()>(())
+            });
+            assert_eq!(res, Ok(((), Some(bucket))));
             assert_eq!(game.live_scratch_count(), 0);
         });
     }

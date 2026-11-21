@@ -588,14 +588,14 @@ fn foreign_host_scratch_place_reads_none_and_writes_zero() {
             })
             .unwrap();
 
-        // Even when host B opens its own loan with the same numeric slot id, journal identity isolates them.
+        // Host B mints a distinct process-unique slot id and rejects leaked place A.
         let res_b = host_b.scratch_stack(stone.to_stack(8).unwrap(), |host_b, tx_b, place_b| {
             let ItemPlace::Scratch(slot_b) = place_b else {
                 unreachable!("scratch_stack lends ItemPlace::Scratch")
             };
             let slot_b = *slot_b;
-            assert_eq!(slot_a.id(), slot_b.id());
-            assert_ne!(slot_a.journal(), slot_b.journal());
+            assert_ne!(slot_a, slot_b);
+            assert_ne!(slot_a.id(), slot_b.id());
 
             assert_eq!(leaked.with_stack(host_b, |_| ()), None);
             assert_eq!(leaked.amount(host_b), 0);
@@ -608,12 +608,33 @@ fn foreign_host_scratch_place_reads_none_and_writes_zero() {
 
         // Host A's own lent slot is untouched.
         assert_eq!(place_a.amount(host_a), 5);
-        Ok::<_, ()>(())
+        Ok::<_, ()>((leaked, slot_a))
     });
 
-    assert_eq!(res_a, Ok(((), Some(stone.to_stack(5).unwrap()))));
+    let ((leaked, slot_a), published) = res_a.unwrap();
+    assert_eq!(published, Some(stone.to_stack(5).unwrap()));
     assert_eq!(host_a.scratch_live_count(), 0);
     assert_eq!(host_b.scratch_live_count(), 0);
+
+    // Dropping host A and constructing a successor host never aliases the earlier handle.
+    drop(host_a);
+    let (mut host_c, r_c) = host_with(&[("minecraft:stone", 64)]);
+    let stone_c = &r_c[0];
+    let res_c = host_c.scratch_stack(stone_c.to_stack(9).unwrap(), |host_c, tx_c, place_c| {
+        let ItemPlace::Scratch(slot_c) = place_c else {
+            unreachable!("scratch_stack lends ItemPlace::Scratch")
+        };
+        assert_ne!(slot_a, *slot_c);
+        assert_ne!(slot_a.id(), slot_c.id());
+        assert_eq!(leaked.with_stack(host_c, |_| ()), None);
+        assert_eq!(leaked.amount(host_c), 0);
+        assert_eq!(leaked.insert(host_c, tx_c, stone_c, 1), 0);
+        assert_eq!(leaked.extract(host_c, tx_c, stone_c, 1), 0);
+        assert_eq!(place_c.amount(host_c), 9);
+        Ok::<_, ()>(())
+    });
+    assert_eq!(res_c, Ok(((), Some(stone_c.to_stack(9).unwrap()))));
+    assert_eq!(host_c.scratch_live_count(), 0);
 }
 
 #[test]
@@ -716,10 +737,6 @@ fn invalid_scratch_stack_and_unavailable_host_refuse_without_running_closure() {
             over_max.to_stack(1).unwrap(),
             StackWriteError::InvalidMaximum,
         ),
-        (
-            bucket.to_stack(17).unwrap(),
-            StackWriteError::CountExceeded { maximum: 16 },
-        ),
     ];
 
     for (invalid, expected) in cases {
@@ -727,14 +744,60 @@ fn invalid_scratch_stack_and_unavailable_host_refuse_without_running_closure() {
             panic!("closure must not run for invalid stack");
         });
         assert_eq!(single, Err(ScratchError::Stack(expected.clone())));
-        let two = host.scratch_slots(invalid, |_, _, _| -> Result<(), ()> {
+        let two = host.scratch_slots(invalid.clone(), |_, _, _| -> Result<(), ()> {
             panic!("closure must not run for invalid stack");
         });
         assert_eq!(two, Err(ScratchError::Stack(expected)));
+
+        // `dispense_container` treats scratch validation failures as unhandled (`None`) rather
+        // than falling through to `dispense_default`.
+        let event = crate::DispenseItemEvent {
+            dimension: "minecraft:overworld",
+            pos: [0, 64, 0],
+            facing: Direction::East,
+            stack: &invalid,
+        };
+        assert_eq!(
+            crate::block::fluid_util::dispense_container(&mut host, &event),
+            None
+        );
     }
     assert!(host.journal.closed().is_empty());
     assert_eq!(host.scratch_live_count(), 0);
     assert!(host.scratch_kept_frame_counts().is_empty());
+
+    // Oversized initial stacks are admitted and preserved (matching `StackItemAccess` /
+    // `ItemStacksResourceHandler`), while further inserts cap at the item's max stack size.
+    let oversized = bucket.to_stack(20).unwrap();
+    let single_over = host.scratch_stack(oversized.clone(), |host, tx, place| {
+        assert_eq!(place.amount(host), 20);
+        assert_eq!(place.insert(host, tx, bucket, 1), 0);
+        assert_eq!(place.extract(host, tx, bucket, 2), 2);
+        assert_eq!(place.amount(host), 18);
+        assert_eq!(place.insert(host, tx, bucket, 1), 0);
+        Ok::<_, ()>(())
+    });
+    assert_eq!(single_over, Ok(((), Some(bucket.to_stack(18).unwrap()))));
+
+    let two_over = host.scratch_slots(oversized, |host, tx, place| {
+        assert_eq!(place.amount(host), 20);
+        assert_eq!(place.extract(host, tx, bucket, 2), 2);
+        assert_eq!(place.amount(host), 18);
+        // Slot 0 is still above max_stack (16), so an insert spills into slot 1.
+        assert_eq!(place.insert(host, tx, bucket, 1), 1);
+        assert_eq!(place.amount(host), 18);
+        Ok::<_, ()>(())
+    });
+    assert_eq!(
+        two_over,
+        Ok((
+            (),
+            (
+                Some(bucket.to_stack(18).unwrap()),
+                Some(bucket.to_stack(1).unwrap()),
+            )
+        ))
+    );
 
     let valid = bucket.to_stack(1).unwrap();
     let mut no_tx = NoTx;

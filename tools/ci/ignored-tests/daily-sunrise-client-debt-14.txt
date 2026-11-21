@@ -1,0 +1,1 @@
+sunrise-client game::dispense_container_tests::dispense_container_preserves_first_slot_caps_one_by_one_insert_and_rolls_back_in_enclosing_tx lib daily resources

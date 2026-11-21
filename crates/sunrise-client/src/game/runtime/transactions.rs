@@ -71,7 +71,6 @@ pub(super) struct OpenTransactions {
     /// Live lent scratch slots (`ItemPlace::Scratch`), owned by the transaction frame whose
     /// `owned_scratch` names their id.
     scratch: HashMap<u64, scratch::Scratch>,
-    next_scratch: u64,
     closing: Option<TransactionLifecycle>,
     /// Root completions, including those from transactions committed by its listeners.
     closing_configuration_completions: Vec<ConfigurationCompletion>,
@@ -106,22 +105,10 @@ impl OpenTransactions {
         TransactionFrame::new(journal, self.next_frame, self.levels.len())
     }
 
-    fn journal_id(&self) -> Option<usize> {
-        self.tag
-            .as_deref()
-            .map(|tag| std::ptr::from_ref(tag) as usize)
-    }
-
-    fn insert_scratch(&mut self, entry: scratch::Scratch) -> (usize, u64) {
-        let tag = self.tag.get_or_insert_with(|| Box::new(0));
-        let journal = std::ptr::from_ref(&**tag) as usize;
-        self.next_scratch = self
-            .next_scratch
-            .checked_add(1)
-            .expect("scratch slot sequence exhausted");
-        let id = self.next_scratch;
-        self.scratch.insert(id, entry);
-        (journal, id)
+    fn insert_scratch(&mut self, entry: scratch::Scratch) -> mod_api::ScratchSlot {
+        let slot = mod_api::ScratchSlot::fresh();
+        self.scratch.insert(slot.id(), entry);
+        slot
     }
 
     fn player_write(&mut self) -> Option<&mut Level> {
@@ -540,6 +527,14 @@ pub(super) enum After {
         equips: bool,
         who: u32,
     },
+    /// A dispensed item drop (`DefaultDispenseItemBehavior.spawnItem`), with optional click and
+    /// smoke events for overflow remainders (`addToInventoryOrDispense`).
+    DispenserDrop {
+        pos: Pos,
+        facing: sunrise_core::geometry::Direction,
+        stack: ItemStack,
+        play_events: bool,
+    },
 }
 
 /// Effects shared by transactional interaction contexts.
@@ -685,16 +680,16 @@ struct StorageScope<'a, 'g> {
 }
 
 impl StorageScope<'_, '_> {
-    fn close(mut self, commit: bool) {
+    fn close(mut self, commit: bool) -> Option<scratch::Scratch> {
         self.open = false;
-        self.game.close_storage_frame(self.frame, commit);
+        self.game.close_storage_frame(self.frame, commit)
     }
 }
 
 impl Drop for StorageScope<'_, '_> {
     fn drop(&mut self) {
         if self.open {
-            self.game.close_storage_frame(self.frame, false);
+            let _ = self.game.close_storage_frame(self.frame, false);
         }
     }
 }
@@ -722,28 +717,10 @@ impl Game<'_> {
         frame
     }
     /// Closes `frame`, first aborting every transaction opened inside it and left open, so a
-    /// scope closing its own is never stranded behind an abandoned child.
-    fn close_storage_frame(&mut self, frame: TransactionFrame, commit: bool) {
-        let Some(at) = self
-            .transactions
-            .iter()
-            .rposition(|level| level.frame == frame)
-        else {
-            return;
-        };
-        if self.transactions.len() > at + 1 {
-            log::warn!("Sunrise: aborted a transaction left open inside the one being closed");
-        }
-        while self.transactions.len() > at + 1 {
-            self.close_storage_transaction(false);
-        }
-        self.close_storage_transaction(commit);
-    }
-    /// Closes `frame`, first aborting every abandoned transaction inside it, and returns the
-    /// frame's owned scratch slot on commit. The slot is removed from live storage and from this
-    /// frame's journal before closing, so escaped handles are dead during `root_commit` and the
-    /// closed loan never merges into an outer journal.
-    fn close_storage_frame_taking_scratch(
+    /// scope closing its own is never stranded behind an abandoned child. On commit, extracts any
+    /// scratch slot owned by `frame` before closing so escaped handles are dead during
+    /// `root_commit` and the closed loan never merges into an outer journal.
+    fn close_storage_frame(
         &mut self,
         frame: TransactionFrame,
         commit: bool,
@@ -758,9 +735,8 @@ impl Game<'_> {
         while self.transactions.len() > at + 1 {
             self.close_storage_transaction(false);
         }
-        if commit {
-            let taken = self
-                .transactions
+        let taken = if commit {
+            self.transactions
                 .levels
                 .last_mut()
                 .and_then(|level| {
@@ -768,20 +744,19 @@ impl Game<'_> {
                     level.scratch_kept.remove(&id);
                     Some(id)
                 })
-                .and_then(|id| self.transactions.scratch.remove(&id));
-            self.close_storage_transaction(true);
-            taken
+                .and_then(|id| self.transactions.scratch.remove(&id))
         } else {
-            self.close_storage_transaction(false);
             None
-        }
+        };
+        self.close_storage_transaction(commit);
+        taken
     }
-    /// Runs `f` inside a new (or nested) storage transaction, committing iff `f` returns
-    /// `(out, true)` and aborting on `false` or unwind.
-    pub(in crate::game) fn storage_scope<R>(
+    /// Opens a storage transaction guarded by [`StorageScope`], runs `f`, and closes it, returning
+    /// both `f`'s result and any committed scratch slot owned by the frame.
+    pub(super) fn run_storage_scope<R>(
         &mut self,
         f: impl FnOnce(&mut Self, TransactionFrame) -> (R, bool),
-    ) -> R {
+    ) -> (R, Option<scratch::Scratch>) {
         let frame = self.open_storage_transaction();
         let mut guard = StorageScope {
             game: self,
@@ -789,8 +764,16 @@ impl Game<'_> {
             open: true,
         };
         let (out, commit) = f(&mut *guard.game, frame);
-        guard.close(commit);
-        out
+        let taken = guard.close(commit);
+        (out, taken)
+    }
+    /// Runs `f` inside a new (or nested) storage transaction, committing iff `f` returns
+    /// `(out, true)` and aborting on `false` or unwind.
+    pub(in crate::game) fn storage_scope<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self, TransactionFrame) -> (R, bool),
+    ) -> R {
+        self.run_storage_scope(f).0
     }
     /// Runs `f` inside a new (or nested) storage transaction, lending a scoped
     /// [`TransactionContext`]; commits on `Ok` and aborts on `Err` or unwind.
@@ -1800,6 +1783,22 @@ impl Game<'_> {
                 // sculk context reads the mob as it is at the root commit.
                 let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(who)), None);
                 self.equip_item_effects(at, sound, equips, ctx);
+            }
+            After::DispenserDrop {
+                pos,
+                facing,
+                stack,
+                play_events,
+            } => {
+                self.spawn_dispensed(pos, facing, stack, 6);
+                if play_events {
+                    self.dispenser_event(super::dispenser::CLICK, pos, 0);
+                    self.dispenser_event(
+                        2000,
+                        pos,
+                        sunrise_gameplay::dispense_rules::data_value(facing),
+                    );
+                }
             }
         }
     }

@@ -16,36 +16,37 @@ use crate::{
     MenuSlotBacking, ResourceHandler, ServerHost, StackWriteError, TransactionContext,
     backend_mut_of, backend_of,
 };
-use std::{fmt::Debug, marker::PhantomData, num::NonZeroU32};
+use std::{
+    fmt::Debug,
+    marker::PhantomData,
+    num::NonZeroU32,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 // no wire: process-local token for a transaction-scoped lent scratch slot.
 // exhaustive: its fields are private, so mods cannot build or destructure it.
 /// An opaque handle to a scratch item place lent for one
 /// [`HostTransaction::scratch_stack`] or [`HostTransaction::scratch_slots`] scope.
 ///
-/// It is bound to the owning host's journal and cannot cross Wire.
+/// Each loan mints a process-unique id, and the token cannot cross Wire.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScratchSlot {
-    journal: usize,
     id: u64,
 }
 
 impl ScratchSlot {
-    /// Mints a scratch slot token scoped to `journal` and `id`.
+    /// Mints a process-unique scratch slot token.
     // hidden: a game-side helper, not part of the mod surface.
     #[doc(hidden)]
-    pub fn new(journal: usize, id: u64) -> Self {
-        Self { journal, id }
+    pub fn fresh() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let id = NEXT
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .expect("scratch slot sequence exhausted");
+        Self { id }
     }
 
-    /// The owning journal's identity.
-    // hidden: a game-side helper, not part of the mod surface.
-    #[doc(hidden)]
-    pub fn journal(self) -> usize {
-        self.journal
-    }
-
-    /// The scratch slot's sequence id within its journal.
+    /// The scratch slot's process-unique id.
     // hidden: a game-side helper, not part of the mod surface.
     #[doc(hidden)]
     pub fn id(self) -> u64 {
@@ -162,9 +163,9 @@ pub enum ItemPlace {
     /// [`EntitySlot`](Self::EntitySlot) or [`Nested`](Self::Nested) slot, what doesn't fit is
     /// refused instead of spread to the other slots. Around any other place it is that place.
     Strict(Box<ItemPlace>),
-    /// One item at a time of the place inside (`ItemAccess.oneByOne`): the view and its
-    /// projection show one item without changing the stored count, and an extract takes at most
-    /// one. Inserts go to the place inside as they would.
+    /// One item at a time of the place inside (`ItemAccess.oneByOne`, `OneByOneItemAccess`): the
+    /// view and its projection show one item without changing the stored count, and both inserts
+    /// and extracts move at most one item.
     OneByOne(Box<ItemPlace>),
     /// The place inside, as a player with infinite materials reaches it
     /// (`ItemAccess.forInfiniteMaterials`): while `player` has them (creative's `instabuild`),
@@ -790,9 +791,7 @@ impl ItemPlace {
                     inner
                 }
                 ItemPlace::OneByOne(inner) => {
-                    if !insert {
-                        amount = amount.min(1);
-                    }
+                    amount = amount.min(1);
                     inner
                 }
                 ItemPlace::InfiniteMaterials { player, inner } => {

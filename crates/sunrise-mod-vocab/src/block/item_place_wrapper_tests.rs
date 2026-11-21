@@ -181,6 +181,26 @@ fn wrappers_nest_far_deeper_than_any_stack_would_recurse() {
 }
 
 #[test]
+fn one_by_one_caps_both_inserts_and_extracts_at_one() {
+    let (mut host, r) = host_with(&[("minecraft:dirt", 64)]);
+    let dirt = &r[0];
+    host.players
+        .get_mut(STEVE)
+        .unwrap()
+        .slots
+        .insert(3, dirt.to_stack(5).unwrap());
+    let slot = ItemPlace::PlayerSlot {
+        player: STEVE,
+        slot: 3,
+    };
+    let one = ItemPlace::OneByOne(Box::new(slot));
+    assert_eq!(insert(&mut host, &one, dirt, 4), 1);
+    assert_eq!(slots(&host), [(3, 6)]);
+    assert_eq!(extract(&mut host, &one, dirt, 4), 1);
+    assert_eq!(slots(&host), [(3, 5)]);
+}
+
+#[test]
 fn wire_decode_refuses_wrappers_nested_past_its_depth() {
     // `Strict` `wrappers` deep around a player slot, as the wire writes it.
     let wrapped = |wrappers: usize| {

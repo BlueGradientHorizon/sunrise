@@ -87,11 +87,13 @@ These correspond to NeoForge's other `ItemAccess` factories:
   (nested if one is already open) and lends a single-slot `ItemPlace::Scratch(ScratchSlot)`
   holding a stack outside the world, such as a crafting result or a preview. As in
   `StackItemAccess`, writes never change its item, only its count and components: a bucket in
-  one can't become a water bucket. On `Ok(value)` the transaction commits and returns
-  `Ok((value, final_stack))`; on `Err` or unwind the transaction aborts and the lent slot is
-  dropped without publishing. If the host cannot open a transaction or the initial stack fails
-  write validation, it returns `Err(ScratchError::Unavailable)` or `Err(ScratchError::Stack(_))`
-  without calling the closure.
+  one can't become a water bucket. An oversized initial stack is admitted and preserved as-is,
+  while further inserts cap at the item's max stack size. On `Ok(value)` the transaction
+  commits and returns `Ok((value, final_stack))`; on `Err` or unwind the transaction aborts and
+  the lent slot is dropped without publishing. If the host cannot open a transaction or the
+  initial stack fails validation (such as an unknown item or invalid max stack size), it
+  returns `Err(ScratchError::Unavailable)` or `Err(ScratchError::Stack(_))` without calling the
+  closure.
 - `host.scratch_slots(stack, |host, tx, place| …)` (`DispenseFluidContainer`) opens a scoped
   transaction and lends a two-slot `ItemPlace::Scratch(ScratchSlot)` whose item may change:
   what `fluid_util::dispense_container` runs a dispensed container in, so a bucket can become
@@ -104,13 +106,15 @@ These correspond to NeoForge's other `ItemAccess` factories:
     fallback work runs.
   - A nested transaction that commits inside the scope stays provisional and rolls back if the
     enclosing scratch scope aborts or unwinds.
-  - The loan is bound to its scope and is removed when that scope closes, so it is never kept in
-    a longer-lived outer transaction's journal. A handle copied out of the callback reads empty
-    and writes nothing, and `ItemPlace::Scratch` refuses `Wire` encoding.
+  - Each loan mints a process-unique `ScratchSlot` and is removed when its scope closes, so it
+    is never kept in a longer-lived outer transaction's journal and never collides with a later
+    or foreign host. A handle copied out of the callback reads empty and writes nothing, and
+    `ItemPlace::Scratch` refuses `Wire` encoding.
 - `ItemPlace::Strict(place)` (`forHandlerIndexStrict`) refuses what a block entity's, entity's
   or nested item's slot doesn't take, where the plain place would spread it to the other slots.
-- `ItemPlace::OneByOne(place)` (`oneByOne`) lends and projects a count of one for a nonempty
-  stack without changing its stored count. An extract takes at most one item.
+- `ItemPlace::OneByOne(place)` (`oneByOne`, `OneByOneItemAccess`) lends and projects a count of
+  one for a nonempty stack without changing its stored count. Both inserts and extracts move at
+  most one item.
 - `ItemPlace::InfiniteMaterials { player, inner }` (`forInfiniteMaterials`) reaches `inner` as a
   creative player does while `player` has infinite materials. Extracts give without taking.
   Inserts are taken whole, and one item goes to the player only if they have none: into their

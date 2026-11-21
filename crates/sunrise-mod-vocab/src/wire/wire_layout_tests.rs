@@ -664,7 +664,7 @@ fn every_item_place_case_has_declared_tag_and_field_types() {
 
 #[test]
 fn scratch_item_place_cannot_cross_wire() {
-    let slot = ScratchSlot::new(1, 41);
+    let slot = ScratchSlot::fresh();
     let mut out = Writer::new();
     out.put(&ItemPlace::Scratch(slot));
     assert!(matches!(out.error(), Some(WireError::Invalid(_))));

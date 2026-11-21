@@ -545,4 +545,16 @@ pub trait ItemsBackendMut {
     /// what it can't put back.
     #[access(WorldOnly)]
     fn drop_at(&mut self, pos: [i32; 3], stack: ItemStack) -> Result<(), StackWriteError>;
+    /// Side: server.
+    /// `DefaultDispenseItemBehavior.addToInventoryOrDispense`: inserts `remainder` into the
+    /// dispenser at `pos`, or drops what does not fit with the click and smoke, journaling
+    /// slot writes and deferring drops and events when a storage transaction is open.
+    #[access(WorldOnly)]
+    fn dispense_add_remainder(
+        &mut self,
+        dimension: &str,
+        pos: [i32; 3],
+        facing: Direction,
+        remainder: ItemStack,
+    ) -> Result<(), LevelWriteError>;
 }

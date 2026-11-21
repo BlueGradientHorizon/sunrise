@@ -17,50 +17,31 @@ pub(super) struct FakeScratchEntry {
 pub(super) struct FakeScratch {
     live: HashMap<u64, FakeScratchEntry>,
     kept_stack: Vec<HashMap<u64, FakeScratchEntry>>,
-    next_id: u64,
-    /// Live 1-byte allocation whose address uniquely identifies this scratch journal instance.
-    tag: Option<Box<u8>>,
 }
 
 impl Clone for FakeScratch {
     fn clone(&self) -> Self {
-        // Cloned hosts never share journal identity, live loans, or open snapshot frames.
+        // Cloned hosts never share live loans or open snapshot frames.
         Self::default()
     }
 }
 
 impl FakeScratch {
-    pub(super) fn journal_id(&self) -> Option<usize> {
-        self.tag
-            .as_deref()
-            .map(|tag| std::ptr::from_ref(tag) as usize)
-    }
-
-    fn ensure_journal_id(&mut self) -> usize {
-        let tag = self.tag.get_or_insert_with(|| Box::new(0));
-        std::ptr::from_ref(&**tag) as usize
-    }
-
     pub(super) fn push_frame(&mut self) {
         self.kept_stack.push(HashMap::new());
     }
 
     pub(super) fn insert_loan(&mut self, item: Option<ItemKey>, stack: ItemStack) -> ScratchSlot {
-        let journal = self.ensure_journal_id();
-        self.next_id = self
-            .next_id
-            .checked_add(1)
-            .expect("scratch slot sequence exhausted");
-        let id = self.next_id;
+        let slot = ScratchSlot::fresh();
         self.live.insert(
-            id,
+            slot.id(),
             FakeScratchEntry {
                 item,
                 stack: Some(stack),
                 overflow: None,
             },
         );
-        ScratchSlot::new(journal, id)
+        slot
     }
 
     /// Ends loan `id`, removing it from both live storage and the closing transaction frame.
@@ -95,9 +76,6 @@ impl FakeScratch {
     }
 
     pub(super) fn held(&self, slot: ScratchSlot) -> Option<&ItemStack> {
-        if self.journal_id() != Some(slot.journal()) {
-            return None;
-        }
         self.live.get(&slot.id())?.stack.as_ref()
     }
 
@@ -108,7 +86,7 @@ impl FakeScratch {
         amount: u32,
         max_stack: u32,
     ) -> u32 {
-        if amount == 0 || self.journal_id() != Some(slot.journal()) {
+        if amount == 0 {
             return 0;
         }
         let id = slot.id();
@@ -141,7 +119,7 @@ impl FakeScratch {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        if amount == 0 || self.journal_id() != Some(slot.journal()) {
+        if amount == 0 {
             return 0;
         }
         let id = slot.id();
@@ -192,11 +170,9 @@ impl FakeScratch {
 
     #[cfg(test)]
     pub(super) fn kept_contains(&self, frame_index: usize, slot: ScratchSlot) -> bool {
-        self.journal_id() == Some(slot.journal())
-            && self
-                .kept_stack
-                .get(frame_index)
-                .is_some_and(|frame| frame.contains_key(&slot.id()))
+        self.kept_stack
+            .get(frame_index)
+            .is_some_and(|frame| frame.contains_key(&slot.id()))
     }
 }
 

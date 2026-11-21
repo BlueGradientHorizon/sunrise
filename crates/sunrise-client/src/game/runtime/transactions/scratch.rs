@@ -6,7 +6,7 @@
 //! them, while closed loans are removed before commit and never leak into outer journals. A
 //! single-slot loan (`item: Some(..)`) never changes its item; a two-slot loan (`item: None`)
 //! may change its item and catches what its first slot does not take in its second slot.
-use super::{Game, HashMap, StorageScope};
+use super::{Game, HashMap};
 use mod_api::{ItemPlace, ScratchSlot, TransactionContext};
 use std::sync::Arc;
 use sunrise_client::items::ItemStack;
@@ -53,31 +53,24 @@ impl Game<'_> {
         stack: ItemStack,
         f: impl for<'loan> FnOnce(&'loan mut Self, &'loan TransactionContext, &'loan ItemPlace) -> bool,
     ) -> Option<Scratch> {
-        let frame = self.open_storage_transaction();
-        let mut guard = StorageScope {
-            game: self,
-            frame,
-            open: true,
-        };
-        let (journal, id) = guard.game.transactions.insert_scratch(Scratch {
-            item,
-            stack: Some(stack),
-            overflow: None,
-        });
-        if let Some(level) = guard.game.transactions.levels.last_mut() {
-            level.owned_scratch = Some(id);
-        }
-        let place = ItemPlace::Scratch(ScratchSlot::new(journal, id));
-        let commit = frame.lend(|tx| f(&mut *guard.game, tx, &place));
-        guard.open = false;
-        guard.game.close_storage_frame_taking_scratch(frame, commit)
+        self.run_storage_scope(|game, frame| {
+            let slot = game.transactions.insert_scratch(Scratch {
+                item,
+                stack: Some(stack),
+                overflow: None,
+            });
+            if let Some(level) = game.transactions.levels.last_mut() {
+                level.owned_scratch = Some(slot.id());
+            }
+            let place = ItemPlace::Scratch(slot);
+            let commit = frame.lend(|tx| f(game, tx, &place));
+            ((), commit)
+        })
+        .1
     }
 
     /// The first slot of lent scratch place `slot`.
     pub(in crate::game) fn scratch_held(&self, slot: ScratchSlot) -> Option<&ItemStack> {
-        if Some(slot.journal()) != self.transactions.journal_id() {
-            return None;
-        }
         self.transactions.scratch.get(&slot.id())?.stack.as_ref()
     }
 
@@ -86,7 +79,7 @@ impl Game<'_> {
     /// first slot where that is empty or holds the same, and what doesn't fit into its second.
     /// How many went.
     pub(in crate::game) fn scratch_insert(&mut self, slot: ScratchSlot, offer: &ItemStack) -> u32 {
-        if offer.count == 0 || Some(slot.journal()) != self.transactions.journal_id() {
+        if offer.count == 0 {
             return 0;
         }
         let id = slot.id();
@@ -117,7 +110,7 @@ impl Game<'_> {
     /// Takes up to `want.count` of `want`'s item and components out of lent scratch place `slot`.
     /// How many came.
     pub(in crate::game) fn scratch_extract(&mut self, slot: ScratchSlot, want: &ItemStack) -> u32 {
-        if want.count == 0 || Some(slot.journal()) != self.transactions.journal_id() {
+        if want.count == 0 {
             return 0;
         }
         let Some(held) = self

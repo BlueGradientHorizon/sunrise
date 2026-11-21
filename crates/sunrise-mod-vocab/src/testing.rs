@@ -334,9 +334,6 @@ impl FakeHost {
         if maximum == 0 {
             return Err(StackWriteError::InvalidMaximum);
         }
-        if stack.count() > maximum {
-            return Err(StackWriteError::CountExceeded { maximum });
-        }
         Ok(())
     }
     fn run_transaction_scope(

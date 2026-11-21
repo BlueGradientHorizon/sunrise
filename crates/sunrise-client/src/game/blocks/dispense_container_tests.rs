@@ -37,6 +37,7 @@ impl Hooks for Containers {
             "minecraft:water_bucket",
             "minecraft:paper",
             "minecraft:glass_bottle",
+            "minecraft:clay_ball",
         ] {
             let key = r.item_key(item);
             r.item_part(key, Container);
@@ -57,6 +58,14 @@ impl Hooks for Containers {
             "minecraft:glass_bottle",
             |_: &mut dyn ServerHost, place: &ItemPlace| {
                 Some(Box::new(Jug(place.clone())) as Box<dyn ResourceHandler<FluidResource>>)
+            },
+        );
+        r.item_capability(
+            &ITEM_FLUIDS,
+            "minecraft:clay_ball",
+            |_: &mut dyn ServerHost, place: &ItemPlace| {
+                Some(Box::new(MultiStepJug(place.clone()))
+                    as Box<dyn ResourceHandler<FluidResource>>)
             },
         );
     }
@@ -96,6 +105,66 @@ impl ResourceHandler<FluidResource> for Jug {
             true => 1000,
             false => 0,
         }
+    }
+    fn extract_at(
+        &self,
+        _: &mut dyn ServerHost,
+        _: &TransactionContext,
+        _: usize,
+        _: &FluidResource,
+        _: u32,
+    ) -> u32 {
+        0
+    }
+}
+
+/// A custom container handler that extracts twice and attempts a multi-item insert through the
+/// `OneByOne` wrapper, exercising: (1) `OneByOne` capping inserts at 1, (2) `dispense_container`
+/// returning the actual final first slot when overflow is present (`count - 2`, not `count - 1`),
+/// and (3) `(None, Some(changed))` when the second extract empties slot 0 after slot 1 holds the
+/// inserted item.
+struct MultiStepJug(ItemPlace);
+impl ResourceHandler<FluidResource> for MultiStepJug {
+    fn size(&self, _: &mut dyn ServerHost) -> usize {
+        1
+    }
+    fn resource(&self, _: &mut dyn ServerHost, _: usize) -> Option<FluidResource> {
+        None
+    }
+    fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
+        0
+    }
+    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&FluidResource>) -> u32 {
+        1000
+    }
+    fn insert_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        _: usize,
+        _: &FluidResource,
+        amount: u32,
+    ) -> u32 {
+        if amount < 1000 {
+            return 0;
+        }
+        let Some(current) = self.0.resource(host) else {
+            return 0;
+        };
+        let potion = mod_api::__private::item_key("minecraft:potion").unwrap();
+        let potion = ItemResource::of(&mod_api::ItemStack::new(potion, 1).unwrap());
+        if self.0.extract(host, tx, &current, 1) != 1 {
+            return 0;
+        }
+        // Through `OneByOne`, asking to insert 3 caps at 1 (into overflow while slot 0 still holds clay).
+        if self.0.insert(host, tx, &potion, 3) != 1 {
+            return 0;
+        }
+        // Extract a second unit from slot 0 (emptying it when initial count was 2, leaving 2 when 4).
+        if self.0.extract(host, tx, &current, 1) != 1 {
+            return 0;
+        }
+        1000
     }
     fn extract_at(
         &self,
@@ -333,5 +402,148 @@ fn a_stack_of_custom_containers_gives_their_handler_one_at_a_time() {
             .collect();
         assert_eq!(held, [("minecraft:potion".to_owned(), 1)]);
         assert!(game.dropped.is_empty());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn dispense_container_preserves_first_slot_caps_one_by_one_insert_and_rolls_back_in_enclosing_tx() {
+    with_dispenser(|game, _| {
+        let pos = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
+
+        // 1. Actual final first slot (`4 -> 2`, not `stack - 1 = 3`) plus `OneByOne`-capped
+        //    insert of 1 potion routed into the dispenser.
+        set_front(game, "minecraft:water");
+        let left = dispense(game, ItemStack::new("minecraft:clay_ball", 4));
+        assert_eq!(item(&left), Some(("minecraft:clay_ball".into(), 2)));
+        assert_eq!(front(game), state(game, "minecraft:air"));
+        let held: Vec<_> = game
+            .world
+            .block_entities
+            .get(&pos)
+            .unwrap()
+            .slots()
+            .iter()
+            .flatten()
+            .map(|stack| (stack.item.to_string(), stack.count))
+            .collect();
+        assert_eq!(held, [("minecraft:potion".to_owned(), 1)]);
+        assert!(game.dropped.is_empty());
+
+        // 2. `(None, Some(changed))`: slot 0 emptied after slot 1 took the changed item returns
+        //    the changed item directly into the dispenser's active slot without adding a second copy.
+        set_front(game, "minecraft:water");
+        let replaced = dispense(game, ItemStack::new("minecraft:clay_ball", 2));
+        assert_eq!(item(&replaced), Some(("minecraft:potion".into(), 1)));
+        assert_eq!(front(game), state(game, "minecraft:air"));
+        let held: Vec<_> = game
+            .world
+            .block_entities
+            .get(&pos)
+            .unwrap()
+            .slots()
+            .iter()
+            .flatten()
+            .map(|stack| (stack.item.to_string(), stack.count))
+            .collect();
+        assert_eq!(held, [("minecraft:potion".to_owned(), 1)]);
+
+        // 3. Aborting an enclosing transaction around `fluid_util::dispense_container` rolls back
+        //    both the world fluid pickup and the dispenser slot write (empty-slot remainder path).
+        for cell in game.world.block_entities.get_mut(&pos).unwrap().slots_mut() {
+            *cell = None;
+        }
+        set_front(game, "minecraft:water");
+        dispense_fixture::start_recording();
+        let aborted_slot = game.storage_transaction(|game, _| {
+            let mut answer = None;
+            let dim = game.dim.id();
+            let stack = ItemStack::new("minecraft:bucket", 3);
+            game.native_dispense_item(dim, DISPENSER, Direction::East, &stack, &mut answer);
+            assert!(answer.is_some());
+            // Tentatively visible inside the enclosing transaction.
+            assert_eq!(front(game), state(game, "minecraft:air"));
+            let tentative: Vec<_> = game
+                .world
+                .block_entities
+                .get(&pos)
+                .unwrap()
+                .slots()
+                .iter()
+                .flatten()
+                .map(|s| (s.item.to_string(), s.count))
+                .collect();
+            assert_eq!(tentative, [("minecraft:water_bucket".to_owned(), 1)]);
+            Err::<(), _>(())
+        });
+        let lines = dispense_fixture::stop_recording();
+        assert_eq!(aborted_slot, Err(()));
+        assert_eq!(front(game), state(game, "minecraft:water"));
+        assert!(
+            game.world
+                .block_entities
+                .get(&pos)
+                .unwrap()
+                .slots()
+                .iter()
+                .all(Option::is_none)
+        );
+        assert!(game.dropped.is_empty());
+        assert!(
+            lines.is_empty(),
+            "aborted tx must publish no events: {lines:?}"
+        );
+
+        // 4. Aborting an enclosing transaction on a full dispenser (overflow drop path) defers
+        //    and discards both the dropped remainder and its click/smoke/pickup events; committing
+        //    publishes them.
+        for cell in game.world.block_entities.get_mut(&pos).unwrap().slots_mut() {
+            *cell = Some(ItemStack::new("minecraft:stone", 64));
+        }
+        dispense_fixture::start_recording();
+        let aborted_drop = game.storage_transaction(|game, _| {
+            let mut answer = None;
+            let dim = game.dim.id();
+            let stack = ItemStack::new("minecraft:bucket", 3);
+            game.native_dispense_item(dim, DISPENSER, Direction::East, &stack, &mut answer);
+            assert!(answer.is_some());
+            assert!(game.dropped.is_empty(), "drop must wait for root commit");
+            Err::<(), _>(())
+        });
+        let lines = dispense_fixture::stop_recording();
+        assert_eq!(aborted_drop, Err(()));
+        assert_eq!(front(game), state(game, "minecraft:water"));
+        assert!(game.dropped.is_empty());
+        assert!(
+            lines.is_empty(),
+            "aborted overflow must publish no events: {lines:?}"
+        );
+
+        dispense_fixture::start_recording();
+        let committed_drop = game.storage_transaction(|game, _| {
+            let mut answer = None;
+            let dim = game.dim.id();
+            let stack = ItemStack::new("minecraft:bucket", 3);
+            game.native_dispense_item(dim, DISPENSER, Direction::East, &stack, &mut answer);
+            assert!(answer.is_some());
+            assert!(game.dropped.is_empty(), "drop waits until root commit");
+            Ok::<_, ()>(())
+        });
+        let lines = dispense_fixture::stop_recording();
+        assert_eq!(committed_drop, Ok(()));
+        assert_eq!(front(game), state(game, "minecraft:air"));
+        assert_eq!(game.dropped.len(), 1);
+        assert_eq!(&*game.dropped[0].stack.item, "minecraft:water_bucket");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.ends_with("minecraft:fluid_pickup")),
+            "{lines:?}"
+        );
+        assert!(
+            lines.iter().any(|line| line.starts_with("L 1000 ")),
+            "{lines:?}"
+        );
+        assert_eq!(game.live_scratch_count(), 0);
     });
 }

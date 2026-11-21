@@ -254,7 +254,12 @@ impl Game<'_> {
             ..stack.clone()
         };
         stack.count -= 1;
-        self.spawn_dispensed(pos, facing, one, 6);
+        self.after_commit(super::transactions::After::DispenserDrop {
+            pos,
+            facing,
+            stack: one,
+            play_events: false,
+        });
         (stack.count > 0).then_some(stack)
     }
     /// Drop one item as DefaultDispenseItemBehavior does. For a dispenser hook:
@@ -298,6 +303,24 @@ impl Game<'_> {
         }
         self.consume_with_remainder((pos[0], pos[1], pos[2]), facing, stack, remainder)
     }
+    /// `DefaultDispenseItemBehavior.addToInventoryOrDispense` for a mod's dispense helper, in the
+    /// level in place: refuses a client, another dimension or an unloaded chunk.
+    pub(super) fn dispense_add_remainder(
+        &mut self,
+        dimension: &str,
+        pos: [i32; 3],
+        facing: Direction,
+        remainder: ItemStack,
+    ) -> std::result::Result<(), mod_api::LevelWriteError> {
+        if !(self.serving.is_some() || self.options.dedicated.is_some())
+            || dimension != self.dim.id()
+            || !self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
+        {
+            return Err(mod_api::LevelWriteError::Unavailable);
+        }
+        self.add_to_inventory_or_dispense((pos[0], pos[1], pos[2]), facing, remainder);
+        Ok(())
+    }
     /// `new DefaultDispenseItemBehavior().dispense(..)` including its events.
     pub(super) fn dispense_default_in_level(
         &mut self,
@@ -309,6 +332,80 @@ impl Game<'_> {
         self.dispenser_event(CLICK, pos, 0);
         self.dispenser_event(2000, pos, data_value(facing));
         left
+    }
+    /// `DefaultDispenseItemBehavior.addToInventoryOrDispense`: inserts `remainder` into the
+    /// dispenser (`insertItem`) or drops what does not fit with the dispenser click and smoke.
+    /// Journals each slot write and defers dropped items and level events while a storage
+    /// transaction is open.
+    pub(super) fn add_to_inventory_or_dispense(
+        &mut self,
+        pos: Pos,
+        facing: Direction,
+        mut rest: ItemStack,
+    ) {
+        if rest.count == 0 {
+            return;
+        }
+        let max = self.containers().max_stack(&rest);
+        let slots = self
+            .world
+            .block_entities
+            .get(&pos)
+            .map_or(0, |entity| entity.slots().len());
+        let mut wrote = false;
+        for slot in 0..slots {
+            let room = self
+                .world
+                .block_entities
+                .get(&pos)
+                .and_then(|entity| entity.slots().get(slot))
+                .map_or(0, |existing| match existing {
+                    None => max,
+                    Some(item) if item.same_item_same_components(&rest) => {
+                        max.saturating_sub(item.count)
+                    }
+                    Some(_) => 0,
+                });
+            let n = rest.count.min(room);
+            if n == 0 {
+                continue;
+            }
+            self.journal_block_entity_slot(pos, slot);
+            if let Some(cell) = self
+                .world
+                .block_entities
+                .get_mut(&pos)
+                .and_then(|entity| entity.slot_mut(slot))
+            {
+                match cell {
+                    None => {
+                        *cell = Some(ItemStack {
+                            count: n,
+                            ..rest.clone()
+                        });
+                    }
+                    Some(e) => {
+                        e.count += n;
+                    }
+                }
+                rest.count -= n;
+                wrote = true;
+            }
+            if rest.count == 0 {
+                break;
+            }
+        }
+        if wrote && self.has_open_transaction() {
+            self.after_commit(super::transactions::After::Changed(pos));
+        }
+        if rest.count > 0 {
+            self.after_commit(super::transactions::After::DispenserDrop {
+                pos,
+                facing,
+                stack: rest,
+                play_events: true,
+            });
+        }
     }
     /// `DefaultDispenseItemBehavior.consumeWithRemainder`: the remainder goes
     /// into the dispenser (`insertItem`) or is dropped.
@@ -323,48 +420,7 @@ impl Game<'_> {
         if stack.count == 0 {
             return Some(remainder);
         }
-        let mut rest = remainder;
-        if let Some(entity) = self.world.block_entities.get_mut(&pos) {
-            let max = self
-                .res
-                .items()
-                .get(&rest.item)
-                .map_or(64, |i| i.max_stack)
-                .max(1);
-            for slot in 0..entity.slots().len() {
-                let existing = &entity.slots()[slot];
-                if existing
-                    .as_ref()
-                    .is_some_and(|item| !item.same_item_same_components(&rest))
-                {
-                    continue;
-                }
-                let cell = entity.slot_mut(slot).unwrap();
-                match cell {
-                    None => {
-                        let n = rest.count.min(max);
-                        *cell = Some(ItemStack {
-                            count: n,
-                            ..rest.clone()
-                        });
-                        rest.count -= n;
-                    }
-                    Some(e) => {
-                        let n = rest.count.min(max.saturating_sub(e.count));
-                        e.count += n;
-                        rest.count -= n;
-                    }
-                }
-                if rest.count == 0 {
-                    break;
-                }
-            }
-        }
-        if rest.count > 0 {
-            self.spawn_dispensed(pos, facing, rest, 6);
-            self.dispenser_event(CLICK, pos, 0);
-            self.dispenser_event(2000, pos, data_value(facing));
-        }
+        self.add_to_inventory_or_dispense(pos, facing, remainder);
         Some(stack)
     }
     /// `ItemStack.hurtAndBreak(amount)` without an entity.

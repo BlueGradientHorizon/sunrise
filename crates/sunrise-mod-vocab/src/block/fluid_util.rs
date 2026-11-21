@@ -10,7 +10,7 @@ use crate::content::resource::{Ends, move_once};
 use crate::{
     Capability, Direction, DispenseItemEvent, Dispensed, FLUIDS, FluidResource, FluidStack,
     GameEventContext, Hand, HostTransaction, ITEM_FLUIDS, ItemPlace, LevelRef, PlayerRef,
-    ResourceHandler, ServerHost, SoundSource, TransactionError,
+    ResourceHandler, ScratchError, ServerHost, SoundSource, TransactionError, backend_mut_of,
 };
 
 /// `FluidType.BUCKET_VOLUME`: what a source block holds, and what a placement takes.
@@ -256,12 +256,14 @@ pub fn try_place_fluid(
 /// ([`try_pickup_fluid`], its `FLUIDS` reached from the dispenser's side), and places a bucket
 /// of what it holds there ([`try_place_fluid`], unvalidated, as a bucket) only where nothing
 /// was picked up; the fluid's sound and game event go out as the transfer commits, before the
-/// dispenser's click and smoke. A single container is replaced in place; from a larger stack
-/// the slot keeps the rest and the changed container goes into the dispenser, else out of its
-/// front with a second click ([`dispense_with_remainder`](crate::prelude::ItemsServerHost::dispense_with_remainder)).
+/// dispenser's click and smoke. A single container is replaced in place (the first slot, else
+/// the second when the first was emptied); when both slots remain populated, the first slot
+/// stays in the dispenser slot and the second slot's remainder goes into the dispenser, else out
+/// of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
 /// Where neither moves anything, nothing is changed and one container is dispensed as it is
 /// ([`dispense_default`](crate::prelude::ItemsServerHost::dispense_default)). None, for vanilla
-/// to decide, only where the dispenser's level isn't open.
+/// to decide, where the dispenser's level isn't open, transactions are unavailable, or the
+/// stack fails scratch validation.
 pub fn dispense_container(
     host: &mut dyn ServerHost,
     event: &DispenseItemEvent<'_>,
@@ -272,23 +274,35 @@ pub fn dispense_container(
     let front = [x + dx, y + dy, z + dz];
     let side = Some(event.facing.opposite());
     let stack = event.stack.clone();
-    let moved = host.scratch_slots(stack.clone(), |host, _tx, copy| {
-        // The container's handler sees one container at a time, whatever the stack.
-        let one = ItemPlace::OneByOne(Box::new(copy.clone()));
-        let item = one.capability(host, &ITEM_FLUIDS).ok_or(())?;
-        let transferred = try_pickup_fluid(host, &item, None, level, front, side).is_some()
-            || try_place_fluid(host, &item, None, level, front, false).is_some();
-        transferred.then_some(()).ok_or(())
-    });
-    let left = match moved {
-        // The changed container went into the first slot: a single one, replaced in place.
-        Ok(((), (first, None))) => Ok(first),
-        Ok(((), (_, Some(changed)))) => {
-            host.dispense_with_remainder(event.dimension, event.pos, event.facing, stack, changed)
-        }
-        Err(_) => host.dispense_default(event.dimension, event.pos, event.facing, stack),
-    };
-    Some((left.ok()?, 1000))
+    let left = host
+        .transaction(|host, _tx| {
+            let moved = host.scratch_slots(stack.clone(), |host, _tx, copy| {
+                // The container's handler sees one container at a time, whatever the stack.
+                let one = ItemPlace::OneByOne(Box::new(copy.clone()));
+                let item = one.capability(host, &ITEM_FLUIDS).ok_or(())?;
+                let transferred = try_pickup_fluid(host, &item, None, level, front, side).is_some()
+                    || try_place_fluid(host, &item, None, level, front, false).is_some();
+                transferred.then_some(()).ok_or(())
+            });
+            match moved {
+                // The changed container went into the first slot: a single one, replaced in place.
+                Ok(((), (first, None))) => Ok(first),
+                Ok(((), (None, Some(changed)))) => Ok(Some(changed)),
+                Ok(((), (Some(first), Some(changed)))) => {
+                    backend_mut_of(host)
+                        .ok_or(())?
+                        .dispense_add_remainder(event.dimension, event.pos, event.facing, changed)
+                        .map_err(|_| ())?;
+                    Ok(Some(first))
+                }
+                Err(ScratchError::Aborted(())) => host
+                    .dispense_default(event.dimension, event.pos, event.facing, stack)
+                    .map_err(|_| ()),
+                Err(ScratchError::Unavailable | ScratchError::Stack(_)) => Err(()),
+            }
+        })
+        .ok()?;
+    Some((left, 1000))
 }
 
 /// `FluidUtil.getFirstStackContained`: what the fluid container at `place` holds at its first

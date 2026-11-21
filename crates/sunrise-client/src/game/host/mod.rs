@@ -5,7 +5,7 @@
 // The generated impls convert error types that are already equal; TODO(#2273): make the generator skip it.
 #![allow(clippy::useless_conversion, clippy::unit_arg)]
 use super::Game;
-use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEngine};
+use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEngine, TryIntoEnginePreservingCount};
 use mod_api::__private::game::*;
 use mod_api::*;
 
@@ -59,7 +59,7 @@ impl ServerHost for Game<'_> {
         let engine_stack = self
             .boundary_items()
             .ok_or(StackWriteError::Unavailable)
-            .and_then(|items| stack.try_into_engine(items))
+            .and_then(|items| stack.try_into_engine_preserving_count(items))
             .map_err(ScratchUnavailable::Stack)?;
         let taken = self.scratch_scope(
             Some(engine_stack.item.clone()),
@@ -87,7 +87,7 @@ impl ServerHost for Game<'_> {
         let engine_stack = self
             .boundary_items()
             .ok_or(StackWriteError::Unavailable)
-            .and_then(|items| stack.try_into_engine(items))
+            .and_then(|items| stack.try_into_engine_preserving_count(items))
             .map_err(ScratchUnavailable::Stack)?;
         let taken = self.scratch_scope(None, engine_stack, |game, tx, place| {
             callback(game, tx, place)

@@ -4,7 +4,12 @@ ids = [
     "type:ItemPlace.ScratchSlots",
     "type:ScratchSlot",
     "type:ScratchUnavailable",
+    "type:ScratchUnavailable.Transaction",
+    "type:ScratchUnavailable.Stack",
     "type:ScratchError",
+    "type:ScratchError.Unavailable",
+    "type:ScratchError.Stack",
+    "type:ScratchError.Aborted",
     "method:ServerHost::with_scratch_stack_scope",
     "method:ServerHost::with_scratch_slots_scope",
     "method:HostTransaction::scratch_stack",
@@ -14,7 +19,7 @@ ids = [
     "method:prelude::ItemsServerHost::scratch_slots",
     "method:prelude::ItemsServerHost::scratch_take_slots",
 ]
-why = "Scratch item places are now lent for one transaction scope instead of parked by ID across calls, following NeoForge 26.3's ItemAccess.forStack (StackItemAccess) and DispenseFluidContainer (ItemStacksResourceHandler(2) with ItemAccess.forHandlerIndex(handler, 0).oneByOne()). ItemsServerHost::scratch_stack, scratch_take, scratch_slots, and scratch_take_slots, the separate ItemPlace::ScratchSlots variant, and ItemPlace Wire tags 10 and 14 are removed. HostTransaction::scratch_stack and HostTransaction::scratch_slots open a scoped transaction (nested when one is already open), lend an opaque journal-bound ItemPlace::Scratch(ScratchSlot) that cannot cross Wire, restore lent slots before fallback when a nested transaction aborts, keep committed nested writes provisional until the enclosing scope commits, keep closed loans out of longer-lived outer journals, and publish the resulting stack or slot pair only on commit."
+why = "Scratch item places are now lent for one transaction scope instead of parked by ID across calls, following NeoForge 26.3's ItemAccess.forStack (StackItemAccess), ItemAccess.oneByOne (OneByOneItemAccess), and DispenseFluidContainer (ItemStacksResourceHandler(2) with ItemAccess.forHandlerIndex(handler, 0).oneByOne()). ItemsServerHost::scratch_stack, scratch_take, scratch_slots, and scratch_take_slots, the separate ItemPlace::ScratchSlots variant, and ItemPlace Wire tags 10 and 14 are removed. HostTransaction::scratch_stack and HostTransaction::scratch_slots open a scoped transaction (nested when one is already open), lend an opaque process-unique ItemPlace::Scratch(ScratchSlot) that cannot cross Wire, preserve oversized initial stack counts while capping subsequent inserts at the item's max stack size, restore lent slots before fallback when a nested transaction aborts, keep committed nested writes provisional until the enclosing scope commits, keep closed loans out of longer-lived outer journals, and publish the resulting stack or slot pair only on commit. ItemPlace::OneByOne now caps both inserts and extracts at one item, and fluid_util::dispense_container returns the actual final first and second slots while routing overflow remainders transactionally (and returning None on scratch unavailability or stack validation failure rather than dispensing the default item)."
 migrate = '''
 Import `mod_api::{HostTransaction, ScratchError, ServerHost}`.
 
@@ -46,9 +51,20 @@ let (value, (first, second)) = host.scratch_slots(stack, |host, tx, place| {
 })?;
 ```
 
-Handle `ScratchError<E>` from both methods: `ScratchError::Unavailable` when the host could not open a transaction (closure did not run), `ScratchError::Stack(StackWriteError)` when the initial stack failed write validation (closure did not run), and `ScratchError::Aborted(error)` when the closure returned `Err(error)` (writes rolled back and slots discarded).
+Handle `ScratchError<E>` from both methods:
+- `ScratchError::Unavailable` when the host could not open a transaction (closure did not run);
+- `ScratchError::Stack(StackWriteError)` when the initial stack failed write validation (e.g. `UnknownItem` or `InvalidMaximum`; oversized initial counts are preserved, and the closure did not run on error);
+- `ScratchError::Aborted(error)` when the closure returned `Err(error)` (writes rolled back and slots discarded).
 
 Update matches on `ItemPlace`: `ItemPlace::Scratch` now carries an opaque `ScratchSlot` instead of `u64`, `ItemPlace::ScratchSlots` is removed, and encoding `ItemPlace::Scratch` with `Wire` fails with `WireError::Invalid` (wire tags 10 and 14 are rejected with `WireError::Tag`). Do not retain or send lent scratch handles outside their callback scope.
 
-For a custom `ServerHost` test double that supports lent scratch slots, implement `ServerHost::with_scratch_stack_scope` and `ServerHost::with_scratch_slots_scope`, returning `Ok(Some(...))` on commit, `Ok(None)` on abort, or `Err(ScratchUnavailable)` when no transaction can open or the initial stack is invalid; the default implementations return `Err(ScratchUnavailable::Transaction(TransactionUnavailable))`.
+Note two related behavioural alignments:
+- `ItemPlace::OneByOne` now caps both `insert` and `extract` at 1 item per call (matching NeoForge's `OneByOneItemAccess`).
+- `fluid_util::dispense_container` preserves the actual final first and second scratch slots, routes overflow remainders transactionally inside the enclosing transaction, and returns `None` when transactions are unavailable or the initial stack fails scratch validation (falling back to `dispense_default` only when the transfer itself aborts).
+
+For a custom `ServerHost` test double that supports lent scratch slots, implement `ServerHost::with_scratch_stack_scope` and `ServerHost::with_scratch_slots_scope`:
+- return `Ok(Some(...))` when the callback commits,
+- return `Ok(None)` when the callback aborts,
+- return `Err(ScratchUnavailable::Transaction(TransactionUnavailable))` when no transaction can open (the default implementations return this), or
+- return `Err(ScratchUnavailable::Stack(error))` when the initial stack fails validation.
 '''
