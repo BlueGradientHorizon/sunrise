@@ -32,13 +32,19 @@ impl PartRegistrar {
             ($($field:ident),* $(,)?) => {{
                 $(let $field = self.$field.len();)*
                 move |registrar: &mut Self| {
-                    $(registrar.$field.truncate($field);)*
-                    registrar.block_entity_transforms = block_entity_transforms;
-                    registrar.parts = parts;
+                    let owner = registrar.mod_id;
+                    let rejected_parts = std::mem::replace(&mut registrar.parts, parts);
+                    let rejected_tags = std::mem::replace(&mut registrar.tags, tags);
+                    let rejected_transforms = std::mem::replace(
+                        &mut registrar.block_entity_transforms,
+                        block_entity_transforms,
+                    );
+                    let rejected_factories = std::mem::replace(
+                        &mut registrar.menu_screen_factories,
+                        menu_screen_factories,
+                    );
                     registrar.attachment_types = attachment_types;
-                    registrar.tags = tags;
                     *registrar.registry_keys.borrow_mut() = keys;
-                    registrar.menu_screen_factories = menu_screen_factories;
                     registrar.menu_recipe_books = menu_recipe_books;
                     registrar.menu_slot_exclusions = menu_slot_exclusions;
                     registrar.recipe_book_types = recipe_book_types;
@@ -46,6 +52,15 @@ impl PartRegistrar {
                     registrar.recipe_book_filters = recipe_book_filters;
                     registrar.registered = registered;
                     registrar.entity_selector_bytes = entity_selector_bytes;
+                    $(discard_startup_registrations(owner, registrar.$field.drain($field..));)*
+                    discard_startup_registrations(owner, rejected_tags.blocks);
+                    discard_startup_registrations(owner, rejected_tags.items);
+                    discard_startup_registrations(owner, rejected_transforms.into_values());
+                    discard_startup_registrations(
+                        owner,
+                        rejected_factories.into_values().flat_map(HashMap::into_values),
+                    );
+                    discard_rejected_parts(owner, rejected_parts);
                 }
             }};
         }
@@ -62,9 +77,12 @@ impl PartRegistrar {
             fluid_interactions,
             entity_attribute_modifications,
             attributes,
+            attribute_widenings,
             spawn_placements,
             entity_part_states,
             biome_regions,
+            biome_modifiers,
+            datapack_registries,
             controllers,
             arm_poses,
             structure_types,
@@ -80,9 +98,65 @@ impl PartRegistrar {
     }
 }
 
+/// The restored snapshot still holds the earlier mods' Arcs. Drop each rejected callback
+/// independently so a second destructor panic cannot unwind through the first one.
+fn discard_rejected_parts(owner: &'static str, parts: Parts) {
+    macro_rules! discard {
+        ($($values:expr),* $(,)?) => { $(discard_startup_registrations(owner, $values);)* };
+    }
+    discard!(
+        parts.blocks.into_values().flatten(),
+        parts.block_entities.into_values().flatten(),
+        parts.block_entity_kinds.into_values().flatten(),
+        parts.items.into_values().flatten(),
+        parts.client_item_uses.into_values(),
+        parts.menus.into_values().flatten(),
+        parts.effects.into_values().flatten(),
+        parts.fluids.into_values().flatten(),
+        parts.entities.into_values().flatten(),
+        parts
+            .capabilities
+            .into_values()
+            .flat_map(HashMap::into_values)
+            .flatten(),
+        parts
+            .block_capabilities
+            .into_values()
+            .flat_map(HashMap::into_values)
+            .flatten(),
+        parts.default_item_containers.into_values().flatten(),
+        parts
+            .item_capabilities
+            .into_values()
+            .flat_map(HashMap::into_values)
+            .flatten(),
+        parts
+            .entity_capabilities
+            .into_values()
+            .flat_map(HashMap::into_values)
+            .flatten(),
+        parts.place_providers.into_values(),
+        parts.tooltip_appenders,
+        parts.crash_sections,
+        parts.command_arguments,
+        parts.recipe_serializers.into_values(),
+        parts.entity_selectors,
+    );
+    if let Some(payloads) = parts.payloads.and_then(Arc::into_inner) {
+        for row in payloads.phases.into_iter().flat_map(HashMap::into_values) {
+            discard!(row.server, row.client);
+        }
+        discard!(payloads.raw.into_values().flatten());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{Hooks, ModEntry, Registrar, RegistrationContext};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     struct Callback;
     impl crate::BlockPart for Callback {
@@ -311,23 +385,47 @@ mod tests {
 
     #[test]
     fn panic_in_hooks_register_rolls_back_only_its_owner_and_queues_report() {
-        struct Panics(std::sync::Arc<std::sync::atomic::AtomicUsize>);
-        impl Hooks for Panics {
+        struct Batch(Option<Arc<AtomicUsize>>);
+        impl Hooks for Batch {
             fn subscribed(&self) -> &'static [Option<crate::HookId>] {
                 &[]
             }
-            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                r.declare_fluid("before");
-                r.declare_biome_region("aborted", region()).unwrap();
-                panic!("boom during registration");
+            fn register(&self, r: &mut dyn Registrar, cx: &RegistrationContext) {
+                r.declare_biome_modifier(
+                    "no_zombies",
+                    crate::BiomeModifier {
+                        biomes: vec!["minecraft:plains".into()],
+                        operation: crate::BiomeModifierOperation::RemoveSpawns {
+                            entity_types: vec!["minecraft:zombie".into()],
+                        },
+                    },
+                )
+                .unwrap();
+                r.declare_datapack_registry(
+                    "spell",
+                    crate::DatapackRegistrySync::Required,
+                    vec![crate::DatapackField::required(
+                        "power",
+                        crate::DatapackFieldKind::Int { min: 0, max: 100 },
+                    )],
+                )
+                .unwrap();
+                r.widen_attribute_bounds("minecraft:max_health", 1.0, 1000.0)
+                    .unwrap();
+                if let Some(calls) = &self.0 {
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    r.declare_fluid("before");
+                    r.declare_biome_region("aborted", region()).unwrap();
+                    panic!("boom during registration");
+                }
+                Healthy.register(r, cx);
             }
         }
-        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let calls = Arc::new(AtomicUsize::new(0));
         let mods: crate::Mods = vec![
-            ModEntry::new("healthy", Box::new(Healthy)),
-            ModEntry::new("broken", Box::new(Panics(calls.clone()))),
-            ModEntry::new("later", Box::new(Healthy)),
+            ModEntry::new("healthy", Box::new(Batch(None))),
+            ModEntry::new("broken", Box::new(Batch(Some(calls.clone())))),
+            ModEntry::new("later", Box::new(Batch(None))),
         ]
         .into();
         crate::testing::with_dispatch(mods, || {
@@ -342,12 +440,36 @@ mod tests {
                         .collect::<Vec<_>>(),
                     [("healthy", "healthy:kept", 5), ("later", "later:kept", 5)]
                 );
+                assert_eq!(
+                    registrar
+                        .biome_modifiers
+                        .iter()
+                        .map(|d| d.id.as_str())
+                        .collect::<Vec<_>>(),
+                    ["healthy:no_zombies", "later:no_zombies"]
+                );
+                assert_eq!(
+                    registrar
+                        .datapack_registries
+                        .iter()
+                        .map(|d| d.key.as_str())
+                        .collect::<Vec<_>>(),
+                    ["healthy:spell", "later:spell"]
+                );
+                assert_eq!(
+                    registrar
+                        .attribute_widenings
+                        .iter()
+                        .map(|d| d.mod_id.as_str())
+                        .collect::<Vec<_>>(),
+                    ["healthy", "later"]
+                );
                 let keys = registrar.registry_keys.borrow();
                 assert!(keys.declared_fluids.contains_key("healthy:soup"));
                 assert!(keys.declared_fluids.contains_key("later:soup"));
                 assert!(!keys.declared_fluids.contains_key("broken:before"));
             }
-            assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+            assert_eq!(calls.load(Ordering::Relaxed), 1);
             assert_eq!(
                 mod_vocab::__private::take_hook_panics(),
                 [mod_vocab::__private::HookPanicReport {
@@ -356,5 +478,102 @@ mod tests {
                 }]
             );
         });
+    }
+
+    #[test]
+    fn destructor_panics_in_rejected_parts_do_not_interrupt_registration() {
+        struct PanicsOnDrop(Arc<AtomicUsize>);
+        impl crate::BlockPart for PanicsOnDrop {
+            fn block_subscribed(&self) -> &'static [Option<crate::HookId>] {
+                &[]
+            }
+        }
+        impl Drop for PanicsOnDrop {
+            fn drop(&mut self) {
+                // Count independent drops without aborting the test binary if a regression
+                // drops a second Part while unwinding from the first.
+                if !std::thread::panicking() {
+                    self.0.fetch_add(1, Ordering::Relaxed);
+                    panic!("rejected Part's destructor panicked");
+                }
+            }
+        }
+        struct Broken(Arc<AtomicUsize>);
+        impl Hooks for Broken {
+            fn subscribed(&self) -> &'static [Option<crate::HookId>] {
+                &[]
+            }
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                for id in ["minecraft:stone", "minecraft:dirt"] {
+                    let block = r.block_key(id);
+                    r.block_part(block, PanicsOnDrop(self.0.clone()));
+                }
+                r.refuse("invalid setup");
+            }
+        }
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mods = vec![
+            ModEntry::new("broken", Box::new(Broken(drops.clone()))),
+            ModEntry::new("later", Box::new(Healthy)),
+        ];
+        crate::testing::with_dispatch(mods.into(), || {
+            let registrar = super::super::register_all(mod_vocab::__private::mods(), |_| false);
+            assert_eq!(drops.load(Ordering::Relaxed), 2);
+            assert!(registrar.parts.blocks.is_empty());
+            assert_eq!(
+                registrar.refused,
+                ["mod broken refused registration: invalid setup"]
+            );
+            assert_eq!(registrar.biome_regions[0].id, "later:kept");
+            assert_eq!(
+                mod_vocab::__private::take_hook_panics(),
+                [mod_vocab::__private::HookPanicReport {
+                    mod_id: "broken",
+                    hook: "register",
+                }]
+            );
+        });
+    }
+
+    #[test]
+    fn ordinary_refusals_are_reported_even_when_register_panics() {
+        thread_local! {
+            static REPORTS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+        }
+        struct RefusalLog;
+        impl log::Log for RefusalLog {
+            fn enabled(&self, meta: &log::Metadata<'_>) -> bool {
+                meta.level() == log::Level::Warn && meta.target().ends_with("parts::shared")
+            }
+            fn log(&self, record: &log::Record<'_>) {
+                if self.enabled(record.metadata()) {
+                    REPORTS.with_borrow_mut(|reports| reports.push(record.args().to_string()));
+                }
+            }
+            fn flush(&self) {}
+        }
+        struct RefusesThenPanics;
+        impl Hooks for RefusesThenPanics {
+            fn subscribed(&self) -> &'static [Option<crate::HookId>] {
+                &[]
+            }
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let _ = r.widen_attribute_bounds("unnamespaced", 0.0, 1.0);
+                r.refuse("configuration missing");
+                panic!("reject registration after both refusals");
+            }
+        }
+        log::set_logger(&RefusalLog).unwrap();
+        log::set_max_level(log::LevelFilter::Warn);
+        let mods = [ModEntry::new("refusing", Box::new(RefusesThenPanics))];
+        let registrar = super::super::register_all(&mods, |_| false);
+        assert!(registrar.refused.is_empty());
+        assert_eq!(
+            REPORTS.take(),
+            [
+                "mod refusing hook register refused: mod refusing attribute bounds of \"unnamespaced\": InvalidId",
+                "mod refusing hook register refused: configuration missing",
+            ]
+        );
     }
 }

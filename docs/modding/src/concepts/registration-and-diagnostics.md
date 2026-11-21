@@ -30,8 +30,9 @@ These reports are separate from the native block and item declaration errors des
 - All declarations from that registration are discarded, including declarations made before
   or after the call. Later declarations do not add secondary validation errors.
 - Other mods' declarations are unchanged.
-- Every refusal reason recorded during the callback is preserved verbatim and reported
-  together, including an empty reason.
+- Every refusal reason recorded during the callback is preserved verbatim and reported,
+  including an empty reason. If the callback later panics, Sunrise logs those reasons and
+  any already-recorded registration errors with the mod's ID before discarding its pending batch.
 
 ## Loading warnings
 
@@ -65,9 +66,12 @@ Game source without the required template is refused before mod staging with:
 “This game source has no native inventory entry template. Update Sunrise and rebuild the mods
 against this game.”
 
-A native hook panic stops the game. Its crash report and server-thread log identify
-`in native mod <id>, hook <hook>`, using the `sunrise-mod.toml` ID. Parts retain their registering
-mod's ID for startup errors and hook panics.
+A panic in `Hooks::register` disables that mod's registration callback for the session. The
+[shared panic report](hooks-and-the-host.md#failures-and-panics) names the mod and hook in the
+log and client error toast. Sunrise discards the callback's pending registrations, including
+biome modifiers, datapack registries, and attribute widenings, without undoing live writes outside
+a transaction. A panic while dropping a rejected Part uses the same report and does not stop
+the next mod from registering.
 
 ## Crash-report callbacks
 

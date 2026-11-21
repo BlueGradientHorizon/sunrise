@@ -302,12 +302,12 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
-                let config = ConfigFile {
+                let config = ConfigFile::from(mod_api::__private::built::ConfigFile {
                     mod_id: "fault".into(),
                     kind: Server,
                     file: "fault-server.toml".into(),
                     text: String::new(),
-                };
+                });
                 game.native_config_reloading(&config);
                 game.native_config_unloading(&config);
                 assert_eq!(game.setting("fault", "reload").as_deref(), Some("true"));

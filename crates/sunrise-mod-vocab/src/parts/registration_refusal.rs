@@ -126,11 +126,12 @@ impl LoadingMessage {
 pub trait DiagnosticsRegistrar {
     /// Refuse this mod's registration without panicking.
     ///
-    /// Every refusal reason recorded during the callback is preserved verbatim and reported
-    /// together, including an empty reason. All of this mod's declarations from the callback
-    /// are discarded, including declarations made before or after the call, without adding
-    /// secondary validation errors. Other mods' declarations are unchanged. Return from the
-    /// callback after refusing registration.
+    /// Every refusal reason recorded during the callback is preserved verbatim and reported,
+    /// including an empty reason. If the callback later panics, the reasons are logged with
+    /// the mod's ID before the pending batch is discarded. All of this mod's pending declarations
+    /// from the callback are discarded, including declarations made before or after the call,
+    /// without adding secondary validation errors. Other mods' declarations are unchanged.
+    /// Return from the callback after refusing registration.
     fn refuse(&mut self, reason: &str);
 
     /// Record a loading problem without refusing this mod (NeoForge's

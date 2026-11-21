@@ -444,12 +444,25 @@ impl<T> RegistrationMap<T> {
 /// mod's partial registrations and continue with remaining mods.
 pub(crate) fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
     // `register` is not a generated event; reserve one private slot in the same table.
-    let site = generated::HOOK_COUNT;
-    if installed().is_some_and(|installed| is_poisoned(installed, site, mod_id)) {
+    if installed().is_some_and(|installed| is_poisoned(installed, generated::HOOK_COUNT, mod_id)) {
         return false;
     }
+    contain_registration(mod_id, call)
+}
+
+/// Cleanup must run even after the panicking callback has already been disabled.
+pub(crate) fn discard_startup_registrations<T>(
+    mod_id: &'static str,
+    values: impl IntoIterator<Item = T>,
+) {
+    for value in values {
+        contain_registration(mod_id, || drop(value));
+    }
+}
+
+fn contain_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
     contain_callback(call, |payload| {
-        if poison(site, mod_id) {
+        if poison(generated::HOOK_COUNT, mod_id) {
             log_and_queue_panic("register", mod_id, payload);
         }
     })

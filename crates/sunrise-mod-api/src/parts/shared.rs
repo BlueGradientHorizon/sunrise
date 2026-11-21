@@ -250,13 +250,20 @@ pub(crate) fn register_all(
     for (index, hooks) in mod_vocab::__private::entered_registration(mods, "register").enumerate() {
         registrar.mod_id = mod_vocab::__private::parts_installation::mod_entry_id(&mods[index]);
         registrar.mod_index = index;
-        registrar.current_refusals.clear();
         registrar.current_warnings.clear();
+        let first_refusal = registrar.refused.len();
         let rollback = registrar.registration_checkpoint();
         let cx = mod_vocab::__private::game::bind_registration_context(&context, registrar.mod_id);
-        if !mod_vocab::__private::invoke_registration(registrar.mod_id, || {
+        let completed = mod_vocab::__private::invoke_registration(registrar.mod_id, || {
             hooks.register(&mut registrar, &cx);
-        }) {
+        });
+        let refusals = std::mem::take(&mut registrar.current_refusals);
+        if !completed {
+            // Report the failed batch's ordinary refusals without turning the contained
+            // panic into a fatal admission error for all the other registrations.
+            for reason in registrar.refused[first_refusal..].iter().chain(&refusals) {
+                log::warn!("mod {} hook register refused: {reason}", registrar.mod_id);
+            }
             rollback(&mut registrar);
             continue;
         }
@@ -264,7 +271,6 @@ pub(crate) fn register_all(
         if !warnings.is_empty() {
             registrar.warnings.push((registrar.mod_id, warnings));
         }
-        let refusals = std::mem::take(&mut registrar.current_refusals);
         if !refusals.is_empty() {
             rollback(&mut registrar);
             for reason in refusals {

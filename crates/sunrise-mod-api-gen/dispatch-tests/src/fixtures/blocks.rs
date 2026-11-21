@@ -37,6 +37,16 @@ mod stubs {
         }
     }
 }
+mod root {
+    mod __private {
+        pub(super) mod game {
+            use crate::tests::{Answered, DeclarationError};
+
+            pub(in crate::tests) type DeclarationListener<'a, D> =
+                dyn FnMut(&mut dyn FnMut(Answered<D>) -> Result<(), DeclarationError>) -> bool + 'a;
+        }
+    }
+}
 use stubs::declaration_ownership as parts;
 
 thread_local! {
@@ -73,9 +83,11 @@ fn block_dispatch_keeps_owner_context_and_valid_output() {
         },
         mod_id: "existing",
     }];
-    dispatch_blocks(&RegistrationContext("bootstrap"), &mut |block| {
-        blocks.push(block);
-        Ok(())
+    dispatch_blocks(&RegistrationContext("bootstrap"), |listener| {
+        assert!(listener(&mut |block| {
+            blocks.push(block);
+            Ok(())
+        }));
     });
     assert_eq!(
         blocks

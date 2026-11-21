@@ -118,6 +118,11 @@ pub fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
     crate::runtime::invoke_registration(mod_id, call)
 }
 
+/// Discard one startup batch's values independently under the owning `register` callback's policy.
+pub fn discard_startup_registrations<T>(mod_id: &'static str, values: impl IntoIterator<Item = T>) {
+    crate::runtime::discard_startup_registrations(mod_id, values);
+}
+
 /// Revision of the enabled mod set, for engine caches of hook answers.
 pub fn mods_switched() -> u64 {
     crate::runtime::mods_switched()
