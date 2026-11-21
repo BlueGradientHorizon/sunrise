@@ -189,6 +189,64 @@ pub(super) fn publish(
     Ok(())
 }
 
+/// Additional check and review work only for entries that submit stable binaries.
+pub(super) fn verify_binaries(
+    index: &mut Index,
+    files: &Path,
+    sdk_data: Option<&Path>,
+) -> Result<(), String> {
+    if index
+        .projects
+        .iter()
+        .flat_map(|p| &p.versions)
+        .any(|v| !v.native_binaries.is_empty())
+    {
+        publish(index, files, sdk_data)?;
+        check_binaries(index)?;
+    }
+    Ok(())
+}
+
+/// A verified binary supplies the exact build for an `exact` verdict. It cannot turn a
+/// known break (or missing SDK evidence) into a fit.
+pub(super) fn check_binaries(index: &Index) -> Result<(), String> {
+    let releases = index.releases.as_deref().unwrap_or_default();
+    let mut errors = Vec::new();
+    for project in &index.projects {
+        for version in &project.versions {
+            let commits: BTreeSet<_> = version
+                .native_binaries
+                .iter()
+                .map(|b| b.build.as_str())
+                .collect();
+            for commit in commits {
+                let at = |reason| {
+                    format!(
+                        "{} {}: native build {commit}: {reason}",
+                        project.id, version.version
+                    )
+                };
+                let verdict = releases
+                    .iter()
+                    .filter(|r| r.commit == commit)
+                    .find_map(|r| version.verdicts.get(&r.tag));
+                match verdict.map(|v| &v.fit) {
+                    Some(FitVerdict::Breaks { changed }) => {
+                        errors.push(at(format!("source does not fit: {}", changed.join(", "))))
+                    }
+                    None => errors.push(at("no stable fit verdict for this build".to_owned())),
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(super::lines(errors))
+    }
+}
+
 fn native<'a>(
     subject: &mut Option<PackageSubject>,
     baseline: &mut Option<Result<(), String>>,

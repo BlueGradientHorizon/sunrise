@@ -303,6 +303,9 @@ pub struct Version {
     pub requires: Vec<Requirement>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub native_binaries: Vec<NativeBinary>,
+    /// Refused optional binary rows from this index read, never written to schema 1.
+    #[serde(skip)]
+    pub native_binary_refusals: Vec<NativeBinaryRefusal>,
     pub file: File,
 }
 
@@ -333,7 +336,7 @@ pub enum FitVerdict {
     },
 }
 
-/// Registry-produced metadata; signature acceptance belongs to the binary verifier.
+/// An exact SDK host and the author-signed archive that the registry checked for it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeBinary {
@@ -342,24 +345,41 @@ pub struct NativeBinary {
     pub file: File,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeBinaryRefusal {
+    pub build: String,
+    pub target: String,
+    pub reason: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct NativeBinaryAbsent;
+pub enum NativeBinaryUnavailable<'a> {
+    Absent,
+    Refused(&'a str),
+}
 
 impl Version {
     fn fits_game(&self, game: &str) -> bool {
         self.game == game && self.capabilities.unknown().is_empty()
     }
 
-    /// Exact lookup only. Absence lets the caller prepare from source.
+    /// Exact lookup only. Absence or a named refusal lets the caller prepare from source.
     pub fn native_binary(
         &self,
         build: &str,
         target: &str,
-    ) -> Result<&NativeBinary, NativeBinaryAbsent> {
+    ) -> Result<&NativeBinary, NativeBinaryUnavailable<'_>> {
         self.native_binaries
             .iter()
             .find(|b| b.build == build && b.target == target)
-            .ok_or(NativeBinaryAbsent)
+            .ok_or_else(|| {
+                self.native_binary_refusals
+                    .iter()
+                    .find(|row| row.build == build && row.target == target)
+                    .map_or(NativeBinaryUnavailable::Absent, |row| {
+                        NativeBinaryUnavailable::Refused(&row.reason)
+                    })
+            })
     }
 }
 
@@ -503,35 +523,42 @@ impl Index {
                 head.schema
             ));
         }
-        // Only readers isolate malformed rows. Deserializing an Index directly stays strict.
-        #[derive(Deserialize)]
-        struct ReadIndex {
-            #[serde(flatten)]
-            index: Index,
-            #[serde(default)]
-            collections: Vec<serde_json::Value>,
+        let read: read::ReadIndex =
+            serde_json::from_str(text).map_err(|e| format!("mod index: {e}"))?;
+        Ok(read.validated(local_files))
+    }
+
+    /// Apply archive takedowns, then advertise only targets with an available record.
+    fn prune_native_binaries(&mut self) {
+        let mut builds: BTreeMap<&str, &str> = self
+            .releases
+            .iter()
+            .flatten()
+            .map(|release| (release.tag.as_str(), release.commit.as_str()))
+            .collect();
+        if let Some(nightly) = &self.nightly_build {
+            builds.insert("nightly", &nightly.commit);
         }
-        let ReadIndex {
-            mut index,
-            collections,
-        } = serde_json::from_str(text).map_err(|e| format!("mod index: {e}"))?;
-        for (position, row) in collections.into_iter().enumerate() {
-            let id = row
-                .get("id")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned)
-                .unwrap_or_else(|| format!("collections[{position}]"));
-            match serde_json::from_value(row) {
-                Ok(collection) => index.collections.push(collection),
-                Err(error) => index.left_out.push(LeftOut {
-                    id,
-                    version: None,
-                    reason: format!("invalid collection: {error}"),
-                }),
+        for project in &mut self.projects {
+            for version in &mut project.versions {
+                version.native_binaries.retain(|binary| {
+                    !self
+                        .revoked
+                        .iter()
+                        .any(|r| r.covers(&project.id, &binary.file.sha256))
+                });
+                for (release, verdict) in &mut version.verdicts {
+                    verdict.targets.retain(|target| {
+                        builds.get(release.as_str()).is_some_and(|build| {
+                            version
+                                .native_binaries
+                                .iter()
+                                .any(|binary| binary.build == *build && binary.target == *target)
+                        })
+                    });
+                }
             }
         }
-        index.keep_valid(local_files);
-        Ok(index)
     }
 
     /// Every rule a reader relies on: unique valid ids, at least one
@@ -563,6 +590,19 @@ impl Index {
                     return Err(format!("{} {}: empty or repeated version", p.id, v.version));
                 }
                 check_version(p, v, self.releases.as_deref(), local_files)?;
+                let mut pairs = std::collections::HashSet::new();
+                for binary in &v.native_binaries {
+                    let at = |e| {
+                        format!(
+                            "{} {}: native binary {} / {}: {e}",
+                            p.id, v.version, binary.build, binary.target
+                        )
+                    };
+                    if !pairs.insert((&binary.build, &binary.target)) {
+                        return Err(at("duplicate native build and target".to_owned()));
+                    }
+                    check_binary(p, binary, local_files).map_err(at)?;
+                }
                 self.check_requires(p, v)?;
             }
         }
@@ -831,8 +871,8 @@ fn check_project(p: &Project) -> Result<(), String> {
     Ok(())
 }
 
-/// A version's own rules: a name, a stable release that is in `releases` when the index lists
-/// them, valid native binaries, a plain file name with the kind's
+/// A source version's rules: a name, a stable release that is in `releases` when the index lists
+/// them, a plain file name with the kind's
 /// extension, an `https` address, a hex hash, a size in bounds and a signature as the project's
 /// key asks.
 fn check_version(
@@ -850,39 +890,6 @@ fn check_version(
     }
     find_release(releases, v.sunrise.as_deref()).map_err(at)?;
     dependencies::check_shape(p, v)?;
-    let mut pairs = std::collections::HashSet::new();
-    for b in &v.native_binaries {
-        if b.build.len() > MAX_NATIVE_BUILD
-            || b.build.bytes().any(|c| c.is_ascii_control())
-            || b.build.is_empty()
-            || b.build.trim() != b.build
-            || b.target.split('-').count() < 3
-            || !b
-                .target
-                .bytes()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"-_.".contains(&c))
-            || b.target.split('-').any(str::is_empty)
-        {
-            return Err(at("invalid native build or canonical target triple".into()));
-        }
-        if !pairs.insert((&b.build, &b.target)) {
-            return Err(at("duplicate native build and target".into()));
-        }
-        let f = &b.file;
-        if !plain_name(&f.name) || f.size == 0 || f.size > MAX_FILE {
-            return Err(at("invalid native binary file".into()));
-        }
-        if !(local_files && f.url.starts_with("file:///")) {
-            https(&f.url).map_err(at)?;
-        }
-        hex64(&f.sha256).map_err(at)?;
-        let signature = f
-            .signature
-            .as_deref()
-            .ok_or_else(|| at("native binary needs a signature".into()))?;
-        minisign_verify::Signature::decode(signature)
-            .map_err(|e| at(format!("native signature: {e}")))?;
-    }
     let f = &v.file;
     let extension_ok = p
         .kind
@@ -916,6 +923,34 @@ fn check_version(
         }
         (None, None) => {}
     }
+    Ok(())
+}
+
+fn check_binary(p: &Project, b: &NativeBinary, local_files: bool) -> Result<(), String> {
+    if p.kind != Kind::NativeMod || p.key.is_none() {
+        return Err("a native binary needs a native project and its signing key".into());
+    }
+    if b.build.len() > MAX_NATIVE_BUILD
+        || b.build.bytes().any(|c| c.is_ascii_control())
+        || b.build.is_empty()
+        || b.build.trim() != b.build
+        || !binary_target(&b.target)
+    {
+        return Err("invalid native build or canonical target triple".into());
+    }
+    let f = &b.file;
+    if !plain_name(&f.name) || f.size == 0 || f.size > MAX_FILE {
+        return Err("invalid native binary file".into());
+    }
+    if !(local_files && f.url.starts_with("file:///")) {
+        https(&f.url)?;
+    }
+    hex64(&f.sha256)?;
+    let signature = f
+        .signature
+        .as_deref()
+        .ok_or("native binary needs a signature")?;
+    minisign_verify::Signature::decode(signature).map_err(|e| format!("native signature: {e}"))?;
     Ok(())
 }
 
@@ -989,6 +1024,14 @@ fn plain_name(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"._-+".contains(&b))
 }
 
+fn binary_target(target: &str) -> bool {
+    target.split('-').count() >= 3
+        && target
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"-_.".contains(&c))
+        && target.split('-').all(|part| !part.is_empty())
+}
+
 /// The SHA-256 of a file, lowercase hex.
 pub fn sha256_file(path: &Path) -> Result<String, String> {
     let mut file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -1033,6 +1076,15 @@ pub fn verify_signature(key: &str, signature: &str, path: &Path) -> Result<(), S
     }
     verifier
         .finalize()
+        .map_err(|_| "the signature doesn't match the project's key".to_string())
+}
+
+fn verify_signature_bytes(key: &str, signature: &str, bytes: &[u8]) -> Result<(), String> {
+    let key =
+        minisign_verify::PublicKey::from_base64(key.trim()).map_err(|e| format!("key: {e}"))?;
+    let sig =
+        minisign_verify::Signature::decode(signature).map_err(|e| format!("signature: {e}"))?;
+    key.verify(bytes, &sig, false)
         .map_err(|_| "the signature doesn't match the project's key".to_string())
 }
 
@@ -1404,6 +1456,7 @@ pub use collections::{Collection, MAX_COLLECTION_MEMBERS, Member};
 mod dependencies;
 pub mod native;
 pub mod page;
+mod read;
 pub mod registry;
 pub mod resolve;
 #[cfg(test)]

@@ -14,10 +14,12 @@ use super::{
 };
 use crate::manifest::{parse_version, revision};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 
+pub mod builds;
 mod collections;
 pub use collections::{COLLECTIONS, CollectionEntry, review_collections};
 
@@ -189,6 +191,15 @@ pub fn valid_repo(repo: &str) -> bool {
 }
 
 impl Entry {
+    fn source_url(&self) -> Cow<'_, str> {
+        if self.source.is_empty()
+            && let Some(repo) = &self.repo
+        {
+            return Cow::Owned(format!("https://github.com/{repo}"));
+        }
+        Cow::Borrowed(&self.source)
+    }
+
     /// The entry with the repository's page filling what it leaves out.
     pub fn resolved(&self, page: &Page) -> Entry {
         let mut e = self.clone();
@@ -204,10 +215,8 @@ impl Entry {
         if e.authors.is_empty() {
             e.authors = page.authors.clone();
         }
-        if e.source.is_empty()
-            && let Some(repo) = &self.repo
-        {
-            e.source = format!("https://github.com/{repo}");
+        if let Cow::Owned(source) = self.source_url() {
+            e.source = source;
         }
         e
     }
@@ -316,7 +325,7 @@ fn owner_ids_error(owners: &[String], ids: &[u64]) -> Option<String> {
 #[serde(deny_unknown_fields)]
 pub struct EntryVersion {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub native_binaries: Vec<super::NativeBinary>,
+    pub builds: Vec<builds::BuildRow>,
     pub version: String,
     /// `YYYY-MM-DD`.
     pub published: String,
@@ -360,6 +369,8 @@ pub struct Sources<'a> {
     pub releases: Option<&'a [SunriseRelease]>,
     /// Nightly branch heads CI supplied, keyed by project ID.
     pub nightly: Option<&'a BTreeMap<String, NightlyMetadata>>,
+    /// Required when any written version has prebuilt assets.
+    pub binary_checks: Option<builds::Checks<'a>>,
 }
 
 /// Read the workflow's release list, adding the line from each validated tag.
@@ -727,14 +738,19 @@ pub fn project(entry: &Entry, src: &Sources) -> Result<Project, Vec<String>> {
         Some(_) => Cache::read(src.registry, &entry.id).map_err(|e| vec![e])?,
         None => Cache::default(),
     };
-    project_with_cache(entry, &cache, src)
+    project_with_cache(entry, &cache, src, &[])
 }
 
 fn has_versions(entry: &Entry, cache: Option<&Cache>) -> bool {
     !entry.versions.is_empty() || cache.is_some_and(|c| !c.versions.is_empty())
 }
 
-fn project_with_cache(entry: &Entry, cache: &Cache, src: &Sources) -> Result<Project, Vec<String>> {
+fn project_with_cache(
+    entry: &Entry,
+    cache: &Cache,
+    src: &Sources,
+    revoked: &[Revoked],
+) -> Result<Project, Vec<String>> {
     let entry = &entry.resolved(&cache.page);
     let no_versions = !has_versions(entry, Some(cache));
     let nightly_only = no_versions && entry.nightly.is_some();
@@ -767,7 +783,7 @@ fn project_with_cache(entry: &Entry, cache: &Cache, src: &Sources) -> Result<Pro
     }
     let mut versions = Vec::new();
     for v in &entry.versions {
-        match version(entry, v, src) {
+        match version(entry, v, src, revoked) {
             Ok(v) => versions.push(v),
             Err(e) => errors.push(format!("{id} {}: {e}", v.version)),
         }
@@ -879,10 +895,23 @@ impl EntryVersion {
     }
 }
 
-fn version(entry: &Entry, v: &EntryVersion, src: &Sources) -> Result<Version, String> {
+fn version(
+    entry: &Entry,
+    v: &EntryVersion,
+    src: &Sources,
+    revoked: &[Revoked],
+) -> Result<Version, String> {
     let release = v.release(src.releases)?;
     let url = format!("{}{}/{}", src.release, tag(&entry.id, &v.version), v.file);
-    version_at(entry, v, &src.files.join(&v.sha256), url, release)
+    version_at(
+        entry,
+        v,
+        &src.files.join(&v.sha256),
+        url,
+        release,
+        Some(src),
+        revoked,
+    )
 }
 
 /// A version of `entry` whose file is at `path` and is downloaded from `url`.
@@ -892,6 +921,8 @@ fn version_at(
     path: &Path,
     url: String,
     release: Option<&SunriseRelease>,
+    sources: Option<&Sources<'_>>,
+    revoked: &[Revoked],
 ) -> Result<Version, String> {
     if !plain_version(&v.version) {
         return Err("a version is letters, digits, '.', '-' and '_'".into());
@@ -918,7 +949,20 @@ fn version_at(
         (None, Some(_)) => return Err("signed, but the project has no key".into()),
         (None, None) => {}
     }
-    let facts = inspect(&entry.kind, path)?;
+    let source = if v.builds.is_empty() {
+        None
+    } else {
+        if entry.kind != Kind::NativeMod {
+            return Err("only a native mod may list builds".into());
+        }
+        let source = super::native::Bundle::read(path)?;
+        crate::Content::read(path, &source.manifest)?;
+        Some(source)
+    };
+    let facts = match &source {
+        Some(source) => source.facts(),
+        None => inspect(&entry.kind, path)?,
+    };
     if facts.id.as_ref().is_some_and(|id| *id != entry.id) {
         return Err(format!(
             "the file's id is {:?}, not {:?}",
@@ -946,10 +990,18 @@ fn version_at(
     if let Some(release) = release {
         facts.matches_release(release)?;
     }
+    let native_binaries = match &source {
+        Some(source) => {
+            let src = sources.ok_or("no registry inputs for build assets")?;
+            builds::verify(entry, v, source, release, src, revoked)?
+        }
+        None => Vec::new(),
+    };
     Ok(Version {
         sunrise: v.sunrise.clone(),
         verdicts: BTreeMap::new(),
-        native_binaries: v.native_binaries.clone(),
+        native_binaries,
+        native_binary_refusals: Vec::new(),
         version: v.version.clone(),
         published: v.published.clone(),
         changelog: v.changelog.clone(),
@@ -1025,7 +1077,7 @@ pub fn release_version(entry: &Entry, r: &Release, path: &Path) -> Result<Versio
     }
     let v = EntryVersion {
         sunrise: None,
-        native_binaries: Vec::new(),
+        builds: Vec::new(),
         game: facts.game.clone().unwrap_or_else(|| r.game.to_owned()),
         file: r.asset.to_owned(),
         sha256: super::sha256_file(path)?,
@@ -1041,7 +1093,7 @@ pub fn release_version(entry: &Entry, r: &Release, path: &Path) -> Result<Versio
         "https://github.com/{repo}/releases/download/{}/{}",
         r.tag, r.asset
     );
-    version_at(entry, &v, path, url, None)
+    version_at(entry, &v, path, url, None, None, &[])
 }
 
 /// A project's page file as it would fill `entry` (which names the repository): refused when it
@@ -1109,7 +1161,7 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
     errors.extend(checkout.check_unlisted());
     let empty = Cache::default();
     for (entry, cache) in checkout.listed() {
-        match project_with_cache(entry, cache.unwrap_or(&empty), src) {
+        match project_with_cache(entry, cache.unwrap_or(&empty), src, &checkout.revoked) {
             Ok(mut p) => {
                 // A takedown of the whole project covers its unreviewed source as well as its
                 // files; one that names a hash covers that file alone.
@@ -1128,7 +1180,7 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
         return Err(errors);
     }
     projects.sort_by(|a, b| a.id.cmp(&b.id));
-    Ok(Index {
+    let mut index = Index {
         schema: SCHEMA,
         generated: src.generated.clone(),
         projects,
@@ -1138,7 +1190,9 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
         collections,
         revoked: checkout.revoked.clone(),
         left_out: Vec::new(),
-    })
+    };
+    index.prune_native_binaries();
+    Ok(index)
 }
 
 /// What GitHub counts for the registry, gathered by its publish workflow (this crate makes no
@@ -1184,6 +1238,15 @@ fn github_repo(source: &str) -> Option<String> {
     (!owner.is_empty() && !repo.is_empty()).then(|| format!("{owner}/{repo}"))
 }
 
+/// The repository, tag and asset of a GitHub release download URL.
+fn github_release_asset(url: &str) -> Option<(&str, &str, &str)> {
+    let (repo, rest) = url
+        .strip_prefix("https://github.com/")?
+        .split_once("/releases/download/")?;
+    let (tag, asset) = rest.rsplit_once('/')?;
+    Some((repo, tag, asset))
+}
+
 /// Projects and collections use the same ownership test in registry review.
 fn owned_by(owners: &[String], author: &str) -> bool {
     owners
@@ -1199,8 +1262,12 @@ pub struct Review {
     /// What reviewers should look at: new projects, new owners or keys, a
     /// change by someone who isn't an owner.
     pub notes: Vec<String>,
+    /// Changes to collection membership or presentation.
+    pub collection_reviews: Vec<ReviewChange>,
     /// Changes to a project's Nightly source declaration.
     pub nightly_reviews: Vec<ReviewChange>,
+    /// New or changed binary build declarations. Routine is conditional on a passing check.
+    pub build_reviews: Vec<ReviewChange>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -1299,6 +1366,45 @@ pub fn check_screenshot_rule(base: &[Entry], head: &[Entry], registry: &Path) ->
     errors
 }
 
+/// Review the registry state on both sides of a pull request. A routine build append must
+/// be the only change, including to collections, takedowns and other project data.
+pub fn review_checkout(base: &Checkout, head: &Checkout, author: &str) -> Review {
+    let mut review = review_with_revoked(&base.entries, &head.entries, &head.revoked, author);
+    review.collection_reviews = review_collections(base, head, author);
+    if review
+        .build_reviews
+        .iter()
+        .any(|change| change.status == ReviewStatus::Routine)
+        && (!review.collection_reviews.is_empty()
+            || base.revoked != head.revoked
+            || base.caches != head.caches
+            || base.entries.iter().any(|entry| {
+                entry
+                    .icon
+                    .iter()
+                    .map(|name| (name, MAX_ICON))
+                    .chain(
+                        entry
+                            .screenshots
+                            .iter()
+                            .map(|name| (name, rules::MAX_SCREENSHOT)),
+                    )
+                    .any(|(name, limit)| {
+                        read_regular(&base.directory, Path::new(name), limit).ok()
+                            != read_regular(&head.directory, Path::new(name), limit).ok()
+                    })
+            }))
+    {
+        for change in &mut review.build_reviews {
+            if change.status == ReviewStatus::Routine {
+                change.status = ReviewStatus::ReviewRequired;
+                change.reason = "the checkout also changes other registry data".into();
+            }
+        }
+    }
+    review
+}
+
 /// Compares the entries of a pull request (`head`) with `main`'s (`base`):
 /// a published file never changes and is never removed (take it down in
 /// `revoked.toml`), a project's kind never changes, and changes by someone who
@@ -1318,8 +1424,19 @@ pub fn review_with_revoked(
     author: &str,
 ) -> Review {
     let mut r = Review::default();
+    let proposed: BTreeMap<_, _> = head
+        .iter()
+        .map(|entry| (entry.id.as_str(), entry))
+        .collect();
+    let one_project_changed = base.len() == head.len()
+        && base
+            .iter()
+            .filter(|entry| proposed.get(entry.id.as_str()).copied() != Some(*entry))
+            .take(2)
+            .count()
+            == 1;
     for old in base {
-        let Some(new) = head.iter().find(|e| e.id == old.id) else {
+        let Some(&new) = proposed.get(old.id.as_str()) else {
             r.errors.push(format!(
                 "{}: removed; take its files down in {REVOKED} instead",
                 old.id
@@ -1360,13 +1477,20 @@ pub fn review_with_revoked(
         if let Err(error) = check_kind(&old.id, &old.kind, &new.kind) {
             r.errors.push(error);
         }
+        let mut without_builds = None;
+        let mut only_appended = true;
         for v in &old.versions {
             let taken_down = || {
                 revoked
                     .iter()
                     .any(|t| t.id == old.id && t.sha256.as_deref() == Some(v.sha256.as_str()))
             };
-            match new.versions.iter().find(|w| w.version == v.version) {
+            match new
+                .versions
+                .iter()
+                .enumerate()
+                .find(|(_, w)| w.version == v.version)
+            {
                 None if taken_down() => r.notes.push(format!(
                     "{} {}: leaves the entry, taken down in {REVOKED}",
                     old.id, v.version
@@ -1375,16 +1499,62 @@ pub fn review_with_revoked(
                     "{} {}: removed; take it down in {REVOKED} instead",
                     old.id, v.version
                 )),
-                Some(w) if w.sha256 != v.sha256 || w.file != v.file => r.errors.push(format!(
-                    "{} {}: a published file never changes: publish a new version",
-                    old.id, v.version
-                )),
-                Some(w) if v.sunrise.is_some() && w.sunrise != v.sunrise => r.errors.push(format!(
-                    "{} {}: the stable release a published version names never changes: publish a new version",
-                    old.id, v.version
-                )),
-                Some(_) => {}
+                Some((position, w)) => {
+                    if w.sha256 != v.sha256
+                        || w.file != v.file
+                        || w.signature != v.signature
+                        || w.game != v.game
+                    {
+                        r.errors.push(format!(
+                            "{} {}: a published file never changes: publish a new version",
+                            old.id, v.version
+                        ));
+                    }
+                    if v.sunrise.is_some() && w.sunrise != v.sunrise {
+                        r.errors.push(format!(
+                            "{} {}: the stable release a published version names never changes: publish a new version",
+                            old.id, v.version
+                        ));
+                    }
+                    if w.builds != v.builds {
+                        if !w.builds.starts_with(&v.builds) {
+                            only_appended = false;
+                            r.errors.push(format!(
+                                "{} {}: published builds are append-only",
+                                old.id, v.version
+                            ));
+                        }
+                        without_builds.get_or_insert_with(|| new.clone()).versions[position]
+                            .builds
+                            .clone_from(&v.builds);
+                    }
+                }
             }
+        }
+        if let Some(without_builds) = without_builds {
+            let (status, reason) = if owner && only_appended && without_builds == *old {
+                if one_project_changed {
+                    (
+                        ReviewStatus::Routine,
+                        "an owner only appended builds to a published version",
+                    )
+                } else {
+                    (
+                        ReviewStatus::ReviewRequired,
+                        "the checkout also changes other projects",
+                    )
+                }
+            } else {
+                (
+                    ReviewStatus::ReviewRequired,
+                    "not an owner-only append of stable builds",
+                )
+            };
+            r.build_reviews.push(ReviewChange {
+                id: old.id.clone(),
+                status,
+                reason: reason.into(),
+            });
         }
         if new.repo != old.repo {
             r.notes.push(format!(

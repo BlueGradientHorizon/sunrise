@@ -151,6 +151,7 @@ impl Scratch {
             generated: "2026-10-24T18:00:00Z".into(),
             releases: None,
             nightly: None,
+            binary_checks: None,
         })
     }
 }
@@ -682,6 +683,7 @@ fn only_open_kinds_are_taken() {
         generated: String::new(),
         releases: None,
         nightly: None,
+        binary_checks: None,
     };
     for page in ["submit", "mine", "account", "policy"] {
         submit.id = page.into();
@@ -836,120 +838,195 @@ fn screenshots_and_caches_refuse_linked_ancestor_directories() {
     assert!(errors.iter().any(|e| e.contains("cozy.json")), "{errors:?}");
 }
 
+const STABLE_NATIVE: &str = include_str!("../../../tests/index/stable-native/schema-1.json");
+
 #[test]
-fn native_binaries_round_trip_and_exact_lookup() {
-    let scratch = Scratch::new("native-binaries");
-    let mut entry: Entry = toml::from_str(&hud_entry()).unwrap();
-    let v = &mut entry.versions[0];
-    let file = sample().project("coords_hud").unwrap().versions[0]
-        .file
-        .clone();
-    for (build, target) in [
-        ("build-a", "x86_64-unknown-linux-gnu"),
-        ("build-a", "aarch64-apple-darwin"),
-        ("build-b", "x86_64-unknown-linux-gnu"),
-        ("build-b", "aarch64-apple-darwin"),
+fn native_archive_records_keep_schema_one_and_exact_lookup() {
+    use super::super::NativeBinaryUnavailable;
+    let read = Index::parse(STABLE_NATIVE).unwrap();
+    assert!(read.left_out.is_empty(), "{:?}", read.left_out);
+    read.check().unwrap();
+    let v = &read.project("release_probe").unwrap().versions[0];
+    let commit = "b".repeat(40);
+    let server = v
+        .native_binary(&commit, "x86_64-unknown-linux-gnu-server")
+        .unwrap();
+    assert!(server.file.name.ends_with("-server.tar.xz"));
+    assert_eq!(
+        v.native_binary(&commit, "aarch64-apple-darwin"),
+        Err(NativeBinaryUnavailable::Absent)
+    );
+    assert!(read.project("independent").is_some());
+    assert_eq!(
+        Index::parse(&serde_json::to_string(&read).unwrap()).unwrap(),
+        read
+    );
+}
+
+#[test]
+fn invalid_optional_binaries_keep_the_source_and_its_dependents() {
+    use super::super::NativeBinaryUnavailable;
+    use serde_json::Value;
+    let original: Value = serde_json::from_str(STABLE_NATIVE).unwrap();
+    let path = "/projects/0/versions/0/native_binaries";
+    let commit = "b".repeat(40);
+    let client = "x86_64-unknown-linux-gnu";
+    let server = "x86_64-unknown-linux-gnu-server";
+    for kind in [
+        "missing signature",
+        "invalid signature",
+        "unknown field",
+        "duplicate",
     ] {
-        v.native_binaries.push(super::super::NativeBinary {
-            build: build.into(),
-            target: target.into(),
-            file: file.clone(),
-        });
-    }
-    scratch.write("mods/coords_hud.toml", &entry.to_toml().unwrap());
-    let index = scratch.build().unwrap();
-    assert_eq!(
-        index.project("coords_hud").unwrap().versions[0].native_binaries,
-        entry.versions[0].native_binaries
-    );
-    let text = serde_json::to_string(&index).unwrap();
-    let decoded = Index::parse(&text).unwrap();
-    let v = &decoded.project("coords_hud").unwrap().versions[0];
-    assert_eq!(v.native_binaries, entry.versions[0].native_binaries);
-    let mut repeated = entry.clone();
-    repeated.versions[0]
-        .native_binaries
-        .push(entry.versions[0].native_binaries[0].clone());
-    scratch.write("mods/coords_hud.toml", &repeated.to_toml().unwrap());
-    assert!(
-        scratch
-            .build()
-            .unwrap_err()
-            .iter()
-            .any(|e| e.contains("duplicate native"))
-    );
-    assert_eq!(
-        v.native_binary("build-b", "aarch64-apple-darwin")
-            .unwrap()
-            .build,
-        "build-b"
-    );
-    assert_eq!(
-        v.native_binary("build-c", "aarch64-apple-darwin"),
-        Err(super::super::NativeBinaryAbsent)
-    );
-    assert_eq!(
-        v.native_binary("build-a", "x86_64-pc-windows-msvc"),
-        Err(super::super::NativeBinaryAbsent)
-    );
-    let mut duplicate = decoded.clone();
-    let v = &mut duplicate
-        .projects
-        .iter_mut()
-        .find(|p| p.id == "coords_hud")
-        .unwrap()
-        .versions[0];
-    v.native_binaries.push(v.native_binaries[0].clone());
-    assert!(duplicate.check().unwrap_err().contains("duplicate native"));
-    for field in ["hash", "signature", "file", "target"] {
-        let mut bad = decoded.clone();
-        let b = &mut bad
-            .projects
-            .iter_mut()
-            .find(|p| p.id == "coords_hud")
-            .unwrap()
-            .versions[0]
-            .native_binaries[0];
-        match field {
-            "hash" => b.file.sha256 = "bad".into(),
-            "signature" => b.file.signature = Some("bad".into()),
-            "file" => b.file.name = "../bad".into(),
-            _ => b.target = "Linux".into(),
+        let mut bad = original.clone();
+        let rows = bad.pointer_mut(path).unwrap().as_array_mut().unwrap();
+        match kind {
+            "missing signature" => {
+                rows[0]["file"].as_object_mut().unwrap().remove("signature");
+            }
+            "invalid signature" => rows[0]["file"]["signature"] = "bad".into(),
+            "unknown field" => rows[0]["unexpected"] = "bad".into(),
+            "duplicate" => rows.push(rows[0].clone()),
+            _ => unreachable!(),
         }
-        assert!(bad.check().is_err(), "{field}");
+        let text = bad.to_string();
+        let read = Index::parse(&text).unwrap();
+        let source = read.project("release_probe").unwrap();
+        let version = read.installable(source, "26.3").unwrap();
+        assert_eq!(version.file.name, "release_probe-1.0.0.smod");
+        assert!(
+            matches!(version.native_binary(&commit, client), Err(NativeBinaryUnavailable::Refused(reason)) if reason.contains(client))
+        );
+        assert!(version.native_binary(&commit, server).is_ok());
+        assert_eq!(version.verdicts["26.3-0.1.1"].targets, [server]);
+        assert!(read.project("dependent").is_some());
+        assert!(read.left_out.iter().any(|row| row.reason.contains(client)));
+        assert!(
+            serde_json::from_str::<Index>(&text)
+                .and_then(|index| index.check().map_err(serde::de::Error::custom))
+                .is_err()
+        );
     }
+    let mut bad = original;
+    *bad.pointer_mut(path).unwrap() = Value::Bool(false);
+    let read = Index::parse(&bad.to_string()).unwrap();
+    let source = read.project("release_probe").unwrap();
+    let version = read.installable(source, "26.3").unwrap();
+    assert_eq!(version.file.name, "release_probe-1.0.0.smod");
+    assert!(version.native_binary(&commit, client).is_err());
+    assert!(version.native_binary(&commit, server).is_err());
+    assert!(
+        read.left_out
+            .iter()
+            .any(|row| row.id == source.id
+                && row.version.as_deref() == Some(version.version.as_str()))
+    );
+}
+
+#[test]
+fn duplicate_fields_refuse_only_the_affected_binary() {
+    // Add a second `size` to the first binary, leaving the server binary unchanged.
+    let original: serde_json::Value = serde_json::from_str(STABLE_NATIVE).unwrap();
+    let size = &original["projects"][0]["versions"][0]["native_binaries"][0]["file"]["size"];
+    let text = STABLE_NATIVE.replacen(
+        &format!("\"size\": {size},"),
+        &format!("\"size\": {size}, \"size\": {size},"),
+        1,
+    );
+    assert_ne!(text, STABLE_NATIVE);
+    let read = Index::parse(&text).unwrap();
+    let source = read.project("release_probe").unwrap();
+    let version = read.installable(source, "26.3").unwrap();
+    let commit = "b".repeat(40);
+    let client = "x86_64-unknown-linux-gnu";
+    let server = "x86_64-unknown-linux-gnu-server";
+    assert!(matches!(
+        version.native_binary(&commit, client),
+        Err(super::super::NativeBinaryUnavailable::Refused(_))
+    ));
+    assert!(version.native_binary(&commit, server).is_ok());
+    assert_eq!(version.verdicts["26.3-0.1.1"].targets, [server]);
+}
+
+#[test]
+fn reading_an_index_drops_the_taken_down_host_but_keeps_the_source() {
+    let commit = "b".repeat(40);
+    let client = "x86_64-unknown-linux-gnu";
+    let server = "x86_64-unknown-linux-gnu-server";
+    let mut old: Index = serde_json::from_str(STABLE_NATIVE).unwrap();
+    let original = &old.project("release_probe").unwrap().versions[0];
+    old.revoked.push(Revoked {
+        id: "release_probe".into(),
+        sha256: Some(
+            original
+                .native_binary(&commit, client)
+                .unwrap()
+                .file
+                .sha256
+                .clone(),
+        ),
+        reason: "Withdrawn test archive.".into(),
+        date: String::new(),
+    });
+    let read = Index::parse(&serde_json::to_string(&old).unwrap()).unwrap();
+    let source = read.project("release_probe").unwrap();
+    let version = read.installable(source, "26.3").unwrap();
+    assert_eq!(
+        version.file,
+        old.project(&source.id).unwrap().versions[0].file
+    );
+    assert!(version.native_binary(&commit, client).is_err());
+    assert!(version.native_binary(&commit, server).is_ok());
+    assert_eq!(version.verdicts["26.3-0.1.1"].targets, [server]);
 }
 
 #[test]
 fn native_binary_build_limits() {
-    let mut index = sample();
-    let version = &mut index
-        .projects
-        .iter_mut()
-        .find(|p| p.id == "coords_hud")
-        .unwrap()
-        .versions[0];
-    version.native_binaries.push(super::super::NativeBinary {
-        build: "a".repeat(128),
-        target: "x86_64-unknown-linux-gnu".into(),
-        file: version.file.clone(),
-    });
+    let mut index = Index::parse(STABLE_NATIVE).unwrap();
+    let version = &mut index.projects[0].versions[0];
+    version.native_binaries[0].build = "a".repeat(128);
     assert!(index.check().is_ok());
     for build in ["a".repeat(129), "build\nid".into()] {
         let mut bad = index.clone();
-        bad.projects
-            .iter_mut()
-            .find(|p| p.id == "coords_hud")
-            .unwrap()
-            .versions[0]
-            .native_binaries[0]
-            .build = build;
-        assert!(
-            bad.check()
-                .unwrap_err()
-                .contains("invalid native build or canonical target triple")
-        );
+        bad.projects[0].versions[0].native_binaries[0].build = build;
+        assert!(bad.check().unwrap_err().contains("invalid native build"));
     }
+}
+
+#[test]
+fn an_owner_can_append_a_build_but_not_change_signed_source_or_published_builds() {
+    let mut before: Entry = toml::from_str(&hud_entry()).unwrap();
+    before.versions[0].sunrise = Some("26.3-0.1.0".into());
+    let row = |release: &str| builds::BuildRow {
+        sunrise: release.into(),
+        binaries: format!(
+            "https://github.com/author/project/releases/download/v0.1.0/coords_hud-0.1.0+{release}.binaries.json"
+        ),
+        sha256: "a".repeat(64),
+        signature: String::new(),
+    };
+    before.versions[0].builds.push(row("26.3-0.1.0"));
+    let before = [before];
+    let mut after = before.clone();
+    after[0].versions[0].builds.push(row("26.3-0.1.1"));
+    let result = review(&before, &after, "Ludovic111");
+    assert!(result.errors.is_empty());
+    assert_eq!(result.build_reviews[0].status, ReviewStatus::Routine);
+    assert_eq!(
+        review(&before, &after, "stranger").build_reviews[0].status,
+        ReviewStatus::ReviewRequired
+    );
+    let mut mixed = after.clone();
+    mixed[0].summary.push_str(" Edited.");
+    assert_eq!(
+        review(&before, &mixed, "Ludovic111").build_reviews[0].status,
+        ReviewStatus::ReviewRequired
+    );
+    let mut replaced = after.clone();
+    replaced[0].versions[0].builds.remove(0);
+    assert!(review(&before, &replaced, "Ludovic111").errors[0].contains("append-only"));
+    after[0].versions[0].signature = Some("changed".into());
+    assert!(review(&before, &after, "Ludovic111").errors[0].contains("never changes"));
 }
 
 #[test]

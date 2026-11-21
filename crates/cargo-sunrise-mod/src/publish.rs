@@ -436,7 +436,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     let file = release_name(id, &release_version, "smod");
     let version = EntryVersion {
         sunrise: None,
-        native_binaries: Vec::new(),
+        builds: Vec::new(),
         version: release_version,
         published: today(),
         game: report
@@ -563,7 +563,7 @@ mod tests {
     fn row(version: &str) -> EntryVersion {
         EntryVersion {
             sunrise: None,
-            native_binaries: Vec::new(),
+            builds: Vec::new(),
             version: version.into(),
             published: "2026-11-18".into(),
             game: "26.3".into(),

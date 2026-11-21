@@ -1,6 +1,7 @@
 use std::io::{Cursor, Write};
 use sunrise_mod_package::index::{Index, resolve::RequestResult, sha256};
 
+mod builds;
 mod fit;
 
 /// A 320x180 PNG header: all the screenshot check reads of an image's size.

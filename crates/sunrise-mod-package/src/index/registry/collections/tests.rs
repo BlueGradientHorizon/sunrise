@@ -260,6 +260,7 @@ fn the_publisher_refuses_invalid_collection_links_and_selection() {
         generated: String::new(),
         releases: None,
         nightly: None,
+        binary_checks: None,
     });
     assert!(
         errors

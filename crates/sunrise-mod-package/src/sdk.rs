@@ -853,7 +853,7 @@ impl Index {
 
 /// The largest xz dictionary [`unpack`] decodes with: `xz -9`'s. The decoder's memory is this plus
 /// fixed buffers, whatever the archive holds; an archive asking for more is refused as damaged.
-#[cfg(feature = "prebuilt")]
+#[cfg(any(feature = "prebuilt", feature = "index"))]
 pub const DICTIONARY_LIMIT: usize = 64 << 20;
 
 /// The largest tar extension entry (a GNU long name or link, a PAX header) [`unpack`] reads.
