@@ -320,8 +320,6 @@ impl Hooks for Effects {
         r.block_entity_type("unsubscribed")
             .blocks(&[UNSUBSCRIBED_MACHINE])
             .build();
-        let machine = r.block_key(MACHINE);
-        r.block_part(machine, self.clone());
         let container_machine = r.block_key(CONTAINER_MACHINE);
         r.block_container(
             &container_machine,
