@@ -80,9 +80,16 @@ pub enum ConsumeEffect {
     RemoveEffects(Vec<String>),
     /// `TeleportRandomlyConsumeEffect`.
     TeleportRandomly(sunrise_world::teleport_consume::TeleportConsume),
-    PlaySound(String),
+    PlaySound(ConsumeSound),
     /// A mod's effect and its decode-time dispatch binding.
     Native(NativeConsumeEffect),
+}
+
+/// `SoundEvent.CODEC`: a registry reference or an inline event with its own range.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConsumeSound {
+    Registered(String),
+    Direct { id: String, range: Option<f32> },
 }
 
 // no wire: the callback binding is local to the installed native mods.
@@ -193,10 +200,23 @@ fn parse_consume_effect(
                     .unwrap_or(true),
             },
         )),
-        "play_sound" => effect
-            .get("sound")
-            .and_then(|s| s.as_str())
-            .map(|s| ConsumeEffect::PlaySound(s.to_string())),
+        "play_sound" => effect.get("sound").and_then(|sound| {
+            use sunrise_core::identifier::Identifier;
+            let holder = if let Some(id) = sound.as_str() {
+                ConsumeSound::Registered(Identifier::parse(id).ok()?.to_string())
+            } else {
+                ConsumeSound::Direct {
+                    id: Identifier::parse(sound.get("sound_id")?.as_str()?)
+                        .ok()?
+                        .to_string(),
+                    range: match sound.get("range") {
+                        Some(range) => Some(range.as_f64()? as f32),
+                        None => None,
+                    },
+                }
+            };
+            Some(ConsumeEffect::PlaySound(holder))
+        }),
         _ => None,
     })
 }

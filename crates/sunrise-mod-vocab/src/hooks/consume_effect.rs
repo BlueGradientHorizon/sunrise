@@ -7,8 +7,10 @@ pub trait Hooks {
     /// before consumption shrinks it, including components. `user` is the
     /// player or mob that started consuming this stack. The kind's subscriber
     /// is bound when the definition is decoded. Nested applications run in call
-    /// order, including another entry of the same kind. If the callback panics,
-    /// it is disabled for the session; later effects still run.
+    /// order, including another entry of the same kind. A panic in the callback
+    /// disables that callback for the session; later effects still run. An unwind
+    /// from engine work or another listener reached through a living-effect call
+    /// propagates instead, without disabling the calling consume callback.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_consume_effect",
         dispatch = "direct",

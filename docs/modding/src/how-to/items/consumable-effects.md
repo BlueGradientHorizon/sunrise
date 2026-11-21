@@ -8,7 +8,9 @@ type is `Result<Option<bool>, StackWriteError>`; handle stack-validation errors
 from `Err`. The following outcomes are inside `Ok`: `Some(true)` or
 `Some(false)` is the effect's result; `None` means the item, index or target is unavailable
 or the effect is unsupported. Mob random teleport, armor stands and dragons are not
-supported. Player random teleport uses the level random as normal.
+supported. Chance and random teleport use the target's own random stream, including when the
+engine swaps in a guest. `play_sound` accepts a registered id or a direct sound event
+(`{sound_id: "example:bell", range: 8.0}`); omitting `range` gives it the normal variable range.
 
 Mod-defined kinds dispatch through the ordinary `consume_effect` hook. For these
 kinds, `Some(true)` means the bound callback completed, not that it changed game

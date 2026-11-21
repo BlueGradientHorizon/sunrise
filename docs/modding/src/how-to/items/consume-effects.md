@@ -18,9 +18,11 @@ built-in effects; stack patches can change or remove the list.
 - You can apply effects, play sounds, teleport entities and drop items through the host.
 - Nested [`LivingRef::apply_consume_effect`](consumable-effects.md) calls run immediately,
   even for the same kind. If your effect can call itself, give that chain a stopping condition.
-- An unclaimed kind reports a missing callback when applied. A panic logs the mod's name,
-  queues the mod error toast and disables only that mod's consume-effect callback for the
-  rest of the session. The remaining built-in and other mods' effects still run.
+- An unclaimed kind reports a missing callback when applied. A panic in the consume callback
+  logs the mod's name, queues the mod error toast and disables only that callback for the rest
+  of the session. The remaining built-in and other mods' effects still run. An unwind from
+  delegated living-effect work, such as a different listener panicking during `add_effect`,
+  propagates instead: it does not disable the calling consume callback or resume this use.
 - Consumable and death protection payloads are decoded once for item definitions
   and stack component patches. The event borrows the retained payload. Player death
   protection uses this hook; mob death protection does not dispatch it.

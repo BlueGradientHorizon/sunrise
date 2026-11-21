@@ -1,7 +1,6 @@
 //! Finishing a consumable (`Consumable.onConsume` and the use remainder),
 //! its particles and sounds, and `TeleportRandomlyConsumeEffect` (chorus
-//! fruit) for players and foxes. The level random stands in for the player's
-//! own, as for every other player draw.
+//! fruit) for players and foxes, using the active consumer's random.
 use super::{Dim, Game};
 use crate::game::api_values::TryIntoApi;
 use crate::game::collision_source::Mover;
@@ -12,7 +11,9 @@ use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
 };
 use sunrise_core::{
-    geometry::Vec3, position::BlockPos, random::LegacyRandom, random::RandomSource,
+    geometry::Vec3,
+    position::BlockPos,
+    random::{EntityRandom, LegacyRandom, RandomSource},
 };
 use {
     sunrise_core::use_animation::UseAnimation,
@@ -70,7 +71,9 @@ impl Game<'_> {
         stack: &ItemStack,
         count: i32,
     ) {
-        let Ok(()) = consumable.emit(&mut Emitter(self), (), stack.clone(), count);
+        if self.player.is_some() {
+            let Ok(()) = consumable.emit(&mut Emitter(self), (), stack.clone(), count);
+        }
     }
     /// `LivingEntity.completeUsingItem` for a consumable: `Consumable.onConsume`,
     /// then `ItemStack.applyAfterUseComponentSideEffects`' use remainder.
@@ -86,20 +89,20 @@ impl Game<'_> {
         self.award_stat("used", &stack.item, 1);
         self.trigger_item("minecraft:consume_item", stack);
         // FoodProperties.onConsume, the player's one ConsumableListener.
-        if let Some((nutrition, saturation)) = sunrise_client::item_sync::food(stack, info.food) {
-            let at = self.feet();
-            let pitch = self.world.random.triangle_float(1.0, 0.4);
+        if let Some((nutrition, saturation)) = sunrise_client::item_sync::food(stack, info.food)
+            && let Some(player) = self.player.as_mut()
+        {
+            let at = Some([player.position.x, player.position.y, player.position.z]);
+            let pitch = player.random.triangle_float(1.0, 0.4);
             self.audio.play(&consumable.sound, at, 1.0, pitch);
-            if let Some(p) = self.player.as_mut() {
-                // FoodData.eat(nutrition, saturation)
-                let food = &mut p.health.food;
-                food.food = (food.food + nutrition as i32).clamp(0, 20);
-                food.saturation = (food.saturation + saturation).clamp(0.0, food.food as f32);
-            }
+            // FoodData.eat(nutrition, saturation)
+            let food = &mut player.health.food;
+            food.food = (food.food + nutrition as i32).clamp(0, 20);
+            food.saturation = (food.saturation + saturation).clamp(0.0, food.food as f32);
             // Mth.randomBetween(random, 0.9, 1.0)
-            let pitch = self.world.random.next_float() * (1.0f32 - 0.9f32) + 0.9;
+            let pitch = player.random.next_float() * (1.0f32 - 0.9f32) + 0.9;
             self.audio
-                .play("minecraft:entity.player.burp", self.feet(), 0.5, pitch);
+                .play("minecraft:entity.player.burp", at, 0.5, pitch);
         }
         // SuspiciousStewEffects.onConsume, a ConsumableListener: each entry is
         // added as a `MobEffectInstance(effect, duration)` (amplifier 0).
@@ -324,10 +327,8 @@ impl Game<'_> {
     }
 
     /// Specialized player drinks have already applied their built-in component listener.
-    pub(super) fn apply_drink_effects(&mut self, stack: &ItemStack) {
-        if let Some(consumable) = self.consumable(stack) {
-            self.apply_consumable_effects(stack, &consumable.effects, None);
-        }
+    pub(super) fn apply_drink_effects(&mut self, stack: &ItemStack, consumable: &ItemConsumable) {
+        self.apply_consumable_effects(stack, &consumable.effects, None);
     }
 
     /// A witch or trader applied its ordinary drink behavior during AI. The
@@ -593,9 +594,9 @@ impl EmissionWorld for Emitter<'_, '_> {
     type Stack = ItemStack;
     type Sound = String;
     type Random = ();
-    type Source = LegacyRandom;
-    fn random_source(&mut self, (): ()) -> &mut LegacyRandom {
-        &mut self.0.world.random
+    type Source = EntityRandom;
+    fn random_source(&mut self, (): ()) -> &mut EntityRandom {
+        &mut self.0.player.as_mut().expect("emitting player").random
     }
     /// `LivingEntity.spawnItemParticles`.
     fn spawn_item_particles(&mut self, stack: ItemStack, count: i32) -> Result<(), Infallible> {
@@ -638,15 +639,15 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
     type Error = Infallible;
     type Level = Dim;
     type Random = ();
-    type Source = LegacyRandom;
+    type Source = EntityRandom;
     fn position_field(&self) -> Vec3 {
         self.at()
     }
     fn get_random(&mut self) -> Result<(), Infallible> {
         Ok(())
     }
-    fn random_source(&mut self, (): ()) -> &mut LegacyRandom {
-        &mut self.0.world.random
+    fn random_source(&mut self, (): ()) -> &mut EntityRandom {
+        &mut self.0.player.as_mut().expect("teleporting player").random
     }
     fn min_y(&mut self, level: Dim) -> Result<i32, Infallible> {
         Ok(self.0.level_shapes.get(level.id()).min_y)
@@ -1036,7 +1037,7 @@ mod teleport_hook_tests {
 
                 // The source stack is explicit, even if the hand has since changed.
                 game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 1));
-                let mut expected_random = game.world.random.clone();
+                let mut expected_random = game.player.as_ref().unwrap().random.clone();
                 for _ in 0..3 {
                     expected_random.next_double();
                 }
@@ -1049,14 +1050,14 @@ mod teleport_hook_tests {
                 ));
                 assert_eq!(*heard.lock().unwrap(), [snapshot.clone(), snapshot]);
                 assert_eq!(
-                    game.world.random.next_long(),
+                    game.player.as_mut().unwrap().random.next_long(),
                     expected_random.next_long(),
                     "veto ends the effect after the first candidate's three draws"
                 );
                 assert_eq!(game.player.as_ref().unwrap().position, at);
 
                 moved.store(true, Ordering::SeqCst);
-                expected_random = game.world.random.clone();
+                expected_random = game.player.as_ref().unwrap().random.clone();
                 for _ in 0..3 {
                     expected_random.next_double();
                 }
@@ -1072,7 +1073,10 @@ mod teleport_hook_tests {
                     Vec3::new(3.0, 70.0, 3.0),
                     "a listener's direct move invalidates the consumption target"
                 );
-                assert_eq!(game.world.random.next_long(), expected_random.next_long());
+                assert_eq!(
+                    game.player.as_mut().unwrap().random.next_long(),
+                    expected_random.next_long()
+                );
             })
         });
     }

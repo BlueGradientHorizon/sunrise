@@ -247,6 +247,7 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
 /// opt out of generated conversion in either direction with `#[forward_api_inputs]` or
 /// `#[forward_api_output]` when the implementation accepts or returns the API types directly.
 /// Use `#[manual_handle]` for an inherent handle wrapper written by hand.
+/// A `#[delegate_engine]` forwarder runs engine work outside a retained caller's panic scope.
 #[proc_macro_attribute]
 pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
     let mut area = parse_macro_input!(input as syn::ItemTrait);
@@ -301,6 +302,7 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
                 && !attr.path().is_ident("forward_api_output")
                 && !attr.path().is_ident("decline_unavailable")
                 && !attr.path().is_ident("manual_handle")
+                && !attr.path().is_ident("delegate_engine")
         });
         method.default = Some(if decline {
             if !matches!(method.sig.output, syn::ReturnType::Default) {

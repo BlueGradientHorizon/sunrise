@@ -350,6 +350,7 @@ pub trait LivingBackendMut {
     /// normally. `None` means an unavailable
     /// item/index/target or an unsupported vanilla effect for that target.
     #[access(WorldOnly)]
+    #[delegate_engine]
     fn living_apply_consume_effect(
         &mut self,
         living: LivingRef,
@@ -368,6 +369,7 @@ pub trait LivingBackendMut {
     /// stand, the dragon, a stale handle or a client, or when the active
     /// instance did not change, as in vanilla's `addEffect`.
     #[access(WorldOnly)]
+    #[delegate_engine]
     fn living_add_effect(&mut self, living: LivingRef, effect: &ActiveEffect) -> bool;
     /// Side: server.
     /// `LivingEntity.removeEffect(effect)` the way its running out goes
@@ -379,6 +381,7 @@ pub trait LivingBackendMut {
     /// changes) when the entity has the effect not, before effect resolution, or for
     /// an armor stand, the dragon, a stale handle or a client.
     #[access(WorldOnly)]
+    #[delegate_engine]
     fn living_remove_effect(&mut self, living: LivingRef, effect: EffectKey) -> bool;
     /// Side: server.
     /// `LivingEntity.removeAllEffects()` the way their running out goes:
@@ -386,6 +389,7 @@ pub trait LivingBackendMut {
     /// them. False when the entity has none, or for an armor stand, the
     /// dragon, a stale handle or a client.
     #[access(WorldOnly)]
+    #[delegate_engine]
     fn living_remove_all_effects(&mut self, living: LivingRef) -> bool;
     /// Side: server.
     /// `LivingEntity.stopFallFlying`: clears the glide flag, so the glide's

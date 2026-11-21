@@ -1207,7 +1207,7 @@ fn profile_tag(p: &Profile) -> Tag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::items::ConsumeEffect;
+    use crate::items::{ConsumeEffect, ConsumeSound};
     use std::path::Path;
     use sunrise_core::use_animation::UseAnimation;
     use sunrise_protocol::registry::Ids;
@@ -1401,11 +1401,18 @@ mod tests {
         r.varint(2); // Drink
         r.varint(1); // Registered sound holder (id 0 + 1)
         r.bool(true); // particles
-        r.varint(2); // 2 effects
+        r.varint(4); // 4 effects
         r.varint(2); // ClearAllEffects (type 2)
+        r.varint(4); // PlaySound (type 4)
+        r.varint(0); // Direct sound holder
+        r.string("minecraft:test.inline");
+        r.bool(true); // Fixed range present
+        r.f32(3.5);
         r.varint(1); // RemoveEffects (type 1)
         r.varint(2); // holder set of 1 entry
         r.varint(0); // mob effect id 0
+        r.varint(4); // PlaySound again, this time a registry holder
+        r.varint(1);
         let consumable_bytes = r.data;
 
         let sounds = sunrise_protocol::registry::Ids::from_names(vec![
@@ -1427,8 +1434,48 @@ mod tests {
 
         let effects = vec![
             ConsumeEffect::ClearAllEffects,
+            ConsumeEffect::PlaySound(ConsumeSound::Direct {
+                id: "minecraft:test.inline".into(),
+                range: Some(3.5),
+            }),
             ConsumeEffect::RemoveEffects(vec!["minecraft:poison".into()]),
+            ConsumeEffect::PlaySound(ConsumeSound::Registered(
+                "minecraft:entity.generic.drink".into(),
+            )),
         ];
+
+        let mut saved = ItemStack::new("minecraft:honey_bottle", 1);
+        saved.data_mut().set_other(
+            "minecraft:consumable",
+            Some(Tag::compound([(
+                "on_consume_effects",
+                Tag::List(vec![
+                    Tag::compound([("type", Tag::String("minecraft:clear_all_effects".into()))]),
+                    Tag::compound([
+                        ("type", Tag::String("minecraft:play_sound".into())),
+                        (
+                            "sound",
+                            Tag::compound([
+                                ("sound_id", Tag::String("minecraft:test.inline".into())),
+                                ("range", Tag::Float(3.5f32.to_bits())),
+                            ]),
+                        ),
+                    ]),
+                    Tag::compound([
+                        ("type", Tag::String("minecraft:remove_effects".into())),
+                        ("effects", Tag::String("minecraft:poison".into())),
+                    ]),
+                    Tag::compound([
+                        ("type", Tag::String("minecraft:play_sound".into())),
+                        (
+                            "sound",
+                            Tag::String("minecraft:entity.generic.drink".into()),
+                        ),
+                    ]),
+                ]),
+            )])),
+        );
+        assert_eq!(saved.consumable(None).unwrap().effects, effects);
 
         // Creative client / network stack via from_network & components_tag
         let mut s = sunrise_protocol::item::Stack::new(0, 1);

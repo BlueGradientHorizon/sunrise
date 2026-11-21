@@ -671,7 +671,17 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                             "mod_api::__private::check_access({name:?}, mod_api::__private::LoadAccess::{level});"
                         )
                     };
-                    code.push_str(&format!("{sig} {{ {access} {setup} {call} }}\n"));
+                    if entry
+                        .attrs
+                        .iter()
+                        .any(|a| a.path().is_ident("delegate_engine"))
+                    {
+                        code.push_str(&format!(
+                            "{sig} {{ {access} {setup} mod_api::__private::game::CallbackOwner::call_engine(|| {{ {call} }}) }}\n"
+                        ));
+                    } else {
+                        code.push_str(&format!("{sig} {{ {access} {setup} {call} }}\n"));
+                    }
                 }
                 code.push_str("}\n");
             }

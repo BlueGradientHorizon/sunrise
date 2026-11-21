@@ -98,12 +98,34 @@ impl Game<'_> {
         // The outer capture comes back even when `f` panics (a native callback can), so later
         // feedback isn't trapped in this guest's capture. What the guest was already told still
         // reaches them before the panic goes on, after `as_guest` has restored the swap.
-        let (result, lines) = self.as_guest(conn, |game| {
-            let outer = game.chat_capture.replace(Vec::new());
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(game)));
-            let lines = std::mem::replace(&mut game.chat_capture, outer).unwrap_or_default();
-            (result, lines)
-        })?;
+        let (result, lines) = self.as_guest(conn, |game| game.capture_guest_messages(f))?;
+        self.send_guest_messages(conn, lines);
+        match result {
+            Ok(result) => self.lan.is_some().then_some(result),
+            Err(payload) => {
+                // `f`'s panic was caught inside the turn, which ended cleanly: record it here.
+                self.record_interrupted_turn(conn);
+                std::panic::resume_unwind(payload)
+            }
+        }
+    }
+
+    /// Restore the outer chat capture before the guest swap is unwound.
+    pub(in crate::game) fn capture_guest_messages<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> (std::thread::Result<R>, Vec<sunrise_client::text::Text>) {
+        let outer = self.chat_capture.replace(Vec::new());
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self)));
+        let lines = std::mem::replace(&mut self.chat_capture, outer).unwrap_or_default();
+        (result, lines)
+    }
+
+    pub(in crate::game) fn send_guest_messages(
+        &self,
+        conn: u32,
+        lines: Vec<sunrise_client::text::Text>,
+    ) {
         if let Some(host) = self.lan.as_ref() {
             for line in lines {
                 host.hub.send_to(
@@ -113,14 +135,6 @@ impl Game<'_> {
                         overlay: false,
                     }),
                 );
-            }
-        }
-        match result {
-            Ok(result) => self.lan.is_some().then_some(result),
-            Err(payload) => {
-                // `f`'s panic was caught inside the turn, which ended cleanly: record it here.
-                self.record_interrupted_turn(conn);
-                std::panic::resume_unwind(payload)
             }
         }
     }
