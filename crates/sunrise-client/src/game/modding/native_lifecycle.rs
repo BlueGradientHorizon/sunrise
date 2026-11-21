@@ -724,92 +724,69 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks() {
+    fn a_scheduled_transaction_refusal_rolls_back_without_disabling_later_tasks() {
         use crate::game::native_entity_refs::tests::run_fresh_cases;
-        use mod_api::{__private::enter, ObjectiveRenderType, Text};
-        use std::{
-            cell::Cell,
-            panic::{AssertUnwindSafe, catch_unwind},
-            rc::Rc,
-            sync::Mutex,
+        use mod_api::{
+            __private::enter, HostTransaction, ObjectiveError, ObjectiveRenderType, Text,
         };
 
         if run_fresh_cases(
-            "game::native_lifecycle::tests::a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks",
-            "SUNRISE_SCHEDULED_PHASE_REFUSAL_CHILD",
-            &["repeated"],
+            "game::native_lifecycle::tests::a_scheduled_transaction_refusal_rolls_back_without_disabling_later_tasks",
+            "SUNRISE_SCHEDULED_TRANSACTION_REFUSAL_CHILD",
+            &["refused"],
         ) {
             return;
         }
 
         const OWNER: &str = "task_owner";
-        struct RefusalLog(Mutex<Vec<String>>);
-        impl log::Log for RefusalLog {
-            fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-                metadata.level() == log::Level::Warn
-            }
-            fn log(&self, record: &log::Record<'_>) {
-                if !self.enabled(record.metadata()) {
-                    return;
-                }
-                let message = record.args().to_string();
-                if message.contains("mod API objective is unavailable during Setup") {
-                    self.0.lock().unwrap().push(message);
-                }
-            }
-            fn flush(&self) {}
-        }
-        static LOG: RefusalLog = RefusalLog(Mutex::new(Vec::new()));
-        log::set_logger(&LOG).unwrap();
-        log::set_max_level(log::LevelFilter::Warn);
-
         let mods = vec![ModEntry::new(OWNER, Box::new(TaskOwner))];
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
                 game.native_lifecycle_server_tick_start(true);
-                let refused = Rc::new(Cell::new(0));
-                let later = Rc::new(Cell::new(false));
                 {
                     let host: &mut dyn ServerHost = game;
                     let _owner = enter(OWNER, "schedule fixture");
-                    for (name, swallows_refusal) in
-                        [("refused_first", false), ("refused_second", true)]
-                    {
-                        let refused = Rc::clone(&refused);
-                        host.schedule_task(
-                            0,
-                            Box::new(move |host| {
-                                host.add_objective(
-                                    name,
-                                    "dummy",
-                                    Text::literal("Refused"),
-                                    ObjectiveRenderType::Integer,
-                                )
-                                .unwrap();
-                                refused.set(refused.get() + 1);
-
-                                if swallows_refusal {
-                                    let _ = catch_unwind(AssertUnwindSafe(|| host.objective(name)));
-                                } else {
-                                    let _ = host.objective(name);
+                    host.schedule_task(
+                        0,
+                        Box::new(|host| {
+                            let result: Result<(), ObjectiveError> = host.transaction(|host, _| {
+                                // The second write refuses the duplicate, rolling back the first.
+                                for _ in 0..2 {
+                                    host.add_objective(
+                                        "discarded",
+                                        "dummy",
+                                        Text::literal("Discarded"),
+                                        ObjectiveRenderType::Integer,
+                                    )?;
                                 }
-                            }),
-                        )
-                        .unwrap();
-                    }
-                    let later = Rc::clone(&later);
-                    host.schedule_task(0, Box::new(move |_| later.set(true)))
-                        .unwrap();
+                                Ok(())
+                            });
+                            assert_eq!(result, Err(ObjectiveError::NameTaken));
+                        }),
+                    )
+                    .unwrap();
+                    host.schedule_task(
+                        0,
+                        Box::new(|host| {
+                            assert!(host.objective("discarded").is_none());
+                            host.add_objective(
+                                "kept",
+                                "dummy",
+                                Text::literal("Kept"),
+                                ObjectiveRenderType::Integer,
+                            )
+                            .unwrap();
+                        }),
+                    )
+                    .unwrap();
                 }
                 game.native_lifecycle_server_tick_end(false);
-                assert_eq!(refused.get(), 2, "both calls reached the refusal");
-                assert!(game.objective("refused_first").is_none());
-                assert!(game.objective("refused_second").is_none());
-                assert!(later.get(), "a refusal disabled the owner's next task");
-                let log = LOG.0.lock().unwrap();
-                assert_eq!(log.len(), 2, "each refusal must be reported: {log:?}");
-                assert!(log.iter().all(|line| line.contains(OWNER)), "{log:?}");
+                assert!(game.objective("discarded").is_none());
+                assert!(
+                    game.objective("kept").is_some(),
+                    "the owner's next task did not commit"
+                );
             });
         });
     }
