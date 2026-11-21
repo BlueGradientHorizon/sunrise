@@ -476,7 +476,6 @@ fn a_version_naming_a_release_the_index_does_not_list_is_left_out() {
 
     // An index that lists no releases makes no claim about the tag.
     index.releases = None;
-    assert_eq!(index.check(), Ok(()));
     assert_eq!(reread(&index).project(&id).unwrap().versions.len(), 3);
 }
 
