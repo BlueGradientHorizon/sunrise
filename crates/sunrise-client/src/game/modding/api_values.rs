@@ -1294,14 +1294,19 @@ impl super::Game<'_> {
         if let StackResult::Set(output) = edits.output
             && output != vanilla_output
         {
-            let Ok(output) = output.try_into_engine(self.items()) else {
-                *result = Default::default();
-                return;
-            };
-            result.only_renaming &= result.result == output;
-            result.result = output;
+            match output.try_into_engine(self.items()) {
+                Ok(output) => {
+                    result.only_renaming &= result.result == output;
+                    result.result = output;
+                }
+                Err(err) => {
+                    log::warn!(
+                        "anvil_update: ignoring invalid output replacement at {pos:?}: {err:?}"
+                    );
+                }
+            }
         }
-        result.cost = edits.xp_cost;
+        result.cost = edits.xp_cost.max(0);
         result.repair_item_count_cost = edits.material_cost.max(0) as u32;
     }
     pub(in crate::game) fn api_grindstone_place(

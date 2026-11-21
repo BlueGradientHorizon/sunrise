@@ -2,13 +2,17 @@
 
 pub trait Hooks {
     /// An anvil at `pos` made vanilla's result with a left input, for
-    /// `player` (UUID) and `player_entity_id` (`AnvilUpdateEvent`, after
-    /// `AnvilMenu.createResult`), whenever an input or the name changed:
-    /// `inputs` lends the stacks, rename text and vanilla result; `edits`
-    /// starts with `Keep` and vanilla's costs. Set an output or edit the
-    /// costs without changing the inputs. Cancellation or an invalid
-    /// replacement clears the result and both costs. Both sides: the
-    /// server's menu and a server's client menu with the local player.
+    /// `player` (UUID) and `player_entity_id` (`AnvilUpdateEvent`, matching
+    /// NeoForge `AnvilMenu.createResult` / `CommonHooks.onAnvilUpdate`), live
+    /// on every `createResult` with no answer cache: `inputs` lends the
+    /// stacks, rename text and vanilla result; `edits` starts with `Keep` and
+    /// vanilla's costs. Set an output or edit the costs without changing the
+    /// inputs. Cancellation clears the result and both costs. An invalid
+    /// replacement output is logged and ignored (keeping vanilla's output while
+    /// still applying the cost edits). `edits.xp_cost` stays signed during
+    /// listener dispatch and clamps to `0` when applied (`AnvilMenu.setCost`).
+    /// Both sides: the server's menu and a server's client menu with the local
+    /// player.
     #[hook(
         dispatch = "flat",
         side = "both",

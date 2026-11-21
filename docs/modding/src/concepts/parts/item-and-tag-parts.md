@@ -312,22 +312,25 @@ and any listener writes while skipping experience, level event 1042 and input re
 panicking listener is caught so it cannot unwind across the turn and leaves vanilla/initial
 behavior.
 
-After the anvil calculates a result with a left input, `anvil_update` lends
-`event.inputs` on both sides: the left and optional right stacks, the optional rename text
-and vanilla's output and costs. Read those values without cloning; they don't change as
-listeners edit `event.edits`. Leave `edits.output` at `StackResult::Keep` to use vanilla's
-output, use `StackResult::Set(Some(stack))` to replace it, or use `StackResult::Set(None)`
-to clear it. To read the current answer, match on `&event.edits.output`: use
-`event.inputs.vanilla_output` for `Keep` and `stack.as_ref()` for `Set(stack)`. The level
-and material costs start at vanilla's values. Changing only the costs doesn't revalidate
-vanilla's stack. Cancellation or an invalid replacement clears the output and both costs.
+After the anvil calculates a result with a left input, `anvil_update` fires live on both
+sides (with no answer cache) and lends `event.inputs`: the left and optional right stacks,
+the optional rename text and vanilla's output and costs. Read those values without cloning;
+they don't change as listeners edit `event.edits`. Leave `edits.output` at
+`StackResult::Keep` to use vanilla's output, use `StackResult::Set(Some(stack))` to replace
+it, or use `StackResult::Set(None)` to clear it. To read the current answer, match on
+`&event.edits.output`: use `event.inputs.vanilla_output` for `Keep` and `stack.as_ref()` for
+`Set(stack)`. The level and material costs start at vanilla's values (`xp_cost` stays signed
+across listeners and clamps to `0` when applied, matching NeoForge `AnvilMenu.setCost`).
+Changing only the costs doesn't revalidate vanilla's stack. Cancellation clears the output
+and both costs; an invalid replacement output is logged and ignored, keeping vanilla's
+output while still applying the cost edits.
 
 The server's `anvil_craft_pre` and `anvil_craft_post` both borrow the same pre-take snapshot
 through `event.inputs` (`AnvilCraftInputs<'_>`). Read the optional stacks through `inputs.left`
 and `inputs.right`, and the taken result through `inputs.output`. Set `event.cancelled` or
-return `Flow::Cancel` in Pre to veto the whole take: the result stays in the slot, the inputs,
-cursor, inventory and levels do not change, and Post is skipped. Post runs after the inputs
-are consumed, levels are charged and anvil wear is applied.
+return `Flow::Cancel` in Pre to return early before charging levels, consuming inputs,
+applying anvil wear and firing Post, without undoing the click's item move (matching
+NeoForge `AnvilMenu.onTake`). Post runs after those effects.
 
 These input views are valid only during the callback. Clone an individual stack only if you
 need to keep it afterwards. The input views and staged edits are not Wire records.

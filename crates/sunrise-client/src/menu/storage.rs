@@ -186,8 +186,8 @@ pub struct State {
     pub combined: bool,
     /// The caller fires `AnvilCraftEvent.Pre` for a taken anvil result: its
     /// `onTake` waits in `anvil_craft` for the caller to run `anvil_take`, or
-    /// to refuse the take with `anvil_cancel` (from an `anvil_undo` made
-    /// before the click).
+    /// on cancel to skip `anvil_take` and `anvil_craft_post` (matching NeoForge
+    /// `AnvilMenu.onTake` returning early without undoing the item move).
     pub anvil_hook: bool,
     /// The anvil result taken while `anvil_hook` is set, as it was before
     /// crafting.

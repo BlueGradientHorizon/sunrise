@@ -149,12 +149,7 @@ pub(in crate::game) struct GuestMenuEffects {
 
 impl GuestMenuEffects {
     fn take(menu: &mut Menu) -> Self {
-        // An anvil result waits for AnvilCraftEvent.Pre; lan_station_op throws or refuses its drops.
-        let dropped = if menu.anvil_craft.is_some() {
-            Vec::new()
-        } else {
-            std::mem::take(&mut menu.dropped)
-        };
+        let dropped = std::mem::take(&mut menu.dropped);
         menu.drops.clear();
         Self {
             dropped,

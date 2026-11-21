@@ -318,9 +318,6 @@ pub(super) struct Station {
     anvil_last: Option<ItemStack>,
     /// Anvil on a server: the name last sent (the client menu's `itemName`).
     pub(super) anvil_sent: Option<String>,
-    /// Anvil on a server: the inputs and name the client's
-    /// `AnvilUpdateEvent` was last asked about, and the result it left.
-    anvil_answer: Option<(Vec<Option<ItemStack>>, String, AnvilResult)>,
     pub(super) last_sound: u64,
     /// Villager trading state.
     pub(super) merchant: Option<Box<super::trading::MerchantState>>,
@@ -354,7 +351,6 @@ impl Station {
             scrolling: false,
             anvil_last: None,
             anvil_sent: None,
-            anvil_answer: None,
             last_sound: 0,
             merchant: None,
             beacon: [None; 2],
@@ -654,29 +650,21 @@ impl Game<'_> {
             None => String::new(),
         }
     }
-    /// Apply the client anvil hook once for each input and name combination.
-    fn update_anvil_answer(&mut self, s: &mut Station, name: String) {
+    /// Apply the client anvil hook after vanilla `createResult`.
+    fn update_anvil_answer(&mut self, s: &mut Station, name: &str) {
         if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
             return;
         }
-        let Some(left) = s.inputs[0].as_ref() else {
+        let Some(left) = s.inputs.first().and_then(Option::as_ref) else {
             return;
         };
-        match &s.anvil_answer {
-            Some((inputs, asked, answer)) if *inputs == s.inputs && *asked == name => {
-                s.anvil = answer.clone();
-            }
-            _ => {
-                let inputs = crate::menu::AnvilUpdateInputs {
-                    left,
-                    right: s.inputs[1].as_ref(),
-                    name: Some(&name),
-                };
-                let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
-                self.api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
-                s.anvil_answer = Some((s.inputs.clone(), name, s.anvil.clone()));
-            }
-        }
+        let inputs = crate::menu::AnvilUpdateInputs {
+            left,
+            right: s.inputs.get(1).and_then(Option::as_ref),
+            name: Some(name),
+        };
+        let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
+        self.api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
     }
     /// `slotsChanged` / `createResult` for the open station.
     pub(super) fn station_changed(&mut self) {
@@ -730,14 +718,10 @@ impl Game<'_> {
                     &hover,
                     creative,
                 );
-                // AnvilUpdateEvent on a server's client menu, as on the
-                // server: asked when an input or the name changed (this
-                // recomputes on every click), its answer kept until then.
-                // An empty left slot has no result and forgets the answer.
-                if s.inputs[0].is_none() {
-                    s.anvil_answer = None;
-                } else if self.remote.is_some() {
-                    self.update_anvil_answer(&mut s, name);
+                // AnvilUpdateEvent on a server's client menu, as on the server,
+                // whenever createResult ran with a left input.
+                if s.inputs.first().is_some_and(Option::is_some) && self.remote.is_some() {
+                    self.update_anvil_answer(&mut s, &name);
                 }
                 s.result = s.anvil.result.clone();
             }
@@ -905,6 +889,7 @@ impl Game<'_> {
     pub(super) fn combiner_session_end(
         &mut self,
         menu: &sunrise_client::menu::Menu,
+        anvil_created: bool,
         predicting: bool,
     ) {
         let Some(s) = self.station.as_mut() else {
@@ -912,12 +897,16 @@ impl Game<'_> {
         };
         let (pos, kind) = (s.pos, s.kind);
         if kind == Kind::Anvil {
-            s.anvil.cost = menu.data[0];
-            s.anvil.repair_item_count_cost = menu.anvil.repair_count;
-            s.anvil.only_renaming = menu.anvil.only_renaming;
-            s.anvil.result = s.result.clone();
+            if anvil_created {
+                s.anvil.cost = menu.data[0];
+                s.anvil.repair_item_count_cost = menu.anvil.repair_count;
+                s.anvil.only_renaming = menu.anvil.only_renaming;
+                s.anvil.result = s.result.clone();
+                self.station_after_input();
+            }
+        } else {
+            self.station_after_input();
         }
-        self.station_after_input();
         if !menu.combined || predicting {
             return;
         }
@@ -1343,6 +1332,11 @@ impl Game<'_> {
             self.recipe_text(text, backspace);
             return;
         }
+        let before = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
         let Some(s) = self.station.as_mut() else {
             return;
         };
@@ -1352,12 +1346,24 @@ impl Game<'_> {
             s.rename.insert_text(t);
         }
         s.name.clone_from(&s.rename.value);
-        self.station_changed();
+        let after = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
+        if before.is_none() || after != before {
+            self.station_changed();
+        }
         self.remote_anvil_rename();
     }
     /// `AnvilScreen.keyPressed`: the rename box handles the key.
     pub(super) fn station_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
+        let before = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
         let Some(s) = self.station.as_mut() else {
             return false;
         };
@@ -1365,7 +1371,14 @@ impl Game<'_> {
             return false;
         }
         s.name.clone_from(&s.rename.value);
-        self.station_changed();
+        let after = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
+        if before.is_none() || after != before {
+            self.station_changed();
+        }
         self.remote_anvil_rename();
         true
     }
@@ -1376,12 +1389,24 @@ impl Game<'_> {
             self.recipe_shortcut(shortcut);
             return;
         }
+        let before = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
         let Some(s) = self.station.as_mut() else {
             return;
         };
         if s.rename.shortcut(shortcut, &mut self.clipboard) {
             s.name.clone_from(&s.rename.value);
-            self.station_changed();
+            let after = self
+                .station
+                .as_ref()
+                .filter(|s| s.kind == Kind::Anvil)
+                .map(|s| self.anvil_item_name(s));
+            if before.is_none() || after != before {
+                self.station_changed();
+            }
             self.remote_anvil_rename();
         }
     }
@@ -2577,11 +2602,12 @@ mod tests {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
                 station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
+                station.anvil.cost = 5;
                 assert!(!mod_api::__private::listened(HookId::AnvilUpdate));
-                game.update_anvil_answer(&mut station, "first".into());
-                assert!(station.anvil_answer.is_none());
-                game.update_anvil_answer(&mut station, "second".into());
-                assert!(station.anvil_answer.is_none());
+                game.update_anvil_answer(&mut station, "first");
+                assert_eq!(station.anvil.cost, 5);
+                game.update_anvil_answer(&mut station, "second");
+                assert_eq!(station.anvil.cost, 5);
             });
         });
         let calls = Arc::new(AtomicUsize::new(0));
@@ -2590,15 +2616,34 @@ mod tests {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
                 station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
-                game.update_anvil_answer(&mut station, "first".into());
-                assert_eq!(station.anvil.cost, -7);
+                station.anvil.cost = 5;
+                game.update_anvil_answer(&mut station, "first");
+                assert_eq!(station.anvil.cost, 0, "negative xp_cost clamps to zero");
                 station.anvil.cost = 1;
-                game.update_anvil_answer(&mut station, "first".into());
-                assert_eq!(station.anvil.cost, -7, "cached listener answer is signed");
-                game.update_anvil_answer(&mut station, "second".into());
-                assert_eq!(station.anvil.cost, -7);
-                assert_eq!(calls.load(Ordering::Relaxed), 2);
+                game.update_anvil_answer(&mut station, "first");
+                assert_eq!(station.anvil.cost, 0);
+                game.update_anvil_answer(&mut station, "second");
+                assert_eq!(station.anvil.cost, 0);
+                assert_eq!(calls.load(Ordering::Relaxed), 3);
                 assert!(mod_api::__private::listened(HookId::AnvilUpdate));
+
+                // Editing the rename box without changing the effective anvil_item_name
+                // does not fire anvil_update (matching vanilla AnvilMenu.setItemName).
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "AnvilTest").unwrap();
+                let display = game.pack.names.display_item("minecraft:iron_sword");
+                super::anvil::input_changed(&mut station, display);
+                game.station = Some(station);
+                let before = calls.load(Ordering::Relaxed);
+                game.station_text(None, false);
+                assert_eq!(calls.load(Ordering::Relaxed), before);
+                assert!(game.station_key(winit::keyboard::KeyCode::ArrowLeft));
+                assert_eq!(calls.load(Ordering::Relaxed), before);
+                game.station_text(Some("x"), false);
+                assert_eq!(calls.load(Ordering::Relaxed), before + 1);
+                game.station_text(None, true);
+                assert_eq!(calls.load(Ordering::Relaxed), before + 2);
             });
         });
     }
@@ -2659,23 +2704,33 @@ mod tests {
                     ("clear", None, false),
                 ] {
                     station.anvil = vanilla.clone();
-                    game.update_anvil_answer(&mut station, name.into());
+                    game.update_anvil_answer(&mut station, name);
                     assert_eq!(
                         station.anvil,
                         AnvilResult {
                             result: output.map(sword),
-                            cost: -7,
+                            cost: 0,
                             repair_item_count_cost: 0,
                             only_renaming,
                         },
                         "{name}",
                     );
                 }
-                for name in ["invalid", "cancel"] {
-                    station.anvil = vanilla.clone();
-                    game.update_anvil_answer(&mut station, name.into());
-                    assert_eq!(station.anvil, AnvilResult::default(), "{name}");
-                }
+                station.anvil = vanilla.clone();
+                game.update_anvil_answer(&mut station, "invalid");
+                assert_eq!(
+                    station.anvil,
+                    AnvilResult {
+                        result: Some(sword(2)),
+                        cost: 0,
+                        repair_item_count_cost: 4,
+                        only_renaming: true,
+                    },
+                    "invalid",
+                );
+                station.anvil = vanilla.clone();
+                game.update_anvil_answer(&mut station, "cancel");
+                assert_eq!(station.anvil, AnvilResult::default(), "cancel");
             });
         });
     }

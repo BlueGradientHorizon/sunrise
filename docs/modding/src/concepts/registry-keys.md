@@ -310,8 +310,9 @@ A changed argument is validated in full; a refusal commits no listener edits. Th
 rule applies to menu cursor and quick-move stacks.
 
 Anvil and grindstone hook inputs are borrowed, read-only snapshots, not stack writes.
-`anvil_update` validates an output replacement only if it differs from vanilla. An invalid
-replacement or cancellation leaves no result and zero costs. The anvil's Pre and Post
+`anvil_update` validates an output replacement only if it differs from vanilla: cancellation
+leaves no result and zero costs, whereas an invalid replacement is logged and ignored so
+vanilla's output stays intact while the cost edits still apply. The anvil's Pre and Post
 hooks lend the same pre-take snapshot and do not take any stack edits. `grindstone_place`
 validates an explicit output override and `grindstone_take` validates supplied remainders,
 not the original inputs. See [item and tag Parts](parts/item-and-tag-parts.md) for the staged

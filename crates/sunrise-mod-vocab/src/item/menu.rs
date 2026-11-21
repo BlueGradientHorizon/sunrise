@@ -211,17 +211,20 @@ pub struct AnvilUpdateInputs<'a> {
 }
 
 /// The shared answer to `anvil_update`. It starts at `Keep` and vanilla's costs.
-/// The game applies the final edits after dispatch; cancellation or an invalid
-/// replacement leaves no output and zero costs.
+/// The game applies the final edits after dispatch; cancellation leaves no output
+/// and zero costs, while an invalid replacement output is logged and ignored
+/// (keeping vanilla's output).
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal
 // no wire: staged edits are applied in-process at the end of the hook call.
 pub struct AnvilUpdateEdits {
     /// Keep vanilla's output, or set a replacement. `Set(None)` clears it.
-    /// A replacement differing from vanilla must be a valid stack.
+    /// A replacement differing from vanilla must be a valid stack; an invalid
+    /// stack is logged and ignored, leaving vanilla's output intact.
     pub output: StackResult,
-    /// Signed level cost. Zero or a negative value prevents taking the result,
-    /// even in creative, and never refunds levels.
+    /// Signed level cost during listener dispatch (`AnvilUpdateEvent.setXpCost`).
+    /// Negative values clamp to `0` when applied (`AnvilMenu.setCost`), and a
+    /// zero cost prevents taking the result (`AnvilMenu.mayPickup`).
     pub xp_cost: i32,
     /// Units consumed from the right slot. Negative values clamp to zero;
     /// zero or a value exceeding the stack consumes all of it on take.

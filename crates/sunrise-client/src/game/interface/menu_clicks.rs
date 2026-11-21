@@ -613,6 +613,8 @@ impl Game<'_> {
             menu.anvil.seen_input = before[0].clone();
             menu.anvil.screen = true;
         }
+        // Clear any createResult flag raised while populating the menu before the click.
+        let _ = menu.anvil_created();
         let outcome = run(self, &mut menu, &env, &to_menu);
         let made = maps.made.take();
         match outcome {
@@ -747,7 +749,8 @@ impl Game<'_> {
             }
         }
         if kind == Kind::Anvil || kind == Kind::Smithing {
-            self.combiner_session_end(&menu, predicting);
+            let anvil_created = menu.anvil_created();
+            self.combiner_session_end(&menu, anvil_created, predicting);
         }
         if kind == Kind::Enchanting && (menu.enchant_changed || before[0] != menu.slot(0).cloned())
         {

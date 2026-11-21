@@ -227,8 +227,6 @@ impl Game<'_> {
                     gs.menu.anvil.name.clone(),
                 )
             });
-            let mut undo = None;
-            let hook = gs.menu.anvil_hook;
             let take_listened =
                 gs.menu.grind_hook && mod_api::__private::listened(mod_api::HookId::GrindstoneTake);
             let place_listened = gs.menu.grind_hook
@@ -239,7 +237,6 @@ impl Game<'_> {
                 self.journal_station_click(conn, owner, &gs);
             }
             self.guest_menu_op_decided(gi, &mut gs.menu, click, None, |menu, env| {
-                undo = hook.then(|| menu.anvil_undo());
                 op(menu, env);
             });
             // Both anvil hooks borrow the same converted snapshot, even after the
@@ -274,15 +271,13 @@ impl Game<'_> {
                         .unwrap_or((0, String::new()));
                     self.native_anvil_craft_pre(uuid, &name, gs.pos, inputs, &mut cancel);
                 }
-                if cancel && let Some(undo) = undo {
-                    // Restore the result, inputs, cost, inventory and cursor.
-                    // The cancelled take drops nothing and is resynced below.
+                if cancel {
+                    // NeoForge AnvilMenu.onTake: cancel returns early before charging
+                    // levels, consuming inputs, damaging the anvil, or firing
+                    // anvil_craft_post, without undoing the click's item move.
                     cancelled = true;
-                    self.guest_menu_op(gi, &mut gs.menu, |menu, _| menu.anvil_cancel(undo));
                 } else {
                     gs.menu.anvil_take(&self.menu_env());
-                    let dropped = std::mem::take(&mut gs.menu.dropped);
-                    self.drop_guest_items(gi, dropped);
                 }
             }
             // GrindstoneEvent.OnTakeItem: the taken result's onTake waits for the mods.
@@ -324,8 +319,8 @@ impl Game<'_> {
                             .enumerate()
                             .any(|(s, b)| gs.menu.slot(s) != b.as_ref())
                 });
-            // AnvilUpdateEvent after createResult; a cancelled take's undo
-            // is no createResult.
+            // AnvilUpdateEvent after createResult; a cancelled take skipped
+            // onTake so no createResult ran.
             let anvil_created =
                 gs.kind == StationKind::Anvil && gs.menu.anvil_created() && !cancelled;
             if anvil_created

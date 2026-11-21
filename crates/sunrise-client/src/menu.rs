@@ -386,17 +386,6 @@ pub struct Anvil {
     pub renamed: Vec<String>,
 }
 
-/// An anvil menu before a click, for `Menu::anvil_cancel`: the anvil's three
-/// slots and cost, the player's slots and the cursor.
-#[derive(Clone, Debug, PartialEq)]
-pub struct AnvilUndo {
-    inputs: Vec<Option<ItemStack>>,
-    result: Option<ItemStack>,
-    cost: i32,
-    player: Vec<Option<ItemStack>>,
-    carried: Option<ItemStack>,
-}
-
 /// `StonecutterMenu`'s state besides its slots and `selectedRecipeIndex`.
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct Stonecutter {
@@ -2006,32 +1995,6 @@ impl Menu {
             self.slot_changed(env, s);
         }
         out
-    }
-
-    /// The anvil menu as it is before a click that may take its result.
-    pub fn anvil_undo(&self) -> AnvilUndo {
-        AnvilUndo {
-            inputs: self.state.containers[MAIN].clone(),
-            result: self.state.containers[RESULT][0].clone(),
-            cost: self.state.data[0],
-            player: self.state.containers[PLAYER].clone(),
-            carried: self.state.carried.clone(),
-        }
-    }
-
-    /// Refuses a take that `anvil_hook` deferred (a cancelled
-    /// `AnvilCraftEvent.Pre`): the result goes back in its slot and the
-    /// inputs, cost, inventory and cursor are as `undo` held them, so nothing
-    /// the click did (cursor, shift-click, swap, drop) is left.
-    pub fn anvil_cancel(&mut self, undo: AnvilUndo) {
-        self.touch();
-        self.state.containers[MAIN] = undo.inputs;
-        self.state.containers[RESULT][0] = undo.result;
-        self.state.data[0] = undo.cost;
-        self.state.containers[PLAYER] = undo.player;
-        self.state.carried = undo.carried;
-        self.state.anvil_craft = None;
-        self.state.dropped.clear();
     }
 
     /// `AnvilMenu.onTake`: the levels, the material used up, then the input.
@@ -4582,11 +4545,14 @@ pub(crate) mod tests {
         std::fs::remove_dir_all(&settings).unwrap();
     }
 
-    /// A cancelled `AnvilCraftEvent.Pre` refuses the take: the result sits in
-    /// its slot, both inputs and the cost are as they were, and neither the
-    /// cursor nor the inventory holds the item (no dupe).
+    /// A deferred anvil take (`anvil_hook = true`): taking slot 2 captures the
+    /// pre-take snapshot in `anvil_craft` and moves the output to the cursor or
+    /// inventory without running `anvil_take`. On a cancelled
+    /// `AnvilCraftEvent.Pre`, skipping `anvil_take` leaves the output with the
+    /// player while inputs, cost and levels remain untouched (matching NeoForge
+    /// `AnvilMenu.onTake` returning early).
     #[test]
-    fn a_cancelled_anvil_craft_leaves_the_menu_as_it_was() {
+    fn a_deferred_anvil_craft_skips_on_take_without_undoing_the_move() {
         let root =
             std::env::temp_dir().join(format!("sunrise-anvil-cancel-{}", std::process::id()));
         std::fs::create_dir_all(root.join("data/minecraft/recipe")).unwrap();
@@ -4637,28 +4603,33 @@ pub(crate) mod tests {
                 menu.slot(1).cloned(),
                 menu.slot(2).cloned(),
             );
-            let undo = menu.anvil_undo();
             menu.click(env, 2, 0, input).unwrap();
             // The take waits for the mods, and the click moved the result.
             let craft = menu.anvil_craft.take().expect("the take is deferred");
+            assert_eq!(craft.left, before.0);
+            assert_eq!(craft.right, before.1);
             assert_eq!(craft.output, before.2.clone().unwrap());
             assert_eq!(menu.slot(2), None);
-            assert_eq!(menu.data[0], 3);
-            menu.anvil_craft = Some(craft);
-            menu.anvil_cancel(undo);
-            assert_eq!(
-                (
-                    menu.slot(0).cloned(),
-                    menu.slot(1).cloned(),
-                    menu.slot(2).cloned()
-                ),
-                before
-            );
+            // Skipping menu.anvil_take (cancelled AnvilCraftEvent.Pre) keeps the
+            // moved result with the player and leaves inputs, cost and levels intact.
+            assert_eq!(menu.slot(0), before.0.as_ref());
+            assert_eq!(menu.slot(1), before.1.as_ref());
             assert_eq!(menu.data[0], 3);
             assert_eq!(menu.level_change, 0);
-            assert_eq!(menu.carried, None);
-            assert!((0..36).all(|i| menu.player_item(i).is_none()));
-            assert!(menu.anvil_craft.is_none() && menu.dropped.is_empty());
+            assert!(!menu.combined);
+            if input == Input::Pickup {
+                assert_eq!(menu.carried, before.2);
+                assert!((0..36).all(|i| menu.player_item(i).is_none()));
+            } else {
+                assert_eq!(menu.carried, None);
+                assert_eq!(
+                    (0..36)
+                        .filter(|&i| menu.player_item(i) == before.2.as_ref())
+                        .count(),
+                    1
+                );
+            }
+            assert!(menu.anvil_craft.is_none());
         }
     }
 
