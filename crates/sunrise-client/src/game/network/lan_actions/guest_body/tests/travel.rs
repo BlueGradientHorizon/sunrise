@@ -117,6 +117,31 @@ fn report(game: &mut Game<'_>, [x, y, z]: [f64; 3]) {
     );
 }
 
+#[test]
+#[ignore = "daily"]
+fn a_connected_players_report_never_exposes_stale_collision_flags() {
+    for integrated in [true, false] {
+        with_player(integrated, |game, _rx| {
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(1, |g| {
+                    g.motion.as_mut().unwrap().collision.horizontal = true;
+                })
+                .unwrap();
+            let player = game.player(guest(game).uuid).unwrap();
+            report(game, ACCEPTED);
+            assert_eq!(guest(game).position, ACCEPTED);
+            assert_eq!(player.collision_flags(game), Ok(None));
+            game.as_guest(1, |game| {
+                assert_eq!(player.collision_flags(game), Ok(None));
+            })
+            .unwrap();
+        });
+    }
+}
+
 fn guest<'a>(game: &'a Game<'_>) -> &'a Guest {
     game.lan.as_ref().unwrap().hub.guest(1).unwrap()
 }

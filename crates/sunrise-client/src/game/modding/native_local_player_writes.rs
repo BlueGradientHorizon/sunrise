@@ -419,6 +419,59 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn player_collision_flags_distinguish_a_ceiling_from_the_floor_and_a_wall() {
+        use crate::game::native_entity_refs::tests::{bind_local_player, with_client_game};
+        use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+        use sunrise_core::geometry::Vec3;
+        use sunrise_world::entity_move::MoverType;
+
+        let check = |game: &mut Game<'_>| {
+            let player = game.player(456).unwrap();
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(0, 63, 0, stone).unwrap();
+            game.world.set(0, 66, 0, stone).unwrap();
+            game.world.set(2, 64, 0, stone).unwrap();
+
+            let mut move_and_read = |movement| {
+                game.move_local_player(MoverType::SelfMovement, movement)
+                    .unwrap();
+                player.collision_flags(game).unwrap().unwrap()
+            };
+            let ceiling = move_and_read(Vec3::new(0.0, 1.0, 0.0));
+            assert!(ceiling.vertical);
+            assert!(!ceiling.vertical_below);
+            assert!(!ceiling.horizontal);
+
+            let floor = move_and_read(Vec3::new(0.0, -1.0, 0.0));
+            assert!(floor.vertical);
+            assert!(floor.vertical_below);
+            assert!(!floor.horizontal);
+
+            let wall = move_and_read(Vec3::new(3.0, 0.0, 0.0));
+            assert!(wall.horizontal);
+            assert!(!wall.minor_horizontal);
+        };
+
+        with_client_game(|game| {
+            loaded_client(game);
+            check(game);
+        });
+        with_game(|game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+            bind_local_player(game, 42, 456);
+            game.streaming
+                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+            check(game);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn local_displacements_refuse_bad_deltas_and_players_held_in_place() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             loaded_client(game);

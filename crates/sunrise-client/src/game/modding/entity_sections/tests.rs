@@ -20,6 +20,10 @@ fn section_read_backend_refuses_reads_outside_its_snapshot() {
         Err(mod_api::LevelReadError::Unavailable)
     );
     let player = mod_api::__private::game::player_ref(entity, 1);
+    assert_eq!(
+        player.collision_flags(&host),
+        Err(mod_api::LevelReadError::Unavailable)
+    );
     let menu = mod_api::__private::game::menu_ref(player, 1, 1);
 
     assert_eq!(entity.bounding_box(&host), None);

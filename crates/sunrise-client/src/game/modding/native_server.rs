@@ -1039,6 +1039,32 @@ impl Game<'_> {
         Some(PlayerRead::Guest(guest))
     }
 
+    pub(super) fn player_collision_flags(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<mod_api::CollisionFlags>, mod_api::LevelReadError> {
+        Ok(self.player_read_both(player).and_then(|read| {
+            // A connected player's position reports do not retain collision
+            // flags, even when its body is swapped in for a server guest turn.
+            let PlayerRead::Acting {
+                body: Some(body), ..
+            } = read
+            else {
+                return None;
+            };
+            if self.lan_acting.is_some() {
+                return None;
+            }
+            let flags = body.collision;
+            Some(mod_api::CollisionFlags::new(
+                flags.horizontal,
+                flags.minor,
+                flags.vertical,
+                flags.below,
+            ))
+        }))
+    }
+
     /// `ServerPlayerGameMode.getGameModeForPlayer`; Paper `HumanEntity#getGameMode`.
     /// None for stale, offline or unavailable players (including displaced outer players).
     pub(super) fn player_game_mode(&self, player: PlayerRef) -> Option<GameMode> {
