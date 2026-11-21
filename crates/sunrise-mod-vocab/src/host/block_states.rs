@@ -218,6 +218,13 @@ pub trait BlockStatesBackend {
         class: BlockClass,
     ) -> Result<Option<bool>, LevelReadError>;
     /// Side: both.
+    /// The resolved reaction read by `BlockStates::piston_push_reaction`.
+    #[access(Metadata)]
+    fn block_state_piston_push_reaction(
+        &self,
+        state: BlockStateRecord,
+    ) -> Result<Option<PushReaction>, LevelReadError>;
+    /// Side: both.
     /// The states of `block` (`StateDefinition.getPossibleStates`) in immutable local ordinal
     /// order, independent of world numeric IDs. None for unavailable metadata or an unknown block.
     #[access(Metadata)]

@@ -141,6 +141,22 @@ impl<'a> BlockTables<'a> {
         Ok(())
     }
 
+    pub(in crate::game) fn block_state_piston_push_reaction(
+        &self,
+        state: BlockStateRecord,
+    ) -> Result<Option<mod_api::PushReaction>, mod_api::LevelReadError> {
+        use mod_api::{BlockState, BlockStateError, LevelReadError};
+        let rest = self.res.rest.get().ok_or(LevelReadError::Unavailable)?;
+        let state = match BlockState::from(state).try_into_engine(&()) {
+            Ok(state) => state,
+            Err(BlockStateError::UnknownBlock | BlockStateError::UnknownState) => return Ok(None),
+            Err(_) => return Err(LevelReadError::Unavailable),
+        };
+        Ok(Some(super::api_values::api_push_reaction(
+            rest.behaviours.piston_reaction(state),
+        )))
+    }
+
     /// Convert the canonical ordinal before reading the published weathering tables.
     fn weathering_state(&self, state: BlockStateRecord) -> Option<(&WorldRest, BlockStateId)> {
         Some((
