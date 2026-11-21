@@ -5,7 +5,7 @@
 use super::Game;
 use super::key_codes::{gameplay_has_keyboard, glfw_modifiers};
 use mod_api::{ClientModifiers, KeyConflictContext, MappingError, ModKeyMappingRef, ModKeyRefusal};
-use sunrise_client::keymapping::{KeyAction, MappingContext, ModBinding, ModKeySlot, ModKeys};
+use sunrise_client::keymapping::{KeyAction, MappingContext, ModBinding, ModKeySlot};
 use sunrise_client::mod_list::{ALT, CONTROL, SHIFT};
 use sunrise_client::text::Text;
 use winit::{event::MouseButton, keyboard::KeyCode};
@@ -90,7 +90,11 @@ impl Game<'_> {
         key: &str,
         modifiers: ClientModifiers,
     ) -> Result<(), ModKeyRefusal> {
-        let (owner, id) = Self::own_mod_mapping(&self.mod_keys, mapping)?;
+        let (owner, id) = self
+            .mod_keys
+            .get(mod_key_slot(mapping))
+            .ok_or(ModKeyRefusal::Stale)?
+            .identity();
         let known = key == "key.keyboard.unknown"
             || sunrise_client::keybinds::key_code(key).is_some()
             || sunrise_client::keybinds::mouse_button(key).is_some();
@@ -118,24 +122,14 @@ impl Game<'_> {
         &mut self,
         mapping: ModKeyMappingRef,
     ) -> Result<(), ModKeyRefusal> {
-        let (owner, id) = Self::own_mod_mapping(&self.mod_keys, mapping)?;
-        self.settings.mods.reset_binding(owner, id);
-        self.mod_keys_changed();
-        Ok(())
-    }
-    /// Resolve the current row before checking the caller: a native mod can only write its own.
-    fn own_mod_mapping(
-        mappings: &ModKeys,
-        mapping: ModKeyMappingRef,
-    ) -> Result<(&str, &str), ModKeyRefusal> {
-        let (owner, id) = mappings
+        let (owner, id) = self
+            .mod_keys
             .get(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)?
             .identity();
-        if mod_api::content::crash::current_native_mod().is_some_and(|running| running != owner) {
-            return Err(ModKeyRefusal::NotOwner);
-        }
-        Ok((owner, id))
+        self.settings.mods.reset_binding(owner, id);
+        self.mod_keys_changed();
+        Ok(())
     }
     /// After a mod changed a binding: the mappings answer to it from the next input, and the
     /// settings are saved as Controls saves them.
@@ -221,8 +215,7 @@ impl Game<'_> {
             self.screen_over_playing(),
         )
     }
-    /// `KeyMapping.isDown`: held, while its conflict context and modifiers are active. Nothing is
-    /// down behind a screen, which released them all.
+    /// `KeyMapping.isDown`: held, while its conflict context and modifiers are active.
     pub(in crate::game) fn mod_key_mapping_is_down(
         &self,
         mapping: ModKeyMappingRef,
@@ -234,17 +227,15 @@ impl Game<'_> {
                 glfw_modifiers(self.modifiers),
                 screen_open,
             )
-            .map(|down| !screen_open && down)
             .ok_or(ModKeyRefusal::Stale)
     }
-    /// `KeyMapping.consumeClick`. Behind a screen there is none: the screen released them all.
+    /// `KeyMapping.consumeClick`: takes one pending click.
     pub(in crate::game) fn mod_key_mapping_consume_click(
         &mut self,
         mapping: ModKeyMappingRef,
     ) -> Result<bool, ModKeyRefusal> {
-        let screen_open = self.mod_mappings_screen_open();
         self.mod_keys
-            .consume_click(mod_key_slot(mapping), screen_open)
+            .consume_click(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)
     }
 }

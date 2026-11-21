@@ -277,8 +277,8 @@ pub trait Notes {
   Resolve a `ModKeyMappingRef` once with `host.mod_key_mapping(owner, id)` during `client_setup`. Retain
   it for `binding(host)` (current name borrowed from the host, plus modifiers), `translated_key_message(host)`
   (current Controls label on demand), `is_down(host)` and `consume_click(host)` (`KeyMapping.isDown`,
-  `consumeClick`). Only the owning mod can `set_binding(host, key, modifiers)` or `reset_binding(host)`,
-  which take effect from the next input and save by owner and id. `NotRegistered` is a missing owner/id at
+  `consumeClick`). Any mod can `set_binding(host, key, modifiers)` or `reset_binding(host)` on a
+  resolved mapping, which take effect from the next input and save by owner and id. `NotRegistered` is a missing owner/id at
   resolution; `Unavailable` means this host or phase has no client input access. `Stale` means a retained ref
   belongs to a replaced client or registration roster: resolve again there. Binding edits alone do not
   invalidate the ref. Persist names, not refs.

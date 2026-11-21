@@ -494,15 +494,11 @@ impl ModKeys {
     pub fn is_down(&self, slot: ModKeySlot, held: u32, screen_open: bool) -> Option<bool> {
         Some(self.get(slot)?.is_down(held, screen_open))
     }
-    /// Takes one click, or returns `None` without changing state for a stale slot.
-    /// A screen drops pending clicks instead, as on screen opening.
-    pub fn consume_click(&mut self, slot: ModKeySlot, screen_open: bool) -> Option<bool> {
+    /// Takes one pending click (`KeyMapping.consumeClick`), or returns `None` without changing
+    /// state for a stale slot.
+    pub fn consume_click(&mut self, slot: ModKeySlot) -> Option<bool> {
         let index = self.slot_index(slot)?;
         let key = self.keys.get_mut(index)?;
-        if screen_open {
-            self.release_all();
-            return Some(false);
-        }
         Some(key.state.consume_click())
     }
     /// `KeyMapping.releaseAll` (a screen opened): every mapping is up and its
@@ -561,7 +557,7 @@ mod tests {
         assert!(keys.is_down(dash, 0, false).unwrap());
         keys.button(sixth, KeyAction::Release, false, 0);
         assert!(!keys.is_down(dash, 0, false).unwrap());
-        assert!(keys.consume_click(dash, false).unwrap());
+        assert!(keys.consume_click(dash).unwrap());
     }
     /// A tap is one click, consumed once.
     #[test]
@@ -574,10 +570,10 @@ mod tests {
         assert!(keys.is_down(zoom, 0, false).unwrap());
         keys.input("key.keyboard.z", KeyAction::Release, false, false, 0);
         assert!(!keys.is_down(zoom, 0, false).unwrap());
-        assert!(keys.consume_click(zoom, false).unwrap());
-        assert!(!keys.consume_click(zoom, false).unwrap());
-        assert!(!keys.consume_click(boost, false).unwrap(), "shift was up");
-        assert!(!keys.consume_click(grab, false).unwrap());
+        assert!(keys.consume_click(zoom).unwrap());
+        assert!(!keys.consume_click(zoom).unwrap());
+        assert!(!keys.consume_click(boost).unwrap(), "shift was up");
+        assert!(!keys.consume_click(grab).unwrap());
         assert!(keys.resolve("other", "zoom").is_none());
     }
     /// Each auto-repeat of a held key is one more click, as its press.
@@ -593,13 +589,14 @@ mod tests {
         assert!(!keys.is_down(boost, 1, true).unwrap(), "in-game only");
         assert_eq!(
             (0..4)
-                .map(|_| keys.consume_click(boost, false).unwrap())
+                .map(|_| keys.consume_click(boost).unwrap())
                 .collect::<Vec<_>>(),
             [true, true, true, false]
         );
     }
     /// A screen opening drops every pending click and lets go; presses behind
-    /// it count nothing, its releases still let go.
+    /// it count nothing, while `consume_click` itself reads the raw click count
+    /// without side-effecting `release_all`.
     #[test]
     fn a_screen_opening_zeroes_the_clicks() {
         let mut keys = keys();
@@ -610,19 +607,18 @@ mod tests {
         keys.input("key.mouse.left", KeyAction::Press, true, false, 0);
         keys.release_all();
         assert!(!keys.is_down(zoom, 0, true).unwrap() && !keys.is_down(grab, 0, true).unwrap());
-        assert!(
-            !keys.consume_click(zoom, false).unwrap() && !keys.consume_click(grab, false).unwrap()
-        );
+        assert!(!keys.consume_click(zoom).unwrap() && !keys.consume_click(grab).unwrap());
         keys.input("key.keyboard.z", KeyAction::Press, false, true, 0);
         keys.input("key.mouse.left", KeyAction::Press, true, true, 0);
-        assert!(
-            !keys.consume_click(zoom, false).unwrap() && !keys.consume_click(grab, false).unwrap()
-        );
+        assert!(!keys.consume_click(zoom).unwrap() && !keys.consume_click(grab).unwrap());
         keys.input("key.keyboard.z", KeyAction::Press, false, false, 0);
         keys.input("key.mouse.left", KeyAction::Press, true, false, 0);
-        assert_eq!(keys.consume_click(zoom, true), Some(false));
-        assert_eq!(keys.consume_click(zoom, false), Some(false));
-        assert_eq!(keys.consume_click(grab, false), Some(false));
+        assert_eq!(keys.is_down(zoom, 0, true), Some(true));
+        assert_eq!(keys.consume_click(zoom), Some(true));
+        assert_eq!(keys.consume_click(zoom), Some(false));
+        assert_eq!(keys.is_down(zoom, 0, true), Some(true));
+        assert_eq!(keys.consume_click(grab), Some(true));
+        assert_eq!(keys.consume_click(grab), Some(false));
     }
     /// A rebinding moves a mapping to its new key and keeps its held state and clicks.
     #[test]
@@ -637,12 +633,12 @@ mod tests {
         ]);
         assert_eq!(keys.get(zoom).unwrap().binding(), ("key.keyboard.x", 0));
         assert_eq!(keys.is_down(zoom, 0, false), Some(true));
-        assert_eq!(keys.consume_click(zoom, false), Some(true));
+        assert_eq!(keys.consume_click(zoom), Some(true));
         keys.input("key.keyboard.z", KeyAction::Press, false, false, 0);
-        assert_eq!(keys.consume_click(zoom, false), Some(false));
+        assert_eq!(keys.consume_click(zoom), Some(false));
         keys.input("key.keyboard.x", KeyAction::Press, false, false, 0);
-        assert_eq!(keys.consume_click(zoom, false), Some(true));
-        assert_eq!(keys.consume_click(zoom, false), Some(false));
+        assert_eq!(keys.consume_click(zoom), Some(true));
+        assert_eq!(keys.consume_click(zoom), Some(false));
     }
 
     #[test]
@@ -669,22 +665,21 @@ mod tests {
         assert_eq!(keys.get(survivor).unwrap().identity(), ("m", "survivor"));
         assert!(keys.resolve("m", "removed").is_none());
         assert_eq!(keys.is_down(survivor, 0, false), Some(true));
-        assert_eq!(keys.consume_click(survivor, false), Some(true));
-        assert_eq!(keys.consume_click(survivor, false), Some(false));
+        assert_eq!(keys.consume_click(survivor), Some(true));
+        assert_eq!(keys.consume_click(survivor), Some(false));
         let added = keys.resolve("other", "survivor").unwrap();
         assert_eq!(keys.is_down(added, 0, false), Some(false));
-        assert_eq!(keys.consume_click(added, false), Some(false));
+        assert_eq!(keys.consume_click(added), Some(false));
 
         keys.input("key.keyboard.b", KeyAction::Repeat, false, false, 0);
         assert!(keys.get(removed).is_none());
         assert_eq!(keys.is_down(removed, 0, false), None);
-        assert_eq!(keys.consume_click(removed, false), None);
-        assert_eq!(keys.consume_click(removed, true), None);
+        assert_eq!(keys.consume_click(removed), None);
         let out_of_range = ModKeySlot::from_parts(survivor.parts().0, usize::MAX);
         assert!(keys.get(out_of_range).is_none());
-        assert_eq!(keys.consume_click(out_of_range, true), None);
-        assert_eq!(keys.consume_click(survivor, false), Some(true));
-        assert_eq!(keys.consume_click(survivor, false), Some(false));
+        assert_eq!(keys.consume_click(out_of_range), None);
+        assert_eq!(keys.consume_click(survivor), Some(true));
+        assert_eq!(keys.consume_click(survivor), Some(false));
 
         let mut other = ModKeys::default();
         other.bind([
@@ -694,8 +689,8 @@ mod tests {
         let other_removed = other.resolve("m", "removed").unwrap();
         other.input("key.keyboard.a", KeyAction::Press, false, false, 0);
         assert_eq!(other.is_down(removed, 0, false), None);
-        assert_eq!(other.consume_click(removed, false), None);
-        assert_eq!(other.consume_click(other_removed, false), Some(true));
+        assert_eq!(other.consume_click(removed), None);
+        assert_eq!(other.consume_click(other_removed), Some(true));
     }
     /// `KeyMapping.setDown` holds without a click; `KeyMapping.click` is a press's increment.
     #[test]

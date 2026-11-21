@@ -10,8 +10,8 @@ pub trait ClientInputClientHost {
     fn cursor(&self) -> [f32; 2];
     /// Side: client.
     /// Resolve `owner`'s registered mapping `id` once after registration, usually in `client_setup`.
-    /// Keep the handle for subsequent calls; save the owner and id, not the handle. Other mods'
-    /// mappings can be resolved and read, but only the owner can rebind or reset them.
+    /// Keep the handle for subsequent calls; save the owner and id, not the handle. Any mod can
+    /// resolve, read, rebind or reset any registered mapping.
     /// Returns [`ModKeyRefusal::NotRegistered`] for an unknown owner or id and
     /// [`ModKeyRefusal::Unavailable`] when there is no client backend in this host or phase.
     #[access(ClientSetup)]
@@ -108,8 +108,10 @@ pub trait ClientInputClientBackend {
         mapping: ModKeyMappingRef,
     ) -> Result<(&str, ClientModifiers), ModKeyRefusal>;
     /// Side: client.
-    /// Whether the mapping is held (`KeyMapping.isDown`): its key or mouse button is down,
-    /// no screen or overlay is open, and its context and modifiers are active.
+    /// Whether the mapping is held (`KeyMapping.isDown`): its raw held state is true and its
+    /// conflict context and bound modifiers are active. Opening a screen or overlay clears
+    /// held state via `KeyMapping.releaseAll`; this read does not add an extra screen-open
+    /// suppression beyond the mapping's conflict context.
     /// Refusals are as for [`ModKeyMappingRef::binding`].
     #[access(ClientSetup)]
     fn mod_key_mapping_is_down(&self, mapping: ModKeyMappingRef) -> Result<bool, ModKeyRefusal>;
@@ -176,9 +178,11 @@ pub trait ClientInputClientBackendMut {
     ) -> Result<(), MappingError>;
     /// Side: client.
     /// Takes one pending click (`KeyMapping.consumeClick`), returning `false` if none remain.
-    /// A press, each auto-repeat while held, and a mouse press add a click with no screen open
-    /// and the mapping's context and modifiers active. Window and control-socket input count
-    /// alike. Opening a screen or overlay drops all pending clicks.
+    /// Reads and decrements the raw `KeyMapping` click count without clearing or suppressing
+    /// it when a screen is open. Physical presses, auto-repeats and mouse presses add clicks
+    /// when no screen is open and the mapping's context and modifiers are active; window and
+    /// control-socket input count alike, and opening a screen or overlay drops pending clicks
+    /// via `KeyMapping.releaseAll`.
     /// Refusals are as for [`ModKeyMappingRef::binding`].
     #[access(ClientSetup)]
     fn mod_key_mapping_consume_click(
@@ -189,9 +193,8 @@ pub trait ClientInputClientBackendMut {
     /// Binds the mapping to `key` (`key.keyboard.z`, `key.mouse.left`, or `key.keyboard.unknown`
     /// for none) with shift, control and alt modifiers, as Controls does. A modifier bound to
     /// itself is the key, not a modifier held with itself. The new binding answers from the next
-    /// input and is saved to `sunrise-mods.txt`.
-    /// Only the owning mod can change it. In addition to the refusals of
-    /// [`ModKeyMappingRef::binding`], returns [`ModKeyRefusal::NotOwner`],
+    /// input and is saved to `sunrise-mods.txt`. Any mod can rebind any registered mapping.
+    /// In addition to the refusals of [`ModKeyMappingRef::binding`], returns
     /// [`ModKeyRefusal::UnknownKey`] or [`ModKeyRefusal::UnknownModifiers`]. No refusal changes it.
     #[access(ClientSetup)]
     fn mod_key_mapping_set_binding(
