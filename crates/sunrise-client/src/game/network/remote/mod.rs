@@ -106,6 +106,7 @@ mod chat_queue;
 pub(in crate::game) enum RemoteDimensionEntry {
     Login,
     Respawn,
+    DeathRespawn,
 }
 
 /// `ChatType`'s two decorations: how a message shows in the chat, and what the narrator says of it.
@@ -2497,14 +2498,20 @@ impl Game<'_> {
         };
         // handleRespawn keeps the ClientLevel only for the same level key:
         // two levels sharing a dimension type are still two levels.
-        let same = matches!(entry, RemoteDimensionEntry::Respawn)
-            && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
-        let transition_screen = sunrise_client_render::dimension_transition::select(
-            mod_api::__private::dimension_key(&spawn.dimension),
-            r.heard_level
-                .as_deref()
-                .map(mod_api::__private::dimension_key),
-        );
+        let same = matches!(
+            entry,
+            RemoteDimensionEntry::Respawn | RemoteDimensionEntry::DeathRespawn
+        ) && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
+        // An open LevelLoadingScreen keeps its presentation, even if it is vanilla.
+        // New screens for login and death do not receive transition keys.
+        let transition_from = if matches!(entry, RemoteDimensionEntry::Respawn)
+            && !r.level_load.is_active()
+            && r.heard_level.is_some()
+        {
+            Some(r.level_key)
+        } else {
+            None
+        };
         if !same {
             self.forget_all_remote_columns();
         }
@@ -2533,8 +2540,10 @@ impl Game<'_> {
         }
         // startWaitingForNewLevel: `LevelLoadTracker.startClientLoad` and the
         // `LevelLoadingScreen`.
+        let transition_factory = transition_from.and_then(|from| {
+            sunrise_client_render::dimension_transition::select(r.level_key, from)
+        });
         r.level_load.start_client_load(client_millis(), reason);
-        r.level_load.set_transition_screen(transition_screen);
         // A replacement LocalPlayer has a fresh ambient mood and sendPosition baseline.
         self.ambience.moodiness = 0.0;
         r.position_sender = Default::default();
@@ -2634,6 +2643,25 @@ impl Game<'_> {
             self.initialize_entity(Holder::Player(profile), "minecraft:player");
         }
         self.finish_remote_level();
+        if let Some((owner, factory)) = transition_factory {
+            use mod_api::content::crash::{ModCall, enter_native_mod};
+            use sunrise_client_render::dimension_transition::ActiveTransitionScreen;
+
+            let presentation = {
+                let _owner = enter_native_mod(ModCall {
+                    id: owner,
+                    hook: "dimension_transition_factory",
+                    part: None,
+                });
+                factory.create(self, reason.into())
+            };
+            if let Some(r) = self.remote.as_mut() {
+                r.level_load.set_transition_screen(ActiveTransitionScreen {
+                    owner,
+                    presentation,
+                });
+            }
+        }
     }
 
     /// `ClientChunkCache.Storage.inRange`: within the storage around the
@@ -3598,7 +3626,12 @@ impl Game<'_> {
                     r.sequence = 0;
                 }
                 self.portals.respawn_attributes.respawn(p.keep & 1 != 0);
-                self.enter_respawn_level(&p, reason);
+                let entry = if died {
+                    RemoteDimensionEntry::DeathRespawn
+                } else {
+                    RemoteDimensionEntry::Respawn
+                };
+                self.enter_respawn_level(&p, entry, reason);
                 // handleRespawn adds the new LocalPlayer after what the kept
                 // level holds; a new level holds nothing yet.
                 let before: std::collections::HashSet<u32> = self

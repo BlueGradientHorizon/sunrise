@@ -49,6 +49,44 @@ the sign's block position and whether its front side is being edited. It returns
 editor open, or outside a world. A close of the sign editor always sends the sign update, however it
 closes; there is no close that skips it, because the vanilla client never omits that packet.
 
+## Drawing a dimension transition
+
+In `Hooks::register_dimension_transition_screen`, push a `DimensionTransitionScreen` for
+each trip you want to cover. `Conditional { to, from }` wins over `Incoming(to)`, then
+`Outgoing(from)`. The first valid registration for each key wins. Use a namespaced,
+non-`minecraft` screen ID for diagnostics; nothing looks it up during drawing.
+
+```rust,ignore
+fn register_dimension_transition_screen(
+    &self,
+    _context: &RegistrationContext,
+    event: &mut RegisterDimensionTransitionScreenEvent<'_>,
+) {
+    event.screens.push(DimensionTransitionScreen::new(
+        "example:arrival".into(),
+        DimensionTransition::Incoming("example:moon".into()),
+        |_, _initial_reason| {
+            Box::new(
+                |_: &dyn ClientHost, _reason, progress, draw: &mut dyn DrawContext| {
+                    let [w, h] = draw.size();
+                    draw.fill([0.0, 0.0, w, h], 0xFF101030);
+                    if let Some(progress) = progress {
+                        draw.fill([0.0, h - 8.0, w * progress, 8.0], 0xFF6060FF);
+                    }
+                },
+            )
+        },
+    ));
+}
+```
+
+The client calls the matching factory once when it opens a new loading screen for travel.
+The returned closure or `DimensionTransitionPresentation` object draws the entire screen.
+Its `reason` and optional smoothed integrated-server `progress` are current each frame.
+If another load starts while the screen is open, the same presentation stays in place,
+even if the reason changes. The existing tracker still decides when the screen closes.
+Login, death respawn and unmatched travel use vanilla when they open a new loading screen.
+
 ## Reading open trades
 
 From a client hook in the world, get the menu from `host.local_player()` and
