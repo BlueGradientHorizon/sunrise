@@ -3847,12 +3847,10 @@ impl Game<'_> {
         };
         // DragonFireballRenderer.submit: turned by the camera's orientation.
         let [right, up] = super::billboard_axes(self.camera_orientation());
-        for b in self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball)
-        {
+        for b in self.creatures.projectiles.iter().filter(|p| {
+            p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball
+                && !self.hides_as_camera(p.id)
+        }) {
             let p = glam::DVec3::new(
                 b.previous.x + (b.position.x - b.previous.x) * alpha,
                 b.previous.y + (b.position.y - b.previous.y) * alpha,

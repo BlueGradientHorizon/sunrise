@@ -8348,14 +8348,19 @@ impl Game<'_> {
     ) {
         self.elder_apparition_geometry(alpha, out);
         self.spawner_geometry(camera, alpha, out);
-        let live = self.creatures.projectiles.iter().map(|a| {
-            let at = [
-                a.previous.x + (a.position.x - a.previous.x) * alpha,
-                a.previous.y + (a.position.y - a.previous.y) * alpha,
-                a.previous.z + (a.position.z - a.previous.z) * alpha,
-            ];
-            (a, at)
-        });
+        let live = self
+            .creatures
+            .projectiles
+            .iter()
+            .filter(|a| !self.hides_as_camera(a.id))
+            .map(|a| {
+                let at = [
+                    a.previous.x + (a.position.x - a.previous.x) * alpha,
+                    a.previous.y + (a.position.y - a.previous.y) * alpha,
+                    a.previous.z + (a.position.z - a.previous.z) * alpha,
+                ];
+                (a, at)
+            });
         self.projectile_geometry(camera, alpha, live, out);
     }
 

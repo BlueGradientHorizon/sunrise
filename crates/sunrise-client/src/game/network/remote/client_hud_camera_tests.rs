@@ -266,11 +266,11 @@ fn set_up(game: &mut Game<'_>, case: &serde_json::Value) {
         }
         "otherPlayer" => {
             let w = &case["watched"];
-            game.remote
-                .as_mut()
-                .unwrap()
-                .level_players
-                .insert(WATCHED, WATCHED as u128 + 1000);
+            let remote = game.remote.as_mut().unwrap();
+            remote
+                .players
+                .insert(WATCHED as u128 + 1000, "Watched".into());
+            remote.level_players.insert(WATCHED, WATCHED as u128 + 1000);
             spawn(game, WATCHED, "minecraft:player");
             data(
                 game,

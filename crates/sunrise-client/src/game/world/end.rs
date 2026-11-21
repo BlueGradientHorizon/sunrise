@@ -1265,6 +1265,9 @@ impl Game<'_> {
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,
     ) {
+        if self.hides_as_camera(crystal.id) {
+            return;
+        }
         let feet = glam::DVec3::new(crystal.position.x, crystal.position.y, crystal.position.z);
         let rel = feet - camera;
         if rel.length_squared() > 256.0 * 256.0 {
@@ -1511,6 +1514,9 @@ impl Game<'_> {
             yaw.cos() * pitch.sin(),
         ) * 0.25;
         for eye in &self.end.eyes {
+            if self.hides_as_camera(eye.id) {
+                continue;
+            }
             let p = eye.previous + (eye.position - eye.previous) * alpha - camera;
             out.extend(eye_quad(p.as_vec3(), right, up, r));
         }

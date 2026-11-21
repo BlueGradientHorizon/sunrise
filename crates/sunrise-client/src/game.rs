@@ -7848,6 +7848,9 @@ impl Game<'_> {
         };
         laps.lap("eg_prep");
         for item in &self.dropped {
+            if self.hides_as_camera(item.id) {
+                continue;
+            }
             if item.fire_ticks > 0
                 && self
                     .stack_can_be_hurt_by(&item.stack, "minecraft:in_fire")
@@ -7875,6 +7878,9 @@ impl Game<'_> {
         }
         laps.lap("eg_fire_items");
         for stand in &self.armor_stands {
+            if self.hides_as_camera(stand.id) {
+                continue;
+            }
             if stand.is_on_fire() && !stand.marker {
                 let scale = if stand.small { 0.5 } else { 1.0 };
                 let at = stand.render_position(alpha);
@@ -7929,7 +7935,9 @@ impl Game<'_> {
                 }
                 F::Dragon => {
                     // A dragon summoned outside the End draws at its join slot too.
-                    if let Some(dragon) = self.dragon.as_ref() {
+                    if let Some(dragon) =
+                        self.dragon.as_ref().filter(|d| !self.hides_as_camera(d.id))
+                    {
                         self.dragon_geometry(dragon, camera, alpha, &mut out, additive);
                     }
                 }
@@ -7947,14 +7955,17 @@ impl Game<'_> {
                 }
                 F::Orb => {
                     self.mark_entity(out.len(), "minecraft:experience_orb");
-                    let live = self.orbs[range].iter().map(|o| {
-                        let at = [
-                            o.previous.x + (o.position.x - o.previous.x) * alpha,
-                            o.previous.y + (o.position.y - o.previous.y) * alpha,
-                            o.previous.z + (o.position.z - o.previous.z) * alpha,
-                        ];
-                        (o, at, alpha as f32)
-                    });
+                    let live = self.orbs[range]
+                        .iter()
+                        .filter(|o| !self.hides_as_camera(o.id))
+                        .map(|o| {
+                            let at = [
+                                o.previous.x + (o.position.x - o.previous.x) * alpha,
+                                o.previous.y + (o.position.y - o.previous.y) * alpha,
+                                o.previous.z + (o.position.z - o.previous.z) * alpha,
+                            ];
+                            (o, at, alpha as f32)
+                        });
                     let frame = orb_frame.get_or_init(|| self.orb_frame());
                     self.orb_geometry(camera, frame, live, orb_view, &mut out);
                 }
@@ -8010,6 +8021,9 @@ impl Game<'_> {
         laps.lap("eg_other_creatures");
         // These billboards stay in their later pass, outside the ordered body runs.
         for m in self.drawn_mobs() {
+            if self.hides_as_camera(m.id) {
+                continue;
+            }
             // Blaze.isOnFire: a charged blaze burns.
             let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
             if (m.is_on_fire() || blazing) && !m.removed {
@@ -8099,22 +8113,32 @@ impl Game<'_> {
                     p.z + (q.z - p.z) * a,
                 )
             };
-            let mut casters: Vec<(glam::DVec3, f32, f32)> =
-                sunrise_client::shadows::mob_casters(self.drawn_mobs(), a).collect();
+            let mut casters: Vec<(glam::DVec3, f32, f32)> = sunrise_client::shadows::mob_casters(
+                self.drawn_mobs().filter(|m| !self.hides_as_camera(m.id)),
+                a,
+            )
+            .collect();
             let item = sunrise_client::shadows::shadow_params("minecraft:item");
             casters.extend(
                 self.dropped
                     .iter()
+                    .filter(|i| !self.hides_as_camera(i.id))
                     .map(|i| (lerp(i.previous, i.position), item.0, item.1)),
             );
             let orb = sunrise_client::shadows::shadow_params("minecraft:experience_orb");
             casters.extend(
                 self.orbs
                     .iter()
+                    .filter(|o| !self.hides_as_camera(o.id))
                     .map(|o| (lerp(o.previous, o.position), orb.0, orb.1)),
             );
             // Text, block and item displays (DisplayRenderer's shadow radius).
-            casters.extend(self.text_displays.values().filter_map(|d| d.shadow(a)));
+            casters.extend(
+                self.text_displays
+                    .iter()
+                    .filter(|&(&id, _)| !self.hides_as_camera(id as u32))
+                    .filter_map(|(_, d)| d.shadow(a)),
+            );
             // Packs may move vertices or draw from another view.
             let shadow_view = self
                 .view_frustum
@@ -8448,6 +8472,9 @@ impl Game<'_> {
         } = *setup;
         let tables = &self.pack.context.tables;
         for f in &self.falling[run] {
+            if self.hides_as_camera(f.id) {
+                continue;
+            }
             let p = f.model_origin(alpha, |state, x, z| tables.offset(state, x, z)) - camera;
             let o = p.as_vec3();
             // Only rear-origin models pay for the envelope/depth check. The

@@ -322,6 +322,9 @@ impl Game<'_> {
             };
             self.mark_entity(out.len(), kind);
             for (id, display) in displays.iter_mut().filter(|(_, d)| d.shows == shows) {
+                if self.hides_as_camera(*id as u32) {
+                    continue;
+                }
                 display.last_progress = display.progress(partial as f32);
                 let d = display.shown.blend(&display.from, display.last_progress);
                 let position = display.previous.lerp(display.position, partial);
@@ -391,7 +394,10 @@ impl Game<'_> {
         let scale = self.view_scale();
         let background = self.settings.text_background(0.25);
         let mut displays = std::mem::take(&mut self.text_displays);
-        for display in displays.values_mut().filter(|d| d.shows == Shows::Text) {
+        for (&id, display) in displays.iter_mut().filter(|(_, d)| d.shows == Shows::Text) {
+            if self.hides_as_camera(id as u32) {
+                continue;
+            }
             display.last_progress = display.progress(partial as f32);
             let d = display.shown.blend(&display.from, display.last_progress);
             let position = display.previous.lerp(display.position, partial);

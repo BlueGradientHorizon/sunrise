@@ -132,10 +132,17 @@ pub(super) fn mob_camera_entity(m: &Mob, (scale, camera_distance): (f32, f64)) -
 /// (`getDimensionsMarker`): none for a marker, `BABY_DIMENSIONS`' 0.9875 for
 /// a small stand, the type's 1.7775 otherwise.
 pub(super) fn stand_camera_entity(a: &ArmorStand) -> CameraEntity {
+    stand_camera_entity_with(a, (1.0, 4.0))
+}
+
+pub(super) fn stand_camera_entity_with(
+    a: &ArmorStand,
+    (scale, camera_distance): (f32, f64),
+) -> CameraEntity {
     let eye_height = if a.marker {
         0.0
     } else {
-        a.probe_dimensions().2 as f32
+        a.probe_dimensions().2 as f32 * scale
     };
     CameraEntity {
         position: [a.position.x, a.position.y, a.position.z],
@@ -146,8 +153,8 @@ pub(super) fn stand_camera_entity(a: &ArmorStand) -> CameraEntity {
         y_rot_o: a.previous_yaw,
         eye_height,
         living: Some(LivingCamera {
-            scale: 1.0,
-            camera_distance: 4.0,
+            scale,
+            camera_distance,
             sleeping: None,
             dead: None,
         }),
@@ -251,6 +258,8 @@ pub(super) struct CameraEntities<'a> {
     pub player: Option<(u32, &'a PlayerMotion)>,
     /// A mob's `getScale` and `CAMERA_DISTANCE` for a detached view.
     pub living: Box<dyn Fn(&Mob) -> (f32, f64) + 'a>,
+    /// An armor stand's `getScale` and `CAMERA_DISTANCE` for a detached view.
+    pub stand_living: Box<dyn Fn(&ArmorStand) -> (f32, f64) + 'a>,
 }
 
 impl CameraEntities<'_> {
@@ -277,9 +286,7 @@ impl CameraEntities<'_> {
             return Some((self.living)(m));
         }
         if let Some(a) = self.stands.iter().find(|a| a.id == vehicle) {
-            return stand_camera_entity(a)
-                .living
-                .map(|l| (l.scale, l.camera_distance));
+            return Some((self.stand_living)(a));
         }
         let (_, p) = self.player.filter(|(player, _)| *player == vehicle)?;
         let attribute =
@@ -294,7 +301,7 @@ impl CameraEntities<'_> {
             return Some(mob_camera_entity(m, (self.living)(m)));
         }
         if let Some(a) = self.stands.iter().find(|a| a.id == id) {
-            return Some(stand_camera_entity(a));
+            return Some(stand_camera_entity_with(a, (self.stand_living)(a)));
         }
         if let Some(b) = self.boats.iter().find(|b| b.id == id) {
             return Some(boat_camera_entity(b));
@@ -598,7 +605,7 @@ impl Game<'_> {
             });
         }
         if let Some(a) = self.armor_stands.iter().find(|a| a.id == uid) {
-            let mut camera = stand_camera_entity(a);
+            let mut camera = stand_camera_entity_with(a, self.stand_camera_values(a));
             camera.mount = mount;
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
@@ -867,9 +874,10 @@ impl Game<'_> {
             vehicles: &remote.passenger_vehicles,
             player: self.player.as_ref().map(|p| (remote.entity_id as u32, p)),
             living: Box::new(|m| self.living_camera_values(m)),
+            stand_living: Box::new(|a| self.stand_camera_values(a)),
         }
     }
-    /// Returns synced or type-default scale and camera distance for a living mob.
+    /// Returns synced or type-default scale and camera distance through LivingEntity.sanitizeScale.
     pub(in crate::game) fn living_camera_values(&self, m: &Mob) -> (f32, f64) {
         let catalog = &self.motion.attributes;
         let value = |name: &str, default: f64| {
@@ -877,6 +885,23 @@ impl Game<'_> {
                 .id(name)
                 .and_then(|attribute| self.remote_attribute(m.id as i32, attribute))
                 .or_else(|| m.kind.attributes.get(name).copied())
+                .unwrap_or(default)
+        };
+        let raw_scale = value("minecraft:scale", 1.0) as f32;
+        let scale = match m.species() {
+            Species::HappyGhast => raw_scale.min(1.0),
+            Species::Shulker => raw_scale.min(3.0),
+            _ => raw_scale,
+        };
+        (scale, value("minecraft:camera_distance", 4.0))
+    }
+    /// The scale and camera distance `Camera.setup` reads from an armor stand.
+    fn stand_camera_values(&self, a: &ArmorStand) -> (f32, f64) {
+        let catalog = &self.motion.attributes;
+        let value = |name: &str, default: f64| {
+            catalog
+                .id(name)
+                .and_then(|attribute| self.remote_attribute(a.id as i32, attribute))
                 .unwrap_or(default)
         };
         (

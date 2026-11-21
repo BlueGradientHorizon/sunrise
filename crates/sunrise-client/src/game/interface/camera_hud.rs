@@ -68,10 +68,22 @@ impl Game<'_> {
             }
         };
         if let Some(m) = self.mob_index.get(&self.mobs, id) {
-            return Some((m.attrs.max_health, m.health));
+            let max_health = self
+                .motion
+                .attributes
+                .id("minecraft:max_health")
+                .and_then(|attr| self.remote_attribute(id as i32, attr))
+                .map_or(m.attrs.max_health, |v| v as f32);
+            return Some((max_health, m.health));
         }
         let stand = self.armor_stands.iter().find(|s| s.id == id)?;
-        Some((20.0, stand.health))
+        let max_health = self
+            .motion
+            .attributes
+            .id("minecraft:max_health")
+            .and_then(|attr| self.remote_attribute(id as i32, attr))
+            .map_or(20.0, |v| v as f32);
+        Some((max_health, stand.health))
     }
 
     /// `Hud.extractPlayerHealth` inputs for `VanillaGuiLayer::PlayerHealth`; None draws nothing.
@@ -102,14 +114,23 @@ impl Game<'_> {
                 Some((inputs, kind))
             }
             CameraPlayer::Other(i) => {
-                let m = &self.mobs[i];
-                let (health, max_health, absorption, frozen, invulnerable) = (
-                    m.health,
-                    m.attrs.max_health,
-                    m.absorption,
-                    m.is_fully_frozen(),
-                    m.invulnerable > 0,
-                );
+                let (mob_id, health, default_max, absorption, frozen, invulnerable) = {
+                    let m = &self.mobs[i];
+                    (
+                        m.id as i32,
+                        m.health,
+                        m.attrs.max_health,
+                        m.absorption,
+                        m.is_fully_frozen(),
+                        m.invulnerable > 0,
+                    )
+                };
+                let max_health = self
+                    .motion
+                    .attributes
+                    .id("minecraft:max_health")
+                    .and_then(|attr| self.remote_attribute(mob_id, attr))
+                    .map_or(default_max, |v| v as f32);
                 let blink = self
                     .health_hud
                     .update_health(health, tick, millis, invulnerable);
@@ -145,8 +166,17 @@ impl Game<'_> {
                 )
             }
             CameraPlayer::Other(i) => {
-                let m = &self.mobs[i];
-                Some(finalize::value(m, Attr::Armor) as i32)
+                let (mob_id, fallback) = {
+                    let m = &self.mobs[i];
+                    (m.id as i32, finalize::value(m, Attr::Armor) as i32)
+                };
+                Some(
+                    self.motion
+                        .attributes
+                        .id("minecraft:armor")
+                        .and_then(|attr| self.remote_attribute(mob_id, attr))
+                        .map_or(fallback, |v| v.floor() as i32),
+                )
             }
         }
     }

@@ -77,6 +77,7 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
         vehicles: &std::collections::HashMap::new(),
         player: None,
         living: Box::new(|_| (1.0, 4.0)),
+        stand_living: Box::new(|_| (1.0, 4.0)),
     };
 
     let view = entities.view(9).expect("a boat is a camera");
@@ -117,6 +118,7 @@ fn a_frame_camera_turns_with_its_facing() {
             vehicles: &std::collections::HashMap::new(),
             player: None,
             living: Box::new(|_| (1.0, 4.0)),
+            stand_living: Box::new(|_| (1.0, 4.0)),
         };
         let view = entities.view(1).unwrap();
         (view.y_rot, view.x_rot)

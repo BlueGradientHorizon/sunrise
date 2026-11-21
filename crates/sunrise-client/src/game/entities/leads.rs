@@ -743,7 +743,7 @@ impl Game<'_> {
             if let Some(holder) = m.extra.leash {
                 // A mob a mod's pre hook canceled draws no lead (it is part of the mob's own
                 // render), but the fence knot it hangs from is an entity of its own.
-                if self.render_canceled(m.id) {
+                if self.render_canceled(m.id) || self.hides_as_camera(m.id) {
                     if let Holder::Knot(p) = holder
                         && !knots.contains(&p)
                     {
@@ -763,6 +763,14 @@ impl Game<'_> {
         }
         for b in &self.boats {
             if let Some(holder) = b.leash {
+                if self.hides_as_camera(b.id) {
+                    if let Holder::Knot(p) = holder
+                        && !knots.contains(&p)
+                    {
+                        knots.push(p);
+                    }
+                    continue;
+                }
                 ropes.push(Rope {
                     holder,
                     here: lerp3(b.previous, b.position),
@@ -914,6 +922,13 @@ impl Game<'_> {
             return;
         };
         for p in knots {
+            if self
+                .remote_knots
+                .iter()
+                .any(|(&id, &pos)| pos == p && self.hides_as_camera(id))
+            {
+                continue;
+            }
             let state = leash::knot_state(p);
             let at =
                 glam::DVec3::new(state.position.x, state.position.y, state.position.z) - camera;

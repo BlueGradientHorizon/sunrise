@@ -193,6 +193,7 @@ fn setup(game: &mut Game<'_>, key: &Value, attributes_first: bool) {
         seat(game);
         sync(game);
     }
+    game.refresh_remote_attributes();
     pin_pose(game, RIDER);
 }
 
