@@ -222,7 +222,7 @@ impl Paths<'_, '_> {
                 .ok()
                 .and_then(|found| match found {
                     Found::Item(id) => Some(id),
-                    Found::External(_) => None,
+                    Found::External { .. } => None,
                 })
         };
         if let Some(id) = found
@@ -316,9 +316,16 @@ impl Paths<'_, '_> {
         let found = if rooted {
             // `::` starts at the extern prelude. Resolve known API crates from their own roots,
             // not from this module where a local module may shadow the crate name.
-            self.rooted_item(&segments)
-                .map(Found::Item)
-                .map_or_else(|| Ok(Found::External(segments.clone())), Ok)
+            self.rooted_item(&segments).map(Found::Item).map_or_else(
+                || {
+                    Ok(Found::External {
+                        module: self.module,
+                        path: segments.clone(),
+                        rooted,
+                    })
+                },
+                Ok,
+            )
         } else {
             self.index.resolve_type_path(self.module, &segments)
         };
@@ -345,7 +352,7 @@ impl Paths<'_, '_> {
                     }
                 }
             }
-            Ok(Found::External(full)) => {
+            Ok(Found::External { path: full, .. }) => {
                 if let Some((check, id)) = self.check {
                     // Keep the written alias for namespace checks; `full` has already discarded
                     // whether the local import was a type, value, or module.

@@ -226,9 +226,13 @@ impl<'i, 'a> Walker<'i, 'a> {
                     None => Some(Target::Item(id)),
                 }
             }
-            Ok(Found::External(path)) => Some(Target::External(
+            Ok(Found::External {
+                module,
+                path,
+                rooted,
+            }) => Some(Target::External(
                 outside
-                    .external_path(self.index, root, &path, true)
+                    .external_path(self.index, module, &path, rooted)
                     .unwrap_or(path),
             )),
             Err(_) => None,
@@ -260,7 +264,7 @@ impl<'i, 'a> Walker<'i, 'a> {
             // A name the module does not define or import is an outside crate (`serde_json`).
             return Ok(match self.index.resolve(module, last) {
                 Ok(Found::Item(id)) => Target::Item(id),
-                Ok(Found::External(path)) => Target::External(path),
+                Ok(Found::External { path, .. }) => Target::External(path),
                 Err(_) => Target::External(path.to_vec()),
             });
         }

@@ -414,6 +414,16 @@ fn a_glob_through_a_local_module_alias_cannot_import_an_invisible_type() {
 }
 
 #[test]
+fn a_rooted_import_chain_ignores_a_local_module_with_the_dependency_name() {
+    let edited = "mod engine { pub struct Secret; }\nuse ::engine::Secret as Imported;\nuse self::Imported as Alias;\npub fn leak() -> Alias { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the rooted use chain must resolve the workspace dependency, not the local type");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
 fn a_renamed_workspace_dependency_glob_cannot_hide_a_type() {
     let edited = "mod imported { use engine::*; pub fn leak() -> Secret { unimplemented!() } }\npub use imported::leak;\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)

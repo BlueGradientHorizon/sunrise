@@ -411,7 +411,7 @@ impl OutsideSeam {
         let module = index.module(krate, parent).ok()?;
         match index.resolve(module, name).ok()? {
             Found::Item(id) => Some(id),
-            Found::External(_) => None,
+            Found::External { .. } => None,
         }
     }
 
@@ -426,9 +426,14 @@ impl OutsideSeam {
         if let Some(path) = self.follow_external_path(index, module, path, rooted, resolving) {
             return Self::item_at_path(index, &path);
         }
-        match index.resolve_path(module, path).ok()? {
+        let found = if rooted {
+            index.resolve_rooted_path(module, path)
+        } else {
+            index.resolve_path(module, path)
+        };
+        match found.ok()? {
             Found::Item(id) => Some(id),
-            Found::External(path) => Self::item_at_path(index, &path),
+            Found::External { path, .. } => Self::item_at_path(index, &path),
         }
     }
 
@@ -557,7 +562,7 @@ impl OutsideSeam {
                         let (krate, inner) = external.split_first()?;
                         index.module(krate, inner).ok()
                     } else {
-                        Self::indexed_module(index, module, &path)
+                        Self::module_target(index, module, &path, import.leading_colon.is_some())
                     };
                     let Some(target) = target else { continue };
                     if let Some(external) =
@@ -659,7 +664,7 @@ impl OutsideSeam {
                 let (krate, path) = path.split_first()?;
                 index.module(krate, path).ok()?
             } else {
-                Self::indexed_module(index, module, path)?
+                Self::module_target(index, module, path, rooted)?
             };
         self.crates
             .contains(&index.modules.get(target)?.krate)
@@ -692,7 +697,7 @@ impl OutsideSeam {
                 let (krate, inner) = path.split_first()?;
                 index.module(krate, inner).ok()
             } else {
-                Self::indexed_module(index, module, &glob)
+                Self::module_target(index, module, &glob, rooted)
             };
             if let Some(target) = target
                 && let Some(path) = self.exported_external_type(index, target, name, resolving)
@@ -731,6 +736,22 @@ impl OutsideSeam {
             }
         }
         None
+    }
+
+    fn module_target(
+        index: &mut Index<'_>,
+        module: usize,
+        path: &[String],
+        rooted: bool,
+    ) -> Option<usize> {
+        if rooted {
+            index
+                .resolve_rooted_module_path(module, path)
+                .ok()
+                .flatten()
+        } else {
+            Self::indexed_module(index, module, path)
+        }
     }
 
     /// Loads an indexed module named by a local path, including `crate::` and `super::` paths.
@@ -791,7 +812,17 @@ impl OutsideSeam {
         }
         if let Ok(found) = index.resolve_type(scope, first) {
             match found {
-                Found::External(external) => {
+                Found::External {
+                    module,
+                    path: external,
+                    rooted,
+                } => {
+                    if rooted
+                        && let Some(mut path) = self.rooted_external_path(index, module, &external)
+                    {
+                        path.extend(rest.iter().cloned());
+                        return Some(path);
+                    }
                     let workspace_binding = self
                         .globbed_external_path(index, scope, first, resolving)
                         .or_else(|| {
@@ -892,7 +923,7 @@ impl OutsideSeam {
                 return Some(resolved);
             }
             if !rest.is_empty()
-                && let Some(target) = Self::indexed_module(index, scope, &imported)
+                && let Some(target) = Self::module_target(index, scope, &imported, rooted)
             {
                 return self.follow_external_path(index, target, rest, false, resolving);
             }

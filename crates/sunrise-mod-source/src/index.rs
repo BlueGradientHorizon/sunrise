@@ -139,8 +139,12 @@ pub struct ItemId {
 /// Where a name leads.
 pub enum Found {
     Item(ItemId),
-    /// A path outside the indexed crates (`std::…`, `serde_json::…`), as written.
-    External(Vec<String>),
+    /// A path outside the indexed crates, with the scope and root of the original spelling.
+    External {
+        module: usize,
+        path: Vec<String>,
+        rooted: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -445,25 +449,30 @@ impl<'a> Index<'a> {
                     &item.tree,
                     &mut Vec::new(),
                     &mut |path, alias| match alias {
-                        Some(alias) if alias == name => named.push(path),
-                        None => globs.push(path),
+                        Some(alias) if alias == name => {
+                            named.push((path, item.leading_colon.is_some()))
+                        }
+                        None => globs.push((path, item.leading_colon.is_some())),
                         _ => {}
                     },
                 );
             }
         }
         if matches!(namespace, Namespace::Any)
-            && let Some(path) = named.first()
+            && let Some((path, rooted)) = named.first()
         {
-            return self.resolve_path(module, path).map(Some);
+            return self
+                .resolve_path_in_namespace(module, path, *rooted, Namespace::Any)
+                .map(Some);
         }
         let mut external_named = None;
-        for path in named {
-            match self.resolve_path(module, &path) {
+        for (path, rooted) in named {
+            // The target may be a value; classify the result before considering any glob.
+            match self.resolve_path_in_namespace(module, &path, rooted, Namespace::Any) {
                 Ok(found @ Found::Item(id)) if is_type_item(self.item(id)) => {
                     return Ok(Some(found));
                 }
-                Ok(found @ Found::External(_)) => {
+                Ok(found @ Found::External { .. }) => {
                     // The index cannot tell whether an unindexed external name is a value or a
                     // type. Try indexed glob types first; preserve the external path as fallback.
                     external_named.get_or_insert(found);
@@ -471,8 +480,8 @@ impl<'a> Index<'a> {
                 Ok(Found::Item(_)) | Err(_) => {}
             }
         }
-        for glob in globs {
-            let Some(target) = self.resolve_module_path(module, &glob)? else {
+        for (glob, rooted) in globs {
+            let Some(target) = self.module_path(module, &glob, rooted, &mut Vec::new())? else {
                 continue;
             };
             if seen.contains(&target) {
@@ -514,42 +523,56 @@ impl<'a> Index<'a> {
 
     /// What the path `path`, written in `module`, names.
     pub fn resolve_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        if path.len() == 1 {
-            return self.resolve(module, &path[0]);
-        }
-        let (last, parent) = path.split_last().unwrap();
-        if let Some(target) = self.module_path(module, parent, &mut Vec::new())? {
-            return self.resolve(target, last);
-        }
-        // A non-module path prefix can still be an external crate/type alias.
-        if let Ok(Found::External(prefix)) = self.resolve(module, &path[0])
-            && prefix.len() > 1
-        {
-            let mut full = prefix;
-            full.extend(path[1..].iter().cloned());
-            return Ok(Found::External(full));
-        }
-        Ok(Found::External(path.to_vec()))
+        self.resolve_path_in_namespace(module, path, false, Namespace::Any)
     }
 
     /// What the signature type path `path`, written in `module`, names.
     pub fn resolve_type_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        if path.len() == 1 {
-            return self.resolve_type(module, &path[0]);
+        self.resolve_path_in_namespace(module, path, false, Namespace::Type)
+    }
+
+    /// What a `::`-rooted import names, skipping local bindings of the crate name.
+    pub fn resolve_rooted_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
+        self.resolve_path_in_namespace(module, path, true, Namespace::Any)
+    }
+
+    fn resolve_path_in_namespace(
+        &mut self,
+        module: usize,
+        path: &[String],
+        rooted: bool,
+        namespace: Namespace,
+    ) -> Result<Found, String> {
+        let (last, parent) = path.split_last().ok_or("an empty item path")?;
+        if !rooted && parent.is_empty() {
+            return self.resolve_in_namespace(module, last, namespace);
         }
-        let (last, parent) = path.split_last().unwrap();
-        if let Some(target) = self.module_path(module, parent, &mut Vec::new())? {
-            return self.resolve_type(target, last);
+        if !parent.is_empty()
+            && let Some(target) = self.module_path(module, parent, rooted, &mut Vec::new())?
+        {
+            return self.resolve_in_namespace(target, last, namespace);
         }
         // A non-module path prefix can still be an external crate/type alias.
-        if let Ok(Found::External(prefix)) = self.resolve_type(module, &path[0])
-            && prefix.len() > 1
+        if !rooted
+            && let Ok(Found::External {
+                module,
+                path: mut prefix,
+                rooted,
+            }) = self.resolve_in_namespace(module, &path[0], namespace)
+            && (rooted || prefix.len() > 1)
         {
-            let mut full = prefix;
-            full.extend(path[1..].iter().cloned());
-            return Ok(Found::External(full));
+            prefix.extend(path[1..].iter().cloned());
+            return Ok(Found::External {
+                module,
+                path: prefix,
+                rooted,
+            });
         }
-        Ok(Found::External(path.to_vec()))
+        Ok(Found::External {
+            module,
+            path: path.to_vec(),
+            rooted,
+        })
     }
 
     /// Resolves `path` as a module if its segments name declared modules, following local
@@ -560,7 +583,16 @@ impl<'a> Index<'a> {
         module: usize,
         path: &[String],
     ) -> Result<Option<usize>, String> {
-        self.module_path(module, path, &mut Vec::new())
+        self.module_path(module, path, false, &mut Vec::new())
+    }
+
+    /// Resolves a module under an indexed crate named explicitly in the extern prelude.
+    pub fn resolve_rooted_module_path(
+        &mut self,
+        module: usize,
+        path: &[String],
+    ) -> Result<Option<usize>, String> {
+        self.module_path(module, path, true, &mut Vec::new())
     }
 
     /// Resolves a path to a module, including `use` aliases of local modules. It checks each
@@ -570,9 +602,16 @@ impl<'a> Index<'a> {
         &mut self,
         module: usize,
         path: &[String],
+        rooted: bool,
         seen: &mut Vec<(usize, String)>,
     ) -> Result<Option<usize>, String> {
-        if let Some((krate, path)) = self.absolute(module, path) {
+        let absolute = if rooted {
+            let (first, rest) = path.split_first().ok_or("an empty module path")?;
+            self.crate_name(first).map(|krate| (krate, rest.to_vec()))
+        } else {
+            self.absolute(module, path)
+        };
+        if let Some((krate, path)) = absolute {
             let mut target = self.module(krate.clone(), &[])?;
             let mut prefix = Vec::new();
             for (position, segment) in path.iter().enumerate() {
@@ -584,7 +623,7 @@ impl<'a> Index<'a> {
                     });
                 if !is_module {
                     if krate == self.modules[module].krate {
-                        return self.module_path(target, &path[position..], seen);
+                        return self.module_path(target, &path[position..], false, seen);
                     }
                     return Ok(None);
                 }
@@ -594,6 +633,9 @@ impl<'a> Index<'a> {
             return Ok(Some(target));
         }
 
+        if rooted {
+            return Ok(None);
+        }
         let (first, rest) = path.split_first().ok_or("an empty module path")?;
         if !seen.contains(&(module, first.clone())) {
             seen.push((module, first.clone()));
@@ -603,7 +645,7 @@ impl<'a> Index<'a> {
                     Item::Use(item) if default_build(&item.attrs) => {
                         uses(&item.tree, &mut Vec::new(), &mut |path, alias| {
                             if alias.as_deref() == Some(first.as_str()) {
-                                imported = Some(path);
+                                imported = Some((path, item.leading_colon.is_some()));
                             }
                         })
                     }
@@ -613,15 +655,15 @@ impl<'a> Index<'a> {
                             .as_ref()
                             .map_or_else(|| item.ident.to_string(), |(_, name)| name.to_string());
                         if alias == *first {
-                            imported = Some(vec![item.ident.to_string()]);
+                            imported = Some((vec![item.ident.to_string()], true));
                         }
                     }
                     _ => {}
                 }
             }
-            if let Some(mut imported) = imported {
+            if let Some((mut imported, rooted)) = imported {
                 imported.extend(rest.iter().cloned());
-                let resolved = self.module_path(module, &imported, seen)?;
+                let resolved = self.module_path(module, &imported, rooted, seen)?;
                 seen.pop();
                 return Ok(resolved);
             }
