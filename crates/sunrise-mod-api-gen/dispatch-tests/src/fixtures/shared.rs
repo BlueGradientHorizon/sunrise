@@ -1,4 +1,5 @@
 //! Shared exception: dispatch infrastructure and cross-area fixture types/tests; no new hooks.
+use mod_api::mod_api::BlockEntityTypeKey;
 use mod_api::mod_api::client::hud_layout::GuiDraw;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
