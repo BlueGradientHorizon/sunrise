@@ -3506,7 +3506,8 @@ pub(crate) mod tests {
             drag: None,
             sent_data: Vec::new(),
             blockless_data: Vec::new(),
-            hidden: Vec::new(),
+            reported_unsent_data_len: None,
+            opening_item: None,
             mod_type: None,
             registry_id: "test:chest".into(),
             craft: None,
@@ -3523,7 +3524,6 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
             loop_context: &context,
         };
         let mut drag = None;
@@ -3591,7 +3591,8 @@ pub(crate) mod tests {
                 drag: None,
                 sent_data: Vec::new(),
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
+                reported_unsent_data_len: None,
+                opening_item: None,
                 mod_type: None,
                 registry_id: "test:chest".into(),
                 craft: None,
@@ -3612,7 +3613,6 @@ pub(crate) mod tests {
                 container: Some(&mut chest),
                 shulker: false,
                 container_limits: Vec::new(),
-                hidden: &[],
                 loop_context: &context,
             };
             let mut drag = None;
@@ -3663,6 +3663,7 @@ pub(crate) mod tests {
                 slots: 2,
                 player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: Vec::new(),
                 inputs: Vec::new(),
                 crafting: None,
@@ -3680,7 +3681,8 @@ pub(crate) mod tests {
                 drag: None,
                 sent_data: Vec::new(),
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
+                reported_unsent_data_len: None,
+                opening_item: None,
                 mod_type: Some(menu_type),
                 registry_id: menu_type.id.into(),
                 craft: None,
@@ -3701,7 +3703,6 @@ pub(crate) mod tests {
                     container: Some(&mut [None, None]),
                     shulker: false,
                     container_limits: Vec::new(),
-                    hidden: &[],
                     loop_context: env.loop_context,
                 },
                 &LiveSlotRules {

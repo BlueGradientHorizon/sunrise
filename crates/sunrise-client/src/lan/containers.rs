@@ -9,7 +9,7 @@ use crate::{
     items::ItemStack,
     world::World,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::{

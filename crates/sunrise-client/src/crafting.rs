@@ -2863,11 +2863,7 @@ mod tests {
         let recipes =
             Recipes::from_resolved(root.path(), &items, &PackOverlay::NONE, &sources).unwrap();
         fs::write(root.path().join("items.json"), b"{}").unwrap();
-        let defaults = sunrise_world::item_defaults::ItemDefaults::load(
-            root.path(),
-            crate::test_resources::server_load(),
-        )
-        .unwrap();
+        let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
         let stations = crate::stations::StationData::from_sources(
             root.path(),
             &items,

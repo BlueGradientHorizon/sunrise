@@ -68,8 +68,8 @@ impl Game<'_> {
                         &mut registration,
                     );
                     registration
-                        .refusal()
-                        .map_or(Ok(None), |error| Err(error.to_string()))
+                        .failure()
+                        .map_or(Ok(None), |error| Err(error.to_owned()))
                 }) {
                     self.lan
                         .as_mut()?

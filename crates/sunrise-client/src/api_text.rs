@@ -2229,11 +2229,11 @@ mod iterative_tests {
         use super::{Tag, TextClick, TextHover, TextStyle, to_local_engine};
         let mut opaque_dialog = Tag::ByteArray(vec![1, 2, 3]);
         for _ in 0..600 {
-            let mut m = std::collections::BTreeMap::new();
+            let mut m = sunrise_core::nbt::Compound::new();
             m.insert("n".into(), opaque_dialog);
             opaque_dialog = Tag::Compound(m);
         }
-        let mut custom_meta = std::collections::BTreeMap::new();
+        let mut custom_meta = sunrise_core::nbt::Compound::new();
         custom_meta.insert("non_finite".into(), Tag::Float(f32::NAN.to_bits()));
 
         let mut parent_style = TextStyle::default();

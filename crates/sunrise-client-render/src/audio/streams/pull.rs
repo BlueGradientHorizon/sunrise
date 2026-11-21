@@ -686,7 +686,7 @@ mod tests {
                 "good_mod",
                 &spec,
                 None,
-                Box::new(Source(move |pcm| {
+                Box::new(Source(move |pcm: &mut [i16]| {
                     pcm[..2].copy_from_slice(&[16_384, -8_192]);
                     let _ = healthy_read.try_send(());
                     1

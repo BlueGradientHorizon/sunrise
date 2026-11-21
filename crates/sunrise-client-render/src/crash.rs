@@ -1624,7 +1624,7 @@ pub(crate) mod tests {
         let previous = std::panic::take_hook();
         REPORTED.store(false, Ordering::SeqCst);
         SERVER_CRASHED.store(false, Ordering::Release);
-        install(scratch.path().to_path_buf(), "client");
+        install(scratch.path().to_path_buf(), "client", || None);
         let result = std::thread::Builder::new()
             .name(INTEGRATED_SERVER_THREAD.into())
             .spawn(|| {
@@ -1676,7 +1676,7 @@ pub(crate) mod tests {
             let previous = std::panic::take_hook();
             REPORTED.store(false, Ordering::SeqCst);
             SERVER_CRASHED.store(false, Ordering::Release);
-            install(home.clone(), "client");
+            install(home.clone(), "client", || None);
             let result = std::thread::Builder::new()
                 .name(name.into())
                 .spawn(move || {

@@ -733,7 +733,7 @@ fn a_disabled_override_never_reveals_the_builtin_decoder() {
     let temp = tempfile::tempdir().unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let factories = BTreeMap::from([(
-        "minecraft:trident".into(),
+        mod_api::Identifier::parse("minecraft:trident").unwrap(),
         owned_factory(
             {
                 let calls = calls.clone();
@@ -1228,7 +1228,7 @@ fn special_model_lookup_accepts_bare_path_and_empty_path() {
         "assets/spt/items/empty_path.json",
         r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"example:","handle":2}}}"#,
     );
-    let factory = || SpecialModelFactory::new(|config| config.decode::<PanConfig>(), Pan::bake);
+    let factory = || owned_factory(|config| config.decode::<PanConfig>(), Pan::bake);
     let factories = BTreeMap::from([
         (mod_api::Identifier::parse("skillet").unwrap(), factory()),
         (mod_api::Identifier::parse("example:").unwrap(), factory()),

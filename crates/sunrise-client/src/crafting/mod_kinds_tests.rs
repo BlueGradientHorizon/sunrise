@@ -619,6 +619,7 @@ fn extreme_aspect_ratio_rectangular_grids_avoid_square_padding() {
                 "result": {"id": "minecraft:oak_planks", "count": 4}
             }),
         )],
+        &items,
         &load,
     )
     .unwrap();

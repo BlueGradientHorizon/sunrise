@@ -361,10 +361,10 @@ mod tests {
                 event: &mut RegisterConfigurationTasksEvent<'_>,
             ) {
                 let task = |refuse| Task(Identifier::parse(self.0).unwrap(), refuse);
-                event.register(task(false)).unwrap();
+                event.register(task(false));
                 if self.1 {
-                    // Both the reservation and this validation error belong to the refused listener.
-                    assert!(event.register(task(false)).is_err());
+                    // Both the staged task and callback failure belong to this listener.
+                    event.register(task(true));
                     panic!("the listener unwinds to its checkpoint");
                 }
             }
@@ -387,7 +387,7 @@ mod tests {
                     "Test",
                     &mut registration,
                 );
-                assert_eq!(registration.refusal(), None);
+                assert_eq!(registration.failure(), None);
                 let tasks = registration.into_tasks();
                 assert_eq!(
                     tasks.iter().map(|task| task.owner.id()).collect::<Vec<_>>(),
@@ -401,8 +401,8 @@ mod tests {
     fn a_panicking_task_type_refuses_one_registration_and_disables_only_its_owner() {
         use mod_api::{
             __private::ConfigurationTaskRegistration, ConfigurationTask, ConfigurationTaskContext,
-            ConfigurationTaskRegistrationError, Identifier, RegisterConfigurationTasksEvent,
-            ServerHost, content::crash::current_native_call,
+            Identifier, RegisterConfigurationTasksEvent, ServerHost,
+            content::crash::current_native_call,
         };
 
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -455,8 +455,8 @@ mod tests {
                 _: &mut dyn ServerHost,
                 event: &mut RegisterConfigurationTasksEvent<'_>,
             ) {
-                // Do not propagate the registration error: the engine must still refuse admission.
-                let _ = event.register(Task {
+                // A task callback failure still refuses admission.
+                event.register(Task {
                     owner: self.0,
                     kind: Identifier::parse("config:task").unwrap(),
                     panic: self.1,
@@ -485,12 +485,12 @@ mod tests {
                     );
                     if peer == 1 {
                         assert!(matches!(
-                            registration.refusal(),
-                            Some(ConfigurationTaskRegistrationError::CallbackFailed(reason))
+                            registration.failure(),
+                            Some(reason)
                                 if reason.contains(BROKEN) && reason.contains("test task type panic")
                         ));
                     } else {
-                        assert_eq!(registration.refusal(), None);
+                        assert_eq!(registration.failure(), None);
                     }
                     let tasks = registration.into_tasks();
                     assert_eq!(tasks.len(), 1);

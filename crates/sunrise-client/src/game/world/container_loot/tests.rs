@@ -2,7 +2,7 @@
 use super::*;
 use crate::game::minecarts::{CartKind, Minecart};
 use std::sync::{Arc, Mutex};
-use sunrise_client::save::PendingContainerLoot;
+use sunrise_client::{items::ItemStack, save::PendingContainerLoot};
 use sunrise_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
 use sunrise_world::loot::{LootData, PackOverlay};
 

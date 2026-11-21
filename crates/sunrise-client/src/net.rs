@@ -3750,13 +3750,9 @@ mod tests {
         };
         assert!(events.stats().reserved_bytes > capacity);
         assert_eq!(bundle.packets.len(), 4096);
-        assert!(
-            bundle
-                .packets
-                .iter()
-                .enumerate()
-                .all(|(id, p)| *p == ping(id as i32))
-        );
+        assert!(bundle.packets.iter().enumerate().all(
+            |(id, p)| matches!(p, BundleMember::Packet(packet) if *packet == ping(id as i32))
+        ));
         assert!(events.try_recv_owned().is_err());
         drop(bundle);
         drop(credit);

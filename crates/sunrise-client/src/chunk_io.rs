@@ -578,7 +578,8 @@ mod tests {
             Pending {
                 low_disk_space: true,
                 save_failure: Some((-2, 5)),
-                load_failure: None
+                load_failure: None,
+                ..Pending::default()
             }
         );
         assert_eq!(reporter.reported_failures(), 1);
@@ -709,7 +710,8 @@ mod tests {
             Pending {
                 low_disk_space: false,
                 save_failure: Some((3, 4)),
-                load_failure: None
+                load_failure: None,
+                ..Pending::default()
             }
         );
         let worker_records = report_worker_records(&reporter);
