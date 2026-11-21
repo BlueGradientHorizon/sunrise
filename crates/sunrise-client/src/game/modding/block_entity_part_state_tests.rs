@@ -77,6 +77,14 @@ impl Hooks for StateMod {
             .blocks(&["part_state:press"])
             .build();
         r.block_entity_part_with_state(&kind, Press).unwrap();
+        let press = r.block_key("part_state:press");
+        r.block_container(
+            &press,
+            mod_api::ModContainer {
+                slots: 1,
+                ..Default::default()
+            },
+        );
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, e: &mut mod_api::BlocksEvent<'_>) {
         e.register(mod_api::Block::new("part_state:press", "minecraft:barrel").with_item(false))
@@ -126,25 +134,6 @@ fn press(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
         .insert(pos, BlockEntity::Mod(Box::new(entity)));
     let level = game.level(game.dim.id()).unwrap();
     game.block_entity(level, [pos.0, pos.1, pos.2]).unwrap()
-}
-
-fn press_with_item_slot(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
-    use sunrise_client::containers::ModContainer;
-
-    let entity = press(game, pos);
-    let state = game.world.block(pos.0, pos.1, pos.2);
-    game.world.block_entities.set_mod_containers(
-        [(
-            state.0,
-            Arc::new(ModContainer {
-                slots: 1,
-                ..Default::default()
-            }),
-        )]
-        .into_iter()
-        .collect(),
-    );
-    entity
 }
 
 fn stored(game: &mut Game<'_>, entity: BlockEntityRef) -> Option<i32> {
@@ -390,7 +379,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
         use super::api_values::TryIntoApi;
         use sunrise_client::items::ItemStack;
 
-        let entity = press_with_item_slot(game, (1, 64, 1));
+        let entity = press(game, (1, 64, 1));
         game.save_level(true).unwrap();
         assert!(game.world.modified.is_empty());
 
@@ -446,7 +435,7 @@ fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
         game.world
             .chunks
             .insert(chunk, Arc::new(Chunk::empty(chunk.0, chunk.1)));
-        let entity = press_with_item_slot(game, pos);
+        let entity = press(game, pos);
         game.save_level(true).unwrap();
         assert!(!game.world.modified.contains(&chunk));
         game.enter_level(Dim::Overworld).unwrap();
