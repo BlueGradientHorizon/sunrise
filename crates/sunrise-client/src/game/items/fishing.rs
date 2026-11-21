@@ -1698,15 +1698,17 @@ impl Game<'_> {
             )
             .map_err(|_| mod_api::LevelWriteError::Unavailable)?;
         let hook = match caster {
-            super::commands::Target::Player => self.hook.as_mut(),
-            super::commands::Target::Guest(conn) => self
+            super::commands::Target::Guest(conn) if Some(conn) != self.lan_acting => self
                 .lan
                 .as_mut()
                 .and_then(|host| host.play.get_mut(&conn))
                 .and_then(|play| play.hook.as_mut()),
+            super::commands::Target::Player | super::commands::Target::Guest(_) => {
+                self.hook.as_mut()
+            }
             _ => None,
         };
-        let Some(hook) = hook.filter(|hook| hook.id() == id) else {
+        let Some(hook) = hook else {
             return Ok(false);
         };
         hook.ground = ground;

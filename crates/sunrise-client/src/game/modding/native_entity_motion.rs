@@ -741,13 +741,28 @@ mod tests {
             assert_eq!(entity.on_ground(game), Some(true));
             assert_eq!(entity.on_block(game), Some([1, 64, 0]));
             game.enter_level(Dim::Overworld).unwrap();
-            game.as_guest(12, |game| {
-                assert_eq!(entity.on_ground(game), Some(true));
-                assert_eq!(entity.on_block(game), Some([1, 64, 0]));
-                assert_eq!(entity.set_on_ground(game, false), Ok(true));
-                assert_eq!(entity.on_ground(game), Some(false));
-            })
-            .unwrap();
+            let hook = game
+                .as_guest(12, |game| {
+                    assert_eq!(entity.on_ground(game), Some(true));
+                    assert_eq!(entity.on_block(game), Some([1, 64, 0]));
+                    assert_eq!(entity.set_on_ground(game, false), Ok(true));
+                    assert_eq!(entity.on_ground(game), Some(false));
+                    // The caster's live hook moves between the acting slot and the hub.
+                    game.install_fishing_hook(super::super::fishing::Hook::remote(
+                        900,
+                        Vec3::new(0.95, 65.0, 0.5),
+                        [101, 102, 103, 104],
+                    ));
+                    let hook = game.entity(900).unwrap();
+                    assert_eq!(hook.set_on_ground(game, true), Ok(true));
+                    assert_eq!(hook.on_block(game), Some([1, 64, 0]));
+                    hook
+                })
+                .unwrap();
+            assert_eq!(hook.on_ground(game), Some(true));
+            assert_eq!(hook.on_block(game), Some([1, 64, 0]));
+            assert_eq!(hook.set_on_ground(game, false), Ok(true));
+            assert_eq!(hook.on_block(game), Some([0, 64, 0]));
             assert_eq!(entity.on_ground(game), Some(false));
             assert_eq!(entity.on_block(game), Some([0, 64, 0]));
             let guest = game.command_guest(12).unwrap();
