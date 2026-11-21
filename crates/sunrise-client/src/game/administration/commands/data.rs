@@ -335,7 +335,7 @@ impl Game<'_> {
                     f.drop_item,
                     f.damage,
                     f.fall_distance,
-                    f.on_ground,
+                    f.ground.on_ground,
                     f.rotation,
                     uuid,
                 );
@@ -720,7 +720,7 @@ impl Game<'_> {
                     b.previous_yaw = yaw;
                     b.pitch = entity_nbt::rotation(&tag)[1];
                     b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                    b.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    b.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                     b.fire_ticks = crate::game::boats::saved_fire(&tag);
                     b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
                     if b.chest {
@@ -757,7 +757,7 @@ impl Game<'_> {
                     falling.no_gravity = no_gravity;
                     falling.drop_item = drop_item;
                     falling.fall_distance = fall_distance;
-                    falling.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    falling.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                     falling.fire_ticks = crate::game::boats::saved_fire(&tag);
                     falling.damage = damage;
                     // Keep id/join, start_pos, portal state and stuck multiplier.
@@ -788,7 +788,7 @@ impl Game<'_> {
                 tnt.velocity = entity_nbt::motion(&tag);
                 tnt.rotation = entity_nbt::rotation(&tag);
                 tnt.fuse = super::super::persist::tnt_fuse(&tag);
-                tnt.on_ground = entity_nbt::flag(&tag, "OnGround");
+                tnt.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                 tnt.fall_distance =
                     sunrise_client::save::float(tag.get("fall_distance")).unwrap_or(0.0);
                 tnt.no_gravity = entity_nbt::flag(&tag, "NoGravity");
@@ -816,7 +816,7 @@ impl Game<'_> {
                 orb.velocity = new.velocity;
                 orb.value = new.value;
                 orb.age = new.age;
-                orb.on_ground = new.on_ground;
+                orb.ground.on_ground = new.ground.on_ground;
                 orb.count = new.count;
                 orb.health = new.health;
                 orb.no_gravity = new.no_gravity;
