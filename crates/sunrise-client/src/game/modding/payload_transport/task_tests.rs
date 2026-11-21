@@ -224,7 +224,12 @@ impl Hooks for Mod {
             );
             return;
         }
-        event.register(task(kind("first"), 0));
+        let first = task(kind("first"), 0);
+        if matches!(self.0.case, Case::Panic) {
+            event.register(PanickingTask(first));
+        } else {
+            event.register(first);
+        }
         event.register(task(kind("second"), 1));
         if matches!(self.0.case, Case::Duplicates) {
             event.register(task(kind("first"), 0));
@@ -321,6 +326,18 @@ impl ConfigurationTask for Task {
             context.finish();
             context.finish();
         }
+    }
+}
+
+// A distinct implementation lets the same mod's other task survive the panic latch.
+struct PanickingTask(Task);
+impl ConfigurationTask for PanickingTask {
+    fn task_type(&self) -> &Identifier {
+        self.0.task_type()
+    }
+
+    fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>) {
+        self.0.start(host, context);
     }
 }
 
@@ -618,6 +635,11 @@ fn serving_game_drives_configuration_tasks() {
                     assert_eq!(
                         *fixture.starts.lock().unwrap(),
                         [kind("first"), kind("second")]
+                    );
+                    assert_eq!(
+                        fixture.type_reads.load(Ordering::Relaxed),
+                        3,
+                        "the disabled implementation is skipped before reading its type again"
                     );
                 }
                 game.leave_server(None).unwrap();
