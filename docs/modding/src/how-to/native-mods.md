@@ -170,7 +170,7 @@ even if the hook is refused afterwards. A native mod that calls a method in a ph
 **refused, not crashed**:
 
 - The call ends the mod's hook call (it unwinds out of the listener; the game makes no panic report). The game logs
-  `native refusal: <mod> hook <hook>: mod API <method> is unavailable during <phase>` once for each mod and method.
+  `native refusal: <mod> hook <hook>: mod API <method> is unavailable during <phase>` on each refused callback.
 - The latch: after one refusal, every later Host call that hook call makes is refused too, whatever it asks, and the
   refusal counts even if the mod caught the unwind itself and returned normally.
 - The listener is dropped, and the hook goes on with the next one. The event outputs the listener touched are put
@@ -183,6 +183,11 @@ even if the hook is refused afterwards. A native mod that calls a method in a ph
   `Result<_, LevelWriteError>`, or `Result<_, TeamMembersReadError>`) returns its `Err(Unavailable)`
   instead of unwinding, and the mod goes on.
   `LevelRef::with_random` returns `None` without calling your closure when world access is unavailable.
+
+A panic is logged and shown in a client error toast naming the mod and hook. Only that callback is
+disabled for the session. Its staged outputs are discarded, and writes covered by an existing
+transaction are undone. Effects outside a transaction, such as a dynamic texture already created
+by `client_tick_pre`, are not undone.
 
 **The limit:** if the thread is already unwinding when the call is refused (a mod's `Drop` that calls the Host while
 another panic unwinds), the game logs the same line and panics, and a panic during an unwind aborts the process.

@@ -639,38 +639,52 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
         panics: bool,
         calls: Arc<AtomicUsize>,
         started: Arc<AtomicUsize>,
+        discarded: Arc<AtomicUsize>,
     }
-    struct RegistrationTask(Identifier, Arc<AtomicUsize>, bool);
+    struct RegistrationTask {
+        id: Identifier,
+        started: Arc<AtomicUsize>,
+        discard_probe: Option<Arc<AtomicUsize>>,
+    }
     impl ConfigurationTask for RegistrationTask {
         fn task_type(&self) -> &Identifier {
-            &self.0
+            &self.id
         }
         fn start(&mut self, _: &mut dyn ServerHost, ctx: &mut ConfigurationTaskContext<'_>) {
-            self.1.fetch_add(1, Ordering::Relaxed);
+            self.started.fetch_add(1, Ordering::Relaxed);
             ctx.finish();
         }
     }
     impl Drop for RegistrationTask {
         fn drop(&mut self) {
-            assert!(!self.2, "failed task also panics on disposal");
+            if let Some(discarded) = &self.discard_probe {
+                discarded.fetch_add(1, Ordering::Relaxed);
+                panic!("failed task also panics on disposal");
+            }
         }
     }
     #[mod_api::__subscriptions]
     impl Hooks for Listener {
         fn register_configuration_tasks(
             &self,
-            _: &mut dyn ServerHost,
+            host: &mut dyn ServerHost,
             event: &mut RegisterConfigurationTasksEvent<'_>,
         ) {
             if !PEER_NAMES.contains(&event.name) {
                 return;
             }
             self.calls.fetch_add(1, Ordering::Relaxed);
-            event.register(RegistrationTask(
-                kind("shared"),
-                self.started.clone(),
-                self.panics,
-            ));
+            event.register(RegistrationTask {
+                id: kind("shared"),
+                started: self.started.clone(),
+                discard_probe: self.panics.then(|| self.discarded.clone()),
+            });
+            host.configuration_send_payload(
+                event.connection,
+                &PayloadId(CHANNEL.into()),
+                PayloadBytes(vec![if self.panics { 99 } else { 1 }]),
+            )
+            .unwrap();
             assert!(!self.panics, "registration fails after appending a task");
         }
     }
@@ -680,6 +694,7 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
     let failed = Arc::new(AtomicUsize::new(0));
     let healthy = Arc::new(AtomicUsize::new(0));
     let started = Arc::new(AtomicUsize::new(0));
+    let discarded = Arc::new(AtomicUsize::new(0));
     let mods = vec![
         ModEntry::new(
             "broken_tasks",
@@ -687,6 +702,7 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
                 panics: true,
                 calls: failed.clone(),
                 started: started.clone(),
+                discarded: discarded.clone(),
             }),
         ),
         ModEntry::new(
@@ -695,7 +711,13 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
                 panics: false,
                 calls: healthy.clone(),
                 started: started.clone(),
+                discarded: discarded.clone(),
             }),
+        ),
+        // Registers the same negotiated channel as the other task fixtures.
+        ModEntry::new(
+            "task_fixture",
+            Box::new(Mod(Arc::new(Fixture::new(Case::Vanilla)))),
         ),
     ]
     .into();
@@ -706,9 +728,13 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
                 let (mut peer, _, packs) = super::config_tests::configuration_peer(port, name);
                 peer.send(&cfg::Serverbound::SelectKnownPacks(packs).encode())
                     .unwrap();
+                let mut payloads = Vec::new();
                 loop {
                     let (id, body) = peer.recv().unwrap();
                     match cfg::Clientbound::decode(id, &body).unwrap() {
+                        cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
+                            payloads.push(p.data);
+                        }
                         cfg::Clientbound::KeepAlive(p) => {
                             peer.send(&cfg::Serverbound::KeepAlive(p).encode()).unwrap();
                         }
@@ -719,6 +745,11 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
                         _ => {}
                     }
                 }
+                assert_eq!(
+                    payloads,
+                    [vec![1]],
+                    "only the healthy listener's queued send commits"
+                );
                 peer.send(&cfg::Serverbound::FinishConfiguration(Empty).encode())
                     .unwrap();
                 loop {
@@ -735,7 +766,16 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
             assert_eq!(failed.load(Ordering::Relaxed), 1);
             assert_eq!(healthy.load(Ordering::Relaxed), 2);
             assert_eq!(started.load(Ordering::Relaxed), 2);
+            assert_eq!(discarded.load(Ordering::Relaxed), 1);
             assert!(!sunrise_client::crash::server_crashed());
+            assert!(!scratch.path().join("crash-reports").exists());
+            assert_eq!(
+                mod_api::__private::take_hook_panics().as_slice(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "broken_tasks",
+                    hook: "register_configuration_tasks",
+                },]
+            );
             game.leave_server(None).unwrap();
         });
     });

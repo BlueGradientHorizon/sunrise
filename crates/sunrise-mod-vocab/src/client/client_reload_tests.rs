@@ -36,10 +36,16 @@ fn registry_views_and_explicit_order_before_vanilla() {
         ]
     );
     listeners
-        .add_dependency(id("test_mod:second"), VanillaClientListeners::model_manager())
+        .add_dependency(
+            id("test_mod:second"),
+            VanillaClientListeners::model_manager(),
+        )
         .unwrap();
     listeners
-        .add_dependency(VanillaClientListeners::model_manager(), id("test_mod:after"))
+        .add_dependency(
+            VanillaClientListeners::model_manager(),
+            id("test_mod:after"),
+        )
         .unwrap();
     assert_eq!(
         listeners.get_graph(),

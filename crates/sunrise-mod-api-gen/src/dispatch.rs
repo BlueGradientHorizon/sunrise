@@ -491,6 +491,16 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
+            if let Some(entry) = declaration.as_ref().filter(|_| Some(name.as_str()) == out) {
+                dispatch_params.push(format!(
+                    "{name}: &mut super::parts::DeclarationStage<'_, {entry}>"
+                ));
+                lifetimes.a = true;
+                fields.push_str(&format!(
+                    "mod_id: &'static str,\nrefusals: &'a mut Vec<super::parts::DeclarationRefusal>,\n{name}: &'a mut super::parts::DeclarationSink<'a, {entry}>,\n"
+                ));
+                continue;
+            }
             if let Some((_, stage, signature)) = staged
                 .as_ref()
                 .filter(|(field, _, _)| field.as_str() == name.as_str())
@@ -500,14 +510,6 @@ pub(super) fn emit<'a>(
                 dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
             }
             if collect_cancel && name == "cancel" {
-                continue;
-            }
-            if declaration.is_some() && Some(name.as_str()) == out {
-                lifetimes.a = true;
-                fields.push_str(&format!(
-                    "mod_id: &'static str,\ncontext: &'a RegistrationContext,\n{name}: {},\n",
-                    lifetimes.field(ty).0.to_token_stream()
-                ));
                 continue;
             }
             let ty_tokens = ty.to_token_stream().to_string();
@@ -642,7 +644,9 @@ pub(super) fn emit<'a>(
             (true, false) => ("<'a>", "<'_>"),
             (false, false) => ("", ""),
         };
-        let wire_comment = if registration_append.is_some() {
+        let wire_comment = if declaration.is_some() {
+            "// no wire: this event borrows a declaration sink and its diagnostics.\n"
+        } else if registration_append.is_some() {
             "// no wire: this event borrows the registration staging vector.\n"
         } else if staged.is_some() && !staged_host {
             "// no wire: this event borrows the current listener's staging surface.\n"
@@ -778,7 +782,14 @@ pub(super) fn emit<'a>(
                     ));
                 } else {
                     for (arg, ty) in &engine {
-                        if let Some((_, _, signature)) = staged
+                        if let Some(entry) =
+                            declaration.as_ref().filter(|_| Some(arg.as_str()) == out)
+                        {
+                            parameter(
+                                arg,
+                                &format!("&mut mod_api::__private::DeclarationStage<'_, {entry}>"),
+                            );
+                        } else if let Some((_, _, signature)) = staged
                             .as_ref()
                             .filter(|(field, _, _)| !staged_draw && field.as_str() == arg.as_str())
                         {
@@ -982,7 +993,7 @@ pub(super) fn emit<'a>(
                  /// A panicking listener's declarations and diagnostics are discarded. Collisions\n\
                  /// and checks needing other declarations or resources run after collection.\n\
                  pub fn register(&mut self, entry: {entry}) -> Result<(), DeclarationError> {{\n\
-                     super::parts::submit_declaration(self.context, self.mod_id, self.{out}, entry)\n\
+                     super::parts::submit_declaration(self.refusals, self.mod_id, self.{out}, entry)\n\
                  }}\n}}\n"
             ));
         }
@@ -1245,7 +1256,7 @@ pub(super) fn emit<'a>(
         let inert_owner = fresh_name("disabled_owner", &mut used);
         let (lookup, calls) = match &scoped {
             None if declaration.is_some() => {
-                let entry = declaration.as_ref().unwrap();
+                let output = out.unwrap();
                 let accepted = run(
                     &listener_id,
                     "false",
@@ -1253,10 +1264,10 @@ pub(super) fn emit<'a>(
                 );
                 (String::new(), format!(
                     "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{
-                        super::parts::declaration_listener::<{entry}>(context, {listener_id}, || {{
-                            let mut {event} = {event_type} {{ mod_id: {listener_id}, context, {name} }};
+                        {output}(&mut |mut submit| super::parts::declaration_listener(context, |refusals| {{
+                            let mut {event} = {event_type} {{ mod_id: {listener_id}, refusals, {output}: &mut submit }};
                             {accepted}
-                        }});
+                        }}));
                     }}"
                 ))
             }

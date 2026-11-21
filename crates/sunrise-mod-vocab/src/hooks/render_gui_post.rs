@@ -3,8 +3,8 @@
 pub trait Hooks {
     /// After the boss overlay and before the health and contextual HUD layers
     /// (skipped under F1; NeoForge's `RenderGuiEvent.Post`). Place a box with
-    /// `corners.place` (boxes stack away from their edge) and draw it with
-    /// `native_fill` and `native_text`.
+    /// `event.corners.place` (boxes stack away from their edge) and draw it
+    /// with `event.draw.fill` and `event.draw.text`.
     /// Use `ClientHost::debug_overlay_visible()` to avoid drawing over the debug overlay.
     /// Not heard when a mod canceled `render_gui_pre`. A panicking listener's
     /// drawing and corner placement are both discarded. Client-side.

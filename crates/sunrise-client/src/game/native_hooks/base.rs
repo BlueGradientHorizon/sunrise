@@ -876,9 +876,7 @@ impl Game<'_> {
     /// a panicking listener's batch and diagnostics are discarded.
     pub(in crate::game) fn native_blocks(
         context: &mod_api::RegistrationContext,
-        blocks: &mut dyn FnMut(
-            mod_api::Answered<mod_api::Block>,
-        ) -> Result<(), mod_api::DeclarationError>,
+        blocks: &mut mod_api::__private::DeclarationStage<'_, mod_api::Block>,
     ) {
         Self::fire_blocks(context, blocks);
     }
@@ -887,9 +885,7 @@ impl Game<'_> {
     /// not here.
     pub(in crate::game) fn native_items(
         context: &mod_api::RegistrationContext,
-        items: &mut dyn FnMut(
-            mod_api::Answered<mod_api::Item>,
-        ) -> Result<(), mod_api::DeclarationError>,
+        items: &mut mod_api::__private::DeclarationStage<'_, mod_api::Item>,
     ) {
         Self::fire_items(context, items);
     }

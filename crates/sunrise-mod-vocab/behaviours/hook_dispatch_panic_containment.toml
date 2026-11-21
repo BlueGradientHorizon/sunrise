@@ -1,5 +1,5 @@
 version = 1
-doc = "A generated callback panic discards the callback's unfinished output, disables only that mod's callback for that hook for the session, and produces a named error log and client diagnostic toast. Other eligible listeners continue from the last accepted output. An ordinary phase or output refusal is reported each time without disabling the listener. Failed registration and chunk-disk work does not publish."
+doc = "A generated callback panic discards its staged output, disables only that mod's callback for that hook for the session, and produces a named error log and client diagnostic toast. Other eligible listeners continue from the last accepted output. Journaled writes are undone in the existing transaction; published effects outside a journal are not undone. An ordinary phase or output refusal is reported each time without disabling the listener. Failed registrations do not publish; a failed chunk-disk job cannot publish even when later listeners succeed."
 tests = [
     "crates/sunrise-mod-vocab/src/hooks_tests.rs::panicking_listener_is_disabled_for_that_hook_and_reported_once",
     "crates/sunrise-mod-vocab/src/hooks_tests.rs::callback_and_registration_contain_panicking_payload_destructors",
@@ -16,4 +16,7 @@ tests = [
     "crates/sunrise-client-render/src/crash.rs::dropping_panicking_startup_parts_does_not_crash_the_server_thread",
     "crates/sunrise-client/src/game/modding/mod_menu_decisions_tests.rs::a_panicking_checked_quick_move_cannot_publish_a_detached_prefix",
     "crates/sunrise-client/src/game/world/server_packs.rs::hook_panic_toast_cannot_be_vetoed_or_rewritten_by_toast_add",
+    "crates/sunrise-client/src/game/interface/client_reload/client_reload_tests.rs::initial_load_stages_and_applies_client_reload_listeners",
+    "crates/sunrise-client/src/game/interface/client_reload/client_reload_tests.rs::panicking_client_reload_registration_discards_its_listener_and_edges",
+    "crates/sunrise-mod-vocab/src/world/server_reload_tests.rs::panicking_server_reload_registration_discards_only_its_ordered_and_retained_tails",
 ]

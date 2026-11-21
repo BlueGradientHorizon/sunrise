@@ -16,10 +16,11 @@ dependency pairs `(first, second)`. Both lend IDs from the registry, so clone on
 need after the borrow ends. `event.listeners.get_last_vanilla_listener()` always borrows
 `VanillaServerListeners::functions()` (matching NeoForge's
 `SortedReloadListenerEvent.getLastVanillaListener`); the built-in `neoforge:loot_modifiers`
-listener is registered before mod hooks without replacing it. `VanillaServerListeners::first()` and `last()` alias `functions()`, and
-`VanillaClientListeners::first()` / `last()` alias `model_manager()` (Sunrise's single modeled
-vanilla client reload anchor), with no synthetic `minecraft:first` or `minecraft:last` boundary
-nodes or automatic edges. During sorting, only dangling non-`minecraft` listeners are linked after
+listener is registered before mod hooks without replacing it. Use
+`VanillaServerListeners::functions()` or `VanillaClientListeners::model_manager()` in
+`add_dependency`. These names refer to the game's actual staged build and publish steps;
+there are no synthetic `minecraft:first` or `minecraft:last` nodes or automatic boundary edges.
+During sorting, only dangling non-`minecraft` listeners are linked after
 the anchor (matching NeoForge's `ReloadListenerSort`). A dependency orders both phases:
 `functions()` reads function files in prepare and admits the new library in apply;
 `model_manager()` builds the models in prepare. Its apply publishes the validated

@@ -10,8 +10,8 @@ pub trait Hooks {
     /// move's own handling, no-physics and the stuck multiplier included, in
     /// the one gate every kind's physics resolves through, so a forgotten
     /// family cannot move around it. Change `delta` to replace the movement
-    /// (still through every ordinary restriction) or set `canceled` to skip
-    /// the invocation: no position, velocity, collision-flag or fall change,
+    /// (still through every ordinary restriction) or set `event.cancelled` or
+    /// return `Flow::Cancel` to skip it: no position, velocity, collision-flag or fall change,
     /// and no displacement notice. A replacement component that is not a
     /// finite number, or lies outside ±64 blocks, rejects that listener's delta
     /// and veto together. The log names the mod and delta on each refusal. An

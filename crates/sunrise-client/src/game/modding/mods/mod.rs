@@ -8,7 +8,7 @@ use super::{
 mod menu_books;
 pub(in crate::game) mod runtime_files;
 mod standalone;
-use mod_api::__private::{DeclarationKind, DeclarationRefusal, game::*};
+use mod_api::__private::{DeclarationKind, DeclarationRefusal, DeclarationSink, game::*};
 use mod_api::{Answered, DeclarationError, LoadingMessage, RegistrationContext};
 use standalone::collect_standalone_models;
 use std::{
@@ -349,52 +349,61 @@ struct NativeDeclared {
     batches: BTreeMap<&'static str, DeclaredContent>,
 }
 
+impl NativeDeclared {
+    fn stage<D, T>(
+        &mut self,
+        listen: &mut dyn FnMut(&mut DeclarationSink<'_, D>) -> bool,
+        mut validate: impl FnMut(D) -> Result<T, DeclarationError>,
+        mut publish: impl FnMut(&mut DeclaredContent, T),
+    ) {
+        let mut entries = Vec::new();
+        if listen(&mut |Answered { mod_id, answer, .. }| {
+            entries.push((mod_id, validate(answer)?));
+            Ok(())
+        }) {
+            for (owner, value) in entries {
+                publish(self.batches.entry(owner).or_default(), value);
+            }
+        }
+    }
+}
+
 /// The same native declarations serve startup and every pack reload.
 fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
     let collect = || {
         use super::api_values::TryIntoEngine;
         let mut declared = NativeDeclared::default();
         let context = RegistrationContext::new();
-        Game::native_blocks(&context, &mut |Answered { mod_id, answer, .. }| {
-            let block = answer
-                .try_into_engine(&())
-                .and_then(|b| b.validate_local())
-                .map_err(|reason| DeclarationError::Rejected {
-                    id: answer.id,
-                    reason,
-                })?;
-            declared
-                .batches
-                .entry(mod_id)
-                .or_default()
-                .blocks
-                .push(block);
-            Ok(())
+        Game::native_blocks(&context, &mut |listen| {
+            declared.stage(
+                listen,
+                |answer| {
+                    answer
+                        .try_into_engine(&())
+                        .and_then(|b| b.validate_local())
+                        .map_err(|reason| DeclarationError::Rejected {
+                            id: answer.id,
+                            reason,
+                        })
+                },
+                |batch, block| batch.blocks.push(block),
+            );
         });
-        Game::native_items(&context, &mut |Answered { mod_id, answer, .. }| {
-            let item = answer
-                .try_into_engine(&())
-                .and_then(|i| i.validate_local())
-                .map_err(|reason| DeclarationError::Rejected {
-                    id: answer.id,
-                    reason,
-                })?;
-            declared.batches.entry(mod_id).or_default().items.push(item);
-            Ok(())
+        Game::native_items(&context, &mut |listen| {
+            declared.stage(
+                listen,
+                |answer| {
+                    answer
+                        .try_into_engine(&())
+                        .and_then(|i| i.validate_local())
+                        .map_err(|reason| DeclarationError::Rejected {
+                            id: answer.id,
+                            reason,
+                        })
+                },
+                |batch, item| batch.items.push(item),
+            );
         });
-        // These are per-listener staging batches; local validation never consults
-        // them. Publish only the declarations whose callbacks completed.
-        for (owner, kind) in mod_api::__private::take_discarded_declarations(&context) {
-            if let Some(batch) = declared.batches.get_mut(owner) {
-                match kind {
-                    DeclarationKind::Block => batch.blocks.clear(),
-                    DeclarationKind::Item => batch.items.clear(),
-                }
-            }
-        }
-        declared
-            .batches
-            .retain(|_, batch| !batch.blocks.is_empty() || !batch.items.is_empty());
         declared.refusals = mod_api::__private::take_declaration_refusals(&context);
         for (owner, kind) in super::api_values::block_entity_declarations() {
             declared.batches.entry(owner).or_default().types.push(kind);

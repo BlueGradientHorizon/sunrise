@@ -646,8 +646,6 @@ pub struct RegistrationContext {
     pub(crate) mods: LoadedMods,
     pub(crate) data: Option<RegistrationData>,
     pub(crate) declaration_refusals: std::sync::Mutex<Vec<crate::__private::DeclarationRefusal>>,
-    pub(crate) discarded_declarations:
-        std::sync::Mutex<Vec<(&'static str, crate::__private::DeclarationKind)>>,
     pub(crate) diagnostics:
         Option<Arc<std::sync::Mutex<crate::__private::RegistrationDiagnostics>>>,
     pub(crate) instance_dir: Option<crate::InstanceDirectory>,
@@ -666,7 +664,6 @@ impl RegistrationContext {
             mods: LoadedMods::new(),
             data,
             declaration_refusals: Default::default(),
-            discarded_declarations: Default::default(),
             diagnostics: None,
             instance_dir,
             startup: crate::world::startup_progress::installed(),

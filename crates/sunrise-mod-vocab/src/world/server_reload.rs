@@ -20,11 +20,6 @@ use std::{
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct VanillaServerListeners;
 impl VanillaServerListeners {
-    /// First vanilla server reload listener, matching NeoForge's
-    /// `VanillaServerListeners.FIRST` (aliases [`Self::functions`]).
-    pub fn first() -> Identifier {
-        Self::functions()
-    }
     pub(crate) fn functions_ref() -> &'static Identifier {
         static ID: LazyLock<Identifier> =
             LazyLock::new(|| Identifier::parse("minecraft:function_library").unwrap());
@@ -35,11 +30,6 @@ impl VanillaServerListeners {
     /// which need not match NeoForge's identifier.
     pub fn functions() -> Identifier {
         Self::functions_ref().clone()
-    }
-    /// Last vanilla server reload listener, matching NeoForge's
-    /// `VanillaServerListeners.LAST` (aliases [`Self::functions`]).
-    pub fn last() -> Identifier {
-        Self::functions()
     }
 }
 
@@ -245,9 +235,10 @@ impl ServerListenerRegistry {
                 crate::HookId::AddServerReloadListeners,
                 "add_server_reload_listeners",
             );
-            self.core.rollback(checkpoint, site);
             let owner = crate::content::crash::current_native_mod();
-            for listener in self.retained.drain(retained..) {
+            let discarded = self.retained.split_off(retained);
+            self.core.rollback(checkpoint, site);
+            for listener in discarded {
                 crate::runtime::discard_registration(site, owner, listener);
             }
         }

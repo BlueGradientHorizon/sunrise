@@ -22,12 +22,6 @@ use std::sync::{Arc, LazyLock};
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct VanillaClientListeners;
 impl VanillaClientListeners {
-    /// First registered vanilla client reload listener, corresponding to NeoForge's
-    /// `VanillaClientListeners.FIRST`. Sunrise currently models a single vanilla client
-    /// reload anchor, so this aliases [`Self::model_manager`].
-    pub fn first() -> Identifier {
-        Self::model_manager()
-    }
     /// Vanilla's model manager: building the next models in prepare and publishing
     /// them in apply, with the model-baking notification. Atlas upload precedes it. Use this anchor
     /// rather than its string value, which need not
@@ -36,12 +30,6 @@ impl VanillaClientListeners {
         static ID: LazyLock<Identifier> =
             LazyLock::new(|| Identifier::parse("minecraft:model_manager").unwrap());
         ID.clone()
-    }
-    /// Last registered vanilla client reload listener, corresponding to NeoForge's
-    /// `VanillaClientListeners.LAST`. Sunrise currently models a single vanilla client
-    /// reload anchor, so this aliases [`Self::model_manager`].
-    pub fn last() -> Identifier {
-        Self::model_manager()
     }
 }
 

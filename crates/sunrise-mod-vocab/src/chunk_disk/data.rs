@@ -78,11 +78,11 @@ impl ChunkDiskData {
             if let Some(call) = crate::content::crash::current_native_call() {
                 error.mod_id = call.id.into();
                 log::warn!(
-                    "mod {} hook {} attachment {} refused: {}",
+                    "mod {} hook {} attachment {key_name} refused: {} (at {})",
                     call.id,
                     call.hook,
-                    error.key,
-                    error.reason
+                    error.reason,
+                    error.key
                 );
             }
             self.failure.get_or_insert_with(|| error.clone());

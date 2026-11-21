@@ -241,9 +241,11 @@ mod tests {
         crate::testing::with_mods(vec![ModEntry::new("late", Box::new(Late))].into(), || {
             let mut blocks = Vec::new();
             // Call the engine dispatcher out of phase; a mod cannot retain the event.
-            crate::dispatch_blocks(&RegistrationContext::new(), &mut |block| {
-                blocks.push(block);
-                Ok(())
+            crate::dispatch_blocks(&RegistrationContext::new(), &mut |listen| {
+                assert!(listen(&mut |block| {
+                    blocks.push(block);
+                    Ok(())
+                }));
             });
             assert!(blocks.is_empty());
         });
@@ -290,13 +292,17 @@ mod tests {
                 let context = RegistrationContext::new();
                 let mut blocks = Vec::new();
                 let mut items = Vec::new();
-                crate::dispatch_blocks(&context, &mut |block| {
-                    blocks.push(block);
-                    Ok(())
+                crate::dispatch_blocks(&context, &mut |listen| {
+                    assert!(listen(&mut |block| {
+                        blocks.push(block);
+                        Ok(())
+                    }));
                 });
-                crate::dispatch_items(&context, &mut |item| {
-                    items.push(item);
-                    Ok(())
+                crate::dispatch_items(&context, &mut |listen| {
+                    assert!(listen(&mut |item| {
+                        items.push(item);
+                        Ok(())
+                    }));
                 });
                 assert_eq!(blocks.len(), 1);
                 assert_eq!(blocks[0].mod_id, "porter");

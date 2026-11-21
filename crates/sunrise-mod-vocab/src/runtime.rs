@@ -532,19 +532,10 @@ pub(crate) fn invoke_registration_reporting(
     call: impl FnOnce(),
     report: bool,
 ) -> bool {
-    let _scope = DispatchPanicScope::enter();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
-        Ok(()) => true,
-        Err(payload) => {
-            let (entered, trapped) = LISTENER_SERIAL.get();
-            LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
-            if report {
-                log_and_queue_panic("register", mod_id, None, &*payload);
-            }
-            dispose_panic_payload(payload);
-            false
-        }
-    }
+    matches!(
+        invoke_with("register", mod_id, false, None, || report, call),
+        DispatchOutcome::Ok(())
+    )
 }
 
 /// The process-wide list in dispatch order, or an empty list before installation.
