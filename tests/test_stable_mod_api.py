@@ -193,10 +193,11 @@ class StableModApiTests(unittest.TestCase):
         with mock.patch.object(nightly.train, "gh_json", return_value=pages), mock.patch.object(nightly, "git") as git:
             with mock.patch.object(nightly.train, "origin_tags", return_value=tags):
                 parent = nightly.stable_parent("26.3-0.1.11")
-                self.assertEqual(parent, nightly.train.Release(PREVIOUS, OLD, "2026-11-20T10:00:00Z", True))
+                # Its notes say nothing to the checks: the parent is its tag, commit and publication time.
+                self.assertEqual(parent, nightly.train.Release(PREVIOUS, OLD, "2026-11-20T10:00:00Z"))
                 git.assert_called_once_with("fetch", "--quiet", "--no-tags", "origin", OLD)
                 self.assertEqual(nightly.stable_parent().tag, "26.3-0.1.11", "no bound: the newest")
-                self.assertEqual(nightly.stable_parent("26.3-0.1.10").break_glass, False)
+                self.assertEqual(nightly.stable_parent("26.3-0.1.10").tag, "26.3-0.1.9")
             # An aborted run's tag, or one pushed by hand, above the newest published release: no release may be
             # judged against the wrong parent. The draft has no tag and doesn't count.
             for orphan in ("26.3-0.1.12", "26.3-0.2.0", "26.3-1.0.0"):

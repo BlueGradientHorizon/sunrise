@@ -501,9 +501,9 @@ waives the full daily on the release commit and nothing else:
   first matching row deciding. A path no row matches, a row with no legs (the crates that judge a release: its mod API
   surface, packages and signature), a symbolic link, a submodule or a name holding a line break means the full daily:
   the break-glass daily refuses to start and the release refuses to build. The SDK legs sdk-publish waits for always
-  run, since a release ships only after its `sdk-<sha>`. A game crate's change runs the ignored-test shards and the
-  Windows rows too, and the release build's smoke test boots the game headless on the commit; only the parity
-  harnesses wait for the full daily after publishing.
+  run, since a release ships only after its `sdk-<sha>`. A game crate's or Cargo change runs every leg that tests the
+  game (the ignored-test shards, the Windows rows and the parity harnesses), and the release build's smoke test boots
+  the game headless on the commit. A break-glass daily's legs count only when the whole run succeeded.
 - **The gate always applies.** dyna-checks runs on pushes to `release/26.3`, and the release needs `lint`, `verify` and
   `verify-static` passed on a push of exactly its commit.
 - **Never for** a minor or major release (only a patch of the parent), a commit that is the parent's or doesn't
@@ -517,12 +517,15 @@ waives the full daily on the release commit and nothing else:
   the closing disclaimer) name the parent, the legs it passed, why (the `break_glass` input) and who approved it with
   their comments. Once it is published, `full-daily` dispatches the full daily on the release branch for its commit:
   a real run, whose reds file `bug` issues titled `Daily (release/26.3): …`. Each commit on `release/26.3` has its own
-  daily queue, so another commit's run never replaces it. Until a full daily of it created after its publication
-  passes, the next patch can't take this path; if the follow-up was lost, dispatch it again:
+  daily queue, so another commit's run never replaces it. A parent with no full daily that passed before it was
+  published (as a break-glass release has none) needs one created after its publication, which the next patch
+  checks from the daily runs themselves, never from the notes; until it passes, the next patch can't take this path.
+  If the follow-up was lost, dispatch it again:
   `gh workflow run daily.yml --ref release/26.3 -f dry_run=false -f commit=<its sha>`.
 
-`pick` checks the rules of `release_train.break_glass_problems`, and `nightly.py reserve-stable-tag` checks the
-parent, the rules and the approvals again right before the tag is made.
+`pick` checks the rules of `release_train.break_glass_problems` and puts the parent and the selected legs in the run
+summary before either environment asks for approval; `nightly.py reserve-stable-tag` checks the parent (tag and
+commit), the rules and the approvals again right before the tag is made.
 
 ```sh
 # 1. The legs the cherry-picks select, on the release branch's head: publishes its SDK, writes nothing else.

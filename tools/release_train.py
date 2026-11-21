@@ -724,9 +724,9 @@ def release_head(head="", dry_run=False, daily=True):
 # or link replacing it), any other an exact path. A row with no legs (None) needs the full daily, and so does a path
 # no row matches (fail closed). The crates that judge a release (its mod API surface, its packages, its signature)
 # never ride a break-glass release. The SDK legs (BREAK_GLASS_ALWAYS) always run: sdk-publish waits for them
-# (daily_summary.SDK_LEGS), and a release ships only after its SDK. A game crate's change is also booted headless by
-# the release build's own smoke test, which publishing requires, and its daily tests run (the ignored-test shards and
-# the Windows rows); only the parity harnesses wait for the full daily after publishing.
+# (daily_summary.SDK_LEGS), and a release ships only after its SDK. A game crate's change runs every leg that tests
+# the game (the ignored-test shards, the Windows rows and the parity harnesses) and is booted headless by the release
+# build's own smoke test, which publishing requires.
 BREAK_GLASS_ALWAYS = ("sdk", "machine-sample", "fn-replace-check")
 BREAK_GLASS_LEGS = (
     ("docs/modding/", ("book-quickstart",)),
@@ -736,9 +736,9 @@ BREAK_GLASS_LEGS = (
     ("crates/sunrise-mod-surface/", None),
     ("crates/sunrise-mod-package/", None),
     ("crates/sunrise-release-sign/", None),
-    ("crates/", ("cargo-sunrise-mod", "shards", "windows-runtime-leases")),
-    ("Cargo.toml", ("cargo-sunrise-mod", "shards", "windows-runtime-leases")),
-    ("Cargo.lock", ("cargo-sunrise-mod", "shards", "windows-runtime-leases")),
+    ("crates/", ("cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases")),
+    ("Cargo.toml", ("cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases")),
+    ("Cargo.lock", ("cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases")),
 )
 # Who approves a break-glass release: each environment's one required reviewer, by GitHub's numeric user id (a login
 # can be renamed or taken over), UMCEKO and arismoko. nightly-build.yml binds one job to each environment: GitHub lets
@@ -748,11 +748,10 @@ BREAK_GLASS_APPROVERS = {"break-glass-umceko": 11256132, "break-glass-aria": 195
 
 
 class Release(typing.NamedTuple):
-    """A published stable release: its tag, commit, publication time and whether it was a break-glass release."""
+    """A published stable release: its tag, commit and publication time."""
     tag: str
     sha: str
     published_at: str
-    break_glass: bool
 
 
 def break_glass_legs(paths):
@@ -791,22 +790,29 @@ def break_glass_runs():
 
 
 def legs_passed(sha, legs, runs):
-    """The URL of a real daily run on the release branch that passed at least `legs` on sha (one job `legs <sha> <leg>`
-    per leg, which daily.yml runs only once the run's selected legs and its SDK passed), else ""."""
+    """The URL of a successful real daily run on the release branch that passed at least `legs` on sha (one job
+    `legs <sha> <leg>` per leg, which daily.yml runs only once the run's selected legs and its SDK passed), else ""."""
     for entry, jobs in runs:
-        if entry["head_branch"] == RELEASE_BRANCH and all(jobs.get(f"legs {sha} {leg}") == "success" for leg in legs):
+        if (entry["head_branch"] == RELEASE_BRANCH and entry["conclusion"] == "success"
+                and all(jobs.get(f"legs {sha} {leg}") == "success" for leg in legs)):
             return entry["html_url"]
     return ""
 
 
+def full_dailies(sha, runs):
+    """[(run, passed)] of the real full daily runs of sha, newest first: a run that succeeded or failed whose job
+    `summary <sha>` finished; it passed when the run succeeded and its `green <sha>` job did. Runs that tested nothing
+    of sha (a cancelled run, a scheduled run that skipped it, a dry or break-glass run, whose summaries are named
+    apart) don't count."""
+    return [(entry, entry["conclusion"] == "success" and jobs.get(f"green {sha}") == "success")
+            for entry, jobs in runs
+            if entry["conclusion"] in ("success", "failure") and jobs.get(f"summary {sha}") in ("success", "failure")]
+
+
 def newest_full_daily(sha, runs, since=""):
-    """(URL, passed) of the newest real full daily run of sha created at or after `since` (its job `summary <sha>`
-    finished; `green <sha>` says it passed every leg), or None. Runs that tested nothing of sha (a scheduled run that
-    skipped it, a dry or break-glass run, whose summaries are named apart) don't count."""
-    for entry, jobs in runs:
-        if entry["created_at"] >= since and jobs.get(f"summary {sha}") in ("success", "failure"):
-            return entry["html_url"], jobs.get(f"green {sha}") == "success"
-    return None
+    """(URL, passed) of the newest real full daily run of sha created at or after `since`, or None."""
+    return next(((entry["html_url"], passed) for entry, passed in full_dailies(sha, runs)
+                 if entry["created_at"] >= since), None)
 
 
 def break_glass_problems(sha, tag, parent):
@@ -816,7 +822,9 @@ def break_glass_problems(sha, tag, parent):
     The rules never waived: a patch of that release, descending from it; dyna-checks' gate passed on a release-branch
     push of exactly `sha`; a daily run of `sha` that passed every leg its changed paths select (break_glass_legs), the
     SDK published, and no full daily of `sha` that failed; and the parent's newest full daily passed, run after its
-    publication when the parent was itself a break-glass release (its follow-up). The surface (unchanged
+    publication unless the parent had passed one before it was published (a break-glass release's follow-up). Which
+    kind of release the parent was is read from Actions' own records, never from its editable notes: with no record
+    of a full daily it passed before its publication, one after it is required. The surface (unchanged
     `surface.json`, an `identical` diff, the content API) is stable-mod-api's, run at the pick and again before the
     tag."""
     if not parent:
@@ -836,10 +844,12 @@ def break_glass_problems(sha, tag, parent):
                             f"run `gh workflow run daily.yml --ref {RELEASE_BRANCH} -f dry_run=false -f break_glass=true`")
     if (own := newest_full_daily(sha, runs)) and not own[1]:
         problems.append(f"the newest full daily run of {sha} failed ({own[0]})")
-    since = parent.published_at if parent.break_glass else ""
+    tested = any(passed and entry["created_at"] < parent.published_at
+                 for entry, passed in full_dailies(parent.sha, runs))
+    since = "" if tested else parent.published_at
     found = newest_full_daily(parent.sha, runs, since)
     if not found or not found[1]:
-        after = f" since its break-glass publication ({since})" if since else ""
+        after = f" since its publication ({since})" if since else ""
         problems.append(f"the newest full daily run of {parent.tag} ({parent.sha}){after} "
                         + (f"failed ({found[0]})" if found else f"is missing in the last {DAILY_EVIDENCE_DAYS} days")
                         + f"; run `gh workflow run daily.yml --ref {RELEASE_BRANCH} -f dry_run=false -f commit={parent.sha}`")

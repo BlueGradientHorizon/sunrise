@@ -17,7 +17,7 @@ from tools.ci import daily_summary as summary
 from tools.ci import nightly
 
 ALWAYS = sorted(train.BREAK_GLASS_ALWAYS)
-CRATES = ["cargo-sunrise-mod", "shards", "windows-runtime-leases"]
+CRATES = ["cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases"]
 PARENT_TAG = "26.3-0.1.0"
 
 
@@ -55,6 +55,9 @@ class LegsTests(unittest.TestCase):
                 (["docs/hosting.md"], ALWAYS),
                 (["docs"], ALWAYS),
                 (["crates/sunrise-world/src/lib.rs", "Cargo.lock"], ALWAYS + CRATES),
+                # World generation: its parity harness runs before the release, never only after.
+                (["crates/sunrise-world/src/worldgen/noise.rs"], ALWAYS + CRATES),
+                (["Cargo.toml"], ALWAYS + CRATES),
                 ([], ALWAYS)):
             with self.subTest(paths=paths):
                 self.assertEqual(train.break_glass_legs(paths), (sorted(legs), []))
@@ -91,8 +94,8 @@ class LegsTests(unittest.TestCase):
         self.assertEqual(sorted(special), ["docs/Cargo.toml\nCargo.lock", "docs/modding/link.md"])
 
 
-def run_record(id, created="2026-11-20T12:00:00Z", branch=train.RELEASE_BRANCH, head="f" * 40):
-    return {"id": id, "head_branch": branch, "head_sha": head, "created_at": created,
+def run_record(id, created="2026-11-20T12:00:00Z", branch=train.RELEASE_BRANCH, head="f" * 40, conclusion="success"):
+    return {"id": id, "head_branch": branch, "head_sha": head, "created_at": created, "conclusion": conclusion,
             "html_url": f"https://github.com/{REPO}/actions/runs/{id}"}
 
 
@@ -119,6 +122,11 @@ class EvidenceTests(unittest.TestCase):
                              (legs_jobs(self.SHA, legs), "main")):
             with self.subTest(jobs=jobs, branch=branch):
                 self.assertEqual(train.legs_passed(self.SHA, legs, [(run_record(2, branch=branch), jobs)]), "")
+        # A run that failed or was cancelled after its legs jobs passed is no evidence.
+        for conclusion in ("failure", "cancelled"):
+            with self.subTest(conclusion=conclusion):
+                self.assertEqual(train.legs_passed(self.SHA, legs, [(run_record(5, conclusion=conclusion),
+                                                                     legs_jobs(self.SHA, legs))]), "")
         # Two runs that each passed some of the legs are not one run that passed them all.
         split = [(run_record(3), legs_jobs(self.SHA, ALWAYS)), (run_record(4), legs_jobs(self.SHA, ["book-quickstart"]))]
         self.assertEqual(train.legs_passed(self.SHA, legs, split), "")
@@ -139,6 +147,12 @@ class EvidenceTests(unittest.TestCase):
         self.assertIsNone(train.newest_full_daily(self.SHA, [(moved, full("e" * 40))]))
         self.assertIsNone(train.newest_full_daily(self.SHA, [(green, full(self.SHA))], since="2026-11-20T00:00:00Z"),
                           "a break-glass parent's follow-up runs after its publication")
+        # The run's own conclusion decides too: a failed run is red whatever its green job says, a cancelled one no
+        # verdict.
+        failed, cancelled = run_record(6, conclusion="failure"), run_record(7, conclusion="cancelled")
+        self.assertEqual(train.newest_full_daily(self.SHA, [(failed, full(self.SHA))]), (failed["html_url"], False))
+        self.assertEqual(train.newest_full_daily(self.SHA, [(cancelled, full(self.SHA)), (green, full(self.SHA))]),
+                         (green["html_url"], True))
 
 
 class ProblemsTests(unittest.TestCase):
@@ -161,14 +175,14 @@ class ProblemsTests(unittest.TestCase):
     def test_a_patch_whose_legs_gate_and_parent_daily_passed_may_ship(self):
         with tempfile.TemporaryDirectory() as folder:
             parent, sha = history(folder, ("docs/modding/src/a.md", "file"))
-            release = train.Release(PARENT_TAG, parent, "2026-11-18T00:00:00Z", False)
+            release = train.Release(PARENT_TAG, parent, "2026-11-18T00:00:00Z")
             found = self.problems(folder, sha, release, runs=self.evidence(sha, parent))
         self.assertEqual(found, ([], sorted(ALWAYS + ["book-quickstart"])))
 
     def test_each_rule_refuses_on_its_own(self):
         with tempfile.TemporaryDirectory() as folder:
             parent, sha = history(folder, ("crates/sunrise-world/src/lib.rs", "file"))
-            release = train.Release(PARENT_TAG, parent, "2026-11-18T00:00:00Z", False)
+            release = train.Release(PARENT_TAG, parent, "2026-11-18T00:00:00Z")
             good = self.evidence(sha, parent, CRATES)
             own_red = [(run_record(3, "2026-11-20T13:00:00Z"), full(sha, green=False))]
             for change, reason in (
@@ -185,22 +199,34 @@ class ProblemsTests(unittest.TestCase):
                     self.assertEqual(len(problems), 1, problems)
                     self.assertIn(reason, problems[0])
 
-    def test_a_break_glass_parent_needs_its_follow_up_daily_after_publication(self):
+    def test_a_parent_without_a_full_daily_before_publication_needs_one_after(self):
+        # Which kind of release the parent was comes from its daily runs, never its notes: a parent that shipped
+        # without a passed full daily (a break-glass release) needs its follow-up, run after it was published.
         with tempfile.TemporaryDirectory() as folder:
             parent, sha = history(folder, ("docs/a.md", "file"))
-            release = train.Release(PARENT_TAG, parent, "2026-11-20T00:00:00Z", True)
-            before = [(run_record(2), legs_jobs(sha, ALWAYS)),
-                      (run_record(1, "2026-11-19T09:00:00Z"), full(parent))]
-            problems, _ = self.problems(folder, sha, release, runs=before)
-            self.assertIn("since its break-glass publication (2026-11-20T00:00:00Z) is missing", problems[0])
-            self.assertIn(f"-f commit={parent}", problems[0])
-            after = before + [(run_record(3, "2026-11-20T05:00:00Z"), full(parent))]
-            self.assertEqual(self.problems(folder, sha, release, runs=after)[0], [])
+            release = train.Release(PARENT_TAG, parent, "2026-11-20T00:00:00Z")
+            legs = (run_record(2), legs_jobs(sha, ALWAYS))
+            red_before = (run_record(1, "2026-11-19T09:00:00Z", conclusion="failure"), full(parent, green=False))
+            green_before = (run_record(1, "2026-11-19T09:00:00Z"), full(parent))
+            green_after = (run_record(3, "2026-11-20T05:00:00Z"), full(parent))
+            for runs, missing in (([legs], True), ([legs, red_before], True), ([legs, green_after, red_before], False),
+                                  ([legs, green_before], False)):
+                with self.subTest(runs=runs):
+                    problems, _ = self.problems(folder, sha, release, runs=runs)
+                    if missing:
+                        self.assertIn("since its publication (2026-11-20T00:00:00Z) is missing", problems[0])
+                        self.assertIn(f"-f commit={parent}", problems[0])
+                    else:
+                        self.assertEqual(problems, [])
+            # A parent that passed before publication: its newest full daily still decides.
+            red_after = (run_record(3, "2026-11-20T05:00:00Z", conclusion="failure"), full(parent, green=False))
+            problems, _ = self.problems(folder, sha, release, runs=[legs, red_after, green_before])
+            self.assertIn("failed", problems[0])
 
     def test_an_unmapped_or_special_path_a_foreign_parent_or_no_parent_refuses(self):
         with tempfile.TemporaryDirectory() as folder:
             parent, sha = history(folder, ("docs/a.md", "file"), (".github/workflows/release.yml", "file"))
-            release = train.Release(PARENT_TAG, parent, "", False)
+            release = train.Release(PARENT_TAG, parent, "")
             problems, legs = self.problems(folder, sha, release, runs=self.evidence(sha, parent, ()))
             self.assertIn("'.github/workflows/release.yml'", problems[0])
             other = git_in(Path(folder))("commit-tree", "-m", "elsewhere", "4b825dc642cb6eb9a060e54bf8d69288fbee4904")
@@ -212,7 +238,7 @@ class ProblemsTests(unittest.TestCase):
             self.assertIn("no published stable release on 26.3", self.problems(folder, sha, None, tag=PARENT_TAG)[0][0])
         with tempfile.TemporaryDirectory() as folder:
             parent, sha = history(folder, ("docs/modding/link.md", "link"))
-            problems, _ = self.problems(folder, sha, train.Release(PARENT_TAG, parent, "", False),
+            problems, _ = self.problems(folder, sha, train.Release(PARENT_TAG, parent, ""),
                                         runs=self.evidence(sha, parent))
             self.assertIn("'docs/modding/link.md'", problems[0])
 
@@ -302,11 +328,11 @@ class NotesTests(unittest.TestCase):
 
 class ReserveTests(unittest.TestCase):
     SHA = "c" * 40
-    PARENT = train.Release(PARENT_TAG, "a" * 40, "", False)
+    PARENT = train.Release(PARENT_TAG, "a" * 40, "")
 
     def reserve(self, parent, problems=()):
         env = {"GITHUB_REF": f"refs/heads/{train.RELEASE_BRANCH}", "GITHUB_REPOSITORY": REPO, "BREAK_GLASS": "true",
-               "PARENT_SHA": self.PARENT.sha, "GITHUB_RUN_ID": "55", "GITHUB_RUN_ATTEMPT": "1"}
+               "PARENT_SHA": self.PARENT.sha, "PARENT_TAG": self.PARENT.tag, "GITHUB_RUN_ID": "55", "GITHUB_RUN_ATTEMPT": "1"}
         with mock.patch.dict(os.environ, env), \
                 mock.patch.object(nightly.train, "release_head", return_value=self.SHA) as head, \
                 mock.patch.object(nightly.train, "origin_tags", return_value={PARENT_TAG: self.PARENT.sha,
@@ -322,10 +348,43 @@ class ReserveTests(unittest.TestCase):
 
     def test_the_tag_waits_for_the_same_parent_its_rules_and_both_approvals_again(self):
         self.reserve(self.PARENT)
-        with self.assertRaisesRegex(SystemExit, "the parent release changed since the pick"):
-            self.reserve(self.PARENT._replace(sha="b" * 40))
+        for changed in (self.PARENT._replace(sha="b" * 40), self.PARENT._replace(tag="26.3-0.1.2")):
+            with self.subTest(changed=changed), \
+                    self.assertRaisesRegex(SystemExit, "the parent release changed since the pick"):
+                self.reserve(changed)
         with self.assertRaisesRegex(SystemExit, "the gate failed"):
             self.reserve(self.PARENT, ["the gate failed"])
+
+
+class PickTests(unittest.TestCase):
+    SHA = "c" * 40
+
+    def test_the_approvers_see_the_parent_and_legs_before_they_approve(self):
+        parent = train.Release(PARENT_TAG, "a" * 40, "")
+        with tempfile.TemporaryDirectory() as folder:
+            env = {"GITHUB_REPOSITORY": REPO, "GITHUB_OUTPUT": f"{folder}/out", "GITHUB_REF": "refs/heads/release/26.3",
+                   "DRY_RUN": "false", "NIGHTLY_BASE": self.SHA, "RELEASE_VERSION": "0.1.1", "RELEASES_PAUSED": "",
+                   "BREAK_GLASS": "the save fix", "GITHUB_STEP_SUMMARY": f"{folder}/summary"}
+            back = os.getcwd()
+            os.chdir(folder)
+            try:
+                with mock.patch.dict(os.environ, env), mock.patch.object(nightly, "git", return_value=""), \
+                        mock.patch.object(nightly.train, "origin_tags", return_value={PARENT_TAG: parent.sha}), \
+                        mock.patch.object(nightly.train, "release_head", return_value=self.SHA), \
+                        mock.patch.object(nightly.train, "open_blockers", return_value=[]), \
+                        mock.patch.object(nightly.train, "known_issues", return_value=[]), \
+                        mock.patch.object(nightly, "sdk_ready", return_value=True), \
+                        mock.patch.object(nightly, "stable_parent", return_value=parent), \
+                        mock.patch.object(nightly.train, "break_glass_problems", return_value=([], ALWAYS)), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    nightly.pick_stable()
+            finally:
+                os.chdir(back)
+            summary_text = Path(folder, "summary").read_text()
+            outputs = dict(line.split("=", 1) for line in Path(folder, "out").read_text().splitlines())
+        self.assertIn(f"Patches {PARENT_TAG} ({parent.sha}) on the daily legs {', '.join(ALWAYS)}.", summary_text)
+        self.assertEqual((outputs["parent_tag"], outputs["parent_sha"], outputs["break_glass_legs"]),
+                         (PARENT_TAG, parent.sha, " ".join(ALWAYS)))
 
 
 class PartialSummaryTests(unittest.TestCase):

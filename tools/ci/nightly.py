@@ -508,6 +508,14 @@ def pick_stable() -> None:
     if reason:
         parent = stable_parent(tag)
         problems, legs = train.break_glass_problems(sha, tag, parent)
+        # What the two approvers approve, shown before their environments ask.
+        line = (f"### Break-glass release {tag} at {sha}\n"
+                + (f"Patches {parent.tag} ({parent.sha}) on the daily legs {', '.join(legs) or '(none)'}.\n"
+                   if parent else "No published stable release to patch.\n"))
+        print(line)
+        if os.environ.get("GITHUB_STEP_SUMMARY"):
+            with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+                summary.write(line)
         if problems:
             text = "the break-glass release stopped: " + "; ".join(problems) + "."
             if not dry_run:
@@ -535,7 +543,7 @@ def pick_stable() -> None:
     print(f"build: {tag} {sha}")
 
 
-# A break-glass release's own section of its notes: how the next one knows its parent was one (stable_parent).
+# A break-glass release's own section of its notes (break_glass_notes): a record for readers, never read back.
 BREAK_GLASS_SECTION = "### Break-glass release"
 
 
@@ -564,8 +572,7 @@ def stable_parent(tag: str = "") -> train.Release | None:
     if not (sha := tags.get(newest)):
         raise SystemExit(f"::error::refused: the published release {newest} has no tag")
     git("fetch", "--quiet", "--no-tags", "origin", sha)
-    release = published[newest]
-    return train.Release(newest, sha, release["published_at"], BREAK_GLASS_SECTION in (release["body"] or ""))
+    return train.Release(newest, sha, published[newest]["published_at"])
 
 
 def break_glass_legs(sha: str) -> None:
@@ -767,7 +774,7 @@ def reserve_stable_tag(sha: str, tag: str) -> None:
         # The parent the pick judged it against, its rules, and both approvals again; its surface was checked by the
         # stable-mod-api step just before this.
         parent = stable_parent(tag)
-        if not parent or parent.sha != os.environ.get("PARENT_SHA"):
+        if not parent or (parent.tag, parent.sha) != (os.environ.get("PARENT_TAG"), os.environ.get("PARENT_SHA")):
             raise SystemExit(f"::error::refused: the parent release changed since the pick ({parent})")
         problems, _ = train.break_glass_problems(sha, tag, parent)
         if problems:
