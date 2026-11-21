@@ -333,6 +333,9 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    const TIMEOUT: Duration = Duration::from_secs(5);
 
     /// What the tests below share, since the address and the agents are one of each for the whole
     /// process: they take it in turn.
@@ -582,6 +585,8 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(TIMEOUT)).unwrap();
+            stream.set_write_timeout(Some(TIMEOUT)).unwrap();
             let mut greeting = [0; 2];
             stream.read_exact(&mut greeting).unwrap();
             assert_eq!(greeting[0], 5);
@@ -617,7 +622,11 @@ mod tests {
         for scheme in ["socks5", "socks5h"] {
             let (port, server) = socks5_proxy();
             let proxy = parse(&format!("{scheme}://127.0.0.1:{port}")).unwrap();
-            let agent = ureq::AgentBuilder::new().proxy(proxy).build();
+            let agent = ureq::AgentBuilder::new()
+                .timeout_connect(TIMEOUT)
+                .timeout(TIMEOUT)
+                .proxy(proxy)
+                .build();
             let answer = agent.get("http://sunrise.invalid/a.jar").call().unwrap();
             assert_eq!(answer.into_string().unwrap(), "ok", "{scheme}");
             assert_eq!(server.join().unwrap(), "sunrise.invalid", "{scheme}");
@@ -629,14 +638,15 @@ mod tests {
     fn a_configured_agent_uses_the_env_proxy_but_goes_direct_for_localhost() {
         use std::io::{BufRead, BufReader, Write};
         use std::net::TcpListener;
-        use std::time::Duration;
 
         const LOCAL_URL: &str = "SUNRISE_PROXY_TEST_LOCAL_URL";
-        const TIMEOUT: Duration = Duration::from_secs(5);
         if let Ok(local_url) = std::env::var(LOCAL_URL) {
             let get = |url: &str| {
                 agent("test-configured", url, |builder| {
-                    builder.redirects(0).timeout(TIMEOUT)
+                    builder
+                        .redirects(0)
+                        .timeout_connect(TIMEOUT)
+                        .timeout(TIMEOUT)
                 })
                 .unwrap()
                 .get(url)
@@ -672,6 +682,7 @@ mod tests {
         let origin = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             stream.set_read_timeout(Some(TIMEOUT)).unwrap();
+            stream.set_write_timeout(Some(TIMEOUT)).unwrap();
             let mut line = String::new();
             let mut request = BufReader::new(&stream);
             while request.read_line(&mut line).unwrap() > 2 {
