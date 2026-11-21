@@ -4,7 +4,7 @@
 //! A sprite-set provider for a common `ParticleType`. The loaded sprite set and optional
 //! `sunrise:behaviour` seed the particle's state; the provider creates it with typed options
 //! and moves it in batches. The game resolves the provider once per sprite reload.
-use super::particle_types::TypedParticleOptions;
+use super::particle_types::{ParticleCallback, TypedParticleOptions};
 use crate::{BlockState, LightLayer, ParticleBlend, ParticleKey, ParticleType, RandomSource};
 use std::{collections::HashMap, sync::Arc};
 
@@ -288,7 +288,7 @@ pub trait BoundParticleProvider: Send + Sync {
         aux: [f64; 3],
         random: &mut dyn RandomSource,
         particle: &mut ModParticle,
-    ) -> Option<()>;
+    ) -> Result<Option<()>, String>;
     fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView);
     fn extract(
         &self,
@@ -297,7 +297,10 @@ pub trait BoundParticleProvider: Send + Sync {
         output: &mut dyn QuadParticleRenderState,
     );
 }
-struct BoundProvider<T>(Arc<dyn ParticleProvider<T>>);
+struct BoundProvider<T> {
+    provider: Arc<dyn ParticleProvider<T>>,
+    callback: ParticleCallback,
+}
 impl<T: 'static> BoundParticleProvider for BoundProvider<T> {
     fn create_particle(
         &self,
@@ -307,12 +310,16 @@ impl<T: 'static> BoundParticleProvider for BoundProvider<T> {
         aux: [f64; 3],
         random: &mut dyn RandomSource,
         particle: &mut ModParticle,
-    ) -> Option<()> {
-        self.0
-            .create_particle(options.value()?, level, position, aux, random, particle)
+    ) -> Result<Option<()>, String> {
+        self.callback.call(options.key(), "create particle", || {
+            let value = options.value().ok_or("wrong particle options type")?;
+            Ok(self
+                .provider
+                .create_particle(value, level, position, aux, random, particle))
+        })
     }
     fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView) {
-        self.0.tick(particles, level);
+        self.provider.tick(particles, level);
     }
     fn extract(
         &self,
@@ -320,7 +327,7 @@ impl<T: 'static> BoundParticleProvider for BoundProvider<T> {
         view: &ParticleExtractView,
         output: &mut dyn QuadParticleRenderState,
     ) {
-        self.0.extract(particle, view, output);
+        self.provider.extract(particle, view, output);
     }
 }
 
@@ -329,7 +336,12 @@ impl<T: 'static> BoundParticleProvider for BoundProvider<T> {
 pub fn bind_particle_provider<T: 'static>(
     provider: Arc<dyn ParticleProvider<T>>,
 ) -> Arc<dyn BoundParticleProvider> {
-    Arc::new(BoundProvider(provider))
+    let owner = crate::content::crash::current_native_mod().unwrap_or("unowned provider");
+    let index = crate::runtime::mod_index(owner).unwrap_or(usize::MAX);
+    Arc::new(BoundProvider {
+        provider,
+        callback: ParticleCallback::new(owner, index),
+    })
 }
 
 // no wire: process-local callback storage.

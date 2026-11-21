@@ -82,65 +82,6 @@ pub(super) fn decode_mod_particle(name: &str, bytes: &[u8]) -> Option<ParticleOp
     }
 }
 
-/// One of a packet's `count` particles (`handleParticleEvent`): its position
-/// and speed. DEFAULT (0) draws both from a Gaussian; ALTERNATIVE (1) and
-/// ALTERNATIVE_WITH_SPEED (2) spread over `[0, dist)`, the first keeping
-/// the speeds as they are, the second scaling each by `nextDouble`.
-fn spread(
-    r: &mut impl RandomSource,
-    randomization: i32,
-    pos: [f64; 3],
-    dist: [f64; 3],
-    speed: [f64; 3],
-) -> ([f64; 3], [f64; 3]) {
-    if matches!(randomization, 1 | 2) {
-        let at = [0, 1, 2].map(|k| pos[k] + r.next_double() * dist[k]);
-        let v = if randomization == 2 {
-            [0, 1, 2].map(|k| speed[k] * r.next_double())
-        } else {
-            speed
-        };
-        (at, v)
-    } else {
-        let at = [0, 1, 2].map(|k| pos[k] + r.next_gaussian() * dist[k]);
-        (at, [0, 1, 2].map(|k| r.next_gaussian() * speed[k]))
-    }
-}
-
-/// Dispatch every spawn from one decoded packet value.
-fn spawn_level_particles(
-    particles: &mut sunrise_client::particles::ParticleEngine,
-    world: &sunrise_client::world::World,
-    packet: &play::LevelParticles,
-    options: &ParticleOptions,
-) {
-    let (d, s) = (packet.dist.map(f64::from), packet.max_speed.map(f64::from));
-    // ClientLevel.addParticle: the camera's 32 blocks and the Particles
-    // option, unless the packet or the type overrides the limiter.
-    let add = |particles: &mut sunrise_client::particles::ParticleEngine, at, v| {
-        particles.add_with_world(
-            Some(world),
-            options,
-            at,
-            v,
-            packet.override_limiter,
-            packet.always_show,
-        );
-    };
-    if packet.count == 0 {
-        add(
-            particles,
-            packet.pos,
-            [s[0] * d[0], s[1] * d[1], s[2] * d[2]],
-        );
-        return;
-    }
-    for _ in 0..packet.count {
-        let (at, v) = spread(particles.random(), packet.randomization, packet.pos, d, s);
-        add(particles, at, v);
-    }
-}
-
 /// A protocol or mob-event listener as the API's plain particle data.
 pub(super) fn particle_position_source(source: &NetworkPositionSource) -> PositionSource {
     match source {
@@ -546,7 +487,15 @@ impl Game<'_> {
         if self.pvp_hides_particle(options.ty) {
             return;
         }
-        spawn_level_particles(&mut self.particles, &self.world, p, &options);
+        let Some(remote) = &mut self.remote else {
+            return;
+        };
+        self.particles.handle_level_particles(
+            &mut remote.particle_packet_random,
+            &self.world,
+            p,
+            &options,
+        );
     }
 
     /// `ClientPacketListener.handleExplosion`: the blast's particles (its
@@ -918,27 +867,6 @@ pub(in crate::game) mod tests {
     use sunrise_core::random::LegacyRandom;
     use sunrise_protocol::packets::play;
 
-    /// The Nether's evaporation smoke (ALTERNATIVE, dist 1, speed 0) lands
-    /// inside the block from its corner and stands still; DEFAULT spreads
-    /// both ways.
-    #[test]
-    fn alternative_particles_spread_from_the_corner_over_dist() {
-        let mut r = LegacyRandom::new(1);
-        let mut below = false;
-        for _ in 0..200 {
-            let (at, v) = spread(&mut r, 1, [3.0, 64.0, -7.0], [1.0; 3], [0.0; 3]);
-            assert!((3.0..4.0).contains(&at[0]), "{at:?}");
-            assert!((64.0..65.0).contains(&at[1]), "{at:?}");
-            assert!((-7.0..-6.0).contains(&at[2]), "{at:?}");
-            assert_eq!(v, [0.0; 3]);
-            let (_, v) = spread(&mut r, 2, [0.0; 3], [0.0; 3], [0.5, 0.0, 2.0]);
-            assert!((0.0..0.5).contains(&v[0]) && v[1] == 0.0 && (0.0..2.0).contains(&v[2]));
-            let (at, _) = spread(&mut r, 0, [0.0; 3], [1.0; 3], [0.0; 3]);
-            below |= at.iter().any(|&c| c < 0.0);
-        }
-        assert!(below, "DEFAULT is a Gaussian around the position");
-    }
-
     /// `PowderSnowBlock.entityInside`: vertical-only movement skips the roll;
     /// horizontal movement uses nextBoolean, then X and Z floats in order.
     #[test]
@@ -1115,6 +1043,10 @@ pub(in crate::game) mod tests {
         }
     }
 
+    thread_local! {
+        pub(in crate::game) static PARTICLE_MAP_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+
     pub(in crate::game) struct MeasuredParticle;
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for MeasuredParticle {
@@ -1128,7 +1060,10 @@ pub(in crate::game) mod tests {
                 false,
                 mod_api::ParticleMapCodec::new(
                     |fields, _| match fields.get(&"measure".into()) {
-                        Some(mod_api::Tag::Int(value)) => Ok(*value),
+                        Some(mod_api::Tag::Int(value)) => {
+                            PARTICLE_MAP_READS.set(PARTICLE_MAP_READS.get() + 1);
+                            Ok(*value)
+                        }
                         _ => Err("measure must be an integer".into()),
                     },
                     |value, _| {
@@ -1138,7 +1073,16 @@ pub(in crate::game) mod tests {
                         )]))
                     },
                 ),
-                mod_api::ParticleStreamCodec::wire(),
+                mod_api::ParticleStreamCodec::mapped(
+                    |value, _| Ok(value),
+                    |value, _| {
+                        if *value >= 0 {
+                            Ok(*value)
+                        } else {
+                            Err("negative measure".into())
+                        }
+                    },
+                ),
             );
         }
     }
@@ -1187,17 +1131,28 @@ pub(in crate::game) mod tests {
             &Default::default(),
         );
         engine.created_requests = Some(Vec::new());
-        spawn_level_particles(&mut engine, &world, &packet, &decoded);
+        let mut random = LegacyRandom::new(23);
+        engine.handle_level_particles(&mut random, &world, &packet, &decoded);
         let created = engine.created_requests.as_mut().unwrap();
         assert_eq!(created.len(), 2);
         for request in created.drain(..) {
             assert_eq!(request.0.typed_particle, decoded.typed_particle);
         }
         packet.count = 0;
-        spawn_level_particles(&mut engine, &world, &packet, &decoded);
+        packet.dist = [0.1, -0.2, 0.7];
+        packet.max_speed = [0.3, 0.4, 0.9];
+        engine.handle_level_particles(&mut random, &world, &packet, &decoded);
         let created = engine.created_requests.take().unwrap();
         assert_eq!(created.len(), 1);
-        assert_eq!((created[0].1, created[0].2), (at, [0.5, 1.0, 2.0]));
+        assert_eq!(created[0].1, at);
+        assert_eq!(
+            created[0].2.map(f64::to_bits),
+            [
+                0x3f9e_b852_0000_0000,
+                0xbfb4_7ae1_6000_0000,
+                0x3fe4_28f5_c000_0000
+            ]
+        );
 
         send_hub_level_particles(
             &hub,

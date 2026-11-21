@@ -1,7 +1,12 @@
 //! Typed particle registration and the shared structured/stream dispatch.
 use crate::wire::{Reader, Wire, Writer};
 use crate::{Compound, FluidKey, Identifier, ItemKey, ParticleKey, ParticleOptions};
-use std::{any::Any, fmt, marker::PhantomData, sync::Arc};
+use std::{
+    any::Any,
+    fmt,
+    marker::PhantomData,
+    sync::{Arc, atomic::AtomicBool},
+};
 use sunrise_mod_runtime::registry_keys::Names;
 
 /// The load-stable identity of a registered particle type and its Rust options type.
@@ -236,6 +241,108 @@ pub trait ParticleCodec: Send + Sync {
         view: &ParticleRegistryView<'_>,
         limit: usize,
     ) -> Result<Vec<u8>, String>;
+}
+
+/// Attribution and the existing retained-callback failure policy for a codec or factory.
+pub(super) struct ParticleCallback {
+    owner: &'static str,
+    index: usize,
+    panicked: AtomicBool,
+}
+
+impl ParticleCallback {
+    pub(super) fn new(owner: &'static str, index: usize) -> Self {
+        Self {
+            owner,
+            index,
+            panicked: AtomicBool::new(false),
+        }
+    }
+
+    pub(super) fn call<T>(
+        &self,
+        key: ParticleKey,
+        operation: &'static str,
+        invoke: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        crate::callback_owner::call(
+            self.owner,
+            self.index,
+            &self.panicked,
+            "particle",
+            operation,
+            invoke,
+        )
+        .and_then(|value| value)
+        .map_err(|error| {
+            let name =
+                super::particle_keys::particle_name(key).unwrap_or("unresolved particle type");
+            format!("mod {}, {name}: {error}", self.owner)
+        })
+    }
+}
+
+struct OwnedParticleCodec {
+    codec: Arc<dyn ParticleCodec>,
+    callback: ParticleCallback,
+}
+
+/// Bind the declaration's type-erased codec to its registering mod.
+pub fn own_particle_codec(
+    owner: &'static str,
+    index: usize,
+    codec: Arc<dyn ParticleCodec>,
+) -> Arc<dyn ParticleCodec> {
+    Arc::new(OwnedParticleCodec {
+        codec,
+        callback: ParticleCallback::new(owner, index),
+    })
+}
+
+impl ParticleCodec for OwnedParticleCodec {
+    fn decode_map(
+        &self,
+        key: ParticleKey,
+        map: &Compound,
+        view: &ParticleRegistryView<'_>,
+    ) -> Result<TypedParticleOptions, String> {
+        self.callback.call(key, "decode particle map", || {
+            self.codec.decode_map(key, map, view)
+        })
+    }
+
+    fn encode_map(
+        &self,
+        value: &TypedParticleOptions,
+        view: &ParticleRegistryView<'_>,
+    ) -> Result<Compound, String> {
+        self.callback.call(value.key(), "encode particle map", || {
+            self.codec.encode_map(value, view)
+        })
+    }
+
+    fn decode_stream(
+        &self,
+        key: ParticleKey,
+        data: &[u8],
+        view: &ParticleRegistryView<'_>,
+    ) -> Result<TypedParticleOptions, String> {
+        self.callback.call(key, "decode particle stream", || {
+            self.codec.decode_stream(key, data, view)
+        })
+    }
+
+    fn encode_stream(
+        &self,
+        value: &TypedParticleOptions,
+        view: &ParticleRegistryView<'_>,
+        limit: usize,
+    ) -> Result<Vec<u8>, String> {
+        self.callback
+            .call(value.key(), "encode particle stream", || {
+                self.codec.encode_stream(value, view, limit)
+            })
+    }
 }
 
 pub(crate) struct TypedCodec<T>(pub ParticleMapCodec<T>, pub ParticleStreamCodec<T>);

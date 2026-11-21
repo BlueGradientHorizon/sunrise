@@ -289,6 +289,8 @@ pub(super) struct Remote {
     pub(super) professions: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
     pub session: Session,
     pub brand: String,
+    /// `ClientPacketListener.random` draws packet spread, not provider RNG.
+    pub(super) particle_packet_random: sunrise_core::random::LegacyRandom,
     pub(super) recipe_viewer: crate::game::recipe_book::ViewerChannels,
     /// This connection's configured feature flags, carried through reconfiguration.
     pub(super) features: std::sync::Arc<[String]>,
