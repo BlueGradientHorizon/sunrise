@@ -493,13 +493,25 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
 #[test]
 #[ignore = "daily"]
 fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
-    use crate::game::{combat::PlayerCredit, commands::Target};
+    use crate::game::{combat::PlayerCredit, commands::Target, sculk::TEST_POSTED_EVENTS};
     use mod_api::{ExplosionInteraction, ExplosionSettings};
-    use sunrise_client::{mobs::creaking, projectiles::ProjectileKind};
+    use sunrise_client::{
+        mobs::creaking,
+        projectiles::{Hit, ProjectileKind},
+    };
     use sunrise_core::{geometry::Vec3, position::BlockPos};
 
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::commands::world_cmds::registered_damage_tests::live_damage_and_blast_creaking_reactions_and_timed_player_credit",
+        "SUNRISE_CREAKING_LIVE_DAMAGE_CHILD",
+        &["live-damage"],
+    ) {
+        return;
+    }
     with_game(|game| {
         setup_live_damage_world(game);
+        assert!(game.run_command("forceload add 0 0"));
+        assert!(game.run_command("time set night"));
         assert!(
             game.run_command("summon creaking 4.5 64 4.5 {UUID:[I;85,0,0,1],NoAI:1b,NoGravity:1b}")
         );
@@ -530,7 +542,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             };
 
         assert!(game.run_command("summon pig 6.5 64 4.5 {UUID:[I;85,0,0,2],NoAI:1b,NoGravity:1b}"));
-        let _arrow_id = spawn_test_projectile(
+        let arrow_id = spawn_test_projectile(
             game,
             ProjectileKind::Arrow {
                 base_damage: 2.0,
@@ -617,9 +629,11 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             assert_eq!(creaking_state(game), (start_health, 0, 0));
         }
 
-        // Player hit refreshes timed player credit; ownerless follow-up reacts while timer is live,
-        // and fails once the timer expires. Only a player-credited reaction tells the heart.
+        // A player hit posts ENTITY_ACTION before the heart reacts; `creakingHurt` places
+        // and sounds the resin before the Creaking sways.
         assert_eq!(heart_emitter(game), 0);
+        TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+        game.audio.capture = Some(Vec::new());
         clear_anim(game);
         assert!(
             game.run_command(
@@ -628,7 +642,69 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
         );
         assert_eq!(creaking_state(game), (start_health, 8, 100));
         assert_eq!(heart_emitter(game), 100);
+        assert_eq!(game.lan_entity_events, [(creaking_id as i32, 66)]);
+        let events = TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
+        assert_eq!(
+            events.first(),
+            Some(&(
+                "minecraft:entity_action",
+                [4.5, 64.0, 4.5],
+                Some(Who::Mob(creaking_id))
+            ))
+        );
+        assert!(!events[1..].is_empty());
+        assert!(
+            events[1..]
+                .iter()
+                .all(|(event, _, source)| *event == "minecraft:block_place" && source.is_none())
+        );
+        let sounds = game.audio.capture.as_ref().unwrap();
+        assert_eq!(
+            sounds.last().unwrap().event,
+            "minecraft:entity.creaking.sway"
+        );
+        assert!(
+            sounds[..sounds.len() - 1]
+                .iter()
+                .all(|sound| sound.event == "minecraft:block.resin.place")
+        );
+        assert_eq!(sounds.len(), events.len());
 
+        // AbstractArrow.onHitEntity plays its own hit sound only after hurtServer has
+        // finished. The heart is already emitting; this hit only sways the Creaking.
+        clear_anim(game);
+        game.audio.capture.as_mut().unwrap().clear();
+        let mut arrow = game
+            .creatures
+            .projectiles
+            .iter()
+            .find(|p| p.id == arrow_id)
+            .unwrap()
+            .clone();
+        arrow.velocity = Vec3::new(-1.0, 0.0, 0.0);
+        game.projectile_hit(
+            &arrow,
+            Hit::Entity {
+                who: Who::Mob(creaking_id),
+                at: Vec3::new(4.5, 64.0, 4.5),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            game.audio
+                .capture
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|s| s.event.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "minecraft:entity.creaking.sway",
+                "minecraft:entity.arrow.hit"
+            ]
+        );
+
+        // Ownerless follow-up reacts while the timer is live and refuses once it expires.
         clear_anim(game);
         assert!(
             game.run_command("damage 00000055-0000-0000-0000-000000000001 1 minecraft:generic")
@@ -719,6 +795,29 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
         .unwrap();
         assert_eq!(creaking_state(game), (start_health, 8, 100));
         assert_eq!(heart_emitter(game), 100);
+
+        game.audio.capture.as_mut().unwrap().clear();
+        game.lan_entity_events.clear();
+        // The command cases hold the mob still with NoAI; run its real aiStep now.
+        game.mobs
+            .iter_mut()
+            .find(|m| m.id == creaking_id)
+            .unwrap()
+            .no_ai = false;
+        game.load_ticking_neighbourhood(0, 0);
+        game.update_chunk_tickets();
+        assert!(game.entity_ticking_area()(4, 4));
+        game.tick_creature_entities().unwrap();
+        assert_eq!(creaking_state(game).1, 7, "the Creaking really ticked");
+        assert!(!game.lan_entity_events.contains(&(creaking_id as i32, 66)));
+        assert!(
+            game.audio
+                .capture
+                .as_ref()
+                .unwrap()
+                .iter()
+                .all(|sound| sound.event != "minecraft:entity.creaking.sway")
+        );
     });
 }
 

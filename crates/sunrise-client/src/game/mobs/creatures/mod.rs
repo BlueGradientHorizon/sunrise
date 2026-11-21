@@ -2178,29 +2178,48 @@ impl Game<'_> {
         }) else {
             return;
         };
-        let mut events = Vec::new();
         if self.mobs[index].species() == Species::Creaking {
-            creaking::finish_hurt(&mut self.mobs[index], &self.world, &mut events);
-        } else {
-            let uuid = self.level.player_uuid;
-            let others: Vec<_> = self
-                .mobs
-                .iter()
-                .map(|m| seen(m, uuid, self.items()))
-                .collect();
-            let mut mob = self.mobs.swap_remove(index);
-            {
-                let world = self.mob_world_base(&others);
-                warden::handle_hurt(&mut mob, &world, &mut events);
-            }
-            self.mobs.push(mob);
-            let last = self.mobs.len() - 1;
-            if index < last {
-                self.mobs.swap(index, last);
-            }
+            self.finish_creaking_hurt(index);
+            return;
+        }
+        let mut events = Vec::new();
+        let uuid = self.level.player_uuid;
+        let others: Vec<_> = self
+            .mobs
+            .iter()
+            .map(|m| seen(m, uuid, self.items()))
+            .collect();
+        let mut mob = self.mobs.swap_remove(index);
+        {
+            let world = self.mob_world_base(&others);
+            warden::handle_hurt(&mut mob, &world, &mut events);
+        }
+        self.mobs.push(mob);
+        let last = self.mobs.len() - 1;
+        if index < last {
+            self.mobs.swap(index, last);
         }
         if !events.is_empty() {
             let _ = self.handle_mob_events(events);
+        }
+    }
+
+    pub(in crate::game) fn settle_creaking_hurt(&mut self, id: u32) {
+        if let Some(index) = self.mob_index.find(&self.mobs, id)
+            && sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[index])
+        {
+            self.finish_creaking_hurt(index);
+        }
+    }
+
+    fn finish_creaking_hurt(&mut self, index: usize) {
+        let id = self.mobs[index].id;
+        let mut events = Vec::new();
+        let reaction =
+            sunrise_client::mobs::creaking::take_hurt(&mut self.mobs[index], &mut events);
+        let _ = self.handle_mob_events(events);
+        if let Some((home, by_player)) = reaction {
+            self.creaking_hurt(home, id, by_player);
         }
     }
     /// `LivingEntity.resolvePlayerResponsibleForDamage` after `source` hurt a mob, through the

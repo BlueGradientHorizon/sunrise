@@ -430,10 +430,10 @@ impl Game<'_> {
                 if p.owner == Some(Who::Player) {
                     self.remember_mob_player_credit(id);
                 }
+                self.settle_mob_hurt(id);
                 if hurt {
                     self.shot_post_attack(p, who, p.kind.id(), "minecraft:wind_charge");
                 }
-                self.settle_mob_hurt(id);
             }
         }
     }

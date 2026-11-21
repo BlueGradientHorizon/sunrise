@@ -140,14 +140,9 @@ pub fn has_pending_hurt(m: &Mob) -> bool {
     m.species() == Species::Creaking && m.extra.counter & HURT != 0
 }
 
-/// Finish the accepted hit once: broadcast the flash and game event, then
-/// return the protecting heart and whether the hit was credited to a player.
-/// The caller plays [`sway`] after the heart's reaction.
-pub fn take_hurt(
-    m: &mut Mob,
-    world: &World,
-    events: &mut Vec<MobEvent>,
-) -> Option<([i32; 3], bool)> {
+/// Consume the accepted hit once. Dispatch these events before checking the
+/// live heart at the returned position: ENTITY_ACTION listeners can change it.
+pub fn take_hurt(m: &mut Mob, events: &mut Vec<MobEvent>) -> Option<([i32; 3], bool)> {
     if !has_pending_hurt(m) {
         return None;
     }
@@ -155,20 +150,7 @@ pub fn take_hurt(
     m.extra.counter &= !(HURT | HURT_BY_PLAYER);
     broadcast(m, 66, events);
     entity_action(m, events);
-    let home = m.extra.home?;
-    protected(m, world).then_some((home, by_player))
-}
-
-/// Queue the protecting heart's reaction and the sway in `hurtServer` order.
-pub fn finish_hurt(m: &mut Mob, world: &World, events: &mut Vec<MobEvent>) {
-    if let Some((home, by_player)) = take_hurt(m, world, events) {
-        events.push(MobEvent::CreakingHurt {
-            home,
-            by_player,
-            id: m.id,
-        });
-        sway(m, events);
-    }
+    Some((m.extra.home?, by_player))
 }
 /// `Mob.playHurtSound` of a heart-bound creaking: the ambient sound clock
 /// restarts and it sways.
@@ -220,7 +202,14 @@ pub fn update(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if heart_bound(m) && m.alive() && !protected(m, w.world) {
         m.health = 0.0;
     }
-    finish_hurt(m, w.world, events);
+    // The borrowed tick still delivers its hurt effects through the event pass.
+    if let Some((home, by_player)) = take_hurt(m, events) {
+        events.push(MobEvent::CreakingHurt {
+            home,
+            by_player,
+            id: m.id,
+        });
+    }
     animate(m);
     if !m.alive() {
         return;
