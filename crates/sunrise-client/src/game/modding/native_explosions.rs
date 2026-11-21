@@ -103,11 +103,11 @@ impl Game<'_> {
         // Only the source's `isSilent` keeps the blast quiet.
         let mut blast =
             ExplosionSource::default().with_silence(id.is_some_and(|id| self.entity_silent(id)));
-        if let Some((_, target)) = source {
-            blast = blast.with_direct_kind(Self::target_direct_entity(
-                Some(target),
-                &self.creatures.projectiles,
-            ));
+        if let Some((id, target)) = source {
+            blast = blast.with_damage_direct(
+                id,
+                Self::target_direct_entity(Some(target), &self.creatures.projectiles),
+            );
         }
         let done = self.server_explode_from(center, radius, interaction, fire, blast);
         self.restore_blast_state(outer);

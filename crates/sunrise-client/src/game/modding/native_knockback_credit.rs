@@ -66,10 +66,8 @@ impl KnockbackCredit for CreditLoan<'_> {
         }
         if updated {
             self.plan.responsibility_live
-        } else if self.players.contains_key(&mob.id) {
-            self.plan.existing_player_live
         } else {
-            true
+            self.players.contains_key(&mob.id) && self.plan.existing_player_live
         }
     }
 

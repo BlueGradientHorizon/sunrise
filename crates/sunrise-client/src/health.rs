@@ -31,7 +31,7 @@ mod accepted_hit;
 mod attack;
 mod kill_credit;
 use kill_credit::Credit;
-pub use kill_credit::KnockbackCredit;
+pub use kill_credit::{KnockbackCredit, PlayerMemory, PlayerResolver};
 mod hit_attempt;
 pub use accepted_hit::AcceptedHit;
 pub use attack::{damage_type, melee, mob_source, source_damage_type};
@@ -289,6 +289,8 @@ pub struct DamageLevel<'a> {
     /// Who a push credits: the site's per-victim loan, or [`KnockbackCredit`]'s memory
     /// resolution where the level was built without one.
     credit: Credit<'a>,
+    /// Resolves a mob's remembered player where no loan does ([`Self::resolve_player_responsible`]).
+    players: Option<PlayerResolver<'a>>,
     /// What the hit's listeners may queue and draw ([`HitEffects`]); none for a level built
     /// outside a game's hit.
     effects: Option<HitEffects<'a>>,
@@ -326,6 +328,7 @@ impl<'a> DamageLevel<'a> {
             client_side: false,
             knock_entry: mod_api::KnockbackEntry::Full,
             credit: Credit::Memory,
+            players: None,
             effects: None,
         }
     }
@@ -353,6 +356,7 @@ impl<'a> DamageLevel<'a> {
             client_side: false,
             knock_entry: mod_api::KnockbackEntry::Full,
             credit: Credit::Memory,
+            players: None,
             effects: None,
         }
     }
@@ -373,6 +377,7 @@ impl<'a> DamageLevel<'a> {
             client_side: self.client_side,
             knock_entry: self.knock_entry,
             credit: self.credit.reborrow(),
+            players: self.players,
             effects: self.effects.as_mut().map(HitEffects::reborrow),
         }
     }
@@ -398,6 +403,11 @@ impl<'a> DamageLevel<'a> {
         self.credit = Credit::NoPush;
         self
     }
+    /// The same level, resolving remembered players through `players` where no loan does.
+    pub fn with_player_resolver(mut self, players: PlayerResolver<'a>) -> Self {
+        self.players = Some(players);
+        self
+    }
     /// Commit this accepted hit's responsibility at vanilla's pre-push memory point.
     pub fn accepted_mob_hit(&mut self, mob: &mut crate::mobs::Mob) {
         if let Credit::Loan(credit) = &mut self.credit {
@@ -406,19 +416,26 @@ impl<'a> DamageLevel<'a> {
     }
     /// `LivingEntity.resolvePlayerResponsibleForDamage` for a mob: a player's
     /// hit refreshes the 100-tick timer, a tame wolf's refreshes or clears it
-    /// through the credit loan, and any other source preserves remembered player
-    /// credit while its timer is active.
+    /// through the credit loan, and any other source keeps the remembered player,
+    /// who counts only while the timer runs and the player still resolves.
     pub fn resolve_player_responsible(
         &mut self,
         mob: &mut crate::mobs::Mob,
         source: &crate::mobs::Damage,
     ) -> bool {
-        if source.attacker == Some(crate::mobs::Who::Player) {
+        let by_player = source.attacker == Some(crate::mobs::Who::Player);
+        if by_player {
             mob.ai.last_hurt_by_player = 100;
         }
         match &mut self.credit {
             Credit::Loan(credit) => credit.resolve_player_responsible(mob),
-            Credit::Memory | Credit::NoPush => mob.ai.last_hurt_by_player > 0,
+            Credit::Memory | Credit::NoPush => {
+                mob.ai.last_hurt_by_player > 0
+                    && (by_player
+                        || self
+                            .players
+                            .is_some_and(|players| players.remembered_resolves(mob.id)))
+            }
         }
     }
     /// Only the game bridge calls this after checking for a knockback subscriber. Without a

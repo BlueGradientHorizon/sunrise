@@ -325,9 +325,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
 
     with_game(|game| {
         setup_live_damage_world(game);
-        assert!(
-            game.run_command("summon warden 4.5 64 4.5 {UUID:[I;84,0,0,1],NoAI:1b,NoGravity:1b}")
-        );
+        assert!(game.run_command("summon warden 4.5 64 4.5 {UUID:[I;84,0,0,1],NoGravity:1b}"));
         let warden_id = game.mobs.last().unwrap().id;
         assert!(
             game.run_command("summon pig 14.5 64 4.5 {UUID:[I;84,0,0,2],NoAI:1b,NoGravity:1b}")
@@ -494,8 +492,24 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             game.run_command("summon creaking 4.5 64 4.5 {UUID:[I;85,0,0,1],NoAI:1b,NoGravity:1b}")
         );
         let creaking_id = game.mobs.last().unwrap().id;
-        creaking::set_transient(game.mobs.last_mut().unwrap(), [4, 63, 4]);
         let start_health = game.mobs.last().unwrap().health;
+        // Its protecting heart: awake between pale oak logs, naming this creaking.
+        for command in [
+            "setblock 8 63 8 minecraft:pale_oak_log[axis=y]",
+            "setblock 8 64 8 minecraft:creaking_heart[axis=y,creaking_heart_state=awake]{creaking:[I;85,0,0,1]}",
+            "setblock 8 65 8 minecraft:pale_oak_log[axis=y]",
+        ] {
+            assert!(game.run_command(command), "{command}");
+        }
+        creaking::set_transient(
+            game.mobs.iter_mut().find(|m| m.id == creaking_id).unwrap(),
+            [8, 64, 8],
+        );
+        // `CreakingHeartBlockEntity.creakingHurt` from its protector starts the 100-tick emitter.
+        let heart_emitter = |game: &Game<'_>| match game.world.block_entities.get(&(8, 64, 8)) {
+            Some(sunrise_client::containers::BlockEntity::CreakingHeart(heart)) => heart.emitter,
+            _ => panic!("the protecting heart is gone"),
+        };
 
         assert!(game.run_command("summon pig 6.5 64 4.5 {UUID:[I;85,0,0,2],NoAI:1b,NoGravity:1b}"));
         let _arrow_id = spawn_test_projectile(
@@ -592,7 +606,8 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
         }
 
         // Player hit refreshes timed player credit; ownerless follow-up reacts while timer is live,
-        // and fails once the timer expires.
+        // and fails once the timer expires. Only a player-credited reaction tells the heart.
+        assert_eq!(heart_emitter(game), 0);
         clear_anim(game);
         assert!(
             game.run_command(
@@ -600,6 +615,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             )
         );
         assert_eq!(creaking_state(game), (start_health, 8, 3, 100));
+        assert_eq!(heart_emitter(game), 100);
 
         clear_anim(game);
         assert!(
@@ -838,15 +854,14 @@ fn live_damage_and_blast_ghast_reflected_fireball() {
             ExplosionSettings::default(),
         )
         .unwrap();
-        let remaining = game
-            .mobs
-            .iter()
-            .find(|m| m.id == blast_mob_id)
-            .unwrap()
-            .health;
-        assert!(
-            remaining > 400.0 && remaining < 500.0,
-            "remaining {remaining}"
+        // At the centre (distance 0, exposure 1) a radius-3 blast deals (1 + 1) / 2 * 7 * 6 + 1.
+        assert_eq!(
+            game.mobs
+                .iter()
+                .find(|m| m.id == blast_mob_id)
+                .unwrap()
+                .health,
+            457.0
         );
     });
 }

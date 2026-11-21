@@ -2195,11 +2195,10 @@ impl Game<'_> {
             let _ = self.handle_mob_events(events);
         }
     }
-    /// `LivingEntity.resolvePlayerResponsibleForDamage` after `source` hurt a
-    /// mob: a tame wolf's hit is its owner's (`setLastHurtByPlayer(uuid, 100)`),
-    /// so the kill drops experience and player-only loot and the owner, when
-    /// in the world, gets the credit (`getKillCredit`); a tame wolf without an
-    /// owner clears it. A player's own hits are recorded where they land.
+    /// `LivingEntity.resolvePlayerResponsibleForDamage` after `source` hurt a mob, through the
+    /// hit's credit loan (a tame wolf's hit is its owner's; an ownerless tame wolf clears it):
+    /// what an accepted hit's site commits, for tests that set up the credit without a hit.
+    #[cfg(test)]
     pub(super) fn resolve_player_responsible(&mut self, victim: u32, source: Damage) {
         if !matches!(source.attacker, Some(Who::Mob(_))) {
             return;
@@ -2227,18 +2226,9 @@ impl Game<'_> {
         &self,
         credit: super::combat::PlayerCredit,
     ) -> Option<Option<u32>> {
-        let uuid = sunrise_client::lan::playerdata::uuid_ints(credit.0);
-        if self.player.is_some()
-            && sunrise_client::mobs::tame::owned_by(Some(uuid), self.acting_uuid())
-        {
-            return Some(self.lan_acting);
-        }
-        let uuid = sunrise_client::lan::playerdata::ints_uuid(uuid);
-        self.lan
-            .iter()
-            .flat_map(|h| h.hub.guests.iter())
-            .find(|g| g.placed && g.uuid == uuid)
-            .map(|g| Some(g.conn))
+        crate::game::entity::player_resolver!(self)
+            .resolve(credit.0)
+            .map(|guest| guest.or(self.lan_acting))
     }
     /// `LivingEntity.dropFromGiftLootTable`: the gift table from its random
     /// sequence with the mob as `this` (a chicken's egg depends on its
@@ -2815,9 +2805,12 @@ impl Game<'_> {
                     // Only a creeper or a wither empties the hives it blows up.
                     // The creeper is already gone from the list, so the event
                     // carries its kind. A sulfur cube's blast is TNT's.
-                    let mut source = super::explosion::ExplosionSource::default()
-                        .with_silence(silent)
-                        .with_direct_kind(sunrise_client::health::DirectEntity::Living);
+                    let mut source =
+                        super::explosion::ExplosionSource::default().with_silence(silent);
+                    if let Some(id) = source_mob {
+                        source = source
+                            .with_damage_direct(id, sunrise_client::health::DirectEntity::Living);
+                    }
                     if let Some(id) = source_mob
                         && matches!(species, Species::Creeper | Species::Wither)
                     {
@@ -2825,7 +2818,11 @@ impl Game<'_> {
                             Species::Creeper => "minecraft:creeper",
                             _ => "minecraft:wither",
                         };
-                        source = source.with_entity(id, kind);
+                        source = source.with_entity(
+                            id,
+                            kind,
+                            sunrise_client::health::DirectEntity::Living,
+                        );
                     }
                     let result = match species {
                         Species::Creeper | Species::Wither => self.with_hive_emptying_blast(|g| {
@@ -6475,7 +6472,11 @@ impl Game<'_> {
                     fire,
                     super::explosion::ExplosionSource::default()
                         .with_silence(self.entity_silent(p.id))
-                        .with_entity(p.id, "minecraft:fireball"),
+                        .with_entity(
+                            p.id,
+                            "minecraft:fireball",
+                            sunrise_client::health::DirectEntity::LargeFireball,
+                        ),
                 );
                 self.combat.explosion_direct = None;
                 self.set_blast_by_player(false);
