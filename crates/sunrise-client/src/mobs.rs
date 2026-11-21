@@ -1274,6 +1274,9 @@ pub struct Extra {
     pub vector: [f64; 3],
     /// Active status effects: (effect id, ticks left, amplifier).
     pub effects: Vec<StoredEffect>,
+    // Structural edits invalidate LivingEntity.tickEffects even if a callback
+    // subsequently undoes them before returning.
+    effects_revision: u64,
     /// Hidden effect instances behind an active effect, keyed by effect id.
     pub effect_chains: Vec<crate::effects::EffectInstance>,
     /// The effects above given with `hideParticles`: no swirls for them.
@@ -4700,6 +4703,7 @@ impl Mob {
         }
         let changed = self.extra.effects.len() != before;
         if changed {
+            self.extra.effects_revision += 1;
             let effects = &self.extra.effects;
             self.extra
                 .effect_chains
@@ -4719,6 +4723,7 @@ impl Mob {
     /// modifier (the saved `attributes` hold one the effect was given with).
     pub fn load_effect(&mut self, effect: StoredEffect) {
         self.extra.effects.retain(|e| e.id != effect.id);
+        self.extra.effects_revision += 1;
         self.extra.effects.push(StoredEffect {
             pass_slot: 0,
             ..effect
@@ -4784,6 +4789,7 @@ impl Mob {
         if let Some(i) = index {
             self.extra.effects[i].update_from_instance(&active);
         } else {
+            self.extra.effects_revision += 1;
             self.extra
                 .effects
                 .push(StoredEffect::from_instance(effect, &active));

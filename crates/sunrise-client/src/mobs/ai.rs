@@ -4582,13 +4582,8 @@ impl EffectPass {
         }
     }
 
-    fn suspend(
-        mut self,
-        effects: &mut [super::StoredEffect],
-        i: usize,
-        end: usize,
-        tick: EffectTick,
-    ) -> Self {
+    fn suspend(mut self, m: &mut Mob, i: usize, end: usize, tick: EffectTick) -> Self {
+        let effects = &mut m.extra.effects;
         // A stamp belongs to the instance, not the index where the vector stores it.
         for (index, effect) in effects.iter_mut().enumerate() {
             effect.pass_slot = index + 1;
@@ -4598,6 +4593,7 @@ impl EffectPass {
         self.interrupted = Some(SuspendedEffect {
             instance: (i < effects.len()).then_some(i + 1),
             instances: effects.len(),
+            revision: m.extra.effects_revision,
             tick,
         });
         self
@@ -4608,6 +4604,7 @@ impl EffectPass {
 struct SuspendedEffect {
     instance: Option<usize>,
     instances: usize,
+    revision: u64,
     tick: EffectTick,
 }
 
@@ -4638,9 +4635,9 @@ fn tick_effects_until_hurt(
     let mut first = pass.end;
     // Finish expiry before the next callback reads the holder. A cancelled expiry
     // keeps even a zero-duration instance; hidden promotion happens before this.
-    let expire = |m: &mut Mob, i: usize| {
+    let expire = |m: &mut Mob, i: usize, refused: bool, iterator_valid: bool| {
         let e = &m.extra.effects[i];
-        if e.duration > 0 || e.duration == -1 {
+        if !refused && (e.duration > 0 || e.duration == -1) {
             return false;
         }
         let mut cancel = false;
@@ -4649,7 +4646,9 @@ fn tick_effects_until_hurt(
         {
             mods.effect_expired(m.id, index, e.amplifier, &mut cancel);
         }
-        if cancel {
+        // NeoForge's Expired event precedes iterator.remove(). If the
+        // callback invalidated the iterator, the removal still cannot run.
+        if cancel || !iterator_valid {
             return false;
         }
         let id = e.id;
@@ -4661,6 +4660,7 @@ fn tick_effects_until_hurt(
         let tick = if let Some(SuspendedEffect {
             instance,
             instances,
+            revision,
             tick,
         }) = pass.interrupted.take()
         {
@@ -4668,7 +4668,8 @@ fn tick_effects_until_hurt(
             // LivingEntity catches the iterator's concurrent-modification exception.
             // The interrupted instance finishes first, but a structurally edited list
             // is not advanced. An in-place update does not invalidate the iterator.
-            pass.stop_after_current |= effects.len() != instances
+            pass.stop_after_current |= m.extra.effects_revision != revision
+                || effects.len() != instances
                 || effects
                     .iter()
                     .enumerate()
@@ -4685,7 +4686,7 @@ fn tick_effects_until_hurt(
             // MobEffectInstance.tickServer: without remaining duration the instance
             // ticks nothing; resolve its expiry before the next instance.
             if !infinite && m.extra.effects[i].duration <= 0 {
-                if expire(m, i) {
+                if expire(m, i, false, true) {
                     first -= 1;
                 } else {
                     i += 1;
@@ -4753,7 +4754,7 @@ fn tick_effects_until_hurt(
                 changes: changes.into_iter(),
             };
             if pause_hurt && super::creaking::has_pending_hurt(m) {
-                return Some(pass.suspend(&mut m.extra.effects, i, first, tick));
+                return Some(pass.suspend(m, i, first, tick));
             }
             tick
         };
@@ -4770,7 +4771,7 @@ fn tick_effects_until_hurt(
                     after_effect(m);
                     if pause_hurt && super::creaking::has_pending_hurt(m) {
                         return Some(pass.suspend(
-                            &mut m.extra.effects,
+                            m,
                             i,
                             first,
                             EffectTick {
@@ -4791,7 +4792,7 @@ fn tick_effects_until_hurt(
                 if m.extra.effects[i].duration != -1 {
                     m.extra.effects[i].duration -= 1;
                 }
-            } else {
+            } else if !pass.stop_after_current {
                 m.extra.effects[i].duration = 0;
             }
             if !expired
@@ -4828,7 +4829,9 @@ fn tick_effects_until_hurt(
         {
             m.effects_dirty = true;
         }
-        if m.extra.effects.get(i).is_some_and(|e| e.id == effect) && expire(m, i) {
+        if m.extra.effects.get(i).is_some_and(|e| e.id == effect)
+            && expire(m, i, expired, !pass.stop_after_current)
+        {
             // Removal shifts the next original effect into this slot. Shrink the
             // original-pass boundary too, so newly appended effects still wait.
             first -= 1;

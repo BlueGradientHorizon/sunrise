@@ -46,6 +46,7 @@ struct Watch {
 enum EffectEdit {
     RemoveEarlier,
     ReplaceCurrent,
+    InsertAndRemove,
 }
 
 #[mod_api::__subscriptions]
@@ -77,13 +78,16 @@ impl Hooks for Watch {
             let id = match edit {
                 EffectEdit::RemoveEarlier => "minecraft:speed",
                 EffectEdit::ReplaceCurrent => "minecraft:instant_damage",
+                EffectEdit::InsertAndRemove => "minecraft:glowing",
             };
             let effect = host.effect_key(id).unwrap();
+            let added = ActiveEffect::new(effect, 40, 0, false, true, true);
+            if matches!(edit, EffectEdit::InsertAndRemove) {
+                assert!(living.add_effect(host, &added));
+            }
             assert!(living.remove_effect(host, effect));
             if matches!(edit, EffectEdit::ReplaceCurrent) {
-                assert!(
-                    living.add_effect(host, &ActiveEffect::new(effect, 40, 0, false, true, true))
-                );
+                assert!(living.add_effect(host, &added));
             }
         }
         if let Some(peer) = peer {
@@ -96,11 +100,13 @@ impl Hooks for Watch {
                     .unwrap()
                     .teleport_to(host, FISH_AFTER_HURT, None)
             );
-            let commands = host.commands();
-            assert!(commands.run_command(
-                "data merge entity 00000056-0000-0000-0000-000000000002 {PuffState:1}"
-            ));
-            assert!(commands.run_command("team join sting 00000056-0000-0000-0000-000000000003"));
+            for line in [
+                "data merge entity 00000056-0000-0000-0000-000000000002 {PuffState:1}",
+                "team join sting 00000056-0000-0000-0000-000000000003",
+            ] {
+                let result = host.commands().run_command_with_output(line);
+                assert!(result.success, "{line}: {:?}", result.feedback);
+            }
         }
         if self.replace_protector {
             let air = mod_api::__private::block_key("minecraft:air").unwrap();
@@ -134,6 +140,7 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
             "cramming",
             "effect_shift",
             "effect_replaced",
+            "effect_transient",
             "sting",
         ],
     ) {
@@ -143,6 +150,7 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
     let effect_edit = match case.as_str() {
         "effect_shift" => Some(EffectEdit::RemoveEarlier),
         "effect_replaced" => Some(EffectEdit::ReplaceCurrent),
+        "effect_transient" => Some(EffectEdit::InsertAndRemove),
         _ => None,
     };
     let heard = Arc::new(Mutex::new(Heard::default()));
@@ -157,6 +165,9 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
+            if case == "sting" {
+                crate::game::native_living_flags::tests::guest_server(game, true, false);
+            }
             setup_live_damage_world(game);
             if case == "sting" {
                 assert!(game.run_command("summon pufferfish 4.5 64 4.5 {UUID:[I;86,0,0,2],PuffState:2,NoAI:1b,NoGravity:1b}"));
@@ -354,11 +365,13 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                         .map(|effect| effect.duration)
                 };
                 let (speed, damage) = match edit {
-                    EffectEdit::RemoveEarlier => (None, None),
+                    EffectEdit::RemoveEarlier => (None, Some(0)),
                     EffectEdit::ReplaceCurrent => (Some(39), Some(40)),
+                    EffectEdit::InsertAndRemove => (Some(39), Some(0)),
                 };
                 assert_eq!(duration("minecraft:speed"), speed);
                 assert_eq!(duration("minecraft:instant_damage"), damage);
+                assert_eq!(duration("minecraft:glowing"), None);
                 assert_eq!(
                     duration("minecraft:fire_resistance"),
                     Some(40),
