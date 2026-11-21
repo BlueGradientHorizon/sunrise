@@ -564,12 +564,11 @@ impl Game<'_> {
             let host = self.lan.as_ref().unwrap();
             let shown = Self::lan_mod_craft_shown(host, gi, &items);
             let env = self.load_guest_menu(&mut menu, host, gi);
-            menu.load_container(&env, &items);
-            // The shown stack belongs to the grid it was prepared for. On a stale
-            // grid prepare the new result before any rule or move reads that slot.
-            if let Some((slot, result)) = shown {
-                menu.load_slot(slot, result);
-            } else if let Some(craft) = menu.mod_crafting() {
+            // Use the shown result without assembling again. If the grid is stale,
+            // prepare its new result before any rule or move reads that slot.
+            let needs_preview = shown.is_none();
+            menu.load_container(&env, &items, shown);
+            if needs_preview && let Some(craft) = menu.mod_crafting() {
                 self.lan_mod_craft_settle(gi, pos, &mut menu);
                 refreshed_result = Some(craft.result);
             }
@@ -742,11 +741,8 @@ impl Game<'_> {
                 let kept_result = menu
                     .mod_crafting()
                     .filter(|c| c.grid_slots().all(|k| old[k] == actual[k]))
-                    .map(|c| (c.result, menu.slot(c.result).cloned()));
-                menu.load_container(&game.menu_env(), &actual);
-                if let Some((slot, result)) = kept_result {
-                    menu.set_slot(&game.menu_env(), slot, result);
-                }
+                    .map(|c| menu.slot(c.result).cloned());
+                menu.load_container(&game.menu_env(), &actual, kept_result);
                 true
             };
             let applied = mod_api::run_transaction(self, |game, _| {
@@ -1244,10 +1240,7 @@ impl Game<'_> {
             menu.set_container_limits(limits);
             menu.sources = sources.into_iter().map(|(_, items)| items).collect();
             load_player(&mut menu, &host.hub.guests[gi]);
-            menu.load_container(&env, &items);
-            if let Some((slot, result)) = shown {
-                menu.set_slot(&env, slot, result);
-            }
+            menu.load_container(&env, &items, shown);
             menu
         } else if container == 0 {
             let host = self.lan.as_ref()?;
@@ -1507,10 +1500,7 @@ impl Game<'_> {
         let sources = self.lan_recipe_sources(gi, t, pos);
         menu.sources = sources.iter().map(|(_, items)| items.clone()).collect();
         let out = self.guest_menu_op(gi, &mut menu, |menu, env| {
-            menu.load_container(env, &items);
-            if let Some((slot, result)) = shown {
-                menu.set_slot(env, slot, result);
-            }
+            menu.load_container(env, &items, shown);
             apply(menu, env)
         })?;
         for ((at, before), after) in sources.into_iter().zip(std::mem::take(&mut menu.sources)) {
@@ -1643,18 +1633,17 @@ impl Game<'_> {
         }
     }
 
-    /// The result guest `gi`'s mod crafting menu shows, with its slot, while
-    /// the block entity's grid (`items`) is the one it was made from.
+    /// The result guest `gi`'s mod crafting menu shows (`Some(None)` if empty),
+    /// while the block entity's grid (`items`) is the one it was made from.
     fn lan_mod_craft_shown(
         host: &super::lan::LanHost,
         gi: usize,
         items: &[Option<ItemStack>],
-    ) -> Option<(usize, Option<ItemStack>)> {
+    ) -> Option<Option<ItemStack>> {
         let menu = host.hub.guests[gi].menu.as_ref()?;
         let c = menu.mod_type?.crafting?;
         let craft = menu.craft.as_ref()?;
-        (items.get(c.grid_slots()) == Some(&craft.grid[..]))
-            .then(|| (c.result, craft.result.clone()))
+        (items.get(c.grid_slots()) == Some(&craft.grid[..])).then(|| craft.result.clone())
     }
 
     /// After the menu engine ran on guest `gi`'s mod crafting menu at `pos`:
@@ -1740,7 +1729,7 @@ impl Game<'_> {
             }
             let mut menu = Menu::new(Kind::Mod(t));
             self.guest_menu_op(gi, &mut menu, |menu, env| {
-                menu.load_container(env, &items);
+                menu.load_container(env, &items, None);
             });
             self.lan_mod_craft_settle(gi, pos, &mut menu);
         }

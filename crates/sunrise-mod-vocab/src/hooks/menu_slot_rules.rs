@@ -15,6 +15,9 @@ pub trait Hooks {
     /// vanilla `AbstractContainerMenu.doClick` and `Slot`). Permission and
     /// capacity are separate checks. During shift-click a later destination
     /// sees the source remainder and the earlier destinations' updates.
+    /// A panicking part's answers are discarded and its callback is disabled
+    /// for the session, with the mod named in the log and error toast. The
+    /// other parts still answer the check.
     /// Answer quickly from the question and the read-only Host. On a LAN
     /// host's own click the LAN host is not reachable through the `Host`
     /// (it answers as if no LAN were open).

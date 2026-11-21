@@ -10,8 +10,8 @@ pub trait Hooks {
     /// player's inventory (27 main slots, then the hotbar). A container slot
     /// can belong to `entity.items`, a linked container, or the menu's crafting result.
     /// `stack` copies what the live slot holds, after `Slot.mayPickup` allows the click.
-    /// Take what you move out of `stack` and set `handled`: the same source keeps
-    /// the remainder (`None` empties it), the game's routing is skipped, and the
+    /// Take what you move out of `stack` and return `Flow::Cancel` to handle the move.
+    /// The same source keeps the remainder (`None` empties it), the game's routing is skipped, and the
     /// player's client gets the menu again. For a linked or crafting-result source,
     /// the remainder does not replace any slot in `entity.items`. A crafting result
     /// is not a craft by itself: the handler is responsible for consuming any inputs.

@@ -255,15 +255,18 @@ impl Game<'_> {
         use crate::game::api_values::{
             BlockEntitySnapshotError, TryIntoApi, TryIntoEngine, finish_block_entity_writeback,
         };
-        let (mut api, mut held) = match (entity.try_into_api(), stack.try_into_api()) {
-            (Ok(api), Ok(held)) => (api, held),
-            (Err(reason), _) => {
+        let mut api = match entity.try_into_api() {
+            Ok(api) => api,
+            Err(reason) => {
                 log::warn!(
                     "menu_quick_move: cannot project the owning block entity at {pos:?}: {reason:?}"
                 );
                 return false;
             }
-            (_, Err(reason)) => {
+        };
+        let mut held = match stack.try_into_api() {
+            Ok(held) => held,
+            Err(reason) => {
                 log::warn!(
                     "menu_quick_move: cannot project the clicked stack at {pos:?} slot {slot}: {reason:?}"
                 );

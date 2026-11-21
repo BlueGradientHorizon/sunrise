@@ -34,6 +34,7 @@ impl MenuPart for Rules {
         });
         let (maximum, panic) = ANSWER.with(|answer| *answer.borrow());
         if panic && item == "minecraft:dirt" {
+            event.max_stack = 0;
             panic!("a listener failed");
         }
         if let Some(maximum) = maximum {
@@ -244,25 +245,52 @@ fn the_answers_are_bounded_to_one_to_ninety_nine_and_the_items_limit() {
 
 #[test]
 #[ignore = "daily"]
-fn a_failing_listener_leaves_the_slots_own_answers_and_the_next_click_works() {
-    with_mods(vec![ModEntry::new("rules", Box::new(Listener))], || {
-        with_game(|game| {
-            reset(None, true);
-            let mut menu = chest(("minecraft:dirt", 8));
-            // The listener panics on dirt: the panic does not leave the click, and the slot's own
-            // answers (it takes the stack) decide it.
-            assert_eq!(pickup(game, &mut menu), (8, 0));
+fn a_failing_slot_rule_does_not_override_or_disable_the_other_parts() {
+    struct Healthy;
+    #[mod_api::__subscriptions]
+    impl Hooks for Healthy {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            r.menu_part("minecraft:generic_9x3", Healthy);
+        }
+    }
+    #[mod_api::sunrise_part]
+    impl MenuPart for Healthy {
+        fn menu_slot_rules(&self, _: &dyn mod_api::Host, event: &mut MenuSlotRulesEvent<'_>) {
             assert!(
-                asked()
-                    .iter()
-                    .all(|(slot, item, _)| (*slot, item.as_str()) == (0, "minecraft:dirt"))
+                event.max_stack > 0,
+                "the failed part's answer must not be visible"
             );
-            // The next built-in click works.
-            reset(None, true);
-            let mut next = chest(("minecraft:stone", 2));
-            assert_eq!(pickup(game, &mut next), (2, 0));
-        });
-    });
+            event.may_place = false;
+        }
+    }
+    with_mods(
+        vec![
+            ModEntry::new("rules", Box::new(Listener)),
+            ModEntry::new("zz_healthy_rules", Box::new(Healthy)),
+        ],
+        || {
+            with_game(|game| {
+                reset(None, true);
+                let menu = chest(("minecraft:dirt", 8));
+                let dirt = menu.carried.as_ref().unwrap();
+                let env = game.menu_env();
+                // One live check: only the healthy part's refusal takes effect.
+                assert_eq!(menu.slot_holds(&env, 0, dirt), 0);
+                assert_eq!(asked(), [(0, "minecraft:dirt".to_owned(), 8)]);
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "rules",
+                        hook: "menu_slot_rules",
+                    }]
+                );
+                reset(None, true);
+                assert_eq!(menu.slot_holds(&env, 0, dirt), 0);
+                assert!(asked().is_empty());
+                assert!(mod_api::__private::take_hook_panics().is_empty());
+            });
+        },
+    );
 }
 
 #[test]

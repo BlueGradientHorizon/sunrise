@@ -613,22 +613,29 @@ fn a_handled_quick_move_writes_its_remainder_to_the_link_not_the_owner() {
 #[ignore = "daily"]
 fn a_cached_machine_menu_reopens_a_linked_slot_when_its_backing_appears() {
     with_pot(|game, rx| {
-        serve(game, &prediction(&[(0, stone(5))], None));
+        serve(game, &prediction(&[(0, stone(5))], stone(2)));
         link_pot(game);
         let backing = game.world.block_entities.remove(&LINK).unwrap();
         game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
             guest.menu.as_mut().unwrap().hidden = vec![0];
         });
         MOVED.with(|moved| moved.borrow_mut().clear());
-        // Cache the machine menu while the link has no backing.
+        // Cache the machine menu during a drag while the link has no backing.
+        click(game, rx, (-999, 0, Input::QuickCraft), Vec::new(), None);
+        game.world.block_entities.insert(LINK, backing);
+        // The first shift-click ends the drag. The link becoming available must not reset it.
         click(
             game,
             rx,
-            (LINKED_SLOT as i32, 0, Input::Pickup),
+            (LINKED_SLOT as i32, 0, Input::QuickMove),
             Vec::new(),
             None,
         );
-        game.world.block_entities.insert(LINK, backing);
+        assert!(MOVED.with(|moved| moved.borrow().is_empty()));
+        assert_eq!(
+            game.world.block_entities.get(&LINK).unwrap().slots()[0],
+            stone(7)
+        );
         // Refreshing the link must not re-enable a layout-hidden slot.
         click(game, rx, (0, 0, Input::QuickMove), Vec::new(), None);
         assert_eq!(
@@ -733,12 +740,11 @@ fn a_handled_quick_move_reads_and_leaves_the_shown_crafting_result() {
 #[ignore = "daily"]
 fn quick_move_projection_failures_report_every_time_and_refuse_the_move() {
     // Use a separate process because the test logger is process-global.
-    const CHILD: &str = "SUNRISE_TEST_QUICK_MOVE_PROJECTION_CHILD";
-    if std::env::var_os(CHILD).is_none() {
-        assert!(std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--ignored", "--exact", "game::slot_pickup_tests::quick_move_projection_failures_report_every_time_and_refuse_the_move"])
-            .env(CHILD, "1")
-            .status().unwrap().success());
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::slot_pickup_tests::quick_move_projection_failures_report_every_time_and_refuse_the_move",
+        "SUNRISE_TEST_QUICK_MOVE_PROJECTION_CHILD",
+        &["projection"],
+    ) {
         return;
     }
     struct Capture(std::sync::Mutex<Vec<String>>);

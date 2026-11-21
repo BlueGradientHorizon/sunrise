@@ -573,18 +573,111 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
             assert_eq!(depot(game), (1, 4, 5, 0));
             game.transaction_close(&seal, false);
             assert_eq!(depot(game), (10, 0, 0, 0));
-            // Rows 79 and 84: a panic aborts the live write inside the click's savepoint.
-            open_depot(game);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
+    // The log sink is process-global.
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::mod_menu_decisions_tests::a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback",
+        "SUNRISE_TEST_LIVE_QUICK_MOVE_PANIC_CHILD",
+        &["panic"],
+    ) {
+        return;
+    }
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct ErrorLog;
+    static ERRORS: AtomicUsize = AtomicUsize::new(0);
+    impl log::Log for ErrorLog {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() == log::Level::Error
+        }
+
+        fn log(&self, record: &log::Record<'_>) {
+            if self.enabled(record.metadata())
+                && record
+                    .args()
+                    .to_string()
+                    .contains("mod movemod panicked in hook menu_quick_move")
+            {
+                ERRORS.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+
+        fn flush(&self) {}
+    }
+    log::set_logger(&ErrorLog).unwrap();
+    log::set_max_level(log::LevelFilter::Error);
+    with_publication_mods(|| {
+        with_guests(|game| {
+            let window = open_depot(game);
+            let kind = Box::leak(Box::new(ModMenuType {
+                id: "minecraft:generic_9x1",
+                owner: "minecraft",
+                slots: 9,
+                player_inventory: true,
+                data_slots: 0,
+                results: Vec::new(),
+                inputs: Vec::new(),
+                crafting: None,
+                links: None,
+            }));
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.menu.as_mut().unwrap().mod_type = Some(kind);
+            });
+            let click = |game: &mut crate::game::Game<'_>| {
+                game.lan_guest_packet(12, container_click(window, 0, 1));
+            };
+            // Both a journaled Host write and a detached answer precede the panic.
             script(Script {
                 take: true,
                 write_dirt: true,
+                write_update: true,
                 panic: true,
                 ..Script::default()
             });
             click(game);
             assert_eq!(DISPATCHES.get(), 1);
             assert_eq!(depot(game), (10, 0, 0, 0));
+            assert_eq!(inventory(game, 8), 0);
             assert!(game.transactions.is_empty());
+            assert_eq!(ERRORS.load(Ordering::Relaxed), 1);
+
+            // The same callback stays disabled; normal routing now moves the original stack.
+            click(game);
+            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(depot(game), (0, 0, 0, 0));
+            assert_eq!(inventory(game, 8), 10);
+            assert_eq!(ERRORS.load(Ordering::Relaxed), 1);
+
+            let healthy = detached_depot("healthy_menu:depot");
+            game.world
+                .block_entities
+                .replace(POS, BlockEntity::Mod(Box::new(healthy)));
+            script(Script {
+                take: true,
+                ..Script::default()
+            });
+            click(game);
+            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(depot(game), (1, 4, 5, 0));
+
+            // The normal toast collector names the failing mod and hook once.
+            let mut batch = sunrise_client::hud::HudBatch::scratch([640, 480]);
+            game.draw_pack_toasts(&mut batch, true, true);
+            let [Some(toast)] = game.server_packs.hook_panics.as_slice() else {
+                panic!("expected one shared hook error toast");
+            };
+            assert_eq!(
+                toast.message.as_ref().unwrap().component(),
+                serde_json::json!({
+                    "translate": "sunrise.mods.hook_panic.description",
+                    "with": ["movemod", "menu_quick_move"],
+                })
+            );
         });
     });
 }

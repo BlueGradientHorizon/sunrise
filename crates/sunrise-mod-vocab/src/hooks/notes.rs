@@ -1398,7 +1398,7 @@ Look blocks up once and keep what you need (a few words a block for your own sha
 
 `menu_slot_rules` asks the registered vanilla or mod menu's scoped `MenuPart` whether a slot takes a stack, whether it gives up what it holds and how many it holds, on both client prediction and server. Mount inventories use `sunrise:mount_inventory`; unregistered player inventory and creative picker menus do not dispatch. `slot` is the backing container index. The slot's own answers arrive first; the final maximum is bounded to 0–99 and the item's stack limit (matching vanilla `Slot.getMaxStackSize` and `Container.getMaxStackSize`). Rules also apply to quick-move top-ups. The hook takes the read-only `Host` (it is a query: it cannot write or cancel). The part can read the menu's current slots and the player's inventory (`Player`: `0..36` inventory, `36..40` armor feet-to-head, `40` offhand, matching vanilla `Inventory`) with `context.slot(container, index)`. Each live `mayPlace`, `mayPickup` and `getMaxStackSize` check during a click asks the parts directly, matching vanilla `AbstractContainerMenu.doClick` and `Slot`. On a LAN host's own click the game is lent to the click with the LAN host lifted out of it, so what the `Host` reads of LAN players answers as if no LAN were open. `may_pickup` (`Slot.mayPickup`) arrives true and is read only on a registered mod menu type, for its own slots and the player's inventory slots in it, asked with the stack the slot holds; a vanilla menu type keeps its slots' own answer. The slot's own rule comes first (a slot it refuses is not asked), and one ask answers `may_place` and `may_pickup` together. It is asked by a pickup click on a slot that holds an item (after `item_stacked_on_other`, before any take, merge or exchange), by quick move once on the clicked slot before the move (moving into a slot asks only `may_place`), by a hotbar or offhand swap that takes the slot's item (with both stacks present `may_place` must hold too), by throw inside the take (a refusal drops nothing and stops the repeat), by pick-all (which gathers when the clicked slot is empty or refuses, and skips each source that refuses) and by every take the menu makes. A drag spread, a creative clone, an insertion into an empty slot and a click outside the window never ask it; a drag that ends on one slot is a pickup click on it. A refusal leaves the slot and the cursor as they were, and the server corrects the slots and cursor the client predicted otherwise. A slot that refuses placement gives all of its stack or none. A display-only slot (a recipe preview) answers both `may_pickup` and `may_place` false. A shift-click a part answers with `menu_quick_move` is asked the pickup rule first, as vanilla asks it before the menu's `quickMoveStack`.
 
-The hook runs during clicks, drags and shift-clicks with the read-only `Host` on server and client prediction; answer from the stack and host alone, and fast. Parts that read `context.setting(..)` or `side()` have no counterpart on the Host.
+The hook runs during clicks, drags and shift-clicks with the read-only `Host` on server and client prediction; answer from the stack and host alone, and fast. If a part panics, its answers are discarded and its callback is disabled for the session; the shared log and error toast name the mod. Other parts still answer the check. Parts that read `context.setting(..)` or `side()` have no counterpart on the Host.
 
 ### Shift-click in a mod container
 
@@ -1408,13 +1408,15 @@ asked on the server before the game's own routing, for the mod block entity at `
 with the left or right button, on a vanilla menu type (`minecraft:generic_9x1`...) or on the mod's own menu type. `slot`
 is the menu's index: below `container_slots` a container slot (its own, linked, or the crafting result), from there the
 player's inventory, its 27 main slots, then the hotbar. The live menu asks `Slot.mayPickup` first, then passes a copy of
-what that slot holds as `stack`. Take what you move out of `stack` and set `handled`: the same source keeps the remainder
-(`None` empties it) and the player's client gets the whole menu again. For a linked slot or result this does not replace
-an `entity.items` entry; the handler is responsible for consuming crafting inputs when it handles a result. The remainder
-stays in the result for those inputs until the grid next changes. An owner or clicked stack that the API cannot read refuses
-the click and reports why. Unhandled, listener writes are undone and the same menu moves the stack without a second pickup
-check; a later mod sees what an
-earlier one did to `stack`. If the mod removes its own block, the menu
+what that slot holds as `stack`. Take what you move out of `stack` and return `Flow::Cancel` to handle the move.
+The same source keeps the remainder (`None` empties it) and the player's client gets the whole menu again.
+For a linked slot or result this does not replace an `entity.items` entry; the handler is responsible for consuming
+crafting inputs when it handles a result. The remainder stays in the result for those committed inputs until the grid
+next changes. An owner or clicked stack that the API cannot read refuses the click and reports why each time.
+If the callback panics, its answer is discarded, the move refuses and its existing journal rolls back. The shared
+failure path logs, shows an error toast naming the mod, and disables only that callback. If no part handles the move,
+journaled writes are undone and the same menu moves the stack without a second pickup check. A later part sees what
+an earlier one did to `stack`. If the mod removes its own block, the menu
 closes and the player's inventory is sent again. This is how a storage terminal
 whose items live in other blocks, or a screen that hides the container's slots, takes a shift-click from the
 inventory, and how a machine sends fuel to its fuel slot and ores to its input.

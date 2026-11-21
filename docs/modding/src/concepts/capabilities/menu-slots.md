@@ -102,6 +102,8 @@ to `0..=99` and the item's stack limit (matching vanilla `Slot.getMaxStackSize` 
 `Container.getMaxStackSize`): setting `0` allows no items to be placed into the slot. Each live
 `mayPlace`, `mayPickup` and `getMaxStackSize` check during a click queries the parts directly
 against the current menu slots, matching vanilla `AbstractContainerMenu.doClick` and `Slot`.
+If a part panics, its answers are discarded and that callback is disabled for the session.
+The log and error toast name the mod; other parts still answer the check.
 
 ## Slots that keep what they show
 
@@ -307,7 +309,8 @@ host.transaction(|host, tx| {
 
 `menu_quick_move` (contract version 4) runs after the live menu allows pickup. The event's
 `stack` copies what the clicked slot shows, including a linked container's stack or the current
-crafting result. If you handle the move, leave the remainder in `stack` (`None` empties the source).
+crafting result. Return `Flow::Cancel` to handle the move, leaving the remainder in `stack`
+(`None` empties the source).
 The remainder goes back to the clicked source, not to `entity.items[slot]` for a linked slot or
 crafting result. If you handle a result, consume its crafting inputs yourself. The remainder stays
 available on later clicks against the inputs you leave, until the grid changes again. If you leave

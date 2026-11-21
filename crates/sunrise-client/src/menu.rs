@@ -1576,19 +1576,35 @@ impl Menu {
         }
     }
 
-    /// A mod menu's container slots from its block entity, in slot order. A
-    /// crafting grid's result is the menu's (`ResultContainer`), never the
-    /// block entity's: its slot there is passed by and the result follows the
-    /// grid.
-    pub fn load_container(&mut self, env: &Env, items: &[Option<ItemStack>]) {
+    /// A mod menu's container slots from its block entity, in slot order.
+    /// `shown` is the menu's authoritative result for this grid (`Some(None)`
+    /// for an empty result). With no current result, prepare from the whole
+    /// grid once; loading each cell is not itself a change to the grid.
+    pub fn load_container(
+        &mut self,
+        env: &Env,
+        items: &[Option<ItemStack>],
+        shown: Option<Option<ItemStack>>,
+    ) {
         self.touch();
         let result = self.mod_crafting().map(|c| c.result);
         for (k, stack) in items.iter().enumerate().take(self.container_slot_count()) {
-            if Some(k) != result {
+            if Some(k) == result {
+                continue;
+            }
+            if self.state.slots[k].container == GRID {
+                let mut stack = stack.clone();
+                tidy(&mut stack);
+                self.load_slot(k, stack);
+            } else {
                 self.put(env, k, stack.clone());
             }
         }
-        self.recompute(env);
+        if let Some((slot, stack)) = result.zip(shown) {
+            self.load_slot(slot, stack);
+        } else {
+            self.recompute(env);
+        }
     }
 
     /// `load_container` back: the container slots the block entity keeps, a
@@ -5110,7 +5126,7 @@ pub(crate) mod tests {
             let mut items = vec![None; 10];
             items[0] = stack("diamond", 1);
             items[1] = stack("oak_log", 1);
-            menu.load_container(env, &items);
+            menu.load_container(env, &items, None);
             assert_eq!(menu.slot(0), stack("oak_planks", 4).as_ref());
             let kept = menu.container_items();
             assert_eq!(kept[0], None);
