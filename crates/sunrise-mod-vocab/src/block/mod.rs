@@ -2,6 +2,7 @@
 
 pub(crate) mod block_entity_data;
 pub(crate) mod block_entity_items;
+pub(crate) mod block_entity_scopes;
 pub(crate) mod block_entity_shapes;
 pub(crate) mod block_entity_type;
 pub(crate) mod block_entity_view;
