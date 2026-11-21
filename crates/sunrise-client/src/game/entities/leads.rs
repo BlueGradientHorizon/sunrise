@@ -121,6 +121,7 @@ impl Game<'_> {
     /// it. A fence that already has one keeps it. Call
     /// [`Self::forget_untied_knots`] before the tie.
     pub(super) fn tie_knot(&mut self, fence: [i32; 3]) {
+        self.broken_knots.retain(|&p| p != fence);
         if self.knot_ids.contains_key(&fence) {
             return;
         }
@@ -439,9 +440,60 @@ impl Game<'_> {
             }
         }
     }
+    /// `LeashFenceKnotEntity.hurtServer` -> `kill` and `dropItem` for a natural or explicit knot.
+    pub(super) fn break_leash_knot(
+        &mut self,
+        id: u32,
+        source: Option<Target>,
+    ) -> bool {
+        if let Some(fence) = self.natural_knot(id) {
+            let at = leash::knot_state(fence).position.components();
+            self.knot_ids.remove(&fence);
+            self.resident_entities.knots.retain(|k| k.id != id);
+            if !self.broken_knots.contains(&fence) {
+                self.broken_knots.push(fence);
+            }
+            self.entity_killed_event_by(at, source);
+            self.lead_sound("untied", at);
+            return true;
+        }
+        if let Some(i) = self
+            .others
+            .iter()
+            .position(|o| o.id == id && o.kind == "minecraft:leash_knot")
+        {
+            let knot = self.others.remove(i);
+            let at = knot.position.components();
+            self.entity_killed_event_by(at, source);
+            self.lead_sound("untied", at);
+            return true;
+        }
+        false
+    }
     /// Holders read from a save become real once the entity is found; a
     /// holder that never shows up drops the lead after 100 ticks.
     pub(super) fn tick_leads(&mut self) {
+        if !self.broken_knots.is_empty() {
+            let fences = std::mem::take(&mut self.broken_knots);
+            let drop = self
+                .ui
+                .rules
+                .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS);
+            for fence in fences {
+                let mobs: Vec<u32> = self
+                    .mobs
+                    .iter()
+                    .filter(|m| !m.removed && m.extra.leash == Some(Holder::Knot(fence)))
+                    .map(|m| m.id)
+                    .collect();
+                for mob_id in mobs {
+                    self.break_leash(mob_id, drop, false);
+                }
+                for boat_idx in self.boats_on(Holder::Knot(fence)) {
+                    self.release_stored_boat_leash(boat_idx, drop);
+                }
+            }
+        }
         // A corpse gone without dropping its lead takes its killer along.
         // Only this level's: the others' mobs aren't in place.
         if !self.lead_killers.is_empty() {

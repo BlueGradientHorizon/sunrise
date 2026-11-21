@@ -116,6 +116,7 @@ fn clear_entities(game: &mut Game<'_>) {
     game.cushions.clear();
     game.others.clear();
     game.knot_ids.clear();
+    game.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
 }
@@ -134,7 +135,7 @@ fn reset_arena(game: &mut Game<'_>, target: &str) {
     if target.starts_with("leash_knot") {
         let _ = game.run_command("setblock 3 64 4 minecraft:oak_fence");
     }
-    let _ = game.run_command("gamemode spectator @s");
+    game.set_mode(sunrise_client::command::args::GameMode::Spectator);
     if let Some(p) = game.player.as_mut() {
         p.position = Vec3::new(0.5, 64.0, 12.5);
         p.velocity = Vec3::ZERO;
@@ -305,9 +306,9 @@ fn summon_projectile(
 ) -> TrackedProj {
     let owned = proj.ends_with("_owned") || proj.ends_with("_creative");
     if proj.ends_with("_creative") {
-        let _ = game.run_command("gamemode creative @s");
+        game.set_mode(sunrise_client::command::args::GameMode::Creative);
     } else if proj.ends_with("_owned") {
-        let _ = game.run_command("gamemode survival @s");
+        game.set_mode(sunrise_client::command::args::GameMode::Survival);
     }
     let base = proj.trim_end_matches("_creative").trim_end_matches("_owned");
     let cmd = match base {
@@ -420,7 +421,7 @@ fn check_case(game: &mut Game<'_>, case: &Case, proj_seed: i64, level_seed: i64)
             if seen_drops.insert(d.id) {
                 let item = d.stack.item.to_string();
                 if item != "minecraft:oak_fence" && item != "minecraft:cobblestone" {
-                    *actual_drops.entry(item).or_default() += u32::from(d.stack.count);
+                    *actual_drops.entry(item).or_default() += d.stack.count;
                 }
             }
         }

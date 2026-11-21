@@ -453,7 +453,8 @@ impl Game<'_> {
         if shooter.is_some() {
             p.owner = shooter;
         }
-        let mut targets = self.projectile_targets();
+        let mut targets =
+            self.projectile_targets_for(super::creatures::projectile_skips_no_physics(&p.kind));
         if mob_shot || pvp {
             targets.extend(self.lan_projectile_targets());
         }

@@ -2226,21 +2226,21 @@ impl ArmorStand {
         if lava && !self.mod_fire_immune {
             self.fire_ticks = self.fire_ticks.max(300);
         }
-        // The fire block reaches a stand through `applyEffectsFromBlocks`,
-        // which a NoGravity stand does not feel (measured beside the server).
+        // BaseFireBlock.entityInside: FIRE_IGNITE runs before hurt(inFire), even when invisible.
         if !self.mod_fire_immune
-            && !self.invisible
             && !self.marker
             && !self.no_gravity
             && crate::motion::environment::fire_contact(world, registry, self.bounds()) > 0.0
         {
-            if self.fire_ticks > 0 {
-                if !invulnerable(world, "minecraft:in_fire") {
-                    self.health -= 0.15;
-                    hit_by = Some("minecraft:in_fire");
-                }
-            } else {
-                self.fire_ticks = 100;
+            if self.fire_ticks < 0 {
+                self.fire_ticks += 1;
+            }
+            if self.fire_ticks >= 0 {
+                self.fire_ticks = self.fire_ticks.max(160);
+            }
+            if !self.invisible && self.fire_ticks > 0 && !invulnerable(world, "minecraft:in_fire") {
+                self.health -= 0.15;
+                hit_by = Some("minecraft:in_fire");
             }
         }
         // Dead: the damage type that ran its health out, which vanilla's

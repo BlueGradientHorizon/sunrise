@@ -296,6 +296,16 @@ impl Game<'_> {
             },
         );
         self.creatures.wind_source = None;
+        // Projectile.onHit posts PROJECTILE_LAND after onHitEntity/onHitBlock (not above top).
+        match hit {
+            Hit::Entity { at, .. } => {
+                self.projectile_landed_event(p.id, p.owner, [at.x, at.y, at.z]);
+            }
+            Hit::Block { at, face, .. } if face != [0; 3] => {
+                self.projectile_landed_event(p.id, p.owner, [at.x, at.y, at.z]);
+            }
+            _ => {}
+        }
         burst
     }
     /// The boats and minecarts of this tick's projectile pass.
@@ -333,7 +343,7 @@ impl Game<'_> {
         if self.boats.iter().any(|b| b.id == id) || self.carts.iter().any(|c| c.id == id) {
             return Some((p, hit));
         }
-        let mut targets = self.projectile_targets();
+        let mut targets = self.projectile_targets_for(true);
         if again.owner != Some(Who::Player) || super::lan_pvp::meets_players(&again.kind) {
             targets.extend(self.lan_projectile_targets());
         }
@@ -388,10 +398,15 @@ impl Game<'_> {
                     );
                 }
             }
-            // A boat or a minecart (`VehicleEntity.hurtServer`): the point of
-            // damage shakes it, and the fifth one in a row breaks it.
+            // Non-mob pickable target (stand, painting, frame, knot, cushion, vehicle, falling block).
             Who::Mob(id) if !self.mobs.iter().any(|m| m.id == id) => {
-                self.hurt_vehicle(p, id, 1.0);
+                let info = super::creatures::ProjectileHitInfo::from_projectile(
+                    p,
+                    "minecraft:wind_charge",
+                    1.0,
+                    None,
+                );
+                let _ = self.projectile_hurts_non_mob(&info, id);
             }
             Who::Mob(id) => {
                 // AbstractWindCharge.onHitEntity: `damageSources().windCharge`

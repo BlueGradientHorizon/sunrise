@@ -1749,6 +1749,11 @@ impl Game<'_> {
         } else {
             self.thrown_player_targets()
         };
+        let objects = if thrown.is_empty() {
+            Vec::new()
+        } else {
+            self.pickable_object_targets()
+        };
         let mut landed = Vec::new();
         let mut deflected: Vec<u32> = Vec::new();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
@@ -1798,13 +1803,19 @@ impl Game<'_> {
                         && p.y >= m.position.y
                         && p.y <= m.position.y + m.kind.height
                 });
-                // A player (`canHitEntity`: not the thrower before it has left
-                // them), the box grown by the 0.3 pick margin.
+                // A player or non-mob pickable entity, grown by the pick margin.
                 let player = thrown_player_at(&players, skip, p, margin);
-                if self.res.facts().get(state).full_collision || mob.is_some() || player.is_some() {
-                    // Projectile.hitTargetOrDeflectSelf: a breeze's deflection
-                    // (`Breeze.deflection`) turns the potion back at half
-                    // speed instead of `onHit`, and it flies on.
+                let object = if mob.is_none() && player.is_none() {
+                    thrown_player_at(&objects, skip, p, margin)
+                } else {
+                    None
+                };
+                if self.res.facts().get(state).full_collision
+                    || mob.is_some()
+                    || player.is_some()
+                    || object.is_some()
+                {
+                    // Projectile.hitTargetOrDeflectSelf: a breeze's deflection turns the potion back.
                     if let Some(m) = mob
                         && m.species() == sunrise_client::mobs::Species::Breeze
                     {
@@ -1819,19 +1830,16 @@ impl Game<'_> {
                             t.last_deflected_by = Some(m.id);
                             deflected.push(m.id);
                         }
-                        // ThrowableProjectile.tick: `setPos(hitResult.getLocation())`
-                        // before the deflection, so it does not step on past the
-                        // breeze this tick.
+                        // ThrowableProjectile.tick: `setPos(hitResult.getLocation())`.
                         t.position = p;
                         deflect_stop = true;
                         break;
                     }
-                    // A block hit has the face it came in by
-                    // (`onHitBlock`); an entity hit has none.
-                    let block = (mob.is_none() && player.is_none())
+                    // A block hit has the face it came in by (`onHitBlock`); an entity hit has none.
+                    let block = (mob.is_none() && player.is_none() && object.is_none())
                         .then(|| thrown_block_hit(t.position, p, t.velocity));
                     let at = mob.map(|m| m.position).or_else(|| {
-                        player.map(|(_, b)| {
+                        player.or(object).map(|(_, b)| {
                             let c = b.center();
                             Vec3::new(c.x, b.min(Axis::Y), c.z)
                         })

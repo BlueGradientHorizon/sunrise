@@ -1,47 +1,155 @@
-//! What a projectile can strike: the mobs, the player, the dragon's parts and
-//! End crystals, and the non-living entities that are pickable (boats,
-//! minecarts, item frames).
-use super::super::Game;
+//! Single-source-of-truth pickable target query and non-mob projectile hit dispatch.
+use super::super::{
+    Game,
+    commands::Target,
+    entity::Entity as _,
+    minecarts::CartHit,
+};
 use sunrise_client::join_seq::ListStamp;
 use sunrise_client::mobs::{Species, Who};
+use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_core::geometry::{Aabb, Vec3};
 
-/// What a projectile's hit tests read of the level, kept to see whether a hook told during the
-/// projectiles' loop changed it: the write stamps of the entity lists the targets come from, and
-/// the boxes of the dragon's parts and of the player, which no list stamps. The guests are
-/// compared with their targets as they were (`Game::lan_projectile_targets_are`).
+/// `AbstractHurtingProjectile.canHitEntity` / `ShulkerBullet.canHitEntity`: skip `noPhysics`.
+pub(in crate::game) fn projectile_skips_no_physics(kind: &ProjectileKind) -> bool {
+    matches!(
+        kind,
+        ProjectileKind::SmallFireball
+            | ProjectileKind::LargeFireball { .. }
+            | ProjectileKind::DragonFireball
+            | ProjectileKind::WitherSkull { .. }
+            | ProjectileKind::WindCharge
+            | ProjectileKind::BreezeWindCharge
+            | ProjectileKind::ShulkerBullet { .. }
+    )
+}
+
+/// `LeashFenceKnotEntity.recalculateBoundingBox` around `position` (`(x+0.5, y+0.375, z+0.5)`).
+pub(in crate::game) fn knot_bounds(position: Vec3) -> Aabb {
+    let half = 0.375 / 2.0;
+    Aabb::new(
+        Vec3::new(position.x - half, position.y, position.z - half),
+        Vec3::new(position.x + half, position.y + 0.5, position.z + half),
+    )
+}
+
+fn extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
+    Aabb::new(
+        Vec3::new(lo[0], lo[1], lo[2]),
+        Vec3::new(hi[0], hi[1], hi[2]),
+    )
+}
+
+/// Write stamps and positions read by projectile hit tests, to detect mid-loop hook writes.
 #[derive(PartialEq)]
 pub(in crate::game) struct TargetsRead {
-    lists: [ListStamp; 6],
+    lists: [ListStamp; 12],
     dragon: Option<[Aabb; 8]>,
     player: Option<Aabb>,
 }
 
-/// What the server's projectiles' ticks read of the other entities: built for the family's loop,
-/// and again when a hook told in it changed what they read.
+/// Entity target snapshots built once for the projectile loop and rebuilt on hook writes.
 pub(in crate::game) struct ProjectileTargets {
-    /// What a projectile can hit.
+    /// All pickable targets (`Entity.canBeHitByProjectile`).
     pub targets: Vec<(Who, Aabb)>,
-    /// The guests a mob's projectile can hit too.
+    /// Pickable targets excluding `noPhysics` (`AbstractHurtingProjectile` / `ShulkerBullet`).
+    pub physics_targets: Vec<(Who, Aabb)>,
+    /// LAN guests a projectile can hit.
     pub guests: Vec<(Who, Aabb)>,
-    /// `targets` and `guests`, when there are guests.
+    /// `targets` plus `guests`, when there are guests.
     pub targets_guests: Vec<(Who, Aabb)>,
+    /// `physics_targets` plus `guests`, when there are guests.
+    pub physics_targets_guests: Vec<(Who, Aabb)>,
     pub has_guests: bool,
-    /// The breezes, which turn a projectile away.
+    /// Breezes that deflect projectiles.
     pub breezes: Vec<u32>,
-    /// Every guest, by connection and entity id: a dead or spectating guest's pearl or arrow
-    /// still resolves to them.
+    /// Every guest by `(conn, entity_id)`.
     pub guest_entities: Vec<(u32, u32)>,
-    /// Whether the host's player is dead, and the dead guests' connections
-    /// (`ThrownEnderpearl.tick`'s ender_pearls_vanish_on_death).
     pub host_dead: bool,
     pub dead_guests: Vec<u32>,
 }
 
+/// Context for hurting a non-mob pickable entity from any projectile.
+pub(in crate::game) struct ProjectileHitInfo {
+    pub direct_id: u32,
+    pub owner: Option<Who>,
+    pub guest: Option<u32>,
+    pub damage_type: &'static str,
+    pub amount: f32,
+    pub velocity: Vec3,
+    pub position: Vec3,
+    pub is_arrow: bool,
+    pub burning_arrow: bool,
+    pub ignite_seconds: Option<f32>,
+}
+
+impl ProjectileHitInfo {
+    pub(in crate::game) fn from_projectile(
+        p: &Projectile,
+        damage_type: &'static str,
+        amount: f32,
+        ignite_seconds: Option<f32>,
+    ) -> Self {
+        let burning_arrow = p.arrow.as_ref().is_some_and(|a| a.on_fire());
+        Self {
+            direct_id: p.id,
+            owner: p.owner,
+            guest: p.guest,
+            damage_type,
+            amount,
+            velocity: p.velocity,
+            position: p.position,
+            is_arrow: p.arrow.is_some(),
+            burning_arrow,
+            ignite_seconds,
+        }
+    }
+}
+
+/// Outcome of `Game::projectile_hurts_non_mob`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::game) enum NonMobHit {
+    /// Target id does not name a non-mob pickable object (caller handles mob/player/special).
+    NotObject,
+    /// Non-mob object's `hurtServer` returned true.
+    Hurt,
+    /// Non-mob object's `hurtServer` returned false (refused, e.g. falling block, fixed frame, TNT).
+    Refused,
+}
+
 impl Game<'_> {
-    /// What the server's projectiles' ticks read of the other entities.
+    /// Exact vanilla damage type id for `shot`, honoring `unattributed_fireball` when unowned.
+    pub(in crate::game) fn projectile_damage_type(&self, shot: &Projectile) -> &'static str {
+        match shot.kind {
+            ProjectileKind::Arrow { .. } => "minecraft:arrow",
+            ProjectileKind::Trident => "minecraft:trident",
+            ProjectileKind::SmallFireball | ProjectileKind::LargeFireball { .. } => {
+                if shot.owner.is_some() {
+                    "minecraft:fireball"
+                } else {
+                    "minecraft:unattributed_fireball"
+                }
+            }
+            ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge => {
+                "minecraft:wind_charge"
+            }
+            ProjectileKind::LlamaSpit => "minecraft:spit",
+            ProjectileKind::ShulkerBullet { .. } => "minecraft:mob_projectile",
+            ProjectileKind::WitherSkull { .. } => {
+                if shot.owner.is_some() {
+                    "minecraft:wither_skull"
+                } else {
+                    "minecraft:magic"
+                }
+            }
+            _ => "minecraft:thrown",
+        }
+    }
+
+    /// Snapshot all entity target lists for the projectile tick loop.
     pub(in crate::game) fn projectile_tick_targets(&self) -> ProjectileTargets {
-        let targets = self.projectile_targets();
+        let targets = self.projectile_targets_for(false);
+        let physics_targets = self.projectile_targets_for(true);
         let breezes = self
             .mobs
             .iter()
@@ -51,12 +159,14 @@ impl Game<'_> {
         // Mobs' projectiles also hit the guests (game/network/lan_mobs.rs).
         let guests = self.lan_projectile_targets();
         let has_guests = !guests.is_empty();
-        let targets_guests = if has_guests {
-            let mut targets_guests = targets.clone();
-            targets_guests.extend_from_slice(&guests);
-            targets_guests
+        let (targets_guests, physics_targets_guests) = if has_guests {
+            let mut tg = targets.clone();
+            tg.extend_from_slice(&guests);
+            let mut ptg = physics_targets.clone();
+            ptg.extend_from_slice(&guests);
+            (tg, ptg)
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
         let dead_guests = self.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
@@ -68,8 +178,10 @@ impl Game<'_> {
         });
         ProjectileTargets {
             targets,
+            physics_targets,
             guests,
             targets_guests,
+            physics_targets_guests,
             has_guests,
             breezes,
             guest_entities: self.lan_guest_entities(),
@@ -78,25 +190,29 @@ impl Game<'_> {
         }
     }
 
-    /// What a projectile's hit tests read now ([`TargetsRead`]): asked around a hook told in the
-    /// projectiles' loop, it costs the same whatever the number of entities.
+    /// Write stamps of every entity list read by `projectile_targets_for`.
     pub(in crate::game) fn projectile_targets_read(&self) -> TargetsRead {
         TargetsRead {
             lists: [
                 self.mobs.stamp(),
                 self.boats.stamp(),
                 self.carts.stamp(),
+                self.armor_stands.stamp(),
                 self.tnts.stamp(),
+                self.falling.stamp(),
                 self.item_frames.stamp(),
+                self.paintings.stamp(),
+                self.cushions.stamp(),
                 self.crystals.stamp(),
+                self.resident_entities.knots.stamp(),
+                self.others.stamp(),
             ],
             dragon: self.dragon_part_boxes(),
             player: self.player_view().filter(|p| p.alive).map(|p| p.bounds),
         }
     }
 
-    /// Whether a hook told in the projectiles' loop changed what their hit tests read since
-    /// `read` was taken and `seen` built: then the next projectile sees its writes.
+    /// Whether a hook changed any list or target box read since `read` and `seen`.
     pub(in crate::game) fn projectile_targets_changed(
         &self,
         read: &TargetsRead,
@@ -105,37 +221,101 @@ impl Game<'_> {
         self.projectile_targets_read() != *read || !self.lan_projectile_targets_are(&seen.guests)
     }
 
-    /// The boats, minecarts, primed TNT and item frames a projectile can strike
-    /// (`VehicleEntity.isPickable`, `PrimedTnt.isPickable`,
-    /// `BlockAttachedEntity.isPickable`).
+    /// All non-mob pickable entities (`Entity::can_be_hit_by_projectile` plus `BlockAttachedEntity`).
     pub(in crate::game) fn pickable_object_targets(&self) -> Vec<(Who, Aabb)> {
-        let mut targets: Vec<(Who, Aabb)> = self
-            .boats
-            .iter()
-            .map(|b| (Who::Mob(b.id), b.bounds()))
-            .collect();
-        targets.extend(self.carts.iter().map(|c| (Who::Mob(c.id), c.bounds())));
-        targets.extend(self.tnts.iter().map(|t| (Who::Mob(t.id), t.bounds())));
-        targets.extend(self.item_frames.iter().map(|f| {
-            let (lo, hi) = f.bounds();
-            (
-                Who::Mob(f.id),
-                Aabb::new(
-                    Vec3::new(lo[0], lo[1], lo[2]),
-                    Vec3::new(hi[0], hi[1], hi[2]),
-                ),
-            )
-        }));
+        self.pickable_object_targets_for(false)
+    }
+
+    /// Non-mob pickable entities, optionally excluding `noPhysics` entities.
+    pub(in crate::game) fn pickable_object_targets_for(
+        &self,
+        skip_no_physics: bool,
+    ) -> Vec<(Who, Aabb)> {
+        fn allows<E: crate::game::entity::Entity>(
+            game: &Game<'_>,
+            entity: &E,
+            skip_no_physics: bool,
+        ) -> bool {
+            entity.can_be_hit_by_projectile()
+                && (!skip_no_physics
+                    || !entity.no_physics(game.persist.no_physics.get(&entity.id()).copied()))
+        }
+        let mut targets = Vec::new();
+        for b in self.boats.iter() {
+            if allows(self, b, skip_no_physics) {
+                targets.push((Who::Mob(b.id), b.bounds()));
+            }
+        }
+        for c in self.carts.iter() {
+            if allows(self, c, skip_no_physics) {
+                targets.push((Who::Mob(c.id), c.bounds()));
+            }
+        }
+        for a in self.armor_stands.iter() {
+            if allows(self, a, skip_no_physics) {
+                targets.push((Who::Mob(a.id), a.bounds()));
+            }
+        }
+        for t in self.tnts.iter() {
+            if allows(self, t, skip_no_physics) {
+                targets.push((Who::Mob(t.id), t.bounds()));
+            }
+        }
+        for f in self.falling.iter() {
+            if allows(self, f, skip_no_physics) {
+                targets.push((Who::Mob(f.id), f.bounds()));
+            }
+        }
+        // Off-walk `BlockAttachedEntity` subclasses (`isPickable() == true`).
+        let attached_allows = |id: u32| {
+            !skip_no_physics || !self.persist.no_physics.get(&id).copied().unwrap_or(false)
+        };
+        for f in self.item_frames.iter() {
+            if attached_allows(f.id) {
+                targets.push((Who::Mob(f.id), extents(f.bounds())));
+            }
+        }
+        for p in self.paintings.iter() {
+            if attached_allows(p.id) {
+                targets.push((Who::Mob(p.id), extents(p.bounds())));
+            }
+        }
+        for c in self.cushions.iter() {
+            if attached_allows(c.id) {
+                targets.push((Who::Mob(c.id), extents(c.bounds())));
+            }
+        }
+        for k in self.resident_entities.knots.iter() {
+            if attached_allows(k.id) {
+                let pos = sunrise_client::mobs::leash::knot_state(k.fence).position;
+                targets.push((Who::Mob(k.id), knot_bounds(pos)));
+            }
+        }
+        for o in self.others.iter() {
+            if o.kind == "minecraft:leash_knot" && attached_allows(o.id) {
+                targets.push((Who::Mob(o.id), knot_bounds(o.position)));
+            }
+        }
         targets
     }
-    /// What a projectile can hit: the mobs, the player, the dragon's parts and
-    /// the End crystals (under reserved ids, game/dragon.rs), and the vehicles
-    /// and item frames.
+
+    /// All entities a projectile can strike (`Entity.canBeHitByProjectile`).
     pub(in crate::game) fn projectile_targets(&self) -> Vec<(Who, Aabb)> {
+        self.projectile_targets_for(false)
+    }
+
+    /// All entities a projectile can strike, optionally excluding `noPhysics` entities.
+    pub(in crate::game) fn projectile_targets_for(
+        &self,
+        skip_no_physics: bool,
+    ) -> Vec<(Who, Aabb)> {
         let mut targets: Vec<(Who, Aabb)> = self
             .mobs
             .iter()
-            .filter(|m| m.alive())
+            .filter(|m| {
+                m.can_be_hit_by_projectile()
+                    && (!skip_no_physics || !m.no_physics(None))
+            })
             .map(|m| (Who::Mob(m.id), m.bounds()))
             .collect();
         if let Some(p) = self.player_view()
@@ -148,9 +328,264 @@ impl Game<'_> {
                 .into_iter()
                 .map(|(id, b)| (Who::Mob(id), b)),
         );
-        // Boats, minecarts, primed TNT and item frames are pickable for every
-        // projectile, so every kind shares this one list.
-        targets.extend(self.pickable_object_targets());
+        targets.extend(self.pickable_object_targets_for(skip_no_physics));
         targets
+    }
+
+    /// Resolve a projectile's causing target, creative flag, and entity id.
+    fn projectile_source_info(&self, info: &ProjectileHitInfo) -> (Option<Target>, bool, bool, i32) {
+        let causing_target = match info.owner {
+            Some(Who::Player) => Some(info.guest.map_or(Target::Player, Target::Guest)),
+            Some(Who::Mob(id)) => Some(Target::Mob(id)),
+            None => None,
+        };
+        let by_player = info.owner == Some(Who::Player);
+        let creative = match info.owner {
+            Some(Who::Player) => match info.guest {
+                Some(conn) if self.lan_acting == Some(conn) => self.creative,
+                Some(conn) => self.command_guest(conn).is_some_and(|g| g.creative()),
+                None => self.creative,
+            },
+            _ => false,
+        };
+        let causing_id = match info.owner {
+            Some(Who::Player) => match info.guest {
+                Some(conn) => self.command_guest(conn).map_or(0, |g| g.entity_id),
+                None => self.own_entity_id(),
+            },
+            Some(Who::Mob(id)) => id as i32,
+            None => 0,
+        };
+        (causing_target, by_player, creative, causing_id)
+    }
+
+    /// Whether `Entity.isInvulnerableToBase` / native hook refuses a projectile hit on `id`.
+    fn object_refuses_projectile(
+        &mut self,
+        info: &ProjectileHitInfo,
+        id: u32,
+        kind: &str,
+        causing: i32,
+        creative: bool,
+    ) -> bool {
+        let source = sunrise_client::health::HurtSource {
+            damage_type: info.damage_type,
+            causing,
+            direct: info.direct_id as i32,
+            position: Some([info.position.x, info.position.y, info.position.z]),
+        };
+        let vanilla = self.saved_refuses_damage(id, info.damage_type, creative);
+        crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+            .invulnerability_check(
+                sunrise_client::health::Hurting::Entity(id as i32, kind, source),
+                vanilla,
+            )
+    }
+
+    /// Unified `hurtServer` dispatch for every non-mob pickable target.
+    pub(in crate::game) fn projectile_hurts_non_mob(
+        &mut self,
+        info: &ProjectileHitInfo,
+        id: u32,
+    ) -> NonMobHit {
+        let (causing_target, by_player, creative, causing_id) = self.projectile_source_info(info);
+        let mob_blocked = !self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+            && matches!(causing_target, Some(Target::Mob(_)));
+
+        // ArmorStand.hurtServer (with pre-hurt ignition & restore on refusal for fire projectiles).
+        if let Some(i) = self.armor_stands.iter().position(|a| a.id == id) {
+            let prev_fire = self.armor_stands[i].fire_ticks;
+            if let Some(secs) = info.ignite_seconds
+                && !self.armor_stands[i].mod_fire_immune
+            {
+                let ticks = (secs * 20.0) as i32;
+                let a = &mut self.armor_stands[i];
+                a.fire_ticks = a.fire_ticks.max(ticks);
+            }
+            let hurt = self.hurt_armor_stand(
+                id,
+                info.damage_type,
+                causing_target,
+                info.direct_id,
+                Some([info.position.x, info.position.y, info.position.z]),
+            );
+            if !hurt
+                && info.ignite_seconds.is_some()
+                && let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id)
+            {
+                a.fire_ticks = prev_fire;
+            }
+            return if hurt {
+                NonMobHit::Hurt
+            } else {
+                NonMobHit::Refused
+            };
+        }
+
+        // ItemFrame / GlowItemFrame (`ItemFrame.hurtServer`).
+        if let Some(i) = self.item_frames.iter().position(|f| f.id == id) {
+            let kind = self.item_frames[i].kind();
+            if self.object_refuses_projectile(info, id, kind, causing_id, creative) {
+                return NonMobHit::Refused;
+            }
+            let hurt = self.projectile_hurts_frame_by(
+                id,
+                by_player,
+                creative,
+                causing_target,
+                info.damage_type,
+            );
+            return if hurt {
+                NonMobHit::Hurt
+            } else {
+                NonMobHit::Refused
+            };
+        }
+
+        // Painting (`BlockAttachedEntity.hurtServer`).
+        if self.paintings.iter().any(|p| p.id == id) {
+            if mob_blocked
+                || self.object_refuses_projectile(
+                    info,
+                    id,
+                    "minecraft:painting",
+                    causing_id,
+                    creative,
+                )
+            {
+                return NonMobHit::Refused;
+            }
+            let Some(i) = self.paintings.iter().position(|p| p.id == id) else {
+                return NonMobHit::Refused;
+            };
+            let broken = self.break_painting_by(i, by_player, causing_target);
+            return if broken {
+                NonMobHit::Hurt
+            } else {
+                NonMobHit::Refused
+            };
+        }
+
+        // Cushion (`Cushion.hurtServer`).
+        if self.cushions.iter().any(|c| c.id == id) {
+            let may_build = match causing_target {
+                Some(Target::Player) => self.may_build(),
+                Some(Target::Guest(conn)) if self.lan_acting == Some(conn) => self.may_build(),
+                Some(Target::Guest(conn)) => self
+                    .command_guest(conn)
+                    .is_none_or(|g| g.abilities.may_build),
+                _ => true,
+            };
+            if !may_build
+                || mob_blocked
+                || self.object_refuses_projectile(
+                    info,
+                    id,
+                    "minecraft:cushion",
+                    causing_id,
+                    creative,
+                )
+            {
+                return NonMobHit::Refused;
+            }
+            let Some(i) = self.cushions.iter().position(|c| c.id == id) else {
+                return NonMobHit::Refused;
+            };
+            let broken = self.break_cushion_by(i, causing_target);
+            return if broken {
+                NonMobHit::Hurt
+            } else {
+                NonMobHit::Refused
+            };
+        }
+
+        // LeashFenceKnotEntity (`BlockAttachedEntity.hurtServer`), natural or explicit.
+        let is_knot = self.natural_knot(id).is_some()
+            || self
+                .others
+                .iter()
+                .any(|o| o.id == id && o.kind == "minecraft:leash_knot");
+        if is_knot {
+            if mob_blocked
+                || self.object_refuses_projectile(
+                    info,
+                    id,
+                    "minecraft:leash_knot",
+                    causing_id,
+                    creative,
+                )
+            {
+                return NonMobHit::Refused;
+            }
+            let broken = self.break_leash_knot(id, causing_target);
+            return if broken {
+                NonMobHit::Hurt
+            } else {
+                NonMobHit::Refused
+            };
+        }
+
+        // FallingBlockEntity (`Entity.hurtServer`: always returns false).
+        if self.falling.iter().any(|f| f.id == id) {
+            return NonMobHit::Refused;
+        }
+
+        // PrimedTnt (`Entity.hurtServer`: always returns false).
+        if self.tnts.iter().any(|t| t.id == id) {
+            return NonMobHit::Refused;
+        }
+
+        // Boat (`VehicleEntity.hurtServer`).
+        if let Some(i) = self.boats.iter().position(|b| b.id == id) {
+            let kind = self.boats[i].entity_type();
+            if self.object_refuses_projectile(info, id, &kind, causing_id, creative) {
+                return NonMobHit::Refused;
+            }
+            let Some(i) = self.boats.iter().position(|b| b.id == id) else {
+                return NonMobHit::Refused;
+            };
+            self.hurt_boat(i, info.amount, creative);
+            return NonMobHit::Hurt;
+        }
+
+        // Minecart (`VehicleEntity.hurtServer`).
+        if let Some(i) = self.carts.iter().position(|c| c.id == id) {
+            let kind = self.carts[i].kind.id();
+            if self.object_refuses_projectile(info, id, kind, causing_id, creative) {
+                return NonMobHit::Refused;
+            }
+            let Some(i) = self.carts.iter().position(|c| c.id == id) else {
+                return NonMobHit::Refused;
+            };
+            if info.is_arrow && info.damage_type == "minecraft:arrow" {
+                self.arrow_hits_cart(
+                    i,
+                    info.amount,
+                    info.velocity,
+                    info.burning_arrow,
+                    creative,
+                    info.owner,
+                    info.guest,
+                );
+            } else {
+                let hit = if info.damage_type == "minecraft:trident" {
+                    let by = match info.owner {
+                        Some(Who::Player) => Some(info.guest.map_or(Target::Player, Target::Guest)),
+                        Some(Who::Mob(m)) => Some(Target::Mob(m)),
+                        None => None,
+                    };
+                    CartHit::attributed(by)
+                } else {
+                    CartHit::projectile(info.owner, info.guest)
+                };
+                self.hurt_cart(i, info.amount, creative, false, hit);
+            }
+            return NonMobHit::Hurt;
+        }
+
+        NonMobHit::NotObject
     }
 }

@@ -258,23 +258,33 @@ impl Game<'_> {
                     self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
                 let mut credit = plan.lend(&mut self.last_hurt_by_player);
                 let mut survived_hit = false;
-                let killed = match self.mobs.iter_mut().find(|m| m.id == id) {
-                    Some(m) => {
-                        let hit = m.damage(
-                            crate::game::entity::damage_level_of!(
-                                self,
-                                self.combat.attack(),
-                                &mut credit,
-                                None
-                            ),
-                            amount,
-                            source,
-                        );
-                        survived_hit = hit && m.alive();
-                        hit && !m.alive()
-                    }
-                    None => false,
-                };
+                let mut killed = false;
+                if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                    let hit = m.damage(
+                        crate::game::entity::damage_level_of!(
+                            self,
+                            self.combat.attack(),
+                            &mut credit,
+                            None
+                        ),
+                        amount,
+                        source,
+                    );
+                    survived_hit = hit && m.alive();
+                    killed = hit && !m.alive();
+                } else {
+                    drop(credit);
+                    let mut skull_p = p.clone();
+                    skull_p.owner = live_owner;
+                    let damage_type = self.projectile_damage_type(&skull_p);
+                    let info = super::creatures::ProjectileHitInfo::from_projectile(
+                        &skull_p,
+                        damage_type,
+                        amount,
+                        None,
+                    );
+                    let _ = self.projectile_hurts_non_mob(&info, id);
+                }
                 self.settle_mob_hurt(id);
                 if survived_hit && live_owner.is_some() {
                     self.mob_post_attack(
@@ -299,6 +309,8 @@ impl Game<'_> {
             }
             None => {}
         }
+        // Projectile.onHit emits PROJECTILE_LAND after onHitEntity and before WitherSkull.onHit explodes.
+        self.projectile_landed_event(p.id, p.owner, at);
         self.combat.explosion_owner = owner;
         self.combat.explosion_in_water = p.touching_water;
         // The blast's source names a player owner, for the dragon's kill credit.
