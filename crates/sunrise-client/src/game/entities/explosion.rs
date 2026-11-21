@@ -1268,7 +1268,7 @@ impl Game<'_> {
                             cause,
                             (amount, source),
                         );
-                        self.settle_warden_hurt(victim);
+                        self.settle_mob_hurt(victim);
                         // The loan recorded the accepted hit's player credit
                         // (`resolvePlayerResponsibleForDamage`); a guest's also names its connection.
                         if hurt
