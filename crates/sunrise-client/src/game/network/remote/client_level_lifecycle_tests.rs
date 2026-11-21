@@ -176,8 +176,8 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
         native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry,
     };
     use mod_api::{
-        AudioStream, AudioStreamRef, AudioStreamState, ClientHost, ClientLevelUnloadEvent, Hooks,
-        ModEntry, SoundSource, StreamSpec,
+        AudioStream, AudioStreamRef, AudioStreamState, ClientDisconnectingEvent, ClientHost,
+        ClientLevelUnloadEvent, Hooks, ModEntry, SoundSource, StreamSpec,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_client::level_loading::Reason;
@@ -191,13 +191,8 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
     }
 
     struct Listener(Arc<Mutex<Vec<AudioStreamRef>>>);
-    #[mod_api::__subscriptions]
-    impl Hooks for Listener {
-        fn client_level_unload(
-            &self,
-            host: &mut dyn ClientHost,
-            _: &mut ClientLevelUnloadEvent<'_>,
-        ) {
+    impl Listener {
+        fn open(&self, host: &dyn ClientHost) {
             let stream = host
                 .open_audio_stream(
                     &StreamSpec::new(SoundSource::Music, 1, 48_000),
@@ -206,6 +201,21 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
                 .unwrap();
             assert_eq!(stream.state(), AudioStreamState::Playing);
             self.0.lock().unwrap().push(stream);
+        }
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for Listener {
+        fn client_level_unload(
+            &self,
+            host: &mut dyn ClientHost,
+            _: &mut ClientLevelUnloadEvent<'_>,
+        ) {
+            self.open(host);
+        }
+
+        fn client_disconnecting(&self, host: &dyn ClientHost, _: &mut ClientDisconnectingEvent) {
+            self.open(host);
         }
     }
 
@@ -264,8 +274,10 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
                 }
                 {
                     let mut heard = streams.lock().unwrap();
-                    assert_eq!(heard.len(), 1);
-                    assert_eq!(heard.pop().unwrap().state(), AudioStreamState::Stopped);
+                    assert_eq!(heard.len(), if replace { 1 } else { 2 });
+                    for stream in heard.drain(..) {
+                        assert_eq!(stream.state(), AudioStreamState::Stopped);
+                    }
                 }
                 assert_eq!(existing.state(), AudioStreamState::Stopped);
                 if replace {
