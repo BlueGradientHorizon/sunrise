@@ -22,10 +22,8 @@ use sunrise_native_build::{library_record::Library, prebuilt::Route};
 
 mod plan;
 
-pub(crate) const USAGE: &str = concat!(
-    "release plan --releases <file> --sdk-data <new-dir> --out <file> (--tag <vVERSION> | --registry <checkout> --index <file> --id <mod-id> --repo <owner/name> [--version <version> --target <stable-tag>])",
-    "\n       cargo sunrise-mod release scripts --out <new-dir>",
-);
+pub(crate) const USAGE: &str = "release plan|scripts";
+const SCRIPTS_USAGE: &str = "release scripts --out <new-dir>";
 
 const SCRIPTS: &[(&str, &str)] = &[
     (
@@ -46,25 +44,39 @@ pub(crate) fn run(project: &Path, args: &[String]) -> Result<(), String> {
         );
         return Ok(());
     }
-    match args.split_first() {
-        Some((command, args)) if command == "plan" => plan::run(project, args),
-        Some((command, args)) if command == "scripts" => {
-            let mut options = crate::options::Options::new("release scripts", args, &["--out"]);
-            let values = options.values("--out")?;
-            options.finish()?;
-            let [out] = values.as_slice() else {
-                return Err("release scripts needs one --out <new-dir>".into());
-            };
-            let out = output_dir(Path::new(out))?;
-            let error = |error| format!("{}: {error}", out.display());
-            fs::create_dir(&out).map_err(error)?;
-            for (name, script) in SCRIPTS {
-                fs::write(out.join(name), script).map_err(error)?;
-            }
-            Ok(())
+    let Some((command, args)) = args.split_first() else {
+        return Err(format!("use `cargo sunrise-mod {USAGE}`"));
+    };
+    let usage = match command.as_str() {
+        "plan" => plan::USAGE,
+        "scripts" => SCRIPTS_USAGE,
+        _ => {
+            return Err(format!(
+                "unknown release command {command:?}; use `cargo sunrise-mod {USAGE}`"
+            ));
         }
-        _ => Err(format!("use `cargo sunrise-mod {USAGE}`")),
+    };
+    if crate::help::asked(args) {
+        println!("usage: cargo sunrise-mod {usage}");
+        return Ok(());
     }
+    if command == "plan" {
+        return plan::run(project, args);
+    }
+    let mut options =
+        crate::options::Options::new("release scripts", args, &["--out"]).usage(usage);
+    let values = options.values("--out")?;
+    options.finish()?;
+    let [out] = values.as_slice() else {
+        return Err("release scripts needs one --out <new-dir>".into());
+    };
+    let out = output_dir(Path::new(out))?;
+    let error = |error| format!("{}: {error}", out.display());
+    fs::create_dir(&out).map_err(error)?;
+    for (name, script) in SCRIPTS {
+        fs::write(out.join(name), script).map_err(error)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn releases(path: &Path) -> Result<Vec<SunriseRelease>, String> {
