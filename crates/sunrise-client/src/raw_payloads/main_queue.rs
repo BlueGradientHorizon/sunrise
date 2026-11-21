@@ -62,11 +62,21 @@ impl MainQueue {
     }
 }
 impl PreparedMain {
-    pub(crate) fn publish(self) -> Result<(), FailedMain> {
+    pub(crate) fn publish(
+        self,
+        bundle: Option<&mut Vec<Prepared<Event>>>,
+    ) -> Result<(), FailedMain> {
         match self {
-            Self::Client(prepared) => prepared
-                .publish()
-                .map_err(|error| FailedMain::Client(Box::new(error))),
+            Self::Client(prepared) => {
+                if let Some(bundle) = bundle {
+                    bundle.push(prepared);
+                    Ok(())
+                } else {
+                    prepared
+                        .publish()
+                        .map_err(|error| FailedMain::Client(Box::new(error)))
+                }
+            }
             Self::Server(prepared) => prepared
                 .publish()
                 .map_err(|error| FailedMain::Server(Box::new(error))),

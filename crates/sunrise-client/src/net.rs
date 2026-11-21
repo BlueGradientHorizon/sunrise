@@ -103,6 +103,11 @@ pub enum Event {
         name: String,
     },
     Packet(Box<play::Clientbound>),
+    /// A completed vanilla bundle; each member already holds ingress credit.
+    Bundle(Vec<ingress::Prepared<Self>>),
+    /// A transport handler normally run on the receiving thread, but inside
+    /// a bundle vanilla runs even these on the main thread in packet order.
+    BundledIo(Box<BundledIo>),
     /// Registered application bytes, owned until the receiving root transaction ends.
     RawPayload(Box<crate::raw_payloads::Incoming>),
     /// A packet that failed to decode (skipped, like vanilla's skippable packets).
@@ -163,7 +168,8 @@ impl Event {
             Self::Status(s) | Self::Brand(s) | Self::DecodeError(s) | Self::CodeOfConduct(s) => {
                 s.capacity()
             }
-            Self::QuietCommands
+            Self::Bundle(_)
+            | Self::QuietCommands
             | Self::CustomBooks
             | Self::Reconfiguring
             | Self::ClearDialog
@@ -183,6 +189,9 @@ impl Event {
             Self::Reconfigured(registries) => dynamic(registries),
             Self::Packet(packet) => {
                 size_of::<play::Clientbound>().saturating_add(packet.as_ref().owned_heap_bytes())
+            }
+            Self::BundledIo(io) => {
+                size_of::<BundledIo>().saturating_add(io.action.owned_heap_bytes())
             }
             Self::RawPayload(incoming) => size_of::<crate::raw_payloads::Incoming>()
                 .saturating_add(incoming.owned_heap_bytes()),
@@ -764,7 +773,7 @@ fn tr(lang: &Language, key: &str) -> String {
 
 /// Why a connection ended: the shown text and, when the reason was a
 /// translatable component or a known Sunrise error, its translation key.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Reason {
     pub text: String,
     pub key: Option<String>,
@@ -904,7 +913,7 @@ fn run(
     configuring: &Arc<AtomicBool>,
     shared_counters: &Mutex<Option<Arc<Counters>>>,
     cookies: &Cookies,
-    far: &crate::lod_net::Inbox,
+    far: &Arc<crate::lod_net::Inbox>,
     transferred: bool,
     resources: &ItemData,
     lan: bool,
@@ -1103,6 +1112,140 @@ fn run(
     )
 }
 
+/// `PacketBundlePacker.decode`: collect until the closing delimiter and
+/// refuse terminal packets inside a bundle. `BundlerInfo.createForPacket`
+/// allows up to 4096 subpackets. Keep the normal ingress reservation while
+/// collecting; the game cannot see an incomplete bundle.
+#[derive(Default)]
+struct PlayBundle(Option<Vec<ingress::Prepared<Event>>>);
+
+impl PlayBundle {
+    fn accept(
+        &mut self,
+        packet: play::Clientbound,
+        send: &ingress::Producer<Event>,
+    ) -> Result<Option<PlayTurn>, Reason> {
+        const MAX_SUBPACKETS: usize = 4096;
+        if matches!(packet, play::Clientbound::BundleDelimiter(_)) {
+            return match self.0.take() {
+                Some(packets) => Ok(Some(PlayTurn::Bundle(packets))),
+                None => {
+                    self.0 = Some(Vec::new());
+                    Ok(None)
+                }
+            };
+        }
+        let Some(bundle) = &mut self.0 else {
+            return Ok(Some(PlayTurn::Single(packet)));
+        };
+        if matches!(packet, play::Clientbound::StartConfiguration(_)) {
+            return Err(Reason::plain("terminal packet inside bundle"));
+        }
+        if bundle.len() == MAX_SUBPACKETS {
+            return Err(Reason::plain("too many packets in bundle"));
+        }
+        bundle.push(
+            send.prepare(Event::Packet(Box::new(packet)))
+                .map_err(|err| Reason::plain(err.to_string()))?,
+        );
+        Ok(None)
+    }
+}
+
+enum PlayTurn {
+    Single(play::Clientbound),
+    Bundle(Vec<ingress::Prepared<Event>>),
+}
+
+fn publish_play_event(
+    send: &ingress::Producer<Event>,
+    bundle: &mut Option<Vec<ingress::Prepared<Event>>>,
+    event: Event,
+) -> Result<(), Reason> {
+    let prepared = send
+        .prepare(event)
+        .map_err(|err| Reason::plain(err.to_string()))?;
+    if let Some(bundle) = bundle {
+        bundle.push(prepared);
+        Ok(())
+    } else {
+        prepared
+            .publish()
+            .map_err(|err| Reason::plain(err.to_string()))
+    }
+}
+
+enum PlayIoAction {
+    KeepAlive(cfg::KeepAlive),
+    ChunkBatchStart,
+    ChunkBatchFinished(i32),
+    CookieRequest(cfg::CookieRequest),
+    StoreCookie(cfg::StoreCookie),
+    FarTile(Vec<u8>),
+}
+
+impl PlayIoAction {
+    fn owned_heap_bytes(&self) -> usize {
+        use sunrise_protocol::retained::OwnedHeap;
+        match self {
+            Self::CookieRequest(cookie) => cookie.owned_heap_bytes(),
+            Self::StoreCookie(cookie) => cookie.owned_heap_bytes(),
+            Self::FarTile(data) => data.capacity(),
+            Self::KeepAlive(_) | Self::ChunkBatchStart | Self::ChunkBatchFinished(_) => 0,
+        }
+    }
+}
+
+struct PlayIo {
+    writer: Arc<Mutex<Option<QueuedWriter>>>,
+    cookies: Cookies,
+    far: Arc<crate::lod_net::Inbox>,
+    // ClientPacketListener.chunkBatchSizeCalculator.
+    batch: Mutex<sunrise_protocol::chunk_batch::ChunkBatchSize>,
+}
+
+impl PlayIo {
+    fn handle(&self, action: PlayIoAction) {
+        let reply = match action {
+            PlayIoAction::KeepAlive(p) => play::Serverbound::KeepAlive(p),
+            PlayIoAction::ChunkBatchStart => return self.batch.lock().unwrap().on_batch_start(),
+            PlayIoAction::ChunkBatchFinished(size) => {
+                let mut batch = self.batch.lock().unwrap();
+                batch.on_batch_finished(size);
+                play::Serverbound::ChunkBatchReceived(play::ChunkBatchReceived {
+                    chunks_per_tick: batch.desired_chunks_per_tick(),
+                })
+            }
+            // ClientCommonPacketListenerImpl.handleRequestCookie.
+            PlayIoAction::CookieRequest(q) => {
+                let payload = self.cookies.lock().unwrap().get(&q.key).cloned();
+                play::Serverbound::CookieResponse(cfg::CookieResponse {
+                    key: q.key,
+                    payload,
+                })
+            }
+            PlayIoAction::StoreCookie(p) => {
+                self.cookies.lock().unwrap().insert(p.key, p.payload);
+                return;
+            }
+            PlayIoAction::FarTile(data) => return self.far.deliver(data),
+        };
+        if let Some(writer) = self.writer.lock().unwrap().as_mut() {
+            let _ = writer.send(&reply.encode());
+        }
+    }
+}
+
+pub struct BundledIo {
+    io: Arc<PlayIo>,
+    action: PlayIoAction,
+}
+impl BundledIo {
+    pub fn run(self) {
+        self.io.handle(self.action);
+    }
+}
+
 fn receive_play(
     reader: &mut ConnReader,
     shared_writer: &Arc<Mutex<Option<QueuedWriter>>>,
@@ -1110,13 +1253,18 @@ fn receive_play(
     lang: &Language,
     send: &ingress::Producer<Event>,
     cookies: &Cookies,
-    far: &crate::lod_net::Inbox,
+    far: &Arc<crate::lod_net::Inbox>,
     resources: &ItemData,
     recorder: &RecorderSlot,
     payloads: &Arc<crate::raw_payloads::Transport>,
 ) -> Result<Reason, Reason> {
-    // ClientPacketListener.chunkBatchSizeCalculator.
-    let mut batch = sunrise_protocol::chunk_batch::ChunkBatchSize::default();
+    let io = Arc::new(PlayIo {
+        writer: shared_writer.clone(),
+        cookies: cookies.clone(),
+        far: far.clone(),
+        batch: Mutex::default(),
+    });
+    let mut bundle = PlayBundle::default();
     loop {
         let (id, payload) = reader
             .recv()
@@ -1130,6 +1278,9 @@ fn receive_play(
             Err(err) => {
                 if id == sunrise_protocol::ids::play::clientbound::CUSTOM_PAYLOAD {
                     return Err(Reason::plain(format!("custom play payload refused: {err}")));
+                }
+                if bundle.0.is_some() {
+                    return Err(Reason::plain(format!("bundle packet refused: {err}")));
                 }
                 let name = sunrise_protocol::ids::name(
                     sunrise_protocol::State::Play,
@@ -1146,112 +1297,160 @@ fn receive_play(
         {
             rec.received(&packet, id, &payload);
         }
-        let reply = |p: play::Serverbound| {
-            if let Some(w) = shared_writer.lock().unwrap().as_mut() {
-                let _ = w.send(&p.encode());
+        let Some(turn) = bundle.accept(packet, send)? else {
+            continue;
+        };
+        let (single, packets, mut bundled) = match turn {
+            PlayTurn::Single(packet) => (Some(packet), Vec::new(), None),
+            PlayTurn::Bundle(packets) => (None, packets, Some(Vec::new())),
+        };
+        let mut bundle_epoch = None;
+        let mut end = None;
+        let handle_io = |action, bundled: &mut Option<Vec<_>>| {
+            if bundled.is_some() {
+                publish_play_event(
+                    send,
+                    bundled,
+                    Event::BundledIo(Box::new(BundledIo {
+                        io: io.clone(),
+                        action,
+                    })),
+                )
+            } else {
+                io.handle(action);
+                Ok(())
             }
         };
-        match packet {
-            play::Clientbound::KeepAlive(k) => reply(play::Serverbound::KeepAlive(k)),
-            // ClientPacketListener.handleChunkBatchStart and handleChunkBatchFinished run on the network
-            // thread (no ensureRunningOnSameThread): each batch is timed as it arrives and answered at once,
-            // before what waits for the game thread, with the rate ChunkBatchSizeCalculator derives.
-            play::Clientbound::ChunkBatchStart(_) => batch.on_batch_start(),
-            play::Clientbound::ChunkBatchFinished(p) => {
-                batch.on_batch_finished(p.size);
-                reply(play::Serverbound::ChunkBatchReceived(
-                    play::ChunkBatchReceived {
-                        chunks_per_tick: batch.desired_chunks_per_tick(),
-                    },
-                ));
-            }
-            play::Clientbound::BundleDelimiter(_) => {}
-            play::Clientbound::ResourcePackPush(p) => {
-                let _ = send.send(Event::PackPush(p));
-            }
-            play::Clientbound::ResourcePackPop(p) => {
-                let _ = send.send(Event::PackPop(p.id));
-            }
-            play::Clientbound::StartConfiguration(_) => {
-                payloads.begin_configuration();
-                configuring.store(true, Ordering::Release);
-                let _ = send.send(Event::Reconfiguring);
-                if let Some(w) = shared_writer.lock().unwrap().as_mut() {
-                    w.transition_protocol(
-                        sunrise_protocol::payload_negotiation::Phase::Configuration,
-                        &play::Serverbound::ConfigurationAcknowledged(Empty).encode(),
-                    )
-                    .map_err(|error| Reason::plain(connection_lost(error, lang)))?;
-                    configuring.store(true, Ordering::Relaxed);
+        for packet in single.into_iter().chain(packets.into_iter().map(|packet| {
+            let Event::Packet(packet) = packet.into_value() else {
+                unreachable!("only play packets are buffered")
+            };
+            *packet
+        })) {
+            match packet {
+                play::Clientbound::KeepAlive(k) => {
+                    handle_io(PlayIoAction::KeepAlive(k), &mut bundled)?
                 }
-                let registries = configure(
-                    reader,
-                    shared_writer,
-                    configuring,
-                    lang,
-                    send,
-                    cookies,
-                    resources,
-                    payloads,
-                )?;
-                let _ = send.send(Event::Reconfigured(Arc::new(registries)));
-            }
-            // ClientCommonPacketListenerImpl.handleRequestCookie: the stored
-            // cookie (or none) goes straight back.
-            play::Clientbound::CookieRequest(q) => {
-                let payload = cookies.lock().unwrap().get(&q.key).cloned();
-                reply(play::Serverbound::CookieResponse(cfg::CookieResponse {
-                    key: q.key,
-                    payload,
-                }));
-            }
-            play::Clientbound::StoreCookie(p) => {
-                cookies.lock().unwrap().insert(p.key, p.payload);
-            }
-            play::Clientbound::ServerLinks(p) => {
-                let _ = send.send(Event::ServerLinks(p.links));
-            }
-            // ClientCommonPacketListenerImpl.handleTransfer: the connection
-            // ends and the game connects to the other address.
-            play::Clientbound::Transfer(p) => {
-                let _ = send.send(Event::Transfer {
-                    host: p.host,
-                    port: p.port,
-                });
-                return Ok(Reason::keyed("disconnect.transfer", lang));
-            }
-            play::Clientbound::Disconnect(d) => return Ok(Reason::tag(&d.reason, lang)),
-            play::Clientbound::CustomPayload(p) if p.channel == "minecraft:brand" => {
-                receive_brand(&p, send);
-            }
-            // A far tile, straight to the sampler waiting for it.
-            play::Clientbound::CustomPayload(p) if p.channel == crate::lod_net::CHANNEL => {
-                far.deliver(p.data);
-            }
-            play::Clientbound::CustomPayload(payload) => {
-                let endpoint = crate::raw_payloads::Endpoint::client(
-                    shared_writer.clone(),
-                    configuring.clone(),
-                    payloads.clone(),
-                    send.clone(),
-                );
-                if let Some(payload) = receive_application(
-                    &endpoint,
-                    sunrise_protocol::payload_negotiation::Phase::Play,
-                    payload,
-                    send,
-                )? {
-                    send.send(Event::Packet(Box::new(play::Clientbound::CustomPayload(
-                        payload,
-                    ))))
-                    .map_err(|_| Reason::plain("Disconnected"))?;
+                // Normally no ensureRunningOnSameThread: answer a chunk batch on
+                // the receiving thread with what ChunkBatchSizeCalculator measures.
+                play::Clientbound::ChunkBatchStart(_) => {
+                    handle_io(PlayIoAction::ChunkBatchStart, &mut bundled)?
                 }
-            }
-            other => {
-                if send.send(Event::Packet(Box::new(other))).is_err() {
-                    return Ok(Reason::plain("Disconnected"));
+                play::Clientbound::ChunkBatchFinished(p) => {
+                    handle_io(PlayIoAction::ChunkBatchFinished(p.size), &mut bundled)?
                 }
+                play::Clientbound::ResourcePackPush(p) => {
+                    publish_play_event(send, &mut bundled, Event::PackPush(p))?;
+                }
+                play::Clientbound::ResourcePackPop(p) => {
+                    publish_play_event(send, &mut bundled, Event::PackPop(p.id))?;
+                }
+                play::Clientbound::StartConfiguration(_) => {
+                    payloads.begin_configuration();
+                    configuring.store(true, Ordering::Release);
+                    let _ = send.send(Event::Reconfiguring);
+                    if let Some(w) = shared_writer.lock().unwrap().as_mut() {
+                        w.transition_protocol(
+                            sunrise_protocol::payload_negotiation::Phase::Configuration,
+                            &play::Serverbound::ConfigurationAcknowledged(Empty).encode(),
+                        )
+                        .map_err(|error| Reason::plain(connection_lost(error, lang)))?;
+                        configuring.store(true, Ordering::Relaxed);
+                    }
+                    let registries = configure(
+                        reader,
+                        shared_writer,
+                        configuring,
+                        lang,
+                        send,
+                        cookies,
+                        resources,
+                        payloads,
+                    )?;
+                    let _ = send.send(Event::Reconfigured(Arc::new(registries)));
+                }
+                play::Clientbound::CookieRequest(q) => {
+                    handle_io(PlayIoAction::CookieRequest(q), &mut bundled)?
+                }
+                play::Clientbound::StoreCookie(p) => {
+                    handle_io(PlayIoAction::StoreCookie(p), &mut bundled)?
+                }
+                play::Clientbound::ServerLinks(p) => {
+                    publish_play_event(send, &mut bundled, Event::ServerLinks(p.links))?;
+                }
+                // ClientCommonPacketListenerImpl.handleTransfer: the connection
+                // ends and the game connects to the other address.
+                play::Clientbound::Transfer(p) => {
+                    publish_play_event(
+                        send,
+                        &mut bundled,
+                        Event::Transfer {
+                            host: p.host,
+                            port: p.port,
+                        },
+                    )?;
+                    end.get_or_insert_with(|| Reason::keyed("disconnect.transfer", lang));
+                }
+                play::Clientbound::Disconnect(d) => {
+                    end.get_or_insert_with(|| Reason::tag(&d.reason, lang));
+                }
+                play::Clientbound::CustomPayload(p) if p.channel == "minecraft:brand" => {
+                    if let Some(event) = brand_event(&p) {
+                        publish_play_event(send, &mut bundled, event)?;
+                    }
+                }
+                // A far tile, straight to the sampler waiting for it.
+                play::Clientbound::CustomPayload(p) if p.channel == crate::lod_net::CHANNEL => {
+                    handle_io(PlayIoAction::FarTile(p.data), &mut bundled)?;
+                }
+                play::Clientbound::CustomPayload(payload) => {
+                    let endpoint = crate::raw_payloads::Endpoint::client(
+                        shared_writer.clone(),
+                        configuring.clone(),
+                        payloads.clone(),
+                        send.clone(),
+                    );
+                    let phase = sunrise_protocol::payload_negotiation::Phase::Play;
+                    let payload = if let Some(members) = &mut bundled {
+                        use crate::raw_payloads::{Classified, Incoming};
+                        match Incoming::classify(endpoint.transport(), phase, payload)
+                            .map_err(|err| Reason::plain(err.to_string()))?
+                        {
+                            Classified::Other(payload) => Some(payload),
+                            Classified::Application(incoming) => {
+                                bundle_epoch.get_or_insert_with(|| incoming.epoch.clone());
+                                crate::raw_payloads::stage_client_bundle(
+                                    incoming, &endpoint, send, members,
+                                );
+                                None
+                            }
+                            Classified::Raw(_) => None,
+                        }
+                    } else {
+                        receive_application(&endpoint, phase, payload, send)?
+                    };
+                    if let Some(payload) = payload {
+                        publish_play_event(
+                            send,
+                            &mut bundled,
+                            Event::Packet(Box::new(play::Clientbound::CustomPayload(payload))),
+                        )?;
+                    }
+                }
+                other => publish_play_event(send, &mut bundled, Event::Packet(Box::new(other)))?,
             }
+        }
+        if let Some(members) = bundled {
+            send.send(Event::Bundle(members))
+                .map_err(|err| Reason::plain(err.to_string()))?;
+        }
+        // Unlike a single application packet, the main work becomes visible
+        // only at the end of the bundle. Wait after publishing, never while staging.
+        if let Some(epoch) = bundle_epoch {
+            epoch.wait_main();
+        }
+        if let Some(reason) = end {
+            return Ok(reason);
         }
     }
 }
@@ -1537,18 +1736,23 @@ fn configure(
 
 #[sunrise_mod_api_macros::replaceable]
 fn receive_brand(payload: &cfg::CustomPayload, send: &ingress::Producer<Event>) {
-    if payload.channel == "minecraft:brand"
-        && let Ok(brand) = sunrise_protocol::buf::Reader::new(&payload.data).string(32767)
-    {
-        let _ = send.send(Event::Brand(brand));
-    } else if payload.channel == sunrise_protocol::quiet::CHANNEL {
-        let _ = send.send(Event::QuietCommands);
-    } else if payload.channel == sunrise_protocol::custom_book::CHANNEL {
-        let _ = send.send(Event::CustomBooks);
-    } else if payload.channel == crate::lod_net::CHANNEL
-        && let Some(offer) = crate::lod_net::Offer::decode(&payload.data)
-    {
-        let _ = send.send(Event::FarTerrain(offer));
+    if let Some(event) = brand_event(payload) {
+        let _ = send.send(event);
+    }
+}
+
+fn brand_event(payload: &cfg::CustomPayload) -> Option<Event> {
+    match payload.channel.as_str() {
+        "minecraft:brand" => sunrise_protocol::buf::Reader::new(&payload.data)
+            .string(32767)
+            .ok()
+            .map(Event::Brand),
+        sunrise_protocol::quiet::CHANNEL => Some(Event::QuietCommands),
+        sunrise_protocol::custom_book::CHANNEL => Some(Event::CustomBooks),
+        crate::lod_net::CHANNEL => {
+            crate::lod_net::Offer::decode(&payload.data).map(Event::FarTerrain)
+        }
+        _ => None,
     }
 }
 
@@ -2468,7 +2672,7 @@ mod tests {
                 &disconnect_language(),
                 &send,
                 &Cookies::default(),
-                &crate::lod_net::Inbox::default(),
+                &Arc::default(),
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
@@ -2829,7 +3033,7 @@ mod tests {
                 &Language::new(),
                 &send,
                 &Cookies::default(),
-                &crate::lod_net::Inbox::default(),
+                &Arc::default(),
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
@@ -2870,6 +3074,84 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn clientbound_bundle_publishes_one_ordered_main_turn() {
+        let (root, data) = empty_item_data("bundle");
+        let (client, server) = sunrise_protocol::connection::Pipe::pair();
+        let (mut reader, writer) = Connection::local(client).split();
+        let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+        let (send, events) = event_channel();
+        let thread = std::thread::spawn(move || {
+            receive_play(
+                &mut reader,
+                &writer,
+                &Arc::new(AtomicBool::new(false)),
+                &Language::new(),
+                &send,
+                &Cookies::default(),
+                &Arc::default(),
+                &data,
+                &Arc::new(Mutex::new(None)),
+                &crate::raw_payloads::Transport::empty(),
+            )
+        });
+        let mut server = Connection::local(server);
+        let delimiter = play::Clientbound::BundleDelimiter(Empty).encode();
+        server.send(&delimiter).unwrap();
+        for id in 0..4096 {
+            server
+                .send(&play::Clientbound::Ping(cfg::Ping { id }).encode())
+                .unwrap();
+        }
+        server.send(&delimiter).unwrap();
+        // A second, incomplete bundle never publishes its preceding valid member.
+        server.send(&delimiter).unwrap();
+        server
+            .send(&play::Clientbound::Ping(cfg::Ping { id: 4096 }).encode())
+            .unwrap();
+        server
+            .send(&play::Clientbound::StartConfiguration(Empty).encode())
+            .unwrap();
+        assert_eq!(
+            thread.join().unwrap().unwrap_err().text,
+            "terminal packet inside bundle"
+        );
+        let (event, _credit) = events.try_recv_owned().unwrap().into_parts();
+        let Event::Bundle(members) = event else {
+            panic!("bundle must reach main as one event");
+        };
+        assert_eq!(members.len(), 4096);
+        for (id, member) in (0..4096).zip(members) {
+            assert!(matches!(member.into_value(), Event::Packet(p)
+                if *p == play::Clientbound::Ping(cfg::Ping { id })));
+        }
+        assert!(events.try_recv_owned().is_err());
+
+        let (send, events) = event_channel();
+        let mut packer = PlayBundle::default();
+        assert!(
+            packer
+                .accept(play::Clientbound::BundleDelimiter(Empty), &send)
+                .unwrap()
+                .is_none()
+        );
+        for id in 0..4096 {
+            assert!(
+                packer
+                    .accept(play::Clientbound::Ping(cfg::Ping { id }), &send)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        assert!(
+            packer
+                .accept(play::Clientbound::Ping(cfg::Ping { id: 4096 }), &send)
+                .is_err()
+        );
+        assert!(events.try_recv_owned().is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     /// ClientPacketListener.handleChunkBatchStart and handleChunkBatchFinished: the
     /// receive loop answers a batch itself, with the game's queue never read.
     #[test]
@@ -2889,7 +3171,7 @@ mod tests {
                 &Language::new(),
                 &send,
                 &Cookies::default(),
-                &crate::lod_net::Inbox::default(),
+                &Arc::default(),
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
@@ -3008,7 +3290,7 @@ mod tests {
                 &Language::new(),
                 &send,
                 &Cookies::default(),
-                &crate::lod_net::Inbox::default(),
+                &Arc::default(),
                 &data,
                 &thread_recorder,
                 &crate::raw_payloads::Transport::empty(),
@@ -3060,7 +3342,7 @@ mod tests {
                 &Language::new(),
                 &send,
                 &thread_cookies,
-                &crate::lod_net::Inbox::default(),
+                &Arc::default(),
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
@@ -3314,7 +3596,7 @@ mod tests {
                 &Language::new(),
                 &send,
                 &Cookies::default(),
-                &crate::lod_net::Inbox::default(),
+                &Arc::default(),
                 &data,
                 &thread_recorder,
                 &crate::raw_payloads::Transport::empty(),

@@ -50,6 +50,18 @@ pub struct Prepared<T> {
     permit: byte_channel::Permit<T>,
 }
 impl<T> Prepared<T> {
+    /// Consume a staged value without publishing a standalone queue item.
+    pub fn into_value(self) -> T {
+        self.value
+    }
+    /// Use a staged value while retaining its original queue credit.
+    pub fn consume<R>(self, consume: impl FnOnce(T) -> R) -> R {
+        let Self {
+            value,
+            permit: _permit,
+        } = self;
+        consume(value)
+    }
     /// Failure returns the owned value, so its resources can be dropped after
     /// releasing any publication gate held by the caller.
     pub fn publish(self) -> Result<(), Refused<T>> {
