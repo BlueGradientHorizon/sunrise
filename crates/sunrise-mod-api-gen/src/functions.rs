@@ -5,7 +5,8 @@
 //! source and a parse of every crate below it), so a mixin build reads only the files of the
 //! modules its targets are in. Before a function is copied, its text is checked against the
 //! index's hash: a source that is not the build's is refused by name, never walked.
-use crate::patch::{Found, Source, TargetPath, plain, replaceable, target_path};
+use crate::patch::{Found, Source, TargetPath, replaceable, target_path};
+use crate::source::plain_path;
 use quote::ToTokens;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -93,13 +94,13 @@ impl Code {
 /// its last segment (`m::<GameLevel as LevelAccess>::block_state`), as the copy finds it.
 pub fn key(target: &str) -> String {
     match target_path(target) {
-        None => plain(target),
+        None => plain_path(target),
         Some(TargetPath {
             qualified: Some((module, ty, tr)),
             name,
             ..
-        }) => format!("{}::<{ty} as {tr}>::{name}", plain(module)),
-        Some(TargetPath { front, name, .. }) => format!("{}::{name}", plain(front)),
+        }) => format!("{}::<{ty} as {tr}>::{name}", plain_path(module)),
+        Some(TargetPath { front, name, .. }) => format!("{}::{name}", plain_path(front)),
     }
 }
 
@@ -522,7 +523,7 @@ fn collect(
                         .cloned()
                         .collect(),
                 };
-                let owner = plain(&block.self_ty.to_token_stream().to_string());
+                let owner = plain_path(&block.self_ty.to_token_stream().to_string());
                 let scope = match &block.trait_ {
                     Some((_, path, _)) => {
                         let last = path

@@ -403,24 +403,6 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// A type or path without its generic arguments or spaces: `Game<'_>` is `Game`.
-pub(crate) fn plain(text: &str) -> String {
-    let mut depth = 0usize;
-    text.chars()
-        .filter(|&c| match c {
-            '<' => {
-                depth += 1;
-                false
-            }
-            '>' => {
-                depth = depth.saturating_sub(1);
-                false
-            }
-            c => depth == 0 && !c.is_whitespace(),
-        })
-        .collect()
-}
-
 /// What a copied body may not contain.
 #[derive(Default)]
 struct BodyCheck<'a> {
@@ -495,9 +477,9 @@ pub(crate) fn target_path(target: &str) -> Option<TargetPath<'_>> {
     let (front, name) = target.rsplit_once("::")?;
     let qualified = front.split_once("::<").and_then(|(module, rest)| {
         let (ty, tr) = rest.strip_suffix('>')?.split_once(" as ")?;
-        let tr = plain(tr);
+        let tr = crate::source::plain_path(tr);
         let last = tr.rsplit("::").next().unwrap_or_default().to_owned();
-        Some((module, plain(ty), last))
+        Some((module, crate::source::plain_path(ty), last))
     });
     Some(TargetPath {
         front,
@@ -533,7 +515,7 @@ pub(crate) fn find(source: &mut Source, target: &str) -> Result<Found, (&'static
             }
             (
                 segments[..cut].join("::"),
-                plain(&segments[cut..].join("::")),
+                crate::source::plain_path(&segments[cut..].join("::")),
                 None,
             )
         }
@@ -567,7 +549,8 @@ pub(crate) fn find(source: &mut Source, target: &str) -> Result<Found, (&'static
                             .map(|s| s.ident.to_string())
                             .unwrap_or_default()
                     }) == trait_name
-                    && plain(&block.self_ty.to_token_stream().to_string()) == owner =>
+                    && crate::source::plain_path(&block.self_ty.to_token_stream().to_string())
+                        == owner =>
             {
                 for member in &block.items {
                     if let ImplItem::Fn(function) = member
@@ -650,19 +633,9 @@ pub(crate) fn replaceable(
         return Err("it is generic over types or takes `impl Trait`: one copy can't stand for every instance".into());
     }
     if let Some(block) = &found.owner
-        && block.trait_.is_some()
+        && let Some((_, path, _)) = &block.trait_
     {
-        struct Associated(bool);
-        impl<'ast> Visit<'ast> for Associated {
-            fn visit_path(&mut self, path: &'ast syn::Path) {
-                self.0 |= path.segments.len() > 1 && path.segments[0].ident == "Self";
-                syn::visit::visit_path(self, path);
-            }
-        }
-        let mut associated = Associated(false);
-        let (_, path, _) = block.trait_.as_ref().expect("a trait implementation");
-        associated.visit_signature(&crate::replace::qualified(sig, path));
-        if associated.0 {
+        if crate::replace::names_associated(&crate::replace::qualified(sig, path)) {
             return Err("its signature names a trait-associated constant through Self".into());
         }
         let foreign = crate::replace::foreign_imports(&source.module(&found.module)?.items);
@@ -930,7 +903,8 @@ pub fn generate(
             }
             Some(owner) => {
                 let self_ty = &owner.self_ty;
-                let owner_name = plain(&self_ty.to_token_stream().to_string()).replace("::", "_");
+                let owner_name = crate::source::plain_path(&self_ty.to_token_stream().to_string())
+                    .replace("::", "_");
                 // A trait method's copy is renamed in its helper trait: with the game's trait in
                 // scope too, `x.name()` would be ambiguous.
                 let source_trait = owner.trait_.as_ref().map(|(_, path, _)| path.clone());
@@ -1270,7 +1244,7 @@ fn loop_entry(
                 .entry
                 .rsplit("::")
                 .nth(1)
-                .map(plain)
+                .map(crate::source::plain_path)
                 .unwrap_or_default();
             let helper = format_ident!("__Fnr_{}_{}", owner, published.generic);
             quote!(#helper::#generic(#game, #slot))
@@ -2767,7 +2741,10 @@ mod census {
                 } else {
                     if replaceable(&found, &mut source, false).is_ok() {
                         let owner = found.owner.as_ref().map(|b| {
-                            format!("{}::", plain(&b.self_ty.to_token_stream().to_string()))
+                            format!(
+                                "{}::",
+                                crate::source::plain_path(&b.self_ty.to_token_stream().to_string())
+                            )
                         });
                         copyable.push(format!(
                             "{}::{}{}",
