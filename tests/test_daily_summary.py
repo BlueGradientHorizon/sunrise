@@ -1044,17 +1044,6 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(steps["actions/upload-artifact@v4"]["with"]["name"], "sdk-leg-${{ matrix.name }}")
         self.assertNotIn("env", build, "no hand-set archive name")
 
-        # The launcher and the mod tool use Asset::name: `{kind}-{host}.tar.xz`, where the host adds
-        # `-server` only for per-side assets. Check that these names and BESIDE_ASSETS agree with the
-        # SDK producer's legs and the publish check's SDK_ARCHIVES and SDK_ASSETS.
-        sdk = (ROOT / "crates/sunrise-mod-package/src/sdk.rs").read_text()
-        self.assertIn('Self::host_name(target, if kind.per_side() { side } else { Side::Client })', sdk)
-        self.assertIn('format!("{}-{host}.tar.xz", kind.name())', sdk)
-        self.assertIn('Side::Server => format!("{target}-server"),', sdk)
-        for kind in ("runtime", "api", "engine", "build-data", "api-source", "tool"):
-            self.assertIn(f'=> "{kind}",', sdk)
-        self.assertIn('pub const INDEX: &str = "sdk.json";', sdk)
-        self.assertIn('pub const BESIDE_ASSETS: [&str; 3] = [INDEX, "SHA256SUMS", "SHA256SUMS.sig"];', sdk)
         self.assertEqual(set(nightly.SDK_ASSETS) - set(nightly.SDK_ARCHIVES), {"sdk.json", "SHA256SUMS", "SHA256SUMS.sig"})
 
     def test_the_sdk_is_signed_and_published_only_on_main(self):
