@@ -549,6 +549,65 @@ fn a_target_that_is_also_a_declared_internal_is_two_entries_of_one_readable_list
 }
 
 #[test]
+fn a_changed_function_declared_as_target_and_internal_is_reported_once() {
+    const PATH: &str = "sunrise_client::game::f";
+    let dir = project_dir("fit-both-changed", None, None);
+    let manifest = dir.join(crate::NATIVE_MANIFEST);
+    let text = std::fs::read_to_string(&manifest)
+        .unwrap()
+        .replace(crate::tests::B, crate::MIXINS_REV)
+        + &format!(
+            "[[native.mixin]]\nid = \"m\"\ntarget = \"{PATH}\"\nkind = \"HEAD\"\nhelper = \"src/m.rs\"\n[[internals]]\npath = \"{PATH}\"\nkind = \"fn\"\n"
+        );
+    std::fs::write(&manifest, text).unwrap();
+    std::fs::write(dir.join("src/m.rs"), "{}").unwrap();
+    let data = |name: &str, body: &str| {
+        let mut function = function(body);
+        function["digests"] = serde_json::json!({"declaration": "declaration", "body": body});
+        build_data(
+            name,
+            OTHER_BUILD,
+            serde_json::json!({PATH: function}),
+            serde_json::json!([{"path": PATH, "kind": "fn", "signature": "fn f()", "hash": "isig"}]),
+        )
+    };
+    let packed = data("fit-both-changed-packed", "body");
+    let bundle = crate::bundle_in(&dir).unwrap().unwrap();
+    let table = UsesTable {
+        schema: uses::USES_SCHEMA,
+        made_for: pin(&dir),
+        entries: game_uses::entries(&bundle.manifest, &packed, OTHER_BUILD)
+            .unwrap()
+            .into_iter()
+            .filter_map(|(id, now)| now.into_entry(id))
+            .collect(),
+    };
+    assert_eq!(table.entries.len(), 2);
+    std::fs::write(dir.join(uses::USES_FILE), table.to_json()).unwrap();
+    let surface_file = dir.join("surface.json");
+    std::fs::write(&surface_file, serde_json::to_vec(&surface(&[])).unwrap()).unwrap();
+    let edited = data("fit-both-changed-edited", "edited");
+    let checked = check(&Plan {
+        contract: crate::contract::CONTRACT,
+        mods: dir.clone(),
+        build: OTHER_BUILD.into(),
+        surface: Some(surface_file),
+        build_data: Some(edited.clone()),
+    })
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(checked).unwrap()["mods"][0]["verdict"]["misfits"],
+        serde_json::json!([{
+            "id": format!("the game's function `{PATH}` (body changed)"),
+            "change": "changed",
+        }])
+    );
+    for folder in [dir, packed, edited] {
+        std::fs::remove_dir_all(folder).unwrap();
+    }
+}
+
+#[test]
 fn an_internal_declared_without_a_kind_is_named_when_it_becomes_another_kind() {
     const PATH: &str = "sunrise_client::game::Limit";
     let dir = project_dir("fit-kind", None, None);
