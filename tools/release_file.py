@@ -2,6 +2,7 @@
 """Writes sunrise-release.json, the facts a launcher reads from a game build before it runs anything in it.
 
     python3 tools/release_file.py write --channel nightly --date 2026-11-16 --commit <sha> sunrise-release.json
+    python3 tools/release_file.py write --channel dev --date 2026-11-16 --commit <sha> sunrise-release.json
     python3 tools/release_file.py write --channel stable --build 26.3-0.1.0 --date 2026-11-20 --commit <sha> out.json
 
 The contract is docs/api/release-file.md. Values come from the built commit through `git show`, so nothing of the
@@ -23,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = 1
 # The oldest launcher that may install a build of this contract.
 LAUNCHER_MIN = "1.0.0"
-CHANNELS = ("nightly", "snapshot", "stable")
+CHANNELS = ("nightly", "dev", "stable")
 # A stable release's build is its tag, `<target>-<semver>` (tools/release_train.py STABLE_TAG).
 STABLE_BUILD = r"\d+\.\d+(?:\.\d+)?-(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
 VERSION_RS = "crates/sunrise-core/src/version.rs"
