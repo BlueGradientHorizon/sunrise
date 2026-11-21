@@ -811,26 +811,33 @@ def judge_graph(sha):
 
 def locked_closure(sha, packages):
     """The Cargo.lock entries of `packages` at `sha` and of everything they depend on, as comparable tuples with
-    their dependency edges: a judge built from another version or source of a crate, or linking another set of them,
-    builds other code. A dependency is Cargo.lock's `name`, `name version` or `name version (source)`, each part
-    given only when needed to tell entries apart."""
-    entries = manifest(sha, "Cargo.lock").get("package", [])
+    the packages each one links: a judge built from another version or source of a crate, or linking another set of
+    them, builds other code. A dependency is Cargo.lock's `name`, `name version` or `name version (source)`, each
+    part given only when needed to tell entries apart, so edges are compared by the package they resolve to, never
+    by how the selector is spelled."""
     by_name = {}
-    for entry in entries:
+    for entry in manifest(sha, "Cargo.lock").get("package", []):
         by_name.setdefault(entry["name"], []).append(entry)
-    found, todo = set(), [name for name in packages if name in by_name]
-    while todo:
-        name, _, rest = todo.pop().partition(" ")
+
+    def resolve(selector):
+        name, _, rest = selector.partition(" ")
         version, _, source = rest.partition(" ")
         source = source.removeprefix("(").removesuffix(")")
-        for entry in by_name.get(name, []):
-            if version and entry["version"] != version or source and entry.get("source") != source:
-                continue
-            key = (entry["name"], entry["version"], entry.get("source"), entry.get("checksum"),
-                   tuple(sorted(entry.get("dependencies", []))))
-            if key not in found:
-                found.add(key)
-                todo += entry.get("dependencies", [])
+        return [entry for entry in by_name.get(name, [])
+                if (not version or entry["version"] == version) and (not source or entry.get("source") == source)]
+
+    def identity(entry):
+        return entry["name"], entry["version"], entry.get("source") or ""
+
+    found, seen, todo = set(), set(), [entry for name in packages for entry in by_name.get(name, [])]
+    while todo:
+        entry = todo.pop()
+        if identity(entry) in seen:
+            continue
+        seen.add(identity(entry))
+        linked = [dependency for selector in entry.get("dependencies", []) for dependency in resolve(selector)]
+        found.add((*identity(entry), entry.get("checksum"), tuple(sorted({identity(link) for link in linked}))))
+        todo += linked
     return found
 
 

@@ -130,10 +130,10 @@ class LegsTests(unittest.TestCase):
             self.assertEqual((sorted(special), plain), (["Cargo.toml", "crates/evil/Cargo.toml", "crates/evil/src/lib.rs"], []))
 
     def test_a_judges_locked_graph_is_compared_by_source_and_by_edges(self):
-        def closure(judge, b=()):
-            """The judge's closure in a Cargo.lock holding `a 1.0.0` from two sources."""
-            packages = (("sunrise-mod-api-gen", None, judge), ("a", "registry+x", ()), ("a", "git+y", ()),
-                        ("b", "registry+x", b))
+        def closure(judge, b=(), git=True):
+            """The judge's closure in a Cargo.lock holding `a 1.0.0` from the registry and, with `git`, from git."""
+            packages = (("sunrise-mod-api-gen", None, judge), ("a", "registry+x", ()), ("b", "registry+x", b),
+                        *((("a", "git+y", ()),) if git else ()))
             lock = {"package": [{"name": name, "version": "1.0.0", **({"source": source} if source else {}),
                                  "dependencies": list(dependencies)} for name, source, dependencies in packages]}
             with mock.patch.object(train, "manifest", lambda sha, path: lock):
@@ -141,11 +141,13 @@ class LegsTests(unittest.TestCase):
 
         registry = closure(["a 1.0.0 (registry+x)"])
         self.assertEqual({(name, source) for name, _, source, *_ in registry},
-                         {("sunrise-mod-api-gen", None), ("a", "registry+x")}, "only the source the selector names")
+                         {("sunrise-mod-api-gen", ""), ("a", "registry+x")}, "only the source the selector names")
         self.assertNotEqual(closure(["a 1.0.0 (git+y)"]), registry, "the same version from another source")
         # The same entries, but the judge now links `a` itself and not only through `b`.
         self.assertNotEqual(closure(["a 1.0.0 (registry+x)", "b"], ["a 1.0.0 (registry+x)"]),
                             closure(["b"], ["a 1.0.0 (registry+x)"]))
+        # Cargo qualifies a selector only once another `a` is locked: the same package, spelled out, is no change.
+        self.assertEqual(closure(["a 1.0.0 (registry+x)"]), closure(["a"], git=False))
 
     def test_every_selected_leg_is_a_daily_leg(self):
         legs = set(train.BREAK_GLASS_ALWAYS).union(*(selected or () for _, selected in train.BREAK_GLASS_LEGS))
