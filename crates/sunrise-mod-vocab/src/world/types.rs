@@ -437,7 +437,8 @@ pub enum RaidStatus {
 }
 
 /// A chunk position in an open level. A handle may be kept after unloading;
-/// reads resolve it again, returning `false` or `None` when it is no longer loaded.
+/// [`Self::with_view`] resolves it once into a [`ChunkView`] without loading the chunk,
+/// reporting `loaded() == false` and `None` for resident-column reads when unloaded.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct ChunkRef {

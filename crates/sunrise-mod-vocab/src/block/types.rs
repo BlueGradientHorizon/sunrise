@@ -183,7 +183,8 @@ pub enum SupportType {
 /// One block entity in an open level, identified by its lifecycle generation.
 /// Removal, replacement or chunk reload invalidates the handle, even at the same
 /// position. In-place data edits and temporary tick take/put preserve identity.
-/// Stale handles read as `None`; Result-returning methods report `Stale`.
+/// Use [`Self::with_view`] to resolve once and read related fields through a read-only
+/// [`BlockEntityView`]. Stale handles read as `None`; Result-returning methods report `Stale`.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct BlockEntityRef {

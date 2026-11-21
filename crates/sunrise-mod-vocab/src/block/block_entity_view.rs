@@ -97,6 +97,7 @@ impl<'a> BlockEntityView<'a> {
         }
     }
     /// Set and, if necessary, resize the menu data, without a block update packet.
+    /// Returns `Ok(false)` on an equal value or a read-only loan.
     pub fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError> {
         match &mut self.access {
             BlockEntityAccess::Mut { data: resident, .. } => resident.set_data_slots(data),
@@ -137,6 +138,7 @@ impl<'a> BlockEntityView<'a> {
     }
     /// Replace a declared internal slot. An explicit write claims any opaque saved row at
     /// that index. Rejected stacks leave storage alone; untouched slots are not normalized.
+    /// Returns `Ok(false)` on an equal value or a read-only loan.
     pub fn set_item_slot(
         &mut self,
         slot: u32,
@@ -149,7 +151,8 @@ impl<'a> BlockEntityView<'a> {
     }
 
     /// Queue one-shot fields for the next explicit block-entity sync to its current viewers.
-    /// An empty compound clears the queued fields. Nothing saves or sends them from this call.
+    /// An empty compound clears the queued fields. Nothing saves or sends them from this call;
+    /// a read-only loan does nothing.
     pub fn set_client_update_fields(&mut self, fields: Compound) {
         if let BlockEntityAccess::Mut { data, .. } = &mut self.access {
             data.set_client_update_fields(fields);
