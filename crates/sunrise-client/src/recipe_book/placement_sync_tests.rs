@@ -259,7 +259,11 @@ fn placement_frames_share_the_bounded_settings_channel_without_vanilla_ids() {
     assert!(super::super::settings_codec::decode(&bytes).is_none());
     assert!(ResourceId::try_from(format!("demo:{}", "a".repeat(RESOURCE_ID_BYTES - 5))).is_ok());
     assert!(ResourceId::try_from(format!("demo:{}", "a".repeat(RESOURCE_ID_BYTES - 4))).is_err());
-    assert!(ResourceId::try_from("demo:bad path".to_owned()).is_err());
+    let slash_path = ResourceId::try_from("demo:kitchen/pot".to_owned()).unwrap();
+    assert_eq!(slash_path.as_str(), "demo:kitchen/pot");
+    for id in ["..:pot", "pot", ":pot", "demo:", "demo:bad path"] {
+        assert!(ResourceId::try_from(id.to_owned()).is_err(), "{id:?}");
+    }
 }
 
 #[test]

@@ -21,7 +21,9 @@ impl ResourceId {
 impl TryFrom<String> for ResourceId {
     type Error = ();
     fn try_from(value: String) -> Result<Self, ()> {
-        if value.len() <= RESOURCE_ID_BYTES && super::resource_id::valid(&value) {
+        if value.len() <= RESOURCE_ID_BYTES
+            && mod_api::Identifier::parse_namespaced(&value).is_some()
+        {
             Ok(Self(value))
         } else {
             Err(())

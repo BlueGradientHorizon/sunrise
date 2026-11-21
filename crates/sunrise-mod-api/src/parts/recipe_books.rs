@@ -1,6 +1,8 @@
 //! Concrete authoring extracted verbatim from the vocabulary layer.
 use super::*;
 
+const MAX_ID_BYTES: usize = 256;
+
 impl RecipeBooksRegistrar for PartRegistrar {
     fn recipe_book_type(&mut self, id: &str) -> Result<RecipeBookTypeKey, String> {
         self.register_book(id, None)
@@ -41,7 +43,16 @@ impl RecipeBooksRegistrar for PartRegistrar {
                 &look.enabled_highlighted,
                 &look.disabled_highlighted,
             ] {
-                resource_id(sprite).map_err(|reason| format!("sprite {sprite:?}: {reason}"))?;
+                if sprite.len() > MAX_ID_BYTES {
+                    return Err(format!(
+                        "sprite {sprite:?}: id exceeds {MAX_ID_BYTES} bytes"
+                    ));
+                }
+                if crate::Identifier::parse_namespaced(sprite).is_none() {
+                    return Err(format!(
+                        "sprite {sprite:?}: expected a namespaced identifier"
+                    ));
+                }
             }
             if look.tooltip.is_empty() || look.tooltip.len() > 256 {
                 return Err("tooltip key must be nonempty and at most 256 bytes".into());
@@ -62,26 +73,6 @@ impl RecipeBooksRegistrar for PartRegistrar {
     }
 }
 
-/// Split a lowercase `namespace:path` id of at most 256 bytes.
-fn resource_id(id: &str) -> Result<(&str, &str), String> {
-    let (namespace, path) = id.split_once(':').ok_or("explicit namespace required")?;
-    if id.len() > 256 {
-        return Err("id exceeds 256 bytes".into());
-    }
-    if namespace.is_empty()
-        || path.is_empty()
-        || !namespace
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"_.-".contains(&b))
-        || !path
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"_.-/".contains(&b))
-    {
-        return Err("nonempty lowercase resource-id namespace and path required".into());
-    }
-    Ok((namespace, path))
-}
-
 impl PartRegistrar {
     fn register_book(
         &mut self,
@@ -92,7 +83,12 @@ impl PartRegistrar {
             if mod_vocab::__private::parts_installation::parts_installed() {
                 return Err("registry is frozen".to_owned());
             }
-            let (namespace, _) = resource_id(id)?;
+            if id.len() > MAX_ID_BYTES {
+                return Err(format!("id exceeds {MAX_ID_BYTES} bytes"));
+            }
+            let identifier = crate::Identifier::parse_namespaced(id)
+                .ok_or("expected a namespaced identifier")?;
+            let namespace = identifier.namespace();
             if let Some(owner) = self.recipe_book_types.get(id) {
                 return Err(format!(
                     "duplicate key declared by {owner} and {}",
@@ -218,11 +214,13 @@ mod tests {
     #[test]
     fn registration_rejects_invalid_and_duplicate_declarations() {
         let mut registrar = PartRegistrar::new("demo");
-        let key = registrar.recipe_book_type("demo:cooking_pot").unwrap();
-        assert_eq!(key.as_str(), "demo:cooking_pot");
+        let key = registrar
+            .recipe_book_type("demo:kitchen/cooking_pot")
+            .unwrap();
+        assert_eq!(key.as_str(), "demo:kitchen/cooking_pot");
         assert!(
             registrar
-                .recipe_book_type("demo:cooking_pot")
+                .recipe_book_type("demo:kitchen/cooking_pot")
                 .unwrap_err()
                 .contains("duplicate")
         );
@@ -231,6 +229,7 @@ mod tests {
             "demo:",
             ":pot",
             "demo:Pot",
+            "..:pot",
             "minecraft:pot",
             "other:pot",
             "demo:a:b",
@@ -243,7 +242,7 @@ mod tests {
                 .is_err()
         );
         assert_eq!(registrar.recipe_book_types.len(), 1);
-        assert_eq!(registrar.refused.len(), 9);
+        assert_eq!(registrar.refused.len(), 10);
     }
 
     #[test]
@@ -303,6 +302,10 @@ mod tests {
                 ..look()
             },
             crate::RecipeBookFilterLook {
+                enabled: "..:pot".into(),
+                ..look()
+            },
+            crate::RecipeBookFilterLook {
                 disabled_highlighted: "demo:Upper".into(),
                 ..look()
             },
@@ -324,6 +327,6 @@ mod tests {
                 .unwrap_err()
                 .contains("declaring mod")
         );
-        assert_eq!(r.refused.len(), 6, "each refusal also refuses installation");
+        assert_eq!(r.refused.len(), 7, "each refusal also refuses installation");
     }
 }

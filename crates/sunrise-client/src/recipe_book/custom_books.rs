@@ -174,10 +174,10 @@ impl CustomBooks {
     }
 }
 
-/// Whether `id` is a namespaced resource id a book can have: `namespace:path`, both nonempty,
-/// the namespace of `[a-z0-9_.-]` and the path of `[a-z0-9_.-/]`, at most [`MAX_ID_BYTES`] bytes.
+/// Whether `id` is an explicit `namespace:path` accepted by
+/// [`mod_api::Identifier::parse_namespaced`] and at most [`MAX_ID_BYTES`] bytes.
 pub fn valid_book_id(id: &str) -> bool {
-    id.len() <= MAX_ID_BYTES && super::resource_id::valid(id)
+    id.len() <= MAX_ID_BYTES && mod_api::Identifier::parse_namespaced(id).is_some()
 }
 
 /// A book's saved flags: a compound whose `open` and `filtering` are each the byte 0 or 1.

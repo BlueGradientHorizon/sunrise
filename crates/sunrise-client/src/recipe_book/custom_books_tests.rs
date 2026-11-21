@@ -234,6 +234,7 @@ fn a_book_id_is_a_namespaced_resource_id() {
         "Demo:pot",
         "demo:Pot",
         "de/mo:pot",
+        "..:pot",
         "demo:pot!",
         long.as_str(),
     ] {

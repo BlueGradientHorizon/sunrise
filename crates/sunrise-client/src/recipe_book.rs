@@ -22,7 +22,6 @@ mod mod_index;
 pub mod mod_presentation;
 mod placement_codec;
 pub mod placement_sync;
-mod resource_id;
 pub mod settings_codec;
 pub mod settings_connection;
 pub mod settings_sync;
