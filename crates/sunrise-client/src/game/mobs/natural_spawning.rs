@@ -1889,7 +1889,7 @@ mod tests {
             let level = game.natural_level();
             let placement = |random: &mut LegacyRandom| {
                 let ok = sunrise_client::mobs::spawn_rules::check_spawn_rules(
-                    level.mob_type("minecraft:sulfur_cube").unwrap(),
+                    level.mob_type("minecraft:sulfur_cube").unwrap().into(),
                     &level,
                     Reason::Natural,
                     random,

@@ -541,7 +541,7 @@ impl SpawnerExt for Spawner {
                     return;
                 }
             } else if let Some(t) = kind
-                && !spawn_rules::check_spawn_rules(t, l, Reason::Spawner, random, block)
+                && !spawn_rules::check_spawn_rules(t.into(), l, Reason::Spawner, random, block)
             {
                 continue;
             }

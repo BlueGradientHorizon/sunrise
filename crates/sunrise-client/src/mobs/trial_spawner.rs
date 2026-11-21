@@ -1098,7 +1098,7 @@ impl TrialSpawnerExt for TrialSpawner {
             return None;
         }
         let block = at.map(|v| v.floor() as i32);
-        if !spawn_rules::check_spawn_rules(kind, l, Reason::TrialSpawner, random, block) {
+        if !spawn_rules::check_spawn_rules(kind.into(), l, Reason::TrialSpawner, random, block) {
             return None;
         }
         if let Some(rules) = data.custom_spawn_rules

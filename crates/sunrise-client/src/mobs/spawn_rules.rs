@@ -268,21 +268,38 @@ fn surface_water<L: SpawnLevel>(l: &L, x: i32, y: i32, z: i32) -> bool {
         && name(l, x, y + 1, z) == "minecraft:water"
 }
 
-/// `SpawnPlacements.checkSpawnRules` for the entity type `entity` (a species
-/// can stand for several types), then `MobSpawnEvent.SpawnPlacementCheck`
-/// through [`SpawnLevel::placement_check`].
+/// Registry identity and vanilla spawn facts of the resolved entity type.
+#[derive(Clone, Copy)]
+pub struct SpawnEntityType<'a> {
+    pub id: &'a str,
+    pub species: Option<Species>,
+    pub allowed_in_peaceful: bool,
+}
+
+impl<'a> From<&'a MobType> for SpawnEntityType<'a> {
+    fn from(kind: &'a MobType) -> Self {
+        Self {
+            id: &kind.id,
+            species: Some(kind.species),
+            allowed_in_peaceful: kind.allowed_in_peaceful(),
+        }
+    }
+}
+
+/// `SpawnPlacements.checkSpawnRules` for the resolved entity type, then
+/// `MobSpawnEvent.SpawnPlacementCheck` through [`SpawnLevel::placement_check`].
 pub fn check_spawn_rules<L: SpawnLevel>(
-    kind: &MobType,
+    kind: SpawnEntityType<'_>,
     l: &L,
     reason: Reason,
     random: &mut impl RandomSource,
     at: [i32; 3],
 ) -> bool {
-    if !kind.allowed_in_peaceful() && l.peaceful() {
+    if !kind.allowed_in_peaceful && l.peaceful() {
         return false;
     }
     let [x, y, z] = at;
-    let allowed = match l.mob_data().mod_spawns.get(&kind.id) {
+    let allowed = match l.mob_data().mod_spawns.get(kind.id) {
         Some(row) => {
             let pos = BlockPos::new(x, y, z);
             let mut ctx = SpawnContext {
@@ -296,16 +313,20 @@ pub fn check_spawn_rules<L: SpawnLevel>(
                 data::SpawnPredicates::Combined { original, or, and } => {
                     let original = match original {
                         Some(predicate) => predicate.test(row.kind, &mut ctx, reason, pos),
-                        None => placement_predicate(kind.species, l, reason, ctx.random.0, x, y, z),
+                        None => kind.species.is_none_or(|s| {
+                            placement_predicate(s, l, reason, ctx.random.0, x, y, z)
+                        }),
                     };
                     (original || or.iter().any(|p| p.test(row.kind, &mut ctx, reason, pos)))
                         && and.iter().all(|p| p.test(row.kind, &mut ctx, reason, pos))
                 }
             }
         }
-        None => placement_predicate(kind.species, l, reason, random, x, y, z),
+        None => kind
+            .species
+            .is_none_or(|s| placement_predicate(s, l, reason, random, x, y, z)),
     };
-    l.placement_check(&kind.id, reason, at, allowed, &mut SpawnRandom(random))
+    l.placement_check(kind.id, reason, at, allowed, &mut SpawnRandom(random))
 }
 
 struct SpawnLevelView<'a, L>(&'a L);
@@ -755,12 +776,24 @@ mod underwater_sky_tests {
                 );
                 let mut random = LegacyRandom::new(1);
                 assert!(
-                    check_spawn_rules(&guardian, w, Reason::Natural, &mut random, [0, 50, 0]),
+                    check_spawn_rules(
+                        (&guardian).into(),
+                        w,
+                        Reason::Natural,
+                        &mut random,
+                        [0, 50, 0]
+                    ),
                     "kelp between the guardian and the sea hides the sky"
                 );
                 let mut random = LegacyRandom::new(1);
                 assert!(
-                    !check_spawn_rules(&guardian, w, Reason::Natural, &mut random, [1, 50, 0]),
+                    !check_spawn_rules(
+                        (&guardian).into(),
+                        w,
+                        Reason::Natural,
+                        &mut random,
+                        [1, 50, 0]
+                    ),
                     "a bubble column is liquid(), so the sky still shows"
                 );
             },
@@ -995,7 +1028,7 @@ mod mod_spawn_rule_tests {
         /// `SpawnPlacements.checkSpawnRules` for a type of the zombie species.
         fn check(&self, entity: &str, reason: Reason, at: [i32; 3]) -> bool {
             let kind = mob_kind(entity, Species::Zombie);
-            check_spawn_rules(&kind, self, reason, &mut LegacyRandom::new(7), at)
+            check_spawn_rules((&kind).into(), self, reason, &mut LegacyRandom::new(7), at)
         }
     }
 
@@ -1120,7 +1153,7 @@ mod mod_spawn_rule_tests {
         }]);
         let check = |level: &Flat| {
             check_spawn_rules(
-                &trader,
+                (&trader).into(),
                 level,
                 Reason::Natural,
                 &mut LegacyRandom::new(7),
@@ -1323,7 +1356,7 @@ mod mod_spawn_rule_tests {
             // The template zombie always passes for a trial spawner. The first
             // custom row has to be the original, not an OR after that template.
             let actual = check_spawn_rules(
-                &mob_kind("ruby:ghoul", Species::Zombie),
+                (&mob_kind("ruby:ghoul", Species::Zombie)).into(),
                 &level,
                 Reason::TrialSpawner,
                 &mut rng,
@@ -1478,7 +1511,7 @@ mod mod_spawn_rule_tests {
             Placement::NoRestrictions
         );
         assert!(!check_spawn_rules(
-            &mob_kind("minecraft:shulker", Species::Shulker),
+            (&mob_kind("minecraft:shulker", Species::Shulker)).into(),
             &level,
             Reason::TrialSpawner,
             &mut LegacyRandom::new(7),
@@ -1495,7 +1528,7 @@ mod mod_spawn_rule_tests {
         level.hook = Some(true);
         let mut rng = LegacyRandom::new(7);
         assert!(!check_spawn_rules(
-            &mob_kind("ruby:ghoul", Species::Zombie),
+            (&mob_kind("ruby:ghoul", Species::Zombie)).into(),
             &level,
             Reason::Natural,
             &mut rng,

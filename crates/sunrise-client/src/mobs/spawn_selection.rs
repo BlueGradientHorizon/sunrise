@@ -1628,7 +1628,7 @@ fn valid_position_for_type<L: NaturalLevel, R: RandomSource>(
     if !hooked && !listed && !in_list() {
         return false;
     }
-    if !spawn_rules::check_spawn_rules(kind, l, Reason::Natural, random, pos) {
+    if !spawn_rules::check_spawn_rules(kind.into(), l, Reason::Natural, random, pos) {
         return false;
     }
     l.no_collision(spawn_aabb(
@@ -1717,7 +1717,7 @@ pub fn spawn_mobs_for_chunk_generation<L: NaturalLevel, R: RandomSource, Q: Rand
                     let (bx, bz) = (fx.floor() as i32, fz.floor() as i32);
                     if !l.no_collision(spawn_aabb(species, fx, fy, fz, width, height))
                         || !spawn_rules::check_spawn_rules(
-                            kind,
+                            kind.into(),
                             l,
                             Reason::ChunkGeneration,
                             rules,

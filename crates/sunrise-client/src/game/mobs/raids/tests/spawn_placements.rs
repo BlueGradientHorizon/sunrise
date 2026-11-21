@@ -157,7 +157,7 @@ fn placement_listener_draws_after_the_registered_predicate_on_the_callers_stream
                 let zombie = level.mob_type("minecraft:zombie").unwrap();
                 let mut random = LegacyRandom::new(7);
                 assert!(!check_spawn_rules(
-                    zombie,
+                    zombie.into(),
                     &level,
                     SpawnReason::Natural,
                     &mut random,
