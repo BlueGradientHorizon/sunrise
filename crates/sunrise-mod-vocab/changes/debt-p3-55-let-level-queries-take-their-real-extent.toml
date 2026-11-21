@@ -1,0 +1,20 @@
+ids = [
+    "handle:BiomeSearch::MAX_SAMPLES",
+    "handle:StructureSearch::MAX_RADIUS",
+    "handle:LevelRef::find_closest_biome",
+    "handle:LevelRef::find_nearest_structure",
+    "method:prelude::ClientViewClientHost::raycast",
+    "method:prelude::ClientViewClientHost::view_hit",
+]
+why = "Remove arbitrary Sunrise-only extent caps that vanilla 26.3 does not impose on biome searches (`ServerLevel.findClosestBiome3d`), structure searches (`ServerLevel.findNearestMapStructure`), and client view raycasts (`BlockGetter.clip`). `BiomeSearch::MAX_SAMPLES` (65,536) refused vanilla's own `/locate biome` default search (`radius = 6400, horizontal_step = 32, vertical_step = 64`), `StructureSearch::MAX_RADIUS` refused radii above 100, and `ClientHost::raycast` / `view_hit` clamped hits at 1024 blocks instead of the loaded chunks' extent."
+migrate = '''
+### `BiomeSearch::MAX_SAMPLES` and `LevelRef::find_closest_biome`
+- Remove references to `BiomeSearch::MAX_SAMPLES`. `LevelRef::find_closest_biome` no longer enforces a pre-search sample budget and accepts any nonnegative `radius` with positive `horizontal_step` and `vertical_step`. If your mod wants a smaller synchronous cap, check its own parameters before calling.
+
+### `StructureSearch::MAX_RADIUS` and `LevelRef::find_nearest_structure`
+- Remove references to `StructureSearch::MAX_RADIUS`. `LevelRef::find_nearest_structure` accepts any nonnegative `radius` (vanilla `/locate structure` uses `100`) and still checks vanilla's `Level.isInWorldBoundsHorizontal` bound (`-30_000_000..30_000_000`) on `origin`.
+
+### `ClientHost::raycast` and `ClientHost::view_hit`
+- `ClientHost::view_hit` now traverses the full extent of loaded chunks along the view rather than stopping at 1024 blocks.
+- `ClientHost::raycast(distance)` no longer clamps `distance` to 1024 blocks; it returns `None` for nonpositive or non-finite distances and hits loaded blocks out to `distance` across loaded chunks. Pass `1024.0` explicitly if you want the previous ceiling.
+'''

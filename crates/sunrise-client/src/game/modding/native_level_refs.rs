@@ -51,25 +51,6 @@ fn normalized_selector(id: &str) -> String {
     }
 }
 
-/// Bound the synchronous generator work before constructing its spiral or height vector.
-fn biome_search_within_budget(parameters: mod_api::BiomeSearch, height: i32) -> bool {
-    if parameters.radius < 0
-        || parameters.horizontal_step <= 0
-        || parameters.vertical_step <= 0
-        || height <= 0
-    {
-        return false;
-    }
-    let rings = parameters.radius as u64 / parameters.horizontal_step as u64;
-    let width = 2 * rings + 1;
-    // Clamping the origin into the build interval cannot increase this height count.
-    let heights = (height as u64 - 1) / parameters.vertical_step as u64 + 1;
-    width
-        .checked_mul(width)
-        .and_then(|columns| columns.checked_mul(heights))
-        .is_some_and(|samples| samples <= mod_api::BiomeSearch::MAX_SAMPLES)
-}
-
 impl Game<'_> {
     pub(super) fn level_add_water_ticket(
         &mut self,
@@ -133,7 +114,11 @@ impl Game<'_> {
         parameters: mod_api::BiomeSearch,
     ) -> Option<mod_api::BiomeSearchResult> {
         let world = self.native_level_world(level)?;
-        if !biome_search_within_budget(parameters, world.shape.max_y() - world.shape.min_y) {
+        if parameters.radius < 0
+            || parameters.horizontal_step <= 0
+            || parameters.vertical_step <= 0
+            || world.shape.max_y() <= world.shape.min_y
+        {
             return None;
         }
         let terrain = if level.dimension() == self.dim.key() {
@@ -168,10 +153,8 @@ impl Game<'_> {
         parameters: mod_api::StructureSearch,
     ) -> Option<mod_api::StructureSearchResult> {
         self.native_level_world(level)?;
-        // Inside the world the placement cells' chunks stay far from overflowing.
-        if !(0..=mod_api::StructureSearch::MAX_RADIUS).contains(&parameters.radius)
-            || !horizontal_in_bounds(parameters.origin)
-        {
+        // Vanilla `Level.isInWorldBoundsHorizontal` (-30_000_000..30_000_000).
+        if parameters.radius < 0 || !horizontal_in_bounds(parameters.origin) {
             return None;
         }
         let terrain = if level.dimension() == self.dim.key() {
@@ -1075,34 +1058,6 @@ mod tests {
             game.enter_level(Dim::Overworld).unwrap();
             assert_eq!(game.world.day_time, 100);
         });
-    }
-
-    #[test]
-    fn biome_search_budget_bounds_columns_and_heights_before_sampling() {
-        use mod_api::BiomeSearch;
-        let allowed = |radius, horizontal, vertical, height| {
-            super::biome_search_within_budget(
-                BiomeSearch::new([i32::MIN, i32::MAX, i32::MAX], radius, horizontal, vertical),
-                height,
-            )
-        };
-        assert!(allowed(0, 1, i32::MAX, 384));
-        assert!(allowed(i32::MAX, i32::MAX, i32::MAX, 384));
-        assert!(allowed(127, 1, i32::MAX, 256));
-        assert!(!allowed(128, 1, i32::MAX, 256));
-        assert!(allowed(15, 1, 4, 256));
-        assert!(!allowed(16, 1, 4, 256));
-        assert!(!allowed(i32::MAX, 1, 1, i32::MAX));
-        for (radius, horizontal, vertical, height) in [
-            (-1, 1, 1, 384),
-            (0, 0, 1, 384),
-            (0, -1, 1, 384),
-            (0, 1, 0, 384),
-            (0, 1, -1, 384),
-            (0, 1, 1, 0),
-        ] {
-            assert!(!allowed(radius, horizontal, vertical, height));
-        }
     }
 
     /// A logical server with its worker queue running rather than the
@@ -3287,26 +3242,27 @@ mod environment_read_tests {
                 ),
                 None
             );
-            // The old public boundary accepted these calls and could panic or hang.
-            let huge_step = nether
-                .find_closest_biome(
-                    game,
-                    "#minecraft:is_nether",
-                    BiomeSearch::new([0, 64, 0], 0, 32, i32::MAX),
-                )
-                .expect("a step larger than the build height samples only the origin");
-            assert_eq!(huge_step.position, [0, 64, 0]);
+            // Vanilla `/locate biome` extents and large radii run without an artificial sample cap.
             for parameters in [
-                BiomeSearch::new([0, 64, 0], i32::MAX, 1, 1),
+                BiomeSearch::new([0, 64, 0], 0, 32, i32::MAX),
+                BiomeSearch::new([0, 64, 0], 6400, 32, 64),
                 BiomeSearch::new([0, 64, 0], 128, 1, i32::MAX),
-                BiomeSearch::new([0, 64, 0], 16, 1, 1),
+                BiomeSearch::new([0, 64, 0], i32::MAX, 1, 1),
+            ] {
+                let hit = nether
+                    .find_closest_biome(game, "#minecraft:is_nether", parameters)
+                    .expect("valid search should not be refused by a sample budget");
+                assert_eq!(hit.position, [0, 64, 0]);
+            }
+            for parameters in [
                 BiomeSearch::new([0, 64, 0], 0, 32, 0),
                 BiomeSearch::new([0, 64, 0], 0, 32, -1),
+                BiomeSearch::new([0, 64, 0], 0, -1, 64),
             ] {
                 assert_eq!(
                     nether.find_closest_biome(game, "#minecraft:is_nether", parameters),
                     None,
-                    "invalid or over-budget input must be refused even if the origin matches"
+                    "nonpositive step must be refused"
                 );
             }
             assert_eq!(before, (game.world.chunks.len(), game.streaming.pending()));
@@ -3390,10 +3346,31 @@ mod environment_read_tests {
                     "{structure} does not generate here"
                 );
             }
+            // Radii past 100 are accepted for both concentric-ring and random-spread searches.
+            for radius in [101, i32::MAX] {
+                assert_eq!(
+                    overworld.find_nearest_structure(
+                        game,
+                        "minecraft:stronghold",
+                        StructureSearch::new([0, 64, 0], radius)
+                    ),
+                    Some(found.clone()),
+                    "radius {radius} is accepted"
+                );
+            }
+            let mineshaft = overworld
+                .find_nearest_structure(game, "minecraft:mineshaft", search)
+                .expect("mineshaft in Overworld");
+            assert_eq!(
+                overworld.find_nearest_structure(
+                    game,
+                    "minecraft:mineshaft",
+                    StructureSearch::new([0, 64, 0], 101)
+                ),
+                Some(mineshaft)
+            );
             for parameters in [
                 StructureSearch::new([0, 64, 0], -1),
-                StructureSearch::new([0, 64, 0], StructureSearch::MAX_RADIUS + 1),
-                StructureSearch::new([0, 64, 0], i32::MAX),
                 StructureSearch::new([i32::MAX, 64, 0], 100),
                 StructureSearch::new([0, 64, i32::MIN], 100),
                 StructureSearch::new([30_000_000, 64, 0], 0),
