@@ -1382,7 +1382,7 @@ impl<'a> Game<'a> {
             self.load_mob(Tag::Compound(nbt), None);
         }
     }
-    fn generation_creatures<Q: RandomSource + 'static>(
+    fn generation_creatures<Q: RandomSource + Clone + 'static>(
         &self,
         cx: i32,
         cz: i32,
