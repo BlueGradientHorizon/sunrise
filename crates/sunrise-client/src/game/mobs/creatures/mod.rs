@@ -7819,8 +7819,8 @@ impl Game<'_> {
         let parent = &self.mobs[index];
         if !parent.alive()
             || !stack.item.ends_with("_spawn_egg")
-            || sunrise_client::block_entity_item::spawn_egg_type(&stack).as_deref()
-                != Some(parent.kind.id.as_str())
+            || sunrise_client::block_entity_item::item_entity_data(&stack, self.res.items())
+                .is_none_or(|data| data.kind != parent.kind.id)
             || self.ui.difficulty == 0 && !parent.kind.allowed_in_peaceful()
             || !sunrise_client::mobs::species::can_be_a_baby(parent.species())
             // WanderingTrader.getBreedOffspring returns null: no offspring, the
@@ -7914,14 +7914,13 @@ impl Game<'_> {
         if !fluid && !self.may_use_on(hit.pos) {
             return Ok(false);
         }
-        let (kind, data) = sunrise_client::block_entity_item::spawn_egg_on_spawner(
-            stack,
-            self.acting_player_is_op(),
-        );
-        if !self.spawn_egg_allowed(&kind) {
+        let items = self.res.shared_items();
+        let Some(data) = sunrise_client::block_entity_item::item_entity_data(stack, &items)
+            .filter(|data| self.spawn_egg_allowed(&data.kind))
+        else {
             self.use_failed = true;
             return Ok(true);
-        }
+        };
         if fluid
             && !self.may_build()
             && !self.can_place_on_in_adventure([
@@ -7934,7 +7933,8 @@ impl Game<'_> {
             return Ok(true);
         }
         // SpawnEggItem.useOn on a spawner sets its mob (and an op's egg data).
-        if let Some(done) = self.use_spawn_egg_on_spawner(hit.pos, &kind, data.as_ref()) {
+        let spawner_data = self.acting_player_is_op().then_some(data.compound);
+        if let Some(done) = self.use_spawn_egg_on_spawner(hit.pos, &data.kind, spawner_data) {
             if done {
                 self.swing_arm();
                 self.award_stat("used", &stack.item, 1);
@@ -7958,9 +7958,11 @@ impl Game<'_> {
             f64::from(p[1]),
             f64::from(p[2]) + 0.5,
         ];
-        let Some(id) =
-            self.spawn_mob_spawned(&kind, at, SpawnSite::Finalizing(SpawnReason::SpawnItemUse))
-        else {
+        let Some(id) = self.spawn_mob_spawned(
+            &data.kind,
+            at,
+            SpawnSite::Finalizing(SpawnReason::SpawnItemUse),
+        ) else {
             return Ok(false);
         };
         // SpawnEggItem.spawnMob: `EntityType.create` finalizes the mob, then
@@ -7968,7 +7970,7 @@ impl Game<'_> {
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             sunrise_client::entity_nbt::apply_item_components(m, stack);
         }
-        self.apply_spawn_egg_entity_data(id, stack);
+        self.apply_spawn_egg_entity_data(id, &data);
         self.post_block_game_event("minecraft:entity_place", p, Some(Who::Player), None);
         self.award_stat("used", &stack.item, 1);
         self.swing_arm();
@@ -7979,20 +7981,28 @@ impl Game<'_> {
     /// the mob it spawned, once the guards let it through, as
     /// `TypedEntityData.loadInto`: the mob's own compound, the data merged over
     /// it, loaded back into the same mob (`/data merge entity`'s loader).
-    pub(super) fn apply_spawn_egg_entity_data(&mut self, id: u32, stack: &ItemStack) {
-        let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
+    pub(super) fn apply_spawn_egg_entity_data(
+        &mut self,
+        id: u32,
+        data: &sunrise_client::block_entity_item::ItemEntityData<'_>,
+    ) {
+        use sunrise_core::nbt::Tag;
+        // A type-only component has no custom fields to apply.
+        if data.compound.len() == 1 || !self.acting_player_is_op() && data.op_only() {
             return;
-        };
-        let kind = self.mobs[i].kind.id.clone();
-        let op = self.acting_player_is_op();
-        let Some(data) = sunrise_client::block_entity_item::spawn_egg_entity_data(stack, &kind, op)
+        }
+        let Some(i) = self
+            .mobs
+            .iter()
+            .position(|m| m.id == id && m.kind.id == data.kind)
         else {
             return;
         };
-        let own = self.mob_tree_nbt(i);
-        let tag = sunrise_client::data_cmd::merged(&own, data);
-        // Nothing to report: the mob's own compound always loads back.
-        let _ = self.apply_entity_nbt(super::commands::Target::Mob(id), tag);
+        if let Tag::Compound(mut tag) = self.mob_tree_nbt(i) {
+            sunrise_client::data_cmd::merge_compound(&mut tag, data.compound);
+            // Nothing to report: the mob's own compound always loads back.
+            let _ = self.apply_entity_nbt(super::commands::Target::Mob(id), Tag::Compound(tag));
+        }
     }
     /// A beam target's centre (half its height), interpolated.
     fn beam_target(&self, who: Option<Who>, alpha: f64) -> Option<glam::DVec3> {
@@ -8733,6 +8743,11 @@ mod general_creature_tests;
 #[ignore = "daily"]
 fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
     use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
+    use sunrise_client::{
+        chunk::block_entity::BlockEntity,
+        mobs::spawner::{SpawnDataExt, Spawner, SpawnerExt},
+    };
+    use sunrise_core::nbt::Tag;
     peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
         game.set_mode_id(0);
         game.forced_hit = Some(crate::game::Hit {
@@ -8755,6 +8770,31 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
         assert!(game.held().is_none());
         assert_eq!(game.mobs.len(), 1);
         assert_eq!(game.mobs[0].kind.id, peaceful_tests::TRADER);
+
+        let mut egg = egg;
+        egg.data_mut().set_other(
+            "minecraft:entity_data",
+            Some(Tag::compound([
+                ("id", Tag::String(peaceful_tests::TRADER.into())),
+                ("NoAI", Tag::Byte(1)),
+            ])),
+        );
+        let key = (4, 64, 4);
+        for op in [false, true] {
+            game.lan_acting_permission = Some(if op { 2 } else { 0 });
+            game.world
+                .block_entities
+                .insert(key, BlockEntity::Spawner(Box::new(Spawner::default())));
+            game.inventory[game.selected] = Some(egg.clone());
+            assert!(game.use_spawn_egg(&egg).unwrap());
+            assert!(game.held().is_none());
+            let BlockEntity::Spawner(spawner) = &game.world.block_entities[&key] else {
+                unreachable!()
+            };
+            let data = spawner.next_data().unwrap();
+            assert_eq!(data.id().as_deref(), Some(peaceful_tests::TRADER));
+            assert_eq!(data.entity.get(&"NoAI".into()), op.then_some(&Tag::Byte(1)));
+        }
     });
 }
 

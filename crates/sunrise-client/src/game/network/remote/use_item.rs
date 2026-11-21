@@ -69,8 +69,8 @@ impl Game<'_> {
         // hit; the server alone tests LiquidBlock and the placement permission.
         if held.item.ends_with("_spawn_egg") {
             let succeeded = self.bucket_hit().is_some()
-                && sunrise_client::block_entity_item::spawn_egg_type(&held)
-                    .is_some_and(|kind| self.spawn_egg_allowed(&kind));
+                && sunrise_client::block_entity_item::item_entity_data(&held, self.res.items())
+                    .is_some_and(|data| self.spawn_egg_allowed(&data.kind));
             if succeeded {
                 self.with_hand(hand, Game::swing_arm);
             }

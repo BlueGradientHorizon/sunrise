@@ -460,8 +460,8 @@ impl Game<'_> {
                 // Either way no UseItem follows, so the server does not spawn
                 // a second mob from the fluid ray. ItemStack.useOn's adventure
                 // predicate was checked before selecting this phase.
-                if sunrise_client::block_entity_item::spawn_egg_type(stack)
-                    .is_some_and(|kind| self.spawn_egg_allowed(&kind))
+                if sunrise_client::block_entity_item::item_entity_data(stack, self.res.items())
+                    .is_some_and(|data| self.spawn_egg_allowed(&data.kind))
                 {
                     self.with_hand(hand, Game::swing_arm);
                 }
