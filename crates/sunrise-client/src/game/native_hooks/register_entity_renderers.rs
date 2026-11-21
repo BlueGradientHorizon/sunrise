@@ -10,7 +10,7 @@ impl Game<'_> {
     /// resolves each type's renderer on every resource load.
     pub(in crate::game) fn native_register_entity_renderers(
         context: &mod_api::RegistrationContext,
-        renderers: &mut dyn EntityRenderers,
+        renderers: &mut mod_api::EntityRendererRegistry,
     ) {
         Self::fire_register_entity_renderers(context, renderers);
     }

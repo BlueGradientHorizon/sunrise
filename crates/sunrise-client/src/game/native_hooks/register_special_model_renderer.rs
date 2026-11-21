@@ -7,7 +7,7 @@ impl Game<'_> {
     /// to decode and bake each `minecraft:special` node, rather than firing this hook again.
     pub(in crate::game) fn native_register_special_model_renderer(
         context: &mod_api::RegistrationContext,
-        renderers: &mut dyn SpecialModelRenderers,
+        renderers: &mut mod_api::SpecialModelRendererRegistry,
     ) {
         Self::fire_register_special_model_renderer(context, renderers);
     }
