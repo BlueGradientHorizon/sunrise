@@ -1,6 +1,7 @@
 //! The native travel decision affects real player reports and sends vanilla corrections.
 use super::*;
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::execution_role::ExecutionRole;
+use crate::game::native_entity_refs::tests::{fixture_root, with_game_role};
 use crate::game::native_item_places::tests::guest as online_guest;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, MoveCause};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -39,7 +40,12 @@ impl Hooks for Reply {
 }
 
 fn with_player(integrated: bool, run: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>)) {
-    with_game(|game| {
+    let role = if integrated {
+        ExecutionRole::IntegratedServer
+    } else {
+        ExecutionRole::DedicatedServer
+    };
+    with_game_role(fixture_root(), role, |game| {
         game.lan_host(
             crate::game::lan::LanSettings {
                 port: 0,
