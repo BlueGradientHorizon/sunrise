@@ -68,6 +68,10 @@ pub(super) struct OpenTransactions {
     /// Live 1-byte allocation whose address uniquely identifies this journal instance.
     tag: Option<Box<u8>>,
     next_frame: u64,
+    /// Live lent scratch slots (`ItemPlace::Scratch`), owned by the transaction frame whose
+    /// `owned_scratch` names their id.
+    scratch: HashMap<u64, scratch::Scratch>,
+    next_scratch: u64,
     closing: Option<TransactionLifecycle>,
     /// Root completions, including those from transactions committed by its listeners.
     closing_configuration_completions: Vec<ConfigurationCompletion>,
@@ -100,6 +104,24 @@ impl OpenTransactions {
             .checked_add(1)
             .expect("transaction frame sequence exhausted");
         TransactionFrame::new(journal, self.next_frame, self.levels.len())
+    }
+
+    fn journal_id(&self) -> Option<usize> {
+        self.tag
+            .as_deref()
+            .map(|tag| std::ptr::from_ref(tag) as usize)
+    }
+
+    fn insert_scratch(&mut self, entry: scratch::Scratch) -> (usize, u64) {
+        let tag = self.tag.get_or_insert_with(|| Box::new(0));
+        let journal = std::ptr::from_ref(&**tag) as usize;
+        self.next_scratch = self
+            .next_scratch
+            .checked_add(1)
+            .expect("scratch slot sequence exhausted");
+        let id = self.next_scratch;
+        self.scratch.insert(id, entry);
+        (journal, id)
     }
 
     fn player_write(&mut self) -> Option<&mut Level> {
@@ -322,10 +344,10 @@ pub(super) struct Level {
     /// Configuration advances only once the root has published every deferred send.
     configuration_completions: Vec<ConfigurationCompletion>,
     action: Option<decision::ActiveAction>,
-    /// The scratch stacks (`ItemPlace::Scratch`), live: kept by the outermost transaction only.
-    scratch: HashMap<u64, scratch::Scratch>,
-    /// Each scratch stack before this transaction first wrote it; none where it didn't exist.
-    scratch_kept: HashMap<u64, Option<scratch::Scratch>>,
+    /// The lent scratch slot owned by this transaction frame, if opened by `scratch_scope`.
+    owned_scratch: Option<u64>,
+    /// Each live ancestor scratch slot before this transaction first wrote it.
+    scratch_kept: HashMap<u64, scratch::Scratch>,
     /// The entities it added and removed, and the announcements it holds.
     lifetimes: entities::EntityJournal,
     /// Each attachment map that went with an entity to another level after this transaction
@@ -542,17 +564,6 @@ pub(super) enum DeferredEffect {
     },
 }
 
-/// A fresh transaction token: a process-wide count through a randomly keyed 64-bit hash, so a
-/// mod cannot guess, in practice, the token of a transaction it was not handed.
-fn frame_token() -> u64 {
-    use std::hash::BuildHasher;
-    use std::sync::{OnceLock, atomic::AtomicU64, atomic::Ordering};
-    static KEYS: OnceLock<std::hash::RandomState> = OnceLock::new();
-    static COUNT: AtomicU64 = AtomicU64::new(0);
-    KEYS.get_or_init(std::hash::RandomState::new)
-        .hash_one(COUNT.fetch_add(1, Ordering::Relaxed))
-}
-
 impl Level {
     fn new(
         frame: TransactionFrame,
@@ -599,7 +610,7 @@ impl Level {
             captured_packets: Default::default(),
             configuration_completions: Default::default(),
             action: Default::default(),
-            scratch: Default::default(),
+            owned_scratch: None,
             scratch_kept: Default::default(),
             lifetimes,
             travelled: Default::default(),
@@ -727,6 +738,43 @@ impl Game<'_> {
             self.close_storage_transaction(false);
         }
         self.close_storage_transaction(commit);
+    }
+    /// Closes `frame`, first aborting every abandoned transaction inside it, and returns the
+    /// frame's owned scratch slot on commit. The slot is removed from live storage and from this
+    /// frame's journal before closing, so escaped handles are dead during `root_commit` and the
+    /// closed loan never merges into an outer journal.
+    fn close_storage_frame_taking_scratch(
+        &mut self,
+        frame: TransactionFrame,
+        commit: bool,
+    ) -> Option<scratch::Scratch> {
+        let at = self
+            .transactions
+            .iter()
+            .rposition(|level| level.frame == frame)?;
+        if self.transactions.len() > at + 1 {
+            log::warn!("Sunrise: aborted a transaction left open inside the one being closed");
+        }
+        while self.transactions.len() > at + 1 {
+            self.close_storage_transaction(false);
+        }
+        if commit {
+            let taken = self
+                .transactions
+                .levels
+                .last_mut()
+                .and_then(|level| {
+                    let id = level.owned_scratch.take()?;
+                    level.scratch_kept.remove(&id);
+                    Some(id)
+                })
+                .and_then(|id| self.transactions.scratch.remove(&id));
+            self.close_storage_transaction(true);
+            taken
+        } else {
+            self.close_storage_transaction(false);
+            None
+        }
     }
     /// Runs `f` inside a new (or nested) storage transaction, committing iff `f` returns
     /// `(out, true)` and aborting on `false` or unwind.
@@ -879,6 +927,10 @@ impl Game<'_> {
     }
     /// What closing `level` does, with the closing phase already set.
     fn close_level(&mut self, mut level: Level, commit: bool) {
+        if let Some(owned) = level.owned_scratch.take() {
+            self.transactions.scratch.remove(&owned);
+            level.scratch_kept.remove(&owned);
+        }
         if let Some(scope) = level.packets.take()
             && commit
             && let Some(packets) = scope.finish()
@@ -911,7 +963,7 @@ impl Game<'_> {
             None
         };
         let lifetimes = std::mem::take(&mut level.lifetimes);
-        match (commit, self.transactions.last_mut()) {
+        match (commit, self.transactions.levels.last_mut()) {
             (true, Some(outer)) => {
                 outer.actions.merge(level.actions);
                 outer.trades.merge(level.trades);
@@ -1017,7 +1069,9 @@ impl Game<'_> {
                     outer.in_flight.entry(id).or_insert(slot);
                 }
                 for (id, kept) in level.scratch_kept {
-                    outer.scratch_kept.entry(id).or_insert(kept);
+                    if self.transactions.scratch.contains_key(&id) {
+                        outer.scratch_kept.entry(id).or_insert(kept);
+                    }
                 }
                 outer.save_gate = outer.save_gate.take().or(level.save_gate);
                 for (chunk, mark) in level.chunk_marks {

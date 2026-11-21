@@ -233,8 +233,8 @@ impl Game<'_> {
     /// Borrow the stack in a native place without initializing a player or container.
     /// Equipment overlays are only applied when the caller projects a complete stack.
     fn game_stack_source(&self, place: &ItemPlace) -> Option<EquipmentRead<'_>> {
-        if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
-            return self.scratch_held(*id).map(EquipmentRead::resident);
+        if let ItemPlace::Scratch(slot) = place {
+            return self.scratch_held(*slot).map(EquipmentRead::resident);
         }
         if !self.places_simulated() {
             return None;
@@ -591,8 +591,8 @@ impl Game<'_> {
         }
         // A write to a backed mod menu's storage (#3385) is noticed; none is backed in vanilla.
         self.notice_menu_place_write(place);
-        if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
-            return self.scratch_insert(*id, &stack);
+        if let ItemPlace::Scratch(slot) = place {
+            return self.scratch_insert(*slot, &stack);
         }
         let max = self.containers().max_stack(&stack);
         // Puts what of `rest` fits into `slot`.
@@ -731,8 +731,8 @@ impl Game<'_> {
             return 0;
         }
         self.notice_menu_place_write(place);
-        if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
-            return self.scratch_extract(*id, &stack);
+        if let ItemPlace::Scratch(slot) = place {
+            return self.scratch_extract(*slot, &stack);
         }
         // How many of `stack` `held` gives.
         let taken = |held: Option<&ItemStack>| {
