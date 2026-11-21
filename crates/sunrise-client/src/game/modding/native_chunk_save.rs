@@ -1,8 +1,10 @@
-//! Server capture seams. Disk callbacks run only in the persistence owner.
+//! Server-level binding and save admission for chunk disk callbacks.
 use super::*;
 
 impl Game<'_> {
-    /// Bind the existing world's identity and immutable resources, before workers start.
+    /// Bind a newly opened level's save directory before publishing its streamer.
+    /// `Persistent` and the server share this directory; only its submitted records
+    /// become disk jobs.
     pub(super) fn bind_chunk_disk_worker(
         &self,
         save: &sunrise_client::save::SaveDir,

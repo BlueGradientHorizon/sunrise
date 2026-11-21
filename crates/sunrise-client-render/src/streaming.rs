@@ -123,7 +123,6 @@ pub trait ChunkGenerator: Send + Sync + 'static {
     fn is_decorated(&self, _proto: &Proto) -> bool {
         false
     }
-    /// What to save of a proto chunk dropped before it became final.
     /// A decorated proto chunk's blocks as a column, to light a finished
     /// neighbour against (vanilla lights with neighbours at FEATURES).
     fn light_view(&self, _proto: &Proto) -> Option<Chunk> {
@@ -3925,7 +3924,7 @@ mod tests {
     }
 
     #[test]
-    fn checked_out_proto_is_the_read_only_state_given_to_the_save_job() {
+    fn proto_checkout_transfers_the_column_and_removes_its_light_view() {
         let mut protos = FxHashMap::default();
         protos.insert((2, -1), Some(Box::new(73_u32) as Proto));
         protos.insert((3, -1), None);
@@ -3935,10 +3934,8 @@ mod tests {
         assert_eq!(saves.len(), 1);
         assert!(protos[&(2, -1)].is_none());
         assert!(!views.contains_key(&(2, -1)));
-        let Job::Save(saved) = Job::Save(saves) else {
-            unreachable!()
-        };
-        assert_eq!(saved[0].proto.downcast_ref::<u32>(), Some(&73));
+        assert_eq!(saves[0].pos, (2, -1));
+        assert_eq!(saves[0].proto.downcast_ref::<u32>(), Some(&73));
     }
 
     #[test]

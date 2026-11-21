@@ -1,0 +1,9 @@
+ids = [
+    "internal:method:sunrise_client::game::native_chunk_save::Game<'_>::native_full_chunk_snapshots",
+    "internal:method:sunrise_client::game::native_chunk_save::Game<'_>::native_late_full_chunk_snapshot",
+    "internal:method:sunrise_client::game::native_chunk_save::Game<'_>::native_full_chunk_snapshot",
+    "internal:method:sunrise_client::game::native_chunk_save::Game<'_>::native_proto_snapshots",
+    "internal:method:sunrise_client::game::native_chunk_save::Game<'_>::native_proto_snapshot",
+]
+why = "The level binds its chunk disk context at open instead of inspecting and discarding snapshots at save admission. As in vanilla's ChunkMap.save and IOWorker.store, only the record handed to persistence is written. NeoForge's ChunkDataEvent.Save in ChunkMap.save likewise observes the actual serialization input. The full and proto disk jobs and pending writes are unchanged."
+migrate = "No change to chunk_data_load, chunk_data_save or ChunkDiskHost::job() is needed. Remove any native patch calls to the five snapshot helpers named above: the level supplies the worker context when it opens. Use chunk_data_save to edit attachments on the actual disk record. Streaming::proto_access, ProtoSnapshot, ProtoAccess and ChunkGenerator::proto_status and proto_block have no replacement."
