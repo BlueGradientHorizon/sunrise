@@ -103,12 +103,13 @@ packs, have independent requirements and do not get verdicts. Each decision is a
 - `made-for`: the target commit is the one the version was made for and its build requirements match.
 - `fits`: the target uses the same Minecraft version and manifest API, and everything the package uses is unchanged.
   For native mods, the comparison in [`cargo sunrise-mod fits`](sdk/04-fit.md) checks the API and declared game code.
-- `rebuild`: reserved for a registry finding that only the bodies of declared game functions changed. `review`
-  lists their paths so the author can check whether a patch overrides a game fix. Current SDKs cannot establish this
-  from their whole-function span hashes, so this writer does not emit it. The launcher's own check also still leaves
-  a native mod with changed function bodies out of its source build.
-- `breaks`: an API item or a declared game fingerprint changed, a used item disappeared, or a build requirement
-  no longer matches. `changed` names up to five items, including `minecraft` or `content-api` for those requirements.
+- `rebuild`: does not fit. Only the bodies of declared game functions changed, and the uses list and target
+  SDK both have separate declaration and body digests to prove it. `review` lists their paths so the author can
+  check whether a patch overrides a game fix. The version is not listed for this build or rebuilt automatically.
+- `breaks`: an API item or declared game code changed, a used item disappeared, or a build requirement no longer
+  matches. `changed` names up to five items, including `minecraft` or `content-api` for those requirements. A
+  function change names the path and says `body changed` or `declaration changed` when both digests are available;
+  with older evidence it reports only that the item changed.
 - `exact`: compatibility could not be judged, for example because the package has `[[native.module]]` or
   `[[native.bridge]]` rows, no uses list, or a comparison deferred to compilation. The `reason` says why. On another build Stable lists it only when a
   prebuilt binary exists for that build.

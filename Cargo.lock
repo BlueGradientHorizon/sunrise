@@ -524,6 +524,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sunrise-addresses",
+ "sunrise-mod-api-gen",
  "sunrise-mod-package",
  "sunrise-mod-source",
  "sunrise-mod-surface",
