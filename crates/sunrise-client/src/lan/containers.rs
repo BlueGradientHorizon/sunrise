@@ -1177,59 +1177,50 @@ impl Hub {
             };
             // AbstractFurnaceBlockEntity.dataAccess, BrewingStandBlockEntity.dataAccess,
             // CrafterBlockEntity.containerData.
-            let data = match world.block_entities.get(&pos) {
-                Some(BlockEntity::Furnace(f)) => vec![
-                    f.lit_remaining,
-                    f.lit_total,
-                    f.cooking_timer,
-                    f.cooking_total,
-                ],
+            let (furnace, brewing, crafter);
+            let (data, declared): (&[i32], Option<usize>) = match world.block_entities.get(&pos) {
+                Some(BlockEntity::Furnace(f)) => {
+                    furnace = [f.lit_remaining, f.lit_total, f.cooking_timer, f.cooking_total];
+                    (&furnace, None)
+                }
                 Some(BlockEntity::Brewing(b)) => {
-                    vec![b.brew_time, b.fuel, b.total_brew_time, b.total_fuel]
+                    brewing = [b.brew_time, b.fuel, b.total_brew_time, b.total_fuel];
+                    (&brewing, None)
                 }
                 // CrafterBlockEntity.containerData: the disabled slots, then triggered.
-                Some(BlockEntity::Crafter(c)) => c
-                    .disabled
-                    .iter()
-                    .chain([&c.is_triggered()])
-                    .map(|&d| i32::from(d))
-                    .collect(),
-                // A mod's menu: the data slots its tick set. A mod menu type's
-                // `ContainerData` has as many as it declares, all sent on open
-                // (`sendInitialData`), 0 where the tick set none.
-                Some(BlockEntity::Mod(e)) if m.mod_type.is_some() || !e.data.is_empty() => {
-                    let mut data = e.data.clone();
-                    if let Some(t) = m.mod_type {
-                        data.resize(t.data_slots, 0);
+                Some(BlockEntity::Crafter(c)) => {
+                    let mut slots = [0; 10];
+                    for (slot, disabled) in slots.iter_mut().zip(c.disabled) {
+                        *slot = i32::from(disabled);
                     }
-                    data
+                    slots[9] = i32::from(c.is_triggered());
+                    crafter = slots;
+                    (&crafter, None)
                 }
+                // ContainerData supplies zeros for slots the mod has not written.
+                Some(BlockEntity::Mod(e)) => (&e.data, m.mod_type.map(|t| t.data_slots)),
                 _ => return,
-            }
-            .into_iter()
-            .map(|v| v as i16)
-            .collect::<Vec<i16>>();
-            let max_syncable = usize::from(i16::MAX as u16) + 1;
-            let sync_len = data.len().min(max_syncable);
-            m.sent_data.resize(sync_len, None);
+            };
+            let count = declared.unwrap_or(data.len());
+            let sync_len = count.min(i16::MAX as usize + 1);
             let window = m.window;
-            let mut changed = Vec::new();
-            for (k, &value) in data[..sync_len].iter().enumerate() {
-                if m.sent_data[k] != Some(value) {
-                    m.sent_data[k] = Some(value);
-                    changed.push((
-                        i16::try_from(k).expect("sync_len is bounded by i16::MAX + 1"),
-                        value,
-                    ));
-                }
-            }
-            if data.len() > sync_len {
+            let unsent = (count > sync_len).then_some(count);
+            if unsent.is_some() && unsent != m.reported_unsent_data_len {
                 log::warn!(
-                    "Sunrise: container window {window} cannot sync {} data slot(s) at indices {sync_len}..{} (ContainerSetData id max is {})",
-                    data.len() - sync_len,
-                    data.len(),
+                    "Sunrise: menu {} window {window} cannot sync data slots at indices {sync_len}..{count} (ContainerSetData id max is {})",
+                    m.registry_id,
                     i16::MAX,
                 );
+            }
+            m.reported_unsent_data_len = unsent;
+            m.sent_data.resize(sync_len, None);
+            let mut changed = Vec::new();
+            for (index, sent) in m.sent_data.iter_mut().enumerate() {
+                let value = data.get(index).copied().unwrap_or_default() as i16;
+                if *sent != Some(value) {
+                    *sent = Some(value);
+                    changed.push((index as i16, value));
+                }
             }
             for (id, value) in changed {
                 g.send(&C::ContainerSetData(play::ContainerSetData {

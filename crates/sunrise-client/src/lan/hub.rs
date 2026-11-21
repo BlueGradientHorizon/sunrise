@@ -7962,6 +7962,17 @@ mod tests {
             packets::play::{Clientbound, ContainerSetData},
         };
 
+        static MENU_TYPE: crate::containers::ModMenuType = crate::containers::ModMenuType {
+            id: "test:wide",
+            owner: "test",
+            slots: 0,
+            player_inventory: false,
+            data_slots: usize::MAX,
+            results: Vec::new(),
+            inputs: Vec::new(),
+            links: None,
+            crafting: None,
+        };
         let (mut hub, rx) = hub_with_a_guest();
         let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
         let pos = (0, 64, 0);
@@ -7996,8 +8007,8 @@ mod tests {
                 reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
                 hidden: Vec::new(),
-                mod_type: None,
-                registry_id: "minecraft:generic_9x3".into(),
+                mod_type: Some(&MENU_TYPE),
+                registry_id: MENU_TYPE.id.into(),
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: false,
@@ -8022,7 +8033,16 @@ mod tests {
                     .collect()
             };
 
+        // The declaration is larger than any Vec can hold; it is not used as a capacity.
         hub.sync_containers(&world);
+        assert_eq!(
+            hub.guests[0]
+                .menu
+                .as_ref()
+                .unwrap()
+                .reported_unsent_data_len,
+            Some(usize::MAX)
+        );
         let packets = drain_data(&rx);
         let mut by_id = BTreeMap::new();
         for packet in packets {
