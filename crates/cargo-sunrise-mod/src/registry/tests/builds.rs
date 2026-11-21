@@ -183,7 +183,7 @@ fn a_short_version_label_cannot_list_native_builds() {
     release.use_descriptor("valid");
     let error = release.check().unwrap_err();
     assert!(
-        error.contains("short label stays source-only. Publish a new mod version to add builds"),
+        error.contains("builds require a canonical version label"),
         "{error}"
     );
 }
