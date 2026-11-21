@@ -56,14 +56,15 @@ SCRIPT = [
               'cmd Alice data get entity @s PortalCooldown']),
 ]
 
-KEPT = ('teleport', 'respawn', 'chat', 'error')
+KEPT = ('teleport', 'respawn', 'error')
 
 
 def shown(lines):
-    """Alice's level changes, teleports, chat and command replies from the `tp` into the portal on."""
+    """Alice's level changes and teleports from the `tp` into the portal on, and the replies to her reads. The
+    advancement chat of the trip is left out: Sunrise sends it before the arrival's teleport (#4152)."""
     steps = {f'step={step}' for step, _ in SCRIPT if step != 'setup'}
     return [line for line in lines if len(parts := line.split(' ', 3)) >= 3 and parts[1] in steps
-            and parts[2] in KEPT]
+            and (parts[2] in KEPT or parts[2] == 'chat' and parts[1] == 'step=read')]
 
 
 def check(vanilla, vanilla_all):
