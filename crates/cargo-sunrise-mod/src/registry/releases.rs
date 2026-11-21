@@ -198,24 +198,34 @@ fn discover(
     let mut ids = BTreeSet::new();
     let mut page = 1;
     let mut last = None;
+    let mut probing_end = false;
     loop {
         let at = |e| format!("Sunrise releases page {page}: {e}");
         let response = fetch(&format!("{SDK_RELEASE_LIST}&page={page}")).map_err(at)?;
         let links = PageLinks::read(&response.links).map_err(at)?;
         let rows: Vec<Release> =
             serde_json::from_slice(&response.body).map_err(|e| at(e.to_string()))?;
-        if let Some(end) = links.last {
-            if end < page || last.is_some_and(|old| old != end) {
-                return Err(at("the last page changed during listing".into()));
-            }
-            last = Some(end);
-        }
         if links.first.is_some_and(|first| first != 1)
             || links.previous.is_some_and(|previous| previous != page - 1)
         {
             return Err(at(
                 "pagination did not point back to the expected pages".into()
             ));
+        }
+        if probing_end {
+            if !rows.is_empty() || links.next.is_some() || links.last.is_some_and(|end| end > page)
+            {
+                return Err(at(
+                    "expected an empty page with no continuation after the full page".into(),
+                ));
+            }
+            break;
+        }
+        if let Some(end) = links.last {
+            if end < page || last.is_some_and(|old| old != end) {
+                return Err(at("the last page changed during listing".into()));
+            }
+            last = Some(end);
         }
         let full = rows.len() == PAGE_SIZE;
         if rows.len() > PAGE_SIZE || (page > 1 && rows.is_empty()) {
@@ -227,7 +237,7 @@ fn discover(
                     "inconsistent page with an advertised continuation".into()
                 ));
             }
-        } else if last.is_some_and(|end| page < end) || (full && last != Some(page)) {
+        } else if last.is_some_and(|end| page < end) {
             return Err(at(
                 "missing continuation for a page not known to be last".into()
             ));
@@ -252,7 +262,12 @@ fn discover(
             }
         }
         if links.next.is_none() {
-            break;
+            if !full || last == Some(page) {
+                break;
+            }
+            // A full page with no advertised end could be the final page. Probe once at
+            // the fixed endpoint; do not accept rows from an unadvertised continuation.
+            probing_end = true;
         }
         page += 1;
         if page > MAX_PAGES {

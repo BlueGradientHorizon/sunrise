@@ -141,7 +141,6 @@ fn an_ambiguous_first_page_keeps_the_previous_release_file() {
     };
     for (rows, links) in [
         (short(), vec![link("page=2", "next")]),
-        (full_page(), vec![]),
         (short(), vec!["unrecognised link".into()]),
         (short(), vec![link("page=1", "unknown")]),
         (short(), vec![link("page=1", "next last")]),
@@ -178,6 +177,63 @@ fn a_full_page_explicitly_marked_last_can_finish() {
     })
     .unwrap();
     assert!(rows.is_empty());
+}
+
+#[test]
+fn a_full_page_without_a_known_last_finishes_when_its_probe_is_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("releases.json");
+    let mut first = full_page();
+    first[0] = release(1, STABLE);
+    let mut fixtures = [
+        (format!("{SDK_RELEASE_LIST}&page=1"), page(first, &[])),
+        (format!("{SDK_RELEASE_LIST}&page=2"), body(json!([]))),
+        (
+            format!("{GAME_GIT_API}/ref/tags/{STABLE}"),
+            object("commit", A),
+        ),
+    ]
+    .into_iter();
+    write_list(&out, |url| {
+        let (expected, response) = fixtures.next().expect("planned request");
+        assert_eq!(url, expected);
+        Ok(response)
+    })
+    .unwrap();
+    assert!(fixtures.next().is_none());
+    let releases = parse_releases(&std::fs::read_to_string(out).unwrap()).unwrap();
+    assert_eq!(releases.len(), 1);
+    assert_eq!((&*releases[0].tag, &*releases[0].commit), (STABLE, A));
+}
+
+#[test]
+fn a_full_pages_probe_must_be_empty_and_terminal_or_the_previous_file_stays() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("releases.json");
+    let previous = b"unchanged release listing\r\n";
+    std::fs::write(&out, previous).unwrap();
+    for probe in [
+        Ok(page(vec![release(1, STABLE)], &[])),
+        Ok(page(
+            vec![],
+            &[r#"<https://api.github.com/repositories/42/releases?page=3>; rel="next""#],
+        )),
+        Err("HTTP 503".into()),
+    ] {
+        let mut probe = Some(probe);
+        let error = write_list(&out, |url| {
+            if url == format!("{SDK_RELEASE_LIST}&page=1") {
+                Ok(page(full_page(), &[]))
+            } else {
+                assert_eq!(url, format!("{SDK_RELEASE_LIST}&page=2"));
+                probe.take().expect("one probe")
+            }
+        })
+        .unwrap_err();
+        assert!(probe.is_none());
+        assert!(error.contains("page 2"), "{error}");
+        assert_eq!(std::fs::read(&out).unwrap(), previous);
+    }
 }
 
 #[test]
