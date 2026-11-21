@@ -37,6 +37,7 @@ impl From<ModelRef> for BakedModelKey {
 /// Keep the keys produced by [`Self::iter`], not this view, across host calls.
 // no wire: borrows the published resource generation's slot list.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct BakedModelKeys<'a> {
     generation: u64,
     slots: &'a [u32],
