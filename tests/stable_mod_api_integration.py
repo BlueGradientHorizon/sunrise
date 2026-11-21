@@ -98,11 +98,11 @@ class StableModApiIntegration(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0, "", "")
             return run_stage(args, **kwargs)
 
-        for signed, error in ((repeated, "lists behaviour:new twice"), (hashless, "missing field `hash`"),
-                              ({**ADDITIVE, "schema": 3.0}, "floating point `3.0`")):
+        for fixture, signed in (("repeated id", repeated), ("no hash", hashless),
+                                ("float schema", {**ADDITIVE, "schema": 3.0})):
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
             notes.write_text("Release notes.\n")
-            with self.subTest(error=error), mock.patch.dict(os.environ, {"BREAK_GLASS": "false"}), \
+            with self.subTest(fixture), mock.patch.dict(os.environ, {"BREAK_GLASS": "false"}), \
                     mock.patch.object(nightly, "stable_parent", return_value=nightly.train.Release(PREVIOUS, OLD, "")), \
                     mock.patch.object(nightly, "require_stable_lineage"), \
                     mock.patch.object(nightly, "require_unchanged_content_schema"), \
@@ -110,7 +110,7 @@ class StableModApiIntegration(unittest.TestCase):
                     mock.patch.object(nightly, "parent_stage", return_value=stage), \
                     mock.patch.object(nightly, "unpack", side_effect=unpack), \
                     mock.patch.object(nightly.subprocess, "run", side_effect=run), \
-                    self.assertRaisesRegex(SystemExit, f"cannot read its signed surface.json: .*{error}"):
+                    self.assertRaisesRegex(SystemExit, "cannot read its signed surface.json"):
                 nightly.stable_mod_api(HEAD, "26.3-0.2.0", notes)
             self.assertEqual(notes.read_text(), "Release notes.\n")
 

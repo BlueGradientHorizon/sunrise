@@ -361,11 +361,11 @@ def sums_rows(tag: str, sums: bytes) -> list[tuple[str, str]]:
 
 def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.sig", keys=None,
                 publishing: bool = False) -> None:
-    """Checks a release folder as launchers do (sunrise-release-sign's `verify`), with only the runner's OpenSSL and
-    no code of the checkout: a key of `keys` (main's release-keys.txt by default) signed SHA256SUMS for `tag` (the
+    """Checks a release folder as launchers do (sunrise-release-sign's `verify`): this script, from the workflow's
+    checkout, with the runner's OpenSSL, compiling and running nothing of the release: a key of `keys` (main's release-keys.txt by default) signed SHA256SUMS for `tag` (the
     message `horizon release <tag>` and a newline, then SHA256SUMS), and each file of `only` (every file SHA256SUMS
-    lists when empty) is listed and matches. `publishing`: while no key is listed, an unsigned release goes out with
-    a warning, as before any key existed. The signature file holds one base64 signature per line, and one line that
+    lists when empty) is listed and matches. `publishing`: while no key is listed, a release of sunrise-org/sunrise
+    (no other repository) goes out with a warning, signed or not, as before any key existed. The signature file holds one base64 signature per line, and one line that
     verifies is enough, as for the native verifier: a line that is no canonical base64 is skipped. A repeated name
     is checked against each of its rows. Reports on stderr (stdout is its callers' result), and exits naming what
     failed."""
@@ -939,7 +939,13 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
         new_content, new_functions = stable_sdk_inputs(sha, after if same_line else None)
         if same_line:
             report = work / "diff.json"
-            if break_glass and json.loads(before.read_bytes()) != json.loads(after.read_bytes()):
+            published = {}
+            for name, file in ((old_tag, before), (tag, after)):
+                try:
+                    published[name] = json.loads(file.read_bytes())
+                except ValueError as error:
+                    raise SystemExit(f"::error::refused: {name}'s signed {SDK_SURFACE} is not JSON: {error}")
+            if break_glass and published[old_tag] != published[tag]:
                 raise SystemExit(f"::error::refused: {tag} changes surface.json from {old_tag}'s; a break-glass "
                                  "release never does")
             # No candidate code judges the candidate: the parent's own sunrise-stage, built from the parent's tree
@@ -955,7 +961,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
                     raise SystemExit(f"::error::refused: {old_tag}'s sunrise-stage cannot export {name} {commit}: "
                                      f"{done.stderr.strip()}")
                 exported[name] = json.loads(out.read_bytes())
-            if exported["parent"] != json.loads(before.read_bytes()):
+            if exported["parent"] != published[old_tag]:
                 raise SystemExit(f"::error::refused: {old_tag}'s own sunrise-stage does not export its published "
                                  "surface.json from its tree")
             if break_glass and exported["candidate"] != exported["parent"]:
@@ -975,7 +981,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
             # The signed surface.json is what modders build against: it must be what the parent's tool exports from
             # the candidate's tree. A patch's exactly; a minor's may hold more records (its own tool may export kinds
             # the parent's doesn't know), but every exported one unchanged.
-            signed, export = json.loads(after.read_bytes()), exported["candidate"]
+            signed, export = published[tag], exported["candidate"]
             read = subprocess.run([stage, "surface-diff", str(work / "candidate.json"), str(after), "--json",
                                    str(work / "signed-diff.json")], cwd=work, env=isolated_env(), capture_output=True,
                                   text=True)

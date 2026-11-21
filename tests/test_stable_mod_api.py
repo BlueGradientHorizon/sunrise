@@ -31,6 +31,7 @@ def function(signature="signature", source="source", span=(5, 9)):
 
 
 def sdk_assets(sha, surface, content_api, functions, *, function_header=None):
+    """A signed SDK's assets, its surface.json written from `surface` (bytes as they are)."""
     header = {"schema": 1, "build": {"commit": sha}}
     index_body = {"functions": functions, "crates": {}, "refused": {}}
     build_data = io.BytesIO()
@@ -41,7 +42,8 @@ def sdk_assets(sha, surface, content_api, functions, *, function_header=None):
             member = tarfile.TarInfo(f"./{name}.json")
             member.size = len(data)
             tar.addfile(member, io.BytesIO(data))
-    assets = {nightly.SDK_SURFACE: json.dumps(surface).encode(), nightly.SDK_BUILD_DATA: build_data.getvalue()}
+    surface = surface if isinstance(surface, bytes) else json.dumps(surface).encode()
+    assets = {nightly.SDK_SURFACE: surface, nightly.SDK_BUILD_DATA: build_data.getvalue()}
     index = {"schema": 1, "build": {"commit": sha}, "content_api": content_api,
              "surface": {"previous": "c" * 40},  # A Nightly SDK is not a stable baseline.
              "assets": {name: {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
@@ -222,7 +224,8 @@ class StableModApiTests(unittest.TestCase):
                 # Whatever it holds, a file the parent's reader refuses (the real reader's cases are in the daily
                 # stable_mod_api_integration test) is refused.
                 ("26.3-0.1.11", {**SURFACE, "unreadable": True}, "cannot read its signed surface.json: .*twice"),
-                ("26.3-0.2.0", {**newer, "unreadable": True}, "cannot read its signed surface.json")):
+                ("26.3-0.2.0", {**newer, "unreadable": True}, "cannot read its signed surface.json"),
+                ("26.3-0.2.0", b"{not json", "26.3-0.2.0's signed surface.json is not JSON")):
             export = SURFACE if tag == "26.3-0.1.11" else ADDITIVE
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
             with self.subTest(tag=tag, signed=signed), \
