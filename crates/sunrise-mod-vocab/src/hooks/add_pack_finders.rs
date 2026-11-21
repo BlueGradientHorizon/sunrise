@@ -5,6 +5,8 @@ pub trait Hooks {
     /// type. Runs at startup and whenever that repository is rediscovered; no
     /// world state is available during startup registration. Disabled native
     /// mods' listeners are skipped from the first startup discovery onwards.
+    /// A callback that panics or incurs a phase refusal contributes no packs;
+    /// later callbacks still run.
     #[notes = r##"## Discoverable bundled packs
 
 `Hooks::add_pack_finders` receives a typed `HostSide` and an
@@ -20,7 +22,8 @@ A location such as `example:assets/example/resourcepacks/high_contrast` names a
 loaded mod and a directory inside its package, containing `pack.mcmeta` and the
 usual `assets/` or `data/` tree. Folder packages and `.smod` archives use the same
 logical paths, without extraction. Invalid locations, missing metadata and
-duplicate repository ids return `PackFinderError` without adding a partial pack.
+duplicate repository ids return and log a `PackFinderError` without adding a partial pack.
+A panic or phase refusal discards only the current listener's packs.
 
 The repository id is `mod/<location>`. Packs are optional by default: resource
 packs appear in Resource Packs, and data packs appear in the world's Data Packs
@@ -46,6 +49,8 @@ hidden data packs for operators."##]
         dispatch = "flat",
         side = "both",
         contract = "listen",
+        staged_surface = "packs",
+        version = 3,
         neoforge = "AddPackFindersEvent"
     )]
     fn add_pack_finders(packs: &mut dyn mod_api::PackFinders);

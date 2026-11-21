@@ -908,3 +908,286 @@ fn passages_take_a_server_host(server: &mut dyn ServerHost, level: LevelRef, pas
     let id: Result<PassageId, PassageRegistrationError> = level.register_passage(server, passage);
     let _: bool = level.remove_passage(server, id.unwrap());
 }
+
+#[test]
+fn panicking_listener_is_disabled_for_that_hook_and_reported_once() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct ModA {
+        pre: Arc<AtomicUsize>,
+        post: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ModA {
+        fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            self.pre.fetch_add(1, Ordering::Relaxed);
+            panic!("mod_a client_tick_pre failure");
+        }
+        fn client_tick_post(&self, _: &mut dyn ClientHost, _: &mut ClientTickPostEvent) {
+            self.post.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    struct ModB {
+        pre: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ModB {
+        fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            self.pre.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    let a_pre = Arc::new(AtomicUsize::new(0));
+    let a_post = Arc::new(AtomicUsize::new(0));
+    let b_pre = Arc::new(AtomicUsize::new(0));
+
+    testing::with_dispatch(
+        vec![
+            ModEntry::new(
+                "mod_a",
+                Box::new(ModA {
+                    pre: a_pre.clone(),
+                    post: a_post.clone(),
+                }),
+            ),
+            ModEntry::new("mod_b", Box::new(ModB { pre: b_pre.clone() })),
+        ]
+        .into(),
+        || {
+            let mut host = FakeHost::new();
+
+            // Dispatch #1: mod_a panics without unwinding out of dispatch, and mod_b still runs.
+            dispatch_client_tick_pre(&mut host);
+            assert_eq!(a_pre.load(Ordering::Relaxed), 1);
+            assert_eq!(b_pre.load(Ordering::Relaxed), 1);
+
+            // Dispatch #2: mod_a is disabled for client_tick_pre, while mod_b keeps running.
+            dispatch_client_tick_pre(&mut host);
+            assert_eq!(a_pre.load(Ordering::Relaxed), 1);
+            assert_eq!(b_pre.load(Ordering::Relaxed), 2);
+
+            // mod_a's other hook still runs: disablement is per (hook, mod), not whole-mod.
+            dispatch_client_tick_post(&mut host);
+            assert_eq!(a_post.load(Ordering::Relaxed), 1);
+
+            assert_eq!(
+                crate::__private::take_hook_panics(),
+                [crate::__private::HookPanicReport {
+                    mod_id: "mod_a",
+                    hook: "client_tick_pre",
+                }]
+            );
+
+            // Dispatch #3: mod_a stays skipped and no duplicate report is queued.
+            dispatch_client_tick_pre(&mut host);
+            assert_eq!(a_pre.load(Ordering::Relaxed), 1);
+            assert_eq!(b_pre.load(Ordering::Relaxed), 3);
+            assert!(crate::__private::take_hook_panics().is_empty());
+        },
+    );
+}
+
+#[test]
+fn callback_and_registration_contain_panicking_payload_destructors() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Secondary;
+    impl Drop for Secondary {
+        fn drop(&mut self) {
+            panic!("must not drop the secondary panic payload");
+        }
+    }
+
+    struct Payload(Arc<AtomicUsize>);
+    impl Drop for Payload {
+        fn drop(&mut self) {
+            // The real crash hook must still defer to dispatch while the payload drops.
+            self.0.store(
+                crate::runtime::hook_dispatch_depth() as usize,
+                Ordering::Relaxed,
+            );
+            std::panic::panic_any(Secondary);
+        }
+    }
+
+    struct Panicker(Arc<AtomicUsize>);
+    #[crate::__subscriptions]
+    impl Hooks for Panicker {
+        fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            std::panic::panic_any(Payload(self.0.clone()));
+        }
+    }
+
+    struct Healthy(Arc<AtomicUsize>);
+    #[crate::__subscriptions]
+    impl Hooks for Healthy {
+        fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    let drop_depth = Arc::new(AtomicUsize::new(0));
+    let healthy_calls = Arc::new(AtomicUsize::new(0));
+    testing::with_dispatch(
+        vec![
+            ModEntry::new("mod_payload", Box::new(Panicker(drop_depth.clone()))),
+            ModEntry::new("mod_healthy", Box::new(Healthy(healthy_calls.clone()))),
+        ]
+        .into(),
+        || {
+            dispatch_client_tick_pre(&mut FakeHost::new());
+            assert_eq!(drop_depth.swap(0, Ordering::Relaxed), 1);
+            assert_eq!(crate::runtime::hook_dispatch_depth(), 0);
+            assert_eq!(healthy_calls.load(Ordering::Relaxed), 1);
+
+            assert!(!crate::runtime::invoke_registration("mod_payload", || {
+                std::panic::panic_any(Payload(drop_depth.clone()));
+            }));
+            assert_eq!(drop_depth.load(Ordering::Relaxed), 1);
+            assert_eq!(crate::runtime::hook_dispatch_depth(), 0);
+            assert!(crate::runtime::invoke_registration("mod_healthy", || {
+                healthy_calls.fetch_add(1, Ordering::Relaxed);
+            }));
+            assert_eq!(healthy_calls.load(Ordering::Relaxed), 2);
+            assert_eq!(
+                crate::__private::take_hook_panics(),
+                [
+                    crate::__private::HookPanicReport {
+                        mod_id: "mod_payload",
+                        hook: "client_tick_pre",
+                    },
+                    crate::__private::HookPanicReport {
+                        mod_id: "mod_payload",
+                        hook: "register",
+                    },
+                ],
+            );
+        },
+    );
+}
+
+#[test]
+fn world_phase_cloned_event_fields_roll_back_on_panic() {
+    struct Panicker;
+    #[crate::__subscriptions]
+    impl Hooks for Panicker {
+        fn broadcast_message(
+            &self,
+            _: &dyn ServerHost,
+            event: &mut BroadcastMessageEvent<'_>,
+        ) -> Flow {
+            *event.line = Text::literal("corrupted");
+            panic!("boom in broadcast_message");
+        }
+    }
+    struct Observer(Arc<std::sync::Mutex<Option<Text>>>);
+    #[crate::__subscriptions]
+    impl Hooks for Observer {
+        fn broadcast_message(
+            &self,
+            _: &dyn ServerHost,
+            event: &mut BroadcastMessageEvent<'_>,
+        ) -> Flow {
+            *self.0.lock().unwrap() = Some(event.line.clone());
+            *event.line = Text::literal("clean");
+            Flow::Continue
+        }
+    }
+
+    assert!(!crate::runtime::outside_world());
+    let observed = Arc::new(std::sync::Mutex::new(None));
+    testing::with_dispatch(
+        vec![
+            ModEntry::new("panicker", Box::new(Panicker)),
+            ModEntry::new("observer", Box::new(Observer(observed.clone()))),
+        ]
+        .into(),
+        || {
+            let host = FakeHost::new();
+            let mut line = Text::literal("hello");
+            let mut cancel = false;
+            dispatch_broadcast_message(&host, &mut line, &mut cancel);
+            assert_eq!(
+                observed.lock().unwrap().as_ref(),
+                Some(&Text::literal("hello"))
+            );
+            assert_eq!(line, Text::literal("clean"));
+            assert!(!cancel);
+            assert_eq!(
+                crate::__private::take_hook_panics(),
+                [crate::__private::HookPanicReport {
+                    mod_id: "panicker",
+                    hook: "broadcast_message",
+                }]
+            );
+        },
+    );
+}
+
+#[test]
+fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
+    struct StubTask(Identifier);
+    impl ConfigurationTask for StubTask {
+        fn task_type(&self) -> &Identifier {
+            &self.0
+        }
+        fn start(&mut self, _: &mut dyn ServerHost, _: &mut ConfigurationTaskContext<'_>) {}
+    }
+    struct PanickingRegistrar;
+    #[crate::__subscriptions]
+    impl Hooks for PanickingRegistrar {
+        fn register_configuration_tasks(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut RegisterConfigurationTasksEvent<'_>,
+        ) {
+            event.register(StubTask(Identifier::parse("test:shared_task").unwrap()));
+            panic!("panic after staging configuration task");
+        }
+    }
+    struct HealthyRegistrar;
+    #[crate::__subscriptions]
+    impl Hooks for HealthyRegistrar {
+        fn register_configuration_tasks(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut RegisterConfigurationTasksEvent<'_>,
+        ) {
+            event.register(StubTask(Identifier::parse("test:shared_task").unwrap()));
+        }
+    }
+
+    testing::with_dispatch(
+        vec![
+            ModEntry::new("panicker", Box::new(PanickingRegistrar)),
+            ModEntry::new("healthy", Box::new(HealthyRegistrar)),
+        ]
+        .into(),
+        || {
+            let mut host = FakeHost::new();
+            let mut registration = crate::__private::ConfigurationTaskRegistration::default();
+            dispatch_register_configuration_tasks(
+                &mut host,
+                crate::__private::configuration_connection(1, 1),
+                42,
+                "Steve",
+                &mut registration,
+            );
+            let tasks = registration.into_tasks();
+            assert_eq!(tasks.len(), 1);
+            assert_eq!(tasks[0].owner, Some("healthy"));
+            assert_eq!(
+                tasks[0].task.task_type(),
+                &Identifier::parse("test:shared_task").unwrap()
+            );
+            assert_eq!(
+                crate::__private::take_hook_panics(),
+                [crate::__private::HookPanicReport {
+                    mod_id: "panicker",
+                    hook: "register_configuration_tasks",
+                }]
+            );
+        },
+    );
+}

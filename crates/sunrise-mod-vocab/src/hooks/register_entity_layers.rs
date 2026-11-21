@@ -12,6 +12,8 @@ pub trait Hooks {
     /// reload, after the renderers resolve (`register_entity_renderers`): layers don't carry over
     /// from one load to the next, so add them again each time. In the ordered body pass,
     /// layers submit in level join order, interleaved with general entity renderer submissions.
+    /// A listener that panics or incurs a phase refusal adds no layers; later listeners still
+    /// register in the same order.
     #[notes = r#"## Entity layers
 
 An entity layer (NeoForge's `EntityRenderersEvent.AddLayers` and `RenderLayer`) draws over a living entity
@@ -70,8 +72,8 @@ whose layers go to a player model, and a living type that draws through a route 
 run layers yet (the armour stand, the ender dragon); the `Err` names the target, and the game logs it. An
 entity whose `render_living_pre` or `render_player_pre` a mod canceled draws none of its layers, as
 NeoForge's canceled `RenderLivingEvent.Pre` skips them. Several mods may add to one target: their layers
-draw in the order they were added, after the entity's model and its vanilla layers, each from the entity's
-frame (at its feet, turned with its body, as `render_living_pre` draws). `entity.yaw` is the body's turn
+draw in successful registration order. A panic or phase refusal discards only that listener's added
+layers. Layers draw after the entity's model and its vanilla layers, each from the entity's frame (at its feet, turned with its body, as `render_living_pre` draws). `entity.yaw` is the body's turn
 and `entity.pitch` the head's. `model` lends the final body hierarchy for the callback, including for
 nonhumanoids, or `None` if no body pose was produced (such as after a successful replacement
 renderer). Read a named part or follow the hierarchy and compose its parent transforms to attach
@@ -85,6 +87,8 @@ layers, in a follow-up of #860, which lifts their refusal."#]
         side = "client",
         version = 4,
         contract = "listen",
+        staged_surface = "layers",
+        version = 3,
         context = "registration",
         neoforge = "EntityRenderersEvent.AddLayers"
     )]

@@ -36,7 +36,7 @@ already at a sprite's name wins over the sprite."#]
         registration_append = "register",
         context = "registration",
         neoforge = "RegisterTextureAtlasesEvent",
-        version = 2
+        version = 3
     )]
     fn register_texture_atlases(atlases: &mut Vec<TextureAtlasRegistration>);
 }

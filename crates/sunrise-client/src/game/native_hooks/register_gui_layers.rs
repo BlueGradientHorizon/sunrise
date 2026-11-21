@@ -5,8 +5,8 @@ impl Game<'_> {
     /// Asked once at client startup.
     pub(in crate::game) fn native_register_gui_layers(
         context: &mod_api::RegistrationContext,
-        layers: &mut dyn GuiLayerRegistrar,
+        layers: &mut sunrise_client::gui_layers::GuiLayers,
     ) {
-        Self::fire_register_gui_layers(context, layers);
+        Self::fire_register_gui_layers(context, |listen| layers.register_listener(listen));
     }
 }

@@ -172,16 +172,12 @@ pub struct Hook {
     pub collect_validator: Option<String>,
     /// Hide the output vector of a registration collector behind append-only methods.
     pub registration_append: Option<RegistrationAppend>,
+    /// Mutable registrar field, or `host` for a direct listener whose owner journals its writes.
+    pub staged_surface: Option<String>,
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.
     pub inert: Option<String>,
-    /// A global cancel hook, or a global collect hook answered by mod, whose dispatch runs every
-    /// listener inside `catch_unwind`: one that unwinds is switched off for this hook for the
-    /// session. A cancel hook rolls outputs back to the requested values and stops (#2414).
-    /// A collector receives at most one returned value per registration, and later listeners
-    /// still run after a failure.
-    pub isolate: bool,
-    /// An isolated cancel hook's per-listener check of the outputs it wrote: a path to
+    /// A global cancel hook's per-listener check of the outputs it wrote: a path to
     /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
     /// vector/scalar outputs in declaration order and naming the first refused one. A refused
     /// result, including its cancellation, rolls back; later listeners still run.
@@ -356,7 +352,7 @@ struct ModApiEntry {
     owner: Option<String>,
     collect_validator: Option<String>,
     registration_append: Option<RegistrationAppend>,
-    isolate: Option<bool>,
+    staged_surface: Option<String>,
     output_validator: Option<String>,
 }
 
@@ -500,6 +496,17 @@ impl Hook {
         if api.owner.is_some() && (api.contract != Contract::Listen || scope.is_some()) {
             return Err(CatalogError::OwnerNeedsGlobalListener(name));
         }
+        if let Some(field) = &api.staged_surface
+            && (api.contract != Contract::Listen
+                || scope.is_some()
+                || api.owner.as_ref() == Some(field))
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name,
+                error: "staged_surface requires a global listener and cannot be the owner filter"
+                    .into(),
+            });
+        }
         // A validator checks the entries a mod edits in place; an answered collector's mods
         // only push into their own batch.
         if let Some(validator) = &api.collect_validator
@@ -510,29 +517,16 @@ impl Hook {
         {
             return Err(CatalogError::InvalidContract(name));
         }
-        // A listener that unwinds is disabled for this hook. Cancellation rolls back and
-        // stops dispatch (#2414); an answered collector has no output until its listener returns.
-        let isolate = api.isolate.unwrap_or(false);
-        if isolate
-            && (scope.is_some()
-                || !(api.contract == Contract::Cancel
-                    || api.contract == Contract::Collect && answered_by_mod))
-        {
-            return Err(CatalogError::InvalidHook {
-                hook: name.clone(),
-                error:
-                    "isolate is for a global cancel hook or a global collect hook answered by mod"
-                        .into(),
-            });
-        }
         if let Some(validator) = &api.output_validator
-            && (!isolate
-                || api.contract != Contract::Cancel
+            && (api.contract != Contract::Cancel
+                || scope.is_some()
+                || entry.event_per_listener
                 || syn::parse_str::<syn::Path>(validator).is_err())
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "output_validator is a path on an isolated cancel hook".into(),
+                error: "output_validator is a path on a global cancel hook with shared outputs"
+                    .into(),
             });
         }
         let counterparts = Counterparts {
@@ -553,8 +547,8 @@ impl Hook {
             owner: api.owner,
             collect_validator: api.collect_validator,
             registration_append: api.registration_append,
+            staged_surface: api.staged_surface,
             inert: entry.inert,
-            isolate,
             output_validator: api.output_validator,
             scope,
             host: entry.host,
@@ -842,7 +836,7 @@ impl Declared {
                             "owner",
                             "collect_validator",
                             "registration_append",
-                            "isolate",
+                            "staged_surface",
                             "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
@@ -1005,8 +999,8 @@ impl Hook {
             owner: None,
             collect_validator: None,
             registration_append: None,
+            staged_surface: None,
             inert: None,
-            isolate: false,
             output_validator: None,
             scope: None,
             host: None,

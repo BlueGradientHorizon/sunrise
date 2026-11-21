@@ -76,6 +76,7 @@ impl ServerPackState {
             .chain(self.chunk_io.iter().flatten())
             .chain(self.server_errors.iter().flatten())
             .chain(self.mod_audio_errors.iter().flatten())
+            .chain(self.hook_panics.iter().flatten())
             .filter_map(|t| t.slot)
     }
 }
@@ -104,6 +105,8 @@ pub(super) struct ServerPackState {
     server_errors: Vec<Option<SystemToast>>,
     /// Pull callback failures to show, one toast per panic.
     mod_audio_errors: Vec<Option<SystemToast>>,
+    /// One error toast per `(hook, mod)` whose callback panicked and was disabled for the session.
+    pub(super) hook_panics: Vec<Option<SystemToast>>,
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
@@ -546,16 +549,39 @@ impl Game<'_> {
         }
     }
 
-    /// System toasts, each in a free 32-pixel slot of the `ToastManager`.
-    /// Hidden toasts still time out. A mod's HUD veto cannot hide an audio failure notice.
+    /// Queued hook-listener panics from any thread, each shown once per
+    /// `(hook, mod)` as a red-titled system toast. Enqueued directly on the
+    /// client toast queue rather than through `toast_add` so a mod cannot veto
+    /// or rewrite its own failure notice; headless servers log the error and do
+    /// not drain the client queue.
+    fn add_hook_panic_toasts(&mut self) {
+        if self.serving.is_some() || self.options.dedicated.is_some() {
+            return;
+        }
+        for report in mod_api::__private::take_hook_panics() {
+            let toast = SystemToast::new(
+                Text::tr("sunrise.mods.hook_panic.title", &[]),
+                Some(Text::tr(
+                    "sunrise.mods.hook_panic.description",
+                    &[&report.mod_id, &report.hook],
+                )),
+            )
+            .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
+            self.server_packs.hook_panics.push(Some(toast));
+        }
+    }
+
+    /// System toasts use the normal free 32-pixel slots and time out even when hidden.
+    /// Mandatory diagnostics obey presentation settings but not a mod's HUD veto.
     pub(super) fn draw_pack_toasts(
         &mut self,
         batch: &mut HudBatch,
-        hidden: bool,
-        gui_canceled: bool,
+        hud_hidden: bool,
+        presentation_hidden: bool,
     ) {
         let multiplier = self.settings.notification_display_time;
         self.add_server_report_toasts();
+        self.add_hook_panic_toasts();
         // A mod cannot veto the notice reporting its failed callback.
         self.server_packs
             .mod_audio_errors
@@ -567,7 +593,7 @@ impl Game<'_> {
             }));
         let mut used = self.toast_slots_used();
         let packs = &mut self.server_packs;
-        let hide_audio_errors = hidden || self.ui.hide_gui;
+        let hide_audio_errors = presentation_hidden || self.ui.hide_gui;
         for (slot_toast, hidden) in packs
             .notifiers
             .iter_mut()
@@ -575,12 +601,18 @@ impl Game<'_> {
             .chain(std::iter::once(&mut packs.load_fail))
             .chain(packs.chunk_io.iter_mut())
             .chain(packs.server_errors.iter_mut())
-            .map(|toast| (toast, hidden || gui_canceled))
+            .map(|toast| (toast, hud_hidden))
             .chain(
                 packs
                     .mod_audio_errors
                     .iter_mut()
                     .map(|toast| (toast, hide_audio_errors)),
+            )
+            .chain(
+                packs
+                    .hook_panics
+                    .iter_mut()
+                    .map(|toast| (toast, presentation_hidden)),
             )
         {
             let Some(toast) = slot_toast else {
@@ -609,6 +641,7 @@ impl Game<'_> {
         }
         packs.server_errors.retain(Option::is_some);
         packs.mod_audio_errors.retain(Option::is_some);
+        packs.hook_panics.retain(Option::is_some);
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.
@@ -974,5 +1007,102 @@ mod tests {
         let (send, receive) = std::sync::mpsc::channel::<download::Progress>();
         drop(send);
         assert!(!PackNotifier::new(receive, 1).poll(Some));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn hook_panic_toast_cannot_be_vetoed_or_rewritten_by_toast_add() {
+        use mod_api::{
+            ClientHost, ClientTickPreEvent, Flow, Hooks, ModEntry, RenderGuiPreEvent, ToastAddEvent,
+        };
+        use sunrise_client::lang;
+
+        struct VetoingPanicker;
+        #[mod_api::__subscriptions]
+        impl Hooks for VetoingPanicker {
+            fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+                panic!("boom from vetoing mod");
+            }
+            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                *event.title = mod_api::Text::literal("rewritten");
+                *event.description = Some(mod_api::Text::literal("hidden"));
+                Flow::Cancel
+            }
+            fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+                Flow::Cancel
+            }
+        }
+        let mods: mod_api::Mods = vec![ModEntry::new("veto_mod", Box::new(VetoingPanicker))].into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
+                // Ordinary system toasts are still vetoed by toast_add.
+                assert!(
+                    game.add_system_toast(SystemToast::new(Text::literal("ordinary"), None))
+                        .is_none()
+                );
+                game.native_client_tick_pre();
+                // Dedicated/server instances do not drain the client toast queue.
+                game.options.dedicated = Some(Vec::new());
+                game.add_hook_panic_toasts();
+                assert!(game.server_packs.hook_panics.is_empty());
+                // The client drains and queues the toast directly without firing toast_add.
+                game.options.dedicated = None;
+                let _ = lang::scoped(lang::Language::load(&[], lang::DEFAULT), || {
+                    game.add_hook_panic_toasts();
+                });
+                assert_eq!(game.server_packs.hook_panics.len(), 1);
+                let toast = game.server_packs.hook_panics[0]
+                    .as_ref()
+                    .expect("hook panic toast queued");
+                assert_eq!(
+                    toast.title.component()["translate"],
+                    "sunrise.mods.hook_panic.title"
+                );
+                let message = toast.message.as_ref().unwrap();
+                assert_eq!(
+                    message.component(),
+                    serde_json::json!({
+                        "translate": "sunrise.mods.hook_panic.description",
+                        "with": ["veto_mod", "client_tick_pre"],
+                    })
+                );
+                assert!(message.plain().contains("veto_mod"));
+                let mut gui_canceled = false;
+                game.native_render_gui_pre(&mut gui_canceled);
+                assert!(gui_canceled);
+                // Advance the existing slide past its entrance without sleeping.
+                let mut first = HudBatch::scratch([640, 480]);
+                game.draw_every_toast(&mut first, false, gui_canceled);
+                let toast = game.server_packs.hook_panics[0].as_mut().unwrap();
+                assert_eq!(toast.slot, Some(0));
+                toast.slide.origin =
+                    Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+                let mut visible = HudBatch::scratch([640, 480]);
+                game.draw_every_toast(&mut visible, false, gui_canceled);
+                let mut drawn_text = visible.vertices.iter().filter(|v| {
+                    v.text == 1
+                        && (0.0..visible.width).contains(&v.pos[0])
+                        && (0.0..32.0).contains(&v.pos[1])
+                });
+                assert!(
+                    drawn_text
+                        .clone()
+                        .any(|v| { v.color == sunrise_client::hud::rgba(255, 85, 85, 255) }),
+                    "the error title draws inside its slot despite the HUD veto"
+                );
+                assert!(
+                    drawn_text.any(|v| v.color == u32::MAX),
+                    "the message draws too"
+                );
+
+                game.ui.hide_gui = true;
+                let mut player_hidden = HudBatch::scratch([640, 480]);
+                game.draw_every_toast(&mut player_hidden, game.ui.hide_gui, false);
+                assert!(
+                    player_hidden.vertices.is_empty(),
+                    "player F1 hides the same toast"
+                );
+            });
+        });
     }
 }

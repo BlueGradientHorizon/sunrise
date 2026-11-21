@@ -22,7 +22,10 @@ enum Target {
         events: crate::net::ingress::Producer<Event>,
     },
     Server(PlayerSender),
-    Configuration(ConfigSender),
+    Configuration {
+        sender: ConfigSender,
+        session: Option<std::sync::Weak<crate::lan::configuration_tasks::Session>>,
+    },
 }
 /// Retains no endpoint, sender, producer, writer, transport or payload lease.
 #[cfg(any(test, feature = "test-payload-probe"))]
@@ -87,8 +90,19 @@ impl Endpoint {
     pub fn server(sender: PlayerSender) -> Self {
         Self(Target::Server(sender))
     }
-    pub fn configuration(sender: ConfigSender) -> Self {
-        Self(Target::Configuration(sender))
+    pub fn configuration(
+        sender: ConfigSender,
+        session: Option<std::sync::Weak<crate::lan::configuration_tasks::Session>>,
+    ) -> Self {
+        Self(Target::Configuration { sender, session })
+    }
+    pub fn configuration_session(
+        &self,
+    ) -> Option<&std::sync::Weak<crate::lan::configuration_tasks::Session>> {
+        match &self.0 {
+            Target::Configuration { session, .. } => session.as_ref(),
+            _ => None,
+        }
     }
     pub fn side(&self) -> Side {
         match self.0 {
@@ -100,7 +114,7 @@ impl Endpoint {
         match &self.0 {
             Target::Client { transport, .. } => transport,
             Target::Server(sender) => sender.payload_transport(),
-            Target::Configuration(sender) => sender.payload_transport(),
+            Target::Configuration { sender, .. } => sender.payload_transport(),
         }
     }
     #[cfg(any(test, feature = "test-payload-probe"))]
@@ -125,7 +139,7 @@ impl Endpoint {
                 })
             }
             Target::Server(sender) => sender.payload_diagnostic_observer(),
-            Target::Configuration(_) => Box::new(|| "configuration sender not observed".into()),
+            Target::Configuration { .. } => Box::new(|| "configuration sender not observed".into()),
         };
         Observation {
             transport: Arc::downgrade(self.transport()),
@@ -187,7 +201,7 @@ impl Endpoint {
                     .prepare_payload(encode(epoch.phase, self.side(), id, bytes), id)
                     .map(Prepared::Server)
             }
-            Target::Configuration(sender) => {
+            Target::Configuration { sender, .. } => {
                 preflight(sender.framing(), sender.payload_capacity(), len, id)?;
                 sender
                     .prepare_payload(encode(epoch.phase, self.side(), id, bytes), id)
@@ -222,7 +236,7 @@ impl Endpoint {
                     .framing()
             }
             Target::Server(sender) => sender.payload_framing(),
-            Target::Configuration(sender) => sender.framing(),
+            Target::Configuration { sender, .. } => sender.framing(),
         };
         preflight(framing, usize::MAX, len, id)?;
         let queue = self
@@ -270,7 +284,7 @@ impl Endpoint {
             Target::Server(sender) => {
                 sender.disconnect(crate::lan::data::component_nbt(&reason.component()))
             }
-            Target::Configuration(sender) => {
+            Target::Configuration { sender, .. } => {
                 sender.disconnect(crate::lan::data::component_nbt(&reason.component()))
             }
         }

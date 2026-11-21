@@ -56,9 +56,14 @@ receive no `Host` and read startup facts through `RegistrationContext`.
 `event.register("mymod:charge".into())` with each owned, namespaced ID. The game checks IDs and
 duplicates before freezing the component registry.
 
-Scoped registration events are borrowed only for the listener call. Their registration methods
-add entries in dispatch order without letting a listener read, edit or remove earlier registrations.
-If the phase gate refuses a listener, its additions are discarded and earlier registrations stand.
+A registration event is borrowed only for that callback. The game accepts a listener's pending
+registrations in call order when the callback completes. Where the registrar supports replacement
+or relative placement, later calls in that callback can use its pending edits. A panic or phase
+refusal discards the failed callback's whole batch; installed entries stand and later listeners
+can register. Only a panic disables the callback for the session; an ordinary refusal is reported
+on each call. A normal registration method returning an error still follows that registrar's
+contract. For example, a duplicate can reject one entry or reject the whole resource candidate,
+depending on the registrar. Handle the returned error; it is not a callback panic.
 
 A callback registered on the event cannot borrow the event or the context. Capture owned inputs
 for its `Send + Sync + 'static` closure. A model layer supplier runs once at the startup freeze;
@@ -107,7 +112,11 @@ registration retains `&dyn Host`, restricted to these published facts, registry 
 mod-list queries. Callbacks that take `DataLoadContext` use its restricted reads. Neither permits
 opening a world handle or transaction. The first client registration and prepare run on the loader
 thread; later registration runs on the render thread, prepare on its worker, and apply on the owning
-game thread.
+game thread. Reload listener registration follows the same per-callback rule as startup: a panic or
+phase refusal discards only that callback's pending listeners, dependencies and retained entries.
+A rejected `add_listener`, `add_dependency` or server `add_retained_listener` call returns its
+error and is logged without failing the whole reload. A cycle in the completed graph still fails it.
+See [data files](../how-to/native-mods/03-data-files.md) for preparing and applying listeners.
 
 ## Load contexts
 

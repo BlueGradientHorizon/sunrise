@@ -16,7 +16,7 @@ pub trait Hooks {
         registration_append = "register",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 2
+        version = 3
     )]
     fn component_types(types: &mut Vec<String>);
 }

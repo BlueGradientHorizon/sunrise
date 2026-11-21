@@ -4,8 +4,8 @@ impl Game<'_> {
     /// Register sources when a resource or data pack repository is discovered.
     pub(in crate::game) fn native_add_pack_finders(
         &mut self,
-        packs: &mut dyn mod_api::PackFinders,
+        packs: &mut crate::game::pack_finders::Registry,
     ) {
-        self.fire_add_pack_finders(packs);
+        self.fire_add_pack_finders(|listen| packs.register_listener(listen));
     }
 }

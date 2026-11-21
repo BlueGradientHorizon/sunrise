@@ -12,6 +12,8 @@ pub trait Hooks {
     /// Pending chunk I/O reports stay with that window when the world closes.
     /// Client-lib and title producers prepare candidates for the game to admit
     /// with a `ClientHost` before applying.
+    /// Diagnostics naming a mod's panicking callback are not candidates for
+    /// this hook and cannot be edited or cancelled.
     #[hook(
         receiver = "read",
         dispatch = "flat",
@@ -19,7 +21,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "cancel",
         neoforge = "ToastAddEvent",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn toast_add(
         kind: mod_api::ToastKind,

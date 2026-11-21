@@ -17,11 +17,31 @@ depends on. When a mod cancels an event, the mods after it are skipped, unless t
 What a hook's return value means depends on its kind:
 
 - **Listen** hooks are notices: every subscribed mod is called.
-- **Cancellable** hooks return `Flow`: `Flow::Cancel` stops the game's action and skips later mods.
+- **Cancellable** hooks return `Flow`: `Flow::Cancel` stops the game's action and skips later listeners unless they receive cancelled events.
 - **Replacement** hooks return an `Option`: the first mod to answer `Some` wins.
 - **Collection** hooks call every mod, each adding to a list in the event.
 
 A hook with no receiver gets no `Host`.
+
+## Failures and panics
+
+The dispatcher catches panics in hook callbacks, including chunk-disk callbacks and startup
+`Hooks::register`. A panic disables only that mod's callback for that hook for the session. The game
+names the mod and hook in the error log and in a [client diagnostic toast](../how-to/client/toast-notifications.md#admission-rules)
+that mods cannot cancel or rewrite. A dedicated server logs the error without showing a toast.
+Ordinary refusals, such as an unavailable phase operation or a rejected output, are reported every
+time they occur and do not disable the callback.
+
+A failed proposal is not a cancel or replacement. Its changes to the event, including the cancel
+flag, do not publish. Later eligible listeners start from the last accepted result, not from the
+original request. An accepted cancellation still skips listeners that don't receive cancelled
+events; a successful replacement still ends a first-answer-wins hook.
+
+[Staged registration](load-phases.md#registration-and-setup) discards the failed callback's pending
+entries and replacements. For a journaled action such as `farmland_trample`, a failed callback's
+writes do not join the action. A successful veto or stale landing state still aborts the whole
+trample action, and fall damage still runs. For [chunk-disk jobs](../how-to/chunk-data-load.md), later
+listeners can run after a panic or codec failure, but the failed job's changes cannot publish.
 
 ## Player tick hooks
 
@@ -189,8 +209,8 @@ Part methods run elsewhere, and each one's own documentation says where:
   worker threads, several chunks at once. Feature placement also runs on the server thread when the game places a
   feature there: a sapling growing, a command, `LevelRef::place_feature`. A query asked once at start, such as
   `BiomeSource::possible_biomes`, is not a worker call. They get a `WorldgenHost` or no host at all, never a `Host`.
-- **Meshing workers.** `add_section_geometry` itself runs once at client start, to register renderers; each
-  renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
+- **Meshing workers.** `add_section_geometry` itself runs once at client start, to register renderers. A panic or
+  phase refusal in registration discards only that callback's renderers. Each renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
   block tint source is asked there too, and also outside meshing, for example for terrain particles and blocks a
   piston moves. Both get no host.
 - **Chunk workers.** `chunk_data_load` and `chunk_data_save` run where a chunk's record is decoded or encoded, with a

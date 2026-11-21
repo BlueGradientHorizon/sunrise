@@ -15,7 +15,7 @@ use sunrise_client::{
 #[cfg(test)]
 mod tests;
 
-struct Registry {
+pub(in crate::game) struct Registry {
     kind: PackType,
     mods: ModsState,
     packs: Vec<Pack>,
@@ -28,6 +28,16 @@ impl Registry {
             packs: Vec::new(),
         }
     }
+
+    pub(in crate::game) fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn PackFinders) -> bool,
+    ) {
+        let checkpoint = self.packs.len();
+        if !listen(self) {
+            self.packs.truncate(checkpoint);
+        }
+    }
 }
 impl PackFinders for Registry {
     fn pack_type(&self) -> PackType {
@@ -38,67 +48,73 @@ impl PackFinders for Registry {
             return Ok(());
         }
         let location = &entry.location;
-        if !stays_inside(location.path()) {
-            return Err(PackFinderError::InvalidPath);
-        }
-        let id = format!("mod/{location}");
-        if self.packs.iter().any(|pack| pack.id == id) {
-            return Err(PackFinderError::Duplicate);
-        }
-        let package = self
-            .mods
-            .native
-            .packages()
-            .iter()
-            .map(|package| (package.manifest.id.as_str(), &package.path))
-            .chain(
-                self.mods
-                    .selected
-                    .iter()
-                    .map(|package| (package.package.manifest.id.as_str(), &package.path)),
-            )
-            .find(|(id, _)| *id == location.namespace())
-            .map(|(_, path)| path)
-            .ok_or(PackFinderError::MissingPackage)?;
-        let source = if package.is_dir() {
-            ResourceSource::directory(package.clone())
-        } else {
-            ResourceSource::archive(package).map_err(|_| PackFinderError::MissingPackage)?
-        };
-        let source = source
-            .subdirectory(location.path())
-            .map_err(|_| PackFinderError::InvalidPath)?;
-        let format = match self.kind {
-            PackType::ClientResources => sunrise_core::version::RESOURCE_PACK_FORMAT,
-            PackType::ServerData => sunrise_core::version::DATA_PACK_FORMAT,
-            _ => return Err(PackFinderError::InvalidMetadata),
-        };
-        let title = entry.title.try_into_engine(&())?;
-        let mut pack = packs::pack_for(id, title, Source::Opened(source), format)
-            .ok_or(PackFinderError::InvalidMetadata)?;
-        pack.selection = Some(PackInfo {
-            id: pack.id.clone(),
-            title: pack.title.clone(),
-            description: pack.raw_description.clone(),
-            description_style: pack.description_style.clone(),
-            source: match entry.source {
-                PackSource::BuiltIn => ScreenSource::BuiltIn,
-                PackSource::Feature => ScreenSource::Feature,
+        (|| {
+            if !stays_inside(location.path()) {
+                return Err(PackFinderError::InvalidPath);
+            }
+            let id = format!("mod/{location}");
+            if self.packs.iter().any(|pack| pack.id == id) {
+                return Err(PackFinderError::Duplicate);
+            }
+            let package = self
+                .mods
+                .native
+                .packages()
+                .iter()
+                .map(|package| (package.manifest.id.as_str(), &package.path))
+                .chain(
+                    self.mods
+                        .selected
+                        .iter()
+                        .map(|package| (package.package.manifest.id.as_str(), &package.path)),
+                )
+                .find(|(id, _)| *id == location.namespace())
+                .map(|(_, path)| path)
+                .ok_or(PackFinderError::MissingPackage)?;
+            let source = if package.is_dir() {
+                ResourceSource::directory(package.clone())
+            } else {
+                ResourceSource::archive(package).map_err(|_| PackFinderError::MissingPackage)?
+            };
+            let source = source
+                .subdirectory(location.path())
+                .map_err(|_| PackFinderError::InvalidPath)?;
+            let format = match self.kind {
+                PackType::ClientResources => sunrise_core::version::RESOURCE_PACK_FORMAT,
+                PackType::ServerData => sunrise_core::version::DATA_PACK_FORMAT,
                 _ => return Err(PackFinderError::InvalidMetadata),
-            },
-            compat: pack.compatibility,
-            icon: pack.icon_png().as_deref().and_then(load_icon),
-            required: entry.always_active,
-            position: match entry.position {
-                PackPosition::Top => Position::Top,
-                PackPosition::Bottom => Position::Bottom,
-                _ => return Err(PackFinderError::InvalidMetadata),
-            },
-            fixed: false,
-            hidden: entry.hidden,
-        });
-        self.packs.push(pack);
-        Ok(())
+            };
+            let title = entry.title.try_into_engine(&())?;
+            let mut pack = packs::pack_for(id, title, Source::Opened(source), format)
+                .ok_or(PackFinderError::InvalidMetadata)?;
+            pack.selection = Some(PackInfo {
+                id: pack.id.clone(),
+                title: pack.title.clone(),
+                description: pack.raw_description.clone(),
+                description_style: pack.description_style.clone(),
+                source: match entry.source {
+                    PackSource::BuiltIn => ScreenSource::BuiltIn,
+                    PackSource::Feature => ScreenSource::Feature,
+                    _ => return Err(PackFinderError::InvalidMetadata),
+                },
+                compat: pack.compatibility,
+                icon: pack.icon_png().as_deref().and_then(load_icon),
+                required: entry.always_active,
+                position: match entry.position {
+                    PackPosition::Top => Position::Top,
+                    PackPosition::Bottom => Position::Bottom,
+                    _ => return Err(PackFinderError::InvalidMetadata),
+                },
+                fixed: false,
+                hidden: entry.hidden,
+            });
+            self.packs.push(pack);
+            Ok(())
+        })()
+        .inspect_err(|error| {
+            let owner = mod_api::content::crash::current_native_mod().unwrap_or("unknown");
+            log::warn!("mod {owner} hook add_pack_finders ({location}): {error}");
+        })
     }
 }
 
@@ -157,7 +173,11 @@ pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
         PackType::ServerData => HostSide::Server(&mut host),
         _ => return Vec::new(),
     };
-    mod_api::dispatch_add_pack_finders_for(host, &mut registry, |id| mods.code_owner_enabled(id));
+    mod_api::dispatch_add_pack_finders_for(
+        host,
+        |listen| registry.register_listener(listen),
+        |id| mods.code_owner_enabled(id),
+    );
     registry.packs
 }
 

@@ -14,7 +14,11 @@ In `Hooks::register_gui_layers`, call `event.layers.register(id, placement, Box:
 `GuiLayerRegistrar`. Registration runs once at client startup.
 Use your own namespaced ID and a `GuiLayerPlacement`: below or above all layers, or immediately
 below or above a vanilla anchor or a layer already registered. The client logs and refuses
-invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it installed the layer.
+invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it accepted the layer
+into the callback's pending order. Later calls in the same callback can anchor to that layer.
+A [failed registration callback](../../concepts/load-phases.md#registration-and-setup)
+publishes none of its pending insertions, replacements or wrappers. Vanilla and earlier mods'
+layers remain in place for the next callback. Only a panic disables the registering callback.
 
 The client keeps the callback for the session and calls it as the mod that installed it. Capture
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`

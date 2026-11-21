@@ -359,7 +359,9 @@ fn load_conditions_registration_allows_shared_namespaces() {
             let mut registrar = mod_api::LoadConditionDeclarations::new(
                 sunrise_world::conditions::is_builtin_condition,
             );
-            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), &mut registrar);
+            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), |listen| {
+                registrar.register_listener(listen)
+            });
             let entries = registrar.finish().unwrap();
             assert_eq!(entries.len(), 2);
             for (name, owner, value) in [("a:y", "a", true), ("a:x", "b", false)] {
@@ -384,10 +386,72 @@ fn load_conditions_registration_refuses_duplicate_ids_even_if_ignored() {
             let mut registrar = mod_api::LoadConditionDeclarations::new(
                 sunrise_world::conditions::is_builtin_condition,
             );
-            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), &mut registrar);
+            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), |listen| {
+                registrar.register_listener(listen)
+            });
             let error = registrar.finish().err().unwrap().message;
             assert!(error.contains("condition a:x"), "{error}");
             assert!(error.contains("both a and b"), "{error}");
+        },
+    );
+}
+
+#[test]
+fn a_panicking_load_condition_registrar_leaves_neither_handlers_nor_errors() {
+    use std::sync::atomic::AtomicBool;
+
+    struct Failing(Arc<AtomicBool>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Failing {
+        fn register_load_conditions(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterLoadConditionsEvent<'_>,
+        ) {
+            let handler = || Flag(Arc::default(), Arc::default());
+            let shared = Identifier::parse("a:shared").unwrap();
+            event
+                .conditions
+                .register(shared.clone(), handler())
+                .unwrap();
+            event
+                .conditions
+                .register(Identifier::parse("a:leaked").unwrap(), handler())
+                .unwrap();
+            assert_eq!(
+                event
+                    .conditions
+                    .register(shared, handler())
+                    .unwrap_err()
+                    .message,
+                "condition a:shared registered by both a and a",
+            );
+            self.0.store(true, Ordering::Relaxed);
+            panic!("load condition registrar fixture failed");
+        }
+    }
+
+    let reached = Arc::new(AtomicBool::new(false));
+    mod_platform::testing::with_mods(
+        vec![
+            ModEntry::new("a", Box::new(Failing(reached.clone()))),
+            ModEntry::new("b", Box::new(NamedCondition("a:shared"))),
+        ]
+        .into(),
+        || {
+            let mut registrar = mod_api::LoadConditionDeclarations::new(
+                sunrise_world::conditions::is_builtin_condition,
+            );
+            super::Game::native_register_load_conditions(
+                &RegistrationContext::new(),
+                &mut registrar,
+            );
+            assert!(reached.load(Ordering::Relaxed));
+            let entries = registrar.finish().unwrap();
+            assert_eq!(entries.len(), 1);
+            let (owner, handler) = &entries[&Identifier::parse("a:shared").unwrap()];
+            assert_eq!(owner, "b");
+            assert_eq!(handler.test(&json!({"value": false})), Ok(false));
         },
     );
 }

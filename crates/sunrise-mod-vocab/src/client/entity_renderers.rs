@@ -167,19 +167,43 @@ pub trait EntityRenderers {
 #[derive(Default)]
 // exhaustive: its field is private; the game builds it
 pub struct EntityRendererRegistry {
-    renderers: BTreeMap<String, Arc<dyn EntityRenderer>>,
+    renderers: crate::runtime::RegistrationMap<Arc<dyn EntityRenderer>>,
+}
+
+const REGISTRATION: (crate::generated::HookId, &str) = (
+    crate::generated::HookId::RegisterEntityRenderers,
+    "register_entity_renderers",
+);
+
+#[derive(Default)]
+struct RendererEdits(crate::runtime::RegistrationEdits<Arc<dyn EntityRenderer>>);
+
+impl EntityRenderers for RendererEdits {
+    fn register(&mut self, entity_type: String, renderer: Arc<dyn EntityRenderer>) {
+        self.0.insert(entity_type, renderer);
+    }
 }
 
 impl EntityRenderers for EntityRendererRegistry {
     fn register(&mut self, entity_type: String, renderer: Arc<dyn EntityRenderer>) {
-        self.renderers.insert(entity_type, renderer);
+        self.renderers
+            .finish(REGISTRATION, true, [(entity_type, renderer)]);
     }
 }
 
 impl EntityRendererRegistry {
+    /// Apply the current listener's renderer edits only if its registration succeeds.
+    #[doc(hidden)]
+    pub fn register_listener(&mut self, listen: &mut dyn FnMut(&mut dyn EntityRenderers) -> bool) {
+        let mut edits = RendererEdits::default();
+        let publish = listen(&mut edits);
+        self.renderers
+            .finish(REGISTRATION, publish, edits.0.ordered());
+    }
+
     /// Each type's renderer, the last registration for a type winning.
     pub fn into_renderers(self) -> BTreeMap<String, Arc<dyn EntityRenderer>> {
-        self.renderers
+        self.renderers.into_values()
     }
 }
 
@@ -205,6 +229,95 @@ mod tests {
         fn set_light(&mut self, light: u32) {
             self.0 = light;
         }
+    }
+
+    #[test]
+    fn panicking_renderer_registration_keeps_the_seeded_winner_and_next_listener() {
+        use crate::{Hooks, ModEntry, RegisterEntityRenderersEvent, RegistrationContext};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Failing(Arc<AtomicUsize>);
+        #[crate::__subscriptions]
+        impl Hooks for Failing {
+            fn register_entity_renderers(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterEntityRenderersEvent<'_>,
+            ) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                event
+                    .renderers
+                    .register("test:seed".into(), Arc::new(Marked(20)));
+                event
+                    .renderers
+                    .register("test:leaked".into(), Arc::new(Marked(21)));
+                panic!("renderer registration failed");
+            }
+        }
+
+        struct Healthy {
+            renderer: Arc<dyn EntityRenderer>,
+            calls: Arc<AtomicUsize>,
+        }
+        #[crate::__subscriptions]
+        impl Hooks for Healthy {
+            fn register_entity_renderers(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterEntityRenderersEvent<'_>,
+            ) {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                event
+                    .renderers
+                    .register("test:healthy".into(), Arc::new(Marked(30)));
+                event
+                    .renderers
+                    .register("test:healthy".into(), self.renderer.clone());
+            }
+        }
+
+        let seed: Arc<dyn EntityRenderer> = Arc::new(Marked(10));
+        let healthy: Arc<dyn EntityRenderer> = Arc::new(Marked(31));
+        let failed_calls = Arc::new(AtomicUsize::new(0));
+        let healthy_calls = Arc::new(AtomicUsize::new(0));
+        crate::testing::with_dispatch(
+            vec![
+                ModEntry::new("failed_renderer", Box::new(Failing(failed_calls.clone()))),
+                ModEntry::new(
+                    "healthy_renderer",
+                    Box::new(Healthy {
+                        renderer: healthy.clone(),
+                        calls: healthy_calls.clone(),
+                    }),
+                ),
+            ]
+            .into(),
+            || {
+                let mut registry = EntityRendererRegistry::default();
+                registry.register("test:seed".into(), seed.clone());
+                let context = RegistrationContext::new();
+                crate::dispatch_register_entity_renderers(&context, |listen| {
+                    registry.register_listener(listen)
+                });
+                assert_eq!(
+                    crate::__private::take_hook_panics(),
+                    [crate::__private::HookPanicReport {
+                        mod_id: "failed_renderer",
+                        hook: "register_entity_renderers",
+                    }]
+                );
+                crate::dispatch_register_entity_renderers(&context, |listen| {
+                    registry.register_listener(listen)
+                });
+                assert_eq!(failed_calls.load(Ordering::Relaxed), 1);
+                assert_eq!(healthy_calls.load(Ordering::Relaxed), 2);
+                assert!(crate::__private::take_hook_panics().is_empty());
+                let renderers = registry.into_renderers();
+                assert_eq!(renderers.len(), 2);
+                assert!(Arc::ptr_eq(&renderers["test:seed"], &seed));
+                assert!(Arc::ptr_eq(&renderers["test:healthy"], &healthy));
+            },
+        );
     }
 
     #[test]

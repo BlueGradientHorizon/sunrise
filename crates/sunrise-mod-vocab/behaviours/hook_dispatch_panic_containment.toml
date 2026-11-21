@@ -1,0 +1,13 @@
+version = 1
+doc = "A generated callback panic discards the callback's unfinished output, disables only that mod's callback for that hook for the session, and produces a named error log and client diagnostic toast. Other eligible listeners continue from the last accepted output. An ordinary phase or output refusal is reported each time without disabling the listener. Failed registration and chunk-disk work does not publish."
+tests = [
+    "crates/sunrise-mod-vocab/src/hooks_tests.rs::panicking_listener_is_disabled_for_that_hook_and_reported_once",
+    "crates/sunrise-mod-vocab/src/hooks_tests.rs::callback_and_registration_contain_panicking_payload_destructors",
+    "crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/entity_move.rs::a_panicking_move_listener_loses_its_proposal_but_the_walk_continues",
+    "crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/entity_move.rs::a_move_phase_refusal_restores_the_proposal_and_is_reported_on_each_call",
+    "crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/living_travel.rs::a_refused_pair_rolls_back_its_cancel_and_later_listeners_hear_the_accepted_result",
+    "crates/sunrise-mod-vocab/src/client/entity_renderers.rs::panicking_renderer_registration_keeps_the_seeded_winner_and_next_listener",
+    "crates/sunrise-mod-vocab/src/chunk_disk/tests.rs::an_unwinding_disk_listener_refuses_publication_but_does_not_stop_the_walk",
+    "crates/sunrise-client/src/game/modding/mod_menu_decisions_tests.rs::a_panicking_checked_quick_move_cannot_publish_a_detached_prefix",
+    "crates/sunrise-client/src/game/world/server_packs.rs::hook_panic_toast_cannot_be_vetoed_or_rewritten_by_toast_add",
+]

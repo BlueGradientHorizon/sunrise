@@ -68,6 +68,48 @@ enum Flow {
 trait Host {}
 trait ServerHost: Host {}
 trait ClientHost: Host {}
+
+mod item {
+    pub(super) mod transaction {
+        // The game exercises the actual journal; these fixtures have no world state.
+        pub(in crate::tests) fn run_transaction<H: super::super::ServerHost + ?Sized, T, E>(
+            host: &mut H,
+            call: impl FnOnce(&mut H, &()) -> Result<T, E>,
+        ) -> Result<T, E> {
+            call(host, &())
+        }
+    }
+}
+
+fn capture_warnings(call: impl FnOnce()) -> Vec<String> {
+    thread_local! {
+        static WARNINGS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+    }
+    struct WarningLog;
+    impl log::Log for WarningLog {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() == log::Level::Warn
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            if self.enabled(record.metadata()) {
+                WARNINGS.with(|warnings| {
+                    if let Some(warnings) = warnings.borrow_mut().as_mut() {
+                        warnings.push(record.args().to_string());
+                    }
+                });
+            }
+        }
+        fn flush(&self) {}
+    }
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(|| {
+        log::set_logger(&WarningLog).unwrap();
+        log::set_max_level(log::LevelFilter::Warn);
+    });
+    WARNINGS.with(|warnings| *warnings.borrow_mut() = Some(Vec::new()));
+    call();
+    WARNINGS.with(|warnings| warnings.borrow_mut().take().unwrap())
+}
 trait WorldDrawContext {}
 trait DrawContext {
     fn mark(&mut self, value: u32);
@@ -188,9 +230,6 @@ fn receives_cancelled(hook: HookId) -> bool {
     MODS.get()
         .is_some_and(|installed| installed.subscribers.receives_cancelled(hook as usize))
 }
-fn entered(hook_id: HookId, hook: &'static str) -> impl Iterator<Item = &'static dyn Hooks> {
-    entered_with_id(hook_id, hook).map(|(_, hooks)| hooks)
-}
 fn entered_with_id(
     hook_id: HookId,
     hook: &'static str,
@@ -205,6 +244,9 @@ fn listening(hook_id: HookId) -> impl Iterator<Item = (bool, &'static ModEntry)>
         installed
             .subscribers
             .subscribers(hook_id as usize)
+            .filter(move |subscriber| {
+                !runtime::poisoned(hook_id, installed.mods[subscriber.index].id)
+            })
             .map(move |subscriber| {
                 (
                     subscriber.receives_cancelled,
@@ -365,14 +407,19 @@ fn any_mod_disabled() -> bool {
     DISABLED_BLOCK_PART.get().is_some()
 }
 fn entered_parts<'a, P: ?Sized>(
+    hook_id: HookId,
     parts: &'a [&'a P],
     _: &'static str,
-) -> impl Iterator<Item = &'a P> {
+) -> impl Iterator<Item = (&'static str, &'a P)> {
     let disabled = DISABLED_BLOCK_PART.get();
     parts
         .iter()
         .copied()
-        .filter(move |part| disabled != Some(std::ptr::from_ref(*part).cast()))
+        .filter(move |part| {
+            disabled != Some(std::ptr::from_ref(*part).cast())
+                && !runtime::poisoned(hook_id, "part")
+        })
+        .map(|part| ("part", part))
 }
 
 #[test]

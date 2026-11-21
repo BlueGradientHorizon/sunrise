@@ -67,19 +67,24 @@ At client startup, implement `Hooks::register_layer_definitions` and call
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
 inputs, not the event or its registration context. Use a `<namespace>:<path>#<layer>`
-ID outside the `minecraft` namespace.
+ID matching vanilla's `ModelLayerLocation`. Include both separators even when a
+component is empty. Namespace and path follow vanilla's `Identifier` rules, and the
+layer can be any string. An exact collision with a vanilla layer key in
+`entity-models.json` fails client startup.
 
-The game calls each accepted supplier once when it freezes the layer table, in
-registration order. A duplicate ID does not run its supplier. The frozen table
-retains the definitions, not the suppliers. Call
-`ClientHost::bake_layer("mymod:golem#main")` during renderer setup, then keep the
-resulting `ModelPart` tree for posing and drawing. Baking again and reloading
-resources reuse the definition.
+When multiple registrations share an ID, the last registration wins and overwritten
+suppliers never run. The game calls each winning supplier once when it freezes the
+layer table, in registration order. The frozen table retains the definitions, not the
+suppliers. Call `ClientHost::bake_layer("mymod:golem#main")` during renderer setup,
+then keep the resulting `ModelPart` tree for posing and drawing. Baking again and
+reloading resources reuse the definition.
 
 ## Worn humanoid equipment
 
 An item attaches one `ClientItemExtensions` Part in
-`Hooks::register_client_item_extensions`, on the client at every resource load.
+`Hooks::register_client_item_extensions`, on the client at every resource load before any
+reload listener applies. The validated bindings are installed with the new models. A panic discards
+that mod's registration batch and disables its registration callback for the rest of the session.
 The event's `extensions: &mut dyn ClientItemExtensionsRegistrar` registers the
 models, textures and item providers together. There is no startup provider
 registration path: request your `ItemKey` during ordinary registration, then
@@ -102,7 +107,12 @@ Model names belong to a namespace owned by the registering mod (its manifest
 namespaces or a content package it serves via `served_by`). Duplicate model names,
 non-finite geometry or poses, an unknown texture, an unknown item and two
 providers for one item refuse the resource-load registration by name. A duplicate
-item diagnostic names both providers. Disabling the owning mod stops its Part.
+item diagnostic names both providers. A completed callback's registration error
+still refuses preparation even if it ignored the returned error. A
+[failed registration callback](../../concepts/load-phases.md#registration-and-setup)
+loses only its own models, textures and providers;
+other callbacks can still register. Do not keep model or texture references
+from a discarded registration. Disabling the owning mod stops its Part.
 A server-only package cannot declare this client registration hook.
 
 The worn stack must first pass the equippable component's asset and matching-slot
@@ -164,7 +174,7 @@ event.register(
 The baker is `Send + Sync + 'static` and may run on a resource worker. Capture
 owned inputs, not the event or its registration context. The
 `StandaloneModelBakeContext` is borrowed only for that invocation and gives no
-`Host`. Return `Ok(())` to publish an assembly if every append succeeded or
+`Host`. Return `Ok(())` to publish the assembly or
 `Err(StandaloneModelBakeError::Rejected(reason))` to leave it out.
 
 The quarter-turn counts are negative turns, modulo four, applied X then Y then Z
@@ -178,16 +188,19 @@ metadata in one model. The particle is the first available part particle, and mo
 ambient occlusion is enabled only if every appended part enables it. Declare all the model
 files the callback may append. Dependencies, including their parents and loader references,
 load through the normal model library; they are not automatically registered as results.
-An undeclared append, a missing dependency, a bake error or a refused callback discards
-the whole model and logs the registering mod. Ignoring an append error still discards it.
+A failed `append_dependency` returns `Err` without changing the assembly; propagate it
+with `?` to discard the model, or handle it and return `Ok(())` to publish the valid
+appends. A missing dependency or `Err` return discards the model for that load and logs
+the registering mod, and the baker runs again on later resource reloads; only a panic
+disables the callback for the session (matching NeoForge `StandaloneModelLoader`).
 
 Result IDs and plain file IDs require a nonempty namespace and path, which need not equal
 the registering mod's ID. A successfully baked plain file wins over any baker for that ID;
 otherwise the first successful baker in registration order wins. Register once at
 startup; eligible bakers run against current files at each resource load. Registration
 does not expose earlier entries for editing. Resolve result IDs in
-`model_baking_completed`; successful reloads invalidate old handles, while failed reloads
-retain them. The result is baked quads, not a mod-defined baked object.
+`model_baking_completed`, after atlas publication and at the model manager's apply step before any listener ordered
+after it applies. Successful reloads invalidate old handles, while refused prepares retain them. The result is baked quads, not a mod-defined baked object.
 
 ## Colour, hidden faces and translucency of copies
 

@@ -5,7 +5,8 @@ pub trait Hooks {
     /// `register(renderer)` adds the mod's own `SectionGeometry`, which the mesher asks to add its
     /// quads every time it meshes a section, on its worker threads. The quads are part of that
     /// section's mesh: they follow its rebuilds, are never drawn twice, and go when it unloads.
-    /// Asked once at start on the client, before resources load.
+    /// Asked once at start on the client, before resources load. A registration
+    /// callback that panics or incurs a phase refusal contributes no renderers.
     #[notes = r#"## Section geometry
 
 Section geometry (NeoForge's `AddSectionGeometryEvent`) is quads a mod adds to a chunk section's own mesh, for
@@ -52,6 +53,8 @@ resources reload, and when a mod calls `ClientHost::refresh_render_visibility` a
         dispatch = "flat",
         side = "client",
         contract = "listen",
+        staged_surface = "renderers",
+        version = 2,
         context = "registration",
         neoforge = "AddSectionGeometryEvent"
     )]

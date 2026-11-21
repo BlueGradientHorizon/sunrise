@@ -174,10 +174,12 @@ impl Game<'_> {
         }
         // The coordinator contains listener unwinds; this guard also closes the click if a
         // lower menu rule panics during planning or a provisional guest turn unwinds.
+        let failures = mod_api::runtime::isolated_failures();
         let accepted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.run_merchant_take(conn, p, input, identity, route)
         }))
-        .unwrap_or(false);
+        .unwrap_or(false)
+            && mod_api::runtime::isolated_failures() == failures;
         if Scope::refused() {
             log::warn!(
                 "trade_with_villager: merchant packet batch exceeded its retained-byte budget"

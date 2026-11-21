@@ -10,11 +10,17 @@ pub trait Hooks {
     /// data-load callbacks retain their DataLoadContext; no setup event is added.
     /// Each listener's `prepare` returns an owned action, consumed once on the
     /// server thread after all prepares succeed.
+    /// Registration errors are returned and logged at the call, without stopping
+    /// the reload. A registration callback that panics or incurs a phase refusal
+    /// contributes no ordered or retained listeners or dependencies; unrelated
+    /// callbacks still run.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "server",
         contract = "listen",
+        staged_surface = "listeners",
+        version = 4,
         host = "read",
         version = 2,
         neoforge = "AddServerReloadListenersEvent"

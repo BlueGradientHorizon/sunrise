@@ -16,14 +16,18 @@ the callback, or copy it if it must outlive the callback. Neither metadata gette
 The host has no live backend and is not a `ServerHost`. Typed values need a
 persistence codec, not `Wire`. Unknown bounded attachment entries are preserved opaquely.
 
-Codec errors, invalid or over-budget disk NBT, and unwinding panics refuse the entire
-store: none of its edits are kept. The chunk still loads, with the attachments
-exactly as they were stored, so a mod bug leaves no gap in the world. No
+Codec errors, invalid or over-budget disk NBT, and panics refuse publication of
+the job's edits. Later listeners still see the last accepted envelopes;
+`event.data.failure()` does not expose an earlier listener's error to them. The job
+reports its first terminal failure, and any later failures are also reported.
+A phase refusal drops only that listener's proposal and is reported each time;
+only a panic disables a callback for this hook for the session. If the job fails,
+the chunk still loads with the
+attachments exactly as they were stored. No
 `chunk_data_save` listener runs for that chunk for the rest of the session, so
 half-initialised state never replaces the stored record, and the chunk's later
-saves write its stored attachments back unchanged. The failure is logged once
-per chunk, naming the chunk and the mod. Fix the mod and rejoin the world to run
-its listeners on that chunk again.
+saves write its stored attachments back unchanged. The load diagnostic names the
+chunk and the mod. Fix the mod and restart before retrying a disabled callback.
 
 The load runs on the thread that decodes the record, never with access to live
 world state. The [disk NBT budgets](chunk-data-save.md#disk-nbt-budgets)

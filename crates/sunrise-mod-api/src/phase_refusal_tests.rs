@@ -203,3 +203,47 @@ fn in_world_a_listener_runs_the_plain_call() {
     );
     assert!(stacks[0].is_some() && cancelled);
 }
+
+#[test]
+fn a_phase_refusal_is_reported_each_time_and_never_disables_the_listener() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    crate::__private::initialize().unwrap();
+    let _phase = PhaseOwner::scope(ModPhase::Setup);
+
+    struct Refused {
+        before: Arc<AtomicUsize>,
+        after: Arc<AtomicUsize>,
+    }
+    #[crate::__subscriptions]
+    impl Hooks for Refused {
+        fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            self.before.fetch_add(1, Ordering::Relaxed);
+            check_access("world_only_op", LoadAccess::WorldOnly);
+            self.after.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    let before = Arc::new(AtomicUsize::new(0));
+    let after = Arc::new(AtomicUsize::new(0));
+
+    testing::with_dispatch(
+        vec![ModEntry::new(
+            "phase_refused_mod",
+            Box::new(Refused {
+                before: before.clone(),
+                after: after.clone(),
+            }),
+        )]
+        .into(),
+        || {
+            let mut host = testing::FakeHost::new();
+            dispatch_client_tick_pre(&mut host);
+            dispatch_client_tick_pre(&mut host);
+            assert!(mod_vocab::__private::take_hook_panics().is_empty());
+        },
+    );
+
+    assert_eq!(before.load(Ordering::Relaxed), 2);
+    assert_eq!(after.load(Ordering::Relaxed), 0);
+}

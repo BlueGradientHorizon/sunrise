@@ -17,11 +17,12 @@ pub trait Hooks {
     /// the game moves the stack as for any container; a later mod sees what
     /// an earlier one did to `stack`.
     ///
-    /// The move is one action: the answer is validated once and applied once,
-    /// and a refused move changes nothing, with every write the listener made
-    /// undone and the client given the menu again. It is refused when a
-    /// listener fails (panics or traps), when the answer is invalid (a stack
-    /// past its item's maximum in `entity.items` or `stack`), or when a
+    /// The move is one action: the answer is validated once and applied once.
+    /// A refused move changes nothing, with the listener's writes undone and the
+    /// client given the menu again. A panicking callback refuses the move before
+    /// writing back the detached entity, its queued update fields, or the `stack`
+    /// and `handled` outputs. An invalid answer (a stack past its item's maximum in
+    /// `entity.items` or `stack`) also refuses the move, as does a
     /// listener wrote through the `Host` to a player's inventory, cursor or
     /// menu storage (the move read its own player's; a write to any player's
     /// counts). Writes to another block, as a move into its `ITEMS`
@@ -45,7 +46,7 @@ pub trait Hooks {
         key = "entity",
         neoforge = "none (a Java menu overrides AbstractContainerMenu.quickMoveStack; no event)",
         cancellable = true,
-        version = 3
+        version = 4
     )]
     fn menu_quick_move(
         pos: [i32; 3],

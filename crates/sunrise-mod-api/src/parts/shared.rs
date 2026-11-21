@@ -251,10 +251,16 @@ pub(crate) fn register_all(
         registrar.mod_index = index;
         let diagnostics = Arc::new(Mutex::new(RegistrationDiagnostics::default()));
         let rollback = registrar.registration_checkpoint();
-        hooks.register(
-            &mut registrar,
-            &registration_context_with_diagnostics(Arc::clone(&diagnostics)),
-        );
+        let completed = mod_vocab::__private::invoke_registration(registrar.mod_id, || {
+            hooks.register(
+                &mut registrar,
+                &registration_context_with_diagnostics(Arc::clone(&diagnostics)),
+            );
+        });
+        if !completed {
+            rollback(&mut registrar);
+            continue;
+        }
         // The borrowed context has ended; the registrar can move its record into the report.
         let diagnostics = Arc::into_inner(diagnostics)
             .expect("only the registrar and its registration context own the diagnostic sink")

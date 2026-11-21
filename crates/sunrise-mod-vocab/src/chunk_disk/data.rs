@@ -8,8 +8,9 @@ use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
 /// The uncompressed disk NBT budget is 65,536 bytes per named `value` tag,
 /// 64 container levels in that value, and 1,048,576 bytes for the entire
 /// named attachment compound, including unknown data. Anything that would
-/// exceed a limit or require truncation is refused. Any refusal poisons the
-/// job even if the listener ignores its error.
+/// exceed a limit or require truncation is refused. A codec or budget failure
+/// refuses publication even if the listener ignores its error. Dispatch discards
+/// that listener's edits so later listeners can still work on the accepted envelopes.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct ChunkDiskData {
@@ -82,7 +83,7 @@ impl ChunkDiskData {
     }
 
     /// Run a nested local savepoint. An explicit abort restores the prior
-    /// envelopes; a codec or budget refusal still poisons the outer job.
+    /// envelopes; a codec or budget refusal still prevents the job from publishing.
     pub fn transaction<R, E>(
         &mut self,
         apply: impl FnOnce(&mut Self) -> Result<R, E>,
@@ -95,15 +96,10 @@ impl ChunkDiskData {
         result
     }
 
-    /// The first refusal. A listener cannot clear it or publish tentative edits.
+    /// The first refusal of the active callback, or the job's first failure after dispatch.
+    /// An earlier listener's failure does not block this callback's operations.
     pub fn failure(&self) -> Option<&ChunkDiskFailure> {
         self.failure.as_ref()
-    }
-
-    pub(crate) fn refuse(&mut self, error: ChunkDiskFailure) {
-        if self.failure.is_none() {
-            self.failure = Some(error);
-        }
     }
 
     pub(crate) fn attribute_failure(&mut self, error: ChunkDiskFailure) {

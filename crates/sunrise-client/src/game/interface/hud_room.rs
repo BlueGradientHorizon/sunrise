@@ -77,20 +77,20 @@ impl Game<'_> {
         self.pad_radial_shown()
     }
 
-    /// ToastManager.extractRenderState: F1 hides the toasts, and so does an overlay holding
-    /// the view, as the radial menu's page tabs run across the top where the toasts are.
-    /// They go on timing out meanwhile. HUD cancellation hides ordinary toasts only.
+    /// ToastManager.extractRenderState: F1 and overlays hide all toasts without pausing them.
+    /// A mod's HUD veto hides ordinary toasts, not mandatory diagnostics.
     pub(super) fn draw_every_toast(
         &mut self,
         batch: &mut HudBatch,
-        hidden: bool,
+        presentation_hidden: bool,
         gui_canceled: bool,
     ) {
-        let hidden = hidden || self.overlay_holds_view();
-        self.draw_toasts(batch, hidden || gui_canceled);
-        self.draw_tutorial_toasts(batch, hidden || gui_canceled);
-        self.draw_pack_toasts(batch, hidden, gui_canceled);
-        self.draw_music_toast(batch, hidden || gui_canceled);
+        let presentation_hidden = presentation_hidden || self.overlay_holds_view();
+        let hidden = presentation_hidden || gui_canceled;
+        self.draw_toasts(batch, hidden);
+        self.draw_tutorial_toasts(batch, hidden);
+        self.draw_pack_toasts(batch, hidden, presentation_hidden);
+        self.draw_music_toast(batch, hidden);
     }
 
     /// The hands drawn in first person this frame: none while an overlay holds the view, as the

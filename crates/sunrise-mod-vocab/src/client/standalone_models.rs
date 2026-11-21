@@ -16,8 +16,10 @@ impl StandaloneModelsEvent<'_> {
     /// At each resource load, the game runs bakers in registration order after loading
     /// their dependencies. A baker runs only if the ID is still unfilled and its
     /// dependencies load. Capture owned data; the baker can run on a resource worker.
-    /// Returning an error or failing any append discards the whole result, even if the
-    /// callback ignores the append's error.
+    /// A failed `append_dependency` leaves the assembly unchanged and returns `Err`; the
+    /// baker's returned `Result` controls whether the assembly is published (`Ok(())`) or
+    /// discarded (`Err(_)`). An ordinary failure affects only that resource load and the
+    /// baker runs again on later reloads; only a panic disables the callback for the session.
     pub fn register(
         &mut self,
         id: impl Into<String>,
@@ -50,7 +52,8 @@ impl StandaloneModelBakeContext<'_> {
     /// Append the quads of a declared model `id`, in call order. `quarter_turns` are
     /// negative X, Y and Z quarter-turn counts (modulo four) around the block centre.
     /// With `uvlock`, textures keep their orientation in the resulting face's world basis.
-    /// An error invalidates the whole assembly, even if the baker returns `Ok(())`.
+    /// On error, the assembly is unchanged; return the error (for example with `?`) to
+    /// discard the model, or handle it and return `Ok(())` to keep the valid appends.
     pub fn append_dependency(
         &mut self,
         id: &str,

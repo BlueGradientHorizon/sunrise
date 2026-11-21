@@ -376,3 +376,185 @@ fn disabled_owner_refuses_before_entering_its_native_handler() {
         assert_eq!(reply_count(&*out), 0);
     });
 }
+
+#[derive(Clone, Copy)]
+enum ConfigFinishCase {
+    Normal,
+    EpochInvalidated,
+    Disconnect,
+    AdvanceSameType,
+}
+
+fn run_config_finish_case(
+    case: ConfigFinishCase,
+    task_types: Vec<mod_api::Identifier>,
+) -> (
+    Arc<crate::lan::configuration_tasks::Session>,
+    Arc<Transport>,
+    usize,
+) {
+    const CONFIG_CHANNEL: &str = "executor_probe:config";
+    struct Handler {
+        case: ConfigFinishCase,
+        task_type: mod_api::Identifier,
+        session: Mutex<Option<Arc<crate::lan::configuration_tasks::Session>>>,
+        transport: Mutex<Weak<Transport>>,
+        calls: AtomicUsize,
+    }
+    impl IPayloadHandler for Handler {
+        fn handle(
+            &self,
+            _: PayloadBytes,
+            ctx: &mut dyn IPayloadContext,
+        ) -> Result<(), mod_api::PayloadHandleError> {
+            let session = self.session.lock().unwrap().as_ref().unwrap().clone();
+            let transport = self.transport.lock().unwrap().upgrade().unwrap();
+            ctx.finish_configuration_task(&self.task_type).unwrap();
+            assert!(
+                !session.finished(),
+                "network finish must stage until epoch-gated publication"
+            );
+            assert_eq!(
+                ctx.finish_configuration_task(&self.task_type),
+                Err(mod_api::ConfigurationTaskError::NotRunning)
+            );
+            match self.case {
+                ConfigFinishCase::Normal => {}
+                ConfigFinishCase::EpochInvalidated => {
+                    // Advance the same physical transport out of Configuration before
+                    // publication runs; the transport stays open, but the epoch ends.
+                    transport.finish_configuration().unwrap();
+                }
+                ConfigFinishCase::Disconnect => {
+                    ctx.disconnect(mod_api::Text::literal("stop"));
+                }
+                ConfigFinishCase::AdvanceSameType => {
+                    // Simulate the server finishing ordinal 0 and starting ordinal 1
+                    // of the exact same task type before network publication runs.
+                    session.finish_current(0);
+                    let (completed, next) = session.turn();
+                    assert_eq!(completed, Some(0));
+                    let next = next.unwrap();
+                    assert!(next.start);
+                    assert_eq!(next.ordinal, 1);
+                    assert!(!session.finished());
+                }
+            }
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+    struct ConfigReg(Arc<Handler>);
+    #[mod_api::__subscriptions]
+    impl Hooks for ConfigReg {
+        fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            registrar
+                .payload_handlers()
+                .registrar("1")
+                .executes_on(HandlerThread::Network)
+                .configuration_bidirectional(
+                    PayloadId(CONFIG_CHANNEL.into()),
+                    self.0.clone(),
+                    Some(self.0.clone()),
+                );
+        }
+    }
+
+    let task_type = task_types[0].clone();
+    let handler = Arc::new(Handler {
+        case,
+        task_type,
+        session: Mutex::new(None),
+        transport: Mutex::new(Weak::new()),
+        calls: AtomicUsize::new(0),
+    });
+    let mut result = None;
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new(
+            "executor_probe",
+            Box::new(ConfigReg(handler.clone())),
+        )]
+        .into(),
+        || {
+            let transport = Transport::capture(Side::Server).unwrap();
+            transport
+                .accept(transport.local.manifest.entries())
+                .unwrap();
+            let (sender, _peer) =
+                crate::lan::config_payloads::ConfigSender::test_sender(transport.clone());
+            let session = crate::lan::configuration_tasks::Session::new(sender.clone());
+            session.register(task_types);
+            let (completed, turn) = session.turn();
+            assert_eq!(completed, None);
+            assert_eq!(turn.unwrap().ordinal, 0);
+
+            *handler.session.lock().unwrap() = Some(session.clone());
+            *handler.transport.lock().unwrap() = Arc::downgrade(&transport);
+
+            let endpoint = Endpoint::configuration(sender, Some(Arc::downgrade(&session)));
+            let incoming = Incoming::new(
+                &transport,
+                negotiation::Phase::Configuration,
+                sunrise_protocol::packets::custom_payload::CustomPayload {
+                    channel: CONFIG_CHANNEL.into(),
+                    data: vec![1],
+                },
+            )
+            .unwrap();
+            let (events, _receiver) = crate::lan::event_channel();
+            let main = MainQueue::Server {
+                events,
+                endpoint: endpoint.clone(),
+                conn: Some(1),
+            };
+            dispatch(incoming, endpoint, main);
+            result = Some((session, transport, handler.calls.load(Ordering::SeqCst)));
+        },
+    );
+    result.unwrap()
+}
+
+#[test]
+fn configuration_network_finish_respects_epoch_invalidation_and_disconnect() {
+    let kind = mod_api::Identifier::parse("executor_probe:task").unwrap();
+
+    let (session, transport, calls) =
+        run_config_finish_case(ConfigFinishCase::EpochInvalidated, vec![kind.clone()]);
+    assert_eq!(calls, 1);
+    assert!(!transport.closed());
+    assert!(
+        !session.finished(),
+        "epoch invalidation before publication must discard staged completion"
+    );
+
+    let (session, transport, calls) =
+        run_config_finish_case(ConfigFinishCase::Disconnect, vec![kind.clone()]);
+    assert_eq!(calls, 1);
+    assert!(transport.closed());
+    assert!(
+        !session.finished(),
+        "explicit disconnect must discard staged network completion"
+    );
+
+    let (session, transport, calls) = run_config_finish_case(ConfigFinishCase::Normal, vec![kind]);
+    assert_eq!(calls, 1);
+    assert!(!transport.closed());
+    assert!(session.finished());
+}
+
+#[test]
+fn configuration_network_finish_only_completes_the_validated_same_type_turn() {
+    let kind = mod_api::Identifier::parse("executor_probe:same").unwrap();
+    let (session, transport, calls) = run_config_finish_case(
+        ConfigFinishCase::AdvanceSameType,
+        vec![kind.clone(), kind.clone()],
+    );
+    assert_eq!(calls, 1);
+    assert!(!transport.closed());
+    assert!(
+        !session.finished(),
+        "staged completion for ordinal 0 must not finish ordinal 1 of the same type"
+    );
+    assert_eq!(session.running_ordinal_for_type(&kind), Ok(1));
+    assert_eq!(session.result(), None);
+}

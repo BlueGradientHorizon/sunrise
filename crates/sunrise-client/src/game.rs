@@ -3229,6 +3229,8 @@ struct Game<'a> {
     /// server tables' last build: what `data_maps_updated` fires for.
     data_map_registries: Vec<String>,
     /// This game's resource packs (`reload_packs` replaces them).
+    pending_initial_models: Option<Box<initial_client_models::PendingClientStart>>,
+    stitching_block_atlas: Option<Arc<RenderAssets>>,
     pack: PackResources,
     /// The title and menu bundle (GUI atlas, font and panorama).
     gui: UiResources,
@@ -7248,9 +7250,9 @@ impl Game<'_> {
         if !self.ui.hide_gui {
             self.native_render_gui_pre(&mut gui_canceled);
         }
-        // RenderGuiEvent.Pre can hide the HUD without changing the player's hide-GUI setting.
-        let hide_hud = self.ui.hide_gui || self.replay.playing();
-        let show_hud = !hide_hud && !gui_canceled;
+        // RenderGuiEvent.Pre can hide the HUD, not the mandatory diagnostics outside it.
+        let presentation_hidden = self.ui.hide_gui || self.replay.playing();
+        let show_hud = !presentation_hidden && !gui_canceled;
         // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
         // defers the subtitles over itself, and keeps them while F1 hides the
         // rest of the HUD.
@@ -7617,7 +7619,7 @@ impl Game<'_> {
         // after this point and so over what a mod drew.
         self.draw_screen_with_post_hook(&mut batch);
         self.draw_saving_indicator(&mut batch);
-        self.draw_every_toast(&mut batch, hide_hud, gui_canceled);
+        self.draw_every_toast(&mut batch, presentation_hidden, gui_canceled);
         if self.server_packs.prompt.is_none() {
             self.remote_hud(&mut batch);
             self.draw_sign_editor(&mut batch);
@@ -8882,7 +8884,9 @@ impl Game<'_> {
         self.score = Default::default();
         reset_world_progress(&mut self.adv, &mut self.stats);
         self.reset_creative_contents();
-        let stack = self.open_world_datapacks(&level.enabled_features)?;
+        let stack = self
+            .open_world_datapacks(&level.enabled_features)
+            .map_err(|error| error.diagnostic())?;
         let root = self.options.resources.clone();
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
         // A code-mod switch can have rebuilt the root since `Game::new`.
@@ -13102,6 +13106,20 @@ impl<'a> Game<'a> {
         audio: Audio,
         prepared: Option<GameCpuResources>,
     ) -> Result<Self> {
+        Self::construct(res, pack, gui, options, settings, audio, prepared, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn construct(
+        res: &'a Arc<Resources>,
+        pack: PackResources,
+        gui: UiResources,
+        options: Options,
+        settings: Settings,
+        audio: Audio,
+        prepared: Option<GameCpuResources>,
+        initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
+    ) -> Result<Self> {
         let phase = match Self::mod_phase_for_construction() {
             mod_api::__private::ModPhase::Packages if cfg!(test) => {
                 mod_api::__private::ModPhase::World
@@ -13112,18 +13130,10 @@ impl<'a> Game<'a> {
         let mod_phase = mod_api::__private::PhaseOwner::new(phase);
         // A scoped hook on this thread asks this game's parts.
         mod_api::__private::mark_game_thread();
-        let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
         let loop_side = options.execution_role.loop_side();
         let root = options.resources.clone();
         let mod_sources = options.mods.clone();
         let registry = pack.assets.registry;
-        // Until a world is opened the streamer is idle.
-        let mut streaming = Streaming::new(
-            Arc::new(TestTerrain::new(registry, res.biomes())?),
-            pack.context.clone(),
-            1,
-        );
-        streaming.paused = true;
         let level = Level::default();
         let save = Arc::new(SaveDir::new(
             std::env::current_dir()?
@@ -13168,6 +13178,34 @@ impl<'a> Game<'a> {
                 .map(|states| -> sunrise_client::particles::BlockStates { states })
         });
         let resource_source = pack.source.clone();
+        let (pack, gui) = if let Some(initial) = initial {
+            let mut unpublished = pack.clone();
+            unpublished.render = Arc::new(RenderAssets::unpublished());
+            let context = &pack.context;
+            unpublished.context = Arc::new(WorkerContext {
+                assets: context.assets.clone(),
+                render: unpublished.render.clone(),
+                tables: context.tables.clone(),
+                biomes: context.biomes.clone(),
+                light: context.light.clone(),
+                hidden_states: context.hidden_states.clone(),
+                part_tables: context.part_tables.clone(),
+            });
+            unpublished.layer_names = Default::default();
+            let metrics = UiResources::server(&pack.source)?;
+            *initial = Some(initial_client_models::InitialModelGeneration { pack, gui });
+            (unpublished, metrics)
+        } else {
+            (pack, gui)
+        };
+        // Until a world is opened the streamer is idle.
+        let mut streaming = Streaming::new(
+            Arc::new(TestTerrain::new(registry, res.biomes())?),
+            pack.context.clone(),
+            1,
+        );
+        streaming.paused = true;
+        let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
         let mut game = Game {
             structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns::load(
                 &options.resources,
@@ -13196,6 +13234,8 @@ impl<'a> Game<'a> {
             health_resources: res.motion().health.clone(),
             damage_tag_generation: 1,
             data_map_registries: Vec::new(),
+            pending_initial_models: None,
+            stitching_block_atlas: None,
             pack,
             gui,
             instance_groups: Default::default(),
@@ -13943,7 +13983,7 @@ pub(crate) fn run_with(
     native_biome_source::install();
     mods::register_components(&vanilla_root)?;
     mods::register_standalone_models(options.execution_role);
-    mods::register_layer_definitions(options.execution_role, &vanilla_root);
+    mods::register_layer_definitions(options.execution_role, &vanilla_root)?;
     mods::register_debug_entries(options.execution_role);
     mods::register_gui_layers(options.execution_role);
     mods::register_map_decoration_types();
@@ -13951,9 +13991,9 @@ pub(crate) fn run_with(
     mods::register_select_item_model_properties(options.execution_role);
     mods::register_resource_sources(options.execution_role);
     mods::register_enchantment_damage_effects();
-    mods::register_client_presentations(options.execution_role);
+    mods::register_client_presentations(options.execution_role)?;
     mods::register_meshing(options.execution_role);
-    mods::register_particles(options.execution_role);
+    mods::register_particles(options.execution_role)?;
     mods::freeze_declarations();
     mod_phase.advance(mod_api::__private::ModPhase::Setup)?;
     // Minecraft.<init>: read the last start's flag, then mark this one as not
@@ -14035,10 +14075,11 @@ pub(crate) fn run_with(
         None,
         std::mem::take(&mut loaded.client_applies),
         loaded.entity_models,
+        None,
     )?;
     if let Some(mut game) = game {
         // Minecraft.onGameLoadFinished: a start that made it this far is clean.
-        if game.options.execution_role.is_client() {
+        if game.options.is_client_start() && game.options.headless {
             game.settings.file.set(
                 "startedCleanly",
                 sunrise_client::options_file::V::Bool(true),

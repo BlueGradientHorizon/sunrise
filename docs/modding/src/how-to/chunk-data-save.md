@@ -10,6 +10,11 @@ cannot be written, the worker retries with stored block-entity payloads and keep
 The event's `data` is a typed, job-local attachment store. Use its `get`, `set`
 and `remove` methods with an `AttachmentType<T>` that has a persistence codec.
 `T` does not need `Wire`. An ignored codec error still refuses the whole job.
+After a codec error or panic, later listeners see the last accepted envelopes,
+not the failed listener's edits or error state. Their successful edits cannot
+make that job publish. `event.data.failure()` shows only the current callback's
+failure during dispatch. A phase refusal drops only that callback's proposal and
+is reported each time without disabling it.
 
 The callback runs on the persistence worker after capture and before encoding.
 For example, capturing 7, writing 8 in the callback and later writing 9 in the
