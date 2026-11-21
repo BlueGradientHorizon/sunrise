@@ -1,6 +1,6 @@
 //! Per-position connected-texture group receive path.
 use super::{Game, remote::Remote};
-use sunrise_protocol::connection_groups;
+use sunrise_protocol::{connection_groups, payload_negotiation::Phase};
 
 #[path = "native_connection_groups/receive.rs"]
 mod receive;
@@ -8,10 +8,15 @@ pub(in crate::game) use receive::{GroupIngress, ReceivedGroup};
 
 impl Remote {
     pub(in crate::game) fn negotiates_connection_groups(&self) -> bool {
-        sunrise_client::raw_payloads::negotiated(
-            self.session.payload_transport(),
-            connection_groups::CHANNEL,
-        )
+        self.session
+            .payload_transport()
+            .epoch()
+            .is_some_and(|epoch| {
+                epoch.phase == Phase::Play
+                    && epoch
+                        .peer
+                        .engine_receives(Phase::Play, connection_groups::CHANNEL)
+            })
     }
 }
 
@@ -46,8 +51,8 @@ mod tests {
         execution_role::ExecutionRole,
         native_entity_refs::tests::with_game,
         viewed_worlds::tests::{
-            client as viewed_client, close as viewed_close, column as viewed_column,
-            open as viewed_open, run as viewed_run,
+            client_with_pipe, close as viewed_close, column as viewed_column, open as viewed_open,
+            run as viewed_run,
         },
     };
     use mod_api::{
@@ -799,7 +804,8 @@ mod tests {
     }
 
     fn negotiate(game: &Game<'_>, with_groups: bool) {
-        let transport = game.remote.as_ref().unwrap().session.payload_transport();
+        let remote = game.remote.as_ref().unwrap();
+        let transport = remote.session.payload_transport();
         let entries: Vec<_> = transport
             .local
             .manifest
@@ -810,6 +816,7 @@ mod tests {
             .collect();
         transport.accept(&entries).unwrap();
         transport.finish_configuration().unwrap();
+        assert_eq!(remote.negotiates_connection_groups(), with_groups);
     }
 
     #[test]
@@ -904,7 +911,7 @@ mod tests {
         use sunrise_core::biome::BiomeZoom;
 
         let mut resources = None;
-        let mut game = viewed_client(&mut resources);
+        let (mut game, _server) = client_with_pipe(&mut resources);
         negotiate(&game, true);
         let root = ResourceRoot::directory(game.options.resources.clone());
         let mut sheet = Vec::new();
@@ -1019,8 +1026,7 @@ mod tests {
             })
         };
         for with_groups in [false, true] {
-            let mut game = viewed_client(&mut resources);
-            game.native_lifecycle.world_open_ready().unwrap();
+            let (mut game, _server) = client_with_pipe(&mut resources);
             negotiate(&game, with_groups);
             game.handle_packet(viewed_column(0, 0)).unwrap();
             game.handle_packet(viewed_open(1, "minecraft:the_nether"))

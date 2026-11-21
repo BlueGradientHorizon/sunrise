@@ -626,8 +626,8 @@ pub(in crate::game) mod tests {
         use crate::game::native_entity_refs::tests::{fixture_root, run_fresh_cases};
         use mod_api::{
             Block, BlockEntityEvent, BlockEntityOnLoadEvent, BlockEntityPart, BlockPart,
-            BlocksEvent, Compound, Hooks, HostSide, LevelSide, ModEntry, Mods, Registrar,
-            RegistrationContext, Tag,
+            BlockUpdateFlags, BlocksEvent, Compound, Hooks, HostSide, LevelSide, ModEntry, Mods,
+            Registrar, RegistrationContext, Tag,
         };
         use sunrise_client::{
             lan::{
@@ -753,10 +753,14 @@ pub(in crate::game) mod tests {
                 );
             } else {
                 game.enter_level(Dim::Nether).unwrap();
-                game.set_allow_commands(true);
-                assert!(game.run_command("setblock 648 120 648 view_group:holder"));
+                game.options.dedicated = Some(Vec::new());
                 let level = game.level(Dim::Nether.id()).unwrap();
-                let entity = game.block_entity(level, AT).unwrap();
+                let state = game.pack.assets.registry.default_state(BLOCK).unwrap();
+                assert_eq!(
+                    game.level_set_block(level, AT, state, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                let entity = game.block_entity(level, AT).expect("placed block entity");
                 assert_eq!(
                     entity.merge_data(
                         &mut game,
