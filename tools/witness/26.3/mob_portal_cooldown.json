@@ -1,0 +1,21 @@
+{
+  "minecraft": "26.3",
+  "oracle": "dev.sunriselab.parity.VanillaCommandExecOracle",
+  "harness": "tools/test_mob_portal_cooldown_parity.py",
+  "record_cmd": "python3 tools/test_mob_portal_cooldown_parity.py --record",
+  "inputs": {
+    "initial_cooldown": 20,
+    "merged_cooldown": 50
+  },
+  "expected": {
+    "after_summon": 20,
+    "after_first_tick": 19,
+    "after_chunk_reload": 19,
+    "after_reload_and_tick": 18,
+    "after_data_merge": 50,
+    "after_merge_and_tick": 49,
+    "after_data_remove": 0,
+    "plain_after_summon": 0,
+    "plain_after_first_tick": 0
+  }
+}
