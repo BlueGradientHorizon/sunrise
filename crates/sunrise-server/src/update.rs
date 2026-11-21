@@ -250,6 +250,7 @@ pub struct Release {
 fn fetch(url: &str) -> Result<Vec<u8>, String> {
     let mut body = Vec::new();
     sunrise_proxy::agent("sunrise-server-update", url, std::convert::identity)
+        .map_err(|e| format!("GitHub request: {e}"))?
         .get(url)
         .set("Accept", "application/vnd.github+json")
         .set("User-Agent", "sunrise-server")
@@ -473,7 +474,8 @@ pub fn download(install: &Install, release: &Release) -> Result<PathBuf, String>
     let part = folder.join(format!("{}.part", release.asset));
     let result = (|| {
         let url = &release.url;
-        let agent = sunrise_proxy::agent("sunrise-server-update", url, std::convert::identity);
+        let agent = sunrise_proxy::agent("sunrise-server-update", url, std::convert::identity)
+            .map_err(|e| format!("downloading {}: {e}", release.asset))?;
         let mut reader = agent
             .get(url)
             .set("User-Agent", "sunrise-server")

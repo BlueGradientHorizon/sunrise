@@ -4,7 +4,9 @@
 //! then `HTTPS_PROXY` or `HTTP_PROXY` for the URL's scheme, then `ALL_PROXY`.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::ffi::OsString;
+use std::fmt;
+use std::num::NonZeroU16;
 use std::sync::{Mutex, MutexGuard};
 
 /// What the launcher set, when it did.
@@ -12,7 +14,40 @@ static PROXY: Mutex<Option<String>> = Mutex::new(None);
 
 /// Agents kept for reuse, named by the part that asked and the proxy they use: a fresh `Agent`
 /// starts a new connection pool, so building one per request costs a handshake per file.
-static KEPT: Mutex<Option<HashMap<String, ureq::Agent>>> = Mutex::new(None);
+static KEPT: Mutex<Option<HashMap<AgentKey, ureq::Agent>>> = Mutex::new(None);
+
+#[derive(PartialEq, Eq, Hash)]
+struct AgentKey {
+    slot: String,
+    proxy: Option<String>,
+}
+
+/// A configuration error that can be reported without showing the proxy address or credentials.
+#[derive(Debug)]
+pub struct ProxyError {
+    setting: &'static str,
+    kind: InvalidProxy,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum InvalidProxy {
+    Authority,
+    Scheme,
+    Encoding,
+}
+
+impl fmt::Display for ProxyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let reason = match self.kind {
+            InvalidProxy::Authority => "invalid proxy authority",
+            InvalidProxy::Scheme => "unsupported proxy scheme",
+            InvalidProxy::Encoding => "proxy value is not valid Unicode",
+        };
+        write!(f, "{}: {reason}", self.setting)
+    }
+}
+
+impl std::error::Error for ProxyError {}
 
 /// The proxy to use from now on: the launcher's setting, or None to fall back to the environment.
 /// The agents built so far are dropped when it changes, since they hold the address it replaces.
@@ -27,96 +62,125 @@ pub fn set_proxy(spec: Option<String>) {
     *lock(&KEPT) = None;
 }
 
-/// The proxy address `url` is fetched through: what the launcher set, else the environment's for
-/// its scheme, unless `url` is a host that must be reached directly.
-pub fn proxy_spec_for(url: &str) -> Option<String> {
-    if direct(url) {
-        return None;
-    }
-    lock(&PROXY)
-        .clone()
-        .or_else(|| env_for(scheme_of(url).unwrap_or("https")))
-}
-
-/// A kept agent for `url`, using the same proxy rules as [`proxy_spec_for`].
+/// A kept agent for `url`, using the launcher setting or the environment unless the destination
+/// is reached directly. An invalid selected proxy is an error, not a direct route.
 /// Each `slot` names one builder configuration. `configure` only runs when the slot has no agent
 /// for the selected proxy, and should not set a proxy itself.
 pub fn agent(
     slot: &str,
     url: &str,
     configure: impl FnOnce(ureq::AgentBuilder) -> ureq::AgentBuilder,
-) -> ureq::Agent {
-    keep(slot, proxy_spec_for(url).as_deref(), |proxy| {
-        let builder = configure(ureq::AgentBuilder::new());
-        match proxy {
-            Some(proxy) => builder.proxy(proxy).build(),
-            None => builder.build(),
-        }
+) -> Result<ureq::Agent, ProxyError> {
+    let selected = if direct(url) {
+        None
+    } else if let Some(spec) = lock(&PROXY).clone() {
+        Some(("launcher proxy setting", spec))
+    } else {
+        env_proxy(scheme_of(url).unwrap_or("https"), |name| {
+            std::env::var_os(name)
+        })?
+    };
+    keep(
+        slot,
+        selected.as_ref().map(|(_, spec)| spec.as_str()),
+        |proxy| {
+            let builder = configure(ureq::AgentBuilder::new()).try_proxy_from_env(false);
+            match proxy {
+                Some(proxy) => builder.proxy(proxy).build(),
+                None => builder.build(),
+            }
+        },
+    )
+    .map_err(|error| ProxyError {
+        setting: selected.map_or(error.setting, |(name, _)| name),
+        ..error
     })
 }
 
 /// An agent built by `build` and kept for the next request with the same `slot` and proxy.
 /// Building a fresh agent every time would give each request a new connection pool.
+/// Only `None` requests a direct agent; an invalid `spec` returns an error without calling `build`.
 pub fn keep(
     slot: &str,
     spec: Option<&str>,
     build: impl FnOnce(Option<ureq::Proxy>) -> ureq::Agent,
-) -> ureq::Agent {
-    let proxy = spec.and_then(parse);
-    // An address that isn't a proxy is used as none, and remembered as none.
-    let key = format!(
-        "{slot} {}",
-        if proxy.is_some() {
-            spec.unwrap_or_default()
-        } else {
-            ""
-        }
-    );
+) -> Result<ureq::Agent, ProxyError> {
+    let key = AgentKey {
+        slot: slot.to_owned(),
+        proxy: spec.map(str::to_owned),
+    };
     if let Some(agent) = lock(&KEPT).as_ref().and_then(|kept| kept.get(&key)) {
-        return agent.clone();
+        return Ok(agent.clone());
     }
+    let proxy = spec
+        .map(parse_proxy)
+        .transpose()
+        .map_err(|kind| ProxyError {
+            setting: "proxy setting",
+            kind,
+        })?;
     let agent = build(proxy);
     lock(&KEPT)
         .get_or_insert_with(HashMap::new)
         .insert(key, agent.clone());
-    agent
+    Ok(agent)
 }
 
-/// `spec` as a proxy, when it is one. An address that can't be used is said once: a download left
-/// to go direct would otherwise fail with nothing pointing at the proxy.
+/// `spec` as a proxy, or `None` when the address cannot be used. For a download, use [`agent`] or
+/// [`keep`] so an invalid proxy is reported instead of being confused with an unset proxy.
 pub fn parse(spec: &str) -> Option<ureq::Proxy> {
-    // `socks5h` is curl's name for SOCKS5 with the proxy resolving host names. `ureq` has only the
-    // name `socks5`, which already sends it host names to resolve.
-    let address = match spec.strip_prefix("socks5h://") {
-        Some(rest) => format!("socks5://{rest}"),
-        None => spec.to_owned(),
+    parse_proxy(spec).ok()
+}
+
+fn parse_proxy(spec: &str) -> Result<ureq::Proxy, InvalidProxy> {
+    let spec = spec.trim_end_matches('/');
+    let (scheme, authority) = spec.split_once("://").unwrap_or(("http", spec));
+    let scheme = match scheme {
+        "http" | "socks4" | "socks4a" | "socks" | "socks5" => scheme,
+        // ureq's SOCKS5 already sends the proxy host names to resolve.
+        "socks5h" => "socks5",
+        scheme if valid_scheme(scheme) => return Err(InvalidProxy::Scheme),
+        _ => return Err(InvalidProxy::Authority),
     };
-    match ureq::Proxy::new(&address) {
-        Ok(proxy) => Some(proxy),
-        Err(_) => {
-            say("Invalid proxy URL; downloads go without one.");
-            None
-        }
+    // ureq splits the address at colons and silently defaults an unparseable port. Reject a
+    // malformed authority (including IPv6 proxy endpoints, which that parser cannot represent).
+    let address = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, addr)| addr);
+    let (host, port) = address
+        .split_once(':')
+        .map_or((address, None), |(host, port)| (host, Some(port)));
+    if host.is_empty()
+        || host
+            .chars()
+            .any(|c| c.is_whitespace() || "[]/\\?#".contains(c))
+        || authority.chars().any(char::is_control)
+        || port.is_some_and(|p| {
+            !p.bytes().all(|b| b.is_ascii_digit()) || p.parse::<NonZeroU16>().is_err()
+        })
+    {
+        return Err(InvalidProxy::Authority);
     }
+    ureq::Proxy::new(format!("{scheme}://{authority}")).map_err(|_| InvalidProxy::Authority)
 }
 
 /// `spec` as it may be shown: a user name and password in it become `***`. Everything up to the
 /// last `@`, excluding a valid scheme prefix, is hidden so unescaped delimiters in passwords aren't
 /// shown either. Diagnostics for invalid settings should not display their value at all.
 pub fn redacted(spec: &str) -> String {
-    let (scheme, rest) = match spec.split_once("://") {
-        Some((scheme, rest))
-            if matches!(scheme.as_bytes(), [first, tail @ ..] if first.is_ascii_alphabetic()
-                && tail.iter().all(|b| b.is_ascii_alphanumeric() || b"+-.".contains(b))) =>
-        {
-            (format!("{scheme}://"), rest)
-        }
-        _ => (String::new(), spec),
-    };
-    match rest.rfind('@') {
-        Some(at) => format!("{scheme}***@{}", &rest[at + 1..]),
+    let prefix_len = spec
+        .split_once("://")
+        .filter(|(scheme, _)| valid_scheme(scheme))
+        .map_or(0, |(scheme, _)| scheme.len() + 3);
+    match spec.rfind('@') {
+        Some(at) => format!("{}***@{}", &spec[..prefix_len], &spec[at + 1..]),
         None => spec.to_owned(),
     }
+}
+
+fn valid_scheme(scheme: &str) -> bool {
+    matches!(scheme.as_bytes(), [first, rest @ ..] if first.is_ascii_alphabetic()
+        && rest.iter().all(|b| b.is_ascii_alphanumeric() || b"+-.".contains(b)))
 }
 
 /// Whether `url` is reached without the proxy: a local address, or a host `NO_PROXY` names. The
@@ -126,19 +190,38 @@ pub fn direct(url: &str) -> bool {
 }
 
 /// `HTTPS_PROXY` (`HTTP_PROXY` for an http address), then `ALL_PROXY`, in the upper-case spelling
-/// first and the lower-case one after, as the tools that write them do.
+/// first and the lower-case one after, as the tools that write them do. For routing a request,
+/// use [`agent`] to distinguish a missing setting from one that cannot be decoded.
 pub fn env_for(scheme: &str) -> Option<String> {
-    let names: &[&str] = if scheme.eq_ignore_ascii_case("http") {
-        &["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"]
+    env_proxy(scheme, |name| std::env::var_os(name))
+        .ok()
+        .flatten()
+        .map(|(_, spec)| spec)
+}
+
+fn env_proxy(
+    scheme: &str,
+    mut read: impl FnMut(&str) -> Option<OsString>,
+) -> Result<Option<(&'static str, String)>, ProxyError> {
+    let names = if scheme.eq_ignore_ascii_case("http") {
+        ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"]
     } else {
-        &["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"]
+        ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"]
     };
-    names.iter().find_map(|name| {
-        std::env::var(name)
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty())
-    })
+    names
+        .into_iter()
+        .find_map(|name| {
+            let value = read(name)?;
+            let Some(value) = value.to_str() else {
+                return Some(Err(ProxyError {
+                    setting: name,
+                    kind: InvalidProxy::Encoding,
+                }));
+            };
+            let value = value.trim();
+            (!value.is_empty()).then(|| Ok((name, value.to_owned())))
+        })
+        .transpose()
 }
 
 /// `NO_PROXY`'s list: the hosts reached directly whatever the proxy is.
@@ -215,15 +298,6 @@ fn excluded(host: &str, no_proxy: &str) -> bool {
 /// A host without the brackets an IPv6 literal wears, lower case.
 fn bare(host: &str) -> String {
     host.trim().trim_matches(['[', ']']).to_ascii_lowercase()
-}
-
-/// Said once, however many downloads follow: a wrong address is one thing to report, not one
-/// report per file.
-fn say(what: &str) {
-    static SAID: AtomicBool = AtomicBool::new(false);
-    if !SAID.swap(true, Ordering::Relaxed) {
-        eprintln!("{what}");
-    }
 }
 
 /// The lock, even after a thread panicked while holding it: an address lost to a panic is worse
@@ -367,11 +441,43 @@ mod tests {
     }
 
     #[test]
-    fn an_address_that_cant_be_used_becomes_no_proxy() {
-        assert!(parse("http://127.0.0.1:7890").is_some());
-        assert!(parse("127.0.0.1:7890").is_some());
-        assert!(parse("socks5://127.0.0.1:7891").is_some());
-        assert!(parse("socks3://127.0.0.1:7890").is_none());
+    fn a_selected_invalid_proxy_never_builds_a_direct_agent() {
+        let _turn = alone();
+        // An existing direct agent must not be reused when selection produces an invalid proxy.
+        keep("invalid", None, |_| ureq::AgentBuilder::new().build()).unwrap();
+        for (spec, kind) in [
+            (
+                "http://proxy.example:dummy-password",
+                InvalidProxy::Authority,
+            ),
+            ("http://proxy.example:65536", InvalidProxy::Authority),
+            ("http://proxy.example:", InvalidProxy::Authority),
+            ("http://:3128", InvalidProxy::Authority),
+            ("http://proxy.example/path", InvalidProxy::Authority),
+            (
+                "dummy-user:dummy-password://with@delimiters@proxy.example",
+                InvalidProxy::Authority,
+            ),
+            (
+                "https://dummy-user:dummy-password@proxy.example",
+                InvalidProxy::Scheme,
+            ),
+        ] {
+            let fail = |_| panic!("an invalid proxy must not be used to build an agent");
+            let error = keep("invalid", Some(spec), fail).unwrap_err();
+            assert_eq!(error.kind, kind);
+            let message = error.to_string();
+            assert!(!message.contains("dummy-user"));
+            assert!(!message.contains("dummy-password"));
+        }
+        for spec in [
+            "http://127.0.0.1:7890",
+            "127.0.0.1:7890",
+            "dummy-user:dummy-password@proxy.example:3128",
+            "socks5://127.0.0.1:7891",
+        ] {
+            assert!(parse(spec).is_some());
+        }
     }
 
     /// A stand-in SOCKS5 proxy: answers one request itself and returns the host it was asked for.
@@ -437,6 +543,7 @@ mod tests {
                 agent("test-configured", url, |builder| {
                     builder.redirects(0).timeout(TIMEOUT)
                 })
+                .unwrap()
                 .get(url)
                 .call()
                 .unwrap()
@@ -450,6 +557,14 @@ mod tests {
                 302,
                 "the direct agent must not redirect"
             );
+            let error = agent("test-configured", "https://sunrise.invalid/", |_| {
+                panic!("a rejected setting must stop before building the agent")
+            })
+            .unwrap_err();
+            assert_eq!(error.setting, "HTTPS_PROXY");
+            assert_eq!(error.kind, InvalidProxy::Scheme);
+            assert!(error.to_string().contains("HTTPS_PROXY"));
+            assert!(!error.to_string().contains("dummy-password"));
             return;
         }
 
@@ -483,6 +598,10 @@ mod tests {
             ])
             .env(LOCAL_URL, local_url)
             .env("HTTP_PROXY", format!("socks5h://127.0.0.1:{port}"))
+            .env(
+                "HTTPS_PROXY",
+                "https://dummy-user:dummy-password@proxy.example",
+            )
             .env("NO_PROXY", "")
             .output()
             .unwrap();
@@ -507,7 +626,8 @@ mod tests {
             keep("kept", None, |_| {
                 built += 1;
                 ureq::AgentBuilder::new().build()
-            });
+            })
+            .unwrap();
         }
         assert_eq!(built, 1, "three requests, one agent");
         // Another address is another agent, and a new setting drops the ones before it.
@@ -515,13 +635,15 @@ mod tests {
             assert!(proxy.is_some());
             built += 1;
             ureq::AgentBuilder::new().build()
-        });
+        })
+        .unwrap();
         assert_eq!(built, 2, "a second address needs a second agent");
         set_proxy(Some("http://127.0.0.1:7891".into()));
         keep("kept", Some("http://127.0.0.1:7891"), |_| {
             built += 1;
             ureq::AgentBuilder::new().build()
-        });
+        })
+        .unwrap();
         assert_eq!(built, 3, "a new setting drops the agents kept before it");
         set_proxy(None);
     }

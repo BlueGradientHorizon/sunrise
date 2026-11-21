@@ -36,7 +36,8 @@ pub(super) fn fetch(out: &Path) -> Result<(), String> {
     write_list(out, |url| {
         let agent = sunrise_proxy::agent("cargo-sunrise-mod-registry", url, |builder| {
             builder.redirects(0).timeout(Duration::from_secs(30))
-        });
+        })
+        .map_err(|e| format!("GitHub request failed: {e}"))?;
         let mut request = agent
             .get(url)
             .set("Accept", "application/vnd.github+json")

@@ -1,10 +1,12 @@
 //! Port-pack's download agents and redirect checks.
 
-pub use sunrise_proxy::{direct, env_for, host_of, keep, parse, redacted, scheme_of, set_proxy};
+pub use sunrise_proxy::{
+    ProxyError, direct, env_for, host_of, keep, parse, redacted, scheme_of, set_proxy,
+};
 
 /// An agent for downloading `url`: through the proxy when one is set, unless `url` is a host that
 /// must be reached directly.
-pub fn agent(url: &str) -> ureq::Agent {
+pub fn agent(url: &str) -> Result<ureq::Agent, ProxyError> {
     sunrise_proxy::agent("port-pack", url, std::convert::identity)
 }
 
@@ -13,7 +15,8 @@ pub(crate) fn get_from_hosts(url: &str, hosts: &[&str]) -> Result<Option<ureq::R
     follow(url, hosts, |address| {
         let agent = sunrise_proxy::agent("port-pack-no-redirect", address, |builder| {
             builder.redirects(0)
-        });
+        })
+        .map_err(|e| format!("{address}: {e}"))?;
         match agent
             .get(address)
             .set("User-Agent", crate::modrinth::AGENT)
