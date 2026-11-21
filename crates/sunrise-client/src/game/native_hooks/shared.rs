@@ -123,6 +123,7 @@ impl Game<'_> {
             slots: 0,
             mouse: self.cursor(),
             partial_tick: self.clock.fraction() as f32,
+            regions: &[],
         }))
     }
 
@@ -1169,6 +1170,7 @@ impl Game<'_> {
             slots: self.slot_count(),
             mouse: self.cursor(),
             partial_tick: self.clock.fraction() as f32,
+            regions: self.screen_regions(screen),
         })
     }
     /// The title's own screen as a native mod sees it (`ScreenView`):
@@ -1186,6 +1188,7 @@ impl Game<'_> {
             slots: 0,
             mouse: self.cursor(),
             partial_tick: self.clock.fraction() as f32,
+            regions: &[],
         }))
     }
     /// The open screen's container panel in GUI pixels (`screen`'s, the one

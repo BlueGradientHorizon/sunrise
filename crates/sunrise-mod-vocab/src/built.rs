@@ -136,6 +136,7 @@ pub struct ScreenView<'a> {
     pub slots: usize,
     pub mouse: [f32; 2],
     pub partial_tick: f32,
+    pub regions: &'a [ScreenRegion],
 }
 impl<'a> From<ScreenView<'a>> for super::ScreenView<'a> {
     fn from(v: ScreenView<'a>) -> Self {
@@ -147,6 +148,7 @@ impl<'a> From<ScreenView<'a>> for super::ScreenView<'a> {
             slots,
             mouse,
             partial_tick,
+            regions,
         } = v;
         Self {
             id,
@@ -156,6 +158,7 @@ impl<'a> From<ScreenView<'a>> for super::ScreenView<'a> {
             slots,
             mouse,
             partial_tick,
+            regions,
         }
     }
 }

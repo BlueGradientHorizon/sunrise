@@ -81,6 +81,39 @@ they reflect this frame's resize and panel positioning, not a cached window size
 To draw a sprite from synchronized menu data, see
 [Draw a progress bar and a fuel gauge](menu-gauges.md).
 
+## What a screen draws beside its panel
+
+`ScreenView::rect` is a container screen's panel (vanilla's `leftPos`, `topPos`, `imageWidth`, `imageHeight`).
+`ScreenView::regions` lists what the same screen draws outside it this frame. Each region is a `ScreenRegionKind`
+and a `rect`, `[x, y, width, height]` in GUI pixels from the window's top left, taken from the layout that draws it:
+
+| Kind | Present while | Rectangle (vanilla 26.3) |
+|---|---|---|
+| `RecipeBook` | the recipe book is open and the window is wide enough to show it | its panel, 147 x 166, left of the container's |
+| `RecipeBookTabs` | the recipe book shows tabs | the tab column at `xPosTab` (30 pixels left of the book), 35 x 27 a tab, 27 apart; the selected tab sticks out 2 more |
+| `CreativeTab` | the creative inventory is open | one per tab of the page shown, 26 x 32, from `getTabX` / `getTabY` above and below the panel |
+| `Effects` | effects show beside the inventory | the effects' box, compact or full, after `render_inventory_mob_effects` moved or resized it |
+
+A region that's hidden, folded or too narrow to show isn't in the list, and a screen with none has an empty list.
+A mod that lays out its own panel beside a screen (a recipe viewer's item list, an overlay) keeps clear of
+`rect` and of every region:
+
+```rust,ignore
+fn screen_render_post(&self, _host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
+    let screen = event.screen;
+    let overlaps = |a: [f32; 4], b: [f32; 4]| {
+        a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]
+    };
+    let taken = |cell: [f32; 4]| screen.regions.iter().any(|r| overlaps(r.rect, cell));
+    // ... lay out the panel's cells, skipping each cell for which `taken(cell)` holds.
+}
+```
+
+The list is made once a frame, and only while a mod listens to a screen hook, and it is borrowed, so reading it
+costs nothing. It holds the game's own regions only. What another mod's screen draws beside its window (an upgrade
+column, a row of tabs) is that mod's to report: on NeoForge that's JEI's `IGuiContainerHandler.getGuiExtraAreas`, and
+here the viewer mod's own library API.
+
 ## Replacing a mod container slot's tooltip
 
 `MenuPart::screen_tooltip` runs for a hovered filled slot as well

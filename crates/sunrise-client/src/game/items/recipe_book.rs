@@ -811,6 +811,13 @@ impl Game<'_> {
         let (x, y) = self.book_origin(batch);
         Some([x, y, WIDTH, HEIGHT])
     }
+    /// The open book's column of category tabs (`RecipeBookTabButton`s at
+    /// `xPosTab`, `tab_pos`), from its panel `book`: 35 x 27 each, 27 apart,
+    /// the selected one 2 pixels further left, as tall as the tabs the book
+    /// shows. None while it shows none.
+    pub(in crate::game) fn recipe_book_tabs_rect(&self, book: [f32; 4]) -> Option<[f32; 4]> {
+        tab_column(book, self.recipe_ui.view.tabs.len())
+    }
     /// The green book button's top-left corner.
     fn book_button_pos(&self, book: BookType, ox: f32, batch: &HudBatch) -> (f32, f32) {
         let mid = (batch.height / 2.0).floor();
@@ -2476,5 +2483,25 @@ mod screen_room_tests {
                 assert_eq!(game.inventory_origin(&batch), (194.0, 37.0));
             });
         });
+    }
+}
+
+/// The column `shown` category tabs make beside the book's panel `book`
+/// (`RecipeBookComponent.updateTabs`: `xPosTab` 30 left of the book, 3 down,
+/// 35 x 27 a tab, 27 apart; the selected tab 2 further left). None for none.
+fn tab_column(book: [f32; 4], shown: usize) -> Option<[f32; 4]> {
+    (shown > 0).then(|| [book[0] - 32.0, book[1] + 3.0, 37.0, 27.0 * shown as f32])
+}
+
+#[cfg(test)]
+mod tab_column_tests {
+    /// Vanilla's tab column for a book at (54, 37): from x 24 (22 with the
+    /// selected tab out) to the book's x + 5, from y 40, 27 a tab.
+    #[test]
+    fn the_tab_column_is_where_update_tabs_puts_the_tabs() {
+        let book = [54.0, 37.0, 147.0, 166.0];
+        assert_eq!(super::tab_column(book, 0), None);
+        assert_eq!(super::tab_column(book, 1), Some([22.0, 40.0, 37.0, 27.0]));
+        assert_eq!(super::tab_column(book, 5), Some([22.0, 40.0, 37.0, 135.0]));
     }
 }

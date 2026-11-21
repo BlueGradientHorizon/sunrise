@@ -11,5 +11,6 @@ pub(super) fn screen_view_with_id<'a>(view: &ScreenView<'a>, id: &'static str) -
         slots: view.slots,
         mouse: view.mouse,
         partial_tick: view.partial_tick,
+        regions: view.regions,
     })
 }

@@ -925,6 +925,43 @@ pub struct SignEditView {
     pub front: bool,
 }
 
+/// What a [`ScreenRegion`] is: one of the parts vanilla 26.3 draws outside a container screen's panel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum ScreenRegionKind {
+    /// The open recipe book's panel (`RecipeBookComponent`, 147 x 166, left of the container's window).
+    RecipeBook,
+    /// The open recipe book's column of category tabs (`RecipeBookTabButton`s at `xPosTab`, 35 x 27 each, 27 apart),
+    /// left of its panel; as tall as the tabs the book shows.
+    RecipeBookTabs,
+    /// One tab of the creative inventory (`CreativeModeInventoryScreen.getTabX` / `getTabY`, 26 x 32), above or
+    /// below its panel: one region per tab drawn.
+    CreativeTab,
+    /// The active effects beside the inventory (`EffectsInInventory`), as wide and tall as they draw (compact or
+    /// full rows), after `render_inventory_mob_effects` moved or resized them.
+    Effects,
+}
+
+/// A region of the open screen that the game itself draws outside its container panel ([`ScreenView::rect`]), in
+/// GUI pixels from the window's top left, as `[x, y, width, height]`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+#[derive(sunrise_mod_api_macros::Wire)]
+pub struct ScreenRegion {
+    /// What the game draws there.
+    pub kind: ScreenRegionKind,
+    /// Where: `[x, y, width, height]` in GUI pixels.
+    pub rect: [f32; 4],
+}
+
+impl ScreenRegion {
+    /// A region of `kind` at `rect` (`[x, y, width, height]` in GUI pixels).
+    pub const fn new(kind: ScreenRegionKind, rect: [f32; 4]) -> Self {
+        Self { kind, rect }
+    }
+}
+
 // no wire: borrowed call-scoped view; transport uses owned snapshots rather than serializing references.
 /// The open screen, for the screen hooks (`screen_render_post`, the
 /// mouse ones `screen_mouse_button_pressed_pre`, `..._released_pre` and
@@ -972,6 +1009,13 @@ pub struct ScreenView<'a> {
     /// This frame's partial tick (`getGameTimeDeltaPartialTick(false)`, 0 to
     /// 1): what the screen draws animation against.
     pub partial_tick: f32,
+    /// What the screen itself draws outside `rect` this frame, each from the
+    /// same layout that draws it: the recipe book's panel and its tab column
+    /// while the book is open, the creative inventory's tabs, the active
+    /// effects beside the inventory. A region hidden, folded or too narrow to
+    /// show is left out; empty on a screen with none. What other mods draw
+    /// beside their screens is theirs to report (a recipe viewer's own API).
+    pub regions: &'a [ScreenRegion],
 }
 
 /// A camera-local visual light, with no gameplay light or shadow writes.
