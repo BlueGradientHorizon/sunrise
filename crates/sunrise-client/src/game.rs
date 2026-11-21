@@ -390,6 +390,8 @@ struct GameLevel<'w> {
     world: &'w mut World,
     command_block_transition: Option<command_blocks::CommandBlockTransition>,
     placement_entity: Option<Box<transactions::PlacementEntity>>,
+    /// The retired generation's own removal decision during a coalesced block write.
+    placement_removal: Option<transactions::PlacementRemoval>,
     redstone_experiments: bool,
     facts: &'w BlockFacts,
     /// The block-state facts a part reads through `LevelHost::block_states`.
@@ -3156,6 +3158,7 @@ impl Game<'_> {
             part_state_index: self.attachment_indexes.get(&self.dim),
             command_block_transition: None,
             placement_entity: None,
+            placement_removal: None,
             positions: piston_carry_state::PositionState {
                 gateways: &mut self.be_anims.gateway_servers,
                 hoppers: &mut self.hoppers,

@@ -365,6 +365,13 @@ impl Kept {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct PlacementRemoval {
+    pub(super) pos: Pos,
+    pub(super) generation: Option<u64>,
+    pub(super) side_effects: bool,
+}
+
 /// A tentative entity held aside while the root write removes the old one.
 pub(super) struct PlacementEntity(Pos, BlockStateId, Kept);
 
@@ -1940,7 +1947,7 @@ impl Game<'_> {
                     let final_is_staged = staged_entity.is_some()
                         && self.world.block_entities.generation(&pos) == staged_entity;
                     let mut placement_entity = None;
-                    let mut replay_flags = flags;
+                    let mut placement_removal = None;
                     if final_is_staged && !net_keeps_group {
                         // Supply the final generation to LevelChunk's creation step, not
                         // its removal step. The latter gets the generation actually removed.
@@ -1958,11 +1965,14 @@ impl Game<'_> {
                             } else if !net_keeps_group
                                 && !self.world.block_entities.contains_key(&pos)
                             {
+                                placement_removal = Some(PlacementRemoval {
+                                    pos,
+                                    generation: removed.2.generation,
+                                    side_effects: removal_flags
+                                        & flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS
+                                        == 0,
+                                });
                                 removed.install(&mut self.world);
-                                // The later placement must not change how the earlier write
-                                // retired this entity. Keep every other merged update flag.
-                                let skip = flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS;
-                                replay_flags = (flags & !skip) | (removal_flags & skip);
                             } else if net_keeps_group
                                 && let Some(kept) = level.block_entities.get(&pos)
                             {
@@ -1994,16 +2004,22 @@ impl Game<'_> {
                         }
                         // The stored state back, so the one real write sees the change.
                         self.world.set_stored(pos.0, pos.1, pos.2, was);
-                        let pos = [pos.0, pos.1, pos.2];
-                        if level_host {
-                            self.with_level(|_, level, ticks| {
+                        self.with_level(|b, level, ticks| {
+                            level.placement_removal = placement_removal;
+                            if level_host {
                                 level.placement_entity = placement_entity;
-                                level.native_set_block(ticks, pos, now, replay_flags);
-                            });
-                            let _ = self.process_level_events();
-                        } else {
-                            let _ = self.level_set_with_flags(pos, now, replay_flags);
-                        }
+                                level.native_set_block(ticks, [pos.0, pos.1, pos.2], now, flags);
+                            } else {
+                                b.set_block(
+                                    level,
+                                    ticks,
+                                    BlockPos::new(pos.0, pos.1, pos.2),
+                                    now,
+                                    flags,
+                                );
+                            }
+                        });
+                        let _ = self.process_level_events();
                     } else if clear_connection_group {
                         // A round trip that preserves the block state can still end the
                         // group's lifetime. Its group-only publication sends the current

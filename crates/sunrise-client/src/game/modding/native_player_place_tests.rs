@@ -59,14 +59,19 @@ fn a_block_placed_as_a_player_runs_set_placed_by() {
 #[test]
 #[ignore = "daily"]
 fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
-    use super::native_entity_refs::tests::run_fresh_cases;
+    use super::native_entity_refs::tests::{fixture_root, run_fresh_cases};
+    use super::native_guest_turn_tests::with_guests_at;
     use mod_api::{
-        BlockEntityRef, BlockState, BlockUpdateFlags, EntityPlaceEvent, Flow, Hooks, ITEMS,
-        ItemResource, LivingRef, ModEntry, Placement, ServerHost, run_transaction,
+        BlockEntityRef, BlockPart, BlockState, BlockUpdateFlags, BlocksEvent, EntityPlaceEvent,
+        Flow, Hooks, ITEMS, ItemResource, LevelTicksHost, LivingRef, ModEntry, Mods, Placement,
+        Registrar, RegistrationContext, ServerHost, UpdateShapeEvent, run_transaction,
     };
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
-    use sunrise_client::{containers::BlockEntity, items::ItemStack};
+    use sunrise_client::{
+        containers::{BlockEntity, ModBlockEntity, ModContainer},
+        items::ItemStack,
+    };
     use sunrise_core::{nbt::Tag, position::BlockPos};
 
     const FLAG: &str = "SUNRISE_TEST_PLAYER_PLACE";
@@ -76,6 +81,8 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
     const WRITE: [i32; 3] = [4, 70, 2];
     const OUTER: [i32; 3] = [5, 70, 2];
     const NAME: &str = "The placed chest";
+    const ADJACENT: [i32; 3] = [2, 71, 2];
+    const ADJACENT_BLOCK: &str = "placement_probe:adjacent";
     if run_fresh_cases(
         "game::native_player_place_tests::chosen_placement_attributes_the_player_and_rolls_back_on_refusal",
         FLAG,
@@ -108,8 +115,42 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
         seen: Arc<Mutex<Vec<PlacementSeen>>>,
         entity: Arc<Mutex<Option<BlockEntityRef>>>,
     }
+    struct AdjacentShape;
+
+    #[mod_api::sunrise_part]
+    impl BlockPart for AdjacentShape {
+        fn update_shape(
+            &self,
+            level: &mut dyn LevelTicksHost,
+            event: &mut UpdateShapeEvent,
+        ) -> Option<BlockState> {
+            let origin = BlockPos::new(AT[0], AT[1], AT[2]);
+            if event.neighbour_pos == origin
+                && Some(event.neighbour) == level.block_state_id("minecraft:barrel")
+            {
+                return level.block_state_id("minecraft:granite");
+            }
+            None
+        }
+    }
+
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
+        fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+            if self.case == "chest-skip-removal" {
+                event
+                    .register(mod_api::Block::new(ADJACENT_BLOCK, "minecraft:stone"))
+                    .unwrap();
+            }
+        }
+
+        fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+            if self.case == "chest-skip-removal" {
+                let block = registrar.block_key(ADJACENT_BLOCK);
+                registrar.block_part(block, AdjacentShape);
+            }
+        }
+
         fn entity_place(&self, host: &mut dyn ServerHost, event: &mut EntityPlaceEvent) -> Flow {
             let level = host.level("minecraft:overworld").unwrap();
             assert_eq!(level.block_state(host, AT), Some(event.state));
@@ -162,16 +203,26 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
     let case = std::env::var(FLAG).unwrap();
     let seen = Arc::new(Mutex::new(Vec::new()));
     let entity = Arc::new(Mutex::new(None));
-    let mods = vec![ModEntry::new(
+    let skip_removal = case == "chest-skip-removal";
+    let mods: Mods = vec![ModEntry::new(
         "placement_probe",
         Box::new(Probe {
             case: case.clone(),
             seen: seen.clone(),
             entity: entity.clone(),
         }),
-    )];
-    with_mods(mods.into(), || {
-        with_guests(|game| {
+    )]
+    .into();
+    with_mods(mods.clone(), || {
+        let base = fixture_root();
+        let prepared = skip_removal.then(|| {
+            super::api_values::install_parts(&mods).unwrap();
+            super::mods::content_root(&base, &Default::default()).unwrap()
+        });
+        let root = prepared
+            .as_ref()
+            .map_or(base, |root| root.prepared().to_path_buf());
+        with_guests_at(root, |game| {
             use super::api_values::TryIntoApi;
             loaded(game);
             let place_as = game.player(13).unwrap();
@@ -192,7 +243,6 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
             let chest = api_state(game, "minecraft:chest");
             let barrel = api_state(game, "minecraft:barrel");
             let is_bed = case.starts_with("bed-");
-            let skip_removal = case == "chest-skip-removal";
             let (before, chosen) = match case.as_str() {
                 _ if is_bed => (chest, foot),
                 "chest-replace" => (barrel, chest),
@@ -222,6 +272,43 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                 );
             }
             let original_entity = game.block_entity(level, AT);
+            if skip_removal {
+                let adjacent = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state(ADJACENT_BLOCK)
+                    .unwrap();
+                assert_eq!(
+                    level.set_block(
+                        game,
+                        ADJACENT,
+                        adjacent.try_into_api().unwrap(),
+                        BlockUpdateFlags::NONE
+                    ),
+                    Ok(true)
+                );
+                game.world.block_entities.set_mod_containers(
+                    [(
+                        adjacent.0,
+                        Arc::new(ModContainer {
+                            slots: 1,
+                            ..Default::default()
+                        }),
+                    )]
+                    .into_iter()
+                    .collect(),
+                );
+                let mut container =
+                    ModBlockEntity::new("placement_probe:container".into(), Default::default());
+                container
+                    .items
+                    .push(Some(ItemStack::new("minecraft:gold_ingot", 11)));
+                game.world.block_entities.insert(
+                    (ADJACENT[0], ADJACENT[1], ADJACENT[2]),
+                    BlockEntity::Mod(Box::new(container)),
+                );
+            }
             game.world.block_log = Some(Vec::new());
             let place = |game: &mut super::Game<'_>| {
                 game.as_guest(12, |game| {
@@ -230,7 +317,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     } else {
                         BlockFace::East
                     };
-                    place_as.place_block(game, level, AT, chosen, face, false)
+                    place_as.place_block(game, level, AT, chosen, face, skip_removal)
                 })
                 .unwrap()
             };
@@ -382,17 +469,29 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     let slots = game.world.block_entities.get(&(2, 70, 2)).unwrap().slots();
                     assert_eq!(slots[0], Some(ItemStack::new("minecraft:stone", 7)));
                     assert!(slots[1..].iter().all(Option::is_none));
+                    let (dropped_item, count) = if skip_removal {
+                        assert_eq!(
+                            level.block_state(game, ADJACENT),
+                            Some(api_state(game, "minecraft:granite"))
+                        );
+                        assert!(game.block_entity(level, ADJACENT).is_none());
+                        // The original chest's dirt stays suppressed, but the barrel's own
+                        // shape updates must spill the adjacent container's gold.
+                        ("minecraft:gold_ingot", 11)
+                    } else {
+                        ("minecraft:dirt", 133)
+                    };
                     assert!(
                         game.dropped
                             .iter()
-                            .all(|item| &*item.stack.item == "minecraft:dirt")
+                            .all(|item| &*item.stack.item == dropped_item)
                     );
                     assert_eq!(
                         game.dropped
                             .iter()
                             .map(|item| item.stack.count)
                             .sum::<u32>(),
-                        if skip_removal { 0 } else { 133 }
+                        count
                     );
                 }
                 "chest-accept" | "chest-replace" => {
