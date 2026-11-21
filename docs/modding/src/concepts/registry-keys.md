@@ -417,8 +417,9 @@ and negative cooldown ticks are refused without changing the hit. Use `event.con
 to borrow a read-only view. Pre's damage edits don't change the amount remembered for the
 cooldown. Post follows that hit's death processing or totem protection, before the hurt caller
 resumes. The next hazard, poison application or rider's hit sees the preceding hit completed,
-without waiting for a tick or turn to end. A vetoed death still reaches Post, as does a hit that
-took no health. `inflicted()` reads what Pre left before absorption, while
+without waiting for a tick or turn to end. This includes a bee's drowning and stinger expiry
+hurts in one AI step. A vetoed death still reaches Post, as does a hit that took no health.
+`inflicted()` reads what Pre left before absorption, while
 `health_damage()` reads what the hit applied to health.
 Use `add_reduction_modifier(Reduction::..., |view, amount| ...)` in `living_incoming_damage`
 or `living_damage_pre` to install an owned native reduction closure on the live hit.

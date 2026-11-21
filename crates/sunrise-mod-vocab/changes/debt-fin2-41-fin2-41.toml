@@ -78,7 +78,11 @@ next tick nor the playing body's turn exit dispatches Post. Death and protection
 without a Post listener. The borrowed server tick releases its loans at the hurt boundaries in \
 vanilla `Entity.baseTick`, `Entity.applyEffectsFromBlocks`, `LivingEntity.tickEffects` and \
 `LivingEntity.aiStep`. `Dolphin.tick` finishes dry-out damage before the land hop; \
-`FollowPlayerRiddenEntityGoal.tick` finishes a movement hurt before repathing. \
+`FollowPlayerRiddenEntityGoal.tick` finishes a movement hurt before repathing, and \
+`BreathAirGoal.tick` finishes one before movement restitution and the next goal. \
+`Bee.customServerAiStep` finishes drowning before the stinger expiry check, retaining vanilla's earlier \
+`hasStung` read but using current health for the next hit. Expiry finishes before nectar and anger \
+bookkeeping and `Mob.serverAiStep`'s movement controls. \
 `Entity.checkFallDamage`, `HoneyBlock.fallOn`, `FarmlandBlock.fallOn` and \
 `LivingEntity.handleFallFlyingCollisions` finish landing or gliding hurts before proceeding; \
 `AbstractHorse.causeFallDamage` finishes the horse's own hurt before \
@@ -144,5 +148,6 @@ standalone `DamageContainer::new(...)`.
 - Post now runs at version 3's documented hit boundary. No further handler, type or manifest \
 pin changes are needed beyond the migration above. If a handler relied on the accidental \
 next-tick delay, use the in-hit result or explicitly schedule your own later work. The next \
-hazard, poison application or rider's hit already observes the preceding hit completed.\
+hazard, poison application or rider's hit already observes the preceding hit completed. This includes \
+a bee's stinger expiry following drowning in the same AI step.\
 """

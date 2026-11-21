@@ -10,9 +10,12 @@ pub trait Hooks {
     /// poison application or rider's hit sees the preceding hit already completed. It is not
     /// delayed to the next tick or the end of a player's turn. A queued mob effect's hurt
     /// finishes before the next action; a dolphin's dry-out hurt finishes before the land hop.
+    /// A bee's drowning hurt finishes before it checks stinger expiry; an expiry hurt finishes
+    /// before nectar and anger bookkeeping and movement controls.
     /// A server player's landing hurt finishes before the landing's `HIT_GROUND` and fall reset,
     /// and before the next accepted move. A mob landing in its own tick finishes its hurt before
-    /// the fall reset, movement restitution, travel's collision hurt or a later goal.
+    /// the fall reset, movement restitution, travel's collision hurt or a later goal, including
+    /// when a dolphin moves to reach air or follow a rider.
     /// A pufferfish sting on a mob finishes the hit before applying poison or starting the
     /// next sting, and before the fish's own `entity_tick_post`.
     /// A projectile hit finishes before its enchantment effects, levitation or a follow-up

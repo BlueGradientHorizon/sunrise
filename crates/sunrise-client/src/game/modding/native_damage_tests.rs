@@ -1158,6 +1158,183 @@ fn borrowed_pufferfish_posts_before_poison_and_the_next_sting() {
     });
 }
 
+#[derive(Debug, PartialEq)]
+enum BeeAiMoment {
+    DrowningIncoming,
+    DrowningPost,
+    StingerIncoming(f32),
+    StingerPost,
+    AngerCleared,
+}
+
+struct BeeAiProbe {
+    id: u32,
+    mark_stung_on_drowning: bool,
+    trace: Arc<Mutex<Vec<BeeAiMoment>>>,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for BeeAiProbe {
+    fn living_incoming_damage(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut LivingIncomingDamageEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.entity as u32 == self.id {
+            let moment = match event.source.damage_type {
+                "minecraft:drown" => {
+                    event
+                        .container
+                        .set_post_attack_invulnerability_ticks(0)
+                        .unwrap();
+                    BeeAiMoment::DrowningIncoming
+                }
+                "minecraft:generic" => BeeAiMoment::StingerIncoming(event.container.original()),
+                _ => return mod_api::Flow::Continue,
+            };
+            self.trace.lock().unwrap().push(moment);
+        }
+        mod_api::Flow::Continue
+    }
+
+    fn living_damage_post(&self, _: &mut dyn HitHost, event: &mut LivingDamagePostEvent<'_>) {
+        if event.entity as u32 == self.id {
+            let moment = match event.source.damage_type {
+                "minecraft:drown" => BeeAiMoment::DrowningPost,
+                "minecraft:generic" => BeeAiMoment::StingerPost,
+                _ => return,
+            };
+            self.trace.lock().unwrap().push(moment);
+        }
+    }
+
+    fn living_death(
+        &self,
+        host: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::LivingDeathEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.entity != self.id {
+            return mod_api::Flow::Continue;
+        }
+        let entity = host.entity(self.id).unwrap();
+        // Expiry must hurt for this restored health, not health from before drowning.
+        assert!(host.living(entity).unwrap().set_health(host, 4.0));
+        if self.mark_stung_on_drowning && event.source.damage_type == "minecraft:drown" {
+            let mut patch = mod_api::Compound::default();
+            patch.insert("HasStung".into(), mod_api::Tag::Byte(1));
+            assert!(entity.merge_nbt(host, patch));
+        }
+        mod_api::Flow::Cancel
+    }
+
+    fn living_change_target(
+        &self,
+        _: &dyn mod_api::Host,
+        event: &mut mod_api::LivingChangeTargetEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.mob.entity().id() == self.id && event.new_target.is_none() {
+            self.trace.lock().unwrap().push(BeeAiMoment::AngerCleared);
+        }
+        mod_api::Flow::Continue
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn borrowed_bee_posts_at_both_server_ai_hurts() {
+    use super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_client::mobs::{Who, bee};
+
+    const CASE: &str = "SUNRISE_BORROWED_BEE_DAMAGE_CHILD";
+    if run_fresh_cases(
+        "game::native_damage_tests::borrowed_bee_posts_at_both_server_ai_hurts",
+        CASE,
+        &["expiry", "snapshot"],
+    ) {
+        return;
+    }
+    let snapshot = std::env::var(CASE).unwrap() == "snapshot";
+    let id = 225054;
+    let trace = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "bee-ai-hurt-order",
+        Box::new(BeeAiProbe {
+            id,
+            mark_stung_on_drowning: snapshot,
+            trace: Arc::clone(&trace),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.build_registries();
+            game.streaming
+                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+            let water = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:water")
+                .unwrap();
+            game.world.set(1, 80, 1, water).unwrap();
+            let mut body = mob(game, id, "minecraft:bee");
+            body.position = Vec3::new(1.5, 80.0, 1.5);
+            body.health = 0.5;
+            body.ai.goals.clear();
+            body.ai.targets.clear();
+            bee::set_has_stung(&mut body, !snapshot);
+            let bee = body.extra.bee.as_mut().unwrap();
+            bee.under_water = 20;
+            if !snapshot {
+                // At 1200 the expiry roll is certain. Anger at a departed target
+                // is cleared by updatePersistentAnger, the tail of the custom step.
+                bee.time_since_sting = 1199;
+                let departed = Some(Who::Mob(id + 1));
+                bee.angry_at = departed;
+                bee.anger_end = game.world.game_time + 100;
+                body.set_target(departed);
+            }
+            game.mobs.push(body);
+            game.entity_section_joined(id, [1.5, 80.0, 1.5]);
+
+            game.tick_creature_entities().unwrap();
+
+            let body = game.mobs.iter().find(|m| m.id == id).unwrap();
+            let bee = bee::get(body).unwrap();
+            use BeeAiMoment::*;
+            if snapshot {
+                assert!(
+                    bee::has_stung(body),
+                    "the death listener changed the live flag"
+                );
+                assert_eq!(
+                    bee.time_since_sting, 0,
+                    "the step reads the pre-drowning flag"
+                );
+                assert_eq!(*trace.lock().unwrap(), [DrowningIncoming, DrowningPost]);
+            } else {
+                assert_eq!(
+                    *trace.lock().unwrap(),
+                    [
+                        DrowningIncoming,
+                        DrowningPost,
+                        StingerIncoming(4.0),
+                        StingerPost,
+                        AngerCleared
+                    ]
+                );
+                assert_eq!(bee.time_since_sting, 1200);
+                assert_eq!(bee.under_water, 21);
+            }
+            assert_eq!(
+                bee.ticks_without_nectar, 1,
+                "the custom step's tail runs once"
+            );
+        });
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
@@ -1584,21 +1761,23 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
 
 #[test]
 #[ignore = "daily"]
-fn a_dolphin_follow_move_posts_before_the_next_goal() {
+fn a_dolphin_goal_move_posts_before_the_next_goal() {
     use super::native_entity_refs::tests::run_fresh_cases;
     use sunrise_client::mobs::{
         dolphin::FollowPlayerRidden,
-        goals::{Cx, Goal},
+        goals::{BreathAir, Cx, Goal},
         living::TravelPause,
     };
 
+    const CASE: &str = "SUNRISE_DOLPHIN_GOAL_DAMAGE_CHILD";
     if run_fresh_cases(
-        "game::native_damage_tests::a_dolphin_follow_move_posts_before_the_next_goal",
-        "SUNRISE_DOLPHIN_FOLLOW_DAMAGE_CHILD",
-        &["follow"],
+        "game::native_damage_tests::a_dolphin_goal_move_posts_before_the_next_goal",
+        CASE,
+        &["follow", "breath"],
     ) {
         return;
     }
+    let breath = std::env::var(CASE).unwrap() == "breath";
 
     // Use the real goal, observing its completion separately from the next goal's tick.
     #[derive(Clone, Debug)]
@@ -1645,18 +1824,40 @@ fn a_dolphin_follow_move_posts_before_the_next_goal() {
         }
     }
 
+    struct KeepLowAir(u32);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for KeepLowAir {
+        fn living_breathe(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::LivingBreatheEvent,
+        ) {
+            if event.entity.entity().id() == self.0 {
+                // Keep the low air on this land tick before BreathAir checks it.
+                event.can_breathe = true;
+                event.refill = 0;
+            }
+        }
+    }
+
     let id = 225048;
     let trace = Arc::new(Mutex::new(Vec::new()));
-    let mods = vec![mod_api::ModEntry::new(
-        "follow-landing-order",
+    let mut mods = vec![mod_api::ModEntry::new(
+        "goal-landing-order",
         Box::new(MobLandingProbe {
             id,
             next_hit: None,
             trace: Arc::clone(&trace),
         }),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
+    )];
+    if breath {
+        mods.push(mod_api::ModEntry::new(
+            "keep-low-air",
+            Box::new(KeepLowAir(id)),
+        ));
+    }
+    mod_platform::testing::with_mods(mods.into(), || {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
@@ -1670,12 +1871,14 @@ fn a_dolphin_follow_move_posts_before_the_next_goal() {
                 .unwrap();
             game.world.set(1, 79, 1, stone).unwrap();
 
-            let at = Vec3::new(3.5, 80.0, 1.5);
-            let mut boat = super::boats::Boat::new(225049, "oak".into(), at, 0.0);
-            boat.velocity.x = 0.2;
-            game.riding = Some(boat.id);
-            game.boats.push(boat);
-            game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
+            if !breath {
+                let at = Vec3::new(3.5, 80.0, 1.5);
+                let mut boat = super::boats::Boat::new(225049, "oak".into(), at, 0.0);
+                boat.velocity.x = 0.2;
+                game.riding = Some(boat.id);
+                game.boats.push(boat);
+                game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
+            }
 
             let mut dolphin = mob(game, id, "minecraft:dolphin");
             dolphin.position = Vec3::new(1.5, 80.0, 1.5);
@@ -1684,29 +1887,36 @@ fn a_dolphin_follow_move_posts_before_the_next_goal() {
             dolphin.health = 0.5;
             dolphin.ai.goals = Default::default();
             dolphin.ai.targets = Default::default();
-            dolphin.ai.goals.add(
-                0,
-                Follow(FollowPlayerRidden::new(false), Arc::clone(&trace)),
-            );
+            if breath {
+                dolphin.air = 20;
+                dolphin.ai.goals.add(0, BreathAir::default());
+            } else {
+                dolphin.ai.goals.add(
+                    0,
+                    Follow(FollowPlayerRidden::new(false), Arc::clone(&trace)),
+                );
+            }
             dolphin.ai.goals.add(1, FollowingGoal(Arc::clone(&trace)));
             game.mobs.push(dolphin);
             game.entity_section_joined(id, [1.5, 80.0, 1.5]);
 
             game.tick_creature_entities().unwrap();
 
-            assert_eq!(
-                *trace.lock().unwrap(),
-                [
-                    MobLandingMoment::Death(
-                        Some(mod_api::Tag::Double(6.0_f64.to_bits())),
-                        Some([0.0, -0.5, 0.0])
-                    ),
-                    MobLandingMoment::Post,
-                    MobLandingMoment::Repath,
-                    MobLandingMoment::NextGoal,
-                    MobLandingMoment::TickFinished(Some(mod_api::Tag::Double(0))),
-                ]
-            );
+            let mut expected = vec![
+                MobLandingMoment::Death(
+                    Some(mod_api::Tag::Double(6.0_f64.to_bits())),
+                    Some([0.0, -0.5, 0.0]),
+                ),
+                MobLandingMoment::Post,
+            ];
+            if !breath {
+                expected.push(MobLandingMoment::Repath);
+            }
+            expected.extend([
+                MobLandingMoment::NextGoal,
+                MobLandingMoment::TickFinished(Some(mod_api::Tag::Double(0))),
+            ]);
+            assert_eq!(*trace.lock().unwrap(), expected);
         })
     });
 }

@@ -1108,6 +1108,10 @@ enum DamageTail {
         was_on_fire: bool,
         no_ai: bool,
     },
+    BeeServerAi {
+        next: super::bee::ServerAiStage,
+        was_on_fire: bool,
+    },
     /// The caller's movement slot holds the exact travel or goal stage.
     Movement,
 }
@@ -1134,6 +1138,11 @@ enum BaseStage {
     EffectCountdown(EffectCursor),
     ContactLava { lava: bool, was_on_fire: bool },
     Finish { was_on_fire: bool },
+}
+
+enum AiPause {
+    Movement(MovementPhase),
+    BeeDamage(super::bee::ServerAiStage),
 }
 
 #[derive(Debug)]
@@ -1408,6 +1417,15 @@ pub(super) fn resume_after_damage(
             movement.is_some(),
             next,
         ),
+        DamageTail::BeeServerAi { next, was_on_fire } => {
+            let progress = match bee_server_ai_step(m, w, level, events, next) {
+                ControlFlow::Continue(()) => {
+                    ai_step_after_server_ai(m, w, level, events, movement.is_some())
+                }
+                ControlFlow::Break(next) => ControlFlow::Break(AiPause::BeeDamage(next)),
+            };
+            finish_ai_progress(m, w, level, events, was_on_fire, movement, progress)
+        }
         DamageTail::Movement => resume_movement(
             m,
             w,
@@ -1499,7 +1517,6 @@ fn ai_and_finish_tick(
     events: &mut Vec<MobEvent>,
     movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
-    let pause_damage = movement.is_some();
     if m.no_ai {
         update_fall_flying(m, w, events);
         reset_effect_fall_distance(m);
@@ -1528,15 +1545,38 @@ fn ai_and_finish_tick(
         // NoAI mob pushes what it overlaps (and is pushed back by its own
         // push).
         drop_tiny_motion(m);
-    } else if let Some(phase) = ai_step(m, w, level, events, movement.is_some()) {
-        return pause_movement(
+        return start_ai_tail(m, w, level, events, was_on_fire, movement.is_some());
+    }
+    let progress = ai_step(m, w, level, events, movement.is_some());
+    finish_ai_progress(m, w, level, events, was_on_fire, movement, progress)
+}
+
+fn finish_ai_progress(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    was_on_fire: bool,
+    movement: Option<&mut Option<MobMovement>>,
+    progress: ControlFlow<AiPause>,
+) -> TickProgress {
+    match progress {
+        ControlFlow::Continue(()) => {
+            start_ai_tail(m, w, level, events, was_on_fire, movement.is_some())
+        }
+        ControlFlow::Break(AiPause::Movement(phase)) => pause_movement(
             m,
             movement.expect("only a game-owned tick pauses movement"),
             phase,
             was_on_fire,
-        );
+        ),
+        ControlFlow::Break(AiPause::BeeDamage(next)) => {
+            TickProgress::Paused(Pause::AfterDamage(DamageResume {
+                join: m.join,
+                tail: DamageTail::BeeServerAi { next, was_on_fire },
+            }))
+        }
     }
-    start_ai_tail(m, w, level, events, was_on_fire, pause_damage)
 }
 
 fn start_ai_tail(
@@ -1708,9 +1748,11 @@ pub(super) fn resume_movement(
         MovementPhase::Travel(travel) => match travel.resume(m, w, level, events) {
             ControlFlow::Continue(()) => {
                 hurt_teleports(m, w, events);
-                None
+                ControlFlow::Continue(())
             }
-            ControlFlow::Break(travel) => Some(MovementPhase::Travel(travel)),
+            ControlFlow::Break(travel) => {
+                ControlFlow::Break(AiPause::Movement(MovementPhase::Travel(travel)))
+            }
         },
         MovementPhase::Goal(goal) => {
             let paused = {
@@ -1718,22 +1760,27 @@ pub(super) fn resume_movement(
                 goals.resume_movement(mob, &mut Cx { w, level, events }, goal)
             };
             if let Some(goal) = paused {
-                Some(MovementPhase::Goal(goal))
+                ControlFlow::Break(AiPause::Movement(MovementPhase::Goal(goal)))
             } else {
                 if m.removed {
                     return TickProgress::Complete(false);
                 }
-                finish_server_ai_step(m, w, level, events);
-                ai_step_after_goals(m, w, level, events, true)
-                    .break_value()
-                    .map(MovementPhase::Travel)
+                match finish_server_ai_step(m, w, level, events) {
+                    ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, true),
+                    ControlFlow::Break(next) => ControlFlow::Break(AiPause::BeeDamage(next)),
+                }
             }
         }
     };
-    match progress {
-        None => start_ai_tail(m, w, level, events, paused.was_on_fire, true),
-        Some(phase) => pause_movement(m, movement, phase, paused.was_on_fire),
-    }
+    finish_ai_progress(
+        m,
+        w,
+        level,
+        events,
+        paused.was_on_fire,
+        Some(movement),
+        progress,
+    )
 }
 
 /// Resume the living tick after species AI (and the block walk and freezing
@@ -3107,7 +3154,7 @@ fn ai_step(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_movement: bool,
-) -> Option<MovementPhase> {
+) -> ControlFlow<AiPause> {
     if m.species() == Species::Parrot {
         super::parrot::ai_step(m, w, level.random(), events);
     }
@@ -3154,26 +3201,22 @@ fn ai_step(
         super::piglin::before_goals(m, w, level.random(), events);
     }
     if m.alive() && !immobile {
-        if let Some(paused) = server_ai_until_movement_pause(m, w, level, events, pause_movement) {
-            return Some(MovementPhase::Goal(paused));
-        }
+        server_ai_until_pause(m, w, level, events, pause_movement)?;
     } else {
         m.ai.jumping = false;
         m.ai.xxa = 0.0;
         m.ai.zza = 0.0;
     }
-    ai_step_after_goals(m, w, level, events, pause_movement)
-        .break_value()
-        .map(MovementPhase::Travel)
+    ai_step_after_server_ai(m, w, level, events, pause_movement)
 }
 
-fn ai_step_after_goals(
+fn ai_step_after_server_ai(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_movement: bool,
-) -> ControlFlow<super::living::TravelPause> {
+) -> ControlFlow<AiPause> {
     m.handle_jumping(w);
     let input = Vec3::new(
         f64::from(m.ai.xxa),
@@ -3188,7 +3231,8 @@ fn ai_step_after_goals(
         m.velocity = Vec3::ZERO;
     } else if !(m.species() == Species::Mannequin && m.extra.immovable) {
         // Mannequin.isEffectiveAi: an immovable one never travels.
-        m.travel_until_pause(w, level, input, events, pause_movement)?;
+        m.travel_until_pause(w, level, input, events, pause_movement)
+            .map_break(|travel| AiPause::Movement(MovementPhase::Travel(travel)))?;
         // A fall's hurt (checkFallDamage) teleports at once.
         hurt_teleports(m, w, events);
     }
@@ -3662,17 +3706,17 @@ pub(super) fn server_ai_step(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) {
-    server_ai_until_movement_pause(m, w, level, events, false);
+    let _ = server_ai_until_pause(m, w, level, events, false);
 }
 
-/// Mob.serverAiStep through the running goals, one of which may move the mob.
-fn server_ai_until_movement_pause(
+/// `Mob.serverAiStep`, pausing on goal movement or a bee's own hurt.
+fn server_ai_until_pause(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_movement: bool,
-) -> Option<super::goals::GoalMovementPause> {
+) -> ControlFlow<AiPause> {
     // A Java `int`: past `i32::MAX` it wraps, as there.
     m.ai.no_action_time = m.ai.no_action_time.wrapping_add(1);
     // A happy ghast set up for its age (ageBoundaryReached runs at once).
@@ -3682,13 +3726,13 @@ fn server_ai_until_movement_pause(
     // A saddled mount follows its rider instead of its goals.
     if super::equine::controlled(m) {
         super::equine::ridden_step(m, w.loop_context);
-        return None;
+        return ControlFlow::Continue(());
     }
     super::riders::drive(m, w);
     let tick_count = i64::from(m.age);
     let id_based = tick_count + i64::from(m.id);
-    // Of the built-in goals, only the dolphin's rider-follow goal calls
-    // `Entity.move` directly. Dynamic goals cannot install that native goal.
+    // Only the dolphin's BreathAir and rider-follow goals call `Entity.move`
+    // directly. Dynamic goals cannot install those native goals.
     let pause_goals = pause_movement && m.species() == Species::Dolphin;
     {
         let BorrowedGoalSelectors {
@@ -3705,7 +3749,7 @@ fn server_ai_until_movement_pause(
         }
         if pause_goals {
             if let Some(paused) = goals.tick_until_movement_pause(mob, &mut cx, force) {
-                return Some(paused);
+                return ControlFlow::Break(AiPause::Movement(MovementPhase::Goal(paused)));
             }
         } else if force {
             goals.tick(mob, &mut cx);
@@ -3713,8 +3757,7 @@ fn server_ai_until_movement_pause(
             goals.tick_running(mob, &mut cx, false);
         }
     }
-    finish_server_ai_step(m, w, level, events);
-    None
+    finish_server_ai_step(m, w, level, events).map_break(AiPause::BeeDamage)
 }
 
 fn finish_server_ai_step(
@@ -3722,7 +3765,7 @@ fn finish_server_ai_step(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-) {
+) -> ControlFlow<super::bee::ServerAiStage> {
     // A creaking looked at stands still: its navigation, move, look and jump
     // controls wait (CreakingPathNavigation and the Creaking*Control).
     let frozen = super::creaking::is_creaking(m) && !super::creaking::can_move(m);
@@ -3756,10 +3799,28 @@ fn finish_server_ai_step(
     {
         super::animal_brain::tick(m, w, level, events);
     }
-    {
-        let mut cx = Cx { w, level, events };
-        custom_server_ai_step(m, &mut cx);
+    if m.species() == Species::Bee {
+        return bee_server_ai_step(m, w, level, events, super::bee::ServerAiStage::Start);
     }
+    custom_server_ai_step(m, &mut Cx { w, level, events });
+    tick_ai_controls(m, w, events, frozen);
+    ControlFlow::Continue(())
+}
+
+/// A bee rejoins `Mob.serverAiStep` at the controls only after its own step is done.
+fn bee_server_ai_step(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    stage: super::bee::ServerAiStage,
+) -> ControlFlow<super::bee::ServerAiStage> {
+    super::bee::server_ai_step(m, w, level, stage)?;
+    tick_ai_controls(m, w, events, false);
+    ControlFlow::Continue(())
+}
+
+fn tick_ai_controls(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>, frozen: bool) {
     if frozen {
         m.ai.jumping = false;
         return;
@@ -3825,7 +3886,6 @@ fn custom_server_ai_step(m: &mut Mob, cx: &mut Cx) {
         // SpellcasterIllager.customServerAiStep.
         Species::Evoker | Species::Illusioner if m.extra.counter > 0 => m.extra.counter -= 1,
         Species::Bat => super::bat::server_ai_step(m, cx.w, cx.events),
-        Species::Bee => super::bee::server_ai_step(m, cx),
         Species::Frog => super::frog::server_ai_step(m, cx.w),
         // Hoglin and Piglin.customServerAiStep: the brain, then updateActivity.
         Species::Piglin | Species::Hoglin => super::piglin::brain_step(m, cx),

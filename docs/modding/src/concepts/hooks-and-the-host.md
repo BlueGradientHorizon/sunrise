@@ -175,10 +175,14 @@ protection that hit caused, before the hurt caller resumes. This is not a next-t
 notification. The next hazard, poison application or rider's hit observes the preceding hit
 completed; a later hit never shares the first hit's `DamageContainerView`. A mob's queued effect
 hurt finishes before the next action, and a dolphin's dry-out hurt finishes before its hop on land.
+A bee finishes drowning damage before checking stinger expiry. The bee uses the stung state
+it read before drowning, but the expiry hit uses its current health. The expiry hit finishes
+before the bee updates nectar and anger and runs its movement controls.
 A server player's landing hurt settles death or protection and Post on the landing body before
 `HIT_GROUND`, the fall-distance reset, and the next accepted move. In a mob's own tick, landing
 hurt settles before the fall-distance reset, the rest of movement, a gliding collision hurt or
-another goal. Trampling farmland is still decided before the landing hurt.
+another goal. This includes the dolphin's moves to reach air or follow a rider.
+Trampling farmland is still decided before the landing hurt.
 A pufferfish's sting on a mob finishes the hurt, including any death and `living_damage_post`,
 before applying that sting's poison or starting the next sting. The fish's own `entity_tick_post`
 follows all of its stings.

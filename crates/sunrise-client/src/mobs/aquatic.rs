@@ -167,7 +167,7 @@ pub fn register(m: &mut Mob) {
             // `Dolphin`'s `moistness` field starts full.
             m.extra.counter = 2400;
             let g = &mut m.ai.goals;
-            g.add(0, BreathAir);
+            g.add(0, BreathAir::default());
             g.add(0, TryFindWater::default());
             g.add(1, super::dolphin::SwimToTreasure::default());
             g.add(2, super::dolphin::SwimWithPlayer::new(4.0));

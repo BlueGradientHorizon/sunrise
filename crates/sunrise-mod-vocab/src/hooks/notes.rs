@@ -1575,7 +1575,9 @@ mod mixin or use it replaces in its design or PR."#]
   and the cooldown, at the end of `hurtServer` (after the sounds and that hit's death or totem protection),
   before the hurt caller resumes, even for a hit that took no health (`container.health_damage()` 0).
   The next hazard, poison application or rider's hit sees the preceding hit completed; no callback waits for
-  the next tick or turn exit. Post lends a read-only live `DamageContainerView` (no snapshot conversion). Its `container.should_cause_side_effects()` is `hurtServer`'s
+  the next tick or turn exit. A bee's drowning hurt finishes before stinger expiry is checked,
+  and an expiry hurt finishes before nectar and anger bookkeeping and the server AI controls.
+  Post lends a read-only live `DamageContainerView` (no snapshot conversion). Its `container.should_cause_side_effects()` is `hurtServer`'s
   fresh-hit decision (`shouldCauseSideEffects`), taken before the damage: true for a fresh hit, false for a stronger hit
   inside the invulnerability window, and true for a source that bypasses the cooldown. The flag is not inferred from
   final damage or invulnerability ticks, so a damage listener changing those leaves it. It accompanies the reductions
