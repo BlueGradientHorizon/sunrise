@@ -671,13 +671,12 @@ impl Game<'_> {
         // `LivingEntity.canUsePortal` (#943): not a passenger — its vehicle
         // goes through and carries it (`carry_riders_through_portals`) — and
         // not asleep.
-        if g.motion
+        let inside = g
+            .motion
             .as_deref()
             .is_some_and(|p| self.can_use_portal_of(p, riding, sleeping))
-            && let Some(pos) = self.nether_portal_inside(at)
-        {
-            self.portals.player.set_inside(pos, PLAYER_DELAY);
-        }
+            .then(|| self.nether_portal_inside(at))
+            .flatten();
         // `ServerPlayer.showEndCredits`: the player stays out of the world while the
         // poem rolls, then PERFORM_RESPAWN takes it to its respawn point.
         let Some(host) = self.lan.as_ref() else {
@@ -806,10 +805,10 @@ impl Game<'_> {
             sunrise_client::gamerules::vanilla::PLAYERS_NETHER_PORTAL_DEFAULT_DELAY
         };
         let transition = self.ui.rules.int_at(rule).max(0);
-        let Some(entry) = self
-            .portals
-            .player
-            .handle(!sleeping, transition, PLAYER_DELAY)
+        let Some(entry) =
+            self.portals
+                .player
+                .tick_inside(inside, !sleeping, transition, PLAYER_DELAY)
         else {
             return;
         };
@@ -1783,12 +1782,14 @@ mod tests {
                 .default_state("minecraft:nether_portal")
                 .unwrap();
             game.world.set(3, 64, 5, portal).unwrap();
+            // handlePortal decays the wait first; only a player that may use
+            // the portal is then marked inside it, for the next tick.
             for (body, dead, sleeping, riding, expected) in [
-                (true, false, false, false, 9),
-                (true, false, true, false, 4),
-                (true, false, false, true, 4),
-                (true, true, false, false, 4),
-                (false, false, false, false, 4),
+                (true, false, false, false, true),
+                (true, false, true, false, false),
+                (true, false, false, true, false),
+                (true, true, false, false, false),
+                (false, false, false, false, false),
             ] {
                 game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                     g.position = [3.5, 64.0, 5.5];
@@ -1813,9 +1814,10 @@ mod tests {
                     inside: false,
                 });
                 game.handle_server_portal(12);
+                let process = game.portals.player.process.unwrap();
                 assert_eq!(
-                    game.portals.player.process.unwrap().time,
-                    expected,
+                    (process.time, process.inside),
+                    (4, expected),
                     "body={body} dead={dead} sleeping={sleeping} riding={riding}"
                 );
             }
