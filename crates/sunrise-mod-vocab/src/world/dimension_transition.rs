@@ -10,6 +10,7 @@ type TransitionFactory = dyn Fn(&dyn ClientHost, DimensionTransitionReason) -> B
 // no wire: the registration owns a factory with process-local code and captures.
 /// A loading-screen factory registered once by `Hooks::register_dimension_transition_screen`.
 /// Only travel that opens a new loading screen can select it; login and death never select one.
+// exhaustive: private storage keeps the travel key and its per-load factory together.
 pub struct DimensionTransitionScreen {
     screen: String,
     transition: DimensionTransition,

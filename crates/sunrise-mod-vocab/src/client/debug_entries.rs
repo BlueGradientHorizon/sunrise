@@ -9,6 +9,7 @@ pub type DebugEntryLines = dyn Fn(&dyn ClientHost, &mut Vec<String>) + Send + Sy
 
 // no wire: a text entry owns a process-local callback.
 /// An F3 entry registered at client startup: text in a vanilla group or a renderer toggle.
+// exhaustive: private storage keeps the ID with either a text callback or a renderer toggle.
 pub struct DebugEntry {
     id: String,
     text: Option<(DebugGroup, Box<DebugEntryLines>)>,
@@ -52,6 +53,7 @@ type DebugRendererDraw =
 
 // no wire: the renderer owns a process-local draw callback.
 /// A world-space debug renderer owned by the client until its renderer list next refreshes.
+// exhaustive: private storage keeps the registered switch ID and its draw callback together.
 pub struct DebugRenderer {
     id: String,
     draw: Box<DebugRendererDraw>,
