@@ -1614,7 +1614,7 @@ impl Game<'_> {
 
     // remote_teleport: remote/sync.rs
 
-    // tick_remote..tick_remote_player,tick_remote_block_entities: remote/tick.rs
+    // tick_remote and tick_remote_player: remote/tick.rs
 
     /// `Level.tickBlockEntities` on a client: the block entities' animations
     /// and client ticks, and the moving pistons' pushes.
