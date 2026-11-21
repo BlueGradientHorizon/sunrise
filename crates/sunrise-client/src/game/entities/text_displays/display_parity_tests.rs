@@ -542,6 +542,9 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         game.posed_rotation = Some((0.0, 0.0));
         game.view.y_rot = 0.0;
         game.view.x_rot = 0.0;
+        // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
+        game.settings.render_distance = 8;
+        game.settings.entity_distance = 1.0;
         let stone = game
             .pack
             .assets
@@ -858,6 +861,9 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
         game.posed_rotation = Some((0.0, 0.0));
         game.view.y_rot = 0.0;
         game.view.x_rot = 0.0;
+        // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
+        game.settings.render_distance = 8;
+        game.settings.entity_distance = 1.0;
 
         // 1. Deterministic spawn/insertion order matching GenPvP menu `render_order` (including ID inversions).
         game.text_displays.clear();
@@ -1085,6 +1091,9 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
         game.posed_rotation = Some((0.0, 0.0));
         game.view.y_rot = 0.0;
         game.view.x_rot = 0.0;
+        // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
+        game.settings.render_distance = 8;
+        game.settings.entity_distance = 1.0;
         assert!(!game.gui.atlas.object_skins.contains_key(&id_key));
         assert!(!game.gui.atlas.object_skins.contains_key(&name_key));
 
@@ -1111,6 +1120,9 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         game.posed_rotation = Some((0.0, 0.0));
         game.view.y_rot = 0.0;
         game.view.x_rot = 0.0;
+        // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
+        game.settings.render_distance = 8;
+        game.settings.entity_distance = 1.0;
         let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
@@ -1184,6 +1196,9 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         game.posed_rotation = Some((0.0, 0.0));
         game.view.y_rot = 0.0;
         game.view.x_rot = 0.0;
+        // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
+        game.settings.render_distance = 8;
+        game.settings.entity_distance = 1.0;
         let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
@@ -1336,8 +1351,10 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
         game.block_item_display_geometry(cam, 1.0, &mut blocks);
+        game.begin_skinning();
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
         game.mob_run_geometry(&mob_frame, mob_range.clone(), &mut mob_verts);
+        let mob_drawn = !mob_verts.is_empty() || game.skin_frame.borrow().vertices > 0;
         let uncompiled = gate["inside_build_uncompiled"].as_bool().unwrap();
         assert_eq!(
             !normal.is_empty(),
@@ -1349,11 +1366,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             uncompiled,
             "block display in uncompiled section"
         );
-        assert_eq!(
-            !mob_verts.is_empty(),
-            uncompiled,
-            "mob in uncompiled section"
-        );
+        assert_eq!(mob_drawn, uncompiled, "mob in uncompiled section");
 
         // Compiled empty section while fading (< 0.3 visibility) stays hidden; fade = 0 renders.
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
@@ -1367,8 +1380,10 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         mob_verts.clear();
         game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
         game.block_item_display_geometry(cam, 1.0, &mut blocks);
+        game.begin_skinning();
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
         game.mob_run_geometry(&mob_frame, mob_range.clone(), &mut mob_verts);
+        let mob_drawn = !mob_verts.is_empty() || game.skin_frame.borrow().vertices > 0;
         let fading = gate["inside_build_empty_fading_0_2"].as_bool().unwrap();
         assert_eq!(
             !normal.is_empty(),
@@ -1380,7 +1395,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             fading,
             "block display in fading empty section"
         );
-        assert_eq!(!mob_verts.is_empty(), fading, "mob in fading empty section");
+        assert_eq!(mob_drawn, fading, "mob in fading empty section");
 
         game.settings.chunk_fade = 0.0;
         normal.clear();
@@ -1388,8 +1403,10 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         mob_verts.clear();
         game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
         game.block_item_display_geometry(cam, 1.0, &mut blocks);
+        game.begin_skinning();
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
         game.mob_run_geometry(&mob_frame, mob_range, &mut mob_verts);
+        let mob_drawn = !mob_verts.is_empty() || game.skin_frame.borrow().vertices > 0;
         let visible = gate["inside_build_empty_fade_0"].as_bool().unwrap();
         assert_eq!(
             !normal.is_empty(),
@@ -1401,11 +1418,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             visible,
             "block display in visible empty section"
         );
-        assert_eq!(
-            !mob_verts.is_empty(),
-            visible,
-            "mob in visible empty section"
-        );
+        assert_eq!(mob_drawn, visible, "mob in visible empty section");
 
         // Above and below build height: always visible even when uncompiled.
         for (id, y, key) in [

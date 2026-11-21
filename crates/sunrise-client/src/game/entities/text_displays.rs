@@ -94,6 +94,16 @@ fn renders(shows: Shows, id: u8) -> bool {
         }
 }
 
+/// `Mth.lerp(double, double, double)` applied per axis (`Vec3.lerp`), avoiding `glam::DVec3::lerp`'s
+/// `a * (1 - t) + b * t` 1-ULP drift.
+fn lerp_dvec3(start: glam::DVec3, end: glam::DVec3, delta: f64) -> glam::DVec3 {
+    glam::DVec3::new(
+        start.x + delta * (end.x - start.x),
+        start.y + delta * (end.y - start.y),
+        start.z + delta * (end.z - start.z),
+    )
+}
+
 /// `Mth.wrapDegrees(float)`.
 fn wrap_degrees(value: f32) -> f32 {
     let mut f = value % 360.0;
@@ -189,7 +199,7 @@ impl RemoteTextDisplay {
         self.position
     }
     pub(super) fn render_position(&self, partial: f64) -> glam::DVec3 {
-        self.previous.lerp(self.position, partial)
+        lerp_dvec3(self.previous, self.position, partial)
     }
     pub(super) fn has_render_state(&self) -> bool {
         self.render_state_ready
@@ -228,7 +238,7 @@ impl RemoteTextDisplay {
             return None;
         }
         sunrise_client::shadows::display_caster(
-            self.previous.lerp(self.position, partial),
+            lerp_dvec3(self.previous, self.position, partial),
             &self.from,
             &self.shown,
             self.progress(partial as f32),
@@ -281,7 +291,7 @@ impl RemoteTextDisplay {
         self.old_rotation = self.rotation;
         if self.steps > 0 {
             let alpha = 1.0 / f64::from(self.steps);
-            self.position = self.position.lerp(self.target, alpha);
+            self.position = lerp_dvec3(self.position, self.target, alpha);
             let alpha_f32 = alpha as f32;
             self.rotation[0] = set_y_rot(rot_lerp(
                 alpha_f32,
@@ -513,7 +523,7 @@ impl Game<'_> {
                 {
                     continue;
                 }
-                let position = display.previous.lerp(display.position, partial);
+                let position = lerp_dvec3(display.previous, display.position, partial);
                 if !self.display_in_view(camera, display.position, position, &display.data, scale) {
                     continue;
                 }
@@ -601,7 +611,7 @@ impl Game<'_> {
             if !display.render_state_ready || !self.entity_section_visible(display.position, now) {
                 continue;
             }
-            let position = display.previous.lerp(display.position, partial);
+            let position = lerp_dvec3(display.previous, display.position, partial);
             if !self.display_in_view(camera, display.position, position, &display.data, scale) {
                 // Out of view: its glyphs stay cached for when it comes back.
                 continue;
