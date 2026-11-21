@@ -58,8 +58,9 @@ pub trait SpawnPlacementsRegistrar {
     /// `And` predicates run until one fails. Each list runs in registration order.
     /// The predicates run at `SpawnPlacements.checkSpawnRules`, not at direct vanilla
     /// predicate calls such as patrols and village sieges. They share the caller's live
-    /// random stream. Where `mob_spawn_placement_check` fires, it gets the effective
-    /// answer and the same stream after the predicates' draws.
+    /// random stream. A panicking predicate is disabled and its draws are rolled back;
+    /// a failed replacement does not rerun the original. Where `mob_spawn_placement_check`
+    /// fires, it gets the effective answer and the same stream after the predicates' draws.
     ///
     /// An unavailable key returns [`SpawnPlacementError::InvalidEntityType`] and records
     /// a registration refusal. Unloaded types, invalid combinations of metadata, and

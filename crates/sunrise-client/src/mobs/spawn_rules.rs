@@ -329,13 +329,18 @@ pub fn check_spawn_rules<L: SpawnLevel, R: RandomSource + Clone>(
                     return None;
                 }
                 p.owner
-                    .call("spawn placement", "spawn_placement_predicate", || {
-                        let mut ctx = SpawnContext {
-                            level: SpawnLevelView(l),
-                            random: SpawnRandom(random),
-                        };
-                        p.predicate.test(row.kind, &mut ctx, reason, pos)
-                    })
+                    .call_with_panic_rollback(
+                        "spawn placement",
+                        "spawn_placement_predicate",
+                        random,
+                        |random| {
+                            let mut ctx = SpawnContext {
+                                level: SpawnLevelView(l),
+                                random: SpawnRandom(random),
+                            };
+                            p.predicate.test(row.kind, &mut ctx, reason, pos)
+                        },
+                    )
                     .ok()
             };
             match &row.predicates {
@@ -1048,6 +1053,7 @@ mod mod_spawn_rule_tests {
                     id,
                     "minecraft:zombie"
                         | "minecraft:shulker"
+                        | "minecraft:arrow"
                         | "ruby:ghoul"
                         | "ruby:floater"
                         | "test:trader"
@@ -1300,49 +1306,110 @@ mod mod_spawn_rule_tests {
     }
 
     #[test]
-    fn a_panicking_replacement_does_not_retry_vanilla_or_draw_again() {
-        let mut level = Flat::new(&[SpawnPlacementDeclaration {
-            id: "minecraft:zombie".into(),
-            kind: entity_type_key(0),
-            mod_id: "broken_spawn_replacement",
-            placement: None,
-            heightmap: None,
-            predicate: Arc::new(
-                |_: EntityTypeKey,
-                 ctx: &mut dyn SpawnPlacementContext,
-                 _: Reason,
-                 _: BlockPos|
-                 -> bool {
-                    assert_eq!(ctx.random().next_int(), JAVA_DRAWS[0]);
-                    panic!("test spawn predicate panic");
-                },
-            ),
-            operation: Replace,
-        }]);
-        level.sky = 0;
-        let kind = mob_kind("minecraft:zombie", Species::Zombie);
+    fn a_panicking_non_mob_replacement_restores_draws_and_disables_only_itself() {
+        const BROKEN: &str = "broken_arrow_placement";
+        const HEALTHY: &str = "healthy_spawn_placement";
+        crate::test_log::install();
+        crate::test_log::clear();
+        let calls = PredicateCalls::default();
+        let failed_calls = Arc::clone(&calls);
+        let mut level = Flat::new(&[
+            SpawnPlacementDeclaration {
+                id: "minecraft:arrow".into(),
+                kind: entity_type_key(0),
+                mod_id: HEALTHY,
+                placement: Some(SpawnPlacementType::NoRestrictions),
+                heightmap: Some(Heightmap::MotionBlockingNoLeaves),
+                predicate: Arc::new(recording_predicate(&calls, "original", true)),
+                operation: Replace,
+            },
+            SpawnPlacementDeclaration {
+                id: "minecraft:arrow".into(),
+                kind: entity_type_key(0),
+                mod_id: BROKEN,
+                placement: None,
+                heightmap: None,
+                predicate: Arc::new(
+                    move |_: EntityTypeKey,
+                          ctx: &mut dyn SpawnPlacementContext,
+                          _: Reason,
+                          _: BlockPos|
+                          -> bool {
+                        failed_calls
+                            .lock()
+                            .unwrap()
+                            .push(("broken", ctx.random().next_int()));
+                        panic!("test arrow predicate panic");
+                    },
+                ),
+                operation: Replace,
+            },
+            SpawnPlacementDeclaration {
+                id: "minecraft:shulker".into(),
+                kind: entity_type_key(1),
+                mod_id: HEALTHY,
+                placement: None,
+                heightmap: None,
+                predicate: Arc::new(recording_predicate(&calls, "healthy", false)),
+                operation: Replace,
+            },
+        ]);
+        let arrow = SpawnEntityType {
+            id: "minecraft:arrow",
+            species: None,
+            allowed_in_peaceful: true,
+        };
         let mut rng = LegacyRandom::new(7);
         assert!(!check_spawn_rules(
-            (&kind).into(),
+            arrow,
             &level,
-            Reason::Natural,
+            Reason::Spawner,
+            &mut rng,
+            [0, 1, 0]
+        ));
+        assert_eq!(rng.next_int(), JAVA_DRAWS[0]);
+
+        // The check hook can override the failed answer. Neither the disabled
+        // replacement nor the original consumes a draw on this attempt.
+        level.hook = Some(true);
+        assert!(check_spawn_rules(
+            arrow,
+            &level,
+            Reason::TrialSpawner,
             &mut rng,
             [0, 1, 0]
         ));
         assert_eq!(rng.next_int(), JAVA_DRAWS[1]);
 
-        // The check hook still gets the failed answer and can override it. The
-        // disabled replacement and vanilla consume no draws on this check.
-        level.hook = Some(true);
-        assert!(check_spawn_rules(
-            (&kind).into(),
+        level.hook = None;
+        let shulker = mob_kind("minecraft:shulker", Species::Shulker);
+        assert!(!check_spawn_rules(
+            (&shulker).into(),
             &level,
-            Reason::Natural,
+            Reason::Spawner,
             &mut rng,
             [0, 1, 0]
         ));
-        assert_eq!(rng.next_int(), JAVA_DRAWS[2]);
-        assert_eq!(*level.heard.borrow(), [false, false]);
+        assert_eq!(
+            rng.next_int(),
+            JAVA_DRAWS[3],
+            "keep the healthy veto's draw"
+        );
+        assert_eq!(*level.heard.borrow(), [false, false, false]);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [("broken", JAVA_DRAWS[0]), ("healthy", JAVA_DRAWS[2])]
+        );
+        let reports = crate::test_log::records();
+        let panics: Vec<_> = reports
+            .iter()
+            .filter(|(level, message)| {
+                *level == log::Level::Error && message.contains("spawn_placement_predicate")
+            })
+            .collect();
+        assert_eq!(panics.len(), 1, "{panics:?}");
+        assert!(panics[0].1.contains(BROKEN));
+        assert!(panics[0].1.contains("test arrow predicate panic"));
     }
 
     /// `mob_spawn_placement_check` still runs after the rule and is told its

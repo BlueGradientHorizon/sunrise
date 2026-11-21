@@ -63,6 +63,19 @@ enum Invocation {
     Dispose,
 }
 
+enum CallFailure {
+    Unavailable(String),
+    Panicked(String),
+}
+
+impl CallFailure {
+    fn into_message(self) -> String {
+        match self {
+            Self::Unavailable(message) | Self::Panicked(message) => message,
+        }
+    }
+}
+
 struct RetainedCallbackScope(bool);
 impl Drop for RetainedCallbackScope {
     fn drop(&mut self) {
@@ -151,6 +164,38 @@ impl CallbackOwner {
         operation: &'static str,
         invoke: impl FnOnce() -> T,
     ) -> Result<T, String> {
+        self.call_isolated(kind, operation, invoke)
+            .map_err(|why| format!("mod {}: {}", self.id, why.into_message()))
+    }
+
+    /// Invoke a callback on live state, restoring the state only if this call panics.
+    /// A normal answer (including a veto) or a phase refusal keeps the current state.
+    pub fn call_with_panic_rollback<T, S: Clone>(
+        &self,
+        kind: &'static str,
+        operation: &'static str,
+        state: &mut S,
+        invoke: impl FnOnce(&mut S) -> T,
+    ) -> Result<T, String> {
+        let mut before = None;
+        let result = self.call_isolated(kind, operation, || {
+            before = Some(state.clone());
+            invoke(state)
+        });
+        if matches!(&result, Err(CallFailure::Panicked(_)))
+            && let Some(before) = before
+        {
+            *state = before;
+        }
+        result.map_err(|why| format!("mod {}: {}", self.id, why.into_message()))
+    }
+
+    fn call_isolated<T>(
+        &self,
+        kind: &'static str,
+        operation: &'static str,
+        invoke: impl FnOnce() -> T,
+    ) -> Result<T, CallFailure> {
         call_opt(
             self.id,
             self.index,
@@ -160,7 +205,6 @@ impl CallbackOwner {
             Invocation::Isolated,
             invoke,
         )
-        .map_err(|why| format!("mod {}: {why}", self.id))
     }
 
     /// A retained callback invoked by a generated registration listener shares that
@@ -180,7 +224,7 @@ impl CallbackOwner {
             Invocation::Listener,
             invoke,
         )
-        .map_err(|why| format!("mod {}: {why}", self.id))
+        .map_err(|why| format!("mod {}: {}", self.id, why.into_message()))
     }
 
     /// Dispose of an owned mod value under its panic policy, even if ordinary calls are disabled.
@@ -241,6 +285,7 @@ pub(crate) fn call<T>(
         Invocation::Isolated,
         invoke,
     )
+    .map_err(CallFailure::into_message)
 }
 
 fn call_opt<T>(
@@ -251,9 +296,11 @@ fn call_opt<T>(
     operation: &'static str,
     invocation: Invocation,
     invoke: impl FnOnce() -> T,
-) -> Result<T, String> {
+) -> Result<T, CallFailure> {
     if invocation != Invocation::Dispose && !enabled_opt(index, poisoned) {
-        return Err(format!("{kind} owner is disabled"));
+        return Err(CallFailure::Unavailable(format!(
+            "{kind} owner is disabled"
+        )));
     }
     let _guard = crate::mark_mod(owner, operation);
     let contained = RetainedCallbackScope(RETAINED_CALLBACK.replace(true));
@@ -279,7 +326,9 @@ fn call_opt<T>(
         Ok(Ok(value)) => Ok(value),
         Ok(Err(refusal)) => {
             refusal.report_each();
-            Err(format!("{kind} callback refused: {refusal}"))
+            Err(CallFailure::Unavailable(format!(
+                "{kind} callback refused: {refusal}"
+            )))
         }
         Err(payload) => {
             if invocation == Invocation::Listener && payload.is::<PhaseRefusal>() {
@@ -292,13 +341,17 @@ fn call_opt<T>(
             // Disposal is mandatory. Each instance's destructor is run at most once,
             // but even an already disabled implementation can panic again while dropping.
             if !first && invocation != Invocation::Dispose {
-                return Err(format!("{kind} callback panicked; it is disabled"));
+                return Err(CallFailure::Panicked(format!(
+                    "{kind} callback panicked; it is disabled"
+                )));
             }
             log::error!(
                 "mod {owner}: {kind} callback ({operation}) panicked and is disabled for this session: {msg}"
             );
             record_callback_panic(owner, kind, operation, msg.clone());
-            Err(format!("{kind} callback panicked ({msg}); it is disabled"))
+            Err(CallFailure::Panicked(format!(
+                "{kind} callback panicked ({msg}); it is disabled"
+            )))
         }
     }
 }

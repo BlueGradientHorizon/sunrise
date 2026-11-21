@@ -1024,8 +1024,9 @@ pub trait SpawnPlacementLevel {
 pub trait SpawnPlacementContext {
     /// The read-only level for this check. Reads never load chunks or write to the level.
     fn level(&self) -> &dyn SpawnPlacementLevel;
-    /// The caller's live random stream, not a copy. Draws advance it in call order and
-    /// are kept even if this predicate or a later check rejects the spawn.
+    /// The caller's live random stream, not a fork. Draws advance it in call order and
+    /// are kept even if this predicate or a later check rejects the spawn. A panic
+    /// restores the stream to the start of that predicate's call.
     fn random(&mut self) -> &mut dyn RandomSource;
     /// `Monster.isDarkEnoughToSpawn` at `pos`, without any spawn-reason bypass.
     /// It draws from the same stream as [`Self::random`].
@@ -1054,9 +1055,10 @@ pub enum SpawnPlacementOperation {
 /// Use the lent level and random stream to decide the result; do not depend on call counts.
 pub trait SpawnPlacementPredicate: Send + Sync + 'static {
     /// Whether this check passes. Use the lent random stream for any draws. The game invokes
-    /// the predicate as the registering mod, skipping it when disabled. A panic disables
-    /// the predicate for this session but does not rewind draws already made. A disabled or
-    /// refused replacement fails the predicate check; it never retries the original.
+    /// the predicate as the registering mod, skipping it when disabled. A panic restores
+    /// the predicate's random draws, disables that predicate for the session, and reports
+    /// the mod in the log and client error toast. A disabled or refused replacement fails
+    /// the predicate check; it never retries the original.
     fn test(
         &self,
         kind: EntityTypeKey,

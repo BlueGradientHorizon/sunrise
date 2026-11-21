@@ -69,12 +69,17 @@ Level reads never load chunks or write to the world. Use namespaced block and bi
 `reason == SpawnReason::TrialSpawner` first, as above. For a brightness condition, use
 `ctx.level().is_bright_enough_to_spawn(pos)` in place of the darkness test. To allow any light
 level, omit the light test. Draw any additional randomness from `ctx.random()`. The darkness
-helper also draws from that stream. Short-circuited predicates don't draw, and draws that did
-happen are not rolled back if the spawn is later refused. Registered predicates run only where
-vanilla uses `SpawnPlacements.checkSpawnRules`; patrols and village sieges call their built-in
-predicates directly instead. Spawners and trial spawners check the resolved type, including
-non-mobs, before attempting to create an entity. Ordinary spawners with custom spawn rules
-skip the placement check; trial spawners check their custom rules afterward.
+helper also draws from that stream. Short-circuited predicates don't draw. Returning `false`
+or refusing the spawn later does not rewind any draws. If a predicate panics, the game rolls back
+only that call's draws, disables that predicate for the session, and names its mod in the log and
+client error toast. A disabled or refused replacement supplies `false` to the placement check
+hook without rerunning the original.
+
+Registered predicates run only where vanilla uses `SpawnPlacements.checkSpawnRules`;
+patrols and village sieges call their built-in predicates directly instead. Spawners and trial
+spawners check the resolved type, including non-mobs, before attempting to create an entity.
+Ordinary spawners with custom spawn rules skip the placement check; trial spawners check
+their custom rules afterward.
 
 An unavailable key both returns `SpawnPlacementError::InvalidEntityType` and records a startup
 refusal, so ignoring the returned error does not hide it. A type missing at resource load or
