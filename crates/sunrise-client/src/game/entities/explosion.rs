@@ -2807,7 +2807,8 @@ mod tests {
                     DropListener::NoOp => assert_eq!(*heard.lock().unwrap(), anchors),
                     DropListener::ObservePosition => {
                         assert_eq!(*observed.lock().unwrap(), Some(joins[0].0));
-                        assert_eq!(joins[0].0, positions[0]);
+                        let p = positions[0];
+                        assert_eq!(joins[0].0, [p.x, p.y, p.z]);
                     }
                 }
                 (joins, positions, game.world.random.next_int())
