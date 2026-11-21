@@ -470,7 +470,7 @@ fn serving_game_drives_configuration_tasks() {
     let crash_home =
         matches!(case, Case::Panic | Case::SendRefusalPanic).then(|| tempfile::tempdir().unwrap());
     if let Some(home) = &crash_home {
-        sunrise_client::crash::install(home.path().to_owned(), "client");
+        sunrise_client::crash::install(home.path().to_owned(), "client", || None);
     }
     let fixture = Arc::new(Fixture::new(case));
     mod_platform::testing::with_mods(
@@ -690,7 +690,7 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
     }
 
     let scratch = tempfile::tempdir().unwrap();
-    sunrise_client::crash::install(scratch.path().to_path_buf(), "client");
+    sunrise_client::crash::install(scratch.path().to_path_buf(), "client", || None);
     let failed = Arc::new(AtomicUsize::new(0));
     let healthy = Arc::new(AtomicUsize::new(0));
     let started = Arc::new(AtomicUsize::new(0));

@@ -119,6 +119,12 @@ impl NativeLifecycle {
         attempt.server_context()
     }
 
+    pub(super) fn is_opening(&self) -> bool {
+        self.attempt
+            .as_ref()
+            .is_some_and(|attempt| attempt.session == OpenState::Opening)
+    }
+
     /// `WorldOpenFailed`: only while opening; the attempt is invalidated.
     pub(super) fn world_open_failed(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_mut()?;
@@ -833,7 +839,7 @@ mod tests {
         }
         let home = std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap());
         sunrise_client::logging::init(&home, "Server thread");
-        sunrise_client::crash::install(home, "server");
+        sunrise_client::crash::install(home, "server", || None);
 
         const CANCELLED: &str = "cancelled_task_owner";
         const CLOSED: &str = "closed_task_owner";

@@ -804,9 +804,17 @@ mod tests {
                 window.begin_closing_save(false).unwrap();
                 assert!(window.pending_save.is_some());
                 let dir = tempfile::tempdir().unwrap();
-                serving
-                    .reports()
-                    .report_save_failure(dir.path(), 10, -7, &"region write failed");
+                let reporter =
+                    sunrise_client::chunk_io::SaveFailureReporter::new(true, dir.path(), "test");
+                serving.reports().report_save_failure(
+                    &reporter,
+                    dir.path(),
+                    "minecraft:overworld",
+                    "chunk",
+                    (10, -7),
+                    &std::io::Error::other("region write failed"),
+                );
+                drop(reporter);
                 drop(serving);
 
                 assert!(!window.poll_closing_save().unwrap());
