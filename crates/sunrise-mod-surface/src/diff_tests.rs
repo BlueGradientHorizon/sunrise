@@ -850,6 +850,41 @@ fn a_note_may_name_a_folded_member() {
 }
 
 #[test]
+fn stable_sdk_surfaces_produce_release_verdicts_even_with_change_notes() {
+    let read_sdk_surface = |behaviours| {
+        let sdk_json =
+            serde_json::json!({"schema": 3, "hash": "surface", "behaviours": behaviours});
+        Surface::read(&sdk_json.to_string().into_bytes()).unwrap()
+    };
+    let id = "behaviour:example";
+    let example = serde_json::json!({"id": id, "hash": "declaration", "version": 1});
+    let added = serde_json::json!({"id": "behaviour:new", "hash": "declaration", "version": 1});
+    let bumped = serde_json::json!({"id": id, "hash": "declaration", "version": 2});
+    let old = read_sdk_surface(vec![example.clone()]);
+    let cases = [
+        (vec![example.clone()], "identical"),
+        (vec![example, added], "additive"),
+        (vec![bumped], "conditional"),
+        (vec![], "breaking"),
+    ];
+    let note = Note {
+        file: "example.toml".into(),
+        why: "The old contract no longer applies.".into(),
+        migrate: Some("Use the new contract.".into()),
+    };
+    for (records, expected) in cases {
+        let new = read_sdk_surface(records);
+        let mut report = diff(&old, &new);
+        assert_eq!(serde_json::to_value(&report).unwrap()["verdict"], expected);
+        if matches!(expected, "breaking" | "conditional") {
+            assert!(report.attach(&note, &[id.into()]).is_empty());
+            assert_eq!(report.undeclared().count(), 0);
+            assert_eq!(serde_json::to_value(&report).unwrap()["verdict"], expected);
+        }
+    }
+}
+
+#[test]
 fn the_diff_round_trips_as_json() {
     let old = types(vec![structure("Pos", true, &[("x", "i32")])]);
     let new = types(vec![structure("Pos", true, &[("x", "i32"), ("y", "i32")])]);
