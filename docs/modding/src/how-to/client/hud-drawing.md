@@ -22,8 +22,8 @@ layers remain in place for the next callback. Only a panic disables the register
 
 The client keeps the callback for the session and calls it as the mod that installed it. Capture
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
-passed on each draw. The callback runs only for its own layer, and not when the HUD is hidden
-or `gui_layer_pre` cancels the layer.
+passed on each draw. A layer inserted with `register` does not dispatch under F1. A replaced or
+wrapped status slot still dispatches there. `gui_layer_pre` can cancel any slot that dispatches.
 A vanilla anchor still determines the layer's position if its body doesn't draw that frame.
 
 ### Replacing or wrapping a layer
@@ -57,8 +57,10 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 `gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. Post still fires if the
 wrapper omitted the previous body. If a retained painter or wrapper panics or is refused, its
 paint is discarded. A wrapper's completed `draw_previous()` calls keep their paint in order,
-without being called again. A panic disables just the offending callback for this session; a
-disabled wrapper leaves the previous body to draw directly. If Pre cancels the slot, neither the
+without being called again. A panic disables just the offending callback for this session and
+reports the mod in the error log and the shared error toast. F1 hides the toast's paint, not the
+report. A refusal is reported without disabling the callback. A disabled wrapper leaves the
+previous body to draw directly. If Pre cancels the slot, neither the
 installed body nor Post runs. For work that must happen even when the HUD is hidden, use the independent foreground
 `gui_render_post` hook.
 

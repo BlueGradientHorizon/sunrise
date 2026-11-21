@@ -90,15 +90,31 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
         game.title = None;
         game.screen = crate::game::Screen::Playing;
         game.ui.hide_gui = true;
-        for expected in [
+        for (frame, expected) in [
             &["mount replacement", "air replacement"][..],
             &["air replacement"],
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let batch = game.hud_layers([640, 480]);
             assert_eq!(take().as_slice(), expected);
             assert!(!batch.vertices.iter().any(|v| v.color == FAILED));
             assert!(batch.vertices.iter().any(|v| v.color == SIBLING));
             assert_eq!(game.ui.room.bottom(), 125.0);
+            if frame == 0 {
+                // F1 hides the toast's paint, not its report.
+                let [Some(toast)] = game.server_packs.hook_panics.as_slice() else {
+                    panic!("expected one mandatory mod error toast");
+                };
+                assert_eq!(
+                    toast.message.as_ref().unwrap().component(),
+                    serde_json::json!({
+                        "translate": "sunrise.mods.hook_panic.description",
+                        "with": ["bad-vehicle-painter", "gui_layer_draw"],
+                    })
+                );
+            }
         }
     });
     let errors = ERRORS.lock().unwrap();

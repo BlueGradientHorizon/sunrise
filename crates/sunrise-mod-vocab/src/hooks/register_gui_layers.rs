@@ -34,7 +34,9 @@ It can omit that call to skip the previous body. Both methods refuse an unknown 
 
 A layer fires `Hooks::gui_layer_pre` with its ID, runs its installed body, and fires
 `Hooks::gui_layer_post` once. No body or Post runs if Pre cancels. Drawing a previous
-body does not fire layer hooks again.
+body does not fire layer hooks again. A callback panic disables only that callback for the
+session and reports its mod through the shared error log and toast. A non-panic refusal is
+reported without disabling the callback.
 
 The status slots run in order: `minecraft:player_health`, `minecraft:armor_level`,
 `minecraft:food_level`, `minecraft:vehicle_health` and `minecraft:air_level`.
@@ -42,7 +44,10 @@ F1 hides their vanilla paint, not their installed bodies or layer events. The va
 armor, food and air bodies need a player in survival or adventure, and vanilla vehicle health
 needs a mount with hearts. Custom paint can check `host.hud_mode()` if it should respect F1.
 `Above("minecraft:player_health".into())` puts a new layer between hearts and armor;
-use `Above("minecraft:air_level".into())` to put it above all status rows.
+use `Above("minecraft:air_level".into())` to put it above all status rows. Use
+`Below("minecraft:player_health".into())` to stay below the player rows or
+`Above("minecraft:vehicle_health".into())` to stay above mount hearts. No single anchor
+keeps a layer both above the mount hearts and below the player rows after the reorder.
 
 A skipped vanilla slot, such as the crosshair in third person, still keeps its place: inserted
 layers around it draw in order at the next slot. F1 and a canceled `Hooks::render_gui_pre` hide
