@@ -6,6 +6,8 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         extensions: &mut Registration<'_>,
     ) {
-        Self::fire_register_client_item_extensions(context, extensions);
+        Self::fire_register_client_item_extensions(context, |listen| {
+            extensions.register_listener(listen)
+        });
     }
 }

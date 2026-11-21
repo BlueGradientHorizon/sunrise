@@ -301,6 +301,8 @@ pub mod built {
 /// What the game reads of handles and calls on the API's own types.
 pub mod game {
     include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private_game.rs"));
+    #[doc(hidden)]
+    pub use crate::runtime::discard_registration;
     use crate::*;
     use std::fmt::Debug;
 

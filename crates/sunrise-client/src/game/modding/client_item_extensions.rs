@@ -1,8 +1,8 @@
 //! Reload-owned item providers and baked humanoid equipment trees.
 use super::*;
 use mod_api::{
-    ArmorModelRef, ArmorTextureRef, ClientItemExtensions, ClientItemExtensionsRegistrar, ItemKey,
-    ModelPart,
+    __private::game::discard_registration, ArmorModelRef, ArmorTextureRef, ClientItemExtensions,
+    ClientItemExtensionsRegistrar, HookId, ItemKey, ModelPart,
 };
 use std::sync::{
     Arc,
@@ -34,8 +34,13 @@ pub(super) struct ArmorExtensions {
 impl Default for ArmorExtensions {
     fn default() -> Self {
         static GENERATION: AtomicU64 = AtomicU64::new(1);
+        Self::empty(GENERATION.fetch_add(1, Ordering::Relaxed))
+    }
+}
+impl ArmorExtensions {
+    fn empty(generation: u64) -> Self {
         Self {
-            generation: GENERATION.fetch_add(1, Ordering::Relaxed),
+            generation,
             models: Vec::new(),
             textures: Vec::new(),
             texture_keys: FxHashMap::default(),
@@ -46,8 +51,53 @@ impl Default for ArmorExtensions {
 
 pub(in crate::game) struct Registration<'a> {
     state: ArmorExtensions,
+    published: Option<&'a ArmorExtensions>,
     sprite_exists: &'a dyn Fn(&str) -> bool,
     refused: Option<String>,
+}
+impl<'a> Registration<'a> {
+    fn new(sprite_exists: &'a dyn Fn(&str) -> bool) -> Self {
+        Self {
+            state: ArmorExtensions::default(),
+            published: None,
+            sprite_exists,
+            refused: None,
+        }
+    }
+
+    pub(in crate::game) fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn ClientItemExtensionsRegistrar) -> bool,
+    ) {
+        let mut pending = Registration {
+            state: ArmorExtensions::empty(self.state.generation),
+            published: Some(&self.state),
+            sprite_exists: self.sprite_exists,
+            refused: None,
+        };
+        if listen(&mut pending) {
+            let Registration { state, refused, .. } = pending;
+            self.state.models.extend(state.models);
+            self.state.textures.extend(state.textures);
+            self.state.texture_keys.extend(state.texture_keys);
+            self.state.items.extend(state.items);
+            if let Some(error) = refused {
+                self.refused = Some(error);
+            }
+        } else {
+            for part in pending.state.items.into_values() {
+                let owner = part.attached.mod_id();
+                discard_registration(
+                    (
+                        HookId::RegisterClientItemExtensions,
+                        "register_client_item_extensions",
+                    ),
+                    Some(owner),
+                    part,
+                );
+            }
+        }
+    }
 }
 impl ClientItemExtensionsRegistrar for Registration<'_> {
     fn register_model(
@@ -63,12 +113,17 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
             if id.namespace() != owner {
                 return Err(format!("armour model {name}: expected namespace {owner}"));
             }
-            if self.state.models.iter().any(|model| model.name == name) {
+            if self
+                .published
+                .is_some_and(|state| state.models.iter().any(|model| model.name == name))
+                || self.state.models.iter().any(|model| model.name == name)
+            {
                 return Err(format!("duplicate armour model {name}"));
             }
             let part =
                 bake_model("root", model).map_err(|why| format!("armour model {name}: {why}"))?;
-            let index = u32::try_from(self.state.models.len())
+            let prefix = self.published.map_or(0, |state| state.models.len());
+            let index = u32::try_from(prefix + self.state.models.len())
                 .map_err(|_| format!("armour model {name}: model table exhausted"))?;
             let slots = [
                 super::equipment_piece::ArmorSlot::Head,
@@ -95,10 +150,15 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
     fn register_texture(&mut self, name: &str) -> std::result::Result<ArmorTextureRef, String> {
         let result = if !(self.sprite_exists)(name) {
             Err(format!("unknown armour texture {name}"))
-        } else if let Some(&index) = self.state.texture_keys.get(name) {
+        } else if let Some(&index) = self
+            .published
+            .and_then(|state| state.texture_keys.get(name))
+            .or_else(|| self.state.texture_keys.get(name))
+        {
             Ok(ArmorTextureRef::__new(self.state.generation, index))
         } else {
-            u32::try_from(self.state.textures.len())
+            let prefix = self.published.map_or(0, |state| state.textures.len());
+            u32::try_from(prefix + self.state.textures.len())
                 .map_err(|_| format!("armour texture {name}: texture table exhausted"))
                 .map(|index| {
                     self.state.textures.push(name.to_owned());
@@ -123,7 +183,11 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
                 .ok_or_else(|| format!("unknown item extension provider {owner}"))?;
             let name = mod_api::__private::item_key_id(item)
                 .ok_or_else(|| format!("unknown item for extension provider {owner}"))?;
-            if let Some(previous) = self.state.items.get(&item) {
+            if let Some(previous) = self
+                .published
+                .and_then(|state| state.items.get(&item))
+                .or_else(|| self.state.items.get(&item))
+            {
                 return Err(format!(
                     "duplicate client item extensions for {name}: {} and {owner}",
                     previous.attached.mod_id()
@@ -214,11 +278,8 @@ fn bake_model(name: &str, model: &ModelPart) -> std::result::Result<Part, &'stat
 impl Game<'_> {
     pub(super) fn resolve_client_item_extensions(&mut self) -> std::result::Result<(), String> {
         use mod_api::__private::game::RegistrationContextNew;
-        let mut registration = Registration {
-            state: ArmorExtensions::default(),
-            sprite_exists: &|name| self.gui.atlas.sprites.contains_key(name),
-            refused: None,
-        };
+        let sprite_exists = |name: &str| self.gui.atlas.sprites.contains_key(name);
+        let mut registration = Registration::new(&sprite_exists);
         // Prebind every default texture once, so frame callbacks receive only integer references.
         for name in self.gui.atlas.sprites.keys() {
             let _ = registration.register_texture(name);
@@ -505,6 +566,133 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_panicking_equipment_registrar_leaves_the_next_batch_usable() {
+        use mod_api::__private::game::RegistrationContextNew;
+        use mod_api::{Hooks, ModEntry, RegisterClientItemExtensionsEvent, RegistrationContext};
+        use std::sync::OnceLock;
+
+        struct Provider;
+        impl ClientItemExtensions for Provider {}
+
+        type Refs = (ArmorModelRef, ArmorTextureRef, ArmorTextureRef);
+        struct Registrant {
+            model: &'static str,
+            refs: Arc<OnceLock<Refs>>,
+            panics: bool,
+        }
+        #[mod_api::__subscriptions]
+        impl Hooks for Registrant {
+            fn register_client_item_extensions(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterClientItemExtensionsEvent<'_>,
+            ) {
+                let extensions = &mut *event.extensions;
+                if self.panics {
+                    extensions.register_texture("orphan").unwrap();
+                }
+                let shared = extensions.register_texture("shared").unwrap();
+                assert_eq!(extensions.register_texture("shared").unwrap(), shared);
+                let other = extensions
+                    .register_texture(if self.panics { "failed" } else { "clear" })
+                    .unwrap();
+                let model = extensions.register_model(self.model, &tree(4.0)).unwrap();
+                let item = mod_api::__private::item_key("test:gear").unwrap();
+                extensions
+                    .client_item_extensions(item, Arc::new(Provider))
+                    .unwrap();
+                if self.panics {
+                    assert_eq!(
+                        extensions.register_texture("missing"),
+                        Err("unknown armour texture missing".into())
+                    );
+                }
+                self.refs.set((model, shared, other)).unwrap();
+                if self.panics {
+                    panic!("after staging an equipment model, textures and provider");
+                }
+            }
+        }
+
+        let failed_refs = Arc::new(OnceLock::new());
+        let healthy_refs = Arc::new(OnceLock::new());
+        mod_platform::testing::with_mods(
+            vec![
+                ModEntry::new(
+                    "failed",
+                    Box::new(Registrant {
+                        model: "failed:shape",
+                        refs: failed_refs.clone(),
+                        panics: true,
+                    }),
+                ),
+                ModEntry::new(
+                    "healthy",
+                    Box::new(Registrant {
+                        model: "healthy:shape",
+                        refs: healthy_refs.clone(),
+                        panics: false,
+                    }),
+                ),
+            ]
+            .into(),
+            || {
+                let mut host = mod_api::testing::FakeHost::new();
+                host.registries
+                    .resolve_items([mod_api::Identifier::parse("test:gear").unwrap()])
+                    .unwrap();
+                let mut registration = Registration::new(&|name| name != "missing");
+                let generation = registration.state.generation;
+                assert_eq!(
+                    registration.register_texture("original").unwrap().__parts(),
+                    (generation, 0)
+                );
+                {
+                    let _owner = owner("prefix");
+                    assert_eq!(
+                        registration
+                            .register_model("prefix:shape", &tree(0.0))
+                            .unwrap()
+                            .__parts(),
+                        (generation, 0)
+                    );
+                }
+                Game::native_register_client_item_extensions(
+                    &RegistrationContext::new(),
+                    &mut registration,
+                );
+                assert!(
+                    failed_refs.get().is_some(),
+                    "the failed listener completed all staged edits before panicking"
+                );
+                assert!(registration.refused.is_none());
+                let (model, shared, clear) = *healthy_refs
+                    .get()
+                    .expect("the healthy listener registered its bindings");
+                assert_eq!(model.__parts(), (generation, 1));
+                assert_eq!(shared.__parts(), (generation, 1));
+                assert_eq!(clear.__parts(), (generation, 2));
+                let state = registration.state;
+                assert_eq!(
+                    state
+                        .models
+                        .iter()
+                        .map(|model| model.name.as_str())
+                        .collect::<Vec<_>>(),
+                    ["prefix:shape", "healthy:shape"]
+                );
+                assert_eq!(state.textures, ["original", "shared", "clear"]);
+                assert_eq!(state.texture_keys.len(), 3);
+                assert_eq!(state.texture_keys["shared"], 1);
+                assert_eq!(state.texture_keys["clear"], 2);
+                assert_eq!(state.items.len(), 1);
+                let item = mod_api::__private::item_key("test:gear").unwrap();
+                assert_eq!(state.items[&item].attached.mod_id(), "healthy");
+            },
+        );
+    }
+
     struct TwoShapes {
         models: [ArmorModelRef; 2],
         textures: [ArmorTextureRef; 2],
@@ -566,11 +754,7 @@ mod tests {
                 host.registries.resolve_items([id.clone()]).unwrap();
                 let item = host.item_key(&id).unwrap();
                 let stack = mod_api::ItemStack::of(item);
-                let mut registry = Registration {
-                    state: Default::default(),
-                    sprite_exists: &|_| true,
-                    refused: None,
-                };
+                let mut registry = Registration::new(&|_| true);
                 let _owner = owner("armor_test");
                 let models = [
                     registry
@@ -735,11 +919,7 @@ mod tests {
                 let id = mod_api::Identifier::parse("armor_test:chest").unwrap();
                 host.registries.resolve_items([id.clone()]).unwrap();
                 let item = host.item_key(&id).unwrap();
-                let mut registry = Registration {
-                    state: Default::default(),
-                    sprite_exists: &|name| name == "known",
-                    refused: None,
-                };
+                let mut registry = Registration::new(&|name| name == "known");
                 let missing = registry.register_texture("armor_test:missing").unwrap_err();
                 assert!(missing.contains("armor_test:missing"));
                 {
@@ -797,11 +977,7 @@ mod tests {
                 host.registries.resolve_items([id.clone()]).unwrap();
                 let item = host.item_key(&id).unwrap();
                 let old = ArmorExtensions::default();
-                let mut registry = Registration {
-                    state: Default::default(),
-                    sprite_exists: &|_| true,
-                    refused: None,
-                };
+                let mut registry = Registration::new(&|_| true);
                 let _owner = owner("armor_test");
                 registry.register_texture("original").unwrap();
                 registry
@@ -899,11 +1075,7 @@ mod tests {
                 };
                 // Reload replaces the failed Part rather than reviving it in place.
                 for reload in 0..2 {
-                    let mut registry = Registration {
-                        state: Default::default(),
-                        sprite_exists: &|_| true,
-                        refused: None,
-                    };
+                    let mut registry = Registration::new(&|_| true);
                     let _owner = owner("armor_test");
                     registry.register_texture("original").unwrap();
                     registry
@@ -985,11 +1157,7 @@ mod tests {
                     };
                     let answered = Arc::new(std::sync::atomic::AtomicUsize::new(0));
                     for phase in [Some(false), Some(true), None] {
-                        let mut registry = Registration {
-                            state: Default::default(),
-                            sprite_exists: &|_| true,
-                            refused: None,
-                        };
+                        let mut registry = Registration::new(&|_| true);
                         {
                             let _owner = owner("gated");
                             registry.register_texture("original").unwrap();

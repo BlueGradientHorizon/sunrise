@@ -5,6 +5,8 @@ Use `Hooks::register_cauldron_interaction` with a `RegistrationContext` and
 from registration. The hook runs on both
 sides when preparing the resource snapshot; publication happens only after the
 complete candidate validates. Failed preparation retains the previous snapshot.
+A callback that panics or incurs a phase refusal contributes no exact, tag or
+all-dispatcher registrations. The other callbacks can still register theirs.
 
 ## Register an item
 
@@ -29,8 +31,8 @@ for example `level=1` in a 1..3 level property. `register_to_all(item, handler)`
 queues registration over the complete prepared dispatcher set, including custom blocks
 registered later in the hook sequence. Conflicts surface when preparation finishes;
 they fail the whole preparation and name both owners. `register_to_all` does not
-return `Duplicate` directly. Immediate admission errors from either registration
-method are also stored, so ignoring an error cannot publish a partial snapshot.
+return `Duplicate` directly. Immediate admission errors from a completed
+callback also refuse preparation even if that callback ignored the returned error.
 
 Vanilla entries are prebound in the same table. With `register`, replacing one,
 or registering a second entry for the same dispatcher and item, returns

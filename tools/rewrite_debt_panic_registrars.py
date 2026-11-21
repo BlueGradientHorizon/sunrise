@@ -7,6 +7,7 @@ those hooks opt into the generated staged-surface adapter. Both are repeatable.
 
 import argparse
 from pathlib import Path
+import re
 
 
 GAME = Path(__file__).resolve().parents[1] / "crates/sunrise-client/src/game"
@@ -96,6 +97,31 @@ def main():
                 f"{prefix}|listen| {{\n            {argument}.register_listener(listen)\n        }});",
             )
         pending[path] = replace(source, old, new, path, *formatted)
+
+    if args.command == "bridge" and "client_item_extensions" in args.hooks:
+        path = GAME / "modding/client_item_extensions.rs"
+        source = path.read_text()
+        new = r"let mut registry = Registration::new(\1);"
+        source, count = re.subn(
+            r"let mut registry = Registration \{\s*state: Default::default\(\),\s*"
+            r"sprite_exists: ([^\n]+),\s*refused: None,\s*\};",
+            new, source,
+        )
+        if count not in (0, 5) or source.count("let mut registry = Registration::new(") != 5:
+            raise SystemExit(f"{path}: expected five item-extension fixture constructors")
+        pending[path] = source
+
+    if args.command == "bridge" and "cauldron_interaction" in args.hooks:
+        path = GAME / "blocks/cauldron_interactions/tests.rs"
+        source = path.read_text()
+        source, count = re.subn(
+            r"Registrar \{\s*table: Table::default\(\),\s*items: ([^\n]+),\s*"
+            r"registry: ([^\n]+),\s*all: Vec::new\(\),\s*error: None,\s*\}",
+            r"Registrar::new(\1, \2)", source,
+        )
+        if count not in (0, 6) or source.count("Registrar::new(") < 6:
+            raise SystemExit(f"{path}: expected six cauldron fixture constructors")
+        pending[path] = source
 
     if args.command == "bridge" and "load_conditions" in args.hooks:
         path = GAME / "modding/load_conditions/tests.rs"

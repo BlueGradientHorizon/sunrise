@@ -101,7 +101,11 @@ Trees are API-owned `ModelPart` trees, built directly or baked from a
 Model names belong to the registering mod's namespace. Duplicate model names,
 non-finite geometry or poses, an unknown texture, an unknown item and two
 providers for one item refuse the resource-load registration by name. A duplicate
-item diagnostic names both providers. Disabling the owning mod stops its Part.
+item diagnostic names both providers. A completed callback's registration error
+still refuses preparation even if it ignored the returned error. A panic or
+phase refusal discards only that callback's models, textures and providers;
+other callbacks can still register. Do not keep model or texture references
+from a discarded registration. Disabling the owning mod stops its Part.
 A server-only package cannot declare this client registration hook.
 
 The worn stack must first pass the equippable component's asset and matching-slot

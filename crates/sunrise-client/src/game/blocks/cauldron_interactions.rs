@@ -1,6 +1,9 @@
 //! Prepared cauldron callbacks and their authoritative action savepoint.
 use super::*;
-use mod_api::__private::game::RegistrationContextNew;
+use mod_api::{
+    __private::game::{RegistrationContextNew, discard_registration},
+    HookId,
+};
 use std::{cell::RefCell, sync::Arc};
 use sunrise_client::cauldron::interactions::{Dispatcher, Entry};
 
@@ -38,6 +41,7 @@ enum Target {
 }
 pub(in crate::game) struct Registrar<'a> {
     table: Table,
+    published: Option<&'a Table>,
     items: &'a Items,
     registry: &'a sunrise_world::registry::BlockRegistry,
     all: Vec<(Target, Callback)>,
@@ -50,19 +54,77 @@ fn tag_id(tag: &str) -> Option<String> {
         .ok()
         .map(|id| id.to_string())
 }
-impl Registrar<'_> {
+impl<'a> Registrar<'a> {
+    fn new(items: &'a Items, registry: &'a sunrise_world::registry::BlockRegistry) -> Self {
+        Self {
+            table: Table::default(),
+            published: None,
+            items,
+            registry,
+            all: Vec::new(),
+            error: None,
+        }
+    }
+
+    pub(in crate::game) fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn mod_api::CauldronInteractions) -> bool,
+    ) {
+        let mut pending = Registrar {
+            table: Table::empty(),
+            published: Some(&self.table),
+            items: self.items,
+            registry: self.registry,
+            all: Vec::new(),
+            error: None,
+        };
+        if listen(&mut pending) {
+            let Registrar {
+                table, all, error, ..
+            } = pending;
+            self.table.append_registrations(table);
+            self.all.extend(all);
+            if let Some(error) = error {
+                self.error = Some(error);
+            }
+        } else {
+            for Callback { handler, owner } in pending
+                .table
+                .into_mod_handlers()
+                .chain(pending.all.into_iter().map(|(_, callback)| callback))
+            {
+                discard_registration(
+                    (
+                        HookId::RegisterCauldronInteraction,
+                        "register_cauldron_interaction",
+                    ),
+                    Some(owner),
+                    handler,
+                );
+            }
+        }
+    }
+
     fn insert_tag(
         &mut self,
         block: String,
         tag: String,
         callback: Callback,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
-        let new_owner = callback.owner.to_owned();
-        self.table
-            .register_tag(block, tag, callback)
-            .map_err(|old| mod_api::CauldronRegistrationError::Duplicate {
-                owners: [old.owner.to_owned(), new_owner],
+        let new_owner = callback.owner;
+        let previous = if let Some(previous) = self
+            .published
+            .and_then(|table| table.tag_entry(&block, &tag))
+        {
+            Some(previous)
+        } else {
+            self.table.register_tag(block, tag, callback).err()
+        };
+        previous.map_or(Ok(()), |old| {
+            Err(mod_api::CauldronRegistrationError::Duplicate {
+                owners: [old.owner.to_owned(), new_owner.to_owned()],
             })
+        })
     }
     /// Keep a refusal, which fails the whole preparation when it finishes.
     fn admit(
@@ -80,15 +142,23 @@ impl Registrar<'_> {
         item: String,
         callback: Callback,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
-        let new_owner = callback.owner.to_owned();
-        self.table.register(block, item, callback).map_err(|old| {
+        let new_owner = callback.owner;
+        let previous = if let Some(previous) = self
+            .published
+            .and_then(|table| table.exact_entry(&block, &item))
+        {
+            Some(previous)
+        } else {
+            self.table.register(block, item, callback).err()
+        };
+        previous.map_or(Ok(()), |old| {
             let owner = match old {
-                Entry::Mod(callback) => callback.owner.to_owned(),
-                _ => "minecraft".to_owned(),
+                Entry::Mod(callback) => callback.owner,
+                _ => "minecraft",
             };
-            mod_api::CauldronRegistrationError::Duplicate {
-                owners: [owner, new_owner],
-            }
+            Err(mod_api::CauldronRegistrationError::Duplicate {
+                owners: [owner.to_owned(), new_owner.to_owned()],
+            })
         })
     }
     fn finish(mut self) -> Result<Arc<Table>> {
@@ -189,13 +259,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
 }
 impl Game<'_> {
     pub(super) fn prepare_cauldron_interactions(&self, items: &Items) -> Result<Arc<Table>> {
-        let mut registrar = Registrar {
-            table: Table::default(),
-            items,
-            registry: self.pack.assets.registry,
-            all: Vec::new(),
-            error: None,
-        };
+        let mut registrar = Registrar::new(items, self.pack.assets.registry);
         Self::native_register_cauldron_interaction(
             &mod_api::RegistrationContext::new(),
             &mut registrar,

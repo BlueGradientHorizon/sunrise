@@ -350,7 +350,7 @@ fn dispose_panic_payload(payload: Box<dyn std::any::Any + Send>) {
 /// Drop one mod-owned registration value after deciding whether to publish its batch. Never
 /// let one destructor unwind across other entries or the next listener, and keep a replaced
 /// value attributed to its original mod rather than to the mod that replaced it.
-pub(crate) fn discard_registration<T>(
+pub fn discard_registration<T>(
     (hook_id, hook): (generated::HookId, &'static str),
     owner: Option<&'static str>,
     value: T,

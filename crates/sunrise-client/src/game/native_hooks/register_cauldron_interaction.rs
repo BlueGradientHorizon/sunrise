@@ -6,6 +6,8 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         interactions: &mut Registrar<'_>,
     ) {
-        Self::fire_register_cauldron_interaction(context, interactions);
+        Self::fire_register_cauldron_interaction(context, |listen| {
+            interactions.register_listener(listen)
+        });
     }
 }

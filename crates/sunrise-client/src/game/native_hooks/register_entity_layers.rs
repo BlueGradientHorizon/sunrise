@@ -14,6 +14,6 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         layers: &mut LayerRegistration<'_>,
     ) {
-        Self::fire_register_entity_layers(context, layers);
+        Self::fire_register_entity_layers(context, |listen| layers.register_listener(listen));
     }
 }
