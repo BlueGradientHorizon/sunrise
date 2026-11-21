@@ -72,7 +72,9 @@ pub(super) fn register_startup_client_reload_listeners() -> mod_api::ClientListe
     let _reload = phase.reloading().expect("initial client registration");
     let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
     if mod_api::__private::listened(HookId::AddClientReloadListeners) {
-        mod_api::dispatch_add_client_reload_listeners(&StartupClientHost, &mut listeners);
+        mod_api::dispatch_add_client_reload_listeners(&StartupClientHost, |listen| {
+            listeners.register_listener(listen);
+        });
     }
     listeners
 }

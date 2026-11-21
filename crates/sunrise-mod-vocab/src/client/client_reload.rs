@@ -100,7 +100,9 @@ impl ClientReloadListener for Boundary {
 
 /// The client reload's listener registry, as `add_client_reload_listeners` hands it out: its
 /// registration methods and a read-only view of names and edges, rebuilt on each client reload.
-/// Listener names need not belong to the registering mod.
+/// Listener names need not belong to the registering mod. A rejected registration call
+/// returns its error and does not change the registry. A callback that panics or incurs
+/// a phase refusal loses all of its pending registrations and dependencies.
 pub trait ClientReloadListeners {
     /// Register a unique listener and converter, e.g. `FileToIdConverter::json("machines")`.
     /// Keep the `Arc` to read the listener's published state outside reloads.
@@ -160,6 +162,24 @@ impl ClientReloadListeners for ClientListenerRegistry {
     }
 }
 impl ClientListenerRegistry {
+    /// Run one registration callback and discard only its appended rows and edges on failure.
+    #[doc(hidden)]
+    pub fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn ClientReloadListeners) -> bool,
+    ) {
+        let checkpoint = self.core.checkpoint();
+        if !listen(self) {
+            self.core.rollback(
+                checkpoint,
+                (
+                    crate::HookId::AddClientReloadListeners,
+                    "add_client_reload_listeners",
+                ),
+            );
+        }
+    }
+
     pub(crate) fn new() -> Self {
         Self {
             core: crate::world::reload::ReloadCore::new(

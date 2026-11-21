@@ -55,22 +55,68 @@ fn registry_views_and_explicit_order_before_vanilla() {
 }
 
 #[test]
-fn failed_registration_is_not_silenced_by_ignoring_the_result() {
-    let mut listeners = ClientListenerRegistry::new();
-    assert_eq!(
-        listeners
-            .add_dependency(
-                id("mistyped:listener"),
-                VanillaClientListeners::model_manager()
-            )
-            .unwrap_err(),
-        ReloadOrderError::UnknownListener {
-            id: id("mistyped:listener")
+fn reload_registration_reports_each_refusal_without_latching_but_a_cycle_fails() {
+    thread_local! {
+        static WARNINGS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+    struct RefusalLog;
+    impl log::Log for RefusalLog {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+            true
         }
-    );
+        fn log(&self, record: &log::Record<'_>) {
+            if record.level() == log::Level::Warn
+                && record
+                    .args()
+                    .to_string()
+                    .contains("unknown reload listener test_mod:repeated_missing")
+            {
+                WARNINGS.set(WARNINGS.get() + 1);
+            }
+        }
+        fn flush(&self) {}
+    }
+    log::set_logger(&RefusalLog).unwrap();
+    log::set_max_level(log::LevelFilter::Warn);
+
+    let model = VanillaClientListeners::model_manager();
+    let missing = id("test_mod:repeated_missing");
+    let valid = id("test_mod:valid");
+    let mut listeners = ClientListenerRegistry::new();
+    for _ in 0..2 {
+        assert_eq!(
+            listeners.add_dependency(missing.clone(), model.clone()),
+            Err(ReloadOrderError::UnknownListener {
+                id: missing.clone()
+            })
+        );
+    }
+    assert_eq!(WARNINGS.get(), 2);
+    listeners
+        .add_listener(valid.clone(), files(), Arc::new(Boundary))
+        .unwrap();
+    listeners
+        .add_dependency(model.clone(), valid.clone())
+        .unwrap();
+    let ordered = listeners.finish().unwrap();
+    let mod_entry = ordered.iter().find(|entry| entry.id == valid).unwrap();
+    let apply = mod_entry
+        .listener
+        .prepare(&ClientReloadContext::new(ReloadFiles::new(
+            Default::default(),
+        )))
+        .unwrap();
+    apply();
+
+    let mut cyclic = ClientListenerRegistry::new();
+    cyclic
+        .add_listener(valid.clone(), files(), Arc::new(Boundary))
+        .unwrap();
+    cyclic.add_dependency(model.clone(), valid.clone()).unwrap();
+    cyclic.add_dependency(valid, model).unwrap();
     assert!(matches!(
-        listeners.finish(),
-        Err(ReloadOrderError::UnknownListener { .. })
+        cyclic.finish(),
+        Err(ReloadOrderError::Cycle { .. })
     ));
 }
 

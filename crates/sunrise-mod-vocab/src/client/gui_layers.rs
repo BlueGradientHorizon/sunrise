@@ -29,7 +29,8 @@ pub trait GuiLayerWrapContext {
 
 // no wire: the registrar borrows the live HUD registration for one hook call.
 /// The HUD layer registrar handed to `register_gui_layers` once at client startup.
-/// Registrations are applied in call order; the registrar is only available during that hook.
+/// Edits are visible in call order to the current callback and publish together when it
+/// returns successfully. The registrar is only available during that hook.
 pub trait GuiLayerRegistrar {
     /// Install `draw` at `placement` under a namespaced ID such as `mymod:compass`.
     /// Returns false and logs a warning if the ID is malformed, in the `minecraft` namespace,

@@ -17,6 +17,6 @@ impl Game<'_> {
         &self,
         listeners: &mut mod_api::ClientListenerRegistry,
     ) {
-        self.fire_add_client_reload_listeners(listeners);
+        self.fire_add_client_reload_listeners(|listen| listeners.register_listener(listen));
     }
 }

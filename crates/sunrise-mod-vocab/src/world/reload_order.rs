@@ -99,6 +99,22 @@ impl<T> ReloadOrder<T> {
         }
         Ok(())
     }
+    pub(super) fn checkpoint(&self) -> (usize, usize) {
+        (self.listeners.len(), self.edges.len())
+    }
+
+    pub(super) fn rollback(
+        &mut self,
+        (listeners, edges): (usize, usize),
+        mut discard: impl FnMut(T),
+    ) {
+        self.edges.truncate(edges);
+        for (id, value) in self.listeners.drain(listeners..) {
+            self.indices.remove(&id);
+            discard(value);
+        }
+    }
+
     pub(crate) fn registry(&self) -> impl Iterator<Item = (&Identifier, &T)> {
         self.listeners.iter().map(|(id, value)| (id, value))
     }

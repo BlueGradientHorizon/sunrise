@@ -51,20 +51,98 @@ fn registry_views_and_explicit_order_before_vanilla() {
 }
 
 #[test]
-fn failed_registration_is_not_silenced_by_ignoring_the_result() {
-    let mut listeners = ServerListenerRegistry::new();
-    assert_eq!(
-        listeners
-            .add_dependency(id("mistyped:listener"), VanillaServerListeners::functions())
-            .unwrap_err(),
-        ReloadOrderError::UnknownListener {
-            id: id("mistyped:listener")
+fn panicking_server_reload_registration_discards_only_its_ordered_and_retained_tails() {
+    use crate::{AddServerReloadListenersEvent, Hooks, Host, ModEntry};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct Stored(&'static str);
+    impl ServerReloadListener for Stored {
+        fn prepare(
+            &self,
+            _: &ServerReloadContext,
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+            Ok(Box::new(|| {}))
         }
+    }
+    struct Register(Option<Arc<AtomicBool>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Register {
+        fn add_server_reload_listeners(
+            &self,
+            _: &dyn Host,
+            event: &mut AddServerReloadListenersEvent<'_>,
+        ) {
+            let reg = &mut *event.listeners;
+            let shared = ListenerKey::new(id("test_mod:shared"));
+            if let Some(wrote_tail) = &self.0 {
+                reg.add_retained_listener(&shared, files(), Arc::new(Stored("discarded")))
+                    .unwrap();
+                // This edge connects two earlier rows. Rolling back only the new node would leave a cycle.
+                reg.add_dependency(id("test_mod:seeded"), VanillaServerListeners::functions())
+                    .unwrap();
+                wrote_tail.store(true, Ordering::Relaxed);
+                panic!("server registrar failed after adding retained data and an edge");
+            }
+            reg.add_retained_listener(&shared, files(), Arc::new(Stored("healthy")))
+                .unwrap();
+            reg.add_dependency(id("test_mod:seeded"), shared.id().clone())
+                .unwrap();
+        }
+    }
+
+    let mut listeners = ServerListenerRegistry::new();
+    let functions = VanillaServerListeners::functions();
+    let seeded = ListenerKey::new(id("test_mod:seeded"));
+    let shared = ListenerKey::new(id("test_mod:shared"));
+    (&mut listeners as &mut dyn ServerReloadListeners)
+        .add_retained_listener(&seeded, files(), Arc::new(Stored("seeded")))
+        .unwrap();
+    listeners
+        .add_dependency(functions.clone(), seeded.id().clone())
+        .unwrap();
+    let wrote_tail = Arc::new(AtomicBool::new(false));
+    crate::testing::with_dispatch(
+        vec![
+            ModEntry::new("failed", Box::new(Register(Some(wrote_tail.clone())))),
+            ModEntry::new("healthy", Box::new(Register(None))),
+        ]
+        .into(),
+        || {
+            use crate::world::phase::{ModPhase, PhaseOwner};
+            let phase = PhaseOwner::scope(ModPhase::World);
+            let _reload = phase.reloading().unwrap();
+            crate::dispatch_add_server_reload_listeners(
+                &crate::testing::FakeHost::new(),
+                |listen| {
+                    listeners.register_listener(listen);
+                },
+            );
+            assert!(wrote_tail.load(Ordering::Relaxed));
+            assert_eq!(
+                crate::__private::take_hook_panics(),
+                [crate::__private::HookPanicReport {
+                    mod_id: "failed",
+                    hook: "add_server_reload_listeners",
+                }]
+            );
+        },
     );
-    assert!(matches!(
-        listeners.finish(),
-        Err(ReloadOrderError::UnknownListener { .. })
-    ));
+    let ordered = listeners.finish().unwrap();
+    let expected = [&functions, seeded.id(), shared.id()];
+    assert!(
+        ordered
+            .listeners
+            .iter()
+            .map(|listener| &listener.id)
+            .filter(|id| expected.contains(id))
+            .eq(expected)
+    );
+    assert_eq!(ordered.retained.len(), 2);
+    let mut resources = RetainedListeners::default();
+    resources.install(ordered.retained);
+    let resources = &resources as &dyn ServerReloadResources;
+    assert_eq!(resources.listener(&seeded).unwrap().0, "seeded");
+    assert_eq!(resources.listener(&shared).unwrap().0, "healthy");
 }
 
 #[test]

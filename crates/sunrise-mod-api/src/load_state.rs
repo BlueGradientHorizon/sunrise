@@ -286,7 +286,10 @@ mod tests {
             }
             for _reload in 0..2 {
                 let _reload = owner.reloading().unwrap();
-                dispatch_add_server_reload_listeners(&host, &mut ServerListenerRegistry::new());
+                let mut listeners = ServerListenerRegistry::new();
+                dispatch_add_server_reload_listeners(&host, |listen| {
+                    listeners.register_listener(listen)
+                });
             }
         }
         let expected = [

@@ -113,7 +113,9 @@ registration retains `&dyn Host`, restricted to these published facts, registry 
 mod-list queries. Callbacks that take `DataLoadContext` use its restricted reads. Neither permits
 opening a world handle or transaction. The first client registration and prepare run on the loader
 thread; later registration runs on the render thread, prepare on its worker, and apply on the owning
-game thread.
+game thread. A panic or phase refusal during listener registration discards only that callback's
+pending listeners and dependencies, including any server listeners it asked to retain. An ordinary
+registration error is returned and logged at the call; a completed dependency cycle still fails the reload.
 
 ## Load contexts
 

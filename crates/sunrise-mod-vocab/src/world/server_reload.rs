@@ -100,7 +100,9 @@ impl ServerReloadListener for Boundary {
 
 /// The server reload's listener registry, as `add_server_reload_listeners` hands it out: its
 /// registration methods and a read-only view of names and edges, rebuilt on each server reload.
-/// Listener names need not belong to the registering mod.
+/// Listener names need not belong to the registering mod. A rejected registration call
+/// returns its error and does not change the registry. A callback that panics or incurs a
+/// phase refusal loses all of its pending registrations, retained listeners and dependencies.
 pub trait ServerReloadListeners {
     /// Register a unique listener and converter, e.g. `FileToIdConverter::json("machines")`.
     /// Keep the `Arc` to read the listener's published state outside reloads.
@@ -227,6 +229,27 @@ impl ServerReloadListeners for ServerListenerRegistry {
     }
 }
 impl ServerListenerRegistry {
+    /// Run one registration callback and discard only its appended ordered and retained rows on failure.
+    #[doc(hidden)]
+    pub fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn ServerReloadListeners) -> bool,
+    ) {
+        let checkpoint = self.core.checkpoint();
+        let retained = self.retained.len();
+        if !listen(self) {
+            let site = (
+                crate::HookId::AddServerReloadListeners,
+                "add_server_reload_listeners",
+            );
+            self.core.rollback(checkpoint, site);
+            let owner = crate::content::crash::current_native_mod();
+            for listener in self.retained.drain(retained..) {
+                crate::runtime::discard_registration(site, owner, listener);
+            }
+        }
+    }
+
     pub(crate) fn new() -> Self {
         Self {
             core: ReloadCore::new(

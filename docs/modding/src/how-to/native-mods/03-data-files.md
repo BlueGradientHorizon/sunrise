@@ -30,9 +30,12 @@ Both prepare contexts lend converted IDs through `context.list()` and bytes thro
 `context.read(&id)`. These views and reload errors stay in-process, not on `Wire`. To abort on
 an invalid file, return `Err(ReloadResourceError::new(id, cause))` with the original error, not
 its message. `error.resource()` borrows the failing resource ID, and
-`std::error::Error::source(&error)` exposes its original cause. Registration still returns typed
-`ReloadOrderError` values for dependency and listener failures. No listener applies until every
-prepare succeeds.
+`std::error::Error::source(&error)` exposes its original cause. A rejected `add_listener`,
+`add_retained_listener` or `add_dependency` returns a typed `ReloadOrderError` and logs that
+call's error. It does not stop the reload. A cycle in the resulting graph still stops it. A
+registration callback that panics or incurs a phase refusal loses only its own pending
+listeners, dependencies and retained entries; other mods still register. No listener
+applies until every prepare succeeds.
 
 Outside a listener, `host.resource(pack_type, &identifier)` reads one file from the selected
 stack: `PackType::ServerData` takes `mymod:machines/furnace.json` from `data/`, and

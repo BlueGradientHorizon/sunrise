@@ -721,8 +721,9 @@ handle, an entity the client doesn't track and a level it doesn't show:
   `event.validation` shows that controller's tickets read from the save when the level loaded, before they take hold
   (NeoForge's `TicketHelper` is per controller): a ticket a mod adds in `level_load` is not among them and is never
   removed by it, and a ticket of another controller is not shown. Every mod that implements the hook is called, but
-  only the owner's view holds anything; a controller without a validator keeps all of its tickets. The tickets that
-  survive then force their chunks. `block_tickets()` gives each block position and `entity_tickets()` each entity UUID
+  only the owner's view holds anything; a controller without a validator keeps all of its tickets. Removals take
+  effect in the callback's view immediately but only publish if the callback completes without panic or phase refusal.
+  The tickets that survive then force their chunks. `block_tickets()` gives each block position and `entity_tickets()` each entity UUID
   with a `TicketSet`, the chunks it
   holds apart by kind (`non_natural_spawning` and `natural_spawning`, as NeoForge's `TicketSet`). A plain and a
   natural-spawning ticket on one chunk are two tickets. `remove_block_tickets(pos)` and `remove_entity_tickets(uuid)`
@@ -2022,7 +2023,7 @@ phases but do not remove this barrier. Publication cannot report an error, and a
 table refusal does not roll back actions that already ran. As vanilla's
 `SimpleJsonResourceReloadListener.scanDirectory`, a listener that parses its files logs and
 skips one that will not parse, carrying the rest through. Returning `Err` from `prepare` — like
-any preparation, registration or ordering error — aborts the whole reload: all pending actions
+any preparation or ordering error — aborts the whole reload: all pending actions
 are dropped without running and the old mod data and vanilla function library are kept. A
 panic in `prepare` or an apply is not recovered: it stops the server, and the crash
 report names the listener and the mod that registered it. Wrap the original error in
@@ -2032,6 +2033,9 @@ listener and the resource; world open fails, and `/reload` reports the failure. 
 
 `event.listeners.add_dependency(first, second)` orders named listeners. `ReloadOrderError` retains the
 IDs as typed variants: unknown names fail immediately, and cycles fail after registration.
+An ordinary registration error is logged and returned each time, without latching a reload error.
+A panicking or phase-refused registration callback contributes no listeners, retained entries
+or edges; later mods still register.
 `VanillaServerListeners::functions()` names Sunrise's function-library listener; `first()` and
 `last()` are ordering boundaries. These anchors and dependency ends use `Identifier`. Mod
 listeners run after vanilla by default, in registration order; an explicit dependency before
@@ -2122,9 +2126,10 @@ language files arrive key-wise merged across the packs, as vanilla loads them.
 Prepare and apply semantics, error handling, crash attribution and dependency ordering match
 those of [server listeners](#server-data-reload-listeners). Client registry reads return owned IDs.
 `ClientReloadListener::prepare` parses without changing live state and returns a boxed
-`FnOnce() + Send + 'static` action. All prepares finish before any apply; a prepare,
-registration or ordering error aborts the reload and drops pending actions without running them.
-A panic names the listener and its registering mod in the crash report.
+`FnOnce() + Send + 'static` action. All prepares finish before any apply; a prepare
+or ordering error aborts the reload and drops pending actions without running them. A panic
+in `prepare` or apply names the listener and its registering mod in the crash report.
+A panicking or phase-refused registration callback contributes no listeners or edges.
 `VanillaClientListeners::model_manager()` names vanilla's model manager, the anchor of the
 26.3 `Minecraft` registration order; `first()` and `last()` are the ordering boundaries. Mod applies run on the main thread after the staged pack is
 published, before `client_resources_reloaded`. Listeners are registered fresh for every

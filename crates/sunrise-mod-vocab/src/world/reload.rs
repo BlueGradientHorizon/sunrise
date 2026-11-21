@@ -96,16 +96,37 @@ pub struct RegisteredListener<L: ?Sized> {
 }
 
 /// Registration both sides share: unique names and objects, dependencies, the
-/// first/anchor/last boundaries, failure recording, and the ordering sort. A
+/// first/anchor/last boundaries and the ordering sort. A
 /// side adds what its moment needs (the server retains listeners) around it.
 pub(crate) struct ReloadCore<L: ?Sized> {
     order: ReloadOrder<RegisteredListener<L>>,
-    failure: Option<ReloadOrderError>,
     first: Identifier,
     last: Identifier,
 }
 
+fn report_registration_error(error: &ReloadOrderError) {
+    let call = crate::content::crash::current_native_call();
+    let (owner, hook) = call.map_or(("unknown", "reload registration"), |call| {
+        (call.id, call.hook)
+    });
+    log::warn!("mod {owner} hook {hook}: {error}");
+}
+
 impl<L: ?Sized + 'static> ReloadCore<L> {
+    pub(crate) fn checkpoint(&self) -> (usize, usize) {
+        self.order.checkpoint()
+    }
+
+    pub(crate) fn rollback(
+        &mut self,
+        checkpoint: (usize, usize),
+        site: (crate::HookId, &'static str),
+    ) {
+        self.order.rollback(checkpoint, |listener| {
+            crate::runtime::discard_registration(site, listener.owner, listener);
+        });
+    }
+
     /// The `first`, vanilla-anchor and `last` boundaries with their default
     /// edges; `boundary` builds each id's own stateless listener, as the
     /// vanilla anchors are distinct listener objects.
@@ -129,12 +150,7 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
                 )
                 .unwrap();
         }
-        let mut core = Self {
-            order,
-            failure: None,
-            first,
-            last,
-        };
+        let mut core = Self { order, first, last };
         // The anchor keeps its place between the boundaries even though no
         // listener ever orders against it explicitly.
         core.order
@@ -154,11 +170,8 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
         listener: Arc<L>,
     ) -> Result<(), ReloadOrderError> {
         let owner = crate::content::crash::current_native_mod();
-        let result = self.insert(id, converter, listener, owner);
-        if let Err(error) = &result {
-            self.failure.get_or_insert_with(|| error.clone());
-        }
-        result
+        self.insert(id, converter, listener, owner)
+            .inspect_err(report_registration_error)
     }
     fn insert(
         &mut self,
@@ -194,11 +207,9 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
         first: Identifier,
         second: Identifier,
     ) -> Result<(), ReloadOrderError> {
-        let result = self.order.add_dependency(first, second);
-        if let Err(error) = &result {
-            self.failure.get_or_insert_with(|| error.clone());
-        }
-        result
+        self.order
+            .add_dependency(first, second)
+            .inspect_err(report_registration_error)
     }
     /// Registration order, boundaries included.
     pub(crate) fn registry(&self) -> impl Iterator<Item = (&Identifier, &RegisteredListener<L>)> {
@@ -215,15 +226,11 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
             std::ptr::addr_eq(entry.listener.as_ref(), listener).then_some(id)
         })
     }
-    /// The ordered listeners, or the first registration failure; `anchor` is
-    /// the vanilla listener unrelated mods sort after.
+    /// The ordered listeners; `anchor` is the vanilla listener unrelated mods sort after.
     pub(crate) fn finish(
         self,
         anchor: &Identifier,
     ) -> Result<Vec<RegisteredListener<L>>, ReloadOrderError> {
-        if let Some(error) = self.failure {
-            return Err(error);
-        }
         self.order.sort(Some(anchor))
     }
 }

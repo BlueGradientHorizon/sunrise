@@ -8,11 +8,17 @@ pub trait Hooks {
     /// settings and mod-list reads are available through this Host. World
     /// handles, services and transactions panic naming the phase. Existing
     /// data-load callbacks retain their DataLoadContext; no setup event is added.
+    /// Registration errors are returned and logged at the call, without stopping
+    /// the reload. A registration callback that panics or incurs a phase refusal
+    /// contributes no ordered or retained listeners or dependencies; unrelated
+    /// callbacks still run.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "server",
         contract = "listen",
+        staged_surface = "listeners",
+        version = 2,
         host = "read",
         neoforge = "AddServerReloadListenersEvent"
     )]

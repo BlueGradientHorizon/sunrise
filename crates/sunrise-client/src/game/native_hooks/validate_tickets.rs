@@ -16,6 +16,8 @@ impl Game<'_> {
         controller: TicketController,
         validation: &mut mod_api::world::mod_chunk_tickets::ControllerTickets,
     ) {
-        self.fire_validate_tickets(dimension, controller, validation);
+        self.fire_validate_tickets(dimension, controller, |listen| {
+            validation.register_listener(listen)
+        });
     }
 }
