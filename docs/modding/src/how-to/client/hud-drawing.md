@@ -5,8 +5,11 @@ is one of vanilla's `GuiGraphics` calls: `fill`, `text`, `sprite`, `item_stack` 
 takes a buffer of `GuiDraw` ops for the same calls, with `Push` / `Pop` for the pose.
 
 `ClientHost::debug_overlay_visible()` reports whether the client draws its debug overlay this frame. In
-`render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with
-F3 off. F1 hides the overlay unless a screen is open. The read is available only on the client host.
+`render_gui_post`, use it to leave space for the overlay, and use `ClientHost::hud_layer_bounds(layer)`
+to read the drawn `[x, y, width, height]` rectangle in GUI pixels of any HUD layer that drew earlier in
+this HUD pass (for example `"minecraft:effects"`, `"minecraft:boss_overlay"`, `"minecraft:scoreboard_sidebar"`,
+or a mod layer id). Always-on debug entries can make the debug overlay visible with F3 off. F1 hides the
+overlay unless a screen is open. Both reads are available only on the client host.
 
 ## Registering a HUD layer
 
@@ -54,8 +57,10 @@ wrapper omitted the previous body. If a retained painter or wrapper panics or is
 paint is discarded. A wrapper's completed `draw_previous()` calls keep their paint in order,
 without being called again. A panic disables just the offending callback for this session; a
 disabled wrapper leaves the previous body to draw directly. If Pre cancels the slot, neither the
-installed body nor Post runs. For work that must happen even when the HUD is hidden, use the independent foreground
-`gui_render_post` hook.
+installed body nor Post runs. For a single post-HUD pass after all visible HUD layers finish and before
+screens, toasts, debug overlays and IME draw, use `Hooks::render_gui_post` (suppressed when the HUD is
+hidden by F1 or replay, or when `render_gui_pre` cancels). To draw above an open screen, use
+`Hooks::screen_render_post`.
 
 ## Status rows and fixed text positions
 
@@ -180,11 +185,11 @@ fade out. The current HUD shader discards interpolated alpha below 0.004, not ju
 fragments can therefore differ from vanilla's exact-zero discard.
 
 ```rust,ignore
-fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>) {
+fn render_gui_post(&self, _: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
     // A panel shaded from dark purple at the top to black at the bottom.
-    event.batch.fill_gradient([20.0, 20.0, 120.0, 60.0], 0xF010_0010, 0xF000_0000);
+    event.draw.fill_gradient([20.0, 20.0, 120.0, 60.0], 0xF010_0010, 0xF000_0000);
     // A shade that fades out downwards.
-    event.batch.fill_gradient([20.0, 80.0, 120.0, 10.0], 0x8000_0000, 0x0000_0000);
+    event.draw.fill_gradient([20.0, 80.0, 120.0, 10.0], 0x8000_0000, 0x0000_0000);
 }
 ```
 

@@ -1,18 +1,21 @@
-//! The `render_gui_post` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
+//! The `render_gui_post` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// After the boss overlay and before the health and contextual HUD layers
-    /// (skipped under F1; NeoForge's `RenderGuiEvent.Post`). Place a box with
-    /// `corners.place` (boxes stack away from their edge) and draw it with
-    /// `native_fill` and `native_text`.
-    /// Use `ClientHost::debug_overlay_visible()` to avoid drawing over the debug overlay.
-    /// Not heard when a mod canceled `render_gui_pre`. Client-side.
+    /// After the visible in-world HUD layer sequence finishes and before screens,
+    /// toasts, debug overlays and IME draw (NeoForge's `RenderGuiEvent.Post`,
+    /// `GuiLayerManager.render`). Use `event.draw` to draw in GUI pixels, and
+    /// [`crate::ClientHost::hud_layer_bounds`] to read the drawn bounds of earlier
+    /// HUD layers (for example `"minecraft:effects"` or `"minecraft:scoreboard_sidebar"`).
+    /// Skipped when the HUD is hidden (F1 or replay) or when `render_gui_pre` canceled.
+    /// Client-side.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "client",
         contract = "listen",
+        cancellable = false,
+        version = 2,
         neoforge = "RenderGuiEvent.Post"
     )]
-    fn render_gui_post(draw: &mut dyn DrawContext, corners: &mut Corners);
+    fn render_gui_post(draw: &mut dyn DrawContext);
 }

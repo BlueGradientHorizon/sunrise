@@ -1,0 +1,32 @@
+ids = [
+    "hook:gui_render_post",
+    "hook:gui_render_post.batch",
+    "hook:gui_render_post.gui_hidden",
+    "hook:gui_render_post.focused",
+    "method:Hooks::gui_render_post",
+    "type:GuiRenderPostEvent",
+    "type:GuiRenderPostEvent.batch",
+    "type:GuiRenderPostEvent.gui_hidden",
+    "type:GuiRenderPostEvent.focused",
+    "hook:render_gui_post",
+    "hook:render_gui_post.corners",
+    "type:RenderGuiPostEvent.corners",
+    "type:Corner",
+    "type:Corners",
+    "handle:Corner::ALL",
+    "handle:Corner::key",
+    "handle:Corner::label",
+    "handle:Corner::parse",
+    "handle:Corner::is_top",
+    "handle:Corner::is_left",
+    "handle:Corners::new",
+    "handle:Corners::place",
+    "method:prelude::ScreensClientHost::hud_layer_bounds",
+]
+why = "Deliver one RenderGuiEvent.Post hook (`render_gui_post`, version 2) immediately after the visible in-world HUD layer sequence finishes and before screens, toasts, debug overlays and IME draw, matching NeoForge `GuiLayerManager.render` and vanilla `Gui.extractRenderState`. Remove the duplicate post-frame `gui_render_post` hook and move Sunrise's internal corner-stacking helper types (`Corner`, `Corners`) out of the public mod API into the engine. Expose `ScreensClientHost::hud_layer_bounds(layer)` so HUD overlays can query the actual drawn `[x, y, width, height]` bounds of any vanilla or mod HUD layer rendered earlier in the current HUD pass (such as `minecraft:effects`, `minecraft:boss_overlay`, or `minecraft:scoreboard_sidebar`) without a global corner-stacking allocator."
+migrate = """
+1. Replace `Hooks::gui_render_post` listeners with `Hooks::render_gui_post` (for in-world HUD overlays drawn after visible HUD layers) or `Hooks::screen_render_post` (for overlays drawn over an open screen). Use `event.draw` in place of `event.batch`.
+2. In `Hooks::render_gui_post`, stop reading `event.corners`, `Corner`, and `Corners`: place your overlay directly in GUI pixels from `event.draw.size()`, `host.debug_overlay_visible()`, and `host.hud_layer_bounds(layer)` (for example `host.hud_layer_bounds("minecraft:effects")?` to sit below visible status effect icons).
+3. `render_gui_post` is suppressed when the HUD is hidden (F1 or replay) or when `render_gui_pre` cancels, and `render_gui_pre` is now also skipped while replay hides the HUD.
+4. `ScreensClientHost::hud_layer_bounds(layer)` returns `Ok(Some([x, y, width, height]))` for layers that drew earlier in the current HUD pass, `Ok(None)` outside a HUD pass or when the layer was hidden/canceled/empty/unknown, and `Err(LevelReadError::Unavailable)` outside a client window.
+"""

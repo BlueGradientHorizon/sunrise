@@ -157,4 +157,13 @@ pub trait ScreensClientHost {
     /// Unknown names are not down. Modifier combinations use `ClientHost::modifiers`.
     #[access(ClientSetup)]
     fn is_key_down(&self, key: &str) -> bool;
+    /// Side: client.
+    /// Bounding rectangle `[x, y, width, height]` in GUI pixels of a HUD layer drawn
+    /// during the current HUD pass (`"minecraft:effects"`, `"minecraft:boss_overlay"`,
+    /// `"minecraft:scoreboard_sidebar"`, `"minecraft:hotbar"`, or a mod layer id).
+    /// Returns `Ok(None)` outside a HUD pass, before the named layer has drawn, if the
+    /// layer was hidden, canceled, or emitted no geometry this frame, or for an unknown
+    /// layer id. Returns `Err(LevelReadError::Unavailable)` outside a client window.
+    #[access(ClientSetup)]
+    fn hud_layer_bounds(&self, layer: &str) -> Result<Option<[f32; 4]>, LevelReadError>;
 }

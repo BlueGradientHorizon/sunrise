@@ -3461,6 +3461,9 @@ struct Game<'a> {
     debug_renderers_version: Option<u64>,
     /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
     hud_layer_next: Option<usize>,
+    /// Drawn bounding rectangles `[x, y, width, height]` in GUI pixels for HUD layers drawn so far
+    /// in the current HUD pass (`ScreensClientHost::hud_layer_bounds`). Cleared on each HUD pass.
+    hud_layer_bounds: Vec<(&'static str, [f32; 4])>,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     mod_view_distances: std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
     /// `item_level` for one frame, game time, day time and dimension.
@@ -7083,6 +7086,7 @@ impl Game<'_> {
         // keep clear of; `hud_layers` fills it in once the world's HUD draws.
         let gui = HudBatch::new(size, self.settings.gui_scale_inputs());
         self.ui.room = sunrise_client::hud_kit::room::Room::new(gui.width, gui.height);
+        self.hud_layer_bounds.clear();
         // The pack prompt replaces the connecting screen (setScreen), but
         // in game it opens over the world.
         let mut batch = if (self.server_packs.prompt.is_some()
@@ -7124,12 +7128,14 @@ impl Game<'_> {
             );
             self.cursor = pointer.subpixel();
         }
+        self.hud_layer_bounds.clear();
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
         use sunrise_client::gui_layers::VanillaGuiLayer;
 
         self.input_hud_begin();
+        self.hud_layer_bounds.clear();
         let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         batch.glint_colour = self.pvp_glint_texel();
         // GlobalSettingsUniform's GameTime, for a resource pack's text shader.
@@ -7250,12 +7256,12 @@ impl Game<'_> {
         // the sleep overlay, debug screen and open screens still draw.
         let spectator = self.spectator();
         let (wi, hi) = (w as i32, h as i32);
-        let mut gui_canceled = false;
-        if !self.ui.hide_gui {
-            self.native_render_gui_pre(&mut gui_canceled);
-        }
         // RenderGuiEvent.Pre can hide the HUD without changing the player's hide-GUI setting.
         let hide_hud = self.ui.hide_gui || self.replay.playing();
+        let mut gui_canceled = false;
+        if !hide_hud {
+            self.native_render_gui_pre(&mut gui_canceled);
+        }
         let show_hud = !hide_hud && !gui_canceled;
         // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
         // defers the subtitles over itself, and keeps them while F1 hides the
@@ -7551,6 +7557,11 @@ impl Game<'_> {
         // The mod layers above the last vanilla layer drawn.
         self.draw_mod_gui_layers(None, &mut batch);
         self.hud_layer_next = None;
+        // NeoForge `GuiLayerManager.render`: fire `RenderGuiEvent.Post` once immediately
+        // after the visible HUD layer sequence, before screens, toasts, debug overlays and IME.
+        if show_hud {
+            self.native_render_gui_post(&mut batch);
+        }
         // Screen.extractBlurredBackground blurs the world and HUD, while the
         // screen's background, widgets, toasts and debug overlay stay sharp.
         batch.blur_at = batch.vertices.len() as u32;
@@ -11011,7 +11022,6 @@ impl Game<'_> {
         // GUI hooks project against this frame's camera, including its bob/spin and FOV.
         let mut hud = sunrise_client::spans::time("hud", || self.hud(size));
         self.flush_ime(&mut hud);
-        self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.focused);
         if let Some((bar, fade)) = reload_overlay {
             sunrise_client::level_loading::draw_loading_overlay(
                 &mut hud,
@@ -13399,6 +13409,7 @@ impl<'a> Game<'a> {
             debug_renderers: Vec::new(),
             debug_renderers_version: None,
             hud_layer_next: None,
+            hud_layer_bounds: Vec::new(),
             mod_view_distances: Default::default(),
             item_level_cache: Default::default(),
             world_frames: 0,

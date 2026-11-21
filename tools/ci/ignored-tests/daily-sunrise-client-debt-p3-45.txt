@@ -1,0 +1,1 @@
+sunrise-client game::gui_layer_tests::render_gui_post_runs_after_hud_layers_respects_hiding_and_exposes_layer_bounds lib daily child-process

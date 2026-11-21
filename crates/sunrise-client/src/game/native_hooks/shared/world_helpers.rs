@@ -240,7 +240,7 @@ impl<'g> Game<'g> {
 
     fn run_gui_layer(
         &mut self,
-        id: &str,
+        id: &'static str,
         batch: &mut HudBatch,
         body: &GuiLayerBody,
         vanilla: Option<&mut VanillaGuiDraw<'_, 'g>>,
@@ -248,9 +248,12 @@ impl<'g> Game<'g> {
         let mut canceled = false;
         self.native_gui_layer_pre(id, batch, &mut canceled);
         if canceled {
+            self.record_hud_layer_bounds(id, None);
             return;
         }
+        let start = batch.vertices.len();
         self.draw_gui_layer_body(batch, body, vanilla);
+        self.record_hud_layer_bounds(id, batch.vertex_bounds(start));
         self.native_gui_layer_post(id, batch);
     }
 

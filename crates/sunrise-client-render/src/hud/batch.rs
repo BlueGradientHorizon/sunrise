@@ -706,6 +706,34 @@ impl HudBatch {
         self.vertices.extend(glyphs);
         behind
     }
+
+    /// Axis-aligned bounding rectangle `[x, y, width, height]` in GUI pixels of the vertices
+    /// added since `start`. Returns `None` if no finite positive-area geometry was added.
+    pub fn vertex_bounds(&self, start: usize) -> Option<[f32; 4]> {
+        let vertices = self.vertices.get(start..)?;
+        let mut min_x = f32::INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        for vertex in vertices {
+            let [x, y] = vertex.pos;
+            if x.is_finite() && y.is_finite() {
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+        }
+        let width = max_x - min_x;
+        let height = max_y - min_y;
+        (min_x.is_finite()
+            && min_y.is_finite()
+            && width.is_finite()
+            && height.is_finite()
+            && width > 0.0
+            && height > 0.0)
+            .then_some([min_x, min_y, width, height])
+    }
 }
 
 fn inline_profile_name(profile: &serde_json::Value) -> Option<&str> {
@@ -737,5 +765,40 @@ impl HudUniform {
                 [fill.game_time, tint[0], tint[1], tint[2]],
             ],
         }
+    }
+}
+
+#[cfg(test)]
+mod bounds_tests {
+    use super::*;
+
+    #[test]
+    fn vertex_bounds_tracks_drawn_slice_and_ignores_empty_or_non_finite() {
+        let mut batch = HudBatch::scratch([320, 240]);
+        let uv = Rect {
+            u0: 0.0,
+            v0: 0.0,
+            u1: 1.0,
+            v1: 1.0,
+            w: 1,
+            h: 1,
+        };
+        assert_eq!(batch.vertex_bounds(0), None);
+        batch.rect_uv(10.0, 20.0, 30.0, 40.0, uv, u32::MAX);
+        assert_eq!(batch.vertex_bounds(0), Some([10.0, 20.0, 30.0, 40.0]));
+
+        let layer_start = batch.vertices.len();
+        assert_eq!(batch.vertex_bounds(layer_start), None);
+        batch.rect_uv(295.0, 1.0, 24.0, 24.0, uv, u32::MAX);
+        batch.rect_uv(270.0, 26.0, 24.0, 24.0, uv, u32::MAX);
+        assert_eq!(
+            batch.vertex_bounds(layer_start),
+            Some([270.0, 1.0, 49.0, 49.0])
+        );
+
+        let degenerate = batch.vertices.len();
+        batch.rect_uv(5.0, 5.0, 0.0, 10.0, uv, u32::MAX);
+        assert_eq!(batch.vertex_bounds(degenerate), None);
+        assert_eq!(batch.vertex_bounds(batch.vertices.len() + 1), None);
     }
 }

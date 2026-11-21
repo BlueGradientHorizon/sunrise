@@ -411,3 +411,165 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
         });
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn render_gui_post_runs_after_hud_layers_respects_hiding_and_exposes_layer_bounds() {
+    use mod_api::{LevelReadError, RenderGuiPostEvent, RenderGuiPreEvent, ScreenRenderPostEvent};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let test = "game::gui_layer_tests::render_gui_post_runs_after_hud_layers_respects_hiding_and_exposes_layer_bounds";
+    crate::game::in_own_process(test, || {
+        static CANCEL_PRE: AtomicBool = AtomicBool::new(false);
+        static SEEN_BOUNDS: Mutex<Option<Result<Option<[f32; 4]>, LevelReadError>>> =
+            Mutex::new(None);
+        static SEEN_CUSTOM_BOUNDS: Mutex<Option<Result<Option<[f32; 4]>, LevelReadError>>> =
+            Mutex::new(None);
+        static SEEN_UNKNOWN_BOUNDS: Mutex<Option<Result<Option<[f32; 4]>, LevelReadError>>> =
+            Mutex::new(None);
+
+        struct PostHudObserver;
+        #[mod_api::__subscriptions]
+        impl Hooks for PostHudObserver {
+            fn register_gui_layers(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterGuiLayersEvent<'_>,
+            ) {
+                assert!(event.layers.register(
+                    "post_test:top".into(),
+                    GuiLayerPlacement::AboveAll,
+                    Box::new(|_, draw| {
+                        log("layer post_test:top");
+                        draw.fill([12.0, 18.0, 20.0, 10.0], 0xFF00_FF00);
+                    }),
+                ));
+            }
+            fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent<'_>) -> Flow {
+                log("render_gui_pre");
+                if CANCEL_PRE.load(Ordering::Relaxed) {
+                    Flow::Cancel
+                } else {
+                    Flow::Continue
+                }
+            }
+            fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
+                if matches!(
+                    event.layer,
+                    "minecraft:boss_overlay" | "minecraft:tab_list" | "post_test:top"
+                ) {
+                    log(format!("layer_post {}", event.layer));
+                }
+            }
+            fn render_gui_post(&self, host: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
+                log("render_gui_post");
+                *SEEN_BOUNDS.lock().unwrap() = Some(host.hud_layer_bounds("minecraft:effects"));
+                *SEEN_CUSTOM_BOUNDS.lock().unwrap() = Some(host.hud_layer_bounds("post_test:top"));
+                *SEEN_UNKNOWN_BOUNDS.lock().unwrap() =
+                    Some(host.hud_layer_bounds("post_test:missing"));
+                event.draw.fill([4.0, 4.0, 8.0, 8.0], 0xFFFF_00FF);
+            }
+            fn screen_render_post(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut ScreenRenderPostEvent<'_>,
+            ) {
+                log(format!("screen_post {}", event.screen.id));
+            }
+        }
+
+        with_client_game(|game| {
+            mod_platform::__private::install(
+                vec![ModEntry::new("post_hud", Box::new(PostHudObserver))].into(),
+            );
+            mods::register_gui_layers(ExecutionRole::Client);
+            game.title = None;
+            game.screen = super::Screen::Paused;
+            let speed = sunrise_client::brewing::effect("speed")
+                .expect("vanilla speed effect")
+                .id;
+            game.potions
+                .effects
+                .add(sunrise_client::effects::EffectInstance::new(speed, 200, 0));
+
+            // 1. Visible HUD with pause screen open: render_gui_post runs once after all
+            //    visible HUD layers (including AboveAll) and before screen_render_post.
+            let _batch = game.hud([320, 240]);
+            let events = take();
+            let pre_idx = events
+                .iter()
+                .position(|e| e == "render_gui_pre")
+                .expect("render_gui_pre fired");
+            let boss_idx = events
+                .iter()
+                .position(|e| e == "layer_post minecraft:boss_overlay")
+                .expect("boss overlay layer fired");
+            let tab_idx = events
+                .iter()
+                .position(|e| e == "layer_post minecraft:tab_list")
+                .expect("tab list layer fired");
+            let top_idx = events
+                .iter()
+                .position(|e| e == "layer_post post_test:top")
+                .expect("AboveAll mod layer fired");
+            let post_indices: Vec<_> = events
+                .iter()
+                .enumerate()
+                .filter_map(|(i, e)| (e == "render_gui_post").then_some(i))
+                .collect();
+            let screen_idx = events
+                .iter()
+                .position(|e| e.starts_with("screen_post "))
+                .expect("screen_render_post fired");
+            assert_eq!(
+                post_indices.len(),
+                1,
+                "render_gui_post must fire once: {events:?}"
+            );
+            let post_idx = post_indices[0];
+            assert!(
+                pre_idx < boss_idx
+                    && boss_idx < tab_idx
+                    && tab_idx < top_idx
+                    && top_idx < post_idx
+                    && post_idx < screen_idx,
+                "unexpected order: {events:?}"
+            );
+            assert!(
+                matches!(*SEEN_BOUNDS.lock().unwrap(), Some(Ok(Some([_, _, w, h]))) if w > 0.0 && h > 0.0),
+                "expected drawn minecraft:effects bounds, got {:?}",
+                *SEEN_BOUNDS.lock().unwrap()
+            );
+            assert_eq!(
+                *SEEN_CUSTOM_BOUNDS.lock().unwrap(),
+                Some(Ok(Some([12.0, 18.0, 20.0, 10.0])))
+            );
+            assert_eq!(*SEEN_UNKNOWN_BOUNDS.lock().unwrap(), Some(Ok(None)));
+            // Bounds are cleared after the HUD pass finishes.
+            assert_eq!(game.hud_layer_bounds("post_test:top"), Ok(None));
+
+            // 2. Canceling render_gui_pre suppresses render_gui_post.
+            CANCEL_PRE.store(true, Ordering::Relaxed);
+            let _batch = game.hud([320, 240]);
+            let events = take();
+            assert!(events.iter().any(|e| e == "render_gui_pre"));
+            assert!(!events.iter().any(|e| e == "render_gui_post"));
+            CANCEL_PRE.store(false, Ordering::Relaxed);
+
+            // 3. F1 hiding suppresses both render_gui_pre and render_gui_post.
+            game.ui.hide_gui = true;
+            let _batch = game.hud([320, 240]);
+            let events = take();
+            assert!(!events.iter().any(|e| e == "render_gui_pre"));
+            assert!(!events.iter().any(|e| e == "render_gui_post"));
+            game.ui.hide_gui = false;
+
+            // 4. Outside a client window (dedicated server), hud_layer_bounds refuses explicitly.
+            game.options.dedicated = true;
+            assert_eq!(
+                game.hud_layer_bounds("minecraft:effects"),
+                Err(LevelReadError::Unavailable)
+            );
+        });
+    });
+}

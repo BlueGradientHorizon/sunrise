@@ -11,8 +11,50 @@ pub const SORT_KEY: &str = "sunrise.sort";
 /// The name the options screen uses while the shader pack key waits for a key.
 pub const SHADER_PACK_KEY: &str = "sunrise.shader_pack_key";
 
-/// A screen corner for an overlay.
-pub use mod_api::client::extras::Corner;
+/// A screen corner for Sunrise's internal extras and PvP HUD boxes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Corner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+impl Corner {
+    pub const ALL: [Corner; 4] = [
+        Corner::TopLeft,
+        Corner::TopRight,
+        Corner::BottomLeft,
+        Corner::BottomRight,
+    ];
+    pub fn key(self) -> &'static str {
+        match self {
+            Corner::TopLeft => "top_left",
+            Corner::TopRight => "top_right",
+            Corner::BottomLeft => "bottom_left",
+            Corner::BottomRight => "bottom_right",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Corner::TopLeft => "Top left",
+            Corner::TopRight => "Top right",
+            Corner::BottomLeft => "Bottom left",
+            Corner::BottomRight => "Bottom right",
+        }
+    }
+    pub fn parse(s: &str, default: Corner) -> Corner {
+        Self::ALL
+            .into_iter()
+            .find(|c| c.key() == s)
+            .unwrap_or(default)
+    }
+    pub fn is_top(self) -> bool {
+        matches!(self, Corner::TopLeft | Corner::TopRight)
+    }
+    pub fn is_left(self) -> bool {
+        matches!(self, Corner::TopLeft | Corner::BottomLeft)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Extras {
