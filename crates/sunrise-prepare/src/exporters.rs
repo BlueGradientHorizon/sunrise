@@ -13,6 +13,7 @@ const SERVER: &[&str] = &[
     "VanillaGameplayFactsExporter",
     "VanillaEntityTypesExporter",
     "VanillaBlockBehaviourExporter",
+    "VanillaMobDataExporter",
     "VanillaDataFixTablesExporter",
     "VanillaCommandParseOracle",
     "VanillaCreativeTabsExporter",
@@ -23,7 +24,7 @@ const SERVER: &[&str] = &[
 const CLIENT: &[&str] = &[
     "VanillaBlockStateBindingOracle",
     "VanillaEntityModelExporter",
-    "VanillaMobDataExporter",
+    "VanillaMobAnimationExporter",
     "PrepareWorker",
 ];
 

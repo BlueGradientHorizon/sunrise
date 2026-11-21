@@ -135,7 +135,8 @@ pub(super) fn load_world_rest(
                 (k, Arc::new(v))
             })
             .collect();
-        let mut mob_data = sunrise_client::mobs::MobData::load(resource_root, facts);
+        let mut mob_data =
+            sunrise_client::mobs::MobData::load(resource_root, facts.states.len(), draws)?;
         // #847: the mods' spawn rules (`RegisterSpawnPlacementsEvent`) take
         // their types' placement, heightmap and predicate here, once, so a
         // spawn check reads one table with no pass over the mods.

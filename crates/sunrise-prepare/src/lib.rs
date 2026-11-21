@@ -24,9 +24,9 @@ mod sounds;
 mod survival;
 mod worker;
 
-pub use check::{check, missing_extras, STAMP};
+pub use check::{STAMP, check, missing_extras};
 pub use files::clone_or_copy;
-pub use sounds::{add_assets, fonts, languages, packs, panorama, sounds, BUILT_IN_PACKS};
+pub use sounds::{BUILT_IN_PACKS, add_assets, fonts, languages, packs, panorama, sounds};
 
 use pyjson::Value;
 use sha2::Digest;
@@ -44,7 +44,7 @@ pub type Log<'a> = &'a dyn Fn(&str);
 pub type Progress<'a> = &'a dyn Fn(f32);
 
 /// The stages of `steps`, each opened by `Run::stage`: what the fraction counts.
-const STAGES: u32 = 19;
+const STAGES: u32 = 20;
 
 /// The exporter bundle side, and the worker index that runs it (a Prism install has no server
 /// jar, so the client jar is the server side; the sides still compile and run separately).
@@ -61,7 +61,7 @@ pub const SCHEMA: i64 = 7;
 /// the preparer and fails when the output is not the one output-versions.txt gives this number
 /// (`python3 tools/prepare_output.py check`). The launcher reads this line from the version
 /// folder's sources: keep it on one line, as it is.
-pub const OUTPUT_VERSION: u32 = 5;
+pub const OUTPUT_VERSION: u32 = 6;
 
 pub struct Options {
     /// The version folder (a release folder, or a checkout): research-lock.json, the exporters'
@@ -1050,6 +1050,19 @@ fn steps(
             &[],
             "datafix-export.log",
         )?;
+        // Per-state path types, spawn-surface predicates and spawn placements.
+        run.stage();
+        let mob_data = single(
+            "mob data",
+            "mob-data.json",
+            &["VanillaMobDataExporter.java"],
+            "mob_data_exporters_sha256",
+            "server_sha256",
+            "mob-data/classes",
+            "1G",
+            &[arg(&run.server)],
+            "mob-data-export.log",
+        )?;
         if !split_blocks {
             worldgen_blocks(run, 0)?;
         }
@@ -1058,6 +1071,7 @@ fn steps(
             ("gameplay_exporters_sha256", gameplay),
             ("entity_types_exporters_sha256", entity_types),
             ("behaviour_exporters_sha256", behaviour),
+            ("mob_data_exporters_sha256", mob_data),
             ("datafix_exporters_sha256", datafix),
         ])
     });
@@ -1095,19 +1109,18 @@ fn steps(
             &[],
             "entity-model-export.log",
         )?;
-        // Mob AI and animation facts: per-state path types, spawn placements and the
-        // client's keyframe animation definitions (needs the client jar).
+        // Keyframe animation definitions from the client jar.
         run.stage();
-        let mob_data = single(
-            "mob data",
-            "mob-data.json",
-            &["VanillaMobDataExporter.java"],
-            "mob_data_exporters_sha256",
+        let mob_animations = single(
+            "mob animations",
+            "mob-animations.json",
+            &["VanillaMobAnimationExporter.java"],
+            "mob_animations_exporters_sha256",
             "client_sha256",
-            "mob-data/classes",
+            "mob-animations/classes",
             "1G",
             &[arg(&run.client)],
-            "mob-data-export.log",
+            "mob-animations-export.log",
         )?;
         run.close_worker(1);
 
@@ -1134,7 +1147,7 @@ fn steps(
         }
         Ok(vec![
             ("entity_model_exporters_sha256", entity_models),
-            ("mob_data_exporters_sha256", mob_data),
+            ("mob_animations_exporters_sha256", mob_animations),
         ])
     });
 
@@ -1288,6 +1301,10 @@ fn steps(
         (
             "mob_data_exporters_sha256".into(),
             entry("mob_data_exporters_sha256"),
+        ),
+        (
+            "mob_animations_exporters_sha256".into(),
+            entry("mob_animations_exporters_sha256"),
         ),
         (
             "entity_types_exporters_sha256".into(),
@@ -1749,10 +1766,12 @@ mod tests {
                 read(&reports.join(name)).unwrap()
             );
         }
-        assert!(read_json(&root.join("items.json"))
-            .unwrap()
-            .get("minecraft:stone")
-            .is_some());
+        assert!(
+            read_json(&root.join("items.json"))
+                .unwrap()
+                .get("minecraft:stone")
+                .is_some()
+        );
         assert!(root.join("biome-parameters/overworld.json").is_file());
         for name in ["registries.json", "commands.json", "items.json"] {
             fs::remove_file(root.join(name)).unwrap();
