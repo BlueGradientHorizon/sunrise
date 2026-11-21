@@ -44,9 +44,11 @@ pub trait Notes {
 - Item tooltips: unless the stack hides them, `ItemPart::tooltip` adds lines where `Item.appendHoverText` does,
   after the name and before the components, with the same `TooltipAppendContext` as appenders in `event.context`.
   `Hooks::item_tooltip` (NeoForge's `ItemTooltipEvent`) then gets every item's whole tooltip once it is
-  complete, with the local player, the stack's `TooltipDisplay` and its `TooltipFlag` (`advanced`, `creative`),
-  and may add, change or remove any line. Version 2 also fires for `ItemResource::tooltip` queries;
-  reentrant queries return base lines. Creative search uses exported lines and does not fire it.
+  complete, lending `stack: ItemStackView<'_>` (call `project()` to copy components on demand),
+  `display: &TooltipDisplay<'_>`, live `lines: TooltipLines<'_>` validated per edit with `TextFormError`
+  (one invalid edit leaves all other lines intact), the local player, and its `TooltipFlag` (`advanced`,
+  `creative`), and may add, change or remove any line. Version 2 also fires for `ItemResource::tooltip`
+  queries; reentrant queries return base lines. Creative search uses exported lines and does not fire it.
 
 - Data component tooltip lines: `Registrar::register_tooltip_appender(component, placement, appender)` (NeoForge's
   `RegisterTooltipAppendersEvent`) gives one component's `TooltipAppender` a `TooltipPlacement`: `BeforeAll`, `AfterAll`,
