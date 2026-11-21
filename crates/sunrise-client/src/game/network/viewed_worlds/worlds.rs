@@ -17,6 +17,7 @@ use std::sync::{
 };
 use sunrise_client::{
     chunk::known_block_state,
+    chunk_map::ChunkMap,
     fast_hash::{FxHashMap, FxHashSet},
     streaming::{ViewedMeshing, take_resent_column},
     world::World,
@@ -417,9 +418,16 @@ impl ViewedWorlds {
 
 /// A world given up: its columns are freed off the game thread when there are many.
 fn free(mut world: ViewedWorld) {
-    let chunks = std::mem::take(&mut world.world.chunks);
+    let chunks = detach_columns_for_free(&mut world);
     let count = chunks.len();
     sunrise_client::chunk::free_columns(chunks, count);
+}
+
+fn detach_columns_for_free(world: &mut ViewedWorld) -> ChunkMap {
+    let mut chunks = std::mem::take(&mut world.world.chunks);
+    // The level left routing now, regardless of when the free worker runs.
+    chunks.untrack_connection_groups();
+    chunks
 }
 
 #[cfg(test)]
@@ -457,6 +465,55 @@ mod tests {
                 block: Vec::new(),
             },
         })
+    }
+
+    #[test]
+    fn detaching_a_large_viewed_level_refunds_group_credit_before_its_columns_drop() {
+        use sunrise_client::{chunk::Chunk, chunk_map::ConnectionGroupCount};
+
+        const LIMIT: usize = 1;
+        let format = Arc::new(ChunkFormat::new(
+            &DimensionType::vanilla("minecraft:overworld"),
+            vec![0, 7, 9],
+            2,
+        ));
+        let count = ConnectionGroupCount::default();
+        let mut viewed = ViewedWorld::new(
+            "minecraft:the_nether".into(),
+            format,
+            None,
+            World::new(BlockStateId(0), 1),
+            64,
+        );
+        viewed.world.chunks.track_connection_groups(count.clone());
+        let mut grouped = Chunk::empty(0, 0);
+        assert_eq!(grouped.set_connection_group(0, 64, 0, Some(13)), Some(true));
+        viewed.world.chunks.insert((0, 0), Arc::new(grouped));
+        for x in 1..64 {
+            viewed
+                .world
+                .chunks
+                .insert((x, 0), Arc::new(Chunk::empty(x, 0)));
+        }
+
+        let mut active = ChunkMap::default();
+        active.track_connection_groups(count.clone());
+        assert!(!active.allows_connection_groups(0, 1, LIMIT));
+        // Keep the exact map handed to the worker alive, instead of racing its drop.
+        let detached = detach_columns_for_free(&mut viewed);
+        assert_eq!(detached.len(), 64);
+        assert_eq!(detached[&(0, 0)].connection_group(0, 64, 0), Some(13));
+        assert!(active.allows_connection_groups(0, 1, LIMIT));
+        let mut replacement = Chunk::empty(1, 0);
+        assert_eq!(
+            replacement.set_connection_group(0, 64, 0, Some(21)),
+            Some(true)
+        );
+        active.insert((1, 0), Arc::new(replacement));
+        drop(detached);
+        assert!(!active.allows_connection_groups(0, 1, LIMIT));
+        drop(active);
+        assert!(count.allows_replacement(0, 1, LIMIT));
     }
 
     /// A world full at its cap, here 2048 columns, takes a column it holds again, refuses a new

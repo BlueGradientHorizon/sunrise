@@ -147,7 +147,7 @@ impl Drop for ChunkMap {
 impl ChunkMap {
     /// Add this map to a connection's resident count. Changes run on the client thread.
     pub fn track_connection_groups(&mut self, count: ConnectionGroupCount) {
-        drop(self.group_residency.take());
+        self.untrack_connection_groups();
         let mut residency = GroupResidency { count, occupied: 0 };
         residency.replace(
             0,
@@ -157,6 +157,11 @@ impl ChunkMap {
                 .sum(),
         );
         self.group_residency = Some(residency);
+    }
+
+    /// Stop counting this map's group cells as resident without visiting its columns.
+    pub fn untrack_connection_groups(&mut self) {
+        drop(self.group_residency.take());
     }
 
     /// Check the net change before publishing a replacement or an ordered group patch.

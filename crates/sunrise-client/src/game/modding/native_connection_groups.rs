@@ -1012,7 +1012,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_column_resend_supersedes_a_deferred_same_state_group() {
+    fn a_column_snapshot_supersedes_only_older_deferred_group_corrections() {
         let mut resources = None;
         let (mut game, _server) = client_with_pipe(&mut resources);
         negotiate(&game, true);
@@ -1022,8 +1022,21 @@ mod tests {
         let column = viewed_column(0, 0);
         game.handle_packet(column.clone()).unwrap();
         let state = game.world.block(x, y, z);
+        let old_state = game.world.air;
+        let later_state = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:dirt")
+            .unwrap();
+        assert_ne!(old_state, state);
+        assert_ne!(later_state, state);
         let level = game.level("minecraft:overworld").unwrap();
-        for (sequence, snapshot) in [(1, Some(27)), (2, None)] {
+        for (sequence, snapshot, later_group) in [
+            (1, Some(27), None),
+            (2, None, None),
+            (3, Some(27), Some(41)),
+        ] {
             game.predict_blocks(&[(at, state)], sequence);
             let before = level.connection_group(&game, pos);
             deliver_group_bundle(
@@ -1031,7 +1044,7 @@ mod tests {
                 vec![
                     C::BlockUpdate(play::BlockUpdate {
                         pos,
-                        state: state.0 as i32,
+                        state: old_state.0 as i32,
                     }),
                     group_packet(pos, Some(19)),
                 ],
@@ -1047,10 +1060,32 @@ mod tests {
             }
             assert_eq!(game.world.block(x, y, z), state);
             assert_eq!(level.connection_group(&game, pos), Ok(snapshot));
+            if let Some(group) = later_group {
+                deliver_group_bundle(
+                    &mut game,
+                    vec![
+                        C::BlockUpdate(play::BlockUpdate {
+                            pos,
+                            state: later_state.0 as i32,
+                        }),
+                        group_packet(pos, Some(group)),
+                    ],
+                );
+                assert_eq!(game.world.block(x, y, z), state);
+                assert_eq!(level.connection_group(&game, pos), Ok(snapshot));
+            }
             game.handle_packet(C::BlockChangedAck(play::BlockChangedAck { sequence }))
                 .unwrap();
-            assert_eq!(game.world.block(x, y, z), state);
-            assert_eq!(level.connection_group(&game, pos), Ok(snapshot));
+            let expected_state = if later_group.is_some() {
+                later_state
+            } else {
+                state
+            };
+            assert_eq!(game.world.block(x, y, z), expected_state);
+            assert_eq!(
+                level.connection_group(&game, pos),
+                Ok(later_group.or(snapshot))
+            );
         }
     }
 

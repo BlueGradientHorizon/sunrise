@@ -1,5 +1,5 @@
 # Per-position connected-texture groups on a real game (#3843).
-sunrise-client game::native_connection_groups::tests::a_column_resend_supersedes_a_deferred_same_state_group lib daily resources
+sunrise-client game::native_connection_groups::tests::a_column_snapshot_supersedes_only_older_deferred_group_corrections lib daily resources
 sunrise-client game::native_connection_groups::tests::client_applies_connection_group_payloads_and_refuses_client_writes lib daily resources
 sunrise-client game::native_connection_groups::tests::connection_group_api_errors_state_preservation_and_block_replacement lib daily resources
 sunrise-client game::native_connection_groups::tests::connection_group_transactions_abort_silently_and_commit_with_block_writes lib daily resources
