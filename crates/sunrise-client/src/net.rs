@@ -114,8 +114,8 @@ pub enum Event {
     /// The server sent us back to configuration (`ClientboundStartConfigurationPacket`):
     /// the game shows `ServerReconfigScreen` until the server logs it in again.
     Reconfiguring(Box<Reconfiguration>),
-    /// Cookie handlers are main-affine, including standalone play cookies.
-    PlayCookie(Box<(Arc<PlayIo>, PlayCookie)>),
+    /// A standalone cookie handler on its original common listener.
+    Cookie(Box<CookieTask>),
     /// The server sent us back to configuration and finished it again.
     Reconfigured(Arc<Dynamic>),
     /// ClientboundResourcePackPushPacket, in configuration or in play.
@@ -133,8 +133,8 @@ pub enum Event {
     /// `Session::accept_code_of_conduct` or a disconnect; until then the
     /// server waits in configuration.
     CodeOfConduct(String),
-    /// `ClientboundTransferPacket`: main closes the old connection and starts
-    /// the new one with the shared cookie store.
+    /// The source listener marked itself transferring before queuing this task.
+    /// Main commits the handoff even if the source has since closed.
     Transfer(cfg::Transfer),
     /// `ClientboundServerLinksPacket`: the links the pause menu's "Server
     /// Links..." lists (ClientCommonPacketListenerImpl.handleServerLinks).
@@ -172,9 +172,7 @@ impl Event {
             }
             Self::Bundle(bundle) => bundle.owned_bytes(),
             Self::Reconfiguring(_) => size_of::<Reconfiguration>(),
-            Self::PlayCookie(cookie) => {
-                size_of::<(Arc<PlayIo>, PlayCookie)>() + cookie.1.owned_bytes()
-            }
+            Self::Cookie(task) => size_of::<CookieTask>() + task.cookie.owned_bytes(),
             Self::QuietCommands | Self::CustomBooks | Self::ClearDialog | Self::PackPop(_) => 0,
             Self::FarTerrain(crate::lod_net::Offer {
                 distance: _,
@@ -360,10 +358,8 @@ impl Session {
         let writer = Arc::new(Mutex::new(None));
         let configuring = Arc::new(AtomicBool::new(true));
         let counters = Arc::new(Mutex::new(None));
-        // Connection.initiateServerboundPlayConnection: a transfer's
-        // handshake says so (ClientIntent.TRANSFER).
-        let transferred = cookies.is_some();
-        let cookies = cookies.unwrap_or_default();
+        let transfer_from = cookies;
+        let cookies = Cookies::default();
         let (thread_writer, thread_counters, thread_cookies) =
             (writer.clone(), counters.clone(), cookies.clone());
         let thread_configuring = configuring.clone();
@@ -389,7 +385,7 @@ impl Session {
                     &thread_counters,
                     &thread_cookies,
                     &thread_far,
-                    transferred,
+                    transfer_from,
                     &resources,
                     lan,
                     &thread_recorder,
@@ -757,7 +753,7 @@ fn join_friend(
 }
 
 fn status(send: &ingress::Producer<Event>, text: &str) {
-    let _ = send.send(Event::Status(text.to_owned()));
+    let _ = send.send_wait(Event::Status(text.to_owned()));
 }
 
 /// Shown when an online-mode server asks a client without an account to authenticate.
@@ -918,7 +914,7 @@ fn run(
     shared_counters: &Mutex<Option<Arc<Counters>>>,
     cookies: &Cookies,
     far: &Arc<crate::lod_net::Inbox>,
-    transferred: bool,
+    transfer_from: Option<Cookies>,
     resources: &ItemData,
     lan: bool,
     recorder: &RecorderSlot,
@@ -956,6 +952,13 @@ fn run(
     };
     *shared_counters.lock().unwrap() = Some(c.reader.counters.clone());
     let e = |e: sunrise_protocol::Error| Reason::plain(connection_lost(e, lang));
+    // ConnectScreen constructs ClientHandshakePacketListenerImpl only once
+    // the socket connects. Its cookie map snapshots the old listener here.
+    let transferred = transfer_from.is_some();
+    if let Some(source) = transfer_from {
+        let snapshot = source.lock().unwrap().clone();
+        *cookies.lock().unwrap() = snapshot;
+    }
     c.send(
         &handshake::Serverbound::Intention(handshake::Intention {
             protocol: PROTOCOL_VERSION,
@@ -1097,7 +1100,7 @@ fn run(
         resources,
         payloads,
     )?;
-    let _ = send.send(Event::Joined {
+    let _ = send.send_wait(Event::Joined {
         registries: Arc::new(registries),
         uuid: profile.uuid,
         name: profile.name,
@@ -1166,11 +1169,11 @@ impl Reconfiguration {
     }
 }
 
-pub enum PlayCookie {
+enum Cookie {
     Request(cfg::CookieRequest),
     Store(cfg::StoreCookie),
 }
-impl PlayCookie {
+impl Cookie {
     fn owned_bytes(&self) -> usize {
         match self {
             Self::Request(packet) => packet.key.capacity(),
@@ -1179,17 +1182,117 @@ impl PlayCookie {
     }
 }
 
+/// One vanilla common listener, not the physical connection. A later phase
+/// inherits the cookies but has its own transfer eligibility.
+struct CommonIo {
+    writer: Arc<Mutex<Option<QueuedWriter>>>,
+    cookies: Cookies,
+    transferring: AtomicBool,
+    phase: sunrise_protocol::payload_negotiation::Phase,
+}
+
+impl CommonIo {
+    fn new(
+        writer: &Arc<Mutex<Option<QueuedWriter>>>,
+        cookies: &Cookies,
+        phase: sunrise_protocol::payload_negotiation::Phase,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            writer: writer.clone(),
+            cookies: cookies.clone(),
+            transferring: AtomicBool::new(false),
+            phase,
+        })
+    }
+
+    fn accepts_packets(&self) -> bool {
+        self.writer
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(QueuedWriter::accepts_packets)
+    }
+
+    fn handle_cookie(&self, cookie: Cookie) {
+        match cookie {
+            Cookie::Request(q) => {
+                let payload = self.cookies.lock().unwrap().get(&q.key).cloned();
+                let response = cfg::CookieResponse {
+                    key: q.key,
+                    payload,
+                };
+                use sunrise_protocol::payload_negotiation::Phase;
+                let body = match self.phase {
+                    Phase::Configuration => cfg::Serverbound::CookieResponse(response).encode(),
+                    Phase::Play => play::Serverbound::CookieResponse(response).encode(),
+                };
+                if let Some(writer) = self.writer.lock().unwrap().as_ref() {
+                    let _ = writer.send(&body);
+                }
+            }
+            Cookie::Store(p) => {
+                self.cookies.lock().unwrap().insert(p.key, p.payload);
+            }
+        }
+    }
+
+    fn queue_cookie(
+        self: &Arc<Self>,
+        send: &ingress::Producer<Event>,
+        cookie: Cookie,
+        replied: Option<std::sync::mpsc::Sender<()>>,
+    ) -> Result<(), Reason> {
+        send.send_wait(Event::Cookie(Box::new(CookieTask {
+            io: self.clone(),
+            cookie,
+            replied,
+        })))
+        .map_err(|error| Reason::plain(error.to_string()))
+    }
+
+    fn queue_transfer(
+        &self,
+        send: &ingress::Producer<Event>,
+        packet: cfg::Transfer,
+    ) -> Result<(), Reason> {
+        // ClientCommonPacketListenerImpl sets this before handing off to main.
+        self.transferring.store(true, Ordering::Release);
+        send.send_wait(Event::Transfer(packet))
+            .map_err(|error| Reason::plain(error.to_string()))
+    }
+}
+
+pub struct CookieTask {
+    io: Arc<CommonIo>,
+    cookie: Cookie,
+    replied: Option<std::sync::mpsc::Sender<()>>,
+}
+
+impl CookieTask {
+    pub fn handle(self) {
+        // ClientCommonPacketListenerImpl.shouldHandleMessage: only StoreCookie
+        // and Transfer are exempt after a transferring listener closes.
+        if self.io.accepts_packets()
+            || (matches!(self.cookie, Cookie::Store(_))
+                && self.io.transferring.load(Ordering::Acquire))
+        {
+            self.io.handle_cookie(self.cookie);
+        }
+        if let Some(replied) = self.replied {
+            let _ = replied.send(());
+        }
+    }
+}
+
 enum PlayIoAction {
     KeepAlive(cfg::KeepAlive),
     ChunkBatchStart,
     ChunkBatchFinished(i32),
-    Cookie(PlayCookie),
     FarTile(Vec<u8>),
 }
 
 pub struct PlayIo {
-    writer: Arc<Mutex<Option<QueuedWriter>>>,
-    cookies: Cookies,
+    common: Arc<CommonIo>,
     lang: Arc<Language>,
     far: Arc<crate::lod_net::Inbox>,
     // ClientPacketListener.chunkBatchSizeCalculator.
@@ -1198,13 +1301,9 @@ pub struct PlayIo {
 
 impl PlayIo {
     fn close_after_pending(&self) {
-        if let Some(writer) = self.writer.lock().unwrap().as_ref() {
+        if let Some(writer) = self.common.writer.lock().unwrap().as_ref() {
             writer.close_after_pending();
         }
-    }
-
-    pub fn handle_cookie(&self, cookie: PlayCookie) {
-        self.handle(PlayIoAction::Cookie(cookie));
     }
 
     fn handle(&self, action: PlayIoAction) {
@@ -1218,21 +1317,9 @@ impl PlayIo {
                     chunks_per_tick: batch.desired_chunks_per_tick(),
                 })
             }
-            // ClientCommonPacketListenerImpl.handleRequestCookie.
-            PlayIoAction::Cookie(PlayCookie::Request(q)) => {
-                let payload = self.cookies.lock().unwrap().get(&q.key).cloned();
-                play::Serverbound::CookieResponse(cfg::CookieResponse {
-                    key: q.key,
-                    payload,
-                })
-            }
-            PlayIoAction::Cookie(PlayCookie::Store(p)) => {
-                self.cookies.lock().unwrap().insert(p.key, p.payload);
-                return;
-            }
             PlayIoAction::FarTile(data) => return self.far.deliver(data),
         };
-        if let Some(writer) = self.writer.lock().unwrap().as_mut() {
+        if let Some(writer) = self.common.writer.lock().unwrap().as_ref() {
             let _ = writer.send(&reply.encode());
         }
     }
@@ -1251,13 +1338,16 @@ fn receive_play(
     payloads: &Arc<crate::raw_payloads::Transport>,
 ) -> Result<Reason, Reason> {
     use play_bundle::{PlayBundle, PlayTurn};
-    let io = Arc::new(PlayIo {
-        writer: shared_writer.clone(),
-        cookies: cookies.clone(),
-        lang: lang.clone(),
-        far: far.clone(),
-        batch: Mutex::default(),
-    });
+    use sunrise_protocol::payload_negotiation::Phase;
+    let new_listener = || {
+        Arc::new(PlayIo {
+            common: CommonIo::new(shared_writer, cookies, Phase::Play),
+            lang: lang.clone(),
+            far: far.clone(),
+            batch: Mutex::default(),
+        })
+    };
+    let mut io = new_listener();
     let mut bundle = PlayBundle::default();
     loop {
         let (id, payload) = reader
@@ -1283,7 +1373,7 @@ fn receive_play(
                     id,
                 )
                 .unwrap_or("?");
-                let _ = send.send(Event::DecodeError(format!("{name}: {err}")));
+                let _ = send.send_wait(Event::DecodeError(format!("{name}: {err}")));
                 continue;
             }
         };
@@ -1316,10 +1406,10 @@ fn receive_play(
                 io.handle(PlayIoAction::ChunkBatchFinished(p.size))
             }
             play::Clientbound::ResourcePackPush(p) => {
-                let _ = send.send(Event::PackPush(p));
+                let _ = send.send_wait(Event::PackPush(p));
             }
             play::Clientbound::ResourcePackPop(p) => {
-                let _ = send.send(Event::PackPop(p.id));
+                let _ = send.send_wait(Event::PackPop(p.id));
             }
             play::Clientbound::StartConfiguration(_) => {
                 // StartConfiguration is the real protocol barrier. The main
@@ -1346,30 +1436,19 @@ fn receive_play(
                     resources,
                     payloads,
                 )?;
-                let _ = send.send(Event::Reconfigured(Arc::new(registries)));
+                io = new_listener();
+                let _ = send.send_wait(Event::Reconfigured(Arc::new(registries)));
             }
             play::Clientbound::CookieRequest(q) => {
-                send.send(Event::PlayCookie(Box::new((
-                    io.clone(),
-                    PlayCookie::Request(q),
-                ))))
-                .map_err(|error| Reason::plain(error.to_string()))?;
+                io.common.queue_cookie(send, Cookie::Request(q), None)?;
             }
             play::Clientbound::StoreCookie(p) => {
-                send.send(Event::PlayCookie(Box::new((
-                    io.clone(),
-                    PlayCookie::Store(p),
-                ))))
-                .map_err(|error| Reason::plain(error.to_string()))?;
+                io.common.queue_cookie(send, Cookie::Store(p), None)?;
             }
             play::Clientbound::ServerLinks(p) => {
-                let _ = send.send(Event::ServerLinks(p.links));
+                let _ = send.send_wait(Event::ServerLinks(p.links));
             }
-            // ClientCommonPacketListenerImpl.handleTransfer is main-affine.
-            play::Clientbound::Transfer(p) => {
-                send.send_wait(Event::Transfer(p))
-                    .map_err(|error| Reason::plain(error.to_string()))?;
-            }
+            play::Clientbound::Transfer(p) => io.common.queue_transfer(send, p)?,
             play::Clientbound::Disconnect(d) => {
                 io.close_after_pending();
                 return Ok(Reason::tag(&d.reason, lang));
@@ -1394,14 +1473,14 @@ fn receive_play(
                     payload,
                     send,
                 )? {
-                    send.send(Event::Packet(Box::new(play::Clientbound::CustomPayload(
+                    send.send_wait(Event::Packet(Box::new(play::Clientbound::CustomPayload(
                         payload,
                     ))))
                     .map_err(|_| Reason::plain("Disconnected"))?;
                 }
             }
             other => {
-                if send.send(Event::Packet(Box::new(other))).is_err() {
+                if send.send_wait(Event::Packet(Box::new(other))).is_err() {
                     return Ok(Reason::plain("Disconnected"));
                 }
             }
@@ -1444,6 +1523,9 @@ fn configure(
     resources: &ItemData,
     payloads: &Arc<crate::raw_payloads::Transport>,
 ) -> Result<Dynamic, Reason> {
+    use sunrise_protocol::payload_negotiation::Phase;
+    let io = CommonIo::new(writer, cookies, Phase::Configuration);
+    let mut last_cookie_reply = None;
     let mut registries = Dynamic::default();
     let mut dialog_snapshot = None;
     let mut content_verified = false;
@@ -1581,7 +1663,7 @@ fn configure(
                 }))?
             }
             cfg::Clientbound::UpdateEnabledFeatures(p) => {
-                let _ = send.send(Event::Features(p.features));
+                let _ = send.send_wait(Event::Features(p.features));
             }
             cfg::Clientbound::RegistryData(mut r) => {
                 fill_known_entries(&mut r, resources.root());
@@ -1600,14 +1682,14 @@ fn configure(
                 registries.add_tags(&t);
             }
             cfg::Clientbound::CodeOfConduct(c) => {
-                let _ = send.send(Event::CodeOfConduct(c.text));
+                let _ = send.send_wait(Event::CodeOfConduct(c.text));
             }
             // The game answers: it may prompt the player first.
             cfg::Clientbound::ResourcePackPush(p) => {
-                let _ = send.send(Event::PackPush(p));
+                let _ = send.send_wait(Event::PackPush(p));
             }
             cfg::Clientbound::ResourcePackPop(p) => {
-                let _ = send.send(Event::PackPop(p.id));
+                let _ = send.send_wait(Event::PackPop(p.id));
             }
             // The game shows it immediately, before Joined/Reconfigured installs
             // the play registries. Only the dialog entries and tags are dynamic
@@ -1624,33 +1706,33 @@ fn configure(
                     }
                     Arc::new(snapshot)
                 });
-                let _ = send.send(Event::ShowDialog {
+                let _ = send.send_wait(Event::ShowDialog {
                     dialog: d.dialog,
                     registries: snapshot.clone(),
                 });
             }
             cfg::Clientbound::ClearDialog(_) => {
-                let _ = send.send(Event::ClearDialog);
+                let _ = send.send_wait(Event::ClearDialog);
             }
             cfg::Clientbound::CookieRequest(q) => {
-                let payload = cookies.lock().unwrap().get(&q.key).cloned();
-                reply(cfg::Serverbound::CookieResponse(cfg::CookieResponse {
-                    key: q.key,
-                    payload,
-                }))?
+                let (replied, ready) = std::sync::mpsc::channel();
+                io.queue_cookie(send, Cookie::Request(q), Some(replied))?;
+                last_cookie_reply = Some(ready);
             }
             cfg::Clientbound::StoreCookie(p) => {
-                cookies.lock().unwrap().insert(p.key, p.payload);
+                io.queue_cookie(send, Cookie::Store(p), None)?;
             }
             cfg::Clientbound::ServerLinks(p) => {
-                let _ = send.send(Event::ServerLinks(p.links));
+                let _ = send.send_wait(Event::ServerLinks(p.links));
             }
-            cfg::Clientbound::Transfer(p) => {
-                send.send_wait(Event::Transfer(p))
-                    .map_err(|error| Reason::plain(error.to_string()))?;
-            }
+            cfg::Clientbound::Transfer(p) => io.queue_transfer(send, p)?,
             cfg::Clientbound::Disconnect(d) => return Err(Reason::tag(&d.reason, lang)),
             cfg::Clientbound::FinishConfiguration(_) => {
+                // Vanilla finishes on main, behind the cookies. Do not put a
+                // play transition on the writer before those replies.
+                if let Some(ready) = last_cookie_reply {
+                    ready.recv().map_err(|_| Reason::plain("Disconnected"))?;
+                }
                 negotiation
                     .finish_without_offer()
                     .map_err(|error| Reason::plain(error.to_string()))?;
@@ -1688,7 +1770,7 @@ fn configure(
 #[sunrise_mod_api_macros::replaceable]
 fn receive_brand(payload: &cfg::CustomPayload, send: &ingress::Producer<Event>) {
     if let Some(event) = brand_event(payload) {
-        let _ = send.send(event);
+        let _ = send.send_wait(event);
     }
 }
 
@@ -3164,6 +3246,8 @@ mod tests {
             }
             server.send(&delimiter).unwrap();
         }
+        let ping = C::Ping(cfg::Ping { id: 30 });
+        server.send(&ping.encode()).unwrap();
         let keep_alive = cfg::KeepAlive { id: 31 };
         server
             .send(&C::KeepAlive(keep_alive.clone()).encode())
@@ -3195,7 +3279,15 @@ mod tests {
             second = receive(id);
         }
         assert_eq!(events.stats().peak_reserved_bytes, capacity);
-        drop((first, second));
+        assert!(matches!(
+            events.recv_timeout_owned(Duration::from_millis(25)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        assert_eq!(events.stats().reserved_bytes, capacity);
+        drop(first);
+        let (event, _) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        assert!(matches!(event, Event::Packet(packet) if *packet == ping));
+        drop(second);
         let (id, body) = server.recv().unwrap();
         assert_eq!(S::decode(id, &body).unwrap(), S::KeepAlive(keep_alive));
         server.writer.shutdown();
@@ -3257,11 +3349,10 @@ mod tests {
             ));
         }
         let (event, _) = events.recv_timeout_owned(timeout).unwrap().into_parts();
-        let Event::PlayCookie(request) = event else {
+        let Event::Cookie(request) = event else {
             panic!("missing standalone cookie")
         };
-        let (io, request) = *request;
-        io.handle_cookie(request);
+        request.handle();
         let (event, _) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         let Event::Reconfiguring(resume) = event else {
             panic!("missing configuration task")
@@ -3282,9 +3373,31 @@ mod tests {
         assert_eq!(recv(&mut server), response(10));
         assert_eq!(recv(&mut server), response(11));
         assert_eq!(recv(&mut server), S::ConfigurationAcknowledged(Empty));
-        server
-            .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
-            .unwrap();
+        for packet in [
+            cfg::Clientbound::StoreCookie(cfg::StoreCookie {
+                key: cookie.into(),
+                payload: vec![12],
+            }),
+            cfg::Clientbound::CookieRequest(cfg::CookieRequest { key: cookie.into() }),
+            cfg::Clientbound::FinishConfiguration(Empty),
+        ] {
+            server.send(&packet.encode()).unwrap();
+        }
+        for _ in 0..2 {
+            let (event, _) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+            let Event::Cookie(task) = event else {
+                panic!("missing configuration cookie task")
+            };
+            task.handle();
+        }
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            cfg::Serverbound::decode(id, &body).unwrap(),
+            cfg::Serverbound::CookieResponse(cfg::CookieResponse {
+                key: cookie.into(),
+                payload: Some(vec![12]),
+            })
+        );
         let (id, body) = server.recv().unwrap();
         assert_eq!(
             cfg::Serverbound::decode(id, &body).unwrap(),
@@ -3563,103 +3676,6 @@ mod tests {
         assert_eq!(play::Serverbound::decode(id, &body).unwrap(), tick_end);
         drop(session);
         assert!(thread.join().unwrap().is_err());
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn play_answers_cookie_requests_from_stored_cookies_and_follows_transfers() {
-        let (root, data) = empty_item_data("cookies");
-        let (client, server) = sunrise_protocol::connection::Pipe::pair();
-        let (mut reader, writer) = Connection::local(client).split();
-        let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
-        let (send, events) = event_channel();
-        let cookies = Cookies::default();
-        let (thread_writer, thread_cookies) = (writer.clone(), cookies.clone());
-        let thread = std::thread::spawn(move || {
-            receive_play(
-                &mut reader,
-                &thread_writer,
-                &Arc::new(AtomicBool::new(false)),
-                &Arc::new(Language::new()),
-                &send,
-                &thread_cookies,
-                &Arc::default(),
-                &data,
-                &Arc::new(Mutex::new(None)),
-                &crate::raw_payloads::Transport::empty(),
-            )
-        });
-        let mut server = Connection::local(server);
-        let run_cookie = || {
-            let (event, _) = events
-                .recv_timeout_owned(Duration::from_secs(5))
-                .unwrap()
-                .into_parts();
-            let Event::PlayCookie(cookie) = event else {
-                panic!("missing cookie task")
-            };
-            let (io, cookie) = *cookie;
-            io.handle_cookie(cookie);
-        };
-        let ask = |server: &mut Connection, key: &str| {
-            let request = play::Clientbound::CookieRequest(cfg::CookieRequest { key: key.into() });
-            server.send(&request.encode()).unwrap();
-            run_cookie();
-            let (id, body) = server.recv().unwrap();
-            play::Serverbound::decode(id, &body).unwrap()
-        };
-        // handleRequestCookie answers an unknown key with no payload.
-        assert_eq!(
-            ask(&mut server, "proxy:session"),
-            play::Serverbound::CookieResponse(cfg::CookieResponse {
-                key: "proxy:session".into(),
-                payload: None,
-            })
-        );
-        let store = play::Clientbound::StoreCookie(cfg::StoreCookie {
-            key: "proxy:session".into(),
-            payload: vec![1, 2, 3],
-        });
-        server.send(&store.encode()).unwrap();
-        run_cookie();
-        assert_eq!(
-            ask(&mut server, "proxy:session"),
-            play::Serverbound::CookieResponse(cfg::CookieResponse {
-                key: "proxy:session".into(),
-                payload: Some(vec![1, 2, 3]),
-            })
-        );
-        server.send(&store.encode()).unwrap();
-        let transfer = play::Clientbound::Transfer(cfg::Transfer {
-            host: "example.net".into(),
-            port: 25566,
-        });
-        server.send(&transfer.encode()).unwrap();
-        // No main work has run since sending the store and transfer. The old
-        // receiver is still live, and main sees the cookie before the transfer.
-        let keep_alive = cfg::KeepAlive { id: 42 };
-        server
-            .send(&play::Clientbound::KeepAlive(keep_alive.clone()).encode())
-            .unwrap();
-        let (id, body) = server.recv().unwrap();
-        assert_eq!(
-            play::Serverbound::decode(id, &body).unwrap(),
-            play::Serverbound::KeepAlive(keep_alive)
-        );
-        cookies.lock().unwrap().clear();
-        run_cookie();
-        let (event, _) = events
-            .recv_timeout_owned(Duration::from_secs(5))
-            .unwrap()
-            .into_parts();
-        assert!(matches!(event, Event::Transfer(p) if p.host == "example.net" && p.port == 25566));
-        writer.lock().unwrap().take().unwrap().shutdown();
-        assert!(thread.join().unwrap().is_err());
-        // The stored cookie stays for the next connection (TransferState).
-        assert_eq!(
-            cookies.lock().unwrap().get("proxy:session"),
-            Some(&vec![1, 2, 3])
-        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
