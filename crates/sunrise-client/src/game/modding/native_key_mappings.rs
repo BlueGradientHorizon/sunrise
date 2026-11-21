@@ -17,26 +17,23 @@ impl Game<'_> {
             mod_api::__private::key_mappings(),
         );
         let settings = &self.settings;
-        self.native_input
-            .mappings
-            .bind(mappings.iter().map(|(owner, mapping)| {
-                let (input, modifiers) = settings.mods.binding(
-                    owner,
-                    &mapping.id,
-                    (&mapping.key, mapping.modifiers.bits),
-                );
-                ModBinding {
-                    owner,
-                    id: &mapping.id,
-                    input,
-                    modifiers,
-                    context: match mapping.context {
-                        KeyConflictContext::InGame => MappingContext::InGame,
-                        KeyConflictContext::Gui => MappingContext::Gui,
-                        _ => MappingContext::Universal,
-                    },
-                }
-            }));
+        self.mod_keys.bind(mappings.iter().map(|(owner, mapping)| {
+            let (input, modifiers) =
+                settings
+                    .mods
+                    .binding(owner, &mapping.id, (&mapping.key, mapping.modifiers.bits));
+            ModBinding {
+                owner,
+                id: &mapping.id,
+                input,
+                modifiers,
+                context: match mapping.context {
+                    KeyConflictContext::InGame => MappingContext::InGame,
+                    KeyConflictContext::Gui => MappingContext::Gui,
+                    _ => MappingContext::Universal,
+                },
+            }
+        }));
     }
     /// Binds mod `mod_id`'s mapping `name` to `key` with `modifiers`, as Controls binds it
     /// (`OptionsUi::bind_key`): the mappings are bound again and the settings saved.
@@ -167,16 +164,12 @@ impl Game<'_> {
         };
         let screen_open = self.mod_mappings_screen_open();
         let held = glfw_modifiers(self.modifiers);
-        self.native_input
-            .mappings
-            .button(button, action, screen_open, held);
+        self.mod_keys.button(button, action, screen_open, held);
     }
     fn mod_mappings_input(&mut self, input: &str, action: KeyAction, mouse: bool) {
         let screen_open = self.mod_mappings_screen_open();
         let held = glfw_modifiers(self.modifiers);
-        self.native_input
-            .mappings
-            .input(input, action, mouse, screen_open, held);
+        self.mod_keys.input(input, action, mouse, screen_open, held);
     }
     /// A screen or overlay is open: the mappings hear no presses and are released.
     pub(in crate::game) fn mod_mappings_screen_open(&self) -> bool {
@@ -191,17 +184,16 @@ impl Game<'_> {
     pub(in crate::game) fn is_down(&self, mod_id: &str, id: &str) -> bool {
         !self.mod_mappings_screen_open()
             && self
-                .native_input
-                .mappings
+                .mod_keys
                 .is_down(mod_id, id, glfw_modifiers(self.modifiers), false)
     }
     /// `KeyMapping.consumeClick`. Behind a screen there is none: the screen released them all.
     pub(in crate::game) fn consume_click(&mut self, mod_id: &str, id: &str) -> bool {
         if self.mod_mappings_screen_open() {
-            self.native_input.mappings.release_all();
+            self.mod_keys.release_all();
             return false;
         }
-        self.native_input.mappings.consume_click(mod_id, id)
+        self.mod_keys.consume_click(mod_id, id)
     }
 }
 
@@ -219,16 +211,14 @@ mod tests {
                 )
                 .unwrap(),
             );
-            game.native_input
-                .mappings
-                .bind([sunrise_client::keymapping::ModBinding {
-                    owner: "test",
-                    id: "pending",
-                    input: "key.keyboard.k".into(),
-                    modifiers: 0,
-                    context: sunrise_client::keymapping::MappingContext::InGame,
-                }]);
-            game.native_input.mappings.input(
+            game.mod_keys.bind([sunrise_client::keymapping::ModBinding {
+                owner: "test",
+                id: "pending",
+                input: "key.keyboard.k".into(),
+                modifiers: 0,
+                context: sunrise_client::keymapping::MappingContext::InGame,
+            }]);
+            game.mod_keys.input(
                 "key.keyboard.k",
                 sunrise_client::keymapping::KeyAction::Press,
                 false,

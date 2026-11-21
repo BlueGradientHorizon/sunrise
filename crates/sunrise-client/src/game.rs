@@ -1720,8 +1720,10 @@ struct Game<'a> {
     panel: native_panel::Panel,
     /// Sunrise's own shader pack, while one is picked (`game/modding/native_shaders.rs`).
     native_shaders: native_shaders::NativeShaders,
-    /// Native client mods' claimed items, unpolled events and key mappings (game/modding/native_claimed_items.rs).
+    /// Native client mods' claimed items and unpolled events (game/modding/native_claimed_items.rs).
     native_input: native_claimed_items::ModInput,
+    /// Native client mods' key mappings (game/modding/native_key_mappings.rs).
+    mod_keys: sunrise_client::keymapping::ModKeys,
     /// The native lifecycle bookkeeping.
     native_lifecycle: native_lifecycle::NativeLifecycle,
     resident_entities: resident_state::ResidentEntities,
@@ -11324,6 +11326,7 @@ impl<'a> Game<'a> {
             panel: Default::default(),
             native_shaders: Default::default(),
             native_input: Default::default(),
+            mod_keys: Default::default(),
             native_lifecycle: Default::default(),
             resident_entities: Default::default(),
             lent_mobs: Default::default(),
