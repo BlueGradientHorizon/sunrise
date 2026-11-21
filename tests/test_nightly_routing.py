@@ -136,7 +136,9 @@ const matrix = s.matrix, inputs = s.inputs, github = s.github;
 console.log(JSON.stringify(Boolean(eval(s.expression))));
 """
         legs = {"linux": {}, "windows": {}, "windows-arm64": {}, "macos": {"mac": True}, "macos-x64": {"mac": True}}
-        for repository, kind in itertools.product(["sunrise-org/sunrise", "horizon-rust/horizon"], ["nightly", "snapshot", "release"]):
+        for repository, kind in itertools.product(
+            ["sunrise-org/sunrise", "horizon-rust/horizon"], ["nightly", "dev", "release"]
+        ):
             for absent in [None, *legs]:
                 if absent is None:
                     expected = True
