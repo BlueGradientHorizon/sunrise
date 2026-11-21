@@ -791,3 +791,648 @@ fn a_posed_item_has_a_depth_of_its_own() {
     );
     fs::remove_dir_all(root).ok();
 }
+
+const GLINT_WITNESS_26_3: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../tools/witness/26.3/item_glint/witness.json"
+));
+
+fn glint_witness_26_3() -> Value {
+    serde_json::from_str(GLINT_WITNESS_26_3).expect("valid 26.3 item_glint witness")
+}
+
+fn prepared_resources_26_3() -> PathBuf {
+    std::env::var_os("SUNRISE_TEST_RESOURCES")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.local/sunrise-client/26.3")
+        })
+}
+
+fn full_renderer_26_3() -> ItemRenderer {
+    let root = prepared_resources_26_3();
+    let data = crate::test_resources::item_data(
+        &root,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .expect("26.3 prepared item data");
+    let renderer = ItemRenderer::load(&ResourceRoot::directory(root), &data).unwrap();
+    renderer.prepare_glint_atlas(16384, (0, 2)).unwrap();
+    renderer
+}
+
+fn dummy_hud_sprites(names: &[&str]) -> HashMap<String, Rect> {
+    // Deliberately non-vanilla rects so tests fail if HUD UVs leak into glint UVs.
+    let rect = Rect {
+        u0: 0.1,
+        v0: 0.2,
+        u1: 0.3,
+        v1: 0.4,
+        w: 16,
+        h: 16,
+    };
+    let mut map = HashMap::from([("misc/enchanted_glint_item".to_owned(), rect)]);
+    for &name in names {
+        map.insert(name.to_owned(), rect);
+    }
+    map
+}
+
+fn parse_quad_uv_bits(v: &Value) -> [[u32; 2]; 4] {
+    let arr = v.as_array().unwrap();
+    assert_eq!(arr.len(), 4);
+    std::array::from_fn(|i| {
+        let pair = arr[i].as_array().unwrap();
+        [
+            pair[0].as_u64().unwrap() as u32,
+            pair[1].as_u64().unwrap() as u32,
+        ]
+    })
+}
+
+fn vertex_quad_glint_bits(verts: &[Vertex]) -> Vec<[[u32; 2]; 4]> {
+    assert_eq!(verts.len() % 4, 0);
+    verts
+        .chunks_exact(4)
+        .map(|quad| std::array::from_fn(|i| quad[i].glint_uv.map(f32::to_bits)))
+        .collect()
+}
+
+/// 26.3 parity: `Glint::uv` matches `TextureTransform.setupGlintTexturing` bit-for-bit.
+#[test]
+fn glint_uv_matches_vanilla_26_3_texture_transform_bits() {
+    let witness = glint_witness_26_3();
+    let transforms = witness["transforms"].as_array().unwrap();
+    assert!(!transforms.is_empty());
+    for entry in transforms {
+        let name = entry["name"].as_str().unwrap();
+        let scale = f32::from_bits(entry["scale_bits"].as_u64().unwrap() as u32);
+        let millis = entry["millis"].as_u64().unwrap() as f32;
+        let speed = f32::from_bits(entry["speed_f32_bits"].as_u64().unwrap() as u32);
+        let glint = Glint {
+            millis,
+            speed,
+            alpha: 0.75,
+            scale,
+        };
+        for (idx, sample) in entry["samples"].as_array().unwrap().iter().enumerate() {
+            let in_arr = sample["in_uv_bits"].as_array().unwrap();
+            let in_uv = [
+                f32::from_bits(in_arr[0].as_u64().unwrap() as u32),
+                f32::from_bits(in_arr[1].as_u64().unwrap() as u32),
+            ];
+            let out_arr = sample["out_uv_bits"].as_array().unwrap();
+            let want = [
+                out_arr[0].as_u64().unwrap() as u32,
+                out_arr[1].as_u64().unwrap() as u32,
+            ];
+            let got = glint.uv(in_uv).map(f32::to_bits);
+            assert_eq!(
+                got, want,
+                "26.3 {name} millis={millis} speed={speed} sample[{idx}] in={in_uv:?}: got={got:#x?} want={want:#x?}"
+            );
+        }
+    }
+}
+
+/// 26.3 parity: `minecraft:end_crystal` submitted into `WorldSink` (including genpvp EID 83245
+/// and every `ItemDisplayContext`) uses `GLINT_TEXTURING` (8.0) over vanilla `items` atlas UVs.
+#[test]
+fn end_crystal_world_sink_uses_atlas_uv_and_item_glint_scale_26_3() {
+    use sunrise_assets::item_model::NoEnv;
+
+    let witness = glint_witness_26_3();
+    let renderer = full_renderer_26_3();
+    let sprites = dummy_hud_sprites(&["item/end_crystal"]);
+    let stack = StackView::new("minecraft:end_crystal", 1);
+    let eid_quads = witness["end_crystal_item_display"]["quads"]
+        .as_array()
+        .unwrap();
+    let eid_pose = Mat4::from_translation(Vec3::new(-0.945, 0.3885, -4.2))
+        * Mat4::from_quat(glam::Quat::from_xyzw(0.0, 1.0, 0.0, 0.0))
+        * Mat4::from_scale(Vec3::splat(0.525))
+        * Mat4::from_rotation_y(std::f32::consts::PI);
+
+    let cases: [(&str, DisplayContext, Mat4); 11] = [
+        ("eid_83245", DisplayContext::Gui, eid_pose),
+        ("gui", DisplayContext::Gui, Mat4::IDENTITY),
+        ("ground", DisplayContext::Ground, Mat4::IDENTITY),
+        ("fixed", DisplayContext::Fixed, Mat4::IDENTITY),
+        (
+            "firstperson_righthand",
+            DisplayContext::FirstPersonRightHand,
+            Mat4::IDENTITY,
+        ),
+        (
+            "firstperson_lefthand",
+            DisplayContext::FirstPersonLeftHand,
+            Mat4::IDENTITY,
+        ),
+        (
+            "thirdperson_righthand",
+            DisplayContext::ThirdPersonRightHand,
+            Mat4::IDENTITY,
+        ),
+        (
+            "thirdperson_lefthand",
+            DisplayContext::ThirdPersonLeftHand,
+            Mat4::IDENTITY,
+        ),
+        ("head", DisplayContext::Head, Mat4::IDENTITY),
+        ("on_shelf", DisplayContext::OnShelf, Mat4::IDENTITY),
+        ("none", DisplayContext::None, Mat4::IDENTITY),
+    ];
+
+    for (label, ctx, pose) in cases {
+        if label != "eid_83245" {
+            assert_eq!(
+                witness["contexts"][label]["matches_eid_83245_all_quads"].as_bool(),
+                Some(true)
+            );
+        }
+        let state = renderer.resolve(&stack, ctx, None, None, 83245, &NoEnv);
+        for (millis, key) in [
+            (0.0f32, "glint_uv_t0_bits"),
+            (123_456.0f32, "glint_uv_t123456_bits"),
+        ] {
+            let mut out = Vec::new();
+            state.submit(
+                &renderer,
+                &sprites,
+                &NoHost,
+                pose,
+                &mut WorldSink {
+                    out: &mut out,
+                    light: 0xF0F0,
+                    lights: None,
+                    glint: Some(Glint {
+                        millis,
+                        speed: 0.5,
+                        alpha: 0.75,
+                        scale: 8.0,
+                    }),
+                    tier: 0,
+                },
+            );
+            assert_eq!(out.len(), eid_quads.len() * 4, "{label} {key} vertex count");
+            assert!(
+                out.iter().all(|v| (v.layer & 0xFFFF) == 7),
+                "{label} {key} expected glint overlay 7"
+            );
+            let got = vertex_quad_glint_bits(&out);
+            for (q, want_quad) in eid_quads.iter().enumerate() {
+                let want = parse_quad_uv_bits(&want_quad[key]);
+                assert_eq!(
+                    got[q], want,
+                    "26.3 end_crystal {label} {key} quad[{q}]: got={:#x?} want={:#x?}",
+                    got[q], want
+                );
+            }
+        }
+    }
+}
+
+/// 26.3 parity: block-textured enchanted items (`minecraft:stone`) use the stitched
+/// `minecraft:blocks` (mip 4) atlas UVs with `GLINT_TEXTURING` (8.0) in both world and GUI.
+#[test]
+fn block_item_glint_uses_blocks_atlas_uv_26_3() {
+    use sunrise_assets::item_model::NoEnv;
+
+    let witness = glint_witness_26_3();
+    let renderer = full_renderer_26_3();
+    let sprites = dummy_hud_sprites(&["block/stone"]);
+    let mut stack = StackView::new("minecraft:stone", 1);
+    stack.patch.insert(
+        "minecraft:enchantment_glint_override".into(),
+        Some(Value::Bool(true)),
+    );
+
+    for (ctx_name, ctx) in [
+        ("gui", DisplayContext::Gui),
+        ("ground", DisplayContext::Ground),
+    ] {
+        let expected_quads = witness["block_item"][ctx_name]["quads"].as_array().unwrap();
+        let state = renderer.resolve(&stack, ctx, None, None, 0, &NoEnv);
+        for (millis, key) in [
+            (0.0f32, "glint_uv_t0_bits"),
+            (123_456.0f32, "glint_uv_t123456_bits"),
+        ] {
+            let mut out = Vec::new();
+            state.submit(
+                &renderer,
+                &sprites,
+                &NoHost,
+                Mat4::IDENTITY,
+                &mut WorldSink {
+                    out: &mut out,
+                    light: 0xF0F0,
+                    lights: None,
+                    glint: Some(Glint {
+                        millis,
+                        speed: 0.5,
+                        alpha: 0.75,
+                        scale: 8.0,
+                    }),
+                    tier: 0,
+                },
+            );
+            assert_eq!(
+                out.len(),
+                expected_quads.len() * 4,
+                "stone {ctx_name} {key}"
+            );
+            let got = vertex_quad_glint_bits(&out);
+            for (q, want_quad) in expected_quads.iter().enumerate() {
+                let want = parse_quad_uv_bits(&want_quad[key]);
+                assert_eq!(
+                    got[q], want,
+                    "26.3 stone {ctx_name} {key} quad[{q}]: got={:#x?} want={:#x?}",
+                    got[q], want
+                );
+            }
+        }
+    }
+
+    // GUI draw_posed (no slot clipping) must also emit exact `blocks` atlas glint corners.
+    let state = renderer.resolve(&stack, DisplayContext::Gui, None, None, 0, &NoEnv);
+    let mut batch = crate::hud::HudBatch::scratch([64, 64]);
+    let pose = Mat4::from_translation(Vec3::new(8.0, 8.0, 0.0))
+        * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
+    assert!(gui::draw_posed(
+        &state,
+        &gui::GuiItemEnv {
+            renderer: &renderer,
+            sprites: &sprites,
+            host: &NoHost,
+        },
+        &mut batch,
+        pose,
+        GlintFrame {
+            millis: 123_456.0,
+            speed: 0.5,
+            alpha: 0.75,
+            sprite: true,
+        },
+    ));
+    let allowed_corners =
+        parse_quad_uv_bits(&witness["block_item"]["gui"]["quads"][0]["glint_uv_t123456_bits"]);
+    let gui_glints: Vec<[u32; 2]> = batch
+        .vertices
+        .iter()
+        .filter(|v| v.uv[0] >= 2.0)
+        .map(|v| v.glint_uv.map(f32::to_bits))
+        .collect();
+    assert!(
+        !gui_glints.is_empty(),
+        "stone gui_draw_posed emitted no glint vertices"
+    );
+    for uv in gui_glints {
+        assert!(
+            allowed_corners.contains(&uv),
+            "26.3 stone gui glint vertex {uv:#x?} not in vanilla blocks-atlas corners {allowed_corners:#x?}"
+        );
+    }
+}
+
+/// 26.3 parity: `Foil::Special` (`minecraft:compass`) projects sheeted decal `UV3` via
+/// `ItemFeatureRenderer.computeFoilDecalPose` and transforms it with `GLINT_TEXTURING` (8.0).
+#[test]
+fn compass_special_foil_uses_decal_uv_26_3() {
+    use sunrise_assets::item_model::NoEnv;
+
+    let witness = glint_witness_26_3();
+    let renderer = full_renderer_26_3();
+    let sprites = dummy_hud_sprites(&["item/compass_16", "item/compass_00"]);
+    let mut stack = StackView::new("minecraft:compass", 1);
+    stack.patch.insert(
+        "minecraft:enchantment_glint_override".into(),
+        Some(Value::Bool(true)),
+    );
+
+    let gui_slot_pose = Mat4::from_translation(Vec3::new(8.0, 8.0, 0.0))
+        * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
+    let ground_posed = Mat4::from_translation(Vec3::new(1.5, 2.0, -3.5))
+        * Mat4::from_rotation_y(0.7)
+        * Mat4::from_scale(Vec3::splat(0.5));
+
+    let cases: [(&str, DisplayContext, Mat4); 9] = [
+        ("gui", DisplayContext::Gui, Mat4::IDENTITY),
+        (
+            "firstperson_righthand",
+            DisplayContext::FirstPersonRightHand,
+            Mat4::IDENTITY,
+        ),
+        (
+            "firstperson_lefthand",
+            DisplayContext::FirstPersonLeftHand,
+            Mat4::IDENTITY,
+        ),
+        ("ground", DisplayContext::Ground, Mat4::IDENTITY),
+        ("fixed", DisplayContext::Fixed, Mat4::IDENTITY),
+        (
+            "thirdperson_righthand",
+            DisplayContext::ThirdPersonRightHand,
+            Mat4::IDENTITY,
+        ),
+        ("head", DisplayContext::Head, Mat4::IDENTITY),
+        ("gui_slot_pose", DisplayContext::Gui, gui_slot_pose),
+        ("ground_posed", DisplayContext::Ground, ground_posed),
+    ];
+
+    for (case_key, ctx, pose) in cases {
+        let expected_quads = witness["special_foil"][case_key]["quads"]
+            .as_array()
+            .unwrap();
+        let state = renderer.resolve(&stack, ctx, None, None, 0, &NoEnv);
+        for (millis, key) in [
+            (0.0f32, "glint_uv_t0_bits"),
+            (123_456.0f32, "glint_uv_t123456_bits"),
+        ] {
+            let mut out = Vec::new();
+            state.submit(
+                &renderer,
+                &sprites,
+                &NoHost,
+                pose,
+                &mut WorldSink {
+                    out: &mut out,
+                    light: 0xF0F0,
+                    lights: None,
+                    glint: Some(Glint {
+                        millis,
+                        speed: 0.5,
+                        alpha: 0.75,
+                        scale: 8.0,
+                    }),
+                    tier: 0,
+                },
+            );
+            assert_eq!(
+                out.len(),
+                expected_quads.len() * 4,
+                "compass {case_key} {key} vertex count"
+            );
+            let got = vertex_quad_glint_bits(&out);
+            for (q, want_quad) in expected_quads.iter().enumerate() {
+                let want = parse_quad_uv_bits(&want_quad[key]);
+                assert_eq!(
+                    got[q], want,
+                    "26.3 compass {case_key} {key} quad[{q}]: got={:#x?} want={:#x?}",
+                    got[q], want
+                );
+            }
+        }
+    }
+}
+
+/// 26.3 parity: `minecraft:trident` uses `GLINT_TEXTURING` (8.0) + `items` atlas in 2D contexts
+/// (`Gui`/`Ground`) and `ENTITY_GLINT_TEXTURING` (0.5) + raw UV in 3D hand contexts;
+/// `minecraft:shield` (plain & patterned) uses `ENTITY_GLINT_TEXTURING` (0.5) +
+/// `minecraft:shield_patterns` atlas UV in both `WorldSink` and GUI.
+#[test]
+fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
+    use sunrise_assets::item_model::NoEnv;
+
+    let witness = glint_witness_26_3();
+    let renderer = full_renderer_26_3();
+    let sprites = dummy_hud_sprites(&[
+        "item/trident",
+        "entity/trident/trident",
+        "entity/shield/shield_base_nopattern",
+        "entity/shield/shield_base",
+        "entity/shield/base",
+    ]);
+
+    let enchanted = |item: &str| {
+        let mut s = StackView::new(item, 1);
+        s.patch.insert(
+            "minecraft:enchantment_glint_override".into(),
+            Some(Value::Bool(true)),
+        );
+        s
+    };
+
+    let trident = enchanted("minecraft:trident");
+    for (ctx_name, ctx) in [
+        ("gui", DisplayContext::Gui),
+        ("ground", DisplayContext::Ground),
+    ] {
+        let expected_quads = witness["special_models"]["trident"][ctx_name]["items"]["quads"]
+            .as_array()
+            .unwrap();
+        let state = renderer.resolve(&trident, ctx, None, None, 0, &NoEnv);
+        let mut out = Vec::new();
+        state.submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            Mat4::IDENTITY,
+            &mut WorldSink {
+                out: &mut out,
+                light: 0xF0F0,
+                lights: None,
+                glint: Some(Glint {
+                    millis: 123_456.0,
+                    speed: 0.5,
+                    alpha: 0.75,
+                    scale: 8.0,
+                }),
+                tier: 0,
+            },
+        );
+        assert_eq!(out.len(), expected_quads.len() * 4, "trident 2d {ctx_name}");
+        let got = vertex_quad_glint_bits(&out);
+        for (q, want_quad) in expected_quads.iter().enumerate() {
+            let want = parse_quad_uv_bits(&want_quad["glint_uv_t123456_bits"]);
+            assert_eq!(got[q], want, "26.3 trident 2d {ctx_name} quad[{q}]");
+        }
+    }
+
+    // Special-model child order differs from vanilla HashMap order, so compare sorted quads.
+    for (ctx_name, ctx) in [
+        (
+            "firstperson_righthand",
+            DisplayContext::FirstPersonRightHand,
+        ),
+        (
+            "thirdperson_righthand",
+            DisplayContext::ThirdPersonRightHand,
+        ),
+    ] {
+        let expected_quads = witness["special_models"]["trident"][ctx_name]["models"][0]["quads"]
+            .as_array()
+            .unwrap();
+        let mut want: Vec<[[u32; 2]; 4]> = expected_quads
+            .iter()
+            .map(|q| parse_quad_uv_bits(&q["glint_uv_t123456_bits"]))
+            .collect();
+        want.sort();
+        let state = renderer.resolve(&trident, ctx, None, None, 0, &NoEnv);
+        let mut out = Vec::new();
+        state.submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            Mat4::IDENTITY,
+            &mut WorldSink {
+                out: &mut out,
+                light: 0xF0F0,
+                lights: None,
+                glint: Some(Glint {
+                    millis: 123_456.0,
+                    speed: 0.5,
+                    alpha: 0.75,
+                    scale: 8.0,
+                }),
+                tier: 0,
+            },
+        );
+        let mut got = vertex_quad_glint_bits(&out);
+        got.sort();
+        assert_eq!(got, want, "26.3 trident 3d {ctx_name}");
+    }
+
+    let shield_plain = enchanted("minecraft:shield");
+    for (ctx_name, ctx) in [
+        ("gui", DisplayContext::Gui),
+        ("ground", DisplayContext::Ground),
+    ] {
+        let expected_quads =
+            witness["special_models"]["shield_plain"][ctx_name]["models"][0]["quads"]
+                .as_array()
+                .unwrap();
+        let mut want: Vec<[[u32; 2]; 4]> = expected_quads
+            .iter()
+            .map(|q| parse_quad_uv_bits(&q["glint_uv_t123456_bits"]))
+            .collect();
+        want.sort();
+        let state = renderer.resolve(&shield_plain, ctx, None, None, 0, &NoEnv);
+        let mut out = Vec::new();
+        state.submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            Mat4::IDENTITY,
+            &mut WorldSink {
+                out: &mut out,
+                light: 0xF0F0,
+                lights: None,
+                glint: Some(Glint {
+                    millis: 123_456.0,
+                    speed: 0.5,
+                    alpha: 0.75,
+                    scale: 8.0,
+                }),
+                tier: 0,
+            },
+        );
+        let mut got = vertex_quad_glint_bits(&out);
+        got.sort();
+        assert_eq!(got, want, "26.3 shield_plain world {ctx_name}");
+    }
+
+    // GUI shields use ENTITY_GLINT_TEXTURING (0.5) over shield_patterns, never item scale 8.0.
+    let state = renderer.resolve(&shield_plain, DisplayContext::Gui, None, None, 0, &NoEnv);
+    let mut batch = crate::hud::HudBatch::scratch([64, 64]);
+    let pose = Mat4::from_translation(Vec3::new(8.0, 8.0, 0.0))
+        * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
+    assert!(gui::draw_posed(
+        &state,
+        &gui::GuiItemEnv {
+            renderer: &renderer,
+            sprites: &sprites,
+            host: &NoHost,
+        },
+        &mut batch,
+        pose,
+        GlintFrame {
+            millis: 123_456.0,
+            speed: 0.5,
+            alpha: 0.75,
+            sprite: true,
+        },
+    ));
+    let expected_front_corners = parse_quad_uv_bits(
+        &witness["special_models"]["shield_plain"]["gui"]["models"][0]["quads"][3]["glint_uv_t123456_bits"],
+    );
+    let expected_shield_vertices: Vec<[f32; 2]> = witness["special_models"]["shield_plain"]["gui"]
+        ["models"][0]["quads"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|q| parse_quad_uv_bits(&q["glint_uv_t123456_bits"]))
+        .map(|pair| [f32::from_bits(pair[0]), f32::from_bits(pair[1])])
+        .collect();
+    let (mut min_u, mut max_u) = (f32::INFINITY, f32::NEG_INFINITY);
+    let (mut min_v, mut max_v) = (f32::INFINITY, f32::NEG_INFINITY);
+    for [u, v] in &expected_shield_vertices {
+        min_u = min_u.min(*u);
+        max_u = max_u.max(*u);
+        min_v = min_v.min(*v);
+        max_v = max_v.max(*v);
+    }
+    let gui_glint_bits: Vec<[u32; 2]> = batch
+        .vertices
+        .iter()
+        .filter(|v| v.uv[0] >= 2.0)
+        .map(|v| v.glint_uv.map(f32::to_bits))
+        .collect();
+    assert!(
+        !gui_glint_bits.is_empty(),
+        "shield_plain gui emitted no glint vertices"
+    );
+    for corner in expected_front_corners {
+        assert!(
+            gui_glint_bits.contains(&corner),
+            "26.3 shield_plain gui front-plate corner {corner:#x?} missing from emitted glint vertices"
+        );
+    }
+    for [ub, vb] in gui_glint_bits {
+        let (u, v) = (f32::from_bits(ub), f32::from_bits(vb));
+        assert!(
+            (min_u..=max_u).contains(&u) && (min_v..=max_v).contains(&v),
+            "26.3 shield_plain gui glint ({u}, {v}) outside vanilla ENTITY_GLINT_TEXTURING bounds [{min_u}..={max_u}] x [{min_v}..={max_v}]"
+        );
+    }
+
+    let mut shield_red = enchanted("minecraft:shield");
+    shield_red.patch.insert(
+        "minecraft:base_color".into(),
+        Some(Value::String("red".into())),
+    );
+    let patterned_glint_quads =
+        witness["special_models"]["shield_red"]["ground"]["models"][2]["quads"]
+            .as_array()
+            .unwrap();
+    let mut want_single: Vec<[[u32; 2]; 4]> = patterned_glint_quads
+        .iter()
+        .map(|q| parse_quad_uv_bits(&q["glint_uv_t123456_bits"]))
+        .collect();
+    // Both base and pattern layers carry foil in Sunrise and sample shield_base's glint UVs.
+    let mut want_both = want_single.clone();
+    want_both.append(&mut want_single);
+    want_both.sort();
+    let state = renderer.resolve(&shield_red, DisplayContext::Ground, None, None, 0, &NoEnv);
+    let mut out = Vec::new();
+    state.submit(
+        &renderer,
+        &sprites,
+        &NoHost,
+        Mat4::IDENTITY,
+        &mut WorldSink {
+            out: &mut out,
+            light: 0xF0F0,
+            lights: None,
+            glint: Some(Glint {
+                millis: 123_456.0,
+                speed: 0.5,
+                alpha: 0.75,
+                scale: 8.0,
+            }),
+            tier: 0,
+        },
+    );
+    let mut got = vertex_quad_glint_bits(&out);
+    got.sort();
+    assert_eq!(got, want_both, "26.3 shield_red patterned_shield_glint");
+}
