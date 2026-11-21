@@ -691,6 +691,36 @@ pub fn no_block(damage: f32) -> ShieldBlock {
 /// What an attacker holds: the main hand and the off hand.
 pub type Held = [Option<crate::items::ItemStack>; 2];
 
+/// The vanilla class family of a hit's direct entity (`DamageSource.getDirectEntity`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DirectEntity {
+    /// No direct entity, or an entity that is neither `LivingEntity` nor `Projectile`
+    /// (such as primed TNT, an area-effect cloud, evoker fangs, or a vehicle).
+    #[default]
+    Other,
+    /// `LivingEntity` (players, mobs, armor stands, the ender dragon).
+    Living,
+    /// `Projectile` other than `AbstractArrow` or `LargeFireball`.
+    Projectile,
+    /// `AbstractArrow` (arrows and thrown tridents; also a `Projectile`).
+    Arrow,
+    /// `LargeFireball` (ghast fireballs; also a `Projectile`).
+    LargeFireball,
+}
+impl DirectEntity {
+    pub fn is_living(self) -> bool {
+        self == Self::Living
+    }
+    pub fn is_projectile(self) -> bool {
+        matches!(self, Self::Projectile | Self::Arrow | Self::LargeFireball)
+    }
+    pub fn is_arrow(self) -> bool {
+        self == Self::Arrow
+    }
+    pub fn is_large_fireball(self) -> bool {
+        self == Self::LargeFireball
+    }
+}
 /// Who attacks in a hit and what they hold, as `living_knockback` and the weapon of
 /// `living_incoming_damage` name them. The site that starts the attack builds it (the game's
 /// `attack_of`) and lends it with the level the hit lands in ([`DamageLevel::attacked_by`]), so
@@ -701,17 +731,23 @@ pub struct Attack {
     pub attacker: i32,
     /// The projectile delivering this hit, if any (`DamageSource.getDirectEntity`).
     pub projectile: Option<i32>,
-    /// Whether that actual projectile extends `AbstractArrow` (including thrown tridents).
-    pub projectile_is_arrow: bool,
+    /// The class family of [`Self::projectile`] (`AbstractArrow`, `LargeFireball`, or another `Projectile`).
+    pub projectile_kind: DirectEntity,
     /// An explicitly supplied direct entity, including 0 for no direct entity.
     /// None uses the normal melee/projectile factory rules.
     pub direct: Option<i32>,
+    /// The class family of an explicitly supplied [`Self::direct`] entity (`Some(id)` with `id != 0`).
+    /// Ignored when [`Self::direct`] is `None` or `Some(0)`.
+    pub direct_kind: Option<DirectEntity>,
     /// `DamageSource.getSourcePosition`, as supplied by the hit's factory.
     pub position: Option<[f64; 3]>,
     /// An arrow's fired-from weapon or a thrown trident's complete stack.
     pub projectile_weapon: Option<crate::items::ItemStack>,
     /// The verified causing player's UUID, when the attacker is a player.
     pub player_uuid: Option<[i32; 4]>,
+    /// Whether `LivingEntity.resolvePlayerResponsibleForDamage` resolves a live player for this
+    /// hit (a causing player, or a tame wolf's resolved owner).
+    pub player_responsible: bool,
     /// What it holds, or none when it is not known (no native mod listens: the game only
     /// records it then).
     pub held: Held,
@@ -720,11 +756,13 @@ pub struct Attack {
 pub static NO_ATTACK: Attack = Attack {
     attacker: 0,
     projectile: None,
-    projectile_is_arrow: false,
+    projectile_kind: DirectEntity::Other,
     direct: None,
+    direct_kind: None,
     position: None,
     projectile_weapon: None,
     player_uuid: None,
+    player_responsible: false,
     held: [None, None],
 };
 /// Whether vanilla's factory for `damage_type` passes the projectile as

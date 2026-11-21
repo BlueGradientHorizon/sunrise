@@ -151,3 +151,129 @@ fn damage_command_keeps_explicit_explosion_with_an_attacker() {
         });
     });
 }
+
+#[test]
+fn projectile_and_command_targets_classify_actual_direct_entity_families() {
+    use crate::game::commands::Target;
+    use sunrise_client::{
+        health::{Attack, DirectEntity},
+        mobs::{Damage, DamageKind, Who},
+        projectiles::{Projectile, ProjectileKind},
+    };
+    use sunrise_core::geometry::Vec3;
+
+    let mut large = Projectile::new(
+        ProjectileKind::LargeFireball { power: 1 },
+        Vec3::ZERO,
+        Some(Who::Player),
+    );
+    large.id = 10;
+    let mut small = Projectile::new(ProjectileKind::SmallFireball, Vec3::ZERO, Some(Who::Player));
+    small.id = 11;
+    let mut arrow = Projectile::new(
+        ProjectileKind::Arrow {
+            base_damage: 2.0,
+            critical: false,
+            effect: None,
+        },
+        Vec3::ZERO,
+        Some(Who::Player),
+    );
+    arrow.id = 12;
+    let mut trident = Projectile::new(ProjectileKind::Trident, Vec3::ZERO, Some(Who::Player));
+    trident.id = 13;
+    let mut snowball = Projectile::new(ProjectileKind::Snowball, Vec3::ZERO, Some(Who::Mob(5)));
+    snowball.id = 14;
+
+    // Fireball caller wiring: only LargeFireball is DirectEntity::LargeFireball;
+    // SmallFireball stays a plain Projectile even though both use DamageKind::Fireball.
+    let mut large_attack = Attack {
+        attacker: 7,
+        ..Default::default()
+    };
+    Game::set_projectile_attack(&mut large_attack, &large);
+    let mut small_attack = Attack {
+        attacker: 7,
+        ..Default::default()
+    };
+    Game::set_projectile_attack(&mut small_attack, &small);
+    let fireball = Damage {
+        kind: DamageKind::Fireball,
+        attacker: Some(Who::Player),
+        from: None,
+        attacker_species: None,
+    };
+    assert_eq!(large_attack.projectile_kind, DirectEntity::LargeFireball);
+    assert!(large_attack.direct_is_large_fireball(&fireball));
+    assert!(!large_attack.is_direct(&fireball));
+    assert_eq!(small_attack.projectile_kind, DirectEntity::Projectile);
+    assert!(!small_attack.direct_is_large_fireball(&fireball));
+    assert!(small_attack.direct_entity(&fireball).is_projectile());
+    assert!(!small_attack.is_direct(&fireball));
+
+    // `/damage` target classification matches vanilla entity class families.
+    let projectiles = [large, small, arrow, trident, snowball];
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Player), &projectiles),
+        DirectEntity::Living
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Mob(5)), &projectiles),
+        DirectEntity::Living
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Stand(6)), &projectiles),
+        DirectEntity::Living
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Dragon(7)), &projectiles),
+        DirectEntity::Living
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Projectile(10)), &projectiles),
+        DirectEntity::LargeFireball
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Projectile(11)), &projectiles),
+        DirectEntity::Projectile
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Projectile(12)), &projectiles),
+        DirectEntity::Arrow
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Projectile(13)), &projectiles),
+        DirectEntity::Arrow
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Projectile(14)), &projectiles),
+        DirectEntity::Projectile
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Trident(20)), &projectiles),
+        DirectEntity::Arrow
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Rocket(21)), &projectiles),
+        DirectEntity::Projectile
+    );
+    assert_eq!(
+        Game::target_direct_entity(Some(Target::Hook(22)), &projectiles),
+        DirectEntity::Projectile
+    );
+    for other in [
+        None,
+        Some(Target::Tnt(30)),
+        Some(Target::Item(31)),
+        Some(Target::Cloud(32)),
+        Some(Target::Fangs(33)),
+        Some(Target::Boat(34)),
+        Some(Target::Crystal(35)),
+    ] {
+        assert_eq!(
+            Game::target_direct_entity(other, &projectiles),
+            DirectEntity::Other,
+            "{other:?}"
+        );
+    }
+}

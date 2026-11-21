@@ -5,7 +5,7 @@
 //! sways and hurts the heart's resin spreader), dies when the heart no
 //! longer protects it and falls apart with the heart.
 use super::{
-    Damage, DamageKind, Mob, MobEvent, MobWorld, Species, Who,
+    Damage, Mob, MobEvent, MobWorld, Species, Who,
     anim::{Poses, State},
     keyframes::Animation,
     monster_brain,
@@ -105,26 +105,16 @@ pub fn tear_down(m: &mut Mob, events: &mut Vec<MobEvent>) {
 /// `Creaking.hurtServer` for a heart-bound creaking: no damage, only the
 /// invulnerability animation and the heart's reaction. Returns whether the
 /// normal damage path should run.
-pub fn accepts_damage(m: &mut Mob, source: &Damage) -> bool {
+pub fn accepts_damage(m: &mut Mob, source: &Damage, attack: &crate::health::Attack) -> bool {
     if !heart_bound(m) || source.kind.bypasses_invulnerability() {
         return true;
     }
     if source.is_fire() || !m.alive() || m.extra.ints[INVULNERABLE] > 0 {
         return false;
     }
-    let by_player = source.attacker == Some(Who::Player);
-    // Infer a direct living entity or projectile from the source kind.
-    let direct = source.implies_projectile_source()
-        || matches!(
-            source.kind,
-            DamageKind::PlayerAttack
-                | DamageKind::MaceSmash
-                | DamageKind::Spear
-                | DamageKind::MobAttack
-                | DamageKind::MobAttackNoAggro
-                | DamageKind::Thorns
-        );
-    if !direct && !by_player {
+    let by_player = attack.is_player_responsible(source);
+    let direct = attack.direct_entity(source);
+    if !direct.is_living() && !direct.is_projectile() && !by_player {
         return false;
     }
     m.extra.ints[INVULNERABLE] = INVULNERABILITY_TICKS;
@@ -652,6 +642,7 @@ mod tests {
 
     #[test]
     fn a_heart_bound_creaking_sways_when_a_blow_gets_through() {
+        use crate::mobs::DamageKind;
         let mut test_level = crate::health::TestLevel::new(0);
         let level = &mut test_level.level();
         // Only #bypasses_invulnerability reaches a bound creaking
@@ -664,6 +655,143 @@ mod tests {
             hurt_sounds(&m),
             ["entity.creaking.sway"],
             "a heart-bound creaking sways"
+        );
+    }
+
+    #[test]
+    fn a_heart_bound_creaking_checks_direct_entity_class_and_responsible_player() {
+        use crate::health::{Attack, DirectEntity, TestLevel};
+        use crate::mobs::{DamageKind, NamedDamage};
+
+        let mut test_level = TestLevel::new(0);
+        let bound = || {
+            let mut m = creaking();
+            m.extra.home = Some([0, 64, 0]);
+            m
+        };
+        let custom = DamageKind::Named(NamedDamage::new("example:hit", 0));
+
+        // 1. Vary damage type with fixed Living or Projectile direct entity: always reacts.
+        let living_attack = Attack {
+            attacker: 5,
+            direct: Some(5),
+            direct_kind: Some(DirectEntity::Living),
+            ..Default::default()
+        };
+        let projectile_attack = Attack {
+            attacker: 5,
+            direct: Some(12),
+            direct_kind: Some(DirectEntity::Projectile),
+            ..Default::default()
+        };
+        for attack in [&living_attack, &projectile_attack] {
+            for kind in [DamageKind::Generic, DamageKind::Magic, custom] {
+                let mut m = bound();
+                let source = Damage {
+                    kind,
+                    attacker: Some(Who::Mob(5)),
+                    from: None,
+                    attacker_species: None,
+                };
+                assert!(!m.damage(&mut test_level.level().attacked_by(attack), 1.0, source));
+                assert_eq!(
+                    m.extra.ints[INVULNERABLE], INVULNERABILITY_TICKS,
+                    "{kind:?}"
+                );
+                assert_eq!(m.extra.counter & (HURT | HURT_BY_PLAYER), HURT, "{kind:?}");
+            }
+        }
+
+        // 2. Vary entities with fixed melee/projectile damage types: non-living/non-projectile
+        // direct entity without a responsible player does NOT trigger a reaction.
+        let non_living_attack = Attack {
+            attacker: 5,
+            direct: Some(20),
+            direct_kind: Some(DirectEntity::Other),
+            ..Default::default()
+        };
+        let entityless_attack = Attack {
+            attacker: 0,
+            direct: Some(0),
+            direct_kind: Some(DirectEntity::Other),
+            ..Default::default()
+        };
+        for (attack, attacker) in [
+            (&non_living_attack, Some(Who::Mob(5))),
+            (&entityless_attack, None),
+        ] {
+            for kind in [
+                DamageKind::MobAttack,
+                DamageKind::PlayerAttack,
+                DamageKind::Arrow,
+                DamageKind::Named(NamedDamage::new(
+                    "minecraft:mob_projectile",
+                    NamedDamage::IS_PROJECTILE,
+                )),
+            ] {
+                let mut m = bound();
+                let source = Damage {
+                    kind,
+                    attacker,
+                    from: None,
+                    attacker_species: None,
+                };
+                assert!(!m.damage(&mut test_level.level().attacked_by(attack), 1.0, source));
+                assert_eq!(m.extra.ints[INVULNERABLE], 0, "{kind:?}");
+                assert_eq!(m.extra.counter & (HURT | HURT_BY_PLAYER), 0, "{kind:?}");
+            }
+        }
+
+        // 3. Responsible player (directly, or via tame wolf's resolved owner) triggers HURT_BY_PLAYER
+        // even when the direct entity is neither living nor a projectile (e.g. TNT or area-effect cloud).
+        let player_tnt = Attack {
+            attacker: 7,
+            direct: Some(20),
+            direct_kind: Some(DirectEntity::Other),
+            player_responsible: true,
+            ..Default::default()
+        };
+        let mut m = bound();
+        let source = Damage {
+            kind: DamageKind::Generic,
+            attacker: Some(Who::Player),
+            from: None,
+            attacker_species: None,
+        };
+        assert!(!m.damage(
+            &mut test_level.level().attacked_by(&player_tnt),
+            1.0,
+            source
+        ));
+        assert_eq!(m.extra.ints[INVULNERABLE], INVULNERABILITY_TICKS);
+        assert_eq!(
+            m.extra.counter & (HURT | HURT_BY_PLAYER),
+            HURT | HURT_BY_PLAYER
+        );
+
+        let tame_wolf_tnt = Attack {
+            attacker: 9,
+            direct: Some(20),
+            direct_kind: Some(DirectEntity::Other),
+            player_responsible: true,
+            ..Default::default()
+        };
+        let mut m = bound();
+        let source = Damage {
+            kind: DamageKind::Generic,
+            attacker: Some(Who::Mob(9)),
+            from: None,
+            attacker_species: None,
+        };
+        assert!(!m.damage(
+            &mut test_level.level().attacked_by(&tame_wolf_tnt),
+            1.0,
+            source
+        ));
+        assert_eq!(m.extra.ints[INVULNERABLE], INVULNERABILITY_TICKS);
+        assert_eq!(
+            m.extra.counter & (HURT | HURT_BY_PLAYER),
+            HURT | HURT_BY_PLAYER
         );
     }
 

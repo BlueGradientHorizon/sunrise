@@ -263,6 +263,7 @@ impl Game<'_> {
         attacker: i32,
         direct: Option<Target>,
     ) -> sunrise_client::health::Attack {
+        use sunrise_client::health::DirectEntity;
         let mut attack = self.attack_of(attacker);
         attack.direct = Some(
             direct
@@ -278,13 +279,42 @@ impl Game<'_> {
             Some(Target::Trident(id)) => {
                 if let Some(shot) = self.tridents.iter().find(|shot| shot.id == id) {
                     attack.projectile = Some(id as i32);
-                    attack.projectile_is_arrow = true;
+                    attack.projectile_kind = DirectEntity::Arrow;
                     Self::set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
             _ => {}
         }
+        attack.direct_kind = Some(Self::target_direct_entity(
+            direct,
+            &self.creatures.projectiles,
+        ));
         attack
+    }
+    /// Classify an explicit `/damage` or `EntityRef::hurt` direct entity target.
+    pub(super) fn target_direct_entity(
+        direct: Option<Target>,
+        projectiles: &[sunrise_client::projectiles::Projectile],
+    ) -> sunrise_client::health::DirectEntity {
+        use sunrise_client::health::DirectEntity;
+        match direct {
+            Some(
+                Target::Player
+                | Target::Guest(_)
+                | Target::Mob(_)
+                | Target::Dragon(_)
+                | Target::Stand(_),
+            ) => DirectEntity::Living,
+            Some(Target::Projectile(id)) => projectiles
+                .iter()
+                .find(|shot| shot.id == id)
+                .map_or(DirectEntity::Projectile, |shot| {
+                    Self::projectile_direct_entity(&shot.kind)
+                }),
+            Some(Target::Trident(_)) => DirectEntity::Arrow,
+            Some(Target::Rocket(_) | Target::Hook(_)) => DirectEntity::Projectile,
+            _ => DirectEntity::Other,
+        }
     }
 
     fn hurt_target_from_source(

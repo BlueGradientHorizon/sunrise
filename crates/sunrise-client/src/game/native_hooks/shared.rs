@@ -1749,15 +1749,34 @@ impl Game<'_> {
                 .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
                 .map(|g| sunrise_client::lan::playerdata::uuid_ints(g.uuid))
         };
+        let player_responsible = player_uuid.is_some()
+            || (attacker != 0
+                && self
+                    .mobs
+                    .iter()
+                    .find(|m| {
+                        m.id == attacker as u32
+                            && m.species() == sunrise_client::mobs::Species::Wolf
+                            && m.extra.tame
+                    })
+                    .and_then(|wolf| wolf.extra.owner)
+                    .is_some_and(|uuid| {
+                        self.resolve_player_credit(crate::game::combat::PlayerCredit(
+                            sunrise_client::lan::playerdata::ints_uuid(uuid),
+                        ))
+                        .is_some()
+                    }));
         Attack {
             attacker,
             held,
             projectile: None,
-            projectile_is_arrow: false,
+            projectile_kind: sunrise_client::health::DirectEntity::Other,
             direct: None,
+            direct_kind: None,
             position: None,
             projectile_weapon: None,
             player_uuid,
+            player_responsible,
         }
     }
     /// [`Self::attack_of`] for the attacker a damage source names: the player, a mob, or (none)

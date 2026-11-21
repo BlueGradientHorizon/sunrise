@@ -969,6 +969,7 @@ impl Game<'_> {
         damage_type: &str,
         interaction: BlockInteraction,
         blocks: &[[i32; 3]],
+        blast_entity: Option<(u32, &'static str)>,
     ) -> Vec<(u32, [f64; 3])> {
         if radius < 1.0e-5 {
             return Vec::new();
@@ -1220,10 +1221,41 @@ impl Game<'_> {
                         // its base is 0 for every mob type, so iron golems and
                         // ravagers are pushed.
                         let victim = m.id;
+                        let mut blast_attack = self.combat.attack().clone();
+                        if let Some((direct_id, direct_kind)) = blast_entity {
+                            blast_attack.direct = Some(direct_id as i32);
+                            blast_attack.direct_kind = Some(match direct_kind {
+                                "minecraft:fireball" => {
+                                    sunrise_client::health::DirectEntity::LargeFireball
+                                }
+                                "minecraft:wither_skull" => {
+                                    sunrise_client::health::DirectEntity::Projectile
+                                }
+                                "minecraft:creeper" | "minecraft:wither" => {
+                                    sunrise_client::health::DirectEntity::Living
+                                }
+                                _ => sunrise_client::health::DirectEntity::Other,
+                            });
+                        } else if let Some(direct_id) = self.combat.explosion_direct {
+                            let direct_kind = self
+                                .creatures
+                                .projectiles
+                                .iter()
+                                .find(|shot| shot.id == direct_id)
+                                .map_or(sunrise_client::health::DirectEntity::Other, |shot| {
+                                    Self::projectile_direct_entity(&shot.kind)
+                                });
+                            blast_attack.direct = Some(direct_id as i32);
+                            blast_attack.direct_kind = Some(direct_kind);
+                        } else if let Some(source_mob) = self.combat.explosion_source {
+                            blast_attack.direct = Some(source_mob as i32);
+                            blast_attack.direct_kind =
+                                Some(sunrise_client::health::DirectEntity::Living);
+                        }
                         let hurt = hurt_mob(
                             crate::game::entity::damage_level_of!(
                                 self,
-                                self.combat.attack(),
+                                &blast_attack,
                                 no_push,
                                 None
                             ),
@@ -1759,8 +1791,14 @@ impl Game<'_> {
         let outer = std::mem::take(&mut self.combat.blast_hit_list);
         let outer_ids = std::mem::take(&mut self.combat.blast_hit_ids);
         self.explosion_detonate(center, radius, &mut targets);
-        let pushed =
-            self.explosion_hurt_entities(center, radius, damage_type, interaction, &targets);
+        let pushed = self.explosion_hurt_entities(
+            center,
+            radius,
+            damage_type,
+            interaction,
+            &targets,
+            source.entity,
+        );
         self.combat.blast_hit_list = outer;
         self.combat.blast_hit_ids = outer_ids;
         self.explosion_block_step(&mut targets, radius, interaction, fire, &start)?;
@@ -2179,6 +2217,7 @@ impl Game<'_> {
                     "minecraft:explosion",
                     BlockInteraction::Destroy,
                     &[],
+                    None,
                 );
                 let mut remaining: Vec<_> = self
                     .dropped
