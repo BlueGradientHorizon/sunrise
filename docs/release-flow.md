@@ -361,14 +361,35 @@ with every key the environment holds, `RELEASE_SIGNING_KEY` and `RELEASE_SIGNING
 turns:
 
 1. `tools/ci/new_release_key.sh <the empty name>` makes the next key; add its public key to release-keys.txt
-   beside the old one. From then on every release is signed with both keys (one line each).
+   beside the old one. From then on every release is signed with both keys (one line each). Then publish a new
+   verifier and pin it (below), so first installs trust the new key too.
 2. Wait until launchers and servers built with both keys are in use (a few weeks: launchers update themselves).
-3. Delete the old key's secret (`gh secret delete <its name> --env release`) and its line in release-keys.txt.
-   The next rotation makes its new key under the name just freed.
+3. Delete the old key's secret (`gh secret delete <its name> --env release`) and its line in release-keys.txt,
+   then publish and pin a new verifier: the pinned one still has the old key built in, and editing
+   release-keys.txt doesn't change it. The next rotation makes its new key under the name just freed.
 
-If the old key may have leaked, skip the wait: remove its public key from release-keys.txt at once and delete
-its secret. Launchers built before the new key cannot check releases signed only with it: they refuse to install
+If the old key may have leaked, skip the wait: remove its public key from release-keys.txt at once, delete its
+secret, and publish and pin a verifier built without it. Launchers built before the new key cannot check releases signed only with it: they refuse to install
 them with a clear message, and players download the launcher again from the website once.
+
+### The install scripts' verifier
+
+The server install scripts (`packaging/server/install.sh` and `install.ps1`) check a release with
+`sunrise-verify`, the same `verify` the launcher runs, built as one binary per platform with the keys from
+`release-keys.txt` built in (static on Linux and Windows; the macOS build links only the system's libraries). It is published as its own release, `verifier@X.Y.Z` (a prerelease, never "latest"),
+by `.github/workflows/verifier.yml`, with SHA256SUMS and a build-provenance attestation. The binaries are not
+signed: the trust anchor is the SHA-256 of each one, pinned in a marked block in both scripts on main.
+
+A new verifier is needed only when the verify code or `release-keys.txt` changes:
+
+1. Dispatch it from main: `gh workflow run verifier.yml -f version=X.Y.Z -f dry_run=false`. Any other run is a
+   dry run that builds and checks everything and publishes nothing. The workflow holds no secret and uses no
+   environment.
+2. Pin it in a pull request: `python3 tools/ci/pin_verifier.py verifier@X.Y.Z --commit <the run's head SHA>`.
+   Before it writes anything, `gh attestation verify` must accept SHA256SUMS and every binary as built by
+   `verifier.yml` of sunrise-org/sunrise on `refs/heads/main` at that commit; then it rewrites only the pin block.
+   A pin written another way is checked on a clean checkout of the pull request's head: the same command must
+   exit 0, and `git diff --exit-code HEAD -- packaging/server/` must then report no change.
 
 ### Starting one by hand
 

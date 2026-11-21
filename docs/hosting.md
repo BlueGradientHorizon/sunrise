@@ -54,8 +54,9 @@ irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/
 
 The script picks the machine's x64 or ARM64 archive, including when PowerShell runs under x64 emulation. It downloads
 the current Sunrise Nightly from GitHub, or the release `--version <tag>` names (Windows: `-Version <tag>`): a stable
-release's tag, such as `26.3-0.1.0`, puts the server on that stable line, which its updates then follow. It checks it against the release's signature when OpenSSL 3 is installed (on Windows, Git
-for Windows includes it), else against the SHA-256 GitHub publishes, and never asks for sudo or administrator rights. It installs:
+release's tag, such as `26.3-0.1.0`, puts the server on that stable line, which its updates then follow. It checks it
+against the release's signature with a verifier the script pins (it refuses the install if anything doesn't match),
+and never asks for sudo or administrator rights. It installs:
 
 - the release in `~/.local/share/sunrise/releases/<version>` (Windows: `%LOCALAPPDATA%\Sunrise`), with
   `current` pointing at the one in use;
