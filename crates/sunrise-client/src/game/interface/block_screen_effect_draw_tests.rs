@@ -1,6 +1,6 @@
 //! Selected block overlay renderers in a real game: what they submit and where those quads land.
 use super::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_client_game};
-use super::{Game, PackResources};
+use super::{Game, PackResources, Screen};
 use BlockScreenEffect::{Block, Fire, Water};
 use mod_api::{
     BlockScreenEffect, BlockScreenEffectRender, BlockScreenEffectRenderer, CameraSubmersionEvent,
@@ -472,6 +472,62 @@ fn water_extraction_follows_the_tick_sample_at_the_surface() {
             })
             .is_some()
         );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_dead_players_water_overlay_clears_on_the_next_client_tick() {
+    with_client_game(|game| {
+        let (client, server) = sunrise_protocol::connection::Pipe::pair();
+        game.connect_local(client, "water-overlay").unwrap();
+        let remote = game.remote.as_mut().unwrap();
+        remote.logged_in = true;
+        remote.loaded_sent = true;
+        remote.joined = true;
+        remote.entity_id = 42;
+        remote.level_load.finish();
+        game.screen = Screen::Playing;
+        game.camera_type = CameraType::FirstPerson;
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
+        let chunk = Chunk::with_layout(0, 0, game.world.layout());
+        game.streaming.insert_remote(&mut game.world, chunk);
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
+            .unwrap();
+        let air = game.world.block(8, 65, 8);
+        game.world.set(8, 65, 8, water).unwrap();
+        game.tick_remote().unwrap();
+
+        game.screen = Screen::Dead;
+        game.player
+            .as_mut()
+            .unwrap()
+            .set_health(0.0, false)
+            .unwrap();
+        game.remote.as_mut().unwrap().health = (0.0, 20, 5.0);
+        let wet = observe_overlay(Water, || {
+            assert!(
+                names(&quads(game))
+                    .windows(2)
+                    .any(|pair| pair == ["mod water", "water"])
+            );
+        });
+        assert_eq!(wet.unwrap().pos, BlockPos::new(8, 65, 8));
+
+        game.world.set(8, 65, 8, air).unwrap();
+        // Rendering still reads the old sample until the player ticks.
+        assert!(names(&quads(game)).contains(&"water"));
+        game.tick_remote().unwrap();
+        let dry = observe_overlay(Water, || {
+            let overlays = names(&quads(game));
+            assert!(!overlays.contains(&"water") && !overlays.contains(&"mod water"));
+        });
+        assert_eq!(dry, None);
+        server.shutdown();
     });
 }
 

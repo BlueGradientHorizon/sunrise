@@ -129,7 +129,8 @@ without adding quads or suppressing vanilla drawing, select a renderer that subm
 
 Water and fire are extracted only in first person. Water starts with the player's tick-sampled eye fluid,
 which [`camera_submersion`](camera-and-collision-reads.md#the-fluid-the-camera-is-in) can override. The
-water event provides the default water state at the player's eye block, even if that block is waterlogged.
+sample updates on player ticks even on the death screen. The water event provides the default water
+state at the player's eye block, even if that block is waterlogged.
 `event.partial_tick` is world interpolation; `event.player_partial_tick` is local-player interpolation,
 which keeps advancing while the level is frozen.
 

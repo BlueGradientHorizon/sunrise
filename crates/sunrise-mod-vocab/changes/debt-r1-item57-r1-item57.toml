@@ -2,7 +2,9 @@ ids = ["hook:camera_submersion"]
 why = """
 Vanilla and NeoForge's `LevelExtractor.extractPlayerState` use the player's tick-sampled eye fluid for water overlay
 eligibility, not `Camera.getFluidInCamera`. `EntityFluidInteraction.update` includes an eye at the water surface.
-Sunrise still lets camera-submersion listeners override the overlay, but the input now starts at that tick sample.
+`LocalPlayer.tick` still reaches `Entity.baseTick`'s fluid update on the death screen, so water added or removed
+at the eye there affects the overlay after the next player tick. Sunrise still lets camera-submersion listeners
+override the overlay, but the input now starts at that tick sample.
 The other readers at `Camera.getFluidInCamera` sites still use camera geometry and `state_at_viewpoint`.
 """
 migrate = """

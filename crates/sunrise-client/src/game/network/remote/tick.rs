@@ -986,34 +986,38 @@ impl Game<'_> {
             // player too (controlled_simulation_tick does it otherwise): left
             // at 10, the hurt tilt restarted every frame and shook the camera.
             player.health.advance_clock();
+            let side = game_side!(self);
+            player.client_side = true;
+            let mut motion = MotionWorld {
+                side: &side,
+                entities: &entity_collisions,
+                player: &mut *player,
+                scene: &mut self.world,
+                assets: &self.pack.assets,
+                collision_binding: self.collision,
+                resources: self.motion,
+                health: &self.health_resources,
+                loop_context: &self.loop_context,
+                damage_hooks: &self.damage_hooks,
+                tag_items: None,
+                block_registries: None,
+            };
             if riding && !dead {
-                let side = game_side!(self);
                 let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
-                player.client_side = true;
-                let mut passenger = MotionWorld {
-                    side: &side,
-                    entities: &entity_collisions,
-                    player: &mut *player,
-                    scene: &mut self.world,
-                    assets: &self.pack.assets,
-                    collision_binding: self.collision,
-                    resources: self.motion,
-                    health: &self.health_resources,
-                    loop_context: &self.loop_context,
-                    damage_hooks: &self.damage_hooks,
-                    tag_items: None,
-                    block_registries: None,
-                };
                 // The rider moves from its old seat; the new one is its place after.
-                let seat = passenger.player.position;
+                let seat = motion.player.position;
                 if let Some(from) = old_seat {
-                    passenger.player.position = from;
+                    motion.player.position = from;
                 }
-                passenger.rider_tick(keys.direction())?;
-                sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
+                motion.rider_tick(keys.direction())?;
+                sunrise_world::entity_move::EntityMoveWorld::set_position(&mut motion, seat)?;
                 // LivingEntity.aiStep: a passenger freezes in powder snow too, and the
                 // frostbite overlay shows it (#8156).
-                passenger.passenger_block_effects_tick()?;
+                motion.passenger_block_effects_tick()?;
+            } else {
+                // Entity.baseTick still updates the fluid sample on the death screen,
+                // even though no movement runs. The overlay reads that sample.
+                motion.fluid_base_tick()?;
             }
         }
         // The server decides fire the window cannot predict (blaze fireballs,
