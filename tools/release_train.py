@@ -724,8 +724,8 @@ def release_head(head="", dry_run=False, daily=True):
 # need only some daily legs, approved by two people through GitHub environments. The daily legs each changed path
 # selects (daily.yml's job names), the first row matching it deciding: a row ending in `/` is that folder (or a file
 # or link replacing it), any other an exact path. A path no row matches needs the full daily (fail closed), and so
-# does any change to the code that judges a release (judge_graph) or to the root manifest's [patch] and [replace]
-# (changed_since). The SDK legs (BREAK_GLASS_ALWAYS) always run: sdk-publish waits for them
+# does any change to the code that judges a release (judge_graph) or to what the root manifest sets for every
+# crate ([patch], [replace], profiles, [workspace.package], [workspace.lints], the resolver; changed_since). The SDK legs (BREAK_GLASS_ALWAYS) always run: sdk-publish waits for them
 # (daily_summary.SDK_LEGS), and a release ships only after its SDK. A game crate's change runs every leg that tests
 # the game (the ignored-test shards, the Windows rows and the parity harnesses) and is booted headless by the release
 # build's own smoke test, which publishing requires.
@@ -749,7 +749,18 @@ class Release(typing.NamedTuple):
     """A published stable release: its tag, commit and publication time."""
     tag: str
     sha: str
-    published_at: str
+    published_at: dt.datetime
+
+
+def github_time(text: str) -> dt.datetime:
+    """A GitHub API timestamp (`2026-11-20T09:00:00Z`) as an aware datetime; anything else refuses."""
+    try:
+        found = dt.datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        found = None
+    if found is None or found.tzinfo is None:
+        raise SystemExit(f"::error::refused: {text!r} is not a GitHub timestamp")
+    return found
 
 
 def break_glass_legs(paths):
@@ -810,11 +821,13 @@ def judge_graph(sha):
 
 
 def locked_closure(sha, packages):
-    """The Cargo.lock entries of `packages` at `sha` and of everything they depend on, as comparable tuples with
-    the packages each one links: a judge built from another version or source of a crate, or linking another set of
-    them, builds other code. A dependency is Cargo.lock's `name`, `name version` or `name version (source)`, each
-    part given only when needed to tell entries apart, so edges are compared by the package they resolve to, never
-    by how the selector is spelled."""
+    """The Cargo.lock entries of the local `packages` at `sha` and of everything they depend on, as comparable
+    tuples with the packages each one links: a judge built from another version or source of a crate, or linking
+    another set of them, builds other code. None when a dependency does not name exactly one entry, which the caller
+    treats as a change (fail closed). A dependency is written as Cargo writes it: `name` when one entry has that
+    name, `name version` when one has that version or it is the local one (a path package has no source), and
+    `name version (source)` otherwise, the source without its `#<commit>` (a git package's [[package]] source has
+    it), so edges are compared by the package they resolve to, never by how the selector is spelled."""
     by_name = {}
     for entry in manifest(sha, "Cargo.lock").get("package", []):
         by_name.setdefault(entry["name"], []).append(entry)
@@ -822,20 +835,27 @@ def locked_closure(sha, packages):
     def resolve(selector):
         name, _, rest = selector.partition(" ")
         version, _, source = rest.partition(" ")
-        source = source.removeprefix("(").removesuffix(")")
-        return [entry for entry in by_name.get(name, [])
-                if (not version or entry["version"] == version) and (not source or entry.get("source") == source)]
+        found = [entry for entry in by_name.get(name, []) if not version or entry["version"] == version]
+        if source:
+            source = source.removeprefix("(").removesuffix(")")
+            found = [entry for entry in found if (entry.get("source") or "").split("#", 1)[0] == source]
+        elif version and len(found) > 1:
+            found = [entry for entry in found if not entry.get("source")]
+        return found[0] if len(found) == 1 else None
 
     def identity(entry):
         return entry["name"], entry["version"], entry.get("source") or ""
 
-    found, seen, todo = set(), set(), [entry for name in packages for entry in by_name.get(name, [])]
+    found, seen = set(), set()
+    todo = [entry for name in packages for entry in by_name.get(name, []) if not entry.get("source")]
     while todo:
         entry = todo.pop()
         if identity(entry) in seen:
             continue
         seen.add(identity(entry))
-        linked = [dependency for selector in entry.get("dependencies", []) for dependency in resolve(selector)]
+        linked = [resolve(selector) for selector in entry.get("dependencies", [])]
+        if None in linked:
+            return None
         found.add((*identity(entry), entry.get("checksum"), tuple(sorted({identity(link) for link in linked}))))
         todo += linked
     return found
@@ -845,7 +865,9 @@ def changed_since(parent_sha, sha):
     """The paths that differ between the two commits (a rename's old and new names both), and those no row may map:
     a symbolic link or submodule on either side, a name holding a line break, anything in the code that judges a
     release on either side (judge_graph), the root manifest when its [patch], [replace] or a [workspace.dependencies]
-    entry the judges take changed, and Cargo.lock when it changed what the judges build from."""
+    entry the judges take changed, or anything else of it that changes how every crate builds (its profiles,
+    [workspace.package], [workspace.lints] and the resolver), and Cargo.lock when it changed what the judges build
+    from or no longer says it unambiguously (locked_closure)."""
     out = run("git", "-c", "core.quotePath=false", "diff", "-z", "--raw", "--no-renames", parent_sha, sha)
     graphs = [judge_graph(commit) for commit in (parent_sha, sha)]
     judged = graphs[0][0] | graphs[1][0]
@@ -854,14 +876,16 @@ def changed_since(parent_sha, sha):
     for commit in (parent_sha, sha):
         root = manifest(commit, "Cargo.toml")
         shared = root.get("workspace", {}).get("dependencies", {})
-        pins.append((root.get("patch"), root.get("replace"), {name: shared.get(name) for name in inherited}))
+        workspace = root.get("workspace", {})
+        pins.append((root.get("patch"), root.get("replace"), {name: shared.get(name) for name in inherited},
+                     root.get("profile"), workspace.get("package"), workspace.get("lints"), workspace.get("resolver")))
         locks.append(locked_closure(commit, packages))
     fields, plain, special = out.split("\0"), [], []
     for meta, path in zip(fields[0::2], fields[1::2]):
         modes = meta.split()[:2]
         odd = (any(mode.lstrip(":") in ("120000", "160000") for mode in modes) or "\n" in path or "\r" in path
                or any(path == folder or path.startswith(folder + "/") for folder in judged)
-               or path == "Cargo.toml" and pins[0] != pins[1] or path == "Cargo.lock" and locks[0] != locks[1])
+               or path == "Cargo.toml" and pins[0] != pins[1] or path == "Cargo.lock" and (None in locks or locks[0] != locks[1]))
         (special if odd else plain).append(path)
     return plain, special
 
@@ -895,11 +919,12 @@ def full_dailies(sha, runs):
             if entry["conclusion"] in ("success", "failure") and jobs.get(f"summary {sha}") in ("success", "failure")]
 
 
-def newest_full_daily(sha, runs, since=""):
-    """(URL, passed) of the newest real full daily run of sha created after `since`, or None. Strictly after: the
-    timestamps have one-second resolution, so a run created in the publication's second may have started first."""
+def newest_full_daily(sha, runs, since=None):
+    """(URL, passed) of the newest real full daily run of sha, created after `since` (a datetime) when given, or
+    None. Strictly after: the timestamps have one-second resolution, so a run created in the publication's second
+    may have started first."""
     return next(((entry["html_url"], passed) for entry, passed in full_dailies(sha, runs)
-                 if entry["created_at"] > since), None)
+                 if since is None or github_time(entry["created_at"]) > since), None)
 
 
 def break_glass_problems(sha, tag, parent):
@@ -933,7 +958,7 @@ def break_glass_problems(sha, tag, parent):
     found = newest_full_daily(parent.sha, runs, parent.published_at)
     if not found or not found[1]:
         problems.append(f"the newest full daily run of {parent.tag} ({parent.sha}) since its publication "
-                        f"({parent.published_at}) "
+                        f"({parent.published_at.astimezone(dt.timezone.utc):%Y-%m-%dT%H:%M:%SZ}) "
                         + (f"failed ({found[0]})" if found else f"is missing in the last {DAILY_EVIDENCE_DAYS} days")
                         + f"; run `gh workflow run daily.yml --ref {RELEASE_BRANCH} -f dry_run=false -f commit={parent.sha}`")
     if not fork_gate_passed(sha, RELEASE_BRANCH):
