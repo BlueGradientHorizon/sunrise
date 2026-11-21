@@ -1478,7 +1478,7 @@ mod published_shape_tests {
         use sunrise_world::suffocation::{SuffocationDefinition, SuffocationRegistry};
         let registry = registry();
         let binding = Arc::new(binding(&registry));
-        let definitions = ["minecraft:air", "test:bus", "test:plain"]
+        let definitions = ["minecraft:air", "test:bus", "test:plain", "test:other"]
             .map(|name| (name.to_owned(), SuffocationDefinition::TaggedFullCollision))
             .into();
         let causes = ["test:bus", "test:plain"].map(String::from).into();
