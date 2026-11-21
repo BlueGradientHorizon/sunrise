@@ -127,42 +127,73 @@ impl PublishedAt {
 struct PageLinks {
     next: Option<usize>,
     last: Option<usize>,
+    first: Option<usize>,
+    previous: Option<usize>,
 }
 
 impl PageLinks {
     fn read(headers: &[String]) -> Result<Self, String> {
         let mut pages = Self::default();
         let invalid = || "malformed GitHub releases pagination header".to_owned();
+        let (endpoint, _) = SDK_RELEASE_LIST
+            .split_once('?')
+            .expect("release list query");
+        let (origin, _) = endpoint
+            .split_once("/repos/")
+            .expect("release list repository");
         for link in headers.iter().flat_map(|header| header.split(',')) {
-            let (url, attrs) = link
+            let (url, rel) = link
                 .trim()
                 .strip_prefix('<')
                 .and_then(|link| link.split_once('>'))
-                .ok_or_else(invalid)?;
-            let relation = attrs
-                .split(';')
-                .find_map(|attr| {
-                    attr.trim()
-                        .strip_prefix("rel=\"")
-                        .and_then(|rel| rel.strip_suffix('"'))
+                .and_then(|(url, attrs)| {
+                    Some((
+                        url,
+                        attrs
+                            .trim()
+                            .strip_prefix(';')?
+                            .trim()
+                            .strip_prefix("rel=\"")?
+                            .strip_suffix('"')?,
+                    ))
                 })
                 .ok_or_else(invalid)?;
-            let slot = match relation {
+            let slot = match rel {
                 "next" => &mut pages.next,
                 "last" => &mut pages.last,
-                _ => continue,
+                "first" => &mut pages.first,
+                "prev" => &mut pages.previous,
+                _ => return Err(invalid()),
             };
-            let page = url
-                .split_once('?')
-                .and_then(|(_, query)| {
-                    query
-                        .split('&')
-                        .find_map(|param| param.strip_prefix("page="))
-                })
-                .and_then(|page| page.parse::<usize>().ok())
-                .filter(|page| *page != 0)
-                .ok_or_else(invalid)?;
-            if slot.replace(page).is_some() {
+            let (path, query) = url.split_once('?').ok_or_else(invalid)?;
+            // GitHub can spell the repository by numeric ID; the URL itself is never fetched.
+            if path != endpoint
+                && !path
+                    .strip_prefix(origin)
+                    .and_then(|path| path.strip_prefix("/repositories/"))
+                    .and_then(|path| path.strip_suffix("/releases"))
+                    .is_some_and(|id| {
+                        !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit())
+                    })
+            {
+                return Err(invalid());
+            }
+            let mut page = None;
+            let mut size = None;
+            for param in query.split('&') {
+                let (key, value) = param.split_once('=').ok_or_else(invalid)?;
+                let value = value
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|&value| value > 0)
+                    .ok_or_else(invalid)?;
+                match key {
+                    "page" if page.is_none() => page = Some(value),
+                    "per_page" if size.is_none() && value == PAGE_SIZE => size = Some(value),
+                    _ => return Err(invalid()),
+                }
+            }
+            if slot.replace(page.ok_or_else(invalid)?).is_some() {
                 return Err(invalid());
             }
         }
@@ -177,7 +208,6 @@ fn discover(
     let mut ids = BTreeSet::new();
     let mut page = 1;
     let mut last = None;
-    let mut promised = false;
     loop {
         let at = |e| format!("Sunrise releases page {page}: {e}");
         let response = fetch(&format!("{SDK_RELEASE_LIST}&page={page}")).map_err(at)?;
@@ -190,10 +220,28 @@ fn discover(
             }
             last = Some(end);
         }
-        if rows.len() > PAGE_SIZE || (rows.is_empty() && (promised || links.next.is_some())) {
-            return Err(at("incomplete or inconsistent page".into()));
+        if links.first.is_some_and(|first| first != 1)
+            || links.previous.is_some_and(|previous| previous != page - 1)
+        {
+            return Err(at(
+                "pagination did not point back to the expected pages".into()
+            ));
         }
         let full = rows.len() == PAGE_SIZE;
+        if rows.len() > PAGE_SIZE || (page > 1 && rows.is_empty()) {
+            return Err(at("incomplete or inconsistent page".into()));
+        }
+        if let Some(next) = links.next {
+            if !full || next != page + 1 || last.is_some_and(|end| next > end) {
+                return Err(at(
+                    "inconsistent page with an advertised continuation".into()
+                ));
+            }
+        } else if last.is_some_and(|end| page < end) || (full && last != Some(page)) {
+            return Err(at(
+                "missing continuation for a page not known to be last".into()
+            ));
+        }
         for release in rows {
             if !ids.insert(release.id) {
                 return Err(at(format!(
@@ -209,22 +257,8 @@ fn discover(
                 tags.insert(release.tag_name);
             }
         }
-        if let Some(next) = links.next {
-            if next != page + 1 || last.is_some_and(|end| next > end) {
-                return Err(at("pagination did not point to the next page".into()));
-            }
-            promised = true;
-        } else {
-            if last.is_some_and(|end| page < end) {
-                return Err(at(
-                    "missing next page before the advertised last page".into()
-                ));
-            }
-            // In the absence of pagination headers a full page may not be the last.
-            if !full || last == Some(page) {
-                break;
-            }
-            promised = false;
+        if links.next.is_none() {
+            break;
         }
         page += 1;
         if page > MAX_PAGES {
