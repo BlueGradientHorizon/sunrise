@@ -166,13 +166,17 @@ impl<'i, 'a> Walker<'i, 'a> {
     }
 
     /// The module a path written in `module` names, if it is one of an indexed crate.
-    fn module_at(&mut self, module: usize, path: &[String]) -> Option<usize> {
+    fn module_at(
+        &mut self,
+        module: usize,
+        path: &[String],
+        outside: &OutsideSeam,
+    ) -> Option<usize> {
         let mut path = path.to_vec();
         if path.first().map(String::as_str) == Some(VOCAB_WRITTEN) {
             path[0] = VOCAB.to_owned();
         }
-        let (krate, inner) = self.index.absolute(module, &path)?;
-        self.index.module(krate, &inner).ok()
+        outside.internal_module(self.index, module, &path)
     }
 
     /// What `path`, written in a `pub use` of `module`, leads to.
@@ -181,12 +185,19 @@ impl<'i, 'a> Walker<'i, 'a> {
         module: usize,
         path: &[String],
         outside: &OutsideSeam,
+        rooted: bool,
     ) -> Result<Target, String> {
-        if let Some(path) = outside.external_path(self.index, module, path) {
-            return Ok(Target::External(path));
+        if rooted {
+            if let Some(path) = outside.external_path(self.index, module, path, true) {
+                return Ok(Target::External(path));
+            }
+            return Ok(Target::External(path.to_vec()));
         }
-        if let Some(target) = self.module_at(module, path) {
+        if let Some(target) = self.module_at(module, path, outside) {
             return Ok(Target::Module(target));
+        }
+        if let Some(path) = outside.external_path(self.index, module, path, false) {
+            return Ok(Target::External(path));
         }
         let (last, parent) = path.split_last().ok_or("an empty path")?;
         if parent.is_empty() {
@@ -197,7 +208,7 @@ impl<'i, 'a> Walker<'i, 'a> {
                 Err(_) => Target::External(path.to_vec()),
             });
         }
-        match self.module_at(module, parent) {
+        match self.module_at(module, parent, outside) {
             Some(parent) => self
                 .names(parent, outside)?
                 .into_iter()
@@ -263,12 +274,12 @@ impl<'i, 'a> Walker<'i, 'a> {
                 Item::Use(item) if matches!(item.vis, Visibility::Public(_)) => {
                     let mut found = Vec::new();
                     uses(&item.tree, &mut Vec::new(), &mut |path, alias| {
-                        found.push((path, alias))
+                        found.push((path, alias, item.leading_colon.is_some()))
                     });
-                    for (path, alias) in found {
+                    for (path, alias, rooted) in found {
                         match alias {
                             Some(alias) if alias.starts_with("__") => {}
-                            Some(alias) => match self.target(module, &path, outside) {
+                            Some(alias) => match self.target(module, &path, outside, rooted) {
                                 Ok(target) => own.push(Name {
                                     name: alias,
                                     target,
@@ -282,8 +293,15 @@ impl<'i, 'a> Walker<'i, 'a> {
                                 )),
                             },
                             None => {
-                                if let Some(external) =
-                                    outside.external_path(self.index, module, &path)
+                                if !rooted
+                                    && let Some(target) = self.module_at(module, &path, outside)
+                                {
+                                    for mut name in self.names(target, outside)? {
+                                        name.hidden |= hidden;
+                                        globbed.push(name);
+                                    }
+                                } else if let Some(external) =
+                                    outside.external_path(self.index, module, &path, rooted)
                                 {
                                     globbed.push(Name {
                                         name: String::new(),
@@ -293,7 +311,8 @@ impl<'i, 'a> Walker<'i, 'a> {
                                         },
                                         hidden,
                                     });
-                                } else if let Some(target) = self.module_at(module, &path) {
+                                } else if let Some(target) = self.module_at(module, &path, outside)
+                                {
                                     for mut name in self.names(target, outside)? {
                                         name.hidden |= hidden;
                                         globbed.push(name);
@@ -337,7 +356,11 @@ impl<'i, 'a> Walker<'i, 'a> {
             }
         }
         for name in globbed {
-            if !own.iter().any(|own| own.name == name.name) {
+            // An external glob has no name until `public()` expands it. Keep each route so a
+            // hidden glob cannot shadow a later visible glob (or vice versa).
+            if matches!(&name.target, Target::ExternalGlob { .. })
+                || !own.iter().any(|own| own.name == name.name)
+            {
                 own.push(name);
             }
         }
@@ -371,9 +394,9 @@ impl<'i, 'a> Walker<'i, 'a> {
                         ));
                     } else {
                         let owner = if prefix.is_empty() {
-                            format!("{FACADE}::*")
+                            format!("{VOCAB}::*")
                         } else {
-                            format!("{FACADE}::{}::*", prefix.join("::"))
+                            format!("{VOCAB}::{}::*", prefix.join("::"))
                         };
                         let mut external = path.clone();
                         external.push("*".into());
@@ -417,7 +440,7 @@ impl<'i, 'a> Walker<'i, 'a> {
                         {
                             macros.entry(path).or_insert_with(|| external[1].clone());
                         } else if let Some(external) =
-                            outside.external_path(self.index, module, &external)
+                            outside.external_path(self.index, module, &external, false)
                         {
                             return Err(OutsideSeam::error(
                                 &format!("mod_api::{}", path.join("::")),

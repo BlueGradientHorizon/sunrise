@@ -300,24 +300,89 @@ impl<'a> Index<'a> {
             return self.resolve(module, &path[0]);
         }
         let (last, parent) = path.split_last().unwrap();
-        match self.absolute(module, parent) {
-            Some((krate, parent)) => {
-                // A path through a type (`Enum::Variant`) is not a module.
-                let target = self.module(krate, &parent)?;
-                self.resolve(target, last)
-            }
-            None => {
-                // The first segment may be a name `use`d into `module` (a module alias).
-                if let Ok(Found::External(prefix)) = self.resolve(module, &path[0])
-                    && prefix.len() > 1
-                {
-                    let mut full = prefix;
-                    full.extend(path[1..].iter().cloned());
-                    return Ok(Found::External(full));
-                }
-                Ok(Found::External(path.to_vec()))
-            }
+        if let Some(target) = self.module_path(module, parent, &mut Vec::new())? {
+            return self.resolve(target, last);
         }
+        // A non-module path prefix can still be an external crate/type alias.
+        if let Ok(Found::External(prefix)) = self.resolve(module, &path[0])
+            && prefix.len() > 1
+        {
+            let mut full = prefix;
+            full.extend(path[1..].iter().cloned());
+            return Ok(Found::External(full));
+        }
+        Ok(Found::External(path.to_vec()))
+    }
+
+    /// Resolves `path` as a module if its segments name declared modules, following local
+    /// `use` aliases. Missing source for a declared module is an error; a type or unknown name is
+    /// simply not a module.
+    pub fn resolve_module_path(
+        &mut self,
+        module: usize,
+        path: &[String],
+    ) -> Result<Option<usize>, String> {
+        self.module_path(module, path, &mut Vec::new())
+    }
+
+    /// Resolves a path to a module, including `use` aliases of local modules. It checks each
+    /// segment against a module declaration so a type prefix such as `Engine::Assoc` remains an
+    /// external path instead of being mistaken for a source module.
+    fn module_path(
+        &mut self,
+        module: usize,
+        path: &[String],
+        seen: &mut Vec<(usize, String)>,
+    ) -> Result<Option<usize>, String> {
+        if let Some((krate, path)) = self.absolute(module, path) {
+            let mut target = self.module(krate.clone(), &[])?;
+            let mut prefix = Vec::new();
+            for segment in path {
+                let is_module = self.modules[target]
+                    .items
+                    .iter()
+                    .any(|item| matches!(item, Item::Mod(item) if item.ident == segment));
+                if !is_module {
+                    return Ok(None);
+                }
+                prefix.push(segment);
+                target = self.module(krate.clone(), &prefix)?;
+            }
+            return Ok(Some(target));
+        }
+
+        let (first, rest) = path.split_first().ok_or("an empty module path")?;
+        if !seen.contains(&(module, first.clone())) {
+            seen.push((module, first.clone()));
+            let mut imported = None;
+            for item in &self.modules[module].items {
+                match item {
+                    Item::Use(item) => uses(&item.tree, &mut Vec::new(), &mut |path, alias| {
+                        if alias.as_deref() == Some(first.as_str()) {
+                            imported = Some(path);
+                        }
+                    }),
+                    Item::ExternCrate(item) => {
+                        let alias = item
+                            .rename
+                            .as_ref()
+                            .map_or_else(|| item.ident.to_string(), |(_, name)| name.to_string());
+                        if alias == *first {
+                            imported = Some(vec![item.ident.to_string()]);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(mut imported) = imported {
+                imported.extend(rest.iter().cloned());
+                let resolved = self.module_path(module, &imported, seen)?;
+                seen.pop();
+                return Ok(resolved);
+            }
+            seen.pop();
+        }
+        Ok(None)
     }
 
     /// `path`, written in `module`, as a module of an indexed crate, if it is one.

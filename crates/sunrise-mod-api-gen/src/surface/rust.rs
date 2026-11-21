@@ -138,27 +138,42 @@ pub(super) struct Paths<'p, 'a> {
 /// A visitor cannot return an error. Keep the first disallowed path and its owning item.
 pub(super) struct ExternalTypes<'a> {
     outside: &'a OutsideSeam,
+    public: &'a HashMap<ItemId, Vec<String>>,
     first: std::cell::RefCell<Option<(ItemId, Vec<String>)>>,
 }
 
 impl<'a> ExternalTypes<'a> {
-    pub(super) fn new(outside: &'a OutsideSeam) -> Self {
+    pub(super) fn new(outside: &'a OutsideSeam, public: &'a HashMap<ItemId, Vec<String>>) -> Self {
         Self {
             outside,
+            public,
             first: Default::default(),
         }
     }
 
-    fn inspect(&self, index: &mut Index<'_>, module: usize, id: ItemId, path: &[String]) {
-        if let Some(path) = self.outside.external_path(index, module, path) {
+    fn inspect(
+        &self,
+        index: &mut Index<'_>,
+        module: usize,
+        id: ItemId,
+        path: &[String],
+        rooted: bool,
+    ) {
+        if let Some(path) = self.outside.external_path(index, module, path, rooted) {
             self.first.borrow_mut().get_or_insert_with(|| (id, path));
         }
     }
 
     pub(super) fn finish(&self, index: &Index<'_>) -> Result<(), String> {
         if let Some((id, path)) = self.first.take() {
-            let (_, name) = super::walk::defined(index.item(id)).expect("a named surface item");
-            let owner = format!("{}::{name}", super::module_name(index, id.module));
+            let owner = self.public.get(&id).map_or_else(
+                || {
+                    let (_, name) =
+                        super::walk::defined(index.item(id)).expect("a named surface item");
+                    format!("{}::{name}", super::module_name(index, id.module))
+                },
+                |public| format!("mod_api::{}", public.join("::")),
+            );
             return Err(OutsideSeam::error(&owner, &path));
         }
         Ok(())
@@ -175,13 +190,33 @@ pub(super) fn ref_kind(item: &Item) -> Option<&'static str> {
 }
 
 impl Paths<'_, '_> {
-    fn inspect_private_alias(&mut self, id: ItemId) {
-        if !self.aliases.insert(id) {
-            return;
-        }
+    fn inspect_private_alias(&mut self, id: ItemId, arguments: &syn::PathArguments) {
         let Item::Type(mut alias) = self.index.item(id).clone() else {
             return;
         };
+        if !self.aliases.insert(id) {
+            return;
+        }
+        // Explicit type arguments replace positional defaults. Inspecting a replaced default
+        // would reject a safe use such as `Alias<u32>` just because `Alias<T = Outside>` has an
+        // unused outside default.
+        let supplied_types = match arguments {
+            syn::PathArguments::AngleBracketed(arguments) => arguments
+                .args
+                .iter()
+                .filter(|argument| matches!(argument, syn::GenericArgument::Type(_)))
+                .count(),
+            _ => 0,
+        };
+        let mut type_index = 0;
+        for param in &mut alias.generics.params {
+            if let syn::GenericParam::Type(param) = param {
+                if type_index < supplied_types {
+                    param.default = None;
+                }
+                type_index += 1;
+            }
+        }
         let old_module = self.module;
         let old_params = std::mem::replace(&mut self.params, param_names(&alias.generics));
         let old_refs = std::mem::take(&mut self.refs);
@@ -192,10 +227,12 @@ impl Paths<'_, '_> {
         self.module = old_module;
         self.params = old_params;
         self.refs = old_refs;
+        self.aliases.remove(&id);
     }
 
     fn rewrite(&mut self, path: &mut syn::Path) {
         let segments: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
+        let rooted = path.leading_colon.is_some();
         if path.leading_colon.is_none()
             && segments.len() == 1
             && self.params.iter().any(|p| *p == segments[0])
@@ -203,10 +240,17 @@ impl Paths<'_, '_> {
         {
             return;
         }
-        let written = match self.index.resolve_path(self.module, &segments) {
+        let found = if rooted {
+            // `::` starts at the extern prelude. Let the outside-seam lookup handle dependency
+            // aliases without allowing a local module of the same name to shadow them.
+            Ok(Found::External(segments.clone()))
+        } else {
+            self.index.resolve_path(self.module, &segments)
+        };
+        let written = match found {
             Ok(Found::Item(id)) => {
                 if let Some((check, owner)) = self.check {
-                    check.inspect(self.index, self.module, owner, &segments);
+                    check.inspect(self.index, self.module, owner, &segments, rooted);
                 }
                 match self.public.get(&id) {
                     Some(public) => {
@@ -216,14 +260,19 @@ impl Paths<'_, '_> {
                         public.clone()
                     }
                     None => {
-                        self.inspect_private_alias(id);
+                        let arguments = path
+                            .segments
+                            .last()
+                            .map(|segment| segment.arguments.clone())
+                            .unwrap_or(syn::PathArguments::None);
+                        self.inspect_private_alias(id, &arguments);
                         vec![segments.last().cloned().unwrap_or_default()]
                     }
                 }
             }
             Ok(Found::External(full)) => {
                 if let Some((check, id)) = self.check {
-                    check.inspect(self.index, self.module, id, &full);
+                    check.inspect(self.index, self.module, id, &full, rooted);
                 }
                 if STD.contains(&full[0].as_str()) {
                     vec![full.last().cloned().unwrap_or_default()]
@@ -233,7 +282,7 @@ impl Paths<'_, '_> {
             }
             Err(_) => {
                 if let Some((check, id)) = self.check {
-                    check.inspect(self.index, self.module, id, &segments);
+                    check.inspect(self.index, self.module, id, &segments, rooted);
                 }
                 segments.clone()
             }
@@ -268,7 +317,13 @@ impl VisitMut for Paths<'_, '_> {
                 .map(|segment| segment.ident.to_string())
                 .collect();
             if let Some((check, id)) = self.check {
-                check.inspect(self.index, self.module, id, &trait_path);
+                check.inspect(
+                    self.index,
+                    self.module,
+                    id,
+                    &trait_path,
+                    ty.path.leading_colon.is_some(),
+                );
             }
         } else {
             self.rewrite(&mut ty.path);

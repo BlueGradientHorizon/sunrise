@@ -1,10 +1,61 @@
 //! The crates the mod API's signatures name, indexed by [`mod_source::index`].
 pub(crate) use mod_source::index::{Found, Index, ItemId, uses};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     path::Path,
 };
-use syn::Item;
+use syn::{Attribute, Ident, Item, Meta, Visibility};
+
+fn type_item(item: &Item) -> Option<(&Ident, &Visibility, &[Attribute])> {
+    match item {
+        Item::Enum(item) => Some((&item.ident, &item.vis, &item.attrs)),
+        Item::Struct(item) => Some((&item.ident, &item.vis, &item.attrs)),
+        Item::Trait(item) => Some((&item.ident, &item.vis, &item.attrs)),
+        Item::Type(item) => Some((&item.ident, &item.vis, &item.attrs)),
+        Item::Union(item) => Some((&item.ident, &item.vis, &item.attrs)),
+        _ => None,
+    }
+}
+
+/// Whether an item exists in a mod's default build, the same feature/test policy as the public
+/// surface walk. External glob imports must not shadow the standard prelude with cfg'd names.
+fn default_build(attrs: &[Attribute]) -> bool {
+    fn holds(meta: &Meta) -> bool {
+        match meta {
+            Meta::Path(path) => !path.is_ident("test"),
+            Meta::NameValue(pair) => !pair.path.is_ident("feature"),
+            Meta::List(list) => {
+                let Ok(inner) = list.parse_args_with(
+                    syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
+                ) else {
+                    return true;
+                };
+                if list.path.is_ident("any") {
+                    inner.iter().any(holds)
+                } else if list.path.is_ident("all") {
+                    inner.iter().all(holds)
+                } else if list.path.is_ident("not") {
+                    !inner.iter().all(holds)
+                } else {
+                    true
+                }
+            }
+        }
+    }
+    attrs.iter().all(|attr| match &attr.meta {
+        Meta::List(list) if list.path.is_ident("cfg") => list
+            .parse_args::<Meta>()
+            .map(|meta| holds(&meta))
+            .unwrap_or(true),
+        _ => true,
+    })
+}
+
+fn is_public_external_type(index: &Index<'_>, id: crate::index::ItemId) -> bool {
+    type_item(index.item(id)).is_some_and(|(_, visibility, attrs)| {
+        matches!(visibility, Visibility::Public(_)) && default_build(attrs)
+    })
+}
 
 /// The crates whose items mod API signatures name: crate name and source directory.
 pub(crate) const CRATES: &[(&str, &str)] = &[
@@ -94,7 +145,13 @@ impl OutsideSeam {
                     .and_then(toml::Value::as_str)
                     .unwrap_or("src/lib.rs");
                 let source_file = package_path.join(lib_path);
-                if source_file.is_file() {
+                if package.get("lib").is_some() || source_file.is_file() {
+                    if !source_file.is_file() {
+                        return Err(format!(
+                            "{member}/Cargo.toml: library source {} is missing",
+                            source_file.display()
+                        ));
+                    }
                     let source = source_file
                         .parent()
                         .and_then(|path| path.strip_prefix(root).ok())
@@ -167,7 +224,7 @@ impl OutsideSeam {
 
     /// Adds outside workspace crates to the lazy source index so glob imports can be resolved to
     /// actual exported names without treating primitives or prelude types as leaks.
-    pub(crate) fn add_to_index(&self, index: &mut Index<'_>) {
+    pub(crate) fn add_to_index(&self, index: &mut Index<'_>) -> Result<(), String> {
         for krate in &self.indexed {
             index.add_crate(&krate.name, &krate.source);
             if let Some(file) = &krate.root_file
@@ -176,6 +233,57 @@ impl OutsideSeam {
                 index.set_root_file(&krate.name, file);
             }
         }
+
+        // Resolve every source module reachable from the seam crates in each default build up
+        // front. Export lookup can treat an unknown name as absent, but it must not mistake an
+        // unreadable module or generated include for a confirmed absence.
+        let mut reachable = HashSet::new();
+        let mut crates = CRATES
+            .iter()
+            .map(|(name, _)| (*name).to_owned())
+            .chain(std::iter::once("sunrise_mod_api".to_owned()))
+            .collect::<VecDeque<_>>();
+        while let Some(name) = crates.pop_front() {
+            if reachable.insert(name.clone()) {
+                crates.extend(
+                    self.dependencies
+                        .get(&name)
+                        .into_iter()
+                        .flat_map(HashMap::values)
+                        .cloned(),
+                );
+            }
+        }
+        for krate in self
+            .indexed
+            .iter()
+            .filter(|krate| reachable.contains(&krate.name))
+        {
+            let mut pending = VecDeque::from([(krate.name.clone(), Vec::<String>::new())]);
+            let mut seen = HashSet::new();
+            while let Some((name, path)) = pending.pop_front() {
+                if !seen.insert((name.clone(), path.clone())) {
+                    continue;
+                }
+                let module = index.module(&name, &path)?;
+                let children = index.modules[module]
+                    .items
+                    .iter()
+                    .filter_map(|item| match item {
+                        Item::Mod(child) if default_build(&child.attrs) => {
+                            Some(child.ident.to_string())
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                for child in children {
+                    let mut child_path = path.clone();
+                    child_path.push(child);
+                    pending.push_back((name.clone(), child_path));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Resolves an indexed source path to an outside workspace crate, following Cargo and `use`
@@ -185,8 +293,49 @@ impl OutsideSeam {
         index: &mut Index<'_>,
         module: usize,
         path: &[String],
+        rooted: bool,
     ) -> Option<Vec<String>> {
+        if rooted {
+            return self.rooted_external_path(index, module, path);
+        }
+        if let Some(target) = Self::indexed_module(index, module, path)
+            && !self.crates.contains(&index.modules[target].krate)
+        {
+            return None;
+        }
         self.resolve_external(index, module, path, &mut HashSet::new())
+    }
+
+    /// A path to an indexed API or local module rather than an outside workspace crate.
+    pub(crate) fn internal_module(
+        &self,
+        index: &mut Index<'_>,
+        module: usize,
+        path: &[String],
+    ) -> Option<usize> {
+        let target = Self::indexed_module(index, module, path)?;
+        (!self.crates.contains(&index.modules[target].krate)).then_some(target)
+    }
+
+    /// A leading `::` starts in the extern prelude, where a local module must not shadow a
+    /// dependency with the same spelling.
+    fn rooted_external_path(
+        &self,
+        index: &Index<'_>,
+        module: usize,
+        path: &[String],
+    ) -> Option<Vec<String>> {
+        let (first, rest) = path.split_first()?;
+        if self.crates.contains(first) {
+            return Some(path.to_vec());
+        }
+        let krate = &index.modules[module].krate;
+        let real = self.dependencies.get(krate)?.get(first)?;
+        Some(
+            std::iter::once(real.clone())
+                .chain(rest.iter().cloned())
+                .collect(),
+        )
     }
 
     fn indexed_external_path(
@@ -215,37 +364,107 @@ impl OutsideSeam {
         )
     }
 
-    fn globbed_external_path(
+    /// Finds a type among the names a module actually exports. `Index::resolve` deliberately
+    /// sees private aliases too, which is useful inside a crate but wrong for an imported glob.
+    fn exported_external_type(
         &self,
         index: &mut Index<'_>,
         module: usize,
         name: &str,
         seen: &mut HashSet<(usize, String)>,
     ) -> Option<Vec<String>> {
-        if let Ok(crate::index::Found::Item(id)) = index.resolve(module, name) {
-            return self.indexed_external_path(index, id);
+        if !seen.insert((module, name.to_owned())) {
+            return None;
         }
+        let items = index.modules.get(module)?.items.clone();
+        for (position, item) in items.iter().enumerate() {
+            if let Some((ident, visibility, attrs)) = type_item(item)
+                && ident == name
+                && default_build(attrs)
+            {
+                if matches!(visibility, syn::Visibility::Public(_)) {
+                    return self.indexed_external_path(
+                        index,
+                        crate::index::ItemId {
+                            module,
+                            item: position,
+                        },
+                    );
+                }
+                // A compiled private type shadows imports in the type namespace.
+                return None;
+            }
+        }
+
+        for item in &items {
+            let Item::Use(import) = item else { continue };
+            if !matches!(import.vis, syn::Visibility::Public(_)) || !default_build(&import.attrs) {
+                continue;
+            }
+            let mut named = Vec::new();
+            let mut globs = Vec::new();
+            uses(&import.tree, &mut Vec::new(), &mut |path, alias| {
+                if alias.as_deref() == Some(name) {
+                    named.push(path);
+                } else if alias.is_none() {
+                    globs.push(path);
+                }
+            });
+            for path in named {
+                let target = self
+                    .external_path(index, module, &path, import.leading_colon.is_some())
+                    .unwrap_or(path);
+                if let Ok(Found::Item(id)) = index.resolve_path(module, &target)
+                    && let Some(external) = self.indexed_external_path(index, id)
+                    && is_public_external_type(index, id)
+                {
+                    return Some(external);
+                }
+            }
+            for path in globs {
+                let target = if let Some(external) =
+                    self.external_path(index, module, &path, import.leading_colon.is_some())
+                {
+                    let (krate, inner) = external.split_first()?;
+                    index.module(krate, inner).ok()
+                } else {
+                    Self::indexed_module(index, module, &path)
+                };
+                let Some(target) = target else { continue };
+                if let Some(external) = self.exported_external_type(index, target, name, seen) {
+                    return Some(external);
+                }
+            }
+        }
+        None
+    }
+
+    fn globbed_external_path(
+        &self,
+        index: &mut Index<'_>,
+        module: usize,
+        name: &str,
+    ) -> Option<Vec<String>> {
         let mut globs = Vec::new();
         for item in &index.modules[module].items {
             if let Item::Use(item) = item {
                 uses(&item.tree, &mut Vec::new(), &mut |path, alias| {
                     if alias.is_none() {
-                        globs.push(path);
+                        globs.push((path, item.leading_colon.is_some()));
                     }
                 });
             }
         }
-        for glob in globs {
-            let target = if let Some(path) = self.resolve_external(index, module, &glob, seen) {
-                let mut path = path;
-                path.push(name.to_owned());
-                index.resolve_path(module, &path).ok()
+        for (glob, rooted) in globs {
+            let target = if let Some(path) = self.external_path(index, module, &glob, rooted) {
+                let (krate, inner) = path.split_first()?;
+                index.module(krate, inner).ok()
             } else {
                 Self::indexed_module(index, module, &glob)
-                    .and_then(|target| index.resolve(target, name).ok())
             };
-            if let Some(crate::index::Found::Item(id)) = target
-                && let Some(path) = self.indexed_external_path(index, id)
+            if let Some(target) = target
+                && let Some(path) =
+                    self.exported_external_type(index, target, name, &mut HashSet::new())
             {
                 return Some(path);
             }
@@ -377,7 +596,7 @@ impl OutsideSeam {
             match item {
                 Item::Use(item) => uses(&item.tree, &mut Vec::new(), &mut |imported, alias| {
                     if alias.as_deref() == Some(first.as_str()) {
-                        named = Some(imported);
+                        named = Some((imported, item.leading_colon.is_some()));
                     }
                 }),
                 Item::ExternCrate(item) => {
@@ -386,14 +605,14 @@ impl OutsideSeam {
                         .as_ref()
                         .map_or_else(|| item.ident.to_string(), |(_, name)| name.to_string());
                     if alias == *first {
-                        named = Some(vec![item.ident.to_string()]);
+                        named = Some((vec![item.ident.to_string()], false));
                     }
                 }
                 _ => {}
             }
         }
-        if let Some(imported) = named {
-            if let Some(mut resolved) = self.resolve_external(index, scope, &imported, seen) {
+        if let Some((imported, rooted)) = named {
+            if let Some(mut resolved) = self.external_path(index, scope, &imported, rooted) {
                 resolved.extend(rest.iter().cloned());
                 return Some(resolved);
             }
@@ -404,7 +623,7 @@ impl OutsideSeam {
             }
             return None;
         }
-        self.globbed_external_path(index, scope, first, seen)
+        self.globbed_external_path(index, scope, first)
     }
 
     pub(crate) fn error(item: &str, path: &[String]) -> String {

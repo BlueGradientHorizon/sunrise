@@ -659,7 +659,7 @@ pub(crate) fn build(
     }
     notes.extend(expand::expand_modules(index, &expanded));
     let outside = OutsideSeam::read(root)?;
-    outside.add_to_index(index);
+    outside.add_to_index(index)?;
     let mut walker = walk::Walker::new(index);
     let public = walker.public(&outside)?;
     notes.extend(public.notes.iter().cloned());
@@ -691,7 +691,7 @@ pub(crate) fn build(
             "{count} impl blocks on {kind}: no record kind for their items"
         ));
     }
-    let external = ExternalTypes::new(&outside);
+    let external = ExternalTypes::new(&outside, &nameable);
     let mut queue: Vec<(ItemId, Vec<String>)> = public
         .items
         .iter()
@@ -777,7 +777,8 @@ pub(crate) fn build(
                 functions.push(record);
             }
             Item::Const(constant) => {
-                let _ = writer.ty(module, &[], &constant.ty);
+                let (_, refs) = writer.ty(module, &[], &constant.ty);
+                named.extend(refs);
                 match capability_key(&mut writer, module, &path, constant) {
                     Some(capability) => {
                         named.extend(capability.contract.refs.iter().cloned());
@@ -787,7 +788,8 @@ pub(crate) fn build(
                 }
             }
             Item::Static(static_) => {
-                let _ = writer.ty(module, &[], &static_.ty);
+                let (_, refs) = writer.ty(module, &[], &static_.ty);
+                named.extend(refs);
                 notes.push(format!("static {path}: no record kind for statics"));
             }
             _ => notes.push(format!("{path}: not a kind the surface records")),
