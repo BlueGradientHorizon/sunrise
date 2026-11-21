@@ -555,11 +555,15 @@ impl ItemPlace {
                         lend(ItemStackView::from_stack(&stack));
                         return Some(());
                     }
-                    Self::MenuSlot { menu, slot } => match menu.slot_backing(host, *slot) {
+                    Self::MenuSlot { menu, slot } => match menu
+                        .with_view(host, |view| view.slot_backing(*slot))
+                        .flatten()
+                    {
                         // Only the handler owns this stack. Its refusal must not read the mirror.
                         Some(MenuSlotBacking::Place(place)) => place.handler(host, menu.player)?,
                         _ => {
-                            let stack = menu.slot(host, *slot)??;
+                            let stack =
+                                menu.with_view(host, |view| view.slot(*slot)).flatten()??;
                             lend(ItemStackView::from_stack(&stack));
                             return Some(());
                         }
@@ -793,11 +797,20 @@ impl ItemPlace {
         // `getMaxStackSize` for what goes in, `Slot.mayPickup` for what comes out.
         let amount = match self {
             ItemPlace::MenuSlot { menu, slot } if insert => {
-                let holds = menu.slot_holds(host, *slot, resource.as_stack());
+                let holds = menu
+                    .with_view(host, |view| view.slot_holds(*slot, resource.as_stack()))
+                    .flatten();
                 let room = holds.unwrap_or(0).saturating_sub(self.amount(host));
                 amount.min(room)
             }
-            ItemPlace::MenuSlot { menu, slot } if menu.slot_gives(host, *slot) != Some(true) => 0,
+            ItemPlace::MenuSlot { menu, slot }
+                if menu
+                    .with_view(host, |view| view.slot_gives(*slot))
+                    .flatten()
+                    != Some(true) =>
+            {
+                0
+            }
             _ => amount,
         };
         if amount == 0 {
@@ -854,7 +867,11 @@ impl ItemPlace {
                 through(handler, host, tx, *slot, false)
             }
             ItemPlace::MenuSlot { menu, slot } => {
-                let (handler, index) = match menu.slot_backing(host, *slot).ok_or(())? {
+                let (handler, index) = match menu
+                    .with_view(host, |view| view.slot_backing(*slot))
+                    .flatten()
+                    .ok_or(())?
+                {
                     MenuSlotBacking::Player(index) => {
                         let player = menu.player.entity();
                         (player.capability(host, &ENTITY_ITEMS, ()), index)

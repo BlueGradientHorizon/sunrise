@@ -602,7 +602,10 @@ mod tests {
             let host: &mut dyn ServerHost = game;
             let menu = host.menu(123, window).unwrap();
             // Unbacked, the menu is the mod's own, as before.
-            assert_eq!(menu.slot_backing(host, 0), Some(MenuSlotBacking::Native(0)));
+            assert_eq!(
+                menu.with_view(host, |view| view.slot_backing(0)).flatten(),
+                Some(MenuSlotBacking::Native(0))
+            );
             assert!(!game.place_menu_click(123, window, 27, 0, 1));
 
             let player = menu.fields().player;
@@ -622,7 +625,7 @@ mod tests {
             );
             let host: &mut dyn ServerHost = game;
             assert_eq!(
-                menu.slot_backing(host, 0),
+                menu.with_view(host, |view| view.slot_backing(0)).flatten(),
                 Some(MenuSlotBacking::Place(MenuSlotPlace::HeldItem {
                     hand: Hand::Main,
                     slot: 0
@@ -678,10 +681,17 @@ mod tests {
         let host: &mut dyn ServerHost = game;
         let boxed: u32 = (0..27).map(|n| held_slot(n).amount(host)).sum();
         let own: u32 = (0..27)
-            .map(|slot| match menu.slot_backing(host, slot) {
-                // A backed slot is a view of the box, already counted above.
-                Some(MenuSlotBacking::Native(_)) => ItemPlace::MenuSlot { menu, slot }.amount(host),
-                _ => 0,
+            .map(|slot| {
+                match menu
+                    .with_view(host, |view| view.slot_backing(slot))
+                    .flatten()
+                {
+                    // A backed slot is a view of the box, already counted above.
+                    Some(MenuSlotBacking::Native(_)) => {
+                        ItemPlace::MenuSlot { menu, slot }.amount(host)
+                    }
+                    _ => 0,
+                }
             })
             .sum();
         let carried = ItemPlace::PlayerSlot {
@@ -723,7 +733,10 @@ mod tests {
                 Ok(())
             );
             let host: &mut dyn ServerHost = game;
-            assert_eq!(menu.slot_backing(host, 0), Some(MenuSlotBacking::Native(0)));
+            assert_eq!(
+                menu.with_view(host, |view| view.slot_backing(0)).flatten(),
+                Some(MenuSlotBacking::Native(0))
+            );
             assert_eq!(
                 ItemPlace::MenuSlot { menu, slot: 0 }.with_stack(host, |_| ()),
                 None
@@ -760,10 +773,13 @@ mod tests {
             let host: &mut dyn ServerHost = game;
             let menu = host.menu(123, window).unwrap();
             assert!(matches!(
-                menu.slot_backing(host, 0),
+                menu.with_view(host, |view| view.slot_backing(0)).flatten(),
                 Some(MenuSlotBacking::Place(_))
             ));
-            assert_eq!(menu.slot_backing(host, 1), None);
+            assert_eq!(
+                menu.with_view(host, |view| view.slot_backing(1)).flatten(),
+                None
+            );
             assert_eq!(
                 game.as_guest(1, |game| back(game, held_places(Hand::Main, 0..1))),
                 Some(Ok(()))

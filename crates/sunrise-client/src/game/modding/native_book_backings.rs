@@ -304,7 +304,9 @@ impl Backings {
             match before {
                 Some(before) => {
                     before.place.resolves(host, player)
-                        && menu.slot_backing(host, slot)
+                        && menu
+                            .with_view(host, |view| view.slot_backing(slot))
+                            .flatten()
                             == Some(MenuSlotBacking::Place(before.place))
                         && ItemPlace::MenuSlot { menu, slot }
                             .with_stack(host, |stack| stack.project())
@@ -313,7 +315,8 @@ impl Backings {
                             == before.stack.as_ref()
                 }
                 None => matches!(
-                    menu.slot_backing(host, slot),
+                    menu.with_view(host, |view| view.slot_backing(slot))
+                        .flatten(),
                     Some(MenuSlotBacking::Native(_))
                 ),
             }

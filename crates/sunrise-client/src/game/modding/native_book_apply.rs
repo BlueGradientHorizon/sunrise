@@ -318,7 +318,11 @@ impl Game<'_> {
         let host: &mut dyn ServerHost = self;
         host.transaction(|host, tx| {
             for (slot, backing, before, after) in &writes {
-                if menu.slot_backing(host, *slot) != Some(MenuSlotBacking::Place(*backing)) {
+                if menu
+                    .with_view(host, |view| view.slot_backing(*slot))
+                    .flatten()
+                    != Some(MenuSlotBacking::Place(*backing))
+                {
                     return Err(());
                 }
                 let place = ItemPlace::MenuSlot { menu, slot: *slot };

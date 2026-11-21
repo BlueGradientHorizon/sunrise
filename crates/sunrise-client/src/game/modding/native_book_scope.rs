@@ -260,7 +260,10 @@ impl Game<'_> {
             }
             match place {
                 Some(place)
-                    if menu.slot_backing(host, slot) == Some(MenuSlotBacking::Place(place))
+                    if menu
+                        .with_view(host, |view| view.slot_backing(slot))
+                        .flatten()
+                        == Some(MenuSlotBacking::Place(place))
                         && place.resolves(host, player) =>
                 {
                     let stack = ItemPlace::MenuSlot { menu, slot }
@@ -270,7 +273,8 @@ impl Game<'_> {
                 }
                 Some(_) => return Err(Refusal::Changed),
                 None if matches!(
-                    menu.slot_backing(host, slot),
+                    menu.with_view(host, |view| view.slot_backing(slot))
+                        .flatten(),
                     Some(MenuSlotBacking::Native(_))
                 ) =>
                 {

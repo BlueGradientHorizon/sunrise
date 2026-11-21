@@ -609,7 +609,10 @@ mod tests {
                             place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
                         );
-                        assert_eq!(menu.carried(host), Some(None));
+                        assert_eq!(
+                            menu.with_view(host, |view| view.carried()).flatten(),
+                            Some(None)
+                        );
                         // A committed child lends its first snapshot to the parent.
                         let aborted = host.transaction(|host, _| {
                             host.transaction(|host, tx| {
@@ -659,7 +662,7 @@ mod tests {
                     "minecraft:furnace" => {
                         let menu = event.menu.expect("furnace has a handle during open");
                         assert_eq!(
-                            menu.slot(host, 3),
+                            menu.with_view(host, |view| view.slot(3)).flatten(),
                             Some(Some(
                                 ItemStack::new("minecraft:iron_ingot", 5)
                                     .try_into_api()
@@ -667,7 +670,7 @@ mod tests {
                             ))
                         );
                         assert_eq!(
-                            menu.slot(host, 0),
+                            menu.with_view(host, |view| view.slot(0)).flatten(),
                             Some(Some(
                                 ItemStack::new("minecraft:iron_ore", 3)
                                     .try_into_api()
@@ -743,11 +746,18 @@ mod tests {
                             assert!(menu.is_none());
                         } else {
                             let menu = menu.unwrap();
-                            assert!(game.menu_slot_count(menu).is_some());
+                            assert!(
+                                menu.with_view(game, |view| view.slot_count())
+                                    .flatten()
+                                    .is_some()
+                            );
                             // The cursor is swapped out of Guest for this turn.
                             let cursor = Some(ItemStack::new("minecraft:stone", 2));
                             game.carried = cursor.clone();
-                            assert_eq!(game.menu_carried(menu), Some(cursor));
+                            assert_eq!(
+                                menu.with_view(game, |view| view.carried()).flatten(),
+                                Some(cursor.try_into_api().unwrap())
+                            );
                             game.carried = None;
                             let fields = menu.fields();
                             let stale = mod_api::__private::game::menu_ref(
@@ -755,13 +765,16 @@ mod tests {
                                 fields.window,
                                 fields.generation + 1,
                             );
-                            assert_eq!(game.menu_slot(stale, 0), None);
+                            assert_eq!(stale.with_view(game, |view| view.slot(0)).flatten(), None);
                             let wrong_window = mod_api::__private::game::menu_ref(
                                 player,
                                 fields.window + 1,
                                 fields.generation,
                             );
-                            assert_eq!(game.menu_slot(wrong_window, 0), None);
+                            assert_eq!(
+                                wrong_window.with_view(game, |view| view.slot(0)).flatten(),
+                                None
+                            );
                         }
                     });
                     game.guest_close_all(1);
@@ -943,7 +956,10 @@ mod tests {
             assert_eq!(host.menu(123, 2), None, "another window");
             assert_eq!(host.menu(124, 1), None, "another player");
             let menu = host.menu(123, 1).unwrap();
-            assert_eq!(menu.container_id(host), Some(1));
+            assert_eq!(
+                menu.with_view(host, |view| view.container_id()).flatten(),
+                Some(1)
+            );
             sent(&rx);
 
             let diamond = ItemStack::new("minecraft:diamond", 1)
@@ -1877,15 +1893,24 @@ mod tests {
                         })
                         .unwrap();
                         assert_eq!(
-                            game.menu_kind(game.menu(123, old).unwrap()),
+                            game.menu(123, old)
+                                .unwrap()
+                                .with_view(game, |view| view.kind().map(str::to_owned)),
                             Some(Some("minecraft:generic_9x3".into()))
                         );
                         assert!(sent(&rx).is_empty());
 
                         let window = show(game, vec![-80_000, 0]).unwrap().unwrap();
                         let menu = player.container_menu(game).unwrap();
-                        assert_eq!(menu.slot_count(game), Some(0));
-                        assert!(menu.slot(game, 0).is_none());
+                        assert_eq!(
+                            menu.with_view(game, |view| view.slot_count()).flatten(),
+                            Some(0)
+                        );
+                        assert!(
+                            menu.with_view(game, |view| view.slot(0))
+                                .flatten()
+                                .is_none()
+                        );
                         let packets = sent(&rx);
                         let open_at = packets
                             .iter()
