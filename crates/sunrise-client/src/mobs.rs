@@ -7621,3 +7621,325 @@ pub fn apply_mob_pushes(m: &mut Mob, pending: &mut PendingPushes) {
 }
 #[cfg(test)]
 mod guardian_tests;
+
+#[cfg(test)]
+mod live_damage_reduction_tests {
+    use super::{
+        Damage, DamageContainer, DamageKind, Mob, Reduction, Species, Who, finalize, gear,
+        sensor_scan_tests,
+    };
+    use crate::health::{DamageHooks, DamageLevel, Hurting, TestLevel, Victim};
+    use std::cell::RefCell;
+    use std::sync::Arc;
+    use sunrise_core::geometry::Vec3;
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct StageSample {
+        stage: Reduction,
+        original: f32,
+        new_damage: f32,
+        post_ticks: i32,
+        side_effects: bool,
+        prev_reduction: f32,
+        taken: f32,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq)]
+    struct PostSample {
+        inflicted: f32,
+        health_damage: f32,
+        absorption: f32,
+        side_effects: bool,
+        post_ticks: i32,
+    }
+
+    thread_local! {
+        static STAGES: RefCell<Vec<StageSample>> = const { RefCell::new(Vec::new()) };
+        static POST: RefCell<Option<PostSample>> = const { RefCell::new(None) };
+    }
+
+    #[test]
+    fn mob_damage_reduction_closures_observe_live_stage_across_all_six_reductions() {
+        fn incoming(
+            _: DamageLevel<'_>,
+            _: Hurting<'_>,
+            _: Victim,
+            container: &mut DamageContainer,
+        ) -> bool {
+            for (stage, prev, delta) in [
+                (Reduction::Invulnerability, Reduction::Invulnerability, 5.0),
+                (Reduction::Armor, Reduction::Invulnerability, -6.0),
+                (Reduction::MobEffects, Reduction::Armor, -1.0),
+                (Reduction::Enchantments, Reduction::MobEffects, -3.0),
+                (Reduction::InnateResistance, Reduction::Enchantments, -5.0),
+                (Reduction::Absorption, Reduction::InnateResistance, -1.5),
+            ] {
+                container.add_reduction_modifier(
+                    stage,
+                    Box::new(move |live: &DamageContainer, taken: f32| {
+                        STAGES.with_borrow_mut(|log| {
+                            log.push(StageSample {
+                                stage,
+                                original: live.original(),
+                                new_damage: live.new_damage(),
+                                post_ticks: live.post_attack_invulnerability_ticks(),
+                                side_effects: live.should_cause_side_effects(),
+                                prev_reduction: live.reduction(prev),
+                                taken,
+                            });
+                        });
+                        taken + delta
+                    }),
+                );
+            }
+            false
+        }
+
+        fn post(_: DamageLevel<'_>, _: Hurting<'_>, container: &DamageContainer) {
+            POST.with_borrow_mut(|slot| {
+                *slot = Some(PostSample {
+                    inflicted: container.inflicted(),
+                    health_damage: container.health_damage(),
+                    absorption: container.reduction(Reduction::Absorption),
+                    side_effects: container.should_cause_side_effects(),
+                    post_ticks: container.post_attack_invulnerability_ticks(),
+                });
+            });
+        }
+
+        STAGES.with_borrow_mut(Vec::clear);
+        POST.with_borrow_mut(|slot| *slot = None);
+
+        let mut kind = (*sensor_scan_tests::kind()).clone();
+        kind.id = "minecraft:witch".into();
+        kind.species = Species::Witch;
+        kind.max_health = 100.0;
+        kind.armor = 20.0;
+        kind.armor_toughness = 8.0;
+        let mut mob = Mob::new(4101, Arc::new(kind), Vec3::ZERO, 0.0);
+        finalize::set_base(&mut mob, finalize::Attr::MaxAbsorption, 20.0);
+        mob.absorption = 4.0;
+        mob.add_effect("resistance", 600, 0);
+        gear::upgrade(&mut mob, gear::HEAD, "minecraft:protection", 4);
+        gear::upgrade(&mut mob, gear::CHEST, "minecraft:protection", 4);
+        // Cooldown hit with a non-default remaining timer: Invulnerability must observe 15 ticks,
+        // `should_cause_side_effects() == false`, and `new_damage() == incoming`.
+        mob.invulnerable = 15;
+        mob.last_hurt = 4.0;
+
+        let hooks = DamageHooks {
+            incoming: Some(incoming),
+            post: Some(post),
+            ..DamageHooks::NONE
+        };
+        let mut test_level = TestLevel::with_hooks(0, hooks);
+        let source = Damage {
+            kind: DamageKind::Thorns,
+            attacker: Some(Who::Player),
+            from: None,
+            attacker_species: None,
+        };
+        assert!(mob.damage(&mut test_level.level(), 49.0, source));
+
+        assert_eq!(
+            STAGES.with_borrow(Clone::clone),
+            vec![
+                StageSample {
+                    stage: Reduction::Invulnerability,
+                    original: 49.0,
+                    new_damage: 49.0,
+                    post_ticks: 15,
+                    side_effects: false,
+                    prev_reduction: 0.0,
+                    taken: 4.0,
+                },
+                StageSample {
+                    stage: Reduction::Armor,
+                    original: 49.0,
+                    new_damage: 40.0,
+                    post_ticks: 15,
+                    side_effects: false,
+                    prev_reduction: 9.0,
+                    taken: 16.0,
+                },
+                StageSample {
+                    stage: Reduction::MobEffects,
+                    original: 49.0,
+                    new_damage: 30.0,
+                    post_ticks: 15,
+                    side_effects: false,
+                    prev_reduction: 10.0,
+                    taken: 6.0,
+                },
+                StageSample {
+                    stage: Reduction::Enchantments,
+                    original: 49.0,
+                    new_damage: 25.0,
+                    post_ticks: 15,
+                    side_effects: false,
+                    prev_reduction: 5.0,
+                    taken: 8.0,
+                },
+                StageSample {
+                    stage: Reduction::InnateResistance,
+                    original: 49.0,
+                    new_damage: 20.0,
+                    post_ticks: 15,
+                    side_effects: false,
+                    prev_reduction: 5.0,
+                    taken: 17.0,
+                },
+                StageSample {
+                    stage: Reduction::Absorption,
+                    original: 49.0,
+                    new_damage: 8.0,
+                    post_ticks: 15,
+                    side_effects: false,
+                    prev_reduction: 12.0,
+                    taken: 4.0,
+                },
+            ]
+        );
+        assert_eq!(
+            POST.with_borrow(Clone::clone),
+            Some(PostSample {
+                inflicted: 8.0,
+                health_damage: 5.5,
+                absorption: 2.5,
+                side_effects: false,
+                post_ticks: 15,
+            })
+        );
+        assert_eq!(mob.health, 94.5);
+        assert_eq!(mob.absorption, 1.5);
+        assert_eq!(mob.invulnerable, 15);
+        assert_eq!(mob.last_hurt, 49.0);
+        assert_eq!(mob.dealt_absorbed, 25);
+    }
+
+    #[test]
+    fn mob_soak_absorption_audit_74_negative_over_limit_and_dealt_absorbed() {
+        fn make_mob(id: u32, hearts: f32) -> Mob {
+            let mut kind = (*sensor_scan_tests::kind()).clone();
+            kind.max_health = 100.0;
+            let mut mob = Mob::new(id, Arc::new(kind), Vec3::ZERO, 0.0);
+            finalize::set_base(&mut mob, finalize::Attr::MaxAbsorption, 20.0);
+            mob.absorption = hearts;
+            mob
+        }
+
+        // Negative absorption reduction increases remaining damage and records the negative amount.
+        let mut neg_mob = make_mob(4102, 3.0);
+        let mut neg_container = DamageContainer::new(10.0);
+        neg_container.add_reduction_modifier(
+            Reduction::Absorption,
+            Box::new(|_: &DamageContainer, _: f32| -2.5),
+        );
+        let neg_remaining = neg_mob.soak_absorption(10.0, &mut neg_container);
+        assert_eq!(neg_remaining, 12.5);
+        assert_eq!(neg_container.reduction(Reduction::Absorption), -2.5);
+        assert_eq!(neg_container.new_damage(), 12.5);
+        assert_eq!(neg_mob.absorption, 5.5);
+
+        // NaN absorption reduction is recorded verbatim without a silent fallback.
+        let mut nan_mob = make_mob(4103, 3.0);
+        let mut nan_container = DamageContainer::new(10.0);
+        nan_container.add_reduction_modifier(
+            Reduction::Absorption,
+            Box::new(|_: &DamageContainer, _: f32| f32::NAN),
+        );
+        assert!(nan_mob.soak_absorption(10.0, &mut nan_container).is_nan());
+        assert!(nan_container.reduction(Reduction::Absorption).is_nan());
+
+        // End-to-end through `Mob::damage` so `soak_hit` credits `dealt_absorbed` with
+        // `damage.min(modified)`.
+        fn incoming(
+            _: DamageLevel<'_>,
+            hurting: Hurting<'_>,
+            _: Victim,
+            container: &mut DamageContainer,
+        ) -> bool {
+            let Hurting::Mob(mob, _) = hurting else {
+                return false;
+            };
+            match mob.id {
+                // Negative reduction: increases damage taken, credits no dealt_absorbed.
+                4104 => container.add_reduction_modifier(
+                    Reduction::Absorption,
+                    Box::new(|_: &DamageContainer, _: f32| -2.5),
+                ),
+                // Over-limit (`modified > damage > hearts`): records 52.0 verbatim, floors
+                // remaining damage at 0.0, deducts `damage.min(modified) = 10.0` from hearts
+                // floored at 0.0, and credits `dealt_absorbed` with 10.0 * 10 = 100.
+                4105 => container.add_reduction_modifier(
+                    Reduction::Absorption,
+                    Box::new(|_: &DamageContainer, taken: f32| taken + 50.0),
+                ),
+                // Between hearts and damage (`hearts < modified < damage`): records 6.0 verbatim,
+                // leaves 4.0 health damage, deducts 6.0 from 2.0 hearts floored at 0.0, and
+                // credits `dealt_absorbed` with 6.0 * 10 = 60.
+                4106 => container.add_reduction_modifier(
+                    Reduction::Absorption,
+                    Box::new(|_: &DamageContainer, _: f32| 6.0),
+                ),
+                _ => {}
+            }
+            false
+        }
+
+        fn post(_: DamageLevel<'_>, _: Hurting<'_>, container: &DamageContainer) {
+            POST.with_borrow_mut(|slot| {
+                *slot = Some(PostSample {
+                    inflicted: container.inflicted(),
+                    health_damage: container.health_damage(),
+                    absorption: container.reduction(Reduction::Absorption),
+                    side_effects: container.should_cause_side_effects(),
+                    post_ticks: container.post_attack_invulnerability_ticks(),
+                });
+            });
+        }
+
+        let hooks = DamageHooks {
+            incoming: Some(incoming),
+            post: Some(post),
+            ..DamageHooks::NONE
+        };
+        let mut test_level = TestLevel::with_hooks(0, hooks);
+        let source = Damage {
+            kind: DamageKind::Generic,
+            attacker: Some(Who::Player),
+            from: None,
+            attacker_species: None,
+        };
+
+        let mut mob_neg = make_mob(4104, 3.0);
+        assert!(mob_neg.damage(&mut test_level.level(), 10.0, source));
+        assert_eq!(mob_neg.health, 87.5);
+        assert_eq!(mob_neg.absorption, 5.5);
+        assert_eq!(mob_neg.dealt_absorbed, 0);
+        assert_eq!(
+            POST.with_borrow(|slot| slot.as_ref().map(|p| (p.health_damage, p.absorption))),
+            Some((12.5, -2.5))
+        );
+
+        let mut mob_over = make_mob(4105, 2.0);
+        assert!(mob_over.damage(&mut test_level.level(), 10.0, source));
+        assert_eq!(mob_over.health, 100.0);
+        assert_eq!(mob_over.absorption, 0.0);
+        assert_eq!(mob_over.dealt_absorbed, 100);
+        assert_eq!(
+            POST.with_borrow(|slot| slot.as_ref().map(|p| (p.health_damage, p.absorption))),
+            Some((0.0, 52.0))
+        );
+
+        let mut mob_mid = make_mob(4106, 2.0);
+        assert!(mob_mid.damage(&mut test_level.level(), 10.0, source));
+        assert_eq!(mob_mid.health, 96.0);
+        assert_eq!(mob_mid.absorption, 0.0);
+        assert_eq!(mob_mid.dealt_absorbed, 60);
+        assert_eq!(
+            POST.with_borrow(|slot| slot.as_ref().map(|p| (p.health_damage, p.absorption))),
+            Some((4.0, 6.0))
+        );
+    }
+}

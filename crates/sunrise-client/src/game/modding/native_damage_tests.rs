@@ -87,7 +87,7 @@ impl Hooks for Probe {
         }
     }
     fn living_damage_pre(&self, level: &mut dyn HitHost, event: &mut LivingDamagePreEvent<'_>) {
-        let container = &mut *event.container;
+        let container = &mut event.container;
         if matches!(event.entity, 225003 | 225008) {
             container.set_new_damage(2.0);
         }
@@ -697,6 +697,8 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
     }
 }
 
+/// Live borrowing crosses `living_damage_pre` with no snapshot conversion, preserving
+/// recorded reductions and writing `set_new_damage` straight back to the engine container.
 #[test]
 #[ignore = "daily"]
 fn snapshot_crosses_the_real_damage_hook_with_reductions() {
@@ -723,28 +725,4 @@ fn snapshot_crosses_the_real_damage_hook_with_reductions() {
         );
     });
     assert_eq!(log.pre, [(225003, 10.0, 2.0, 3.5)]);
-}
-
-#[test]
-#[ignore = "daily"]
-fn unsubscribed_damage_does_not_convert() {
-    mod_platform::testing::with_mods(Vec::<mod_api::ModEntry>::new().into(), || {
-        with_game(|game| {
-            super::api_values::damage::CONVERSIONS.with(|count| count.set(0));
-            let mut container = sunrise_world::living_damage::DamageContainer::new(10.0);
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None).damage_pre(
-                sunrise_client::health::Hurting::Player(
-                    225003,
-                    HurtSource {
-                        damage_type: "minecraft:generic",
-                        causing: 0,
-                        direct: 0,
-                        position: None,
-                    },
-                ),
-                &mut container,
-            );
-            super::api_values::damage::CONVERSIONS.with(|count| assert_eq!(count.get(), 0));
-        })
-    });
 }

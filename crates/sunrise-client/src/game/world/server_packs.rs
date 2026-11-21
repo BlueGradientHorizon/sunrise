@@ -208,6 +208,29 @@ pub(super) fn saves() -> PathBuf {
 /// `WorldOpenFlows.WORLD_PACK_ID`: the id of a world's own resource pack.
 const WORLD_PACK_ID: u128 = 0x640a6a92_b6cb_48a0_b391_831586500359;
 
+/// Drains panicked mod callbacks reported since the last frame into a red error toast,
+/// resetting any shown fault toast like `add_chunk_io_toasts`.
+pub(in crate::game) fn drain_mod_fault_toasts(
+    slot: &mut Option<SystemToast>,
+    mut admit: impl FnMut(SystemToast) -> Option<SystemToast>,
+) {
+    for fault in mod_api::__private::take_callback_faults() {
+        let new = SystemToast::new(
+            Text::tr("sunrise.mods.callback_panicked.title", &[&fault.mod_id]),
+            Some(Text::tr(
+                "sunrise.mods.callback_panicked.description",
+                &[&fault.callback],
+            )),
+        )
+        .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
+        if let Some(shown) = slot {
+            shown.reset_from(new);
+        } else {
+            *slot = admit(new);
+        }
+    }
+}
+
 impl Game<'_> {
     /// `WorldOpenFlows.loadBundledResourcePack`: a world's own
     /// `resourcepacks/resources.zip` is pushed as a local pack before the world
@@ -533,21 +556,9 @@ impl Game<'_> {
     /// Drains panicked mod callbacks reported since the last frame into a red error toast,
     /// resetting any shown fault toast like `add_chunk_io_toasts`.
     fn add_mod_fault_toasts(&mut self) {
-        for fault in mod_api::__private::take_callback_faults() {
-            let new = SystemToast::new(
-                Text::tr("sunrise.mods.callback_panicked.title", &[&fault.mod_id]),
-                Some(Text::tr(
-                    "sunrise.mods.callback_panicked.description",
-                    &[&fault.callback],
-                )),
-            )
-            .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
-            if let Some(shown) = &mut self.server_packs.mod_fault {
-                shown.reset_from(new);
-            } else {
-                self.server_packs.mod_fault = self.add_system_toast(new);
-            }
-        }
+        let mut shown = self.server_packs.mod_fault.take();
+        drain_mod_fault_toasts(&mut shown, |toast| self.add_system_toast(toast));
+        self.server_packs.mod_fault = shown;
     }
 
     /// The download notifiers' toasts, each in a free 32-pixel slot of the

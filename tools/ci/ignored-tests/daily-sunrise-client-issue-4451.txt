@@ -1185,7 +1185,6 @@ sunrise-client game::native_damage_tests::pre_sets_the_health_lost_and_the_last_
 sunrise-client game::native_damage_tests::snapshot_crosses_the_real_damage_hook_with_reductions lib daily resources
 sunrise-client game::native_damage_tests::the_container_names_what_armor_took lib daily resources
 sunrise-client game::native_damage_tests::the_original_damage_is_the_hit_before_the_incoming_hook lib daily resources
-sunrise-client game::native_damage_tests::unsubscribed_damage_does_not_convert lib daily resources
 sunrise-client game::native_data_bound::tests::a_remote_login_announces_the_client_cause_before_the_tags lib daily resources
 sunrise-client game::native_data_bound::tests::defaults_are_announced_bound_before_the_tags lib daily resources
 sunrise-client game::native_data_bound::tests::the_first_open_announces_bound_defaults_readable lib daily resources

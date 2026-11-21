@@ -24,6 +24,9 @@ mod item_fallthrough;
 #[cfg(test)]
 #[path = "shared/label_tests.rs"]
 mod label_tests;
+#[cfg(test)]
+#[path = "shared/live_damage_tests.rs"]
+mod live_damage_tests;
 #[path = "shared/loot.rs"]
 mod loot;
 #[cfg(test)]

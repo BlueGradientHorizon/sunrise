@@ -114,6 +114,9 @@ impl SystemToast {
     pub fn display_time(&self) -> f64 {
         self.display_time
     }
+    pub fn title_color(&self) -> u32 {
+        self.title_color
+    }
     /// `addOrUpdate` on a toast that is still shown: `reset` to `other`'s text.
     pub fn reset_from(&mut self, other: SystemToast) {
         self.title_color = other.title_color;
