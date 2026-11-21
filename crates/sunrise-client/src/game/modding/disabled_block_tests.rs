@@ -53,9 +53,15 @@ mod tests {
         ) -> Option<Dispensed> {
             self.0.earlier_dispenses.fetch_add(1, Ordering::Relaxed);
             let mut remainder = event.stack.clone();
-            remainder
-                .set_count(if remainder.count() == 3 { 65 } else { 2 })
-                .unwrap();
+            if remainder.count() == 3 {
+                remainder
+                    .set_components(
+                        [("minecraft:max_stack_size".into(), mod_api::Tag::Int(-1))].into(),
+                    )
+                    .unwrap();
+            } else {
+                remainder.set_count(2).unwrap();
+            }
             Some((Some(remainder), 0))
         }
     }
@@ -608,15 +614,15 @@ mod tests {
 
                 assert!(mod_api::__private::set_mod_enabled("inert_test", true));
                 let left = game
-                    .dispense_item(dispenser, Direction::East, stack)
-                    .unwrap()
+                    .dispense_item(dispenser, Direction::East, stack.clone())
                     .unwrap();
                 assert_eq!(
-                    left.count, 64,
-                    "an enabled listener's over-max reply is still refused"
+                    left,
+                    Some(stack),
+                    "the enabled part returns the detached count"
                 );
-                assert_eq!(game.dropped.len(), 1);
-                assert_eq!(game.dropped[0].stack, ItemStack::new("minecraft:stick", 1));
+                assert!(game.dropped.is_empty());
+                assert!(game.audio.capture.as_ref().unwrap().is_empty());
             },
         );
     }
@@ -627,25 +633,30 @@ mod tests {
         with_inert_block(
             "rejected_dispense_reply_preserves_the_disabled_owners_fallback",
             |game, _, probe| {
-                assert!(mod_api::__private::set_mod_enabled("inert_test", false));
                 let dispenser = (POS.x - 1, POS.y, POS.z);
                 game.audio.capture = Some(Vec::new());
                 let particles = game.particles.len();
-                for (input, remaining) in [(3, 3), (4, 2)] {
-                    assert_eq!(
-                        game.dispense_item(
-                            dispenser,
-                            Direction::East,
-                            ItemStack::new("minecraft:stick", input)
-                        )
-                        .unwrap(),
-                        Some(ItemStack::new("minecraft:stick", remaining))
-                    );
-                    assert!(game.dropped.is_empty());
-                    assert!(game.audio.capture.as_ref().unwrap().is_empty());
-                    assert_eq!(game.particles.len(), particles);
+                for enabled in [false, true] {
+                    assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
+                    for (input, remaining) in [(3, 3), (4, 2)] {
+                        assert_eq!(
+                            game.dispense_item(
+                                dispenser,
+                                Direction::East,
+                                ItemStack::new("minecraft:stick", input)
+                            )
+                            .unwrap(),
+                            Some(ItemStack::new("minecraft:stick", remaining))
+                        );
+                        assert!(
+                            game.dropped.is_empty(),
+                            "vanilla must not run a second behaviour"
+                        );
+                        assert!(game.audio.capture.as_ref().unwrap().is_empty());
+                        assert_eq!(game.particles.len(), particles);
+                    }
                 }
-                assert_eq!(probe.earlier_dispenses.load(Ordering::Relaxed), 2);
+                assert_eq!(probe.earlier_dispenses.load(Ordering::Relaxed), 4);
             },
         );
     }

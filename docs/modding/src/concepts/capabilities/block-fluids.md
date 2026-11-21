@@ -137,9 +137,12 @@ published only when a transfer commits.
 A single container is replaced in its slot (the final first slot, or the second slot when the
 first was emptied). When both slots remain populated, the final first slot stays in the
 dispenser's active slot and the second slot's remainder goes into the dispenser's other slots,
-else out of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`),
-with dispenser slot writes journaled and drops/events deferred while a transaction is open. The
-fluid's sound and game event come before the dispenser's click and smoke. Where neither pickup
-nor placement moves anything, nothing changes and one unchanged container is dispensed as
-`DefaultDispenseItemBehavior` does; where transactions are unavailable or the stack fails
-scratch validation, `dispense_container` returns `None`.
+else out of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
+Dispenser slot writes are journaled, and a transaction defers drops and slot notices in the
+source level until commit. Inserting the remainder into an empty slot notifies; growing a
+compatible stack does not. The detached active stack keeps its count until the dispenser
+writes its slot. The fluid's sound and game event come before the dispenser's click and smoke.
+Where neither pickup nor placement moves anything, one unchanged container is dispensed as
+`DefaultDispenseItemBehavior` does. Where the helper returns `None` (for example, when a
+transaction is unavailable or stack validation fails), return `None` from the Part rather than
+calling `dispense_default` yourself.

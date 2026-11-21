@@ -257,10 +257,10 @@ pub(super) struct Level {
     /// The block entities this transaction removed (`journal_remove_block_entity`): an abort
     /// puts them back as `block_entities` keeps them.
     removed_block_entities: std::collections::HashSet<Pos>,
-    /// Each item slot (block entity, slot) a slot-only write changed, as it was before this
-    /// transaction first wrote it, for a block entity not kept whole in `block_entities`: a
-    /// move through a container keeps the slot it touches, not the entity's whole saved data.
-    slots: HashMap<(Pos, usize), KeptSlot>,
+    /// Each item slot (dimension, block entity, slot) as it was before this transaction
+    /// first wrote it, for a block entity not kept whole in `block_entities`. A nested
+    /// command can change a slot in another level before returning to the parent's level.
+    slots: HashMap<(super::Dim, Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
     blocks: HashMap<Pos, KeptBlock>,
     /// Level.random in this frame's own dimension before its first draw.
@@ -464,6 +464,8 @@ pub(super) enum After {
     FluidEffects(Box<super::world_fluids::FluidEffects>),
     /// `BlockEntity.setChanged`.
     Changed(Pos),
+    /// The dispenser's `insertItem` called `setItem` in this level.
+    DispenserChanged(super::Dim, Pos),
     /// Detached mod entity state (not necessarily items) was edited.
     DirtyBlockEntity(Pos),
     /// A detached menu listener removed its holder; spill any unreturned contents only on commit.
@@ -530,6 +532,7 @@ pub(super) enum After {
     /// A dispensed item drop (`DefaultDispenseItemBehavior.spawnItem`), with optional click and
     /// smoke events for overflow remainders (`addToInventoryOrDispense`).
     DispenserDrop {
+        dim: super::Dim,
         pos: Pos,
         facing: sunrise_core::geometry::Direction,
         stack: ItemStack,
@@ -953,9 +956,9 @@ impl Game<'_> {
                 // Slots before whole entities: a slot the outer transaction already kept the
                 // whole entity of is older there, but one kept whole only by this child is not,
                 // so the child's slot entries go up beside its capture.
-                for ((pos, slot), kept) in level.slots {
-                    if !outer.block_entities.contains_key(&pos) {
-                        outer.slots.entry((pos, slot)).or_insert(kept);
+                for (key @ (dim, pos, _), kept) in level.slots {
+                    if outer.dimension != Some(dim) || !outer.block_entities.contains_key(&pos) {
+                        outer.slots.entry(key).or_insert(kept);
                     }
                 }
                 for (pos, kept) in level.block_entities {
@@ -1246,13 +1249,16 @@ impl Game<'_> {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
-        if level.block_entities.contains_key(&pos) {
+        if level.dimension == Some(self.dim) && level.block_entities.contains_key(&pos) {
             return;
         }
-        level.slots.entry((pos, slot)).or_insert_with(|| KeptSlot {
-            stack: entity.and_then(|entity| entity.slots()[slot].clone()),
-            generation: self.world.block_entities.generation(&pos),
-        });
+        level
+            .slots
+            .entry((self.dim, pos, slot))
+            .or_insert_with(|| KeptSlot {
+                stack: entity.and_then(|entity| entity.slots()[slot].clone()),
+                generation: self.world.block_entities.generation(&pos),
+            });
     }
     /// Keeps `holder`'s attachment map as it is, if a transaction is open and hasn't yet: a
     /// block entity's with the rest of it, any other's alone.
@@ -1637,6 +1643,20 @@ impl Game<'_> {
             None => self.run_after(after),
         }
     }
+    /// Replay a dispenser effect in its already open source level, not in the
+    /// level hosting the outer transaction.
+    fn in_dispenser_level(&mut self, dim: super::Dim, run: impl FnOnce(&mut Self)) {
+        if dim == self.dim {
+            run(self);
+        } else if self.levels.parked_world(dim).is_some()
+            && let Some(back) = self.enter_command_level(dim)
+        {
+            run(self);
+            self.enter_command_level(back);
+        } else {
+            log::warn!("could not publish dispenser effect in {}", dim.id());
+        }
+    }
     fn run_after(&mut self, after: After) {
         match after {
             After::Trade(effect) => self.commit_merchant_effect(*effect),
@@ -1651,6 +1671,9 @@ impl Game<'_> {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => self.container_changed(pos),
+            After::DispenserChanged(dim, pos) => {
+                self.in_dispenser_level(dim, |game| game.container_changed(pos));
+            }
             After::DirtyBlockEntity(pos) => {
                 self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
             }
@@ -1785,21 +1808,22 @@ impl Game<'_> {
                 self.equip_item_effects(at, sound, equips, ctx);
             }
             After::DispenserDrop {
+                dim,
                 pos,
                 facing,
                 stack,
                 play_events,
-            } => {
-                self.spawn_dispensed(pos, facing, stack, 6);
+            } => self.in_dispenser_level(dim, |game| {
+                game.spawn_dispensed(pos, facing, stack, 6);
                 if play_events {
-                    self.dispenser_event(super::dispenser::CLICK, pos, 0);
-                    self.dispenser_event(
+                    game.dispenser_event(super::dispenser::CLICK, pos, 0);
+                    game.dispenser_event(
                         2000,
                         pos,
                         sunrise_gameplay::dispense_rules::data_value(facing),
                     );
                 }
-            }
+            }),
         }
     }
     pub(in crate::game) fn pending_menu_data(&self, key: (u32, u64, u16)) -> Option<i32> {
@@ -1865,7 +1889,11 @@ impl Game<'_> {
         for after in level.after {
             match after {
                 // Each storage tells the world once, after every write.
-                After::Changed(pos) if detached.contains(&pos) || !told.insert(Ok(pos)) => {}
+                After::Changed(pos)
+                    if detached.contains(&pos) || !told.insert(Ok((self.dim, pos))) => {}
+                After::DispenserChanged(dim, pos)
+                    if (dim == self.dim && detached.contains(&pos))
+                        || !told.insert(Ok((dim, pos))) => {}
                 After::Block(pos) => {
                     if !told.insert(Err(pos)) {
                         continue;
@@ -2030,12 +2058,19 @@ impl Game<'_> {
         // After the whole entities: a slot kept here was kept before any whole capture of its
         // entity at this depth, so its stack is the older one. Only into the block entity it
         // was taken from: one a write replaced (a `set_block` in the transaction) is left as is.
-        for ((pos, slot), kept) in level.slots {
-            if self.world.block_entities.generation(&pos) != kept.generation {
+        for ((dim, pos, slot), kept) in level.slots {
+            let world = if dim == self.dim {
+                &mut self.world
+            } else if let Some(parked) = self.levels.parked_mut(dim) {
+                &mut parked.world
+            } else {
+                log::warn!("could not restore block entity slot in {}", dim.id());
+                continue;
+            };
+            if world.block_entities.generation(&pos) != kept.generation {
                 continue;
             }
-            if let Some(target) = self
-                .world
+            if let Some(target) = world
                 .block_entities
                 .get_mut(&pos)
                 .and_then(|entity| entity.slots_mut().get_mut(slot))

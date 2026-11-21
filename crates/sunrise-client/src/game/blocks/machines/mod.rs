@@ -2023,7 +2023,7 @@ impl Game<'_> {
             return Ok(());
         };
         let target = offset(key, facing);
-        let remaining = if dropper {
+        let mut remaining = if dropper {
             let side = facing.opposite();
             let inserted = self.with_container_at(target, side, |game, into| match into {
                 ContainerTarget::View(into) => {
@@ -2057,6 +2057,13 @@ impl Game<'_> {
         } else {
             self.dispense_item(key, facing, stack)?
         };
+        // DispenserBlock.dispenseFrom calls BaseContainerBlockEntity.setItem after the
+        // behaviour returns. Only this resident write limits the detached remainder's count.
+        if !dropper && let Some(stack) = &mut remaining {
+            stack.count = stack
+                .count
+                .min(self.containers().max_stack_in(&view, stack));
+        }
         if let Some(entry) = self.slot_mut_at(&view, slot) {
             *entry = remaining;
         }

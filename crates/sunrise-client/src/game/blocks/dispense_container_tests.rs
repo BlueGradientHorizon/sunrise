@@ -2,15 +2,16 @@
 //! that returns it fills and empties a bucket-like container (its empty and full forms
 //! different items), picks up before it places, sends the remainder into the dispenser or out
 //! of its front, and dispenses an unchanged container where nothing moves.
-use crate::game::{Game, dispense_fixture};
-use mod_api::*;
-use std::sync::Arc;
+use crate::game::{Dim, Game, api_values::test_snapshot, dispense_fixture, transactions::After};
+use mod_api::{prelude::ItemsServerHost, *};
+use std::sync::{Arc, Mutex};
 use sunrise_client::{chunk::Chunk, items::ItemStack};
-use sunrise_core::geometry::Direction;
+use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_world::registry::BlockStateId;
 
 /// The dispenser, facing east, and the block in front of it.
 const DISPENSER: [i32; 3] = [5, 64, 5];
+const SLOT_POS: (i32, i32, i32) = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
 const FRONT: [i32; 3] = [6, 64, 5];
 
 /// Answers the dispense of the items it is attached to with `dispense_container`.
@@ -26,12 +27,24 @@ impl ItemPart for Container {
     }
 }
 
+#[derive(Clone, Default)]
+struct Notices(Arc<Mutex<Vec<DimensionKey>>>);
+
+#[mod_api::sunrise_part]
+impl BlockPart for Notices {
+    fn contents_changed(&self, _: &mut dyn ServerHost, event: &mut ContentsChangedEvent) {
+        self.0.lock().unwrap().push(event.level.dimension());
+    }
+}
+
 /// Vanilla's buckets, through the game's own `ITEM_FLUIDS`, and paper made a 2000 mB tank in
 /// its `custom_data`: a container that can both take more and give.
-struct Containers;
+struct Containers(Notices);
 #[mod_api::__subscriptions]
 impl Hooks for Containers {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let dispenser = r.block_key("minecraft:dispenser");
+        r.block_part(dispenser, self.0.clone());
         for item in [
             "minecraft:bucket",
             "minecraft:water_bucket",
@@ -181,9 +194,18 @@ impl ResourceHandler<FluidResource> for MultiStepJug {
 /// A dedicated server with a chunk at the origin, a stone floor, an empty dispenser facing east
 /// and the containers' parts installed.
 fn with_dispenser(test: impl FnOnce(&mut Game<'_>, LevelRef)) {
-    let mods: Mods = vec![ModEntry::new("containers", Box::new(Containers))].into();
-    crate::game::api_values::install_parts(&mods).unwrap();
-    mod_platform::testing::with_mods(mods, || {
+    with_dispenser_notices(|game, level, _| test(game, level));
+}
+
+fn with_dispenser_notices(test: impl FnOnce(&mut Game<'_>, LevelRef, &Mutex<Vec<DimensionKey>>)) {
+    let notices = Notices::default();
+    let mods: Mods = vec![ModEntry::new(
+        "containers",
+        Box::new(Containers(notices.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -198,15 +220,19 @@ fn with_dispenser(test: impl FnOnce(&mut Game<'_>, LevelRef)) {
                 }
             }
             let level = game.level("minecraft:overworld").unwrap();
-            let base = state(game, "minecraft:dispenser");
-            let dispenser = game.with_props(base, &[("facing", "east")]).unwrap();
-            assert_eq!(
-                game.level_set_block(level, DISPENSER, dispenser, BlockUpdateFlags::NONE),
-                Ok(true)
-            );
-            test(game, level);
+            place_dispenser(game, level);
+            test(game, level, &notices.0);
         });
     });
+}
+
+fn place_dispenser(game: &mut Game<'_>, level: LevelRef) {
+    let base = state(game, "minecraft:dispenser");
+    let dispenser = game.with_props(base, &[("facing", "east")]).unwrap();
+    assert_eq!(
+        game.level_set_block(level, DISPENSER, dispenser, BlockUpdateFlags::NONE),
+        Ok(true)
+    );
 }
 
 fn state(game: &Game<'_>, name: &str) -> BlockStateId {
@@ -291,6 +317,240 @@ fn a_failed_transfer_dispenses_one_unchanged_container_and_changes_nothing() {
             !lines.iter().any(|line| line.starts_with("G ")),
             "{lines:?}"
         );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn oversized_dispenser_stacks_keep_their_count_until_the_slot_write() {
+    with_dispenser(|game, _| {
+        let stack = ItemStack::new("minecraft:bucket", 20);
+        game.world
+            .block_entities
+            .get_mut(&SLOT_POS)
+            .unwrap()
+            .slots_mut()[0] = Some(stack.clone());
+        set_front(game, "minecraft:water");
+        let left = dispense(game, stack);
+        assert_eq!(left, Some(ItemStack::new("minecraft:bucket", 19)));
+        assert_eq!(front(game), state(game, "minecraft:air"));
+        let slots = game.world.block_entities.get(&SLOT_POS).unwrap().slots();
+        assert_eq!(slots[1], Some(ItemStack::new("minecraft:water_bucket", 1)));
+        assert!(game.dropped.is_empty(), "no second behaviour may run");
+
+        // Now let dispenseFrom choose and install the active slot. Only that write
+        // applies the empty bucket's resident maximum of 16.
+        game.world
+            .block_entities
+            .get_mut(&SLOT_POS)
+            .unwrap()
+            .slots_mut()[1] = None;
+        set_front(game, "minecraft:water");
+        let [x, y, z] = DISPENSER;
+        game.dispense_from(BlockPos::new(x, y, z), game.world.block(x, y, z))
+            .unwrap();
+        let slots = game.world.block_entities.get(&SLOT_POS).unwrap().slots();
+        assert_eq!(slots[0], Some(ItemStack::new("minecraft:bucket", 16)));
+        assert_eq!(slots[1], Some(ItemStack::new("minecraft:water_bucket", 1)));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn oversized_failed_transfer_runs_the_helpers_default_dispense() {
+    with_dispenser(|game, _| {
+        set_front(game, "minecraft:stone");
+        dispense_fixture::start_recording();
+        let left = dispense(game, ItemStack::new("minecraft:glass_bottle", 80));
+        let lines = dispense_fixture::stop_recording();
+        assert_eq!(left, Some(ItemStack::new("minecraft:glass_bottle", 79)));
+        assert_eq!(front(game), state(game, "minecraft:stone"));
+        assert_eq!(game.dropped.len(), 1);
+        assert_eq!(
+            game.dropped[0].stack,
+            ItemStack::new("minecraft:glass_bottle", 1)
+        );
+        // The helper uses default execute (click); the vanilla glass bottle behaviour
+        // also drops one here but would emit the failed-dispense sound instead.
+        assert_eq!(lines, ["L 1000 5,64,5 0", "L 2000 5,64,5 5"]);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn dispenser_remainder_merges_without_contents_changed() {
+    with_dispenser_notices(|game, _, notices| {
+        game.world
+            .block_entities
+            .get_mut(&SLOT_POS)
+            .unwrap()
+            .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", 10));
+        let merge = |game: &mut Game<'_>| {
+            game.add_to_inventory_or_dispense(
+                SLOT_POS,
+                Direction::East,
+                ItemStack::new("minecraft:stick", 2),
+            );
+            assert_eq!(
+                game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0],
+                Some(ItemStack::new("minecraft:stick", 12))
+            );
+        };
+        assert_eq!(
+            game.storage_transaction(|game, _| {
+                merge(game);
+                Err::<(), _>(())
+            }),
+            Err(())
+        );
+        assert_eq!(
+            game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0],
+            Some(ItemStack::new("minecraft:stick", 10))
+        );
+        game.storage_transaction(|game, _| {
+            merge(game);
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        assert!(game.dropped.is_empty());
+        assert!(
+            notices.lock().unwrap().is_empty(),
+            "growing a stack is not setItem"
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn nested_dispense_settles_in_the_command_source_level() {
+    with_dispenser_notices(|game, _, notices| {
+        let marker = ItemStack::new("minecraft:stick", 10);
+        game.world
+            .block_entities
+            .get_mut(&SLOT_POS)
+            .unwrap()
+            .slots_mut()[0] = Some(marker.clone());
+        let mut source = game.server_source();
+        source.dimension = Dim::Nether;
+        game.with_source(source, |game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level(Dim::Nether.id()).unwrap();
+            place_dispenser(game, level);
+            let slots = game
+                .world
+                .block_entities
+                .get_mut(&SLOT_POS)
+                .unwrap()
+                .slots_mut();
+            for slot in &mut slots[1..] {
+                *slot = Some(ItemStack::new("minecraft:stone", 64));
+            }
+        });
+
+        let nested_dispense = |game: &mut Game<'_>| {
+            // This uses the same source switch as execute in, restoring the Overworld
+            // before the outer transaction commits or aborts.
+            game.with_source(source, |game| {
+                game.storage_transaction(|game, _| {
+                    let stick = ItemStack::new("minecraft:stick", 1);
+                    let stack = test_snapshot(&ItemStack::new("minecraft:bucket", 2));
+                    for rest in [&stick, &ItemStack::new("minecraft:dirt", 1)] {
+                        let left = ItemsServerHost::dispense_with_remainder(
+                            game,
+                            Dim::Nether.id(),
+                            DISPENSER,
+                            Direction::East,
+                            stack.clone(),
+                            test_snapshot(rest),
+                        )
+                        .unwrap();
+                        assert_eq!(left.unwrap().count(), 1);
+                    }
+                    let left = ItemsServerHost::dispense_default(
+                        game,
+                        Dim::Nether.id(),
+                        DISPENSER,
+                        Direction::East,
+                        stack,
+                    )
+                    .unwrap();
+                    assert_eq!(left.unwrap().count(), 1);
+                    assert_eq!(
+                        game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0],
+                        Some(stick)
+                    );
+                    assert!(game.dropped.is_empty());
+                    Ok::<_, ()>(())
+                })
+                .unwrap();
+            });
+            assert_eq!(game.dim, Dim::Overworld);
+            assert!(notices.lock().unwrap().is_empty(), "still provisional");
+        };
+
+        dispense_fixture::start_recording();
+        assert_eq!(
+            game.storage_transaction(|game, _| {
+                // A write at the identical position and slot must not shadow the Nether undo.
+                game.journal_block_entity_slot(SLOT_POS, 0);
+                game.world
+                    .block_entities
+                    .get_mut(&SLOT_POS)
+                    .unwrap()
+                    .slots_mut()[0] = None;
+                nested_dispense(game);
+                Err::<(), _>(())
+            }),
+            Err(())
+        );
+        assert!(dispense_fixture::stop_recording().is_empty());
+        assert_eq!(
+            game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0],
+            Some(marker.clone())
+        );
+        game.with_source(source, |game| {
+            assert_eq!(
+                game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0],
+                None
+            );
+            assert!(game.dropped.is_empty());
+        });
+
+        dispense_fixture::start_recording();
+        game.storage_transaction(|game, _| {
+            game.after_commit(After::Changed(SLOT_POS));
+            nested_dispense(game);
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        let lines = dispense_fixture::stop_recording();
+        assert_eq!(lines, ["L 1000 5,64,5 0", "L 2000 5,64,5 5"]);
+        assert_eq!(
+            *notices.lock().unwrap(),
+            [DimensionKey::OVERWORLD, DimensionKey::NETHER]
+        );
+        assert_eq!(game.dim, Dim::Overworld);
+        assert!(game.dropped.is_empty());
+        assert_eq!(
+            game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0],
+            Some(marker)
+        );
+        game.with_source(source, |game| {
+            assert_eq!(
+                game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0],
+                Some(ItemStack::new("minecraft:stick", 1))
+            );
+            let drops: Vec<_> = game.dropped.iter().map(|item| item.stack.clone()).collect();
+            assert_eq!(
+                drops,
+                [
+                    ItemStack::new("minecraft:dirt", 1),
+                    ItemStack::new("minecraft:bucket", 1)
+                ]
+            );
+        });
     });
 }
 

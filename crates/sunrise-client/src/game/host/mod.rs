@@ -5,7 +5,7 @@
 // The generated impls convert error types that are already equal; TODO(#2273): make the generator skip it.
 #![allow(clippy::useless_conversion, clippy::unit_arg)]
 use super::Game;
-use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEngine, TryIntoEnginePreservingCount};
+use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEnginePreservingCount};
 use mod_api::__private::game::*;
 use mod_api::*;
 

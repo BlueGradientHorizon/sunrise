@@ -11,8 +11,10 @@ pub trait Hooks {
     /// owns consumption: no extra item is removed afterwards). `event` is the
     /// level event the dispenser plays with its smoke: 1000 the click, 1001 the
     /// fail sound (`OptionalDispenseItemBehavior` without success), or 0 for
-    /// nothing at all (`DispenseItemBehavior.NOOP`). To drop one normally,
-    /// answer `(native_dispense_default(..), 1000)`.
+    /// nothing at all (`DispenseItemBehavior.NOOP`). The remainder is detached until the
+    /// dispenser writes its slot. An invalid remainder is reported; the input is kept without
+    /// running another behaviour. To drop one normally, answer with `host.dispense_default`'s
+    /// remainder and 1000.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_dispense_item",
         dispatch = "flat",

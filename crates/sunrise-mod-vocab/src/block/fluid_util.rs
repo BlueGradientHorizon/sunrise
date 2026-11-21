@@ -261,9 +261,10 @@ pub fn try_place_fluid(
 /// stays in the dispenser slot and the second slot's remainder goes into the dispenser, else out
 /// of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
 /// Where neither moves anything, nothing is changed and one container is dispensed as it is
-/// ([`dispense_default`](crate::prelude::ItemsServerHost::dispense_default)). None, for vanilla
-/// to decide, where the dispenser's level isn't open, transactions are unavailable, or the
-/// stack fails scratch validation.
+/// ([`dispense_default`](crate::prelude::ItemsServerHost::dispense_default)). The detached
+/// remainder retains its count until the active slot is written. Return None unchanged (no
+/// override) where the dispenser's level isn't open, transactions are unavailable, or stack
+/// validation fails; do not call `dispense_default` again.
 pub fn dispense_container(
     host: &mut dyn ServerHost,
     event: &DispenseItemEvent<'_>,

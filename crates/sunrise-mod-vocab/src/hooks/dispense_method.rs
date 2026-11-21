@@ -11,8 +11,9 @@ pub trait Hooks {
     /// empties the slot, `Some(stack)` replaces it (the hook owns
     /// consumption: no extra item is removed afterwards), and `event` is the
     /// level event played with the smoke: 1000 the click, 1001 the fail sound,
-    /// or 0 for nothing at all. Leave answer None and `dispense_item` decides,
-    /// as it did before.
+    /// or 0 for nothing at all. Leave answer None and `dispense_item` decides.
+    /// The remainder is detached until the dispenser writes its slot. An invalid remainder is
+    /// reported; the input is kept without running another behaviour.
     /// A disabled owner's subscribed method retains the stack and emits no dispense event unless
     /// an earlier enabled Part supplies a reply the engine accepts.
     #[hook(

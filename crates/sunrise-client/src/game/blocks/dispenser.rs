@@ -3,7 +3,7 @@
 //! entities for. A behaviour returns what is left in the slot and the level
 //! event it plays (`DefaultDispenseItemBehavior.dispense` then plays that
 //! event and the smoke animation, event 2000).
-use super::api_values::TryIntoApi;
+use super::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
 use super::level_sounds::LevelSound;
 use super::{Game, item_abilities::ability};
 use mod_api::SoundSource;
@@ -31,10 +31,16 @@ use sunrise_gameplay::dispense_rules::{
 };
 use sunrise_world::{fluid::FluidKind, level::PlaceContext, registry::BlockStateId};
 
-/// None keeps vanilla's behaviour; an explicit empty remainder consumes the stack.
-fn mod_dispensed(answer: Option<mod_api::Dispensed>, items: &Items) -> Option<Dispensed> {
-    use super::api_values::TryIntoEngine;
-    answer.and_then(|(stack, event)| Some((stack.try_into_engine(items).ok()?, event)))
+/// A behaviour returns a detached stack; the dispenser applies the slot limit afterwards.
+fn mod_dispensed(
+    (stack, event): mod_api::Dispensed,
+    items: &Items,
+) -> std::result::Result<Dispensed, mod_api::StackWriteError> {
+    let stack = stack
+        .as_ref()
+        .map(|stack| stack.try_into_engine_preserving_count(items))
+        .transpose()?;
+    Ok((stack, event))
 }
 
 thread_local! {
@@ -255,6 +261,7 @@ impl Game<'_> {
         };
         stack.count -= 1;
         self.after_commit(super::transactions::After::DispenserDrop {
+            dim: self.dim,
             pos,
             facing,
             stack: one,
@@ -271,18 +278,19 @@ impl Game<'_> {
         dimension: &str,
         pos: [i32; 3],
         facing: Direction,
-        stack: ItemStack,
-    ) -> Option<ItemStack> {
-        if !(self.serving.is_some() || self.options.dedicated.is_some())
+        stack: mod_api::ItemStack,
+    ) -> std::result::Result<Option<mod_api::ItemStack>, mod_api::StackWriteError> {
+        let stack = stack.try_into_engine_preserving_count(self.items())?;
+        let left = if !(self.serving.is_some() || self.options.dedicated.is_some())
             || dimension != self.dim.id()
             || !self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
         {
-            return Some(stack);
-        }
-        if stack.count == 0 {
-            return None;
-        }
-        self.default_execute((pos[0], pos[1], pos[2]), facing, stack)
+            Some(stack)
+        } else {
+            self.default_execute((pos[0], pos[1], pos[2]), facing, stack)
+        };
+        left.try_into_api()
+            .map_err(|error| error.into_write_error())
     }
     /// `dispense_with_remainder`: `consume_with_remainder` for a mod's dispense answer, in the
     /// level in place; `stack` unchanged off it, as `dispense_default` keeps it.
@@ -352,7 +360,7 @@ impl Game<'_> {
             .block_entities
             .get(&pos)
             .map_or(0, |entity| entity.slots().len());
-        let mut wrote = false;
+        let mut set_item = false;
         for slot in 0..slots {
             let room = self
                 .world
@@ -383,23 +391,26 @@ impl Game<'_> {
                             count: n,
                             ..rest.clone()
                         });
+                        set_item = true;
                     }
                     Some(e) => {
                         e.count += n;
                     }
                 }
                 rest.count -= n;
-                wrote = true;
             }
             if rest.count == 0 {
                 break;
             }
         }
-        if wrote && self.has_open_transaction() {
-            self.after_commit(super::transactions::After::Changed(pos));
+        // DispenserBlockEntity.insertItem calls setItem only for an empty slot; an in-place
+        // merge is covered by dispenseFrom's normal final setItem on the active slot.
+        if set_item && self.has_open_transaction() {
+            self.after_commit(super::transactions::After::DispenserChanged(self.dim, pos));
         }
         if rest.count > 0 {
             self.after_commit(super::transactions::After::DispenserDrop {
+                dim: self.dim,
                 pos,
                 facing,
                 stack: rest,
@@ -440,7 +451,7 @@ impl Game<'_> {
         stack: ItemStack,
     ) -> Result<Option<ItemStack>> {
         let mut answer = None;
-        let block_reply_state = if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.serving.is_some() || self.options.dedicated.is_some() {
             // The block the dispenser faces has the first say (`dispense_method`), then the
             // item's own part (`dispense_item`); the first answer wins.
             let front = self.block_at(offset(pos, facing));
@@ -457,9 +468,7 @@ impl Game<'_> {
             if inert {
                 return Ok(Some(stack));
             }
-            if answer.is_some() {
-                Some(front)
-            } else {
+            if answer.is_none() {
                 self.native_dispense_item(
                     self.dim.id(),
                     [pos.0, pos.1, pos.2],
@@ -467,12 +476,18 @@ impl Game<'_> {
                     &stack,
                     &mut answer,
                 );
-                None
             }
-        } else {
-            None
-        };
-        if let Some((left, event)) = mod_dispensed(answer, self.items()) {
+        }
+        if let Some(answer) = answer {
+            let (left, event) = match mod_dispensed(answer, self.items()) {
+                Ok(dispensed) => dispensed,
+                Err(error) => {
+                    // The chosen behaviour may have committed effects already. Do not run a
+                    // second behaviour on the original stack if its remainder is refused.
+                    log::warn!("mod dispense remainder refused at {pos:?}: {error:?}");
+                    return Ok(Some(stack));
+                }
+            };
             if event == FAIL {
                 self.native_block_failed_dispense(
                     self.dim.id(),
@@ -487,16 +502,6 @@ impl Game<'_> {
                 self.dispenser_event(2000, pos, data_value(facing));
             }
             return Ok(left);
-        }
-        // A rejected block reply may have short-circuited dispatch before the disabled owner.
-        // In that case keep the owner's inert fallback, not vanilla's dispenser behaviour.
-        if let Some(front) = block_reply_state
-            && mod_api::__private::any_mod_disabled()
-            && front.try_into_api().is_ok_and(|state| {
-                mod_api::__private::block_hook_inert(mod_api::HookId::DispenseMethod, state)
-            })
-        {
-            return Ok(Some(stack));
         }
         let item = stack.item.to_string();
         // A stack able to `shears_harvest` is dispensed as shears are, whatever its item.
@@ -2783,19 +2788,14 @@ mod tests {
     fn mod_dispenser_answers_preserve_fallback_and_own_consumption() {
         use super::super::api_values::{StackReadError, TryIntoApi};
         super::super::native_entity_refs::tests::with_game(|game| {
-            assert!(
-                mod_dispensed(None, game.items()).is_none(),
-                "no registered behaviour keeps vanilla"
-            );
             assert_eq!(
-                mod_dispensed(Some((None, CLICK)), game.items()),
-                Some((None, CLICK))
+                mod_dispensed((None, CLICK), game.items()),
+                Ok((None, CLICK))
             );
             let stack = ItemStack::new("minecraft:stone", 7);
-            let Some((Some(left), event)) = mod_dispensed(
-                Some((Some(stack.try_into_api().unwrap()), FAIL)),
-                game.items(),
-            ) else {
+            let Ok((Some(left), event)) =
+                mod_dispensed((Some(stack.try_into_api().unwrap()), FAIL), game.items())
+            else {
                 panic!("handled stack")
             };
             assert_eq!(left, stack, "the returned remainder is not consumed again");
@@ -2805,10 +2805,7 @@ mod tests {
                 ItemStack { count: 0, ..stack }.try_into_api(),
                 Err(StackReadError::Empty)
             );
-            assert_eq!(
-                mod_dispensed(Some((None, 0)), game.items()),
-                Some((None, 0))
-            );
+            assert_eq!(mod_dispensed((None, 0), game.items()), Ok((None, 0)));
         });
     }
 
