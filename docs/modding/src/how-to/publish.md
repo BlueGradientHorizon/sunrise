@@ -147,8 +147,11 @@ mirrors it after merge. For a new version of an existing listing, use `--registr
 
 Builds are optional. They are available only to a standalone API native mod: no game patches, crates.io dependencies
 or declared mod dependencies. Keep the signed `.smod` as the source release even when players can download binaries.
-Set the manifest's `homepage` to your project's GitHub repository. Use the stable release list (`releases.json`, an array of `{ "tag", "commit" }` records) and the verified `sdk.json`
-for the target commit under `sdk-data/<commit>/`.
+Set the manifest's `homepage` to your project's GitHub repository. Use the stable release list (`releases.json`,
+an array of `{ "tag", "commit" }` records). To publish binaries, put the verified SDK index (`sdk.json`),
+`surface.json`, and extracted `build-data/` under `sdk-data/<commit>/` for both the original source package's
+pin and the target commit. To describe the archives with `--describe-binaries`, only the target's verified
+`sdk.json` is needed under `sdk-data/`.
 
 1. Pin your checkout to the stable SDK commit. On each SDK host, build the archive with:
 
