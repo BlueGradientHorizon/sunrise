@@ -113,7 +113,8 @@ function Set-Installer([string]$Dir, [string]$Key) {
 }
 
 # Runs the case's install.ps1 with PATH set to Path; returns @{ Ok; Out }.
-function Invoke-Case([string]$Dir, [string]$Path, [string[]]$Arguments = @()) {
+# Arguments by name: an array splatted into a script passes "-Version" as a positional value, not the parameter.
+function Invoke-Case([string]$Dir, [string]$Path, [hashtable]$Arguments = @{}) {
     $global:SunriseTestRel = [pscustomobject]@{ Release = $script:Releases[$Dir]; Files = Join-Path $Dir "files" }
     $env:PATH = $Path
     $Ok = $true
@@ -165,47 +166,51 @@ try {
 
     # 2. Good signature, a normal tag.
     $d = Join-Path $W "tag"; New-Release $d "v1.2.3"
-    $r = Invoke-Case $d $P @("-Version", "v1.2.3"); Test-Case "good signature installs (release tag)" $true "Release signature OK" $r
+    $r = Invoke-Case $d $P @{ Version = "v1.2.3" }; Test-Case "good signature installs (release tag)" $true "Release signature OK" $r
 
     # 3. Tampered archive: GitHub's digest is made to agree with the swapped archive, only SHA256SUMS catches it.
     $d = Join-Path $W "arc"; New-Release $d "v1.2.3"
     Add-Content -LiteralPath (Join-Path $d "files\$Asset") -Value "x"; Set-Release $d "v1.2.3" $true
-    $r = Invoke-Case $d $P @("-Version", "v1.2.3"); Test-Case "tampered archive refused" $false "doesn't match its SHA-256" $r
+    $r = Invoke-Case $d $P @{ Version = "v1.2.3" }; Test-Case "tampered archive refused" $false "doesn't match its SHA-256" $r
     Test-That "tampered archive was installed" (-not (Test-Path (Join-Path $d "inst\current")))
 
     # 4. Tampered SHA256SUMS (the archive's line swapped for the hash of the tampered archive).
     $d = Join-Path $W "sums"; New-Release $d "v1.2.3"
     Add-Content -LiteralPath (Join-Path $d "files\$Asset") -Value "x"
     Write-Ascii (Join-Path $d "files\SHA256SUMS") "$(Get-Sha (Join-Path $d "files\$Asset"))  $Asset`n"; Set-Release $d "v1.2.3" $true
-    $r = Invoke-Case $d $P @("-Version", "v1.2.3"); Test-Case "tampered SHA256SUMS refused" $false "signature doesn't match" $r
+    $r = Invoke-Case $d $P @{ Version = "v1.2.3" }; Test-Case "tampered SHA256SUMS refused" $false "signature doesn't match" $r
 
     # 5. A signature made for another tag does not pass (a release's list replayed under another tag).
     $d = Join-Path $W "replay"; New-Release $d "v1.2.3"; Set-Release $d "v9.9.9" $true
-    $r = Invoke-Case $d $P @("-Version", "v9.9.9"); Test-Case "signature replayed under another tag refused" $false "signature doesn't match" $r
+    $r = Invoke-Case $d $P @{ Version = "v9.9.9" }; Test-Case "signature replayed under another tag refused" $false "signature doesn't match" $r
 
     # 6. Signed by a key that is not the release key.
     $d = Join-Path $W "wrong"; New-Release $d "v1.2.3"; Set-Installer $d $RealKey
-    $r = Invoke-Case $d $P @("-Version", "v1.2.3"); Test-Case "wrong key refused" $false "signature doesn't match" $r
+    $r = Invoke-Case $d $P @{ Version = "v1.2.3" }; Test-Case "wrong key refused" $false "signature doesn't match" $r
 
     # 7. No OpenSSL: says so, keeps the SHA-256 check.
     $d = Join-Path $W "none"; New-Release $d "v1.2.3"
-    $r = Invoke-Case $d $Empty @("-Version", "v1.2.3"); Test-Case "no OpenSSL: installs, says it was not checked" $true "OpenSSL isn't installed" $r
+    $r = Invoke-Case $d $Empty @{ Version = "v1.2.3" }; Test-Case "no OpenSSL: installs, says it was not checked" $true "OpenSSL isn't installed" $r
     $d = Join-Path $W "none2"; New-Release $d "v1.2.3"; $script:Releases[$d].assets[0].digest = "sha256:0000"
-    $r = Invoke-Case $d $Empty @("-Version", "v1.2.3"); Test-Case "no OpenSSL: a wrong GitHub SHA-256 still refused" $false "doesn't match its SHA-256" $r
+    $r = Invoke-Case $d $Empty @{ Version = "v1.2.3" }; Test-Case "no OpenSSL: a wrong GitHub SHA-256 still refused" $false "doesn't match its SHA-256" $r
 
     # 8. Old OpenSSL and LibreSSL: says so, keeps the SHA-256 check.
     foreach ($v in "OpenSSL 1.1.1w  11 Sep 2023", "LibreSSL 3.3.6") {
         $d = Join-Path $W ("old-" + $v.Split(" ")[0]); New-Release $d "v1.2.3"
         $Bin = Join-Path $d "old-bin"; New-Item -ItemType Directory -Path $Bin | Out-Null
         Write-Ascii (Join-Path $Bin "openssl.cmd") "@echo $v`r`n"
-        $r = Invoke-Case $d $Bin @("-Version", "v1.2.3"); Test-Case "$($v.Split(' ')[0]): installs, says it can't check signatures" $true "can't check Ed25519" $r
+        $r = Invoke-Case $d $Bin @{ Version = "v1.2.3" }; Test-Case "$($v.Split(' ')[0]): installs, says it can't check signatures" $true "can't check Ed25519" $r
     }
 
     # 9. A release published before signing (no SHA256SUMS): says so, keeps the SHA-256 check.
     $d = Join-Path $W "legacy"; New-Release $d "v1.2.3"; Set-Release $d "v1.2.3" $false
-    $r = Invoke-Case $d $P @("-Version", "v1.2.3"); Test-Case "unsigned release: installs, says so" $true "no signed checksums" $r
+    $r = Invoke-Case $d $P @{ Version = "v1.2.3" }; Test-Case "unsigned release: installs, says so" $true "no signed checksums" $r
 
-    # 10. OpenSSL found in Git for Windows, not on the PATH: git.exe in Git\cmd, OpenSSL in Git\usr\bin (or
+    # 10. A Dev build is refused by name: servers don't install one.
+    $d = Join-Path $W "dev"; New-Release $d "dev-2026-11-21-0c02067"
+    $r = Invoke-Case $d $P @{ Version = "dev-2026-11-21-0c02067" }; Test-Case "a Dev build refused by name" $false "is a Dev build" $r
+
+    # 11. OpenSSL found in Git for Windows, not on the PATH: git.exe in Git\cmd, OpenSSL in Git\usr\bin (or
     # Git\mingw64\bin). Only when this machine's OpenSSL is such a copy, which the fake Git folder links to.
     $Up = Split-Path $P
     if ((Split-Path $P -Leaf) -eq "bin" -and (Split-Path $Up -Leaf) -in "usr", "mingw64") {
@@ -213,7 +218,7 @@ try {
         $GitDir = Join-Path $d "Git"; New-Item -ItemType Directory -Path (Join-Path $GitDir "cmd") | Out-Null
         Write-Ascii (Join-Path $GitDir "cmd\git.exe") ""
         New-Item -ItemType Junction -Path (Join-Path $GitDir (Split-Path $Up -Leaf)) -Target $Up | Out-Null
-        $r = Invoke-Case $d (Join-Path $GitDir "cmd") @("-Version", "v1.2.3"); Test-Case "OpenSSL from Git for Windows checks the signature" $true "Release signature OK" $r
+        $r = Invoke-Case $d (Join-Path $GitDir "cmd") @{ Version = "v1.2.3" }; Test-Case "OpenSSL from Git for Windows checks the signature" $true "Release signature OK" $r
         (Get-Item (Join-Path $GitDir (Split-Path $Up -Leaf))).Delete()
     } else {
         Write-Output "skip OpenSSL from Git for Windows (this OpenSSL isn't Git's)"
