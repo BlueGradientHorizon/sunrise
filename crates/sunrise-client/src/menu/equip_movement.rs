@@ -77,17 +77,29 @@ impl Menu {
             }
         }
         if stack.count > 0 {
-            for dest in order(()) {
-                if self.has_item(dest) {
-                    continue;
+            let mut chosen = None;
+            let mut scan = |can_equip: Option<&dyn crate::mobs::equip::CanEquip>| {
+                for dest in order(()) {
+                    if self.has_item(dest) {
+                        continue;
+                    }
+                    let (allowed, max) = self.placement_rules_with(env, can_equip, dest, stack);
+                    if allowed {
+                        chosen = Some((dest, max));
+                        break;
+                    }
                 }
-                let (allowed, max) = self.placement_rules(env, dest, stack);
-                if allowed {
-                    let part = split(stack, stack.count.min(max));
-                    self.set_by_player(env, dest, Some(part));
-                    changed = true;
-                    break;
+            };
+            match env.can_equip {
+                Some(parts) if parts.listens(&stack.item) => {
+                    parts.with_stack(stack, &mut |scoped| scan(Some(scoped)));
                 }
+                can_equip => scan(can_equip),
+            }
+            if let Some((dest, max)) = chosen {
+                let part = split(stack, stack.count.min(max));
+                self.set_by_player(env, dest, Some(part));
+                changed = true;
             }
         }
         changed
@@ -136,11 +148,16 @@ mod tests {
     #[derive(Default)]
     struct FeetOnly {
         asks: Cell<usize>,
+        scopes: Cell<usize>,
     }
     impl CanEquip for FeetOnly {
         fn can_equip(&self, _: &ItemStack, slot: &str, _: u32, _: &str, _: bool) -> bool {
             self.asks.set(self.asks.get() + 1);
             slot == "feet"
+        }
+        fn with_stack(&self, _stack: &ItemStack, body: &mut dyn FnMut(&dyn CanEquip)) {
+            self.scopes.set(self.scopes.get() + 1);
+            body(self);
         }
     }
 
@@ -156,6 +173,7 @@ mod tests {
             };
             let mut helmet = ItemStack::new("minecraft:iron_helmet", 3);
             assert!(menu.move_to(&env, &mut helmet, 5, 9, false));
+            assert_eq!(parts.scopes.get(), 1);
             assert_eq!(parts.asks.get(), 4);
             assert_eq!(helmet.count, 2);
             assert_eq!(menu.slot(8).unwrap().count, 1);

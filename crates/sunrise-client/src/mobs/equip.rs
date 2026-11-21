@@ -167,6 +167,12 @@ pub trait CanEquip {
     /// its item may change.
     fn can_equip(&self, stack: &ItemStack, slot: &str, entity: u32, kind: &str, data: bool)
     -> bool;
+    /// Runs `body` with a call-scoped [`CanEquip`] that may lazily convert `stack` once and reuse
+    /// that conversion for repeated questions about the same unchanged stack during one
+    /// synchronous candidate loop.
+    fn with_stack(&self, _stack: &ItemStack, body: &mut dyn FnMut(&dyn CanEquip)) {
+        body(self);
+    }
 }
 
 /// `LivingEntity.getEquipmentSlotForItem`: the item's own `equippable` slot,

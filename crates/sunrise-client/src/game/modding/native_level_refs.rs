@@ -2033,6 +2033,119 @@ mod tests {
         });
     }
 
+    fn level_random_state(random: &sunrise_core::random::LegacyRandom) -> (u64, Option<u64>) {
+        let (seed, gaussian) = <(u64, Option<f64>)>::from(random);
+        (seed, gaussian.map(f64::to_bits))
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_level_rng_draws_survive_transaction_abort_on_active_and_parked_levels() {
+        use crate::game::journal_level_write::JournalLevelWrite;
+        use mod_api::ObjectiveRenderType;
+        use sunrise_client::text::Text;
+        use sunrise_core::random::{LegacyRandom, LevelRandom, RandomSource};
+
+        with_game(|game| {
+            let here = game.dim;
+            let other = if here == Dim::Nether {
+                Dim::End
+            } else {
+                Dim::Nether
+            };
+            game.enter_level(other).unwrap();
+            let parked = game.level(other.id()).unwrap();
+            game.enter_level(here).unwrap();
+            let active = game.level(here.id()).unwrap();
+
+            let mut expected_active = LegacyRandom::new(31);
+            let mut expected_parked = LegacyRandom::new(47);
+            expected_active.next_gaussian();
+            expected_parked.next_gaussian();
+            game.world.random = LevelRandom::for_level(expected_active.clone());
+            game.levels.parked_world_mut_of(other.id()).unwrap().random =
+                LevelRandom::for_level(expected_parked.clone());
+            let states = |game: &super::Game<'_>| {
+                [
+                    level_random_state(&game.world.random),
+                    level_random_state(&game.levels.parked_world_of(other.id()).unwrap().random),
+                ]
+            };
+            let draw = |rng: &mut dyn mod_api::RandomSource| {
+                (rng.next_gaussian().to_bits(), rng.next_long())
+            };
+
+            let outer = game.transaction_open();
+            game.add_objective(
+                "outer_discarded",
+                "dummy",
+                Text::literal("Outer"),
+                ObjectiveRenderType::Integer,
+            )
+            .unwrap();
+            {
+                let mut writer = JournalLevelWrite::new(game, active).unwrap();
+                let host: &mut dyn mod_api::LevelWriteHost = &mut writer;
+                assert_eq!(
+                    host.with_random(draw),
+                    Some((
+                        expected_active.next_gaussian().to_bits(),
+                        expected_active.next_long()
+                    )),
+                );
+            }
+
+            let child = game.transaction_open();
+            game.add_objective(
+                "child_discarded",
+                "dummy",
+                Text::literal("Child"),
+                ObjectiveRenderType::Integer,
+            )
+            .unwrap();
+            for (level, expected) in [
+                (active, &mut expected_active),
+                (parked, &mut expected_parked),
+            ] {
+                assert_eq!(
+                    level.with_random(game, draw),
+                    Some((expected.next_gaussian().to_bits(), expected.next_long())),
+                );
+            }
+            let advanced = [
+                level_random_state(&expected_active),
+                level_random_state(&expected_parked),
+            ];
+            assert_eq!(states(game), advanced);
+
+            game.transaction_close(&child, false);
+            assert!(game.objective("child_discarded").is_none());
+            assert!(game.objective("outer_discarded").is_some());
+            assert_eq!(
+                states(game),
+                advanced,
+                "child abort rolls back journaled state without rewinding active or parked RNG"
+            );
+
+            game.transaction_close(&outer, false);
+            assert!(game.objective("outer_discarded").is_none());
+            assert_eq!(
+                states(game),
+                advanced,
+                "outer abort rolls back journaled state without rewinding active or parked RNG"
+            );
+            for (level, expected) in [
+                (active, &mut expected_active),
+                (parked, &mut expected_parked),
+            ] {
+                assert_eq!(
+                    level.with_random(game, draw),
+                    Some((expected.next_gaussian().to_bits(), expected.next_long())),
+                );
+            }
+        });
+    }
+
     fn in_mod(id: &'static str) -> mod_api::content::crash::ModGuard {
         mod_platform::content::crash::enter_native_mod(mod_api::content::crash::ModCall {
             id,

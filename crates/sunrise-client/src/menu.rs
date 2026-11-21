@@ -1668,9 +1668,19 @@ impl Menu {
     }
 
     fn vanilla_may_place(&self, env: &Env, s: usize, stack: &ItemStack) -> bool {
+        self.vanilla_may_place_with(env, env.can_equip, s, stack)
+    }
+
+    fn vanilla_may_place_with(
+        &self,
+        env: &Env,
+        can_equip: Option<&dyn crate::mobs::equip::CanEquip>,
+        s: usize,
+        stack: &ItemStack,
+    ) -> bool {
         match self.state.slots[s].role {
             Role::Plain | Role::CreativeDisplay => true,
-            Role::Armor(eq) => Self::armor_may_place(env, eq, stack),
+            Role::Armor(eq) => Self::armor_may_place_with(env, can_equip, eq, stack),
             Role::MountEquip(slot) => self.mount_may_place(env, slot, stack),
             Role::Shulker => fits_inside_container_items(env.loop_context, stack),
             Role::Mod | Role::ModResult => self.state.slots[s].role == Role::Mod,
@@ -1847,7 +1857,17 @@ impl Menu {
     /// `getMaxStackSize` for `stack`: its own answers, then the parts' on a registered menu
     /// type, all from one ask.
     fn slot_rules(&self, env: &Env, s: usize, stack: &ItemStack) -> (bool, bool, u32) {
-        let place = self.vanilla_may_place(env, s, stack);
+        self.slot_rules_with(env, env.can_equip, s, stack)
+    }
+
+    fn slot_rules_with(
+        &self,
+        env: &Env,
+        can_equip: Option<&dyn crate::mobs::equip::CanEquip>,
+        s: usize,
+        stack: &ItemStack,
+    ) -> (bool, bool, u32) {
+        let place = self.vanilla_may_place_with(env, can_equip, s, stack);
         let (max, item_max) = (self.vanilla_slot_max(s, stack), Self::max_stack(env, stack));
         let Some(id) = self.registry_id() else {
             return (place, true, max.min(item_max));

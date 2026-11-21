@@ -157,30 +157,40 @@ impl Menu {
                     }
                     let mut source = self.state.carried.clone().expect("checked");
                     let mut remaining = source.count as i64;
-                    for s in self.state.quick_slots.clone() {
-                        if self.quick_replace(s, &source, env) {
-                            let (allowed, slot_max) = self.placement_rules(env, s, &source);
-                            if allowed
-                                && (self.state.quick_type == 2
-                                    || source.count as usize >= self.state.quick_slots.len())
-                                && self.can_drag_to(s)
-                            {
-                                let have = self.slot(s).map_or(0, |c| c.count);
-                                let max = Self::max_stack(env, &source).min(slot_max);
-                                let new_count = quick_craft_count(
-                                    self.state.quick_type as u8,
-                                    source.count,
-                                    self.state.quick_slots.len(),
-                                    have,
-                                    max,
-                                    Self::max_stack(env, &source),
-                                );
-                                remaining -= i64::from(new_count) - i64::from(have);
-                                let mut placed = source.clone();
-                                placed.count = new_count;
-                                self.set_by_player(env, s, Some(placed));
+                    let quick_slots = self.state.quick_slots.clone();
+                    let mut distribute = |can_equip: Option<&dyn crate::mobs::equip::CanEquip>| {
+                        for &s in &quick_slots {
+                            if self.quick_replace(s, &source, env) {
+                                let (allowed, slot_max) =
+                                    self.placement_rules_with(env, can_equip, s, &source);
+                                if allowed
+                                    && (self.state.quick_type == 2
+                                        || source.count as usize >= quick_slots.len())
+                                    && self.can_drag_to(s)
+                                {
+                                    let have = self.slot(s).map_or(0, |c| c.count);
+                                    let max = Self::max_stack(env, &source).min(slot_max);
+                                    let new_count = quick_craft_count(
+                                        self.state.quick_type as u8,
+                                        source.count,
+                                        quick_slots.len(),
+                                        have,
+                                        max,
+                                        Self::max_stack(env, &source),
+                                    );
+                                    remaining -= i64::from(new_count) - i64::from(have);
+                                    let mut placed = source.clone();
+                                    placed.count = new_count;
+                                    self.set_by_player(env, s, Some(placed));
+                                }
                             }
                         }
+                    };
+                    match env.can_equip {
+                        Some(parts) if parts.listens(&source.item) => {
+                            parts.with_stack(&source, &mut |scoped| distribute(Some(scoped)));
+                        }
+                        can_equip => distribute(can_equip),
                     }
                     source.count = remaining.max(0) as u32;
                     self.state.carried = Some(source);

@@ -160,9 +160,10 @@ impl MapRegistries for WorldRegistries<'_> {
     }
 }
 
-type LoadedMaps<V> = BTreeMap<String, HashMap<String, BTreeMap<String, V>>>;
+pub(super) type LoadedMaps<V> = BTreeMap<String, HashMap<String, BTreeMap<String, V>>>;
 
 /// The winning JSON by registry, then map id, then entry id in sorted order.
+#[cfg(test)]
 pub(super) type MergedDataMaps = LoadedMaps<Value>;
 
 #[derive(Default)]
@@ -290,11 +291,11 @@ fn apply_file<'file, V: Clone>(
 /// the packs'), with ids and tags resolved against `registries`. Unknown registries and bad
 /// type ids are left out with a warning; a file that isn't a valid data map or contains an
 /// undecodable value is skipped atomically with an error.
-fn load_maps<V: Clone>(
+pub(super) fn load_maps<V: Clone>(
     types: &[DataMapType],
     overlay: &sunrise_world::loot::PackOverlay<'_>,
     registries: &dyn MapRegistries,
-    decode: impl Fn(&Value) -> Result<V, String>,
+    decode: impl Fn(&str, &Value) -> Result<V, String>,
 ) -> LoadedMaps<V> {
     let mut maps: LoadedMaps<V> = BTreeMap::new();
     for ty in types {
@@ -341,7 +342,7 @@ fn load_maps<V: Clone>(
                             registries,
                             overlay.conditions,
                             &source,
-                            &decode,
+                            &|value| decode(&ty.id, value),
                         )
                     });
                 if let Err(error) = prepared {
@@ -358,13 +359,14 @@ fn load_maps<V: Clone>(
     maps
 }
 
-/// Merge the types' JSON values from the server's tables' pack files.
-pub(super) fn load_json_maps(
+/// Merge the types' raw JSON values in unit tests that do not test a specific codec.
+#[cfg(test)]
+fn load_json_maps(
     types: &[DataMapType],
     overlay: &sunrise_world::loot::PackOverlay<'_>,
     registries: &dyn MapRegistries,
 ) -> MergedDataMaps {
-    load_maps(types, overlay, registries, |value| Ok(value.clone()))
+    load_maps(types, overlay, registries, |_, value| Ok(value.clone()))
 }
 
 impl DataMaps {
@@ -379,7 +381,7 @@ impl DataMaps {
         overlay: &sunrise_world::loot::PackOverlay<'_>,
         registries: &dyn MapRegistries,
     ) -> Self {
-        let merged = load_maps(types, overlay, registries, |value| {
+        let merged = load_maps(types, overlay, registries, |_, value| {
             to_tag(value).map_err(|_| "value cannot be represented as NBT".to_owned())
         });
         let mut published = Self::default();

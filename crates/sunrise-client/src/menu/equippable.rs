@@ -11,10 +11,22 @@ pub(super) const ARMOR_SLOTS: [&str; 4] = ["feet", "legs", "chest", "head"];
 impl Menu {
     /// Whether `stack` may be placed into `slot`, and the slot's effective maximum count.
     pub(super) fn placement_rules(&self, env: &Env, slot: usize, stack: &ItemStack) -> (bool, u32) {
+        self.placement_rules_with(env, env.can_equip, slot, stack)
+    }
+
+    /// [`Self::placement_rules`] with a call-scoped `can_equip` override (for synchronous
+    /// unchanged-stack candidate loops).
+    pub(super) fn placement_rules_with(
+        &self,
+        env: &Env,
+        can_equip: Option<&dyn crate::mobs::equip::CanEquip>,
+        slot: usize,
+        stack: &ItemStack,
+    ) -> (bool, u32) {
         if self.state.slots[slot].role == super::Role::Hidden {
             (false, 0)
         } else {
-            let (place, _, maximum) = self.slot_rules(env, slot, stack);
+            let (place, _, maximum) = self.slot_rules_with(env, can_equip, slot, stack);
             (place, self.limit_slot_max(slot, maximum))
         }
     }
@@ -35,12 +47,16 @@ impl Menu {
 
     /// `ArmorSlot.mayPlace`: `LivingEntity.isEquippableInSlot` for the player of `env`, armour
     /// slot `eq` of [`ARMOR_SLOTS`]. The stack's `equippable` component answers first and the
-    /// parts of its item may change that (`IItemExtension.canEquip`, asked through the
-    /// `env.can_equip` the game lent the click).
-    pub(super) fn armor_may_place(env: &Env, eq: usize, stack: &ItemStack) -> bool {
+    /// parts of its item may change that (`IItemExtension.canEquip`, asked through `can_equip`).
+    pub(super) fn armor_may_place_with(
+        env: &Env,
+        can_equip: Option<&dyn crate::mobs::equip::CanEquip>,
+        eq: usize,
+        stack: &ItemStack,
+    ) -> bool {
         let tags = &env.enchantments.entity_tags;
         let data = equippable_in_slot(env.items, tags, stack, ARMOR_SLOTS[eq], "minecraft:player");
-        match (env.can_equip, env.player_entity_id) {
+        match (can_equip, env.player_entity_id) {
             (Some(parts), Some(player)) if parts.listens(&stack.item) => parts.can_equip(
                 stack,
                 ARMOR_SLOTS[eq],

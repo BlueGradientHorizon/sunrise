@@ -200,13 +200,31 @@ impl Game<'_> {
             self.send_level_sound(LevelSound::new(name, at, 1.0, 1.0), None);
             return MenuOpen::Refused;
         }
-        // A mod menu type only for a client that has it: as
-        // `ServerPlayer.openMenu` with no menu, nothing opens.
+        // A mod menu type only for a client that has it and negotiated the
+        // `sunrise:menu_extra` opening layout: as `ServerPlayer.openMenu` with
+        // no menu, nothing opens.
         let Some(host) = self.lan.as_ref() else {
             return MenuOpen::Refused;
         };
-        let brand = host.hub.guest(conn).map_or("", |g| g.brand.as_str());
-        if !sunrise_client::containers::menu_reaches(brand, menu) {
+        let Some(guest) = host.hub.guest(conn) else {
+            return MenuOpen::Refused;
+        };
+        if !sunrise_client::containers::menu_reaches(&guest.brand, menu) {
+            return MenuOpen::Refused;
+        }
+        let sends_menu_extra = matches!(slots, Slots::Block(k) if self.mod_menu_at(k).is_some());
+        let required_rev = if let Some(kind) = sunrise_client::containers::mod_menu_type(menu) {
+            if !kind.player_inventory || kind.slots == 0 {
+                sunrise_protocol::menu_extra::LIVE_DATA_REVISION
+            } else {
+                1
+            }
+        } else if sends_menu_extra || !menu.starts_with("minecraft:") {
+            1
+        } else {
+            0
+        };
+        if guest.sender.menu_extra_rev < required_rev {
             return MenuOpen::Refused;
         }
         let opener = (self.mod_menu_at(pos) == Some(menu)).then_some(block.as_str());

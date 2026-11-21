@@ -3,7 +3,8 @@
 //! data packs and mods' files as a mod's own data maps are, and installed on
 //! the world's behaviours for fire spread, weathering, scraping and waxing.
 use super::Game;
-use super::native_data_maps::{DataMapType, MapRegistries, WorldRegistries, load_json_maps};
+use super::native_data_maps::{DataMapType, MapRegistries, WorldRegistries, load_maps};
+use serde_json::Value;
 use std::sync::Arc;
 use sunrise_world::level::BlockMaps;
 
@@ -13,6 +14,34 @@ const MAPS: [&str; 3] = [
     "neoforge:oxidizables",
     "neoforge:waxables",
 ];
+
+/// Validate a built-in block-map value before its layer is merged, matching NeoForge's
+/// `DataMapLoader.readData` so an undecodable upper layer (such as a bare `null`) is skipped
+/// atomically instead of erasing a valid lower row.
+fn decode_block_map_value(id: &str, value: &Value) -> Result<Value, String> {
+    let int = |v: Option<&Value>| {
+        v.and_then(Value::as_i64)
+            .and_then(|n| i32::try_from(n).ok())
+    };
+    let valid = match id {
+        "neoforge:flammable" => {
+            value.is_object()
+                && int(value.get("ignite_odds")).is_some()
+                && int(value.get("burn_odds")).is_some()
+        }
+        "neoforge:oxidizables" => value
+            .get("next_oxidation_stage")
+            .and_then(Value::as_str)
+            .is_some(),
+        "neoforge:waxables" => value.get("waxed").and_then(Value::as_str).is_some(),
+        _ => false,
+    };
+    if valid {
+        Ok(value.clone())
+    } else {
+        Err(format!("not a valid {id} value"))
+    }
+}
 
 /// The maps of a world's tables' files; none where no pack gives a value. `rank` is a block's
 /// registry id, which picks the block an inverse map gives back.
@@ -25,7 +54,7 @@ fn load(
         id: id.to_owned(),
         registry: "minecraft:block".to_owned(),
     });
-    let maps = load_json_maps(&types, overlay, registries);
+    let maps = load_maps(&types, overlay, registries, decode_block_map_value);
     let blocks = maps.get("minecraft:block");
     let values = |id: &str| {
         blocks
@@ -111,5 +140,64 @@ mod tests {
         assert_eq!(block_maps.next_oxidation("test:tin"), None);
         let none = load(&sunrise_world::loot::PackOverlay::NONE, &registries, |_| 0);
         assert!(none.is_none());
+    }
+
+    #[test]
+    fn a_higher_layer_with_null_or_bad_value_preserves_the_lower_block_map_row() {
+        let layers = |values: &[serde_json::Value]| {
+            values
+                .iter()
+                .map(|value| serde_json::to_vec(value).unwrap())
+                .collect::<Vec<_>>()
+        };
+        let files = vec![
+            (
+                "data_maps/neoforge:block/flammable".to_owned(),
+                layers(&[
+                    json!({"values": {"minecraft:stone": {"ignite_odds": 5, "burn_odds": 20}}}),
+                    json!({"values": {"minecraft:stone": null}}),
+                ]),
+            ),
+            (
+                "data_maps/neoforge:block/oxidizables".to_owned(),
+                layers(&[
+                    json!({"values": {"test:tin": {"next_oxidation_stage": "test:weathered_tin"}}}),
+                    json!({"replace": true, "values": {"test:tin": null}}),
+                ]),
+            ),
+            (
+                "data_maps/neoforge:block/waxables".to_owned(),
+                layers(&[
+                    json!({"values": {"test:tin": {"waxed": "test:waxed_tin"}}}),
+                    json!({"values": {"test:tin": {}}}),
+                ]),
+            ),
+        ];
+        let overlay = sunrise_world::loot::PackOverlay {
+            files: &files,
+            ..sunrise_world::loot::PackOverlay::default()
+        };
+        let ids = [
+            "minecraft:stone",
+            "test:tin",
+            "test:weathered_tin",
+            "test:waxed_tin",
+        ]
+        .map(String::from);
+        let items = sunrise_client::items::Items::empty();
+        let registries = WorldRegistries::new(
+            [("minecraft:block", ids.as_slice())],
+            None,
+            &items,
+            std::path::Path::new(""),
+            &overlay,
+        );
+        let block_maps = load(&overlay, &registries, |_| 0).unwrap();
+        assert_eq!(block_maps.flammable("minecraft:stone"), Some((5, 20)));
+        assert_eq!(
+            block_maps.next_oxidation("test:tin"),
+            Some("test:weathered_tin")
+        );
+        assert_eq!(block_maps.waxed("test:tin"), Some("test:waxed_tin"));
     }
 }

@@ -1692,6 +1692,83 @@ mod tests {
                     data: large,
                 }
             );
+
+            // Block-backed mod menus also require the negotiated opening-format capability: a
+            // Sunrise-branded peer that gave no revision answer (rev 0) is refused before closing
+            // its active window or sending packets, while a negotiated peer opens it and a vanilla
+            // peer keeps stock menus.
+            use super::super::lan_actions::MenuOpen;
+            use sunrise_client::containers::{BlockEntity, ModContainer};
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
+            let mod_pos = (0, 64, 0);
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world
+                .set(mod_pos.0, mod_pos.1, mod_pos.2, stone)
+                .unwrap();
+            game.world.block_entities.set_mod_containers(
+                [(
+                    stone.0,
+                    std::sync::Arc::new(ModContainer {
+                        slots: 9,
+                        menu: Some(MOD_MENU.into()),
+                        ..Default::default()
+                    }),
+                )]
+                .into_iter()
+                .collect(),
+            );
+            game.world
+                .block_entities
+                .insert(mod_pos, BlockEntity::Chest(vec![None; 9]));
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.brand = "sunrise".into();
+                g.sender.menu_extra_rev = 0;
+            });
+            assert_eq!(game.open_block_menu(conn, mod_pos), MenuOpen::Refused);
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .as_ref()
+                    .map(|m| m.window),
+                Some(large_window),
+                "unnegotiated Sunrise peer keeps its current menu"
+            );
+            assert!(
+                sent(&rx).is_empty(),
+                "unnegotiated block-backed mod menu refusal sends neither close nor open"
+            );
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender.menu_extra_rev = 1;
+            });
+            assert_eq!(game.open_block_menu(conn, mod_pos), MenuOpen::Opened);
+            sent(&rx);
+            // A stock menu remains available to a vanilla peer with no menu_extra negotiation.
+            let chest_pos = (1, 64, 0);
+            let chest = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:chest")
+                .unwrap();
+            game.world
+                .set(chest_pos.0, chest_pos.1, chest_pos.2, chest)
+                .unwrap();
+            game.world
+                .block_entities
+                .insert(chest_pos, BlockEntity::Chest(vec![None; 27]));
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.brand = "vanilla".into();
+                g.sender.menu_extra_rev = 0;
+            });
+            assert_eq!(game.open_block_menu(conn, chest_pos), MenuOpen::Opened);
         });
     }
 

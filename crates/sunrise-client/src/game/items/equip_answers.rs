@@ -72,6 +72,38 @@ pub(in crate::game) struct MenuEquip<'g, 'a> {
     game: &'g Game<'a>,
 }
 
+/// Call-scoped `CanEquip` that lazily converts one unchanged `ItemStack` at most once across a
+/// synchronous candidate loop. Rust's `&'s ItemStack` borrow prevents mutation during the loop.
+struct ScopedMenuEquip<'g, 'a, 's> {
+    game: &'g Game<'a>,
+    stack: &'s ItemStack,
+    prepared: std::cell::OnceCell<EquipStack>,
+}
+
+impl CanEquip for ScopedMenuEquip<'_, '_, '_> {
+    fn listens(&self, item: &str) -> bool {
+        mod_api::__private::item_listens(mod_api::HookId::CanEquip, item)
+    }
+    fn can_equip(
+        &self,
+        stack: &ItemStack,
+        slot: &str,
+        entity: u32,
+        kind: &str,
+        data: bool,
+    ) -> bool {
+        if std::ptr::eq(stack, self.stack) {
+            let prepared = self
+                .prepared
+                .get_or_init(|| self.game.equip_stack(self.stack));
+            self.game.can_equip(prepared, slot, entity, kind, data)
+        } else {
+            let prepared = self.game.equip_stack(stack);
+            self.game.can_equip(&prepared, slot, entity, kind, data)
+        }
+    }
+}
+
 impl CanEquip for MenuEquip<'_, '_> {
     fn listens(&self, item: &str) -> bool {
         mod_api::__private::item_listens(mod_api::HookId::CanEquip, item)
@@ -86,6 +118,14 @@ impl CanEquip for MenuEquip<'_, '_> {
     ) -> bool {
         let prepared = self.game.equip_stack(stack);
         self.game.can_equip(&prepared, slot, entity, kind, data)
+    }
+    fn with_stack(&self, stack: &ItemStack, body: &mut dyn FnMut(&dyn CanEquip)) {
+        let scoped = ScopedMenuEquip {
+            game: self.game,
+            stack,
+            prepared: std::cell::OnceCell::new(),
+        };
+        body(&scoped);
     }
 }
 
@@ -123,26 +163,46 @@ mod tests {
             event.can_equip = event.slot == "feet";
         }
     }
-    struct Cobbler(FeetOnly);
+    /// A part of stone that allows every armor slot and counts asks, for multi-slot QuickCraft
+    /// tests.
+    #[derive(Clone, Default)]
+    struct AllArmor(std::sync::Arc<AtomicUsize>);
+    #[mod_api::sunrise_part]
+    impl mod_api::ItemPart for AllArmor {
+        fn can_equip(&self, host: &dyn mod_api::Host, event: &mut mod_api::CanEquipEvent<'_>) {
+            assert!(event.entity.entity().position(host).is_some());
+            self.0.fetch_add(1, Ordering::Relaxed);
+            event.can_equip = true;
+        }
+    }
+    struct Cobbler(FeetOnly, AllArmor);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Cobbler {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             let helmet = r.item_key("minecraft:iron_helmet");
             r.item_part(helmet, self.0.clone());
+            let stone = r.item_key("minecraft:stone");
+            r.item_part(stone, self.1.clone());
         }
+    }
+
+    /// A component-rich stack of `item` with count `count` whose conversion for the parts
+    /// allocates.
+    fn rich_item(item: &str, count: u32) -> ItemStack {
+        use sunrise_core::nbt::Tag;
+        let mut stack = ItemStack::new(item, count);
+        stack.set_crafting_enchantments(vec![("minecraft:protection".into(), 4)]);
+        let data = stack.data_mut();
+        data.custom_name = Some(Tag::String("Crown".into()));
+        let component = Tag::compound([("slot", Tag::String("head".into()))]);
+        data.set_other("minecraft:equippable", Some(component));
+        stack
     }
 
     /// An iron helmet with enchantments, a name and its own `equippable`: a stack whose
     /// conversion for the parts allocates.
     fn rich_helmet() -> ItemStack {
-        use sunrise_core::nbt::Tag;
-        let mut helmet = ItemStack::new("minecraft:iron_helmet", 1);
-        helmet.set_crafting_enchantments(vec![("minecraft:protection".into(), 4)]);
-        let data = helmet.data_mut();
-        data.custom_name = Some(Tag::String("Crown".into()));
-        let component = Tag::compound([("slot", Tag::String("head".into()))]);
-        data.set_other("minecraft:equippable", Some(component));
-        helmet
+        rich_item("minecraft:iron_helmet", 1)
     }
 
     /// Runs `test` on a game with the cobbler's part installed, given what it counted.
@@ -163,16 +223,17 @@ mod tests {
     /// Runs `test` with the cobbler's mod installed, given what its part counted.
     fn installed(test: impl FnOnce(&AtomicUsize)) {
         let part = FeetOnly::default();
-        let cobbler = mod_api::ModEntry::new("cobbler", Box::new(Cobbler(part.clone())));
+        let all_armor = AllArmor(std::sync::Arc::clone(&part.0));
+        let cobbler = mod_api::ModEntry::new("cobbler", Box::new(Cobbler(part.clone(), all_armor)));
         let mods: mod_api::Mods = vec![cobbler].into();
         crate::entry::install_client_hooks();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || test(&part.0));
     }
 
-    /// Asked once per candidate slot, a warmed `can_equip` allocates nothing for an already
-    /// converted stack with components or for an item no part listens to. Each answer is the
-    /// part's, reading live entity state through the read-only host.
+    /// Asked once per candidate slot through a local `MenuEquip::with_stack` scope, a warmed
+    /// `can_equip` allocates nothing and converts the stack only once across all candidates,
+    /// reading live entity state through the read-only host.
     #[test]
     #[ignore = "daily"]
     fn warmed_can_equip_questions_allocate_nothing() {
@@ -187,12 +248,16 @@ mod tests {
                 slots.map(|slot| lent.can_equip(&other, slot, player, kind, slot == "head"))
             });
             assert_eq!((answers, allocations), ([true, false, false, false], 0));
-            let prepared = game.equip_stack(&helmet);
-            assert!(!game.can_equip(&prepared, "head", player, kind, true));
-            let (answers, allocations) = sunrise_threads::allocation_count::measure(|| {
-                slots.map(|slot| game.can_equip(&prepared, slot, player, kind, slot == "head"))
+            take_equip_conversions();
+            lent.with_stack(&helmet, &mut |scoped| {
+                assert!(!scoped.can_equip(&helmet, "head", player, kind, true));
+                assert_eq!(take_equip_conversions(), 1);
+                let (answers, allocations) = sunrise_threads::allocation_count::measure(|| {
+                    slots.map(|slot| scoped.can_equip(&helmet, slot, player, kind, slot == "head"))
+                });
+                assert_eq!((answers, allocations), (feet_only, 0));
+                assert_eq!(take_equip_conversions(), 0);
             });
-            assert_eq!((answers, allocations), (feet_only, 0));
             assert_eq!(asked.load(Ordering::Relaxed), 1 + 4);
         });
     }
@@ -282,6 +347,27 @@ mod tests {
             assert_eq!(asked.load(Ordering::Relaxed), 1);
             assert_eq!(menu.slot(9), Some(&helmet));
             assert!(menu.slot(5).is_none());
+
+            // Multi-candidate QuickCraft across all four armor slots converts the unchanged
+            // component-rich stack once lazily for the synchronous distribution pass.
+            menu.carried = Some(rich_item("minecraft:stone", 4));
+            menu.click(&env, -999, 0, Input::QuickCraft).unwrap();
+            for slot in 5..9 {
+                menu.click(&env, slot, 1, Input::QuickCraft).unwrap();
+            }
+            take_equip_conversions();
+            asked.store(0, Ordering::Relaxed);
+            menu.click(&env, -999, 2, Input::QuickCraft).unwrap();
+            assert_eq!(
+                take_equip_conversions(),
+                1,
+                "four armor-slot candidates in one QuickCraft pass convert the stack once"
+            );
+            assert_eq!(asked.load(Ordering::Relaxed), 4);
+            for slot in 5..9 {
+                assert_eq!(menu.slot(slot).map(|s| s.count), Some(1));
+            }
+            assert!(menu.carried.is_none());
         });
     }
 
