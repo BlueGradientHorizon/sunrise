@@ -41,7 +41,7 @@ public final class VanillaLightStorageOracle {
     private static final int MIN_SECTION = -4;
     private static final int SECTIONS = 24;
 
-    private static LevelLightEngine engine(boolean sky, LightChunk center) {
+    static LevelLightEngine engine(boolean sky, LightChunk center) {
         BlockGetter level = new BlockGetter() {
             public net.minecraft.world.level.block.entity.BlockEntity getBlockEntity(BlockPos pos) { return null; }
             public net.minecraft.world.level.block.state.BlockState getBlockState(BlockPos pos) { return null; }

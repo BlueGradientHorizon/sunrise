@@ -9,8 +9,10 @@
 3. The NBT of V0 and H is compared: chunks (block states and biomes decoded, so palette
    order does not matter), block entities, entities, heightmaps, light, ticks, structure
    data, level.dat, data/*.dat, players/data/*.dat. The warm Overworld lower sky pad's
-   two encodings of zero compare equal; other differences must be explained by IGNORED.
-   A separate cold generation on both servers pins the spawn and compares both pads exactly.
+   two encodings of zero compare equal only when the first chunk packets from reopening
+   both saves yield dark pads in vanilla's client light storage. A separate
+   cold generation on both servers pins the spawn and compares both pads exactly.
+   Other differences must be explained by IGNORED.
 4. The vanilla server loads H: its log must show no errors, upgrades or DataFixer
    activity, and `data get` of every block entity and entity must print the same
    data as the server that loaded V0 (so vanilla reads Sunrise's files as it reads its own).
@@ -317,16 +319,53 @@ def build_world(directory, *, fixed_spawn=False, sunrise_binary=None):
     server.run('give RoundTrip minecraft:apple 7')
     server.run('xp set RoundTrip 5 levels')
     time.sleep(20)
-    server.run('save-all flush')
+    save = server.run('save-all flush', timeout=120)
+    if fixed_spawn and (command_failed(save) or 'Saved the game' not in save):
+        failed.append(('save-all flush', save))
     time.sleep(2)
     server.stop()
     return failed, server.problems()
 
 
-def view_of_world(directory):
-    """Run vanilla on a world; return ({label: data text}, problem log lines)."""
-    server = Vanilla(directory)
+def lower_sky_observer():
+    """Compile a vanilla protocol client that records the first explicit sky pad layers."""
+    try:
+        from . import oracle_harness, test_model_baking_parity as baking, test_rust_parity as parity
+    except ImportError:
+        import oracle_harness, test_model_baking_parity as baking, test_rust_parity as parity
+
+    build = RUN / 'pad-observer'
+    build.mkdir(exist_ok=True)
+    lock, jars, _ = parity.verify_artifacts()
+    classes, dependencies, _ = oracle_harness.compile_oracle(
+        build, 'VanillaProtocolClient', jars, baking.client_libraries(), lock['minecraft']['java_major'])
+
+    def observe(port, label):
+        transcript = build / f'{label}.txt'
+        transcript.unlink(missing_ok=True)
+        oracle_harness.java_run(build, classes, dependencies, 'VanillaProtocolClient',
+                                ['127.0.0.1', port, 'RoundTrip', transcript, 'lower-sky-pads'], label)
+        states = {}
+        for line in transcript.read_text().splitlines():
+            if line.startswith('error '):
+                raise AssertionError(f'{label}: lower sky observer failed')
+            if line.startswith('lower-sky-pad '):
+                _, coords, layer = line.split()
+                x, z = map(int, coords.split(','))
+                states[(f'r.{x // 32}.{z // 32}.mca', x % 32, z % 32)] = layer
+        if not states:
+            raise AssertionError(f'{label}: no initial sky pad observations')
+        return states
+
+    return observe
+
+
+def view_of_world(directory, observe=None):
+    """Run vanilla on a world; return entity/block views, log problems, and first sky pad observations."""
+    # The observer requests a wider view than the scene bot, to see the original FULL ring.
+    server = Vanilla(directory, extra={'view-distance': '10'} if observe else None)
     views = {}
+    pads = {}
     try:
         server.run('forceload add 0 0 63 63')
         time.sleep(3)
@@ -337,9 +376,11 @@ def view_of_world(directory):
         for i, (kind, _) in enumerate(scene.ENTITIES):
             out = server.run(f'data get entity {entity_uuid_text(i)}')
             views[f'entity {i} {kind}'] = ' '.join(out)
+        if observe is not None:
+            pads = observe(server.port, directory.name)
     finally:
         server.stop()
-    return views, server.problems()
+    return views, server.problems(), pads
 
 
 def entity_uuid_text(i):
@@ -478,13 +519,7 @@ def normalize_chunk(root):
     sections = {}
     for s in root.get('sections', []):
         y = s['Y'][1] if isinstance(s['Y'], tuple) else s['Y']
-        # SerializableChunkData.write can emit light with no chunk section only at the pads.
-        # Compare those pads as air, but leave missing containers elsewhere detectable.
-        blocks = None
-        if 'block_states' in s:
-            blocks = decode_container(s['block_states'], 4096, 4, 'minecraft:air')
-        elif y in (LOWER_PAD, UPPER_PAD) and 'biomes' not in s and ('BlockLight' in s or 'SkyLight' in s):
-            blocks = AIR_BLOCKS
+        blocks = decode_container(s['block_states'], 4096, 4, 'minecraft:air') if 'block_states' in s else None
         biomes = decode_container(s['biomes'], 64, 1, 'minecraft:plains') if 'biomes' in s else None
         sections[y] = {'blocks': blocks, 'biomes': biomes, 'BlockLight': s.get('BlockLight'),
                        'SkyLight': s.get('SkyLight')}
@@ -504,22 +539,12 @@ LIT_STATUSES = {'minecraft:light', 'minecraft:spawn', 'minecraft:full'}
 LOWER_PAD, UPPER_PAD = -5, 20
 PACKED_ZERO = ('B', [0] * 2048)
 AIR_BLOCKS = ['minecraft:air'] * 4096
+EMPTY_SECTION = dict.fromkeys(('blocks', 'biomes', 'BlockLight', 'SkyLight'))
+DARK_PAD = {'empty', 'packed-zero'}
 
 
-def lower_pad_inherits_zero(sections):
-    # A missing sky layer reads the first row of the next sky layer above it (or open sky).
-    for y in range(LOWER_PAD + 1, UPPER_PAD + 1):
-        match sections.get(y, {}).get('SkyLight'):
-            case None:
-                continue
-            case ('B', list(values)) if len(values) == 2048:
-                return not any(values[:128])
-            case _:
-                return False
-    return False
-
-
-def compare_chunks(vanilla, sunrise, report, *, warm_overworld=False):
+def compare_chunks(vanilla, sunrise, report, *, lower_sky_observations=None):
+    vanilla_pads, sunrise_pads = lower_sky_observations or ({}, {})
     for key in sorted(set(vanilla) | set(sunrise)):
         if key not in sunrise:
             report.append((f'chunk {key}', 'present', 'missing from Sunrise'))
@@ -538,37 +563,40 @@ def compare_chunks(vanilla, sunrise, report, *, warm_overworld=False):
             rule = re.compile(r'^chunk\.(Status|Heightmaps\.\w+_WG|entities)$')
             out = [(path.replace('chunk.', 'chunk.promoted.', 1) if rule.match(path) else path, p, q)
                    for path, p, q in out]
-        for y in sorted(set(vs) | set(hs)):
-            empty = {'blocks': AIR_BLOCKS, 'biomes': None, 'BlockLight': None, 'SkyLight': None}
-            a, b = vs.get(y, empty), hs.get(y, empty)
+        ys = set(vs) | set(hs)
+        if vanilla_full or sunrise_full:
+            ys.update(range(LOWER_PAD + 1, UPPER_PAD))
+        for y in sorted(ys):
+            a, b = vs.get(y, EMPTY_SECTION), hs.get(y, EMPTY_SECTION)
+            is_pad = y in (LOWER_PAD, UPPER_PAD)
             in_range = LOWER_PAD < y < UPPER_PAD
             for tag, field in (('block_states', 'blocks'), ('biomes', 'biomes')):
-                missing = [y not in sections or section[field] is None
-                           for sections, section in ((vs, a), (hs, b))]
+                present = [section[field] is not None for section in (a, b)]
                 required = [(in_range and full) or (tag == 'block_states' and y in sections)
                             for full, sections in ((vanilla_full, vs), (sunrise_full, hs))]
-                if any(m and r for m, r in zip(missing, required)):
-                    # A missing required container is invalid even on a chunk Sunrise promoted.
+                if (is_pad and any(present)) or (not is_pad and any(r and not p for p, r in zip(present, required))):
+                    # Terrain layout errors remain errors even on a promoted chunk.
                     report.append((f'chunk.sections.{tag}[{y}] @{key}',
-                                   *('missing' if m else 'present' for m in missing)))
-            if a['blocks'] is not None and b['blocks'] is not None:
-                blocks = [(i, p, q) for i, (p, q) in enumerate(zip(a['blocks'], b['blocks'])) if p != q]
-                if blocks:
-                    i, p, q = blocks[0]
-                    out.append((f'chunk.sections.blocks[{y}]', f'{len(blocks)} differ, first #{i} {p}', q))
-            if a['biomes'] is not None and b['biomes'] is not None and a['biomes'] != b['biomes']:
-                out.append((f'chunk.sections.biomes[{y}]', 'differ', ''))
+                                   *('present' if p else 'missing' for p in present)))
+            if not is_pad:
+                ab = a['blocks'] if y in vs else AIR_BLOCKS
+                bb = b['blocks'] if y in hs else AIR_BLOCKS
+                if ab is not None and bb is not None:
+                    blocks = [(i, p, q) for i, (p, q) in enumerate(zip(ab, bb)) if p != q]
+                    if blocks:
+                        i, p, q = blocks[0]
+                        out.append((f'chunk.sections.blocks[{y}]', f'{len(blocks)} differ, first #{i} {p}', q))
+                if a['biomes'] is not None and b['biomes'] is not None and a['biomes'] != b['biomes']:
+                    out.append((f'chunk.sections.biomes[{y}]', 'differ', ''))
             for light in ('BlockLight', 'SkyLight'):
                 p, q = a[light], b[light]
                 if p == q:
                     continue
-                # Vanilla's warm light initialization can allocate this pad before or after
-                # the bottom section's packed array arrives. The former omits its empty
-                # layer on save; the latter repeats the bottom row into packed zeroes.
-                if (warm_overworld and y == LOWER_PAD and light == 'SkyLight'
-                        and vanilla_full and sunrise_full
-                        and ((p is None and q == PACKED_ZERO and lower_pad_inherits_zero(vs))
-                             or (q is None and p == PACKED_ZERO and lower_pad_inherits_zero(hs)))):
+                # A queued array in the save need not be visible to light reads. Only
+                # a dark layer actually received from each reopened save proves equivalence.
+                if (y == LOWER_PAD and light == 'SkyLight' and vanilla_full and sunrise_full
+                        and ((p is None and q == PACKED_ZERO) or (q is None and p == PACKED_ZERO))
+                        and vanilla_pads.get(key) in DARK_PAD and sunrise_pads.get(key) in DARK_PAD):
                     continue
                 out.append((f'chunk.sections.{light}[{y}]', None if p is None else 'present',
                             None if q is None else 'present'))
@@ -672,11 +700,11 @@ def compare_cold_pads(vanilla, sunrise):
     return failures
 
 
-def compare_worlds(vanilla, sunrise, *, warm_overworld=False):
+def compare_worlds(vanilla, sunrise, *, lower_sky_observations=None):
     report = []
     va, ha = dimension(vanilla), dimension(sunrise)
     vanilla_chunks = load_regions(va / 'region')
-    compare_chunks(vanilla_chunks, load_regions(ha / 'region'), report, warm_overworld=warm_overworld)
+    compare_chunks(vanilla_chunks, load_regions(ha / 'region'), report, lower_sky_observations=lower_sky_observations)
     chunks = {(k[1], k[2]) for k in vanilla_chunks}
     compare_entities(load_regions(va / 'entities'), load_regions(ha / 'entities'), report, chunks)
     for rel in ['level.dat'] + sorted(
@@ -757,22 +785,23 @@ def main():
             for directory, binary in ((cold_vanilla, None), (cold_sunrise, bin_dir / 'sunrise-client')):
                 shutil.rmtree(directory, ignore_errors=True)
                 failed, problems = build_world(directory, fixed_spawn=True, sunrise_binary=binary)
-                failures += len(failed)
+                failures += len(failed) + len(problems)
                 for command, out in failed:
                     print('cold scene command failed:', command[:100], out[:2])
                 for line in problems:
                     print('cold server log:', line)
             failures += compare_cold_pads(cold_vanilla / 'world', cold_sunrise / 'world')
-    print('comparing', v0, 'with', h)
-    report = compare_worlds(v0, h, warm_overworld=not args.sunrise)
-    failures += summarize(report)
+    observations = None
     if not args.skip_vanilla_load:
+        observe = lower_sky_observer() if not args.sunrise else None
         shutil.rmtree(RUN / 'v1', ignore_errors=True)
         shutil.copytree(h, RUN / 'v1' / 'world')
-        views1, problems1 = view_of_world(RUN / 'v1')
+        views1, problems1, pads1 = view_of_world(RUN / 'v1', observe)
         shutil.rmtree(RUN / 'v0view', ignore_errors=True)
         shutil.copytree(v0, RUN / 'v0view' / 'world')
-        views0, problems0 = view_of_world(RUN / 'v0view')
+        views0, problems0, pads0 = view_of_world(RUN / 'v0view', observe)
+        if observe is not None:
+            observations = (pads0, pads1)
         untimed = re.compile(r'^\[[0-9:]+\] ')
         seen0 = {untimed.sub('', line) for line in problems0}
         for line in problems1:
@@ -802,6 +831,8 @@ def main():
             if stable(views0[label]) != stable(views1.get(label, '')):
                 print(f'VANILLA VIEW differs: {label}\n   V0 {views0[label][:900]}\n   H  {str(views1.get(label))[:900]}')
                 failures += 1
+    print('comparing', v0, 'with', h)
+    failures += summarize(compare_worlds(v0, h, lower_sky_observations=observations))
     print('save round-trip parity', 'FAILED' if failures else 'ok', f'({failures} unexplained differences)')
     if not args.keep and not failures:
         shutil.rmtree(RUN, ignore_errors=True)
