@@ -99,7 +99,8 @@ pub fn par_chunks_mut_with<T: Send>(
         let helpers = worker_count().saturating_sub(1).clamp(1, count - 1);
         let threads: Vec<_> = (0..helpers)
             .filter_map(|_| {
-                sunrise_guest_stack::builder()
+                std::thread::Builder::new()
+                    .stack_size(136 * 1024 * 1024)
                     .spawn_scoped(scope, work)
                     .ok()
             })

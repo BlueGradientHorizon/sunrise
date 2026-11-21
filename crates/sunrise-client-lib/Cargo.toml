@@ -13,7 +13,6 @@ description = "Reusable client systems, control tool and parity probes"
 path = "../sunrise-client/src/client_lib.rs"
 
 [dependencies]
-sunrise-guest-stack = { path = "../sunrise-guest-stack" }
 sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
 sunrise-hooks = { path = "../sunrise-hooks" }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }

@@ -90,8 +90,7 @@ def install(game, folder, fanout_count):
     return shutil.copy2(game, folder / 'sunrise-client')
 
 
-# The game wants a main-thread stack of 136 MiB and, finding less, raises the limit and starts itself again.
-# Under Valgrind that second start would not see the raised limit, so every run gets the stack up front.
+# Keep the benchmark's main-thread stack budget consistent across direct and Valgrind runs.
 STACK = 160 << 20
 
 

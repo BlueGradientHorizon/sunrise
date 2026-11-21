@@ -370,56 +370,59 @@ impl Session {
         let thread_recorder = recorder.clone();
         let (address_owned, name_owned) = (address.to_owned(), name.to_owned());
         // Mod payload handlers run on this thread (the client's network root).
-        let thread = sunrise_guest_stack::spawn("sunrise-net".into(), move || {
-            sunrise_threads::favour_current();
-            let result = captured_payloads.map_err(Reason::plain).and_then(|_| {
-                run(
-                    local,
-                    &address_owned,
-                    &name_owned,
-                    auth.as_deref(),
-                    info,
-                    &lang,
-                    &send,
-                    &thread_writer,
-                    &thread_configuring,
-                    &thread_counters,
-                    &thread_cookies,
-                    &thread_far,
-                    transferred,
-                    &resources,
-                    lan,
-                    &thread_recorder,
-                    &thread_payloads,
-                )
-            });
-            thread_payloads.close();
-            thread_far.cancel();
-            let (why, from_server) = match result {
-                Ok(why) => (why, true),
-                Err(why) => {
-                    let from_server = why.from_server;
-                    (why, from_server)
+        let thread = std::thread::Builder::new()
+            .stack_size(136 * 1024 * 1024)
+            .name("sunrise-net".into())
+            .spawn(move || {
+                sunrise_threads::favour_current();
+                let result = captured_payloads.map_err(Reason::plain).and_then(|_| {
+                    run(
+                        local,
+                        &address_owned,
+                        &name_owned,
+                        auth.as_deref(),
+                        info,
+                        &lang,
+                        &send,
+                        &thread_writer,
+                        &thread_configuring,
+                        &thread_counters,
+                        &thread_cookies,
+                        &thread_far,
+                        transferred,
+                        &resources,
+                        lan,
+                        &thread_recorder,
+                        &thread_payloads,
+                    )
+                });
+                thread_payloads.close();
+                thread_far.cancel();
+                let (why, from_server) = match result {
+                    Ok(why) => (why, true),
+                    Err(why) => {
+                        let from_server = why.from_server;
+                        (why, from_server)
+                    }
+                };
+                if let Some(w) = thread_writer.lock().unwrap().take() {
+                    w.shutdown();
                 }
-            };
-            if let Some(w) = thread_writer.lock().unwrap().take() {
-                w.shutdown();
-            }
-            let _ = send.send(Event::Disconnected {
-                reason: why.text,
-                key: why.key,
-                from_server,
-            });
-        })
-        .inspect_err(|error| {
-            // No reader runs to report the end: say it here, or the session waits forever.
-            let _ = payload_events.send(Event::Disconnected {
-                reason: format!("network thread: {error}"),
-                key: None,
-                from_server: false,
-            });
-        })
-        .ok();
+                let _ = send.send(Event::Disconnected {
+                    reason: why.text,
+                    key: why.key,
+                    from_server,
+                });
+            })
+            .inspect_err(|error| {
+                // No reader runs to report the end: say it here, or the session waits forever.
+                let _ = payload_events.send(Event::Disconnected {
+                    reason: format!("network thread: {error}"),
+                    key: None,
+                    from_server: false,
+                });
+            })
+            .ok();
         let debug = std::env::var_os("SUNRISE_NET_DEBUG").is_some();
         Self {
             events,

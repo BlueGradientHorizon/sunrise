@@ -876,7 +876,8 @@ impl PackReload {
     ) -> std::io::Result<Self> {
         let progress = super::Progress::with(&RELOAD_LINES);
         let worker = progress.clone();
-        let handle = sunrise_guest_stack::builder()
+        let handle = std::thread::Builder::new()
+            .stack_size(136 * 1024 * 1024)
             .name("pack-reload".into())
             .spawn(move || stage(&worker))?;
         Ok(Self {
