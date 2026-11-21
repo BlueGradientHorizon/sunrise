@@ -3,6 +3,7 @@ mod tests {
     use crate::game::native_entity_refs::tests::{
         fixture_root, run_fresh_cases, with_game, with_game_at,
     };
+    use crate::game::remote::RemoteDimensionEntry;
     use mod_api::{
         Block, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntityTicksEvent, BlocksEvent, Hooks,
         Host, HostSide, ModEntry, Registrar, RegistrationContext,
@@ -180,7 +181,7 @@ mod tests {
                         portal_cooldown: 0,
                         sea_level: 63,
                     };
-                    game.enter_remote_dimension(&spawn, false, Reason::Other);
+                    game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
                     game.remote.as_mut().unwrap().logged_in = true;
                     game.world
                         .chunks

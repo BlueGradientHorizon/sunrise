@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_client::gui_layers::VanillaGuiLayer;
 
 #[allow(dead_code)]
 impl Game<'_> {
@@ -112,11 +113,12 @@ impl Game<'_> {
     /// the layer.
     pub(in crate::game) fn gui_layer<R>(
         &mut self,
-        layer: &str,
+        layer: VanillaGuiLayer,
         batch: &mut HudBatch,
         draw: impl FnOnce(&mut Self, &mut HudBatch) -> R,
     ) -> Option<R> {
         self.draw_mod_gui_layers(Some(layer), batch);
+        let layer = layer.id();
         let mut canceled = false;
         self.native_gui_layer_pre(layer, batch, &mut canceled);
         let drawn = (!canceled).then(|| draw(self, batch));
@@ -132,7 +134,7 @@ impl Game<'_> {
     /// when no mod registered a layer.
     pub(in crate::game) fn draw_mod_gui_layers(
         &mut self,
-        until: Option<&str>,
+        until: Option<VanillaGuiLayer>,
         batch: &mut HudBatch,
     ) {
         let order = sunrise_client::gui_layers::order();
@@ -140,7 +142,7 @@ impl Game<'_> {
             return;
         };
         let end = match until {
-            Some(layer) => match order.position(layer) {
+            Some(layer) => match order.position(layer.id()) {
                 Some(at) => at,
                 None => return,
             },

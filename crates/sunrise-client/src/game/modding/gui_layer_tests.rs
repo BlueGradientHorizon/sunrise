@@ -10,7 +10,7 @@ use mod_api::{
     GuiLayerPreEvent, Hooks, ModEntry, RegisterGuiLayersEvent,
 };
 use std::sync::Mutex;
-use sunrise_client::hud::HudBatch;
+use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
 
 /// What the HUD pass did, in order: `pre <id>`, `draw <id>`, `post <id>`, and `vanilla <id>`
 /// for a vanilla layer's own drawing.
@@ -72,8 +72,8 @@ impl Hooks for Hider {
 }
 
 /// One vanilla layer through `gui_layer`, as the HUD pass draws it.
-fn vanilla(game: &mut super::Game<'_>, batch: &mut HudBatch, id: &'static str) {
-    game.gui_layer(id, batch, |_, _| log(format!("vanilla {id}")));
+fn vanilla(game: &mut super::Game<'_>, batch: &mut HudBatch, layer: VanillaGuiLayer) {
+    game.gui_layer(layer, batch, |_, _| log(format!("vanilla {}", layer.id())));
 }
 
 fn take() -> Vec<String> {
@@ -106,9 +106,9 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
         // draws, before the hotbar. The bar is hidden by the other mod, so it is not drawn,
         // but its `post` still fires, as a vanilla layer's does.
         game.hud_layer_next = Some(0);
-        vanilla(game, &mut batch, "minecraft:hotbar");
-        vanilla(game, &mut batch, "minecraft:effects");
-        vanilla(game, &mut batch, "minecraft:chat");
+        vanilla(game, &mut batch, VanillaGuiLayer::Hotbar);
+        vanilla(game, &mut batch, VanillaGuiLayer::Effects);
+        vanilla(game, &mut batch, VanillaGuiLayer::Chat);
         game.draw_mod_gui_layers(None, &mut batch);
         game.hud_layer_next = None;
         assert_eq!(
@@ -135,7 +135,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
         );
 
         // With the HUD hidden (F1), vanilla's sleep overlay still draws, and no mod layer.
-        vanilla(game, &mut batch, "minecraft:sleep_overlay");
+        vanilla(game, &mut batch, VanillaGuiLayer::SleepOverlay);
         game.draw_mod_gui_layers(None, &mut batch);
         assert_eq!(
             take(),

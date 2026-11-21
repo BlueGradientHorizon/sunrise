@@ -5,30 +5,72 @@
 use mod_api::{GuiLayer, GuiLayerPlacement, Identifier};
 use std::sync::OnceLock;
 
-/// Vanilla's HUD layers in the order Sunrise draws them (`VanillaGuiLayers`, without the camera
-/// overlays and the debug screen, which the HUD pass does not draw): the ids `gui_layer_pre` fires.
-pub const VANILLA: [&str; 15] = [
-    "minecraft:crosshair",
-    "minecraft:hotbar",
-    "minecraft:effects",
-    "minecraft:boss_overlay",
-    "minecraft:vehicle_health",
-    "minecraft:contextual_info_bar",
-    "minecraft:player_health",
-    "minecraft:selected_item_name",
-    "minecraft:sleep_overlay",
-    "minecraft:overlay_message",
-    "minecraft:title",
-    "minecraft:scoreboard_sidebar",
-    "minecraft:subtitle_overlay",
-    "minecraft:chat",
-    "minecraft:tab_list",
-];
+/// Vanilla HUD anchors used by the engine's HUD pass (no camera overlays or debug screen).
+#[derive(Clone, Copy)]
+pub enum VanillaGuiLayer {
+    Crosshair,
+    Hotbar,
+    Effects,
+    BossOverlay,
+    VehicleHealth,
+    ContextualInfoBar,
+    PlayerHealth,
+    SelectedItemName,
+    SleepOverlay,
+    OverlayMessage,
+    Title,
+    ScoreboardSidebar,
+    SubtitleOverlay,
+    Chat,
+    TabList,
+}
+
+impl VanillaGuiLayer {
+    /// Vanilla anchors in the layer registrar's bottom-to-top order.
+    pub const ALL: [Self; 15] = [
+        Self::Crosshair,
+        Self::Hotbar,
+        Self::Effects,
+        Self::BossOverlay,
+        Self::VehicleHealth,
+        Self::ContextualInfoBar,
+        Self::PlayerHealth,
+        Self::SelectedItemName,
+        Self::SleepOverlay,
+        Self::OverlayMessage,
+        Self::Title,
+        Self::ScoreboardSidebar,
+        Self::SubtitleOverlay,
+        Self::Chat,
+        Self::TabList,
+    ];
+
+    /// The vanilla layer ID reported to HUD observers.
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Crosshair => "minecraft:crosshair",
+            Self::Hotbar => "minecraft:hotbar",
+            Self::Effects => "minecraft:effects",
+            Self::BossOverlay => "minecraft:boss_overlay",
+            Self::VehicleHealth => "minecraft:vehicle_health",
+            Self::ContextualInfoBar => "minecraft:contextual_info_bar",
+            Self::PlayerHealth => "minecraft:player_health",
+            Self::SelectedItemName => "minecraft:selected_item_name",
+            Self::SleepOverlay => "minecraft:sleep_overlay",
+            Self::OverlayMessage => "minecraft:overlay_message",
+            Self::Title => "minecraft:title",
+            Self::ScoreboardSidebar => "minecraft:scoreboard_sidebar",
+            Self::SubtitleOverlay => "minecraft:subtitle_overlay",
+            Self::Chat => "minecraft:chat",
+            Self::TabList => "minecraft:tab_list",
+        }
+    }
+}
 
 /// The whole layer order: vanilla's layers and the mods'.
 #[derive(Debug, PartialEq, Eq)]
 pub struct GuiLayers {
-    /// Every layer, bottom first: a vanilla id from [`VANILLA`] or a mod's id.
+    /// Every layer, bottom first: a vanilla id from [`VanillaGuiLayer::ALL`] or a mod's id.
     layers: Vec<String>,
     /// Whether any mod layer is in `layers`.
     mods: bool,
@@ -61,7 +103,10 @@ impl GuiLayers {
     /// `<namespace>:<path>` in a mod's namespace, is in the list already, or is placed against
     /// a layer that is not is logged and left out.
     pub fn place(registered: Vec<GuiLayer>) -> Self {
-        let mut layers: Vec<String> = VANILLA.iter().map(|&id| id.to_owned()).collect();
+        let mut layers: Vec<String> = VanillaGuiLayer::ALL
+            .iter()
+            .map(|layer| layer.id().to_owned())
+            .collect();
         let mut mods = false;
         for GuiLayer { id, placement } in registered {
             let own =
@@ -120,7 +165,7 @@ impl GuiLayers {
         self.layers
             .get(index)
             .map(String::as_str)
-            .filter(|id| !VANILLA.contains(id))
+            .filter(|id| !VanillaGuiLayer::ALL.iter().any(|layer| layer.id() == *id))
     }
 
     /// Every layer's id, bottom first.
@@ -164,7 +209,7 @@ mod tests {
             layer("compass:over_chat", Above("minecraft:chat".into())),
         ]);
         assert!(order.has_mod_layers());
-        assert_eq!(order.len(), VANILLA.len() + 6);
+        assert_eq!(order.len(), VanillaGuiLayer::ALL.len() + 6);
         assert_eq!(
             around(&order, "compass:shadow"),
             (Some("minecraft:hotbar"), Some("compass:bar"))
@@ -190,8 +235,9 @@ mod tests {
             (Some("minecraft:tab_list"), None)
         );
         // Vanilla's own order is unchanged around them.
-        let vanilla: Vec<&str> = order.ids().filter(|id| VANILLA.contains(id)).collect();
-        assert_eq!(vanilla, VANILLA);
+        let expected = VanillaGuiLayer::ALL.map(VanillaGuiLayer::id);
+        let vanilla: Vec<&str> = order.ids().filter(|id| expected.contains(id)).collect();
+        assert_eq!(vanilla, expected);
         assert_eq!(order.mod_layer(0), Some("compass:very_first"));
         assert_eq!(order.mod_layer(2), None, "the crosshair is vanilla's");
         assert_eq!(order.position("minecraft:crosshair"), Some(2));
@@ -211,11 +257,12 @@ mod tests {
             layer("compass:late", AboveAll),
             layer("compass:lost", Above("minecraft:no_such_layer".into())),
         ]);
-        let mods: Vec<&str> = order.ids().filter(|id| !VANILLA.contains(id)).collect();
+        let vanilla = VanillaGuiLayer::ALL.map(VanillaGuiLayer::id);
+        let mods: Vec<&str> = order.ids().filter(|id| !vanilla.contains(id)).collect();
         assert_eq!(mods, ["compass:bar", "compass:late"]);
         assert_eq!(
             order.position("compass:bar"),
-            Some(VANILLA.len()),
+            Some(VanillaGuiLayer::ALL.len()),
             "the first registration of an id is kept"
         );
     }
@@ -224,7 +271,11 @@ mod tests {
     fn no_registration_leaves_vanilla_alone() {
         let order = GuiLayers::place(Vec::new());
         assert!(!order.has_mod_layers());
-        assert!(order.ids().eq(VANILLA));
+        assert!(
+            order
+                .ids()
+                .eq(VanillaGuiLayer::ALL.map(VanillaGuiLayer::id))
+        );
         assert!(order.mod_layer(0).is_none());
         assert!(!NONE.has_mod_layers() && NONE.is_empty());
     }

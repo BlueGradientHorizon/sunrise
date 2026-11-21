@@ -102,6 +102,12 @@ pub(super) use super::villager_client::builtin_registries;
 
 mod chat_queue;
 
+/// The packet route that starts a remote level entry.
+pub(in crate::game) enum RemoteDimensionEntry {
+    Login,
+    Respawn,
+}
+
 /// `ChatType`'s two decorations: how a message shows in the chat, and what the narrator says of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Decoration {
@@ -2473,7 +2479,7 @@ impl Game<'_> {
     pub(in crate::game) fn enter_remote_dimension(
         &mut self,
         spawn: &play::SpawnInfo,
-        keep_world: bool,
+        entry: RemoteDimensionEntry,
         reason: sunrise_client::level_loading::Reason,
     ) {
         // Every level has the sea level its server says (`CommonPlayerSpawnInfo.seaLevel`): the
@@ -2491,7 +2497,8 @@ impl Game<'_> {
         };
         // handleRespawn keeps the ClientLevel only for the same level key:
         // two levels sharing a dimension type are still two levels.
-        let same = keep_world && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
+        let same = matches!(entry, RemoteDimensionEntry::Respawn)
+            && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
         let transition_screen = sunrise_client_render::dimension_transition::select(
             mod_api::__private::dimension_key(&spawn.dimension),
             r.heard_level
@@ -3509,7 +3516,7 @@ impl Game<'_> {
                 // handleLogin: startWaitingForNewLevel(.., Reason.OTHER).
                 self.enter_remote_dimension(
                     &p.spawn,
-                    false,
+                    RemoteDimensionEntry::Login,
                     sunrise_client::level_loading::Reason::Other,
                 );
                 // No ClientInformation here: the configuration phase sent it,
@@ -11039,6 +11046,7 @@ pub(crate) mod tests {
 
     /// Spawns the connected client in the overworld as entity 7, profile 42.
     fn spawn_menu_test(game: &mut super::Game<'_>) -> sunrise_protocol::packets::play::SpawnInfo {
+        use crate::game::remote::RemoteDimensionEntry;
         use sunrise_client::level_loading::Reason;
         use sunrise_protocol::packets::play::SpawnInfo;
         let spawn = SpawnInfo {
@@ -11053,7 +11061,7 @@ pub(crate) mod tests {
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.enter_remote_dimension(&spawn, false, Reason::Other);
+        game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
         let remote = game.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;

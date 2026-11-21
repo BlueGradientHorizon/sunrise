@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use crate::game::remote::RemoteDimensionEntry;
     use crate::game::{
         Game,
         native_entity_refs::tests::{run_fresh_cases, with_game_role},
@@ -476,7 +477,7 @@ mod tests {
                         portal_cooldown: 0,
                         sea_level: 63,
                     },
-                    false,
+                    RemoteDimensionEntry::Login,
                     sunrise_client::level_loading::Reason::Other,
                 );
                 let remote = game.remote.as_mut().unwrap();

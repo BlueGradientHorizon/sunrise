@@ -3,6 +3,7 @@
 fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
     use crate::game::execution_role::ExecutionRole;
     use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::remote::RemoteDimensionEntry;
     use mod_api::__private::game::RegistrationContextNew;
     use mod_api::{DimensionTransition, DimensionTransitionScreen};
     use sunrise_client::{hud::HudBatch, level_loading::Reason};
@@ -62,13 +63,21 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                             portal_cooldown: 0,
                             sea_level: 63,
                         };
-                        game.enter_remote_dimension(&spawn, false, Reason::Other);
+                        game.enter_remote_dimension(
+                            &spawn,
+                            RemoteDimensionEntry::Login,
+                            Reason::Other,
+                        );
                         assert_eq!(
                             game.remote.as_ref().unwrap().level_load.transition_screen(),
                             None
                         );
                         spawn.dimension = "transition_test:b".into();
-                        game.enter_remote_dimension(&spawn, true, Reason::Other);
+                        game.enter_remote_dimension(
+                            &spawn,
+                            RemoteDimensionEntry::Respawn,
+                            Reason::Other,
+                        );
                         let tracker = game.remote.as_ref().unwrap().level_load;
                         assert!(tracker.transition_screen().is_some());
                         let mut batch = HudBatch::scratch([320, 240]);
@@ -82,7 +91,11 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                         let tracker = game.remote.as_ref().unwrap().level_load;
                         assert!(!game.draw_dimension_transition_screen(&mut batch, &tracker, None));
                         spawn.dimension = "transition_test:c".into();
-                        game.enter_remote_dimension(&spawn, true, Reason::Other);
+                        game.enter_remote_dimension(
+                            &spawn,
+                            RemoteDimensionEntry::Respawn,
+                            Reason::Other,
+                        );
                         let tracker = game.remote.as_ref().unwrap().level_load;
                         let mut vanilla = HudBatch::scratch([320, 240]);
                         assert!(!game.draw_dimension_transition_screen(

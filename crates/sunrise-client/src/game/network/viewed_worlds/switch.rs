@@ -12,6 +12,7 @@
 //! clients retain their revision's implicit swap behavior; this client answers revision 4.
 use super::{routing::default_clock, worlds::ViewedWorld};
 use crate::game::Game;
+use crate::game::remote::RemoteDimensionEntry;
 use std::sync::Arc;
 use sunrise_client::level_loading::Reason;
 use sunrise_protocol::packets::{
@@ -38,11 +39,11 @@ impl Game<'_> {
             if let Some(r) = self.remote.as_mut() {
                 r.viewed.clear();
             }
-            self.enter_remote_dimension(&p.spawn, true, reason);
+            self.enter_remote_dimension(&p.spawn, RemoteDimensionEntry::Respawn, reason);
             return;
         };
         self.keep_as_viewed(travel.slot, travel.entered.columns, p.spawn.seed);
-        self.enter_remote_dimension(&p.spawn, true, reason);
+        self.enter_remote_dimension(&p.spawn, RemoteDimensionEntry::Respawn, reason);
         self.adopt_viewed_world(travel.entered);
     }
 
