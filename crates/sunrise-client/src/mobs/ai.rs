@@ -1170,7 +1170,7 @@ enum AiHurt {
 #[derive(Debug)]
 struct PushPhase {
     targets: Vec<super::world::PushTarget>,
-    self_pushable: bool,
+    player_before_hurt: Option<([i32; 4], u32)>,
 }
 
 /// A mob's air update, decided and waiting for its owner to ask the mods:
@@ -1593,7 +1593,14 @@ pub(super) fn resume_mob(
             }
             AiHurt::AfterFreeze => ai_step_after_freeze(m, w, level, events, no_ai, true),
             AiHurt::Cramming(pushes) => {
-                apply_entity_pushes(m, w, events, pushes);
+                apply_entity_pushes(
+                    m,
+                    w,
+                    events,
+                    pushes.targets,
+                    true,
+                    pushes.player_before_hurt,
+                );
                 ai_step_after_push(m, w, level, events, no_ai);
                 None
             }
@@ -3235,9 +3242,7 @@ fn push_entities_until_hurt(
         return None;
     }
     let bounds = m.bounds();
-    // The pusher's own isPushable and isVehicle, checked by `e.push(this)`.
-    let self_pushable = m.pushable() && !super::equine::is_vehicle(m);
-    // Each passenger with whether it shares this one's root vehicle.
+    // Selection (including the unmounted count) stays fixed across cramming hurt.
     let mut targets = super::world::take_push_targets();
     if let Some(p) = w.selected_player()
         // Entity.push: passengers of the same vehicle never push each other.
@@ -3246,13 +3251,11 @@ fn push_entities_until_hurt(
         && !p.spectator
         && p.bounds.intersects(bounds)
     {
-        targets.push((Who::Player, p.position, p.passenger, false, false));
+        targets.push((Who::Player, p.passenger, None));
     }
-    let root = root_vehicle(w, m.id, m.extra.mount);
     for o in w.others_near(bounds) {
         if o.id != m.id && o.alive && o.pushable && o.bounds.intersects(bounds) {
-            let same = root_vehicle(w, o.id, o.vehicle) == root;
-            targets.push((Who::Mob(o.id), o.position, o.passenger, same, o.is_vehicle));
+            targets.push((Who::Mob(o.id), o.passenger, None));
         }
     }
     // EntitySelector.pushableBy(this): the teams' collision rules.
@@ -3264,36 +3267,81 @@ fn push_entities_until_hurt(
     if limit > 0
         && targets.len() as i64 > i64::from(limit) - 1
         && m.random.next_int_bound(4).unwrap_or(1) == 0
-        && targets.iter().filter(|t| !t.2).count() as i64 > i64::from(limit) - 1
+        && targets.iter().filter(|t| !t.1).count() as i64 > i64::from(limit) - 1
     {
         m.damage(level, 6.0, Damage::of(DamageKind::Cramming));
         // The hurt's own teleport, inside it (#1697).
         hurt_teleports(m, w, events);
         if can_pause && super::creaking::has_pending_hurt(m) {
+            targets.retain_mut(|(who, _, join)| match who {
+                Who::Mob(id) => {
+                    *join = w
+                        .live_mobs
+                        .and_then(|mobs| mobs.find(*id))
+                        .map(|mob| mob.join);
+                    join.is_some()
+                }
+                Who::Player => w.selected_player_identity().is_some(),
+            });
             return Some(PushPhase {
                 targets,
-                self_pushable,
+                player_before_hurt: w.selected_player_identity(),
             });
         }
     }
-    apply_entity_pushes(
-        m,
-        w,
-        events,
-        PushPhase {
-            targets,
-            self_pushable,
-        },
-    );
+    apply_entity_pushes(m, w, events, targets, false, None);
     None
 }
 
-fn apply_entity_pushes(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>, pushes: PushPhase) {
-    let PushPhase {
-        targets,
-        self_pushable,
-    } = pushes;
-    for &(who, at, _, same, vehicle) in &targets {
+fn apply_entity_pushes(
+    m: &mut Mob,
+    w: &MobWorld,
+    events: &mut Vec<MobEvent>,
+    targets: Vec<super::world::PushTarget>,
+    resumed: bool,
+    player_before_hurt: Option<([i32; 4], u32)>,
+) {
+    let self_pushable = m.pushable() && !super::equine::is_vehicle(m);
+    let root = root_vehicle(w, m.id, m.extra.mount);
+    for &(who, _, join) in &targets {
+        let (at, sleeping, same, pushable) = match who {
+            Who::Player => {
+                let Some(player) = w.selected_player() else {
+                    continue;
+                };
+                let identity = w.selected_player_identity();
+                if resumed && identity != player_before_hurt {
+                    continue;
+                }
+                let same = identity
+                    .is_some_and(|(_, id)| root_vehicle(w, id, player.riding_vehicle) == root);
+                (
+                    player.position,
+                    player.sleeping,
+                    same,
+                    !player.remote && player.alive && !player.spectator,
+                )
+            }
+            Who::Mob(id) => {
+                let Some(peer) = w.seen(id).filter(|peer| !peer.removed) else {
+                    continue;
+                };
+                if let Some(join) = join
+                    && !w
+                        .live_mobs
+                        .and_then(|mobs| mobs.find(id))
+                        .is_some_and(|mob| mob.join == join && !mob.removed)
+                {
+                    continue;
+                }
+                (
+                    peer.position,
+                    peer.sleeping,
+                    root_vehicle(w, id, peer.vehicle) == root,
+                    peer.pushable && !peer.is_vehicle,
+                )
+            }
+        };
         // Warden.doPush: touching it angers it, then the push itself.
         if m.species() == Species::Warden {
             super::warden::do_push(m, w, who, events);
@@ -3308,10 +3356,6 @@ fn apply_entity_pushes(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>, pu
             m.set_ai_target(w, Some(who));
         }
         // doPush calls the other living entity's push; sleeping vetoes both impulses.
-        let sleeping = match who {
-            Who::Player => w.selected_player().is_some_and(|p| p.sleeping),
-            Who::Mob(id) => w.seen(id).is_some_and(|o| o.sleeping),
-        };
         if sleeping {
             continue;
         }
@@ -3336,11 +3380,16 @@ fn apply_entity_pushes(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>, pu
         za *= f64::from(0.05_f32);
         // A guest's server-side push never reaches its client (ServerPlayer
         // motion is synced only when hurt): its client pushes it itself.
-        if !vehicle && (who != Who::Player || w.selected_player().is_none_or(|p| !p.remote)) {
-            events.push(w.route_player_event(MobEvent::Push {
-                target: who,
-                velocity: [-xa, 0.0, -za],
-            }));
+        if pushable {
+            let velocity = [-xa, 0.0, -za];
+            if let (Who::Mob(id), Some(join)) = (who, join) {
+                events.push(MobEvent::PushJoined { id, join, velocity });
+            } else {
+                events.push(w.route_player_event(MobEvent::Push {
+                    target: who,
+                    velocity,
+                }));
+            }
         }
         if self_pushable {
             m.velocity = Vec3::new(m.velocity.x + xa, m.velocity.y, m.velocity.z + za);

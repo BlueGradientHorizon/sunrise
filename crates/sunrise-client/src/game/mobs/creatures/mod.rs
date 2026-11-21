@@ -2718,6 +2718,16 @@ impl Game<'_> {
                         }
                     }
                 }
+                MobEvent::PushJoined { id, join, velocity } => {
+                    if let Some(mob) = self.mob_object_mut(id).filter(|mob| mob.join == join) {
+                        mob.velocity = mob.velocity.add_vector(Vec3::new(
+                            velocity[0],
+                            velocity[1],
+                            velocity[2],
+                        ));
+                        mob.needs_sync = true;
+                    }
+                }
                 MobEvent::Knockback {
                     target,
                     power,

@@ -2041,6 +2041,12 @@ pub enum MobEvent {
         target: Who,
         velocity: [f64; 3],
     },
+    /// A selected peer across a host callback; a later occupant of the id does not receive it.
+    PushJoined {
+        id: u32,
+        join: crate::join_seq::JoinSeq,
+        velocity: [f64; 3],
+    },
     /// `SonicBoom`: 10 damage to the target, then a push along `direction`
     /// (the unit vector from the warden's chest to the target's eyes) only
     /// if the hit landed, less the target's knockback resistance.
@@ -2947,15 +2953,24 @@ pub fn take_mob_pushes(events: &mut Vec<MobEvent>, from: usize, pending: &mut Pe
     // in place would shift the rest every time.
     let mut kept = from;
     for i in from..events.len() {
-        if let MobEvent::Push {
-            target: Who::Mob(id),
-            velocity,
-        } = events[i]
-        {
-            pending.push(id, Vec3::new(velocity[0], velocity[1], velocity[2]));
-        } else {
-            events.swap(kept, i);
-            kept += 1;
+        match events[i] {
+            MobEvent::Push {
+                target: Who::Mob(id),
+                velocity,
+            } => {
+                pending.push(id, Vec3::new(velocity[0], velocity[1], velocity[2]));
+            }
+            MobEvent::PushJoined { id, join, velocity } => {
+                pending.push_with_join(
+                    id,
+                    Some(join),
+                    Vec3::new(velocity[0], velocity[1], velocity[2]),
+                );
+            }
+            _ => {
+                events.swap(kept, i);
+                kept += 1;
+            }
         }
     }
     events.truncate(kept);
@@ -2965,18 +2980,21 @@ pub fn take_mob_pushes(events: &mut Vec<MobEvent>, from: usize, pending: &mut Pe
 /// per mob, as scanning the whole list for each mob grows with its square.
 #[derive(Clone, Default)]
 pub struct PendingPushes {
-    list: Vec<(u32, Vec3)>,
-    by_mob: crate::fast_hash::FxHashMap<u32, Vec<Vec3>>,
+    list: Vec<(u32, PushImpulse)>,
+    by_mob: crate::fast_hash::FxHashMap<u32, Vec<PushImpulse>>,
 }
+
+type PushImpulse = (Option<crate::join_seq::JoinSeq>, Vec3);
+
 impl PendingPushes {
     /// `other`'s pushes after these, each mob's in their order.
     pub fn append(&mut self, other: PendingPushes) {
-        for (id, v) in other.list {
-            self.push(id, v);
+        for (id, (join, v)) in other.list {
+            self.push_with_join(id, join, v);
         }
         for (id, list) in other.by_mob {
-            for v in list {
-                self.push(id, v);
+            for (join, v) in list {
+                self.push_with_join(id, join, v);
             }
         }
     }
@@ -2986,15 +3004,19 @@ impl PendingPushes {
         self.list.is_empty() && self.by_mob.is_empty()
     }
     pub fn push(&mut self, id: u32, v: Vec3) {
+        self.push_with_join(id, None, v);
+    }
+
+    fn push_with_join(&mut self, id: u32, join: Option<crate::join_seq::JoinSeq>, v: Vec3) {
         if self.by_mob.is_empty() && self.list.len() < Self::LIST_MAX {
-            self.list.push((id, v));
+            self.list.push((id, (join, v)));
             return;
         }
         // Older pushes first, so each mob's stay in order.
-        for (id, v) in self.list.drain(..) {
-            self.by_mob.entry(id).or_default().push(v);
+        for (id, impulse) in self.list.drain(..) {
+            self.by_mob.entry(id).or_default().push(impulse);
         }
-        self.by_mob.entry(id).or_default().push(v);
+        self.by_mob.entry(id).or_default().push((join, v));
     }
 }
 #[cfg(test)]
@@ -3005,13 +3027,13 @@ mod pending_push_tests {
     /// Each mob's pushes, in the order they apply.
     fn per_mob(p: &PendingPushes) -> std::collections::BTreeMap<u32, Vec<[f64; 3]>> {
         let mut out = std::collections::BTreeMap::<u32, Vec<[f64; 3]>>::new();
-        for (id, v) in &p.list {
+        for (id, (_, v)) in &p.list {
             out.entry(*id).or_default().push([v.x, v.y, v.z]);
         }
         for (id, list) in &p.by_mob {
             out.entry(*id)
                 .or_default()
-                .extend(list.iter().map(|v| [v.x, v.y, v.z]));
+                .extend(list.iter().map(|(_, v)| [v.x, v.y, v.z]));
         }
         out
     }
@@ -7744,9 +7766,11 @@ mod projectile_damage;
 
 pub fn apply_mob_pushes(m: &mut Mob, pending: &mut PendingPushes) {
     // Entity.push(x, y, z) sets needsSync.
-    let mut add = |v: Vec3| {
-        m.velocity = Vec3::new(m.velocity.x + v.x, m.velocity.y + v.y, m.velocity.z + v.z);
-        m.needs_sync = true;
+    let mut add = |(join, v): PushImpulse| {
+        if join.is_none_or(|join| join == m.join && !m.removed) {
+            m.velocity = Vec3::new(m.velocity.x + v.x, m.velocity.y + v.y, m.velocity.z + v.z);
+            m.needs_sync = true;
+        }
     };
     if !pending.list.is_empty() {
         pending.list.retain(|(id, v)| {

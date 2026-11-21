@@ -48,17 +48,23 @@ impl Hooks for Watch {
         if event.event != "minecraft:entity_action" {
             return Flow::Continue;
         }
-        {
+        let peer = {
             let mut heard = self.heard.lock().unwrap();
             if event.cause != Some(heard.mob) {
                 return Flow::Continue;
             }
             let mob = host.entity(heard.mob).unwrap();
-            let peer_velocity = heard.peer.and_then(|id| host.entity(id)?.velocity(host));
+            let peer = heard.peer.and_then(|id| host.entity(id));
+            let peer_velocity = peer.and_then(|peer| peer.velocity(host));
             heard.reactions.push(Reaction {
                 position: mob.position(host).unwrap(),
                 peer_velocity,
             });
+            peer
+        };
+        if let Some(peer) = peer {
+            // Move the already-selected peer to the opposite side, out of range.
+            assert!(peer.teleport_to(host, [3.5, 64.0, 4.5], None));
         }
         if self.replace_protector {
             let air = mod_api::__private::block_key("minecraft:air").unwrap();
@@ -242,8 +248,8 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                     "pushes happen after the hurt"
                 );
                 assert!(
-                    game.mob_object(peer).unwrap().velocity.x > 0.0,
-                    "the selected peer was pushed on resume"
+                    game.mob_object(peer).unwrap().velocity.x < 0.0,
+                    "resume pushes the selected peer using its new position"
                 );
             }
             let heart = game.world.block_entities.get(&(8, 64, 8));

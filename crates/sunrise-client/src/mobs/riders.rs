@@ -709,7 +709,10 @@ fn tick_with<R>(
             owner = vehicle;
         }
     }
-    if !mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
+    // Creaking's cramming continuation pins the selected peers' live identities.
+    if mobs[index].species() != Species::Creaking
+        && !mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)
+    {
         if owner == index {
             return step(&mut mobs[index], w, level, events);
         }
