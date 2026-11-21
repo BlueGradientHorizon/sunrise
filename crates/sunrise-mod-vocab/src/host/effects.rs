@@ -19,10 +19,6 @@ pub trait EffectsClientHost {
     #[access(ClientSetup)]
     fn muffle_sounds(&mut self, amount: f32, lowpass: f32, ticks: u32, exempt: &[&str]) -> bool;
     /// Side: client.
-    /// A small local vanilla particle; caller should rate-limit emission.
-    #[access(WorldOnly)]
-    fn flame_particle(&mut self, at: [f64; 3], soul: bool);
-    /// Side: client.
     /// Plays `sound` for this player only (`SoundPlay`'s event: `minecraft:ui.button.click`,
     /// or a mod's own from its `assets/<id>/sounds.json`): nothing is sent to the server, and
     /// other players don't hear it. It takes `&self`, so a screen, key or mouse hook can play
