@@ -2924,13 +2924,11 @@ mod tests {
                 return mod_api::Flow::Continue;
             }
             let id = event.entity;
-            if std::env::var(SPAWN_CLUSTER_CASE).as_deref() == Ok("unwind") {
-                panic!("primary admission stopped");
-            }
             let entity = host.entity(id).unwrap();
             assert!(entity.add_tag(host, "after-admission"));
             JOINED_CANDIDATE.store(id, std::sync::atomic::Ordering::Relaxed);
             match std::env::var(SPAWN_CLUSTER_CASE).unwrap().as_str() {
+                "unwind" => {} // The engine checkpoint fires after this callback returns.
                 "move" => {
                     assert!(entity.teleport_to_level(
                         host,
@@ -3036,7 +3034,8 @@ mod tests {
                         Mob::new(u32::MAX - 1 - index as u32, kind, Vec3::ZERO, 0.0)
                     })
                     .collect();
-                let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                use crate::game::pending_births::escaping_fault::{self, At};
+                escaping_fault::expect(At::Admission, first, || {
                     game.complete_natural_spawn(
                         &mut cluster,
                         candidate,
@@ -3046,8 +3045,12 @@ mod tests {
                         &mut random,
                         &mut state,
                     );
-                }));
-                assert!(attempt.is_err());
+                });
+                assert_eq!(
+                    JOINED_CANDIDATE.load(std::sync::atomic::Ordering::Relaxed),
+                    first,
+                    "primary reached its join listener before the engine fault"
+                );
                 game.native_joins_flush(false, 0);
                 assert!(
                     game.mobs

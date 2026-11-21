@@ -10,6 +10,7 @@
 
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
+use crate::game::pending_births::escaping_fault::{self, At};
 use mod_api::{
     AttachmentType, BabyEntitySpawnEvent, EntityConstructingEvent, EntityJoinLevelEvent, Flow,
     Holder, Hooks, HostSide, MobSplitEvent, PendingMobSpec, ServerHost, UnspawnedMob,
@@ -489,48 +490,102 @@ fn invalid_input_fails_before_mutation_and_the_valid_list_stands() {
 
 #[test]
 #[ignore = "daily"]
-fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
-    let panic_now = Arc::new(Mutex::new(true));
-    let flag = panic_now.clone();
+fn split_edits_do_not_publish_on_engine_unwind() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let edits = Arc::new(AtomicUsize::new(0));
+    let recorded = edits.clone();
     with_split(
         move |_, event| {
             event.children.get_mut(0).unwrap().set_yaw(1.0).unwrap();
-            let _detached = event
+            let replacement = event
                 .children
                 .construct(spec(
-                    "minecraft:slime",
+                    "minecraft:magma_cube",
                     [1.0, 64.0, 1.0],
                     0.0,
                     Some(2),
                     event.dimension,
                 ))
                 .unwrap();
-            if *flag.lock().unwrap() {
-                panic!("a listener fails before commit");
-            }
+            drop(event.children.replace(1, replacement).unwrap());
+            recorded.fetch_add(1, Ordering::Relaxed);
             Flow::Continue
         },
         |game| {
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let next_id = game.next_entity;
-            let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                game.split_cube_children(&mut dying)
-            }));
-            assert!(unwound.is_err());
+            escaping_fault::expect(At::SplitDispatched, dying.id, || {
+                game.split_cube_children(&mut dying);
+            });
+            assert_eq!(edits.load(Ordering::Relaxed), 1);
             assert!(game.mobs.is_empty(), "no child joined");
             assert_eq!(
                 game.next_entity,
                 next_id + 3,
                 "all proposals were constructed"
             );
+            for id in next_id + 1..=next_id + 3 {
+                assert!(!game.persist.uuids.contains_key(&id));
+                assert!(!game.entity_attachments.contains_key(&id));
+                assert!(
+                    !game
+                        .entity_initialization
+                        .initialized
+                        .contains(&Holder::Entity(id))
+                );
+            }
             // Pre-callback effects stay: the construction draws were spent.
             assert_eq!(dying.random.next_int(), NEXT_INT);
             // Subsequent splits work cleanly from a fresh stack frame.
-            *panic_now.lock().unwrap() = false;
             let mut again = cube(game, "minecraft:slime", 4, SEED);
             game.split_cube_children(&mut again);
             assert_eq!(game.mobs.len(), 3);
             assert_eq!(game.mobs[0].yaw, 1.0);
+            assert_eq!(game.mobs[1].kind.id, "minecraft:magma_cube");
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn panicking_spawn_listeners_lose_cancellation_but_keep_direct_child_edits() {
+    with_split(
+        |_, event| {
+            event.children.get_mut(0).unwrap().set_yaw(1.0).unwrap();
+            drop(event.children.remove(1).unwrap());
+            event.cancelled = true;
+            panic!("split listener failed");
+        },
+        |game| {
+            let mut dying = cube(game, "minecraft:slime", 4, SEED);
+            game.split_cube_children(&mut dying);
+            assert_eq!(game.mobs.len(), 2, "the cancellation was not applied");
+            assert_eq!(game.mobs[0].yaw, 1.0);
+            assert_eq!(game.mobs[1].yaw, YAWS[2]);
+        },
+    );
+    with_baby(
+        |_, event| {
+            let pig = event
+                .child
+                .construct(spec(
+                    "minecraft:pig",
+                    [0.5, 64.0, 0.0],
+                    0.0,
+                    None,
+                    event.dimension,
+                ))
+                .unwrap();
+            drop(event.child.replace(pig).unwrap());
+            event.cancelled = true;
+            panic!("breeding listener failed");
+        },
+        |game| {
+            let (_, _, child) = breed_pair(game, "minecraft:cow");
+            let child = find(game, child.expect("the cancellation was not applied"));
+            assert_eq!(child.kind.id, "minecraft:pig");
+            assert!(child.is_baby());
         },
     );
 }
@@ -1118,37 +1173,45 @@ fn a_waiting_baby_publishes_its_uuid_only_when_it_joins() {
 
 #[test]
 #[ignore = "daily"]
-fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
+fn baby_slot_replacement_does_not_publish_on_engine_unwind() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let replaced = Arc::new(AtomicBool::new(false));
+    let observed = replaced.clone();
     with_baby(
-        |_, event| {
-            let _detached = event
+        move |_, event| {
+            let pig = event
                 .child
-                .construct(PendingMobSpec::new(
-                    mod_api::Identifier::parse("minecraft:pig").unwrap(),
-                    mod_api::Identifier::parse(event.dimension).unwrap(),
+                .construct(spec(
+                    "minecraft:pig",
                     [0.5, 64.0, 0.0],
                     0.0,
-                    true,
+                    None,
+                    event.dimension,
                 ))
                 .unwrap();
-            panic!("a listener fails")
+            let original = event.child.replace(pig).unwrap().unwrap();
+            assert_eq!(original.kind().unwrap().to_string(), "minecraft:cow");
+            replaced.store(true, Ordering::Relaxed);
+            Flow::Continue
         },
         |game| {
             let (uuids, attachments) = (game.persist.uuids.len(), game.entity_attachments.len());
-            let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                breed_pair(game, "minecraft:cow")
-            }));
-            assert!(unwound.is_err());
+            let parent = game.next_entity + 1;
+            escaping_fault::expect(At::BabyDispatched, parent, || {
+                breed_pair(game, "minecraft:cow");
+            });
+            assert!(observed.load(Ordering::Relaxed));
             assert_eq!(game.persist.uuids.len(), uuids, "the baby's UUID is gone");
             assert_eq!(game.entity_attachments.len(), attachments);
-            assert!(game.mobs.iter().all(|m| m.extra.age >= 0), "no baby joined");
+            assert_eq!(game.mobs.len(), 2, "only the parents joined");
         },
     );
 }
 
 #[test]
 #[ignore = "daily"]
-fn a_panicking_breeding_constructor_retires_only_the_unpublished_child() {
+fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     const MARKER: AttachmentType<i32> = AttachmentType {
@@ -1173,7 +1236,6 @@ fn a_panicking_breeding_constructor_retires_only_the_unpublished_child() {
             {
                 MARKER.set(host, event.holder, 7).unwrap();
                 MARKER.set(host, Holder::Level, 41).unwrap();
-                panic!("breeding constructor");
             }
         }
 
@@ -1195,13 +1257,9 @@ fn a_panicking_breeding_constructor_retires_only_the_unpublished_child() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             let proposed_id = game.next_entity + 3;
-            let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                breed_pair(game, "minecraft:cow")
-            }));
-            assert_eq!(
-                unwind.unwrap_err().downcast_ref::<&str>(),
-                Some(&"breeding constructor")
-            );
+            escaping_fault::expect(At::Constructed, proposed_id, || {
+                breed_pair(game, "minecraft:cow");
+            });
             assert!(!baby_hook_ran.load(Ordering::Relaxed));
             assert_eq!(game.mobs.len(), 2);
             assert!(!game.persist.uuids.contains_key(&proposed_id));
@@ -1450,8 +1508,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
     enum Mode {
         RemoveSecond,
         Cancel,
-        PanicSecondConstruct,
-        PanicSecondJoin,
+        Keep,
     }
     struct OrderMod {
         trace: Arc<Mutex<Vec<(&'static str, u32)>>>,
@@ -1484,17 +1541,10 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
         }
         fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
             if let Holder::Entity(id) = event.holder {
-                let count = {
-                    let mut trace = self.trace.lock().unwrap();
-                    trace.push(("construct", id));
-                    trace.len()
-                };
+                self.trace.lock().unwrap().push(("construct", id));
                 if let HostSide::Server(host) = host {
                     SPLIT_MARKER.set(host, event.holder, 7).unwrap();
                     SPLIT_MARKER.set(host, Holder::Level, 23).unwrap();
-                }
-                if *self.mode.lock().unwrap() == Mode::PanicSecondConstruct && count == 2 {
-                    panic!("construct unwind on second split child");
                 }
             }
         }
@@ -1503,14 +1553,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             _: &mut dyn ServerHost,
             event: &mut EntityJoinLevelEvent<'_>,
         ) -> Flow {
-            let count = {
-                let mut trace = self.trace.lock().unwrap();
-                trace.push(("join", event.entity));
-                trace.len()
-            };
-            if *self.mode.lock().unwrap() == Mode::PanicSecondJoin && count == 6 {
-                panic!("join unwind on second split child");
-            }
+            self.trace.lock().unwrap().push(("join", event.entity));
             Flow::Continue
         }
     }
@@ -1569,18 +1612,23 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             }
             assert_eq!(SPLIT_MARKER.get(game, Holder::Level), Ok(23));
 
-            // A panic in a constructor leaves neither the previous proposal's state nor its own.
+            // An engine fault after the second constructor leaves neither proposal's state.
             trace.lock().unwrap().clear();
-            *mode.lock().unwrap() = Mode::PanicSecondConstruct;
+            *mode.lock().unwrap() = Mode::Keep;
+            SPLIT_MARKER.set(game, Holder::Level, 0).unwrap();
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
-            let before = game.next_entity;
-            let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                game.split_cube_children(&mut dying)
-            }));
-            assert!(unwound.is_err());
+            let first = game.next_entity + 1;
+            escaping_fault::expect(At::Constructed, first + 1, || {
+                game.split_cube_children(&mut dying);
+            });
+            assert_eq!(
+                *trace.lock().unwrap(),
+                [("construct", first), ("construct", first + 1)]
+            );
+            assert_eq!(SPLIT_MARKER.get(game, Holder::Level), Ok(23));
             assert!(game.mobs.is_empty());
             assert!(game.entity_initialization.active.is_none());
-            for id in (before + 1)..=game.next_entity {
+            for id in [first, first + 1] {
                 assert!(!game.persist.uuids.contains_key(&id));
                 assert!(!game.entity_attachments.contains_key(&id));
                 assert!(
@@ -1591,16 +1639,25 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
                 );
             }
 
-            // A failed admission is retired along with the untouched tail; the first join stands.
-            game.mobs.clear();
+            // An engine fault during admission retires the failing child and the untouched tail.
             trace.lock().unwrap().clear();
-            *mode.lock().unwrap() = Mode::PanicSecondJoin;
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let first = game.next_entity + 1;
-            let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                game.split_cube_children(&mut dying)
-            }));
-            assert!(unwound.is_err());
+            escaping_fault::expect(At::Admission, first + 1, || {
+                game.split_cube_children(&mut dying);
+            });
+            assert_eq!(
+                *trace.lock().unwrap(),
+                [
+                    ("construct", first),
+                    ("construct", first + 1),
+                    ("construct", first + 2),
+                    ("split", dying.id),
+                    ("join", first),
+                    ("join", first + 1),
+                ]
+            );
+            game.native_joins_flush(false, 0);
             assert!(game.entity_initialization.active.is_none());
             assert!(game.mobs.iter().any(|m| m.id == first));
             assert_eq!(SPLIT_MARKER.get(game, Holder::Entity(first)), Ok(7));
@@ -1711,10 +1768,7 @@ fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_removal() {
                 Flow::Continue
             }))),
         ),
-        mod_api::ModEntry::new(
-            "baby",
-            Box::new(Baby(Box::new(|_, _| panic!("later birth")))),
-        ),
+        mod_api::ModEntry::new("baby", Box::new(Baby(Box::new(|_, _| Flow::Continue)))),
     ]
     .into();
     mod_platform::testing::with_mods(mods, || {
@@ -1728,10 +1782,9 @@ fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_removal() {
             dying.add_effect("minecraft:oozing", 200, 0);
             game.mobs.push(dying);
             let parent = add_ready_pair(game);
-            let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                game.tick_creature_entities()
-            }));
-            assert!(attempt.is_err());
+            escaping_fault::expect(At::BabyDispatched, parent, || {
+                game.tick_creature_entities().unwrap();
+            });
             assert_eq!(calls.load(Ordering::Relaxed), 1);
             assert!(!game.mobs.iter().any(|m| m.id == cube_id));
             let slime_counts = |game: &Game<'_>| {

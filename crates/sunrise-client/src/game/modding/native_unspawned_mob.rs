@@ -862,7 +862,7 @@ mod tests {
     /// for a subsequent `finalize_spawn` call.
     #[test]
     #[ignore = "daily"]
-    fn a_panicking_listener_still_ends_the_lend() {
+    fn an_engine_unwind_still_ends_the_unspawned_mob_lend() {
         let installed = || vec![mod_api::ModEntry::new("kept-goal", Box::new(KeptGoalMod))];
         mod_platform::testing::with_mods(installed().into(), || {
             super::super::api_values::install_parts(&installed()).unwrap();
@@ -887,9 +887,12 @@ mod tests {
                         game.borrowed_unspawned_mob_mut("minecraft:zombie", AT, Some(&mut zombie));
                     let editor = mod_api::UnspawnedMobEditor::new(&mut borrowed);
                     assert_eq!(editor.kind(), Ok(id("minecraft:zombie")));
-                    panic!("a listener's bug");
+                    std::panic::resume_unwind(Box::new("unspawned mob fixture fault"));
                 }));
-                assert!(panicked.is_err());
+                assert_eq!(
+                    panicked.unwrap_err().downcast_ref::<&str>(),
+                    Some(&"unspawned mob fixture fault")
+                );
                 assert_eq!(zombie.id, 70);
                 assert_eq!(zombie.custom_name.as_deref(), Some("Lent"));
                 let back = goals(&zombie);

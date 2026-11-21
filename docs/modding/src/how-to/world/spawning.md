@@ -344,6 +344,8 @@ fn baby_entity_spawn(
 
 `mob_split` (hook version 3, NeoForge's `MobSplitEvent`) fires when a slime, magma cube or sulfur cube above size 1 dies and splits (`AbstractCubeMob.remove`), after vanilla has constructed its children (a primed sulfur cube above size 1 dispatches with an empty list). `event.children` is a scoped `MobSplitChildren<'_>` lending an unbounded mutable child list: inspect with `len()`, `is_empty()` and `get(i)`, edit in place with `get_mut(i)`, construct a detached `UnspawnedMob` with `construct(spec)?`, and mutate the list with `push(child)?`, `insert(i, child)?`, `replace(i, child)?`, `remove(i)` and `clear()`. An invalid spec or out-of-bounds `insert` or `replace` returns `UnspawnedMobError::Invalid`; `get`, `get_mut`, and `remove` return `None` for an out-of-bounds index. The original proposals fire `entity_constructing` before this event, even for children later removed or canceled. Returning `Flow::Cancel` (or clearing the list) spawns no children but keeps the construction draws and unrelated Host writes; the parent still dies. Otherwise the remaining children join once each in list order.
 
+For either pending-child hook, a panicking callback is disabled for that hook for the session. The shared dispatcher reports the mod and hook in the error log and, when a local client is present, in an error toast. The callback's cancellation flag is restored, but direct edits to a child, slot or list are not journaled and remain visible to later listeners. This does not change rollback for writes covered by an existing Host transaction.
+
 ```rust,ignore
 fn mob_split(
     &self,

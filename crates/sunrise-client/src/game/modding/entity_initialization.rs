@@ -44,6 +44,11 @@ impl Game<'_> {
         let previous = self.entity_initialization.active.replace(holder);
         let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.native_entity_constructing(holder, kind);
+            #[cfg(test)]
+            if let Holder::Entity(id) = holder {
+                use super::pending_births::escaping_fault::{self, At};
+                escaping_fault::reach(At::Constructed, id);
+            }
         }));
         self.entity_initialization.active = previous;
         if let Err(panic) = run {

@@ -14,6 +14,41 @@ use sunrise_client::mobs::Mob;
 
 static NEXT_CHILD_ACTION: AtomicU64 = AtomicU64::new(1);
 
+#[cfg(test)]
+pub(super) mod escaping_fault {
+    use std::cell::Cell;
+    use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(in crate::game) enum At {
+        Constructed,
+        Admission,
+        SplitDispatched,
+        BabyDispatched,
+    }
+
+    thread_local! {
+        static ARMED: Cell<Option<(At, u32)>> = const { Cell::new(None) };
+    }
+
+    /// Fail at an engine checkpoint, not from inside a mod callback. The unique payload
+    /// lets the fixture distinguish an exercised cleanup path from an unrelated assertion.
+    pub(in crate::game) fn reach(at: At, id: u32) {
+        if ARMED.get() == Some((at, id)) {
+            ARMED.set(None);
+            resume_unwind(Box::new((at, id)));
+        }
+    }
+
+    pub(in crate::game) fn expect(at: At, id: u32, run: impl FnOnce()) {
+        let previous = ARMED.replace(Some((at, id)));
+        let result = catch_unwind(AssertUnwindSafe(run));
+        ARMED.set(previous);
+        let payload = result.expect_err("engine checkpoint did not unwind");
+        assert_eq!(payload.downcast_ref::<(At, u32)>(), Some(&(at, id)));
+    }
+}
+
 /// Result of dispatching `baby_entity_spawn`: distinguishes cancellation (which resets both
 /// parents per NeoForge's `Animal.spawnChildFromBreeding` / `Fox.FoxBreedGoal.breed`) from
 /// an uncanceled empty slot (which skips breeding finalization without resetting parents).
@@ -62,9 +97,8 @@ impl Game<'_> {
     /// Publish one pending child's unpublished state under an entity ID belonging to this world
     /// and complete `EntityConstructing` if it has not already run.
     ///
-    /// If `EntityConstructing` unwinds, the child's unpublished ID metadata (UUID, attachments,
-    /// initialization marker) is cleaned up via `forget_entity` before resuming the unwind;
-    /// listener `Host` writes are not rolled back.
+    /// If construction itself unwinds past dispatch, `initialize_unpublished_mob` retires the
+    /// child's unpublished UUID, attachments and initialization marker before resuming the unwind.
     fn issue_pending_child(&mut self, child: PendingMob, action: u64) -> Mob {
         let PendingMob {
             mut mob,
@@ -167,6 +201,8 @@ impl Game<'_> {
                 cancel: &mut cancel,
             });
         }
+        #[cfg(test)]
+        escaping_fault::reach(escaping_fault::At::SplitDispatched, parent);
         if cancel {
             return;
         }
@@ -235,6 +271,8 @@ impl Game<'_> {
                 cancel: &mut cancel,
             });
         }
+        #[cfg(test)]
+        escaping_fault::reach(escaping_fault::At::BabyDispatched, parent);
         if cancel {
             return BreedOutcome::Cancelled;
         }

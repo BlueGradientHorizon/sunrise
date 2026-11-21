@@ -283,6 +283,11 @@ impl Game<'_> {
                     loaded_from_disk,
                     &mut canceled,
                 );
+                #[cfg(test)]
+                {
+                    use super::pending_births::escaping_fault::{self, At};
+                    escaping_fault::reach(At::Admission, id);
+                }
             }));
             let spawn = self
                 .native_lifecycle
