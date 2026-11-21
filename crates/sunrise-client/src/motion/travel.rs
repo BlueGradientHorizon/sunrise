@@ -3,7 +3,10 @@
 //! `living_travel` hook (#2414, PR 2) fires at this family's branch selection.
 use super::{MotionEvent, MotionWorld, Result, fall_flying_movement};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
-use sunrise_world::{living_air, move_gate::MoveGate};
+use sunrise_world::{
+    living_air::{self, TravelInput},
+    move_gate::MoveGate,
+};
 
 /// How the server's own travel changes the movement the client may report.
 #[derive(Clone, Copy)]
@@ -26,9 +29,6 @@ enum TravelBranch {
 }
 
 impl MotionWorld<'_, '_, '_> {
-    pub fn travel_in_air(&mut self, gate: &mut MoveGate, input: Vec3) -> Result<()> {
-        living_air::travel_in_air(self, gate, input)
-    }
     /// Player.travel: swim steering, then LivingEntity.travel (fluids first,
     /// then gliding, then air), keeping 0.6 of the vertical speed while flying.
     pub(super) fn player_travel(&mut self, requested_input: Vec3) -> Result<ServerTravel> {
@@ -75,21 +75,19 @@ impl MotionWorld<'_, '_, '_> {
         }
 
         self.player.set_velocity(velocity);
-        // Compare the accepted vectors before travel: a real edit calls for
-        // a correction even if the live move's collision absorbs it. A
-        // non-finite input produces no acceleration in `moveRelative` /
-        // `setDeltaMovement`, matching inputs inside vanilla's dead zone.
-        let no_op_input = |input: Vec3| {
-            !input.is_finite() || input.length_squared() < living_air::MIN_INPUT_LENGTH_SQUARED
+        let velocity_changed =
+            self.player.server_copy && !same_vector(self.player.velocity, requested_velocity);
+        let input = TravelInput {
+            applied: input,
+            original: (self.player.server_copy
+                && !velocity_changed
+                && !same_vector(input, requested_input))
+            .then_some(requested_input),
         };
-        let edited = self.player.server_copy
-            && (!same_vector(self.player.velocity, requested_velocity)
-                || (!same_vector(input, requested_input)
-                    && !(no_op_input(input) && no_op_input(requested_input))));
         // Creative flight damps the accepted vertical speed, not the speed
         // left by the branch after the move.
         let flying_y = self.player.flying.then_some(self.player.velocity.y);
-        self.apply_travel_branch(branch, &mut MoveGate::new(), input)?;
+        let input_changed = self.apply_travel_branch(branch, &mut MoveGate::new(), input)?;
         if let Some(y) = flying_y {
             self.player.set_velocity(Vec3::new(
                 self.player.velocity.x,
@@ -97,7 +95,7 @@ impl MotionWorld<'_, '_, '_> {
                 self.player.velocity.z,
             ));
         }
-        Ok(if edited {
+        Ok(if velocity_changed || input_changed {
             ServerTravel::Replace {
                 position: self.player.position,
                 on_ground: self.player.ground.on_ground,
@@ -111,7 +109,8 @@ impl MotionWorld<'_, '_, '_> {
     /// flight damping (the rider's route).
     pub(super) fn living_travel(&mut self, gate: &mut MoveGate, input: Vec3) -> Result<()> {
         let branch = self.travel_branch()?;
-        self.apply_travel_branch(branch, gate, input)
+        self.apply_travel_branch(branch, gate, input.into())?;
+        Ok(())
     }
 
     fn travel_branch(&mut self) -> Result<TravelBranch> {
@@ -136,19 +135,23 @@ impl MotionWorld<'_, '_, '_> {
         &mut self,
         branch: TravelBranch,
         gate: &mut MoveGate,
-        input: Vec3,
-    ) -> Result<()> {
+        input: TravelInput,
+    ) -> Result<bool> {
         match branch {
             TravelBranch::Water | TravelBranch::Lava => {
                 sunrise_world::living_fluid::travel_in_fluid(self, gate, input)
             }
-            TravelBranch::Glide => self.travel_fall_flying(gate),
-            TravelBranch::EndGlide => {
-                self.travel_in_air(gate, input)?;
-                self.player.fall_flying = false;
-                Ok(())
+            TravelBranch::Glide => {
+                self.travel_fall_flying(gate)?;
+                Ok(false) // Flight ignores the travel input.
             }
-            TravelBranch::Air => self.travel_in_air(gate, input),
+            TravelBranch::EndGlide | TravelBranch::Air => {
+                let input_changed = living_air::travel_in_air(self, gate, input)?;
+                if matches!(branch, TravelBranch::EndGlide) {
+                    self.player.fall_flying = false;
+                }
+                Ok(input_changed)
+            }
         }
     }
     /// LivingEntity.travelFallFlying with updateFallFlyingMovement.

@@ -130,13 +130,14 @@ other hooks remain enabled.
 For a player, a veto holds the position accepted at the server's travel boundary;
 it does not rewind reports already accepted before that tick. While the veto
 stands, the server corrects new reports that would move the player away. An
-edit that changes the accepted input or velocity sends one correction, even if
-collision absorbs it, if the player remains eligible and no correction awaits
-acknowledgement. A separate teleport in the same tick takes priority. The
-correction carries the live server position and velocity. The server compares
-the accepted vectors bit for bit, except that inputs within vanilla's movement
-dead zone (or non-finite inputs that add no acceleration) are equivalent. The
-client never calls this hook.
+edit that changes the stored velocity or the acceleration the chosen branch
+applies sends one correction, even if collision absorbs it, if the player
+remains eligible and no correction awaits acknowledgement. The server compares
+inputs using that branch's `moveRelative` operation, at the same speed and yaw
+as the move. Inputs that have the same effect or are unused by the branch do
+not trigger a correction. A separate teleport in the same tick takes priority.
+The correction carries the live server position and velocity. The client never
+calls this hook.
 
 ## Teleport hooks
 

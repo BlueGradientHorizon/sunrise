@@ -7,7 +7,7 @@ use crate::health::DamageLevel;
 use crate::items::BlockTagFlags;
 use crate::{blocks::Fluid, collisions::SceneCollisions};
 use sunrise_core::{
-    geometry::{Aabb, Vec3, trig},
+    geometry::{Aabb, Axis, Vec3, trig},
     position::BlockPos,
     random::RandomSource,
 };
@@ -823,39 +823,8 @@ impl Mob {
     }
     /// Entity.moveRelative: input rotated by yaw and scaled to `speed`.
     pub fn move_relative(&mut self, speed: f32, input: Vec3) {
-        let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
-        if len_sq < 1.0e-7 {
-            // `getInputVector` is `Vec3.ZERO`, still added to the motion: a -0.0 becomes 0.0.
-            self.set_velocity(Vec3::new(
-                self.velocity.x + 0.0,
-                self.velocity.y + 0.0,
-                self.velocity.z + 0.0,
-            ));
-            return;
-        }
-        let v = if len_sq > 1.0 {
-            // Vec3.normalize
-            let l = len_sq.sqrt();
-            if l < f64::from(1.0e-5_f32) {
-                Vec3::ZERO
-            } else {
-                Vec3::new(input.x / l, input.y / l, input.z / l)
-            }
-        } else {
-            input
-        };
-        let v = Vec3::new(
-            v.x * f64::from(speed),
-            v.y * f64::from(speed),
-            v.z * f64::from(speed),
-        );
-        let angle = f64::from(self.yaw * trig::DEG_TO_RAD);
-        let (s, c) = (f64::from(trig::sin(angle)), f64::from(trig::cos(angle)));
-        self.set_velocity(Vec3::new(
-            self.velocity.x + (v.x * c - v.z * s),
-            self.velocity.y + v.y,
-            self.velocity.z + (v.z * c + v.x * s),
-        ));
+        let delta = sunrise_world::living_air::input_vector(input, speed, self.yaw);
+        self.set_velocity(self.velocity.add_vector(delta));
     }
     /// Entity.move with block collisions and step-up; updates collision flags
     /// and fall distance (Entity.checkFallDamage).
@@ -2084,7 +2053,10 @@ impl Mob {
                 ));
             }
             if gravity != 0.0 {
-                self.velocity.y -= gravity / 4.0;
+                self.set_velocity(
+                    self.velocity
+                        .with_component(Axis::Y, self.velocity.y - gravity / 4.0),
+                );
             }
         }
         // jumpOutOfFluid: Entity.isFree wants the box dry and clear of the
@@ -2106,7 +2078,7 @@ impl Mob {
                     && s.bounds.intersects(wide)
             })
         {
-            self.velocity.y = f64::from(0.3_f32);
+            self.set_velocity(self.velocity.with_component(Axis::Y, f64::from(0.3_f32)));
         }
         // `LivingEntity.travelInFluid` ends with
         // `floatInLiquidWhileRidden(FluidTags.ENTITY_FLOATABLE)`: a mount with
@@ -2118,7 +2090,10 @@ impl Mob {
                 .entity_has("minecraft:can_float_while_ridden", &self.kind.id)
             && self.fluids.water > self.fluid_jump_threshold()
         {
-            self.velocity.y += f64::from(0.04_f32);
+            self.set_velocity(
+                self.velocity
+                    .with_component(Axis::Y, self.velocity.y + f64::from(0.04_f32)),
+            );
         }
     }
     /// The jump part of LivingEntity.aiStep.
@@ -3482,6 +3457,86 @@ mod tests {
                 );
             });
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn an_overflowing_block_speed_product_preserves_the_mobs_finite_velocity() {
+        use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent};
+        use sunrise_core::nbt::{Limits, Tag, read_named};
+        use sunrise_world::movement_properties::{MovementProperties, MovementTags};
+
+        struct Fast;
+        #[mod_api::__subscriptions]
+        impl Hooks for Fast {
+            fn living_travel(
+                &self,
+                _: &dyn mod_api::LoopContext,
+                event: &mut LivingTravelEvent<'_>,
+            ) -> Flow {
+                *event.velocity = [f64::MAX, 0.0, 0.0];
+                Flow::Continue
+            }
+
+            fn entity_move(
+                &self,
+                _: &dyn mod_api::LoopContext,
+                event: &mut EntityMoveEvent<'_>,
+            ) -> Flow {
+                // Shorten the displacement without changing the stored velocity.
+                *event.delta = [0.5, 0.0, 0.0];
+                Flow::Continue
+            }
+        }
+
+        let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../.local/sunrise-client")
+                    .join(sunrise_core::VANILLA_VERSION)
+            });
+        let bytes = std::fs::read(root.join("movement-properties.nbt")).unwrap();
+        let (mut movement_table, _) = read_named(&bytes, Limits::tables()).unwrap();
+        // Give air a factor of 2.0 in this world only, like a block's part could.
+        *movement_table
+            .tag
+            .get_mut("blocks")
+            .unwrap()
+            .get_mut("minecraft:air")
+            .unwrap()
+            .get_mut("speedFactor")
+            .unwrap() = Tag::Float(2.0_f32.to_bits());
+
+        let mods = vec![mod_api::ModEntry::new("fast", Box::new(Fast))].into();
+        mod_platform::testing::with_mods(mods, || {
+            assert!(crate::mobs::world::with_built_test_world(
+                &[],
+                |world, _| {
+                    world.chunks.insert(
+                        (0, 0),
+                        std::sync::Arc::new(crate::chunk::Chunk::empty(0, 0)),
+                    );
+                },
+                |w, types| {
+                    let movement = MovementProperties::from_nbt(&movement_table.tag, w.registry)
+                        .unwrap()
+                        .bind(&MovementTags::default())
+                        .unwrap();
+                    let w = MobWorld {
+                        movement: &movement,
+                        ..w.clone()
+                    };
+                    let kind = std::sync::Arc::new(types.types["minecraft:zombie"].clone());
+                    let mut mob = Mob::new(1, kind, Vec3::new(0.5, 80.0, 0.5), 0.0);
+                    let mut test_level = crate::health::TestLevel::new(0);
+                    mob.travel(&w, &mut test_level.level(), Vec3::ZERO, &mut Vec::new());
+                    assert_eq!(mob.position, Vec3::new(1.0, 80.0, 0.5));
+                    // Entity.move refuses the overflowing product as a whole; only the air drag applies.
+                    assert_eq!(mob.velocity.x, f64::MAX * f64::from(0.91_f32));
+                },
+            ));
+        });
     }
 
     /// `Entity.collectColliders`: the world border's wall stops a mob's move
