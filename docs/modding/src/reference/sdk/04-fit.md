@@ -93,7 +93,9 @@ A registry or a release page can tell which builds a published package fits from
 the mod was made for is needed, so pruning that build's compiled files never strands the mod. `fits` first checks
 that the list was made for the build the package pins (a native mod's `[native] sunrise`, a wasm mod's
 `[package.metadata.sunrise] sdk` in its packed `Cargo.toml`). If the pin is missing, is not a full commit SHA,
-or does not match `made_for`, the list cannot show which other builds the package fits.
+or does not match `made_for`, the list cannot show which other builds the package fits. If the target's
+function index refuses a declared mixin target, the fit report names the target, error code and reason,
+rather than reporting the function as removed.
 
 The version promise covers the hooks in the list. A hook entry that holds no version cannot be shown to mean what
 the mod was written for, whatever the target's version is: when nothing else changed, the answer is "not known",

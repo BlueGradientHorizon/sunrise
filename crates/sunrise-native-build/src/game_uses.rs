@@ -3,7 +3,10 @@ use std::path::Path;
 use sunrise_mod_package::internals::{self, ListedInternal};
 use sunrise_mod_package::mod_surface::uses::{Change, Entry, Misfit};
 use sunrise_mod_package::{Manifest, build_data};
-use sunrise_platform::mod_build::api_gen::{self, functions::FunctionIndex};
+use sunrise_platform::mod_build::api_gen::{
+    self,
+    functions::{self, FunctionIndex},
+};
 
 /// What every such entry's id starts with; no surface item's id does.
 pub const PREFIX: &str = "game:";
@@ -36,6 +39,8 @@ pub enum Now {
     Is(String),
     /// The build has no such item.
     Gone,
+    /// The target is present, but the function index refuses to replace it.
+    Refused { code: &'static str, why: String },
     /// The build has it, and its build data does not hold the code a fingerprint needs (the body of a function it does not index), so no list can show it unchanged.
     Unjudged,
 }
@@ -70,6 +75,17 @@ fn document<T: serde::de::DeserializeOwned>(
     Ok(body)
 }
 
+pub(crate) fn function_index(dir: &Path, build: &str) -> Result<FunctionIndex, String> {
+    document(dir, functions::FILE, build)
+}
+
+pub(crate) fn mixin_refusal<'a>(
+    index: &'a FunctionIndex,
+    target: &str,
+) -> Option<&'a functions::Refused> {
+    index.refused.get(&functions::key(target))
+}
+
 /// Each piece of game code `manifest` declares, by id, as it is in `build`, whose build data is in `dir`. A function is fingerprinted by signature and body, since a replacement or a call written for an old body could meet a different one; a type by its signature; a loop by what the game publishes of it, its two functions and its slot trait.
 pub fn entries(manifest: &Manifest, dir: &Path, build: &str) -> Result<Vec<(String, Now)>, String> {
     #[derive(serde::Deserialize)]
@@ -83,7 +99,7 @@ pub fn entries(manifest: &Manifest, dir: &Path, build: &str) -> Result<Vec<(Stri
     let native = manifest.native.as_ref();
     let mixins = native.map_or(&[][..], |native| &native.mixin);
     let loops = native.map_or(&[][..], |native| &native.r#loop);
-    let index: FunctionIndex = document(dir, api_gen::functions::FILE, build)?;
+    let index = function_index(dir, build)?;
     let code = |target: &str| {
         index
             .functions
@@ -99,7 +115,14 @@ pub fn entries(manifest: &Manifest, dir: &Path, build: &str) -> Result<Vec<(Stri
     for row in mixins {
         entries.push((
             format!("{PREFIX}fn:{}", row.target),
-            code(&row.target).map_or(Now::Gone, Now::Is),
+            if let Some(refused) = mixin_refusal(&index, &row.target) {
+                Now::Refused {
+                    code: refused.code.name(),
+                    why: refused.why.clone(),
+                }
+            } else {
+                code(&row.target).map_or(Now::Gone, Now::Is)
+            },
         ));
     }
     if !loops.is_empty() {
@@ -186,6 +209,7 @@ pub fn compare(recorded: &[&Entry], now: Vec<(String, Now)>) -> Compared {
         let made = recorded.iter().find(|entry| entry.id == id);
         let change = match (made, now) {
             (_, Now::Gone) => Change::Removed,
+            (_, Now::Refused { code, why }) => Change::Refused { code, why },
             (_, Now::Unjudged) => {
                 compared.unjudged.push(id);
                 continue;

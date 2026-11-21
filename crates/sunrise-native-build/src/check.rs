@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use sunrise_mod_package::mod_surface::{
     self,
-    uses::{self, Fit, Misfit, UsesError, UsesTable},
+    uses::{self, Change, Fit, Misfit, UsesError, UsesTable},
 };
 
 /// How a mod stands against the build an instance plays.
@@ -174,7 +174,8 @@ pub struct Plan {
     /// The build's `surface.json`; absent, a mod that needs it says so (`needs`).
     #[serde(default)]
     pub surface: Option<PathBuf>,
-    /// The build's unpacked build data (`points.json`, `internals.json`); absent, a mod that needs it says so.
+    /// The build's unpacked build data, including `functions.json` for a mod with mixin targets;
+    /// absent, a mod that needs it says so.
     #[serde(default)]
     pub build_data: Option<PathBuf>,
 }
@@ -199,10 +200,11 @@ pub struct Reply {
     pub mods: Vec<Checked>,
 }
 
-/// What a verdict lacked: a file the plan didn't give, or one that didn't read.
+/// What prevented a fit verdict: missing or unreadable data, or a named refusal.
 enum Lack {
     Needs(&'static str),
     Unread(String),
+    Refused(String),
 }
 
 /// Checks `plan`'s mods against its build.
@@ -210,6 +212,7 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
     let found = scan_bundles(&plan.mods)?;
     let mut surface: Option<Rc<mod_surface::Surface>> = None;
     let mut catalog: Option<Rc<internals::Catalog>> = None;
+    let mut functions = None;
     let mut mods = Vec::new();
     let mut usable = Vec::new();
     for bundle in &found {
@@ -235,37 +238,79 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
             });
             continue;
         }
-        let judged = judge(
-            &project,
-            &plan.build,
-            &mut || {
-                if let Some(read) = &surface {
-                    return Ok(read.clone());
-                }
-                let path = plan.surface.as_ref().ok_or(Lack::Needs("surface"))?;
-                let bytes = std::fs::read(path)
-                    .map_err(|e| Lack::Unread(format!("{}: {e}", path.display())))?;
-                let read = Rc::new(
-                    mod_surface::Surface::read(&bytes)
-                        .map_err(|e| Lack::Unread(format!("{}: {e}", path.display())))?,
-                );
-                surface = Some(read.clone());
-                Ok(read)
-            },
-            &mut || {
-                if let Some(read) = &catalog {
-                    return Ok(read.clone());
-                }
+        let native = bundle.native();
+        let judged = if native.sunrise == plan.build && !native.mixin.is_empty() {
+            (|| {
                 let dir = plan.build_data.as_ref().ok_or(Lack::Needs("build-data"))?;
-                let read = Rc::new(internals::Catalog::read(dir).map_err(Lack::Unread)?);
-                catalog = Some(read.clone());
-                Ok(read)
-            },
-            &mut || {
-                let dir = plan.build_data.as_ref().ok_or(Lack::Needs("build-data"))?;
-                game_uses::entries(&bundle.manifest, dir, &plan.build).map_err(Lack::Unread)
-            },
-        );
+                let index = match &functions {
+                    Some(index) => index,
+                    None => functions
+                        .insert(game_uses::function_index(dir, &plan.build).map_err(Lack::Unread)?),
+                };
+                for row in &native.mixin {
+                    if let Some(refused) = game_uses::mixin_refusal(index, &row.target) {
+                        return Err(Lack::Refused(format!(
+                            "{}: {id}:{}: {}: {}",
+                            refused.code.name(),
+                            row.id,
+                            row.target,
+                            refused.why,
+                        )));
+                    }
+                }
+                Ok(Verdict::MadeFor)
+            })()
+        } else {
+            judge(
+                &project,
+                &plan.build,
+                &mut || {
+                    if let Some(read) = &surface {
+                        return Ok(read.clone());
+                    }
+                    let path = plan.surface.as_ref().ok_or(Lack::Needs("surface"))?;
+                    let bytes = std::fs::read(path)
+                        .map_err(|e| Lack::Unread(format!("{}: {e}", path.display())))?;
+                    let read = Rc::new(
+                        mod_surface::Surface::read(&bytes)
+                            .map_err(|e| Lack::Unread(format!("{}: {e}", path.display())))?,
+                    );
+                    surface = Some(read.clone());
+                    Ok(read)
+                },
+                &mut || {
+                    if let Some(read) = &catalog {
+                        return Ok(read.clone());
+                    }
+                    let dir = plan.build_data.as_ref().ok_or(Lack::Needs("build-data"))?;
+                    let read = Rc::new(internals::Catalog::read(dir).map_err(Lack::Unread)?);
+                    catalog = Some(read.clone());
+                    Ok(read)
+                },
+                &mut || {
+                    let dir = plan.build_data.as_ref().ok_or(Lack::Needs("build-data"))?;
+                    game_uses::entries(&bundle.manifest, dir, &plan.build).map_err(Lack::Unread)
+                },
+            )
+        };
+        let judged = judged.and_then(|verdict| {
+            // Indexed refusals are build blockers even across pins. Keep using native-check's
+            // refusal field; launchers decode a fixed set of changes in its fit verdict.
+            if let Verdict::DoesNotFit { misfits, .. } = &verdict
+                && misfits
+                    .iter()
+                    .any(|misfit| matches!(misfit.change, Change::Refused { .. }))
+            {
+                return Err(Lack::Refused(
+                    misfits
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                ));
+            }
+            Ok(verdict)
+        });
         match judged {
             Ok(verdict) => {
                 if verdict.usable() {
@@ -285,6 +330,12 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
                 needs: Some(what),
             }),
             Err(Lack::Unread(why)) => return Err(why),
+            Err(Lack::Refused(why)) => mods.push(Checked {
+                id,
+                refusal: Some(why),
+                verdict: None,
+                needs: None,
+            }),
         }
     }
     Ok(Reply {

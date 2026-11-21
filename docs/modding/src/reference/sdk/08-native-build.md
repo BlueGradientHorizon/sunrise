@@ -78,7 +78,7 @@ cargo sunrise-mod native-check < plan.json
 | `mods` | A mod's folder, or a folder of mod folders. |
 | `build` | The build id (the game's full commit) the mods are checked against. |
 | `surface` | Optional. The build's `surface.json`, read only for a mod made for another build. |
-| `build_data` | Optional. The build's unpacked build data (`points.json`, `internals.json`), read only for a mod made for another build that has `[[inject]]` rows or declares game code (a `[[native.mixin]]` or `[[native.loop]]` row, an `internals` list); `functions.json` and `loops.json` are read from it too. |
+| `build_data` | Optional. The build's unpacked build data. A same-build mod with `[[native.mixin]]` rows needs `functions.json` to check for indexed refusals. Comparing a mod made for another build needs build data when it declares game code or `[[inject]]` rows. |
 
 The reply is `{"contract": 2, "route": …, "mods": […]}`. `route` is `prebuilt-api` or `prebuilt` for the usable
 mods, `null` when none is. Each of `mods` has:
@@ -91,7 +91,9 @@ mods, `null` when none is. Each of `mods` has:
 | `needs` | `surface` or `build-data` when the plan didn't give the file its verdict needs; then `verdict` is `null`. The caller fetches it and asks again. |
 
 A `change` is `"removed"`, `"changed"`, `{"lost-impl": trait}`, `{"fields": {gained, at}}`, `{"version": {named, now}}`,
-`{"not-buildable": {at}}`, `{"path": path}` or `{"route": {from, owner}}`.
+`{"not-buildable": {at}}`, `{"path": path}` or `{"route": {from, owner}}`. An indexed mixin refusal appears
+in `refusal` with the target, error code and reason. This applies both on the mod's own build and when
+checking how its recorded list fits another build.
 
 ## `native-discover` and `native-lock`
 
