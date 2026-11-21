@@ -16,7 +16,7 @@ the stack contains more than one item. Keep your `mod_api` dependency and add se
 
 ```rust,ignore
 use mod_api::{
-    ClientHost, Hooks, RegisterSpecialModelRendererEvent, RegistrationContext,
+    ClientHost, Hooks, Identifier, RegisterSpecialModelRendererEvent, RegistrationContext,
     SpecialModelCollector, SpecialModelContext, SpecialModelFactory, SpecialModelGeometry,
     SpecialModelRenderer, SpecialModelStack, SpecialModelTints,
 };
@@ -73,7 +73,7 @@ impl Hooks for SkilletMod {
         event: &mut RegisterSpecialModelRendererEvent<'_>,
     ) {
         event.renderers.register(
-            "example:skillet".into(),
+            Identifier::parse("example:skillet").unwrap(),
             SpecialModelFactory::new(
                 |fields| fields.decode::<SkilletConfig>(),
                 |config, bake| {
@@ -109,7 +109,11 @@ other than `type`. Here the three fields are required; the `base` is not part of
 ```
 
 Use `bake_model` for geometry from the selected packs or `bake_geometry` for your own
-`SpecialModelQuad`s referencing item or block atlas sprites. Keep the resulting geometry leases
+`SpecialModelQuad`s referencing item or block atlas sprites. Matching vanilla's `FaceBakery` and
+`MaterialBaker`, `bake_geometry` defaults degenerate quads to `Up`, accepts any finite UV, and
+substitutes the missing texture sprite when a sprite is absent while preserving
+`force_translucent`. Non-finite coordinates or UVs, invalid sprite identifiers, out-of-range
+tint indices and light emissions over 15 still fail the bake. Keep the resulting geometry leases
 on the renderer. Do not look up or rebake models during `submit`.
 
 `extract_argument` runs for each draw, even for an unchanged stack. It gets a `ClientHost` and a
@@ -132,8 +136,9 @@ tick. The game does not cache the renderer's draw output.
   parent pose. Submit directly on the parent when no local transform is needed.
 - `submit_stack(&stack, ItemDisplayContext::Fixed)` resolves an item stack with its own models,
   display transform, tints and foil in the specified context. The current pose places its
-  centre. Cycles and an exhausted `MAX_NESTED_STACK_PARTS` budget refuse the enclosing layer;
-  the budget is shared by all nested expansions in that item draw.
+  centre. There is no nested stack count cap. A repeated `(stack, display)` pair or insufficient
+  native stack space to resolve the next child refuses the enclosing layer. Delegating the
+  same stack in a different `ItemDisplayContext` is not a cycle.
 
 The special node's `base` supplies its display transforms, particle and GUI light; any node
 `transformation` also applies. Geometry submitted directly uses the outer item's foil. The
@@ -142,20 +147,19 @@ mod does not pass those values to the collector.
 
 ## Reloads and failures
 
-Registration runs once at client startup, not on reload. Use a fully qualified name
-(`namespace:path`); an invalid name is logged and skipped. The last registration of a type wins,
-including replacements for vanilla types. Each resource load decodes the winning definitions,
-bakes new renderer instances and leases, and starts with no disabled types. Submit only leases
-from the current load. Item states already resolved before a reload retain their baked geometry
-and can finish drawing it.
+Registration runs once at client startup, not on reload. Pass a validated `Identifier` (bare
+paths default to `minecraft:`, matching vanilla and NeoForge). The last registration of a type
+wins, including replacements for vanilla types. Each resource load decodes the winning
+definitions and bakes new renderer instances and leases. Submit only leases from the current
+load. Item states already resolved before a reload retain their baked geometry and can finish
+drawing it.
 
 An unknown type or an error or panic in decode or bake refuses the enclosing item definition.
 That item draws the missing model; the other definitions still load and the game does not try a
 lower pack's definition.
 
-A callback error or panic, an invalid pose, or a lease from the wrong resource load rolls back the
-entire special layer and disables the offending type until resources reload. Unreadable input or
-a nested refusal also rolls back the enclosing layer, including its earlier submissions, without
-disabling the enclosing renderer. Ignoring a collector error does not make the layer commit;
-propagate it with `?`. The outermost refused layer draws the missing model; unrelated item
-layers still draw normally.
+A callback error or panic, an invalid pose, a lease from the wrong resource load, unreadable
+input, or a nested refusal rolls back only that draw's special layer (including its earlier
+submissions) without disabling the renderer type for subsequent draws. Ignoring a collector
+error does not make the layer commit; propagate it with `?`. The outermost refused layer draws
+the missing model; unrelated item layers still draw normally.

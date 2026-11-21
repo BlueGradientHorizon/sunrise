@@ -1,14 +1,25 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
 use super::*;
+use sunrise_client::net::BundleProgress;
 
 impl Remote {
     pub(super) fn receive_credited_backlog(&mut self, events: &mut VecDeque<Received>) {
         // Chunk packets start decoding now; the frame that reaches one in
-        // order inserts its column.
+        // order inserts its column. Packets inside a delimited bundle stay
+        // inline so the entire bundle dispatches atomically in one turn.
+        let mut in_bundle = false;
         for receipt in self.session.poll() {
             let (event, credit) = receipt.into_parts();
             events.push_back(match event {
-                Event::Packet(p) if matches!(*p, C::LevelChunkWithLight(_)) => {
+                event @ Event::BundleStart(_) => {
+                    in_bundle = true;
+                    Received::Event(event, credit)
+                }
+                Event::BundleEnd => {
+                    in_bundle = false;
+                    Received::Event(Event::BundleEnd, credit)
+                }
+                Event::Packet(p) if !in_bundle && matches!(*p, C::LevelChunkWithLight(_)) => {
                     match self.decoder.submit(self.chunk_format.clone(), p) {
                         None => Received::Chunk(self.chunk_format.clone(), credit),
                         Some(p) => Received::Event(Event::Packet(p), credit),
@@ -21,6 +32,201 @@ impl Remote {
 }
 
 impl Game<'_> {
+    /// Dispatch one non-chunk remote event. Returns `Ok(true)` when the
+    /// connection ended or transferred and `poll_remote_events` must return.
+    pub(in crate::game) fn dispatch_remote_event(&mut self, event: Event) -> Result<bool> {
+        match event {
+            Event::Status(s) => {
+                if let Some(r) = self.remote.as_mut() {
+                    r.status = s;
+                }
+            }
+            Event::Joined {
+                registries,
+                name,
+                uuid,
+            } => {
+                self.set_registries(registries);
+                self.connection_joined();
+                self.close_dialogs();
+                if let Some(r) = self.remote.as_mut() {
+                    r.joined = true;
+                    r.profile = uuid;
+                    r.profile_name = name.clone();
+                    r.status = sunrise_client::lang::get_or(
+                        "multiplayer.downloadingTerrain",
+                        "Loading terrain...",
+                    );
+                }
+                self.begin_book_negotiation();
+            }
+            Event::Features(features) => {
+                if let Some(remote) = &mut self.remote {
+                    remote.features = features.into();
+                }
+            }
+            Event::Brand(brand) => {
+                if let Some(remote) = &mut self.remote {
+                    remote.brand = brand;
+                }
+            }
+            Event::QuietCommands => {
+                if let Some(remote) = &mut self.remote {
+                    remote.quiet_commands = true;
+                }
+            }
+            Event::CustomBooks => {
+                if let Some(remote) = &mut self.remote {
+                    remote.custom_books = true;
+                }
+            }
+            Event::FarTerrain(offer) => {
+                if let Some(remote) = &mut self.remote {
+                    remote.far_terrain = Some(offer);
+                }
+            }
+            Event::Reconfiguring => {
+                self.reset_book_view();
+                // handleConfigurationStart: the held-back chat shows, then
+                // clearClientLevel opens ServerReconfigScreen over no level.
+                self.flush_chat_queue();
+                self.send_chat_acknowledgement();
+                self.close_dialogs();
+                // The server configuring us now (a proxy's next one)
+                // offers its own far terrain, or none, and announces its
+                // own features again.
+                if let Some(remote) = &mut self.remote {
+                    remote.viewed.clear();
+                    remote.far_terrain = None;
+                    remote.quiet_commands = false;
+                    remote.custom_books = false;
+                }
+                self.clear_lod();
+                if let Some(remote) = &self.remote {
+                    remote.session.reset_far_terrain();
+                }
+                self.remove_local_player_body();
+                self.set_screen(Screen::Playing);
+                self.capture(false);
+                // clearClientLevel drops the client level now, so its
+                // unload comes before the configuration screen, not
+                // after the next login's load.
+                self.forget_all_remote_columns();
+                if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
+                    self.native_client_level_unload(&old);
+                }
+                self.native_lifecycle.begin_close();
+                self.native_lifecycle_world_closed();
+                let ticks = self.ticks;
+                if let Some(r) = self.remote.as_mut() {
+                    self.native_net.holds.borrow_mut().clear();
+                    r.reconfiguring = Some(ticks);
+                    r.chat_tree_received = false;
+                }
+            }
+            Event::Reconfigured(registries) => {
+                // handleConfigurationStart → clearClientLevel, and the next
+                // ClientPacketListener starts with no players or scoreboard,
+                // no waypoints (its own ClientWaypointManager: a proxy's next
+                // server never untracks the last one's), and its new
+                // ClientSuggestionProvider with no custom chat completions.
+                // clearClientLevel clears the narrator.
+                self.clear_narrator();
+                self.hud_disconnected();
+                self.score.board = Default::default();
+                self.clear_waypoints();
+                if let Some(r) = self.remote.as_mut() {
+                    r.clear_attachments();
+                    r.players.clear();
+                    r.tab_players.clear();
+                    r.listed.clear();
+                    r.signatures = Default::default();
+                    r.custom_completions.clear();
+                }
+                self.ui.registries.custom_completions.clear();
+                self.set_registries(registries);
+            }
+            // handleTransfer: "Cannot transfer to server from
+            // singleplayer" (no ServerData), so the world just closes.
+            Event::Transfer { host, port } => {
+                if let Some(r) = self.remote.as_mut()
+                    && r.session.address != "local"
+                {
+                    r.transfer = Some(format!("{host}:{port}"));
+                }
+            }
+            Event::PackPush(p) => self.handle_pack_push(p),
+            Event::PackPop(id) => self.handle_pack_pop(id),
+            Event::ServerLinks(links) => {
+                if let Some(r) = self.remote.as_mut() {
+                    r.server_links = crate::game::server_links::trusted(links);
+                }
+            }
+            Event::ShowDialog { dialog, registries } => {
+                self.show_dialog_in_phase(&dialog, Some(registries));
+            }
+            Event::ClearDialog => self.clear_dialog(),
+            Event::CodeOfConduct(text) => self.handle_code_of_conduct(text),
+            Event::DecodeError(e) => {
+                if let Some(r) = self.remote.as_mut() {
+                    r.decode_errors += 1;
+                    if r.decode_errors <= 20 {
+                        log::warn!("Sunrise: skipped undecodable packet {e}");
+                    }
+                }
+            }
+            Event::Disconnected {
+                reason,
+                key,
+                from_server,
+            } => {
+                self.reset_book_view();
+                log::info!("Sunrise: disconnected: {reason}");
+                // ClientboundTransferPacket left a target: connect there
+                // instead of showing the disconnect, the stored cookies
+                // carried over (ClientCommonPacketListenerImpl.
+                // handleTransfer → ConnectScreen.startConnecting).
+                let transfer = self.remote.as_mut().and_then(|r| {
+                    r.transfer
+                        .take()
+                        .map(|address| (address, r.session.name.clone(), r.session.cookies.clone()))
+                });
+                if let Some((address, name, cookies)) = transfer {
+                    self.connection_left(sunrise_hooks::connection::Left::Transferred);
+                    self.leave_server(None)?;
+                    self.connect_server_with_cookies(&address, &name, Some(cookies))?;
+                    return Ok(true);
+                }
+                let by = if from_server {
+                    sunrise_hooks::connection::By::Server
+                } else {
+                    sunrise_hooks::connection::By::Connection
+                };
+                self.connection_ended(&reason, key.as_deref(), by);
+                self.leave_server(Some(Text::literal(reason)))?;
+                return Ok(true);
+            }
+            Event::AttachmentSync(staged) => {
+                let (message, payload) = staged.into_message();
+                self.observe_client_packet(&C::CustomPayload(payload));
+                self.remote_attachment_sync(message);
+            }
+            Event::RawPayload(incoming) => {
+                if let Some(remote) = self.remote.as_ref() {
+                    self.run_payload(remote.session.payload_endpoint(), *incoming);
+                }
+            }
+            Event::Packet(packet) => match *packet {
+                C::CustomPayload(p) if p.channel == sunrise_client::perf_net::CHANNEL => {
+                    self.remote_perf_reply(&p.data)
+                }
+                packet => self.handle_packet(packet)?,
+            },
+            Event::BundleStart(_) | Event::BundleEnd => {}
+        }
+        Ok(false)
+    }
+
     /// Handle what the server sent, in order. `before_tick`: a tick is about to
     /// run, so what an earlier poll left for later is taken whole (no frame
     /// budget, each column waited for) and nothing newer is received.
@@ -94,188 +300,47 @@ impl Game<'_> {
                     continue;
                 }
             };
-            match event {
-                Event::Status(s) => {
-                    if let Some(r) = self.remote.as_mut() {
-                        r.status = s;
+            if let Event::BundleStart(dispatch) = event {
+                let mut stopped = false;
+                while let Some(sub_item) = events.pop_front() {
+                    let Received::Event(sub, sub_credit) = sub_item else {
+                        unreachable!("bundled chunks stay inline in receive_credited_backlog");
+                    };
+                    if matches!(sub, Event::BundleEnd) {
+                        break;
                     }
-                }
-                Event::Joined {
-                    registries,
-                    name,
-                    uuid,
-                } => {
-                    self.set_registries(registries);
-                    self.connection_joined();
-                    self.close_dialogs();
-                    if let Some(r) = self.remote.as_mut() {
-                        r.joined = true;
-                        r.profile = uuid;
-                        r.profile_name = name.clone();
-                        r.status = sunrise_client::lang::get_or(
-                            "multiplayer.downloadingTerrain",
-                            "Loading terrain...",
-                        );
+                    if stopped {
+                        continue;
                     }
-                    self.begin_book_negotiation();
-                }
-                Event::Features(features) => {
-                    if let Some(remote) = &mut self.remote {
-                        remote.features = features.into();
-                    }
-                }
-                Event::Brand(brand) => {
-                    if let Some(remote) = &mut self.remote {
-                        remote.brand = brand;
-                    }
-                }
-                Event::QuietCommands => {
-                    if let Some(remote) = &mut self.remote {
-                        remote.quiet_commands = true;
-                    }
-                }
-                Event::CustomBooks => {
-                    if let Some(remote) = &mut self.remote {
-                        remote.custom_books = true;
-                    }
-                }
-                Event::FarTerrain(offer) => {
-                    if let Some(remote) = &mut self.remote {
-                        remote.far_terrain = Some(offer);
-                    }
-                }
-                Event::Reconfiguring => {
-                    self.reset_book_view();
-                    // handleConfigurationStart: the held-back chat shows, then
-                    // clearClientLevel opens ServerReconfigScreen over no level.
-                    self.flush_chat_queue();
-                    self.send_chat_acknowledgement();
-                    self.close_dialogs();
-                    // The server configuring us now (a proxy's next one)
-                    // offers its own far terrain, or none, and announces its
-                    // own features again.
-                    if let Some(remote) = &mut self.remote {
-                        remote.viewed.clear();
-                        remote.far_terrain = None;
-                        remote.quiet_commands = false;
-                        remote.custom_books = false;
-                    }
-                    self.clear_lod();
-                    if let Some(remote) = &self.remote {
-                        remote.session.reset_far_terrain();
-                    }
-                    self.remove_local_player_body();
-                    self.set_screen(Screen::Playing);
-                    self.capture(false);
-                    // clearClientLevel drops the client level now, so its
-                    // unload comes before the configuration screen, not
-                    // after the next login's load.
-                    self.forget_all_remote_columns();
-                    if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
-                        self.native_client_level_unload(&old);
-                    }
-                    self.native_lifecycle.begin_close();
-                    self.native_lifecycle_world_closed();
-                    let ticks = self.ticks;
-                    if let Some(r) = self.remote.as_mut() {
-                        self.native_net.holds.borrow_mut().clear();
-                        r.reconfiguring = Some(ticks);
-                        r.chat_tree_received = false;
-                    }
-                }
-                Event::Reconfigured(registries) => {
-                    // handleConfigurationStart → clearClientLevel, and the next
-                    // ClientPacketListener starts with no players or scoreboard,
-                    // no waypoints (its own ClientWaypointManager: a proxy's next
-                    // server never untracks the last one's), and its new
-                    // ClientSuggestionProvider with no custom chat completions.
-                    // clearClientLevel clears the narrator.
-                    self.clear_narrator();
-                    self.hud_disconnected();
-                    self.score.board = Default::default();
-                    self.clear_waypoints();
-                    if let Some(r) = self.remote.as_mut() {
-                        r.clear_attachments();
-                        r.players.clear();
-                        r.tab_players.clear();
-                        r.listed.clear();
-                        r.signatures = Default::default();
-                        r.custom_completions.clear();
-                    }
-                    self.ui.registries.custom_completions.clear();
-                    self.set_registries(registries);
-                }
-                // handleTransfer: "Cannot transfer to server from
-                // singleplayer" (no ServerData), so the world just closes.
-                Event::Transfer { host, port } => {
-                    if let Some(r) = self.remote.as_mut()
-                        && r.session.address != "local"
-                    {
-                        r.transfer = Some(format!("{host}:{port}"));
-                    }
-                }
-                Event::PackPush(p) => self.handle_pack_push(p),
-                Event::PackPop(id) => self.handle_pack_pop(id),
-                Event::ServerLinks(links) => {
-                    if let Some(r) = self.remote.as_mut() {
-                        r.server_links = crate::game::server_links::trusted(links);
-                    }
-                }
-                Event::ShowDialog { dialog, registries } => {
-                    self.show_dialog_in_phase(&dialog, Some(registries));
-                }
-                Event::ClearDialog => self.clear_dialog(),
-                Event::CodeOfConduct(text) => self.handle_code_of_conduct(text),
-                Event::DecodeError(e) => {
-                    if let Some(r) = self.remote.as_mut() {
-                        r.decode_errors += 1;
-                        if r.decode_errors <= 20 {
-                            log::warn!("Sunrise: skipped undecodable packet {e}");
+                    if let Some(dispatch) = &dispatch {
+                        let progress =
+                            dispatch.dispatch(sub, sub_credit, |event| -> Result<bool> {
+                                let epoch = match &event {
+                                    Event::RawPayload(incoming) if incoming.epoch.active() => {
+                                        Some(incoming.epoch.clone())
+                                    }
+                                    _ => None,
+                                };
+                                let left = self.dispatch_remote_event(event)?;
+                                // A Main callback can disconnect on its own thread. Its
+                                // accepted predecessors are already complete.
+                                stopped |= epoch.is_some_and(|epoch| !epoch.active());
+                                Ok(left)
+                            })?;
+                        match progress {
+                            BundleProgress::Continue => {}
+                            BundleProgress::Stop => stopped = true,
+                            BundleProgress::Left => return Ok(()),
                         }
-                    }
-                }
-                Event::Disconnected {
-                    reason,
-                    key,
-                    from_server,
-                } => {
-                    self.reset_book_view();
-                    log::info!("Sunrise: disconnected: {reason}");
-                    // ClientboundTransferPacket left a target: connect there
-                    // instead of showing the disconnect, the stored cookies
-                    // carried over (ClientCommonPacketListenerImpl.
-                    // handleTransfer → ConnectScreen.startConnecting).
-                    let transfer = self.remote.as_mut().and_then(|r| {
-                        r.transfer.take().map(|address| {
-                            (address, r.session.name.clone(), r.session.cookies.clone())
-                        })
-                    });
-                    if let Some((address, name, cookies)) = transfer {
-                        self.connection_left(sunrise_hooks::connection::Left::Transferred);
-                        self.leave_server(None)?;
-                        self.connect_server_with_cookies(&address, &name, Some(cookies))?;
+                    } else if self.dispatch_remote_event(sub)? {
                         return Ok(());
                     }
-                    let by = if from_server {
-                        sunrise_hooks::connection::By::Server
-                    } else {
-                        sunrise_hooks::connection::By::Connection
-                    };
-                    self.connection_ended(&reason, key.as_deref(), by);
-                    self.leave_server(Some(Text::literal(reason)))?;
-                    return Ok(());
-                }
-                Event::RawPayload(incoming) => {
-                    if let Some(remote) = self.remote.as_ref() {
-                        self.run_payload(remote.session.payload_endpoint(), *incoming);
+                    if self.remote.is_none() {
+                        break;
                     }
                 }
-                Event::Packet(packet) => match *packet {
-                    C::CustomPayload(p) if p.channel == sunrise_client::perf_net::CHANNEL => {
-                        self.remote_perf_reply(&p.data)
-                    }
-                    packet => self.handle_packet(packet)?,
-                },
+            } else if self.dispatch_remote_event(event)? {
+                return Ok(());
             }
             chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
             if self.remote.is_none() {

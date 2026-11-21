@@ -5,11 +5,11 @@ pub trait Hooks {
     /// setup and before arm priority/posing. `event.parts` lends the live
     /// [`crate::HumanoidPose`] for this callback, not a snapshot to replace or keep.
     /// `get` reads a present base part's local position and rotation; `set_position`
-    /// and `set_rotation` apply finite components immediately, leaving refused
-    /// components unchanged. The hook is skipped if any incoming base-part position
-    /// or rotation is non-finite. Later listeners see edits from earlier ones. Later vanilla
-    /// ITEM, attack, crouch, bob and swim animation still apply. Armor stands then
-    /// replace rotations with their saved pose, preserving position edits.
+    /// and `set_rotation` write all three components immediately on any present base
+    /// part, matching `HumanoidModel.setupAnim` with no finiteness gate. Later listeners
+    /// see edits from earlier ones. Later vanilla ITEM, attack, crouch, bob and swim
+    /// animation still apply. Armor stands then replace rotations with their saved pose,
+    /// preserving position edits.
     /// `humanoid` contains this invocation's held stacks and use state. Time is
     /// captured for its view; `game_time` is absent outside a level, never wall time.
     /// The Host is read-only. No frame deduplication: layers that actually animate
@@ -19,7 +19,7 @@ pub trait Hooks {
         dispatch = "api_carrier",
         side = "client",
         contract = "listen",
-        version = 3,
+        version = 4,
         event_per_listener = true,
         neoforge = "none (vanilla HumanoidModel.setupAnim; NeoForge has no mid-setupAnim event)"
     )]

@@ -245,7 +245,10 @@ pub trait DrawContext {
     ///   `fill` is.
     ///
     /// A client's call, available with [`crate::MenuScreen::with_draw`] or
-    /// `gui_render_post`. Per call it draws the subject's baked quads, the cached
+    /// `gui_render_post`. A `minecraft:air` stack returns `Ok(())` without using the view or
+    /// converting components.
+    /// A non-air item with an unreadable component override returns [`Gui3dError::InvalidStack`].
+    /// Per call it draws the subject's baked quads, the cached
     /// model a slot's item uses, with nothing on the tick path.
     fn model_3d(&mut self, subject: Gui3dSubject<'_>, view: Gui3dView) -> Result<(), Gui3dError> {
         Err(Gui3dError::Unavailable)

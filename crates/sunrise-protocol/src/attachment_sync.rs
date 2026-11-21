@@ -19,6 +19,9 @@ use {
 use crate::{Error, Result, buf::Reader};
 use sunrise_core::vanilla_bytes::Writer;
 
+mod staged;
+pub use staged::StagedMessage;
+
 /// The custom payload channel, clientbound only: a client sends nothing back.
 pub const CHANNEL: &str = "sunrise:attachment_sync";
 /// The channel's exact declaration version in the negotiated table.
@@ -97,8 +100,38 @@ pub fn encode(message: &Message) -> Result<Vec<u8>> {
     Ok(w.data)
 }
 
-/// A payload's message; an error for one that breaks a cap.
+/// A payload's message, materialized immediately by callers that don't queue it.
 pub fn decode(data: &[u8]) -> Result<Message> {
+    let (holder, replace, changes) = decode_changes(data, |r, namespace, name| {
+        let value = match r.nbt_within(value_limits())? {
+            Tag::Compound(value) => Some(value),
+            Tag::End => None,
+            _ => return Err(Error::new("attachment sync: value is not a compound")),
+        };
+        Ok(AttachmentSync {
+            namespace,
+            name,
+            value,
+        })
+    })?;
+    Ok(Message {
+        holder,
+        replace,
+        changes,
+    })
+}
+
+/// Decode at packet ingress without allocating the holder's NBT maps there.
+pub fn decode_staged(
+    payload: crate::packets::configuration::CustomPayload,
+) -> Result<StagedMessage> {
+    staged::stage(payload)
+}
+
+fn decode_changes<T>(
+    data: &[u8],
+    mut change: impl FnMut(&mut Reader<'_>, nbt::JavaString, nbt::JavaString) -> Result<T>,
+) -> Result<(Holder, bool, Vec<T>)> {
     let mut r = Reader::new(data);
     let holder = match r.varint()? {
         0 => Holder::Entity(r.varint()? as u32),
@@ -109,31 +142,17 @@ pub fn decode(data: &[u8]) -> Result<Message> {
         kind => return Err(Error::new(format!("attachment sync: holder kind {kind}"))),
     };
     let replace = r.bool()?;
-    let max = r.remaining();
-    let changes = (0..r.count(max)?)
+    let changes = (0..r.count(r.remaining())?)
         .map(|_| {
             let namespace = r.string(MAX_NAME)?;
             let name = r.string(MAX_NAME)?;
-            let value = match r.nbt_within(value_limits())? {
-                Tag::Compound(value) => Some(value),
-                Tag::End => None,
-                _ => return Err(Error::new("attachment sync: value is not a compound")),
-            };
-            Ok(AttachmentSync {
-                namespace: namespace.as_str().into(),
-                name: name.as_str().into(),
-                value,
-            })
+            change(&mut r, namespace.as_str().into(), name.as_str().into())
         })
-        .collect::<Result<Vec<_>>>()?;
-    if r.remaining() > 0 {
+        .collect::<Result<_>>()?;
+    if r.remaining() != 0 {
         return Err(Error::new("attachment sync: trailing bytes"));
     }
-    Ok(Message {
-        holder,
-        replace,
-        changes,
-    })
+    Ok((holder, replace, changes))
 }
 
 #[cfg(test)]
@@ -157,6 +176,23 @@ mod tests {
 
     #[test]
     fn every_holder_round_trips_with_either_replace_and_a_removal() {
+        let expected: nbt::Compound = [
+            ("value".into(), Tag::Int(12)),
+            (
+                "mixed".into(),
+                Tag::List(vec![
+                    Tag::Short(-5),
+                    Tag::String(nbt::JavaString(vec![0, 0xd800, 0x20ac])),
+                    Tag::compound([("\0", Tag::Byte(-3))]),
+                    Tag::IntArray(vec![-11, 21]),
+                    Tag::LongArray(vec![i64::MIN, i64::MAX]),
+                    Tag::Long(-8),
+                    Tag::Float(0x7fc0_0003),
+                    Tag::Double(0x7ff8_0000_0000_0005),
+                ]),
+            ),
+        ]
+        .into();
         let holders = [
             Holder::Entity(4_000_000_000),
             Holder::Player(0x0123_4567_89ab_cdef_0011_2233_4455_6677),
@@ -166,13 +202,82 @@ mod tests {
         ];
         for holder in holders {
             for replace in [true, false] {
+                let mut changes = changes();
+                changes[0].value = Some(expected.clone());
                 let message = Message {
                     holder,
                     replace,
-                    changes: changes(),
+                    changes,
                 };
                 assert_eq!(decode(&encode(&message).unwrap()).unwrap(), message);
             }
+        }
+    }
+
+    #[test]
+    fn staged_and_eager_use_the_same_network_nbt_values_and_errors() {
+        // Level, replace, one a:b. The list has an empty compound, a
+        // mixed-list wrapper with a repeated empty key, and another empty compound.
+        let header = [4, 1, 1, 1, b'a', 1, b'b'];
+        #[rustfmt::skip]
+        let value = [
+            10, 9, 0, 1, b'l', 10, 0, 0, 0, 3, 0, 1, 0, 0, 1, 1, 0, 0, 2, 0, 0,
+            5, 0, 1, b'f', 128, 0, 0, 0,
+            8, 0, 1, b's', 0, 5, 0xc0, 0x80, 0xed, 0xa0, 0x80,
+            7, 0, 1, b'b', 0, 0, 0, 2, 0xde, 0xad,
+            11, 0, 1, b'i', 0, 0, 0, 1, 1, 2, 3, 4,
+            12, 0, 1, b'a', 0, 0, 0, 1, 128, 0, 0, 0, 0, 0, 0, 7,
+            0,
+        ];
+        let expected = Message {
+            holder: Holder::Level,
+            replace: true,
+            changes: vec![AttachmentSync {
+                namespace: "a".into(),
+                name: "b".into(),
+                value: Some(
+                    [
+                        (
+                            "l".into(),
+                            Tag::List(vec![
+                                Tag::Compound(nbt::Compound::new()),
+                                Tag::Byte(2),
+                                Tag::Compound(nbt::Compound::new()),
+                            ]),
+                        ),
+                        ("f".into(), Tag::Float(0)),
+                        ("s".into(), Tag::String(nbt::JavaString(vec![0, 0xd800]))),
+                        ("b".into(), Tag::ByteArray(vec![0xde, 0xad])),
+                        ("i".into(), Tag::IntArray(vec![0x0102_0304])),
+                        ("a".into(), Tag::LongArray(vec![i64::MIN + 7])),
+                    ]
+                    .into(),
+                ),
+            }],
+        };
+        let payload = [header.as_slice(), &value].concat();
+        let stage = |data| {
+            decode_staged(crate::packets::configuration::CustomPayload {
+                channel: CHANNEL.into(),
+                data,
+            })
+        };
+        assert_eq!(decode(&payload).unwrap(), expected);
+        let (decoded, original) = stage(payload.clone()).unwrap().into_message();
+        assert_eq!(decoded, expected);
+        assert_eq!(original.data, payload);
+
+        for bad in [
+            &value[..value.len() - 1],               // missing compound terminator
+            &[10, 8, 0, 1, b's', 0, 1, 0xff, 0],     // bad modified UTF-8
+            &[10, 9, 0, 1, b'l', 13, 0, 0, 0, 1, 0], // bad list type
+            &[10, 11, 0, 1, b'a', 0xff, 0xff, 0xff, 0xff, 0], // negative array count
+        ] {
+            let payload = [header.as_slice(), bad].concat();
+            let Err(staged) = stage(payload.clone()) else {
+                panic!("staged decoder accepted malformed NBT: {bad:?}");
+            };
+            assert_eq!(staged.0, decode(&payload).unwrap_err().0);
         }
     }
 

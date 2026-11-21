@@ -1,7 +1,7 @@
 //! Read-only generations of a holder's synced bindings, detached from the holder itself.
 use super::{
-    AttachmentEntry, AttachmentError, AttachmentKeyView, AttachmentType, Attachments, Compound,
-    Entry, Tag, index::AttachmentKey,
+    AttachmentEntry, AttachmentError, AttachmentKeyView, AttachmentType, Attachments,
+    index::AttachmentKey,
 };
 use std::{fmt, sync::Arc};
 
@@ -9,52 +9,20 @@ type Binding = (AttachmentKey, Arc<AttachmentEntry>);
 
 /// A whole generation in attachment key order. Clones share the same backing slice.
 // no wire: in-process shared bindings; attachment sync owns their network codec.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SyncedAttachmentSnapshot(Arc<[Binding]>);
 
 impl SyncedAttachmentSnapshot {
-    /// Charge the slice, keys and retained codec input of the whole generation before
-    /// publishing it. `compound_heap_bytes` measures a compound's owned allocations; cached
-    /// typed results are native mod values, not part of the codec input budget.
-    pub fn capture(
-        holder: &Attachments,
-        limit: usize,
-        compound_heap_bytes: impl Fn(&Compound) -> usize,
-    ) -> Option<Self> {
-        let arc_header = 2 * size_of::<usize>();
-        let entry_overhead =
-            arc_header + size_of::<AttachmentEntry>() + align_of::<AttachmentEntry>() - 1;
-        let mut left = limit.checked_sub(arc_header + align_of::<Binding>() - 1)?;
-        let mut entries = Vec::new();
-        for (key, binding) in &holder.entries {
-            if !binding.is_synced() {
-                continue;
-            }
-            let Some(value) = binding.synced_value() else {
-                continue;
-            };
-            let (namespace, name) = key;
-            let key_bytes = (namespace.0.len() + name.0.len()) * size_of::<u16>();
-            left = left.checked_sub(size_of::<Binding>() + entry_overhead + key_bytes)?;
-            let frozen = match &binding.state {
-                Entry::Raw { saved, .. } => {
-                    left = left.checked_sub(compound_heap_bytes(saved))?;
-                    Arc::clone(binding)
-                }
-                Entry::Decoded(_) => {
-                    // A live read can promote the replica to a typed binding. Freeze its codec
-                    // input, not that live Rust value: render reads must still use the key's codec.
-                    let mut saved =
-                        Compound::from([("value".into(), Tag::Compound(Compound::new()))]);
-                    left = left.checked_sub(compound_heap_bytes(&saved))?;
-                    left = left.checked_sub(compound_heap_bytes(value))?;
-                    saved.insert("value".into(), Tag::Compound(value.clone()));
-                    Arc::new(AttachmentEntry::raw(saved))
-                }
-            };
-            entries.push((key.clone(), frozen));
-        }
-        Some(Self(entries.into()))
+    /// Capture every synced binding on `holder` in attachment key order, sharing each
+    /// immutable [`AttachmentEntry`] directly without re-encoding decoded values.
+    pub fn capture(holder: &Attachments) -> Self {
+        let entries: Vec<Binding> = holder
+            .entries
+            .iter()
+            .filter(|(_, binding)| binding.is_synced() && binding.synced_value().is_some())
+            .map(|(key, binding)| (key.clone(), Arc::clone(binding)))
+            .collect();
+        Self(entries.into())
     }
 
     /// Read a captured binding, without inserting a default or consulting its old holder.
@@ -99,6 +67,8 @@ impl PartialEq for SyncedAttachmentSnapshot {
 mod tests {
     use super::*;
     use crate::attachments::{AttachmentCodec, AttachmentSync, Holder};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use sunrise_core::nbt::{Compound, Tag};
 
     static FUEL: AttachmentType<i32> = AttachmentType {
         namespace: "test",
@@ -128,10 +98,7 @@ mod tests {
         let mut holder = Attachments::default();
         let value = |n| Some([("n".into(), Tag::Int(n))].into());
         sync(&mut holder, "fuel", value(7));
-        let capture = |holder: &Attachments| {
-            SyncedAttachmentSnapshot::capture(holder, usize::MAX, Compound::storage_bytes).unwrap()
-        };
-        let first = capture(&holder);
+        let first = SyncedAttachmentSnapshot::capture(&holder);
         assert!(Arc::ptr_eq(
             &first.0[0].1,
             holder.entry("test", "fuel").unwrap().unwrap()
@@ -140,9 +107,12 @@ mod tests {
         assert!(Arc::ptr_eq(&frame.0, &first.0));
 
         sync(&mut holder, "fuel", value(11));
-        let next = capture(&holder);
+        let next = SyncedAttachmentSnapshot::capture(&holder);
         sync(&mut holder, "fuel", None);
-        assert_eq!(capture(&holder).get(&FUEL), Ok(None));
+        assert_eq!(
+            SyncedAttachmentSnapshot::capture(&holder).get(&FUEL),
+            Ok(None)
+        );
         // Read cold, after the live holder has lost both values.
         assert_eq!(frame.get(&FUEL), Ok(Some(&7)));
         assert_eq!(next.get(&FUEL), Ok(Some(&11)));
@@ -168,58 +138,44 @@ mod tests {
         sync(&mut a, "fuel", value(false, 0x7fc0_0042));
         sync(&mut b, "fuel", value(true, 0x7fc0_0042));
         sync(&mut b, "last", Some(Compound::new()));
-        let capture = |holder: &Attachments| {
-            SyncedAttachmentSnapshot::capture(holder, usize::MAX, Compound::storage_bytes).unwrap()
-        };
-        let a = capture(&a);
+        let a = SyncedAttachmentSnapshot::capture(&a);
         assert_eq!(a.get(&FUEL), Ok(Some(&7)));
         assert_eq!(
             a,
-            capture(&b),
+            SyncedAttachmentSnapshot::capture(&b),
             "neither iteration order nor warm reads count"
         );
         sync(&mut b, "fuel", value(true, 0x7fc0_0043));
-        assert_ne!(a, capture(&b), "even a changed floating-point bit counts");
+        assert_ne!(
+            a,
+            SyncedAttachmentSnapshot::capture(&b),
+            "even a changed floating-point bit counts"
+        );
         sync(&mut b, "fuel", value(true, 0x7fc0_0042));
         sync(&mut b, "last", None);
         sync(&mut b, "next", Some(Compound::new()));
         assert_ne!(
             a,
-            capture(&b),
+            SyncedAttachmentSnapshot::capture(&b),
             "equal values under different keys do not count"
         );
     }
 
     #[test]
-    fn a_budget_refuses_the_whole_generation_and_recovers_after_removal() {
-        let mut holder = Attachments::default();
-        // Each codec input fits individually; the pair cannot fit whichever key comes first.
-        let capture =
-            |holder: &Attachments| SyncedAttachmentSnapshot::capture(holder, 8_192, |_| 4_096);
-        sync(
-            &mut holder,
-            "fuel",
-            Some([("n".into(), Tag::Int(7))].into()),
-        );
-        let first = capture(&holder).unwrap();
-        sync(&mut holder, "last", Some(Compound::new()));
-        assert!(capture(&holder).is_none());
-        sync(&mut holder, "fuel", None);
-        assert_eq!(capture(&holder).unwrap().get(&FUEL), Ok(None));
-        assert_eq!(first.get(&FUEL), Ok(Some(&7)));
-    }
-
-    #[test]
-    fn snapshots_of_live_decoded_bindings_still_read_through_the_codec() {
+    fn snapshots_of_decoded_bindings_share_the_entry_without_redecoding() {
+        static DECODES: AtomicUsize = AtomicUsize::new(0);
         static CODEC: AttachmentType<i32> = AttachmentType {
             namespace: "test",
             name: "fuel",
             default: || 0,
             codec: Some(AttachmentCodec {
-                encode: |n| Ok([("n".into(), Tag::Int(n / 10))].into()),
-                decode: |c| match c.get(&"n".into()) {
-                    Some(Tag::Int(n)) => Ok(*n * 10),
-                    _ => Err(AttachmentError::Decode),
+                encode: |n| Ok([("n".into(), Tag::Int(*n))].into()),
+                decode: |c| {
+                    DECODES.fetch_add(1, Ordering::Relaxed);
+                    match c.get(&"n".into()) {
+                        Some(Tag::Int(n)) => Ok(*n),
+                        _ => Err(AttachmentError::Decode),
+                    }
                 },
             }),
             sync: true,
@@ -227,9 +183,20 @@ mod tests {
         };
         let mut holder = Attachments::default();
         CODEC.set(&mut holder, Holder::Level, 27).unwrap();
-        let frame =
-            SyncedAttachmentSnapshot::capture(&holder, 8_192, Compound::storage_bytes).unwrap();
-        assert_eq!(CODEC.get_existing(&mut holder, Holder::Level), Ok(Some(27)));
-        assert_eq!(frame.get(&CODEC), Ok(Some(&20)));
+        let frame = SyncedAttachmentSnapshot::capture(&holder);
+        assert!(Arc::ptr_eq(
+            &frame.0[0].1,
+            holder.entry("test", "fuel").unwrap().unwrap()
+        ));
+        assert_eq!(frame.get(&CODEC), Ok(Some(&27)));
+        assert_eq!(DECODES.load(Ordering::Relaxed), 0);
+
+        let mut raw = Attachments::default();
+        sync(&mut raw, "fuel", Some([("n".into(), Tag::Int(27))].into()));
+        assert_eq!(frame, SyncedAttachmentSnapshot::capture(&raw));
+        assert_eq!(
+            SyncedAttachmentSnapshot::default(),
+            SyncedAttachmentSnapshot::capture(&Attachments::default())
+        );
     }
 }

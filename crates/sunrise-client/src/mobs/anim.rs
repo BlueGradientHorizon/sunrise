@@ -277,32 +277,14 @@ impl Poses {
     pub fn pose(&self, part: &Part) -> [f32; 9] {
         self.pose_of(&part.name).unwrap_or(part.pose)
     }
-    /// Lend the pose for a mod callback only when its base parts have finite
-    /// positions and rotations. Missing parts and noneditable fields are not exposed.
-    pub fn humanoid_pose(&mut self) -> Option<&mut dyn mod_api::HumanoidPose> {
-        HUMANOID_POSE_KEYS
-            .iter()
-            .flatten()
-            .filter_map(|key| self.map.get(key))
-            .all(|entry| entry.pose[..6].iter().all(|value| value.is_finite()))
-            .then_some(self as &mut dyn mod_api::HumanoidPose)
-    }
     fn set_humanoid_vector(&mut self, part: HumanoidPart, start: usize, values: [f32; 3]) -> bool {
         let Some(entry) = HUMANOID_POSE_KEYS[part as usize].and_then(|key| self.map.get_mut(&key))
         else {
             return false;
         };
-        let mut accepted = 0;
-        for (target, value) in entry.pose[start..start + 3].iter_mut().zip(values) {
-            if value.is_finite() {
-                *target = value;
-                accepted += 1;
-            }
-        }
-        if accepted != 0 {
-            self.changed();
-        }
-        accepted == 3
+        entry.pose[start..start + 3].copy_from_slice(&values);
+        self.changed();
+        true
     }
     pub fn skip_draw(&mut self, name: &str) {
         if self.skipped.insert(key(name)) {
@@ -1323,7 +1305,7 @@ mod humanoid_pose_tests {
     use super::*;
 
     #[test]
-    fn live_humanoid_pose_refuses_only_invalid_components_and_uneditable_parts() {
+    fn live_humanoid_pose_writes_all_components_and_refuses_only_missing_or_uneditable_parts() {
         let mut poses = Poses {
             map: [
                 ("hat", [1.0, 2.0, 3.0, 0.25, 0.5, 0.75, 1.0, 1.0, 1.0]),
@@ -1335,29 +1317,28 @@ mod humanoid_pose_tests {
             ..Default::default()
         };
         let before = poses.version();
-        let view = poses.humanoid_pose().unwrap();
+        let view = &mut poses as &mut dyn mod_api::HumanoidPose;
         assert_eq!(
             view.get(HumanoidPart::Hat),
             Some([[1.0, 2.0, 3.0], [0.25, 0.5, 0.75]])
         );
-        assert!(!view.set_position(HumanoidPart::Hat, [f32::NAN, 4.0, f32::INFINITY]));
+        assert!(view.set_position(HumanoidPart::Hat, [f32::NAN, 4.0, f32::INFINITY]));
         assert_ne!(poses.version(), before);
 
         let before = poses.version();
-        let view = poses.humanoid_pose().unwrap();
-        assert!(!view.set_rotation(HumanoidPart::Hat, [f32::INFINITY, f32::NAN, -0.75]));
-        assert_eq!(
-            view.get(HumanoidPart::Hat),
-            Some([[1.0, 4.0, 3.0], [0.25, 0.5, -0.75]])
-        );
+        let view = &mut poses as &mut dyn mod_api::HumanoidPose;
+        assert!(view.set_rotation(HumanoidPart::Hat, [f32::INFINITY, f32::NAN, -0.75]));
+        let [pos, rot] = view.get(HumanoidPart::Hat).unwrap();
+        assert!(pos[0].is_nan() && pos[1] == 4.0 && pos[2] == f32::INFINITY);
+        assert!(rot[0] == f32::INFINITY && rot[1].is_nan() && rot[2] == -0.75);
         assert_ne!(poses.version(), before);
-        assert_eq!(
-            poses.pose_of("hat"),
-            Some([1.0, 4.0, 3.0, 0.25, 0.5, -0.75, 1.0, 1.0, 1.0])
-        );
+        let hat = poses.pose_of("hat").unwrap();
+        assert!(hat[0].is_nan() && hat[1] == 4.0 && hat[2] == f32::INFINITY);
+        assert!(hat[3] == f32::INFINITY && hat[4].is_nan() && hat[5] == -0.75);
+        assert_eq!(hat[6..9], [1.0, 1.0, 1.0]);
 
         let before = poses.version();
-        let view = poses.humanoid_pose().unwrap();
+        let view = &mut poses as &mut dyn mod_api::HumanoidPose;
         assert_eq!(view.get(HumanoidPart::LeftArm), None);
         assert_eq!(view.get(HumanoidPart::Jacket), None);
         assert!(!view.set_position(HumanoidPart::LeftArm, [9.0; 3]));
@@ -1370,8 +1351,13 @@ mod humanoid_pose_tests {
         assert_eq!(poses.dummy, [0.0; 9]);
         assert_eq!(poses.version(), before);
 
+        // Non-finite incoming poses do not suppress pose access or later writes.
         poses.xrot("hat", f32::NAN);
-        assert!(poses.humanoid_pose().is_none());
+        let view = &mut poses as &mut dyn mod_api::HumanoidPose;
+        let [_, rot] = view.get(HumanoidPart::Hat).unwrap();
+        assert!(rot[0].is_nan());
+        assert!(view.set_rotation(HumanoidPart::Hat, [0.5, 0.25, -0.5]));
+        assert_eq!(view.get(HumanoidPart::Hat).unwrap()[1], [0.5, 0.25, -0.5]);
     }
 }
 

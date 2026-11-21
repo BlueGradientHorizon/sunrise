@@ -1,8 +1,8 @@
-//! A mod's general entity rows on the window (#792, stage 5): each row the server shows, with its
-//! first synced fields here (`game/network/remote/general.rs`), drawn by the renderer a mod
-//! registered for its type (`register_entity_renderers`), with the row's shared, frozen synced
-//! attachments. A general type has no look of its own: without a renderer, or
-//! with one that failed until the next resource load, its rows draw nothing.
+//! A mod's general entity rows on the window (#792, stage 5): each row the server shows
+//! (`game/network/remote/general.rs`), drawn by the renderer a mod registered for its type
+//! (`register_entity_renderers`), with the row's shared, frozen synced attachments. A general
+//! type has no look of its own: without a renderer, or with one that failed until the next
+//! resource load, its rows draw nothing.
 use super::{Game, entity_culling};
 use glam::DVec3;
 use sunrise_client::mesher::Vertex;
@@ -28,7 +28,7 @@ fn render_state(
         orb_value: None,
         painting: None,
         item_frame: None,
-        attachments: row.render_attachments.clone(),
+        attachments: Some(row.render_attachments.clone()),
     }
     .into()
 }
@@ -66,7 +66,7 @@ impl Game<'_> {
         // Extract the visible list before invoking mod code, as LevelExtractor does. The
         // client's lookup preserves insertion order (vanilla EntityLookup's linked id map).
         let mut visible = std::mem::take(&mut *self.general_render_states.borrow_mut());
-        for (&id, row) in remote.general.rows.iter().filter(|(_, row)| row.shown) {
+        for (&id, row) in &remote.general.rows {
             if !renderers
                 .general(row.type_slot)
                 .is_some_and(|renderer| !renderer.failed.load(std::sync::atomic::Ordering::Relaxed))
@@ -151,8 +151,7 @@ mod tests {
             rotation: [90.0, 20.0],
             previous_rotation: [0.0, -20.0],
             age: 40,
-            shown: true,
-            render_attachments: None,
+            render_attachments: mod_api::EntityRenderAttachments::default(),
         };
         let state = render_state(9, &row, 0.25);
         assert_eq!(state.id, 9);

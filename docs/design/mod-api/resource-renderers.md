@@ -32,10 +32,10 @@ which supersedes the proposal below.
   geometry, and a nested stack uses its own foil, tints and display transform. Packed light,
   overlay and outline stay on the ordinary item draw path. Extents come from the submitted
   geometry; the mod does not declare them. Tints are packed ARGB, not HDR colors.
-- **Draw failures.** An error, panic or invalid geometry or pose undoes the entire special layer
-  and disables the offending type until resource reload. Unreadable input or a nested refusal
-  undoes the enclosing layer without disabling the enclosing renderer. Only the outermost
-  refused layer draws the missing model; independent layers remain intact.
+- **Draw failures.** An error, panic, invalid geometry or pose, unreadable input or nested
+  refusal undoes only that draw's special layer without disabling the renderer type for later
+  draws. Only the outermost refused layer draws the missing model; independent layers remain
+  intact.
 - **Leases.** The bake context issues leases for the current resource load. Submit them only in
   that load. Once resolved, an item render state retains its baked geometry independently and
   can finish drawing after a reload without a separate retirement step.
@@ -52,7 +52,8 @@ while the engine retained the normal item draw state. The recipes used Wire for 
 guest boundary; they did not need disk or network transport. `685572c8626` retained the stack
 cache and added a frame policy for answers that depend on display or time. Direct submission
 replaces both policies: each draw extracts a fresh argument and submits baked geometry under the
-actual context. There is no recipe-part cap; the separate nested stack expansion budget remains.
+actual context. Neither recipe-part nor nested-stack count caps apply; only `(stack, display)`
+recursion cycles are refused.
 
 ## Reference and boundary
 

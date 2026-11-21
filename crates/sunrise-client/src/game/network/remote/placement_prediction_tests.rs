@@ -356,7 +356,7 @@ fn a_predicted_break_reconciles_its_neighbour_s_shape_change() {
 fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
     use mod_api::{AttachmentCodec, AttachmentType, Host};
     use sunrise_mod_runtime::attachments::AttachmentSync;
-    use sunrise_protocol::attachment_sync::{Message, encode};
+    use sunrise_protocol::attachment_sync::Message;
 
     static VALUE: AttachmentType<i32> = AttachmentType {
         namespace: "break_test",
@@ -434,18 +434,15 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
         sign.back.lines[3] = "Keep this side clear".into();
         sign.waxed = true;
         let original = sign.clone();
-        game.remote_attachment_sync(
-            &encode(&Message {
-                holder,
-                replace: true,
-                changes: vec![AttachmentSync {
-                    namespace: VALUE.namespace.into(),
-                    name: VALUE.name.into(),
-                    value: Some([("n".into(), Tag::Int(41))].into()),
-                }],
-            })
-            .unwrap(),
-        );
+        game.remote_attachment_sync(Message {
+            holder,
+            replace: true,
+            changes: vec![AttachmentSync {
+                namespace: VALUE.namespace.into(),
+                name: VALUE.name.into(),
+                value: Some([("n".into(), Tag::Int(41))].into()),
+            }],
+        });
         assert_eq!(attachment_values(game), [41]);
 
         game.predict_break([1, 65, 0], support, 7);

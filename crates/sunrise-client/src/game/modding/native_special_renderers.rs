@@ -5,11 +5,7 @@ use super::{
     api_values::{TryIntoApi, engine_display_context, stack_value},
 };
 use mod_api::{ItemDisplayContext, ItemStack, SpecialModelContext};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    num::NonZeroU32,
-    sync::{Mutex, PoisonError},
-};
+use std::num::NonZeroU32;
 use sunrise_assets::item_model::{Context, DisplayContext, StackView};
 use sunrise_client::item_render::{BakedSpecialModel, SpecialModelInput, stack_view};
 
@@ -19,26 +15,14 @@ pub(in crate::game) fn draw_input<'a>(
     stack: &StackView,
     context: &Context<'_>,
 ) -> Option<SpecialModelInput<'a>> {
-    let input = mod_api::__private::item_key(&stack.item)
-        .zip(u32::try_from(stack.count).ok().and_then(NonZeroU32::new));
-    let Some((item, count)) = input else {
-        // A stack the API can't read is refused alone: the renderer isn't at fault.
-        static SEEN: Mutex<BTreeMap<String, BTreeSet<String>>> = Mutex::new(BTreeMap::new());
-        let mut seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner);
-        if !seen
-            .get(model.kind.as_ref())
-            .is_some_and(|items| items.contains(&stack.item))
-        {
-            seen.entry(model.kind.to_string())
-                .or_default()
-                .insert(stack.item.clone());
-            drop(seen);
-            log::warn!(
-                "Sunrise: a stack of {} can't be read for the special model renderer of {}; it draws the missing model",
-                stack.item,
-                model.kind
-            );
-        }
+    // Match vanilla's `ItemModelResolver.updateForTopItem`: empty stacks are skipped cleanly.
+    let count = u32::try_from(stack.count).ok().and_then(NonZeroU32::new)?;
+    let Some(item) = mod_api::__private::item_key(&stack.item) else {
+        log::warn!(
+            "Sunrise: a stack of {} can't be read for the special model renderer of {}; it draws the missing model",
+            stack.item,
+            model.kind
+        );
         return None;
     };
     let Ok(display) = context.display.try_into_api();

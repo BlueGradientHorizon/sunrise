@@ -940,7 +940,10 @@ pub(in crate::game) fn stack_value(value: &ApiStack) -> Result<EngineStack, Stac
     encode_stack(value, id.into())
 }
 
-fn encode_stack(value: &ApiStack, item: Arc<str>) -> Result<EngineStack, StackWriteError> {
+pub(in crate::game) fn encode_stack(
+    value: &ApiStack,
+    item: Arc<str>,
+) -> Result<EngineStack, StackWriteError> {
     let (stack, patch) = decode_stack_record(value, item);
     content_declarations::validate_decoded_components(|name| {
         patch

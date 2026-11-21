@@ -83,13 +83,14 @@ fn native_movement_input_keys_axes_and_sprint() {
             assert!(keys.forward && keys.right);
             assert_eq!(keys.direction(), [0.2, 0.8]);
 
-            // Invalid vectors don't change movement, but independent key edits still apply.
+            // Edited vectors (including large ones whose squared length overflows) apply directly
+            // without reverting to the sampled vector, alongside independent key edits.
             let keys = game.update_movement_input(Keys {
                 jump: true,
                 analog: Some([0.2, 0.8]),
                 ..Keys::default()
             });
-            assert_eq!(keys.direction(), [0.2, 0.8]);
+            assert_eq!(keys.direction(), [f32::MAX, 0.25]);
             assert!(keys.jump && keys.shift);
 
             // Consumer-visible acceptance: no physical input still moves the

@@ -9,12 +9,12 @@ pub trait Hooks {
     /// A listener that panics or incurs a phase refusal leaves the previous factories and
     /// replacement reports unchanged.
     #[notes = r#"Use `event.renderers.register(kind, SpecialModelFactory::new(decode, bake))` with a
-fully qualified type id. Use `SpecialModelConfig::decode` to read the inline `model` fields
-other than `type` into your own config type. The bake callback consumes that config and can
-keep geometry leases for the current resource load. Reloading rebuilds those leases and
-renderers, without firing this hook again. Only registrations from a completed listener count
-when choosing the last factory and reporting replacements; a panic or phase refusal discards
-that listener's whole batch.
+validated `Identifier` (bare paths default to `minecraft:`, matching vanilla and NeoForge). Use
+`SpecialModelConfig::decode` to read the inline `model` fields other than `type` into your own
+config type. The bake callback consumes that config and can keep geometry leases for the current
+resource load. Reloading rebuilds those leases and renderers, without firing this hook again.
+Only registrations from a completed listener count when choosing the last factory and reporting
+replacements; a panic or phase refusal discards that listener's whole batch.
 
 On each draw, `SpecialModelRenderer::extract_argument` reads a borrowed `SpecialModelStack`
 and returns the argument for `submit`. Submit geometry or nested stacks through
@@ -23,11 +23,10 @@ and returns the argument for `submit`. Submit geometry or nested stacks through
 overlay and outline through the normal item draw path.
 
 An unknown type, decode or bake error, or panic during resource loading refuses that item
-definition without falling back to a lower pack. At draw time a callback error, panic or
-invalid geometry or pose rolls back the whole layer and disables the offending type until
-resources reload. Unreadable input or a nested refusal rolls back the enclosing layer
-without disabling the parent renderer. Only the outermost refused layer draws the missing
-model."#]
+definition without falling back to a lower pack. At draw time a callback error, panic,
+invalid geometry or pose, unreadable input or nested refusal rolls back only that draw's
+special layer without disabling the renderer type for subsequent draws. Only the outermost
+refused layer draws the missing model."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

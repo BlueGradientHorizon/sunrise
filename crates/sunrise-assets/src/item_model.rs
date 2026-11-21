@@ -362,10 +362,11 @@ fn channel(v: f32) -> i32 {
 // ---------------------------------------------------------------------------
 
 /// Engine callback for a special renderer's model object, called while loading the item
-/// definition. The ids are canonical. `Ok(None)` lets the builtin decoder handle the type;
-/// `Err` rejects the enclosing definition, even if the type is also builtin.
+/// definition. `kind` is a validated `Identifier` (bare paths default to `minecraft:`), and
+/// `base` is canonical. `Ok(None)` lets the builtin decoder handle the type; `Err` rejects the
+/// enclosing definition, even if the type is also builtin.
 pub type SpecialModelLoader<'a> = dyn Fn(
-        &str,
+        &sunrise_core::identifier::Identifier,
         &str,
         &Map<String, Value>,
     ) -> std::result::Result<Option<RegisteredSpecialModel>, String>
@@ -614,7 +615,10 @@ impl ItemModelNode {
                 let base = ident(required(m, "base")?)?;
                 let transformation = optional_transformation(m)?;
                 let fields = object(model)?;
-                let kind = ident(required(fields, "type")?)?;
+                let kind = sunrise_core::identifier::Identifier::parse(&string(required(
+                    fields, "type",
+                )?)?)
+                .map_err(|_| err("invalid resource identifier"))?;
                 // A registration may replace a vanilla decoder. A refusal is an error, not a miss.
                 let registered = match loader {
                     Some(load) => load(&kind, &base, fields).map_err(DecodeError)?,
@@ -629,7 +633,7 @@ impl ItemModelNode {
                     None => Self::Special {
                         base,
                         transformation,
-                        model: SpecialModel::decode_builtin(&kind, fields)?,
+                        model: SpecialModel::decode_builtin(&kind.to_string(), fields)?,
                     },
                 }
             }

@@ -29,7 +29,16 @@ pub fn dispatch(incoming: Incoming, endpoint: Endpoint, main: MainQueue) {
     let wait_epoch =
         (!matches!(main, MainQueue::Server { conn: Some(_), .. })).then(|| incoming.epoch.clone());
     if let Some(incoming) = connection.queue_payload(incoming) {
-        execute(incoming, &endpoint, &main);
+        execute(
+            incoming,
+            &endpoint,
+            &main,
+            None,
+            PreparedMain::publish,
+            |reason| {
+                endpoint.disconnect(reason);
+            },
+        );
     }
     dispatch_pending(&endpoint, &main);
     if let Some(epoch) = wait_epoch {
@@ -48,31 +57,74 @@ pub fn dispatch_pending(endpoint: &Endpoint, main: &MainQueue) {
         return;
     }
     while let Some(incoming) = connection.next_payload() {
-        execute(incoming, endpoint, main);
+        execute(
+            incoming,
+            endpoint,
+            main,
+            None,
+            PreparedMain::publish,
+            |reason| {
+                endpoint.disconnect(reason);
+            },
+        );
     }
 }
 
-fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
+/// The physical receiver is inside an ordered play bundle. Deliver main work to
+/// the bundle's current step, not the ordinary queue behind its closing delimiter.
+pub(crate) fn dispatch_in_bundle(
+    incoming: Incoming,
+    endpoint: &Endpoint,
+    send: &crate::net::ingress::Producer<crate::net::Event>,
+    credit: crate::net::ingress::ReceiveLease<crate::net::Event>,
+    inline: &mut Vec<crate::net::ingress::Prepared<crate::net::Event>>,
+) -> Option<Text> {
+    let mut disconnected = None;
+    execute(
+        incoming,
+        endpoint,
+        &MainQueue::Client(send.clone()),
+        Some(credit),
+        |prepared| {
+            let PreparedMain::Client(prepared) = prepared else {
+                unreachable!("client bundle has client main work");
+            };
+            inline.push(prepared);
+            Ok(())
+        },
+        |reason| disconnected = Some(reason),
+    );
+    disconnected
+}
+
+fn execute(
+    mut incoming: Incoming,
+    endpoint: &Endpoint,
+    main: &MainQueue,
+    credit: Option<crate::net::ingress::ReceiveLease<crate::net::Event>>,
+    mut publish_main: impl FnMut(PreparedMain) -> Result<(), FailedMain>,
+    disconnect: impl FnOnce(Text),
+) {
     if !incoming.epoch.active() {
         return;
     }
     if matches!(incoming.body, Body::Work(_)) || incoming.receiver.thread == HandlerThread::Main {
         let epoch = incoming.epoch.clone();
-        let prepared = match main.prepare(incoming) {
+        let prepared = match main.prepare(incoming, credit) {
             Ok(prepared) => prepared,
             Err(error) => {
-                endpoint.disconnect(failure(&format!("payload main refused: {error:?}")));
+                disconnect(failure(&format!("payload main refused: {error:?}")));
                 return;
             }
         };
         // The value stays outside the closure if invalidated before publication.
         let mut prepared = Some(prepared);
-        let result = epoch.with_active(|| prepared.take().unwrap().publish());
+        let result = epoch.with_active(|| publish_main(prepared.take().unwrap()));
         drop(prepared);
         if let Some(Err(error)) = result {
             let reason = error.reason();
             drop(error);
-            endpoint.disconnect(failure(&format!("payload main refused: {reason:?}")));
+            disconnect(failure(&format!("payload main refused: {reason:?}")));
         }
         return;
     }
@@ -92,7 +144,9 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
         Err(mod_api::PayloadHandleError::Failed(error)) => {
             // Drop reservations and staged work before reporting failure; publish no partial actions.
             drop(context);
-            handler_failed(&incoming, endpoint, &error);
+            if let Some(reason) = handler_failed(&incoming, &error) {
+                disconnect(reason);
+            }
         }
         Ok(()) => {
             let reason = context.disconnect.take();
@@ -104,7 +158,7 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
                 for action in &mut after {
                     match action.take().unwrap() {
                         After::Reply(reply) => reply.publish().map_err(FailedPublication::Reply)?,
-                        After::Work(work) => work.publish().map_err(FailedPublication::Main)?,
+                        After::Work(work) => publish_main(work).map_err(FailedPublication::Main)?,
                     }
                 }
                 Ok::<(), FailedPublication>(())
@@ -121,11 +175,11 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
                         }
                     };
                     drop(error);
-                    endpoint.disconnect(failure(&message));
+                    disconnect(failure(&message));
                 }
                 Some(Ok(())) => {
                     if let Some(reason) = reason {
-                        endpoint.disconnect(reason);
+                        disconnect(reason);
                     }
                 }
                 // Phase/connection cancellation cancels the staged disconnect too.
@@ -134,19 +188,20 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
         }
     }
 }
-fn handler_failed(incoming: &Incoming, endpoint: &Endpoint, error: &str) {
+fn handler_failed(incoming: &Incoming, error: &str) -> Option<Text> {
     if incoming.raw {
         log::warn!(
             "Mod {} failed on raw channel {}: {error}",
             incoming.receiver.owner(),
             incoming.id.0
         );
+        None
     } else {
         log::warn!("payload {} failed: {error}", incoming.id.0);
-        endpoint.disconnect(failure(&format!(
+        Some(failure(&format!(
             "a mod's network handler failed ({})",
             mod_of(&incoming.id)
-        )));
+        )))
     }
 }
 /// The mod a channel belongs to: its namespace.
@@ -260,7 +315,7 @@ impl IPayloadContext for NetworkContext<'_> {
             return Err(PayloadContextError::Disconnected);
         }
         let work = self.incoming.work(self.endpoint.transport(), work)?;
-        let prepared = self.main.prepare(work)?;
+        let prepared = self.main.prepare(work, None)?;
         self.after.push(Some(After::Work(prepared)));
         #[cfg(any(test, feature = "test-payload-probe"))]
         super::staging_probe::prepared(&self.incoming.id.0, true);
