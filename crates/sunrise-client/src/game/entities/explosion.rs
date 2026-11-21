@@ -2050,6 +2050,7 @@ impl Game<'_> {
                     block.state,
                     None,
                     None,
+                    None,
                     super::spill::BlockDrops {
                         items: originals.iter().map(|(_, item)| item.clone()).collect(),
                         experience: 0,
@@ -2286,18 +2287,17 @@ mod tests {
             self.seen.lock().unwrap().push(pos);
             assert!(event.breaker.is_none() && event.tool.is_none());
             assert!(
-                event.breaker_entity.is_none() && event.block_entity.is_none(),
+                event.breaker_entity.is_none()
+                    && event.block_entity.is_none()
+                    && event.block_entity_data.is_none(),
                 "a blast and an untagged break give no breaker entity or block entity"
             );
             assert_eq!(event.drops.len(), 1);
-            assert_eq!(
-                event.drops[0].stack.count(),
-                1,
-                "only this block's contribution"
-            );
+            let first = event.drops.get(0).unwrap().stack().unwrap();
+            assert_eq!(first.count(), 1, "only this block's contribution");
             if self.edit {
                 assert_eq!(
-                    mod_api::__private::item_key_id(event.drops[0].stack.item()).unwrap(),
+                    mod_api::__private::item_key_id(first.item()).unwrap(),
                     "minecraft:diamond",
                     "loot modifiers ran first"
                 );
@@ -2305,16 +2305,20 @@ mod tests {
                 if matches!(event.pos.x, 1 | 4) {
                     return mod_api::Flow::Cancel;
                 }
-                *event.drops = vec![ItemDrop::new(
-                    mod_api::ItemStack::new(
-                        mod_api::__private::item_key("minecraft:emerald").unwrap(),
-                        3,
-                    )
-                    .unwrap(),
-                    [7.0, 80.0, 7.0],
-                    [0.1, 0.2, 0.3],
-                    42,
-                )];
+                event.drops.clear();
+                event
+                    .drops
+                    .push(ItemDrop::new(
+                        mod_api::ItemStack::new(
+                            mod_api::__private::item_key("minecraft:emerald").unwrap(),
+                            3,
+                        )
+                        .unwrap(),
+                        [7.0, 80.0, 7.0],
+                        [0.1, 0.2, 0.3],
+                        42,
+                    ))
+                    .unwrap();
             }
             mod_api::Flow::Continue
         }

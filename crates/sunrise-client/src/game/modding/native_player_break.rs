@@ -402,7 +402,13 @@ mod tests {
                 && self.vein.contains(&pos)
             {
                 let mut kept = self.kept.lock().unwrap();
-                kept.0.extend(event.drops.drain(..).map(|drop| drop.stack));
+                kept.0.extend(
+                    event
+                        .drops
+                        .iter()
+                        .filter_map(|d| d.stack().and_then(|s| s.project())),
+                );
+                event.drops.clear();
                 kept.1 += std::mem::take(&mut event.experience);
             }
             mod_api::Flow::Continue

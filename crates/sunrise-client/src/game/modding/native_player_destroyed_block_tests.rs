@@ -446,16 +446,17 @@ fn a_target_break_block_replaced_is_told_with_its_own_block_entity() {
     );
 }
 
-/// What `block_drops` named of the breaker and the block entity, and the chest's saved
-/// `Items` count read through the block entity handle while the event ran.
+/// What `block_drops` named of the breaker and the block entity, the chest's saved
+/// `Items` count read while the event ran, and whether a resident handle or lent data was given.
 type DropsSeen = (
     Option<u128>,
     Option<mod_api::EntityRef>,
     Option<usize>,
     bool,
+    bool,
 );
 
-/// Listens to `block_drops` and keeps the block entity handle it was given.
+/// Listens to `block_drops` and keeps the block entity handle it was given, if any.
 struct DropsProbe {
     seen: Arc<Mutex<Vec<DropsSeen>>>,
     handle: Arc<Mutex<Option<mod_api::BlockEntityRef>>>,
@@ -470,26 +471,34 @@ impl Hooks for DropsProbe {
         level: &dyn mod_api::LevelHost,
         event: &mut mod_api::BlockDropsEvent<'_>,
     ) -> Flow {
-        let items = event
-            .block_entity
-            .and_then(|entity| level.block_entity_data(entity))
+        let data = event
+            .block_entity_data
+            .cloned()
+            .or_else(|| event.block_entity.and_then(|e| level.block_entity_data(e)));
+        let items = data
+            .as_ref()
             .and_then(|data| match data.get(&"Items".into()) {
                 Some(mod_api::Tag::List(items)) => Some(items.len()),
                 _ => None,
             });
         *self.handle.lock().unwrap() = event.block_entity;
         // The named-chest use: copy the chest's custom name onto the chest item it drops.
-        let name = event
-            .block_entity
-            .and_then(|entity| level.block_entity_data(entity))
+        let name = data
+            .as_ref()
             .and_then(|data| data.get(&"CustomName".into()).cloned());
         if let Some(name) = name {
-            for drop in event.drops.iter_mut().filter(|drop| {
-                mod_api::__private::item_key_id(drop.stack.item()).unwrap() == "minecraft:chest"
-            }) {
-                let mut patch = mod_api::Compound::default();
-                patch.insert("minecraft:custom_name".into(), name.clone());
-                drop.stack.set_components(patch).unwrap();
+            for index in 0..event.drops.len() {
+                let mut drop = event.drops.get_mut(index).unwrap();
+                let is_chest = drop.stack().is_some_and(|stack| {
+                    mod_api::__private::item_key_id(stack.item()) == Some("minecraft:chest")
+                });
+                if is_chest {
+                    let mut stack = drop.stack().unwrap().project().unwrap();
+                    let mut patch = mod_api::Compound::default();
+                    patch.insert("minecraft:custom_name".into(), name.clone());
+                    stack.set_components(patch).unwrap();
+                    drop.set_stack(stack).unwrap();
+                }
             }
         }
         self.seen.lock().unwrap().push((
@@ -497,6 +506,7 @@ impl Hooks for DropsProbe {
             event.breaker_entity,
             items,
             event.block_entity.is_some(),
+            event.block_entity_data.is_some(),
         ));
         if self.panic {
             panic!("a listener fails after reading the broken block entity");
@@ -515,12 +525,12 @@ fn put_chest(game: &mut super::Game<'_>, pos: [i32; 3]) {
     );
 }
 
-/// A player's survival break names the player as `breaker` and `breaker_entity`, and its
-/// `block_entity` reads the chest the removal took out of the world; the handle is stale once
-/// the break completes.
+/// A player's survival break names the player as `breaker` and `breaker_entity`, lends the
+/// removed chest's saved data (including `CustomName`) via `block_entity_data`, and does not
+/// expose a temporary `block_entity` handle for the already-removed chest.
 #[test]
 #[ignore = "daily"]
-fn block_drops_reads_the_chest_a_players_break_removed_and_the_handle_goes_stale() {
+fn block_drops_lends_the_removed_chests_data_without_a_temporary_handle() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let handle = Arc::new(Mutex::new(None));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -564,38 +574,36 @@ fn block_drops_reads_the_chest_a_players_break_removed_and_the_handle_goes_stale
             assert_eq!(named, [Some("Loot Chest".to_owned())]);
             let heard = std::mem::take(&mut *seen.lock().unwrap());
             assert_eq!(heard.len(), 1);
-            let (breaker, breaker_entity, items, has_block_entity) = &heard[0];
+            let (breaker, breaker_entity, items, has_block_entity, has_block_entity_data) =
+                &heard[0];
             assert_eq!(*breaker, Some(123));
             assert_eq!(
                 breaker_entity.map(|entity| entity.id()),
                 Some(20),
                 "the player's own entity"
             );
-            assert!(*has_block_entity);
+            assert!(
+                !*has_block_entity,
+                "no temporary handle for a removed block entity"
+            );
+            assert!(
+                *has_block_entity_data,
+                "removed chest data is lent read-only"
+            );
             assert_eq!(
                 *items,
                 Some(1),
                 "the chest's one stack, read during the event"
             );
-            // After the break completes the handle is stale and nothing stays held.
-            let stale = handle.lock().unwrap().expect("the event's handle");
-            game.with_level(|_, level, _| {
-                assert!(mod_api::LevelHost::block_entity_data(level, stale).is_none());
-            });
-            assert!(
-                game.world
-                    .block_entities
-                    .broken_generation(&(chest[0], chest[1], chest[2]))
-                    .is_none()
-            );
+            assert!(handle.lock().unwrap().is_none());
 
-            // A block with no block entity gives none.
+            // A block with no block entity gives neither a handle nor lent data.
             let dirt = [8, 64, 4];
             place(game, dirt, "minecraft:dirt");
             assert!(game.player_destroy_block(player, dirt, false));
             let heard = std::mem::take(&mut *seen.lock().unwrap());
             assert_eq!(heard.len(), 1);
-            assert!(!heard[0].3);
+            assert!(!heard[0].3 && !heard[0].4);
         });
     });
 }
@@ -646,8 +654,8 @@ fn block_drops_names_the_mob_that_broke_the_block() {
     });
 }
 
-/// A listener that panics inside the event leaves nothing held: the handle it was given is stale
-/// after the break unwinds.
+/// A listener that panics inside the event leaves nothing held: no temporary handle was ever
+/// handed out and the lent block-entity data drops with the break call.
 #[test]
 #[ignore = "daily"]
 fn block_drops_holds_nothing_after_a_listener_panics() {
@@ -675,22 +683,12 @@ fn block_drops_holds_nothing_after_a_listener_panics() {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 game.player_destroy_block(player, chest, false)
             }));
-            assert_eq!(
-                seen.lock().unwrap().len(),
-                1,
-                "the listener ran and read the chest"
-            );
-            assert_eq!(seen.lock().unwrap()[0].2, Some(1));
-            let stale = handle.lock().unwrap().expect("the event's handle");
-            game.with_level(|_, level, _| {
-                assert!(mod_api::LevelHost::block_entity_data(level, stale).is_none());
-            });
-            assert!(
-                game.world
-                    .block_entities
-                    .broken_generation(&(chest[0], chest[1], chest[2]))
-                    .is_none()
-            );
+            let heard = seen.lock().unwrap();
+            assert_eq!(heard.len(), 1, "the listener ran and read the chest");
+            assert_eq!(heard[0].2, Some(1));
+            assert!(!heard[0].3);
+            assert!(heard[0].4);
+            assert!(handle.lock().unwrap().is_none());
         });
     });
 }

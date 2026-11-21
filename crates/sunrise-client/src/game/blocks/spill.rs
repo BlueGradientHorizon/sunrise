@@ -11,12 +11,12 @@ use sunrise_client::{
     block_entity_item, block_entity_nbt,
     containers::BlockEntity,
     furnace::FurnaceCooking,
-    items::{BlockLootRoll, ItemStack},
+    items::{BlockLootRoll, ItemStack, Items},
 };
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::RandomSource;
 use {
-    sunrise_core::nbt::Tag,
+    sunrise_core::nbt::{Compound, Tag},
     sunrise_world::{
         level::{LevelEvent, removal, removal::PreRemove},
         registry::BlockStateId,
@@ -270,6 +270,185 @@ impl BlockItemDrop {
             .unwrap_or_else(|| prepare_item_random(Some(self.velocity)));
         random.state = self.state;
         Some(random)
+    }
+}
+
+struct EnginePreparedDrops<'a> {
+    items: &'a mut Vec<BlockItemDrop>,
+    items_registry: &'a Items,
+}
+
+impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    fn stack_metadata(
+        &self,
+        index: usize,
+    ) -> Option<(mod_api::ItemKey, std::num::NonZeroU32, Option<u32>)> {
+        crate::game::api_values::stack_read_metadata(&self.items.get(index)?.stack).ok()
+    }
+
+    fn project_stack(
+        &self,
+        index: usize,
+        metadata: (mod_api::ItemKey, std::num::NonZeroU32, Option<u32>),
+    ) -> Option<mod_api::ItemStack> {
+        crate::game::api_values::project_stack(&self.items.get(index)?.stack, metadata).ok()
+    }
+
+    fn position(&self, index: usize) -> Option<[f64; 3]> {
+        self.items.get(index).map(|item| item.position)
+    }
+
+    fn velocity(&self, index: usize) -> Option<[f64; 3]> {
+        self.items.get(index).map(|item| item.velocity)
+    }
+
+    fn pickup_delay(&self, index: usize) -> Option<u32> {
+        self.items.get(index).map(|item| item.pickup_delay)
+    }
+
+    fn thrower(&self, index: usize) -> Option<Option<u128>> {
+        self.items.get(index).map(|item| item.state.thrower)
+    }
+
+    fn target(&self, index: usize) -> Option<Option<u128>> {
+        self.items.get(index).map(|item| item.state.target)
+    }
+
+    fn no_gravity(&self, index: usize) -> Option<bool> {
+        self.items.get(index).map(|item| item.state.no_gravity)
+    }
+
+    fn age(&self, index: usize) -> Option<i32> {
+        self.items.get(index).map(|item| item.state.age)
+    }
+
+    fn set_stack(
+        &mut self,
+        index: usize,
+        stack: mod_api::ItemStack,
+    ) -> Result<bool, mod_api::StackWriteError> {
+        if index >= self.items.len() {
+            return Ok(false);
+        }
+        let converted = stack.try_into_engine(self.items_registry)?;
+        self.items[index].stack = converted;
+        Ok(true)
+    }
+
+    fn set_position(&mut self, index: usize, position: [f64; 3]) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.position = position;
+        true
+    }
+
+    fn set_velocity(&mut self, index: usize, velocity: [f64; 3]) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.velocity = velocity;
+        true
+    }
+
+    fn set_pickup_delay(&mut self, index: usize, pickup_delay: u32) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.pickup_delay = pickup_delay;
+        true
+    }
+
+    fn set_thrower(&mut self, index: usize, thrower: Option<u128>) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.state.thrower = thrower;
+        true
+    }
+
+    fn set_target(&mut self, index: usize, target: Option<u128>) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.state.target = target;
+        true
+    }
+
+    fn set_no_gravity(&mut self, index: usize, no_gravity: bool) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.state.no_gravity = no_gravity;
+        true
+    }
+
+    fn set_age(&mut self, index: usize, age: i32) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.state.age = age;
+        true
+    }
+
+    fn push(&mut self, drop: mod_api::ItemDrop) -> Result<(), mod_api::StackWriteError> {
+        let converted = drop.try_into_engine(self.items_registry)?;
+        self.items.push(converted);
+        Ok(())
+    }
+
+    fn insert(
+        &mut self,
+        index: usize,
+        drop: mod_api::ItemDrop,
+    ) -> Result<bool, mod_api::StackWriteError> {
+        if index > self.items.len() {
+            return Ok(false);
+        }
+        let converted = drop.try_into_engine(self.items_registry)?;
+        self.items.insert(index, converted);
+        Ok(true)
+    }
+
+    fn replace(
+        &mut self,
+        index: usize,
+        drop: mod_api::ItemDrop,
+    ) -> Result<bool, mod_api::StackWriteError> {
+        if index >= self.items.len() {
+            return Ok(false);
+        }
+        let converted = drop.try_into_engine(self.items_registry)?;
+        self.items[index] = converted;
+        Ok(true)
+    }
+
+    fn remove(&mut self, index: usize) -> bool {
+        if index >= self.items.len() {
+            return false;
+        }
+        self.items.remove(index);
+        true
+    }
+
+    fn clear(&mut self) {
+        self.items.clear();
+    }
+
+    fn truncate(&mut self, len: usize) {
+        self.items.truncate(len);
+    }
+
+    fn swap(&mut self, a: usize, b: usize) -> bool {
+        if a >= self.items.len() || b >= self.items.len() {
+            return false;
+        }
+        self.items.swap(a, b);
+        true
     }
 }
 
@@ -617,7 +796,7 @@ impl GameLevel<'_> {
             .drop_entity
             .filter(|_| self.drop_breaker_at == Some(pos));
         let drops = self.roll_block_loot(pos, state, entity, roll, None);
-        let dropped = self.block_dropped(pos, state, None, tool.as_ref(), drops, None);
+        let dropped = self.block_dropped(pos, state, None, tool.as_ref(), None, drops, None);
         for item in dropped.items {
             if let Some(kept) = self.drop_into.as_mut().filter(|_| machine) {
                 kept.push(item.stack);
@@ -688,6 +867,7 @@ impl GameLevel<'_> {
         state: BlockStateId,
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
+        block_entity_data: Option<&Compound>,
         stacks: Vec<ItemStack>,
         exp_to_drop: Option<u32>,
     ) -> BlockDrops {
@@ -718,6 +898,7 @@ impl GameLevel<'_> {
             state,
             breaker,
             tool,
+            block_entity_data,
             BlockDrops {
                 items,
                 experience,
@@ -747,6 +928,7 @@ impl GameLevel<'_> {
         state: BlockStateId,
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
+        block_entity_data: Option<&Compound>,
         dropped: BlockDrops,
     ) -> BlockDrops {
         let BlockDrops {
@@ -756,31 +938,35 @@ impl GameLevel<'_> {
         } = dropped;
         if self.native_authoritative
             && mod_api::__private::listened(mod_api::HookId::BlockDrops)
-            && let Ok(mut snapshots) = items.try_into_api()
+            && let Ok(api_state) = state.try_into_api()
+            && let Ok(tool_metadata) = tool
+                .map(crate::game::api_values::stack_read_metadata)
+                .transpose()
         {
             let (block_entity, breaker_entity) = self.drop_event_refs(pos, breaker);
-            let mut next_experience = experience;
-            let mut next_canceled = canceled;
-            self.native_block_drops(crate::game::native_hooks::BlockDropsCall {
+            let project_tool = |metadata| {
+                tool.and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
+            };
+            let tool_view = tool_metadata
+                .map(|metadata| mod_api::ItemStackView::resident(metadata, &project_tool));
+            let items_registry = self.items;
+            let mut drops_access = EnginePreparedDrops {
+                items: &mut items,
+                items_registry,
+            };
+            self.native_block_drops(mod_api::__private::BlockDropsCall {
                 dimension: self.dimension,
                 pos,
-                state,
+                state: api_state,
                 breaker,
                 breaker_entity,
                 block_entity,
-                tool,
-                drops: &mut snapshots,
-                experience: &mut next_experience,
-                cancel: &mut next_canceled,
+                block_entity_data,
+                tool: tool_view,
+                drops: mod_api::PreparedBlockDrops::new(&mut drops_access),
+                experience: &mut experience,
+                cancel: &mut canceled,
             });
-            if let Ok(mut next_items) = snapshots.try_into_engine(self.items) {
-                for (next, original) in next_items.iter_mut().zip(&items) {
-                    next.random = original.random;
-                }
-                items = next_items;
-                experience = next_experience;
-                canceled = next_canceled;
-            }
         }
         if canceled || !self.rules.block_drops {
             items.clear();
@@ -1425,7 +1611,9 @@ mod tests {
             event: &mut mod_api::BlockDropsEvent<'_>,
         ) -> mod_api::Flow {
             if event.drops.iter().any(|d| {
-                mod_api::__private::item_key_id(d.stack.item()).unwrap() == "minecraft:dirt"
+                d.stack().is_some_and(|s| {
+                    mod_api::__private::item_key_id(s.item()) == Some("minecraft:dirt")
+                })
             }) {
                 return mod_api::Flow::Cancel;
             }
@@ -1459,6 +1647,7 @@ mod tests {
                     level.block_dropped(
                         pos,
                         state,
+                        None,
                         None,
                         None,
                         vec![ItemStack::new(item, 1)],

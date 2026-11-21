@@ -139,7 +139,7 @@ fn block_parts_xp_and_explosion_contract() {
                         tool: Option<&sunrise_client::items::ItemStack>,
                         override_xp| {
                 game.with_level(|_, level, _| {
-                    level.block_dropped(pos, state, None, tool, Vec::new(), override_xp)
+                    level.block_dropped(pos, state, None, tool, None, Vec::new(), override_xp)
                 })
                 .experience
             };
