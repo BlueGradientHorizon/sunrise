@@ -14,26 +14,13 @@ impl Game<'_> {
         if !host.hub.guests[i].dead {
             return;
         }
-        let (uuid, entity_id) = (host.hub.guests[i].uuid, host.hub.guests[i].entity_id);
-        // PlayerList.respawn replaces the player, retaining only opted-in data; move the
-        // detached previous attachments straight into the retained original when listened.
-        let previous = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.hub.guests.attachments_mut(conn))
-            .and_then(|attachments| {
-                attachments
-                    .copy_on_death()
-                    .ok()
-                    .map(|copy| attachments.swap_contents(copy))
-            });
-        let original = self.retain_original_player(conn, previous);
-        // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
-        self.keep_only_player_persisted(conn);
-        self.reinitialize_server_player(uuid, conn);
+        let entity_id = host.hub.guests[i].entity_id;
         // The new `ServerPlayer` is filed where it is placed, untold.
         self.entity_section_forget(entity_id as u32);
-        // PlayerList.respawn removes the dead player (Player.remove).
+        // PlayerList.respawn removes the dead player (Player.remove) against its own state
+        // before copying data into the replacement: carried items drop and open menus close
+        // (returning crafting inputs to inventory and firing `player_container_close` on the
+        // old player).
         self.guest_drop_carried(i);
         // AbstractContainerScreen.tick / ServerPlayer.closeContainer: the dead
         // player's open container goes with it, so a chest's lid (its opener
@@ -43,13 +30,9 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        // PlayerList.respawn builds a new `ServerPlayer`, whose `lastEquipmentItems` starts
-        // empty: the mods hear each worn item again from empty (`native_players_equipment`).
-        if let Some(play) = host.play.get_mut(&conn) {
-            play.equipment_heard = None;
-            play.inventory_heard = None;
-            play.level_up_sound = Default::default();
-        }
+        let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
+            return;
+        };
         // PlayerList.respawn: a server's player comes back in its respawn
         // point's level: the world spawn's, the Overworld for a bed,
         // or another one's anchor or forced point, which its block resolves
@@ -113,6 +96,9 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
+        let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
+            return;
+        };
         let rotation = decision.map(|d| [d.to.yaw, d.to.pitch]);
         let back = self.dim;
         let left = crate::game::Dim::from_id(&host.hub.guests[i].dimension);
@@ -124,10 +110,22 @@ impl Game<'_> {
             log::error!("could not open {}: {e}", level.id());
             return;
         }
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        let (cloned, name) = host.hub.guests.update(i, |g| {
+        // PlayerList.respawn builds a new `ServerPlayer`, whose `lastEquipmentItems` starts
+        // empty: the mods hear each worn item again from empty (`native_players_equipment`).
+        if let Some(host) = self.lan.as_mut()
+            && let Some(play) = host.play.get_mut(&conn)
+        {
+            play.equipment_heard = None;
+            play.inventory_heard = None;
+            play.level_up_sound = Default::default();
+        }
+        let destination = if away { level } else { self.dim };
+        let keep_inventory_rule = self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::KEEP_INVENTORY);
+        let motion = self.motion;
+        if !self.restore_cloned_player(conn, destination, true, |g| {
             // restartClientLoadTimerAfterRespawn.
             g.dead = false;
             g.load_timeout = sunrise_client::lan::guest::CLIENT_LOADED_TIMEOUT;
@@ -142,27 +140,32 @@ impl Game<'_> {
                 let m = *m;
                 g.logs_kept = Some((m.hurt_log, m.attack_log));
             }
-            g.health = g.respawn_health(self.motion);
+            g.health = g.respawn_health(motion);
             let mut xp = Experience {
                 level: g.xp_level,
                 progress: g.xp_progress,
                 total: g.xp_total,
             };
-            let keep_inventory = self
-                .ui
-                .rules
-                .bool_at(sunrise_client::gamerules::vanilla::KEEP_INVENTORY)
-                || g.game_mode == SPECTATOR;
+            let keep_inventory = keep_inventory_rule || g.game_mode == SPECTATOR;
             xp.respawn(keep_inventory);
             g.effects = Default::default();
             (g.xp_level, g.xp_progress, g.xp_total) = (xp.level, xp.progress, xp.total);
-            // PlayerEvent.Clone, at the end of `restoreFrom`: the data is copied,
-            // the new player not yet placed.
-            (g.uuid, g.name.clone())
-        });
-        if let Some(original) = original {
-            self.dispatch_player_clone_with_original(original, cloned, &name, true);
+        }) {
+            if away && let Err(e) = self.enter_level(back) {
+                log::error!("could not reopen {}: {e}", back.id());
+            }
+            return;
         }
+        let Some(i) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
+        else {
+            if away && let Err(e) = self.enter_level(back) {
+                log::error!("could not reopen {}: {e}", back.id());
+            }
+            return;
+        };
         let clock_rate = self.network_clock_rate();
         let ctx = TickCtx {
             world: &mut self.world,

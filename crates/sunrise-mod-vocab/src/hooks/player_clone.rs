@@ -10,11 +10,14 @@ pub trait Hooks {
     /// player, enforced at compile time so it cannot outlive the hook. It
     /// supports normal attachment holder operations on the old player
     /// (including default insertion, decode-once caching, writes and removals
-    /// without touching the replacement), `with_inventory` over the 43-slot
+    /// without touching the replacement, all journaled to `host.transaction`
+    /// so aborts roll back both holders), `with_inventory` over the 43-slot
     /// vanilla inventory, `persistent_data`, health, experience, active
-    /// effects, position, dimension and level. `player` is the replacement's
-    /// UUID. Heard after copy and before placement on a server, without
-    /// swapping a player's state in. Not cancellable.
+    /// effects, position, source dimension and source level. `player` is the
+    /// replacement's UUID, already assigned its destination level/dimension
+    /// before placement. Heard after old-player cleanup (carried drop, menu
+    /// close) and attachment/data copy and before placement on a server,
+    /// without swapping a player's state in. Not cancellable.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_clone",
         dispatch = "flat",

@@ -1,10 +1,9 @@
 //! Direct hook-scoped loan of the retained original player during `player_clone`.
 
 use crate::{
-    ActiveEffect, AttachmentAccess, AttachmentError, AttachmentType, Attachments, Compound, Holder,
-    Identifier, InventoryView, LevelRef, PlayerExperience,
+    ActiveEffect, AttachmentError, AttachmentStore, AttachmentType, Compound, Holder, Identifier,
+    InventoryView, LevelRef, PlayerExperience,
 };
-use sunrise_mod_runtime::attachments::AttachmentHost;
 
 /// Direct callback-scoped loan of the retained original player during
 /// [`Hooks::player_clone`](crate::Hooks::player_clone) (NeoForge's
@@ -14,7 +13,8 @@ use sunrise_mod_runtime::attachments::AttachmentHost;
 /// experience, active effects, 43-slot inventory and persistent data. Attachment
 /// methods operate on the retained original holder with normal attachment-holder
 /// semantics (including default insertion, decode-once caching, writes and
-/// removals) without touching the replacement player.
+/// removals) without touching the replacement player, and participate in the
+/// enclosing `host.transaction` so an aborted transaction rolls back both holders.
 ///
 /// The loan is bound to the callback lifetime and cannot escape into a `'static`
 /// slot:
@@ -100,15 +100,12 @@ impl<'a> OriginalPlayer<'a> {
 
     /// Read an attachment on the original player, inserting its default on the original
     /// if absent and caching a decoded saved entry once. Never touches the replacement
-    /// player.
+    /// player, and rolls back if an enclosing `host.transaction` aborts.
     pub fn attachment<T: Clone + Send + Sync + 'static>(
         &mut self,
         key: &AttachmentType<T>,
     ) -> Result<T, AttachmentError> {
-        key.get(
-            &mut ValidatedOriginal(self.data.attachments_mut()),
-            Holder::Level,
-        )
+        key.get(self.data.attachments(), Holder::Level)
     }
 
     /// Whether the original player carries an entry for `key`, saved or decoded,
@@ -117,22 +114,17 @@ impl<'a> OriginalPlayer<'a> {
         &mut self,
         key: &AttachmentType<T>,
     ) -> Result<bool, AttachmentError> {
-        key.has(
-            &mut ValidatedOriginal(self.data.attachments_mut()),
-            Holder::Level,
-        )
+        key.has(self.data.attachments(), Holder::Level)
     }
 
     /// Read an attachment on the original player only if present; a saved entry decodes
-    /// and caches once without inserting a default.
+    /// and caches once without inserting a default, rolling back if an enclosing
+    /// `host.transaction` aborts.
     pub fn existing_attachment<T: Clone + Send + Sync + 'static>(
         &mut self,
         key: &AttachmentType<T>,
     ) -> Result<Option<T>, AttachmentError> {
-        key.get_existing(
-            &mut ValidatedOriginal(self.data.attachments_mut()),
-            Holder::Level,
-        )
+        key.get_existing(self.data.attachments(), Holder::Level)
     }
 
     /// Borrow an already-decoded attachment on the original player without cloning it.
@@ -142,37 +134,27 @@ impl<'a> OriginalPlayer<'a> {
         key: &AttachmentType<T>,
         read: impl FnOnce(Option<&T>) -> R,
     ) -> Result<R, AttachmentError> {
-        key.with_decoded(
-            &mut ValidatedOriginal(self.data.attachments_mut()),
-            Holder::Level,
-            read,
-        )
+        key.with_decoded(self.data.attachments(), Holder::Level, read)
     }
 
     /// Set an attachment value on the retained original player. Never touches the
-    /// replacement player.
+    /// replacement player, and rolls back if an enclosing `host.transaction` aborts.
     pub fn set_attachment<T: Clone + Send + Sync + 'static>(
         &mut self,
         key: &AttachmentType<T>,
         value: T,
     ) -> Result<(), AttachmentError> {
-        key.set(
-            &mut ValidatedOriginal(self.data.attachments_mut()),
-            Holder::Level,
-            value,
-        )
+        key.set(self.data.attachments(), Holder::Level, value)
     }
 
     /// Remove an attachment from the retained original player, returning its previous
-    /// value if present. Never touches the replacement player.
+    /// value if present. Never touches the replacement player, and rolls back if an
+    /// enclosing `host.transaction` aborts.
     pub fn remove_attachment<T: Clone + Send + Sync + 'static>(
         &mut self,
         key: &AttachmentType<T>,
     ) -> Result<Option<T>, AttachmentError> {
-        key.remove(
-            &mut ValidatedOriginal(self.data.attachments_mut()),
-            Holder::Level,
-        )
+        key.remove(self.data.attachments(), Holder::Level)
     }
 }
 
@@ -189,34 +171,13 @@ pub trait OriginalPlayerAccess {
     fn effects(&self) -> &[ActiveEffect];
     fn with_inventory(&self, read: &mut dyn for<'a> FnMut(InventoryView<'a>));
     fn persistent_data(&self) -> Option<&Compound>;
-    fn attachments_mut(&mut self) -> &mut Attachments;
-}
-
-struct ValidatedOriginal<'a>(&'a mut Attachments);
-
-impl AttachmentHost for ValidatedOriginal<'_> {
-    fn validate_attachment(
-        &self,
-        namespace: &str,
-        name: &str,
-        sync: bool,
-    ) -> Result<(), AttachmentError> {
-        crate::parts::validate_attachment_use(namespace, name, sync)
-    }
-
-    fn attachments(
-        &mut self,
-        _: Holder,
-        _: AttachmentAccess,
-    ) -> Result<&mut Attachments, AttachmentError> {
-        Ok(self.0)
-    }
+    fn attachments(&mut self) -> &mut dyn AttachmentStore;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AttachmentCodec, ItemKey, ItemStack, Tag};
+    use crate::{AttachmentCodec, Attachments, ItemKey, ItemStack, Tag};
     use std::num::NonZeroU32;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -267,7 +228,7 @@ mod tests {
         fn persistent_data(&self) -> Option<&Compound> {
             self.persistent_data.as_ref()
         }
-        fn attachments_mut(&mut self) -> &mut Attachments {
+        fn attachments(&mut self) -> &mut dyn AttachmentStore {
             &mut self.attachments
         }
     }

@@ -686,28 +686,10 @@ impl Game<'_> {
                 if !self.server_player_travel_allowed(conn, target, TravelCause::EndPortal) {
                     return;
                 }
-                let original = self.retain_original_player(conn, None);
-                // The first exit from the End keeps only `PlayerPersisted` of a mod's saved
-                // compound, as a death respawn does; later exits keep all of it.
-                self.keep_only_player_persisted(conn);
-                let Some(host) = self.lan.as_mut() else {
-                    return;
-                };
-                if let Some(play) = host.play.get_mut(&conn) {
-                    play.respawn_requested = false;
-                    play.won_game = false;
+                if self.start_server_trip_inner(conn, target, None, true) {
+                    self.trip_respawn(conn, respawn);
+                    self.portals.player.cooldown = 10;
                 }
-                // PlayerList.respawn(keepAllPlayerData = true), CHANGED_DIMENSION:
-                // PlayerEvent.Clone with `wasDeath` false.
-                let identity = host.hub.guest(conn).map(|g| (g.uuid, g.name.clone()));
-                if let Some((uuid, name)) = identity
-                    && let Some(original) = original
-                {
-                    self.dispatch_player_clone_with_original(original, uuid, &name, false);
-                }
-                self.start_server_trip(conn, target, None, true);
-                self.trip_respawn(conn, respawn);
-                self.portals.player.cooldown = 10;
             }
             return;
         }
@@ -897,6 +879,16 @@ impl Game<'_> {
         plan: Option<Plan>,
         credits_respawn: bool,
     ) {
+        let _ = self.start_server_trip_inner(conn, target, plan, credits_respawn);
+    }
+
+    fn start_server_trip_inner(
+        &mut self,
+        conn: u32,
+        target: Dim,
+        plan: Option<Plan>,
+        credits_respawn: bool,
+    ) -> bool {
         // A player changing level carries no mob a mod seated on it: it gets off here.
         if target != self.dim
             && let Some(carrier) = self
@@ -908,10 +900,10 @@ impl Game<'_> {
             self.eject_player_riders(Some(carrier));
         }
         let Some(host) = self.lan.as_mut() else {
-            return;
+            return false;
         };
         let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-            return;
+            return false;
         };
         if target != self.dim {
             drop_hook(host, conn);
@@ -958,7 +950,25 @@ impl Game<'_> {
         self.end_portal_travel = false;
         if let Err(e) = self.enter_level(target) {
             log::error!("could not open {}: {e}", target.id());
-            return;
+            return false;
+        }
+        if credits_respawn {
+            if let Some(host) = self.lan.as_mut()
+                && let Some(play) = host.play.get_mut(&conn)
+            {
+                play.respawn_requested = false;
+                play.won_game = false;
+            }
+            // PlayerList.respawn(keepAllPlayerData = true), CHANGED_DIMENSION:
+            // restoreFrom runs in the destination level before placement, copying
+            // serializable attachments, stripping non-PlayerPersisted data, and
+            // firing PlayerEvent.Clone with `was_death` false.
+            if !self.restore_cloned_player(conn, target, false, |_| {}) {
+                if let Err(e) = self.enter_level(source) {
+                    log::error!("could not reopen {}: {e}", source.id());
+                }
+                return false;
+            }
         }
         let destination = match plan {
             Some(plan) => self.arrival_centre(&plan),
@@ -966,12 +976,27 @@ impl Game<'_> {
         };
         let at = [destination.x, destination.y, destination.z];
         let ctx = server_ctx!(self);
+        let Some(i) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
+        else {
+            if let Err(e) = self.enter_level(source) {
+                log::error!("could not reopen {}: {e}", source.id());
+            }
+            return false;
+        };
         // Through a portal: the client waits on its loading screen until
         // the exit is found (`arrive_server_trips`). The cooldown is the one
         // Entity.handlePortal set before the teleport.
         if let Some(host) = self.lan.as_mut() {
-            host.hub
-                .change_level(i, at, yaw, None, true, PLAYER_DELAY, &ctx);
+            if credits_respawn {
+                host.hub
+                    .change_level_from(i, source.id(), at, yaw, None, true, PLAYER_DELAY, &ctx);
+            } else {
+                host.hub
+                    .change_level(i, at, yaw, None, true, PLAYER_DELAY, &ctx);
+            }
         }
         if credits_respawn && let Some(host) = self.lan.as_mut() {
             host.hub.guests.update(i, |g| {
@@ -1018,6 +1043,7 @@ impl Game<'_> {
         if let Err(e) = self.enter_level(source) {
             log::error!("could not reopen {}: {e}", source.id());
         }
+        true
     }
 
     /// A respawned player waits at its point outside the Overworld for the

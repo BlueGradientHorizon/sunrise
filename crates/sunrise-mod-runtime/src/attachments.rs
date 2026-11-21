@@ -982,16 +982,23 @@ impl Attachments {
         }
         raw
     }
-    /// Copy opted-in values through their disk encoding for a player respawn.
-    pub fn copy_on_death(&self) -> Result<Self, AttachmentError> {
+    /// Copy serializable entries through their disk encoding for a player clone
+    /// (NeoForge's `AttachmentInternals.copyEntityAttachments`).
+    /// When `is_death` is true, only `copy_on_death` entries are copied; when false
+    /// (End credits return), every serializable entry is copied. Codec-less entries
+    /// are never copied, and copied entries start encoded rather than sharing decoded
+    /// `Arc` bindings with the source map.
+    pub fn copy_for_clone(&self, is_death: bool) -> Result<Self, AttachmentError> {
         let mut copy = Self::default();
         for (key, entry) in &self.entries {
             let encoded = match &entry.state {
                 Entry::Raw { saved, .. }
-                    if matches!(saved.get(&"copy_on_death".into()), Some(Tag::Byte(1))) =>
+                    if !is_death
+                        || matches!(saved.get(&"copy_on_death".into()), Some(Tag::Byte(1))) =>
                 {
                     Some(saved.clone())
                 }
+                Entry::Decoded(value) if !is_death => envelope(value),
                 Entry::Decoded(value) if value.policy.copy_on_death => {
                     Some(envelope(value).ok_or(AttachmentError::InvalidCopyPolicy)?)
                 }
@@ -1003,6 +1010,10 @@ impl Attachments {
             }
         }
         Ok(copy)
+    }
+    /// Copy opted-in values through their disk encoding for a player respawn.
+    pub fn copy_on_death(&self) -> Result<Self, AttachmentError> {
+        self.copy_for_clone(true)
     }
     /// The shared immutable binding, without decoding or inserting a value.
     #[doc(hidden)]
@@ -1878,6 +1889,60 @@ mod tests {
         assert_eq!(SYNCED.get(&mut map, Holder::Level), Ok(9));
         map.apply_sync(change("synced", None));
         assert_eq!(SYNCED.get(&mut map, Holder::Level), Ok(7));
+    }
+    #[test]
+    fn copy_for_clone_copies_serializable_entries_by_policy_and_skips_unserialized() {
+        const UNSERIALIZED: AttachmentType<i32> = AttachmentType {
+            namespace: "test",
+            name: "unserialized",
+            default: || 0,
+            codec: None,
+            copy_on_death: false,
+            sync: false,
+        };
+        const KEEP_ON_DEATH: AttachmentType<i32> = AttachmentType {
+            namespace: "test",
+            name: "keep_on_death",
+            default: || 0,
+            codec: Some(AttachmentCodec { encode, decode }),
+            copy_on_death: true,
+            sync: false,
+        };
+        let mut source = Attachments::default();
+        COUNTER.set(&mut source, Holder::Level, 11).unwrap();
+        KEEP_ON_DEATH.set(&mut source, Holder::Level, 22).unwrap();
+        UNSERIALIZED.set(&mut source, Holder::Level, 33).unwrap();
+
+        let mut end_copy = source.copy_for_clone(false).unwrap();
+        assert_eq!(UNSERIALIZED.has(&mut end_copy, Holder::Level), Ok(false));
+        assert!(end_copy.decoded("test", "counter").unwrap().is_none());
+        assert!(end_copy.decoded("test", "keep_on_death").unwrap().is_none());
+        assert_eq!(
+            COUNTER.get_existing(&mut end_copy, Holder::Level),
+            Ok(Some(11))
+        );
+        assert_eq!(
+            KEEP_ON_DEATH.get_existing(&mut end_copy, Holder::Level),
+            Ok(Some(22))
+        );
+        // Decoded Arcs are independent from the source map.
+        let src_arc = source.decoded("test", "counter").unwrap().unwrap();
+        let copy_arc = end_copy.decoded("test", "counter").unwrap().unwrap();
+        assert!(!Arc::ptr_eq(&src_arc, &copy_arc));
+
+        let mut death_copy = source.copy_for_clone(true).unwrap();
+        assert_eq!(UNSERIALIZED.has(&mut death_copy, Holder::Level), Ok(false));
+        assert_eq!(COUNTER.has(&mut death_copy, Holder::Level), Ok(false));
+        assert!(
+            death_copy
+                .decoded("test", "keep_on_death")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            KEEP_ON_DEATH.get_existing(&mut death_copy, Holder::Level),
+            Ok(Some(22))
+        );
     }
     #[test]
     fn swap_contents_returns_detached_previous_map_with_normal_host_operations() {

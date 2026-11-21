@@ -4841,6 +4841,16 @@ impl Hub {
         );
     }
 
+    /// `ChunkMap.removeEntity`: stop watching every chunk of `i`'s current level.
+    /// Idempotent once drained, so callers that assign a replacement player's
+    /// destination dimension before `respawn` or `change_level` still record
+    /// unwatch events against the level being left.
+    pub fn unwatch_guest_chunks(&mut self, i: usize) {
+        self.guests.update(i, |g| {
+            super::chunk_watch::unwatch_all(&mut self.chunk_watches, g);
+        });
+    }
+
     /// PlayerList.respawn: back to `at` with a fresh start. The vanilla client waits on its
     /// level loading screen from the Respawn packet until the level info's "level chunks load
     /// start" event and the chunk under the player, so the packets follow vanilla's order.
@@ -4993,10 +5003,27 @@ impl Hub {
         portal_cooldown: i32,
         ctx: &TickCtx,
     ) {
+        let left = self.guests[i].dimension.clone();
+        self.change_level_from(i, &left, at, yaw, pitch, portal, portal_cooldown, ctx);
+    }
+
+    /// Like [`Self::change_level`], with the departed dimension passed explicitly when the
+    /// replacement player's dimension was already updated before placement (End credits return).
+    #[allow(clippy::too_many_arguments)]
+    pub fn change_level_from(
+        &mut self,
+        i: usize,
+        left: &str,
+        at: [f64; 3],
+        yaw: f32,
+        pitch: Option<f32>,
+        portal: bool,
+        portal_cooldown: i32,
+        ctx: &TickCtx,
+    ) {
         let info = self.spawn_info(i, portal_cooldown, ctx.sea_level);
         self.close_container_for(i);
         self.before_travel(i);
-        let left = self.guests[i].dimension.clone();
         self.guests.update(i, |g| {
             // Out of the old level with its chunks (ChunkMap.removeEntity).
             super::chunk_watch::unwatch_all(&mut self.chunk_watches, g);
@@ -5019,7 +5046,7 @@ impl Hub {
             }));
         });
         // Its chunks, queues and entities left behind, or kept as a viewed level (#3716).
-        self.leave_level(i, &left);
+        self.leave_level(i, left);
         self.guests[i].send(&C::ChangeDifficulty(play::ChangeDifficulty {
             difficulty: ctx.difficulty,
             locked: ctx.difficulty_locked,

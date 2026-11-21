@@ -84,11 +84,29 @@ pub(super) struct OpenTransactions {
     composter_epoch: Option<mod_api::WorldEpoch>,
     /// Each composter port owns its transactional random stream, independently of Level.random.
     composter_randoms: ComposterRandoms,
+    /// Active retained original-player attachment maps during `player_clone` dispatch,
+    /// kept in sync with open transaction frames so mutations roll back on abort.
+    retained_original_attachments:
+        Vec<std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>>,
     #[cfg(test)]
     pub(in crate::game) trace: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
 }
 
 impl OpenTransactions {
+    pub(super) fn open_tokens(&self) -> Vec<u64> {
+        self.levels.iter().map(|level| level.token).collect()
+    }
+
+    pub(super) fn push_retained_original(
+        &mut self,
+        slot: std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>,
+    ) {
+        self.retained_original_attachments.push(slot);
+    }
+
+    pub(super) fn pop_retained_original(&mut self) {
+        self.retained_original_attachments.pop();
+    }
     fn player_write(&mut self) -> Option<&mut Level> {
         self.player_writes = self.player_writes.wrapping_add(1);
         self.writes = self.writes.wrapping_add(1);
@@ -632,6 +650,11 @@ impl Game<'_> {
             lifetimes,
             ..Level::default()
         });
+        for slot in &self.transactions.retained_original_attachments {
+            slot.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .open_frame(token);
+        }
         #[cfg(test)]
         self.trace_storage_attempt("open".into());
         (token, close_token)
@@ -804,6 +827,11 @@ impl Game<'_> {
             None
         };
         let lifetimes = std::mem::take(&mut level.lifetimes);
+        for slot in &self.transactions.retained_original_attachments {
+            slot.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .close_frame(level.token, commit);
+        }
         match (commit, self.transactions.last_mut()) {
             (true, Some(outer)) => {
                 outer.actions.merge(level.actions);

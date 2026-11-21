@@ -157,14 +157,20 @@ of those values rather than consulting the client holder.
 
 ## Copying on respawn and conversion
 
-`copy_on_death` requires a codec. Player respawn copies opted-in entries via their
-encoded representation, including raw entries of an absent mod; other entries are
-removed. A mob's conversion (a villager struck into a witch, a zombie villager cured, a
-piglin zombified, a tadpole grown) copies every entry with a codec, raw entries of an absent
-mod included, to the new mob through its encoded form, over what its construction set; entries
-without a codec stay on the removed mob. A cancelled `living_conversion_pre` copies nothing,
-`living_conversion_post` sees the copy, and the copy is not synced on its own (the new mob's
-spawn carries its synced entries).
+`copy_on_death` requires a codec. On death respawn, only opted-in (`copy_on_death`)
+entries with a codec — including raw entries of an absent mod — are copied to the
+replacement via their encoded representation; other entries stay only on the retained old
+player. On return from the End after credits (`was_death = false`), every serializable
+entry (any entry with a codec, including raw entries of an absent mod) is copied to the
+replacement via its encoded representation, while entries without a codec stay only on
+the retained old player. In both cases the copy runs even when no mod subscribes to
+`player_clone`, and the replacement starts from fresh encoded entries rather than sharing
+decoded instances with the old player. A mob's conversion (a villager struck into a witch,
+a zombie villager cured, a piglin zombified, a tadpole grown) copies every entry with a
+codec, raw entries of an absent mod included, to the new mob through its encoded form,
+over what its construction set; entries without a codec stay on the removed mob. A
+cancelled `living_conversion_pre` copies nothing, `living_conversion_post` sees the copy,
+and the copy is not synced on its own (the new mob's spawn carries its synced entries).
 
 ## Reading the original player
 
@@ -176,7 +182,9 @@ the replacement's retained value or fresh default. This works on death and on re
 the End. The original's `has_attachment`, `existing_attachment` (decoding and caching a
 saved entry once without inserting a default), `with_decoded_attachment`, `set_attachment`,
 and `remove_attachment` follow normal attachment-holder semantics on the retained old player
-without touching the replacement.
+without touching the replacement, and participate in `host.transaction` so an aborted
+transaction rolls back writes, removals, default insertions and decode caching on both
+holders together.
 
 The same `OriginalPlayer<'_>` view exposes `uuid`, `position`, `dimension`, `level`,
 `health`, `experience`, `effects`, `persistent_data`, and `with_inventory` for the pre-copy

@@ -1,8 +1,10 @@
 //! The old `ServerPlayer` retained across `restoreFrom`, independently of its replacement.
-use super::Game;
+use super::{Dim, Game};
 use mod_api::{
-    ActiveEffect, Attachments, InventoryView, LevelRef, OriginalPlayerAccess, PlayerExperience,
+    ActiveEffect, AttachmentError, AttachmentForm, AttachmentStore, AttachmentValue, Attachments,
+    Holder, InventoryView, LevelRef, OriginalPlayerAccess, PlayerExperience,
 };
+use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::Compound;
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
@@ -12,6 +14,158 @@ use sunrise_items::items::ItemStack;
 pub(super) struct PlayerState {
     pub(super) attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
     pub(super) cloning_players: Vec<u128>,
+}
+
+/// Retained original-player attachment storage tied to `Game::transactions` so mutations,
+/// default insertions, removals and decode caching roll back with an aborted transaction.
+pub(in crate::game) struct OriginalAttachmentSlot {
+    map: Attachments,
+    active_frames: Vec<u64>,
+    journal: Vec<(u64, Attachments)>,
+}
+
+impl OriginalAttachmentSlot {
+    fn new(map: Attachments) -> Self {
+        Self {
+            map,
+            active_frames: Vec::new(),
+            journal: Vec::new(),
+        }
+    }
+
+    fn set_active_frames(&mut self, frames: Vec<u64>) {
+        self.active_frames = frames;
+    }
+
+    pub(in crate::game) fn open_frame(&mut self, token: u64) {
+        self.active_frames.push(token);
+    }
+
+    pub(in crate::game) fn close_frame(&mut self, token: u64, commit: bool) {
+        if let Some(pos) = self.active_frames.iter().rposition(|&t| t == token) {
+            self.active_frames.remove(pos);
+        }
+        let kept = self
+            .journal
+            .iter()
+            .rposition(|(t, _)| *t == token)
+            .map(|pos| self.journal.remove(pos).1);
+        let Some(kept) = kept else {
+            return;
+        };
+        if commit {
+            if let Some(&outer) = self.active_frames.last()
+                && !self.journal.iter().any(|(t, _)| *t == outer)
+            {
+                self.journal.push((outer, kept));
+            }
+        } else {
+            self.map = kept;
+        }
+    }
+
+    fn journal_current(&mut self) {
+        if let Some(&token) = self.active_frames.last()
+            && !self.journal.iter().any(|(t, _)| *t == token)
+        {
+            self.journal.push((token, self.map.clone()));
+        }
+    }
+}
+
+struct RetainedOriginalAttachments {
+    slot: Arc<Mutex<OriginalAttachmentSlot>>,
+}
+
+impl RetainedOriginalAttachments {
+    fn new(map: Attachments) -> Self {
+        Self {
+            slot: Arc::new(Mutex::new(OriginalAttachmentSlot::new(map))),
+        }
+    }
+}
+
+impl AttachmentStore for RetainedOriginalAttachments {
+    fn validate_attachment(
+        &mut self,
+        namespace: &str,
+        name: &str,
+        sync: bool,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, sync)
+    }
+
+    fn holds(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+    ) -> Result<bool, AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        AttachmentStore::holds(&mut slot.map, holder, namespace, name)
+    }
+
+    fn decoded(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+    ) -> Result<Option<AttachmentValue>, AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        AttachmentStore::decoded(&mut slot.map, holder, namespace, name)
+    }
+
+    fn saved(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+    ) -> Result<Option<Compound>, AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        AttachmentStore::saved(&mut slot.map, holder, namespace, name)
+    }
+
+    fn store(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+        value: AttachmentValue,
+        form: AttachmentForm,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, form.policy.sync)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        slot.journal_current();
+        AttachmentStore::store(&mut slot.map, holder, namespace, name, value, form)
+    }
+
+    fn discard(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+        sync: bool,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, sync)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        slot.journal_current();
+        AttachmentStore::discard(&mut slot.map, holder, namespace, name, sync)
+    }
+
+    fn queue_sync(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, true)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        slot.journal_current();
+        AttachmentStore::queue_sync(&mut slot.map, holder, namespace, name)
+    }
 }
 
 /// Pre-copy state of the original `ServerPlayer`, lent directly to `player_clone`.
@@ -28,7 +182,7 @@ pub(in crate::game) struct RetainedOriginalPlayer {
     offhand: Option<ItemStack>,
     equipment: Equipment,
     persistent_data: Option<Compound>,
-    attachments: Attachments,
+    attachments: RetainedOriginalAttachments,
 }
 
 impl OriginalPlayerAccess for RetainedOriginalPlayer {
@@ -74,17 +228,74 @@ impl OriginalPlayerAccess for RetainedOriginalPlayer {
         self.persistent_data.as_ref()
     }
 
-    fn attachments_mut(&mut self) -> &mut Attachments {
+    fn attachments(&mut self) -> &mut dyn AttachmentStore {
         &mut self.attachments
     }
 }
 
 impl Game<'_> {
+    /// Common `ServerPlayer.restoreFrom` boundary for death respawn (`was_death = true`)
+    /// and End credits return (`was_death = false`).
+    ///
+    /// Expects old-player removal/menu-close work to have completed against the old state
+    /// and the destination level to be open (`self.enter_level`). Copies eligible
+    /// attachments into a fresh replacement map unconditionally, retains the old player
+    /// when `player_clone` is listened, assigns the replacement's destination dimension
+    /// without placing it, reinitializes the replacement `ServerPlayer`, and dispatches
+    /// `player_clone` with both holders journaled to `host.transaction`.
+    pub(in crate::game) fn restore_cloned_player(
+        &mut self,
+        conn: u32,
+        destination: Dim,
+        was_death: bool,
+        restore_replacement: impl FnOnce(&mut sunrise_client::lan::guest::Guest),
+    ) -> bool {
+        let Some((i, uuid, name)) = self.lan.as_ref().and_then(|host| {
+            let i = host.hub.guests.iter().position(|g| g.conn == conn)?;
+            let g = &host.hub.guests[i];
+            Some((i, g.uuid, g.name.clone()))
+        }) else {
+            return false;
+        };
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.unwatch_guest_chunks(i);
+        }
+        // NeoForge `AttachmentInternals.copyEntityAttachments`: copy serializable entries
+        // (`copy_on_death` only on death, all serializable entries on End return) into a fresh
+        // encoded map on the replacement even when no mod listens to `player_clone`.
+        let previous = self
+            .lan
+            .as_mut()
+            .and_then(|host| host.hub.guests.attachments_mut(conn))
+            .and_then(|attachments| {
+                attachments
+                    .copy_for_clone(was_death)
+                    .ok()
+                    .map(|copy| attachments.swap_contents(copy))
+            });
+        let original = previous.and_then(|prev| self.retain_original_player(conn, prev));
+        // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
+        self.keep_only_player_persisted(conn);
+        if let Some(host) = self.lan.as_mut()
+            && let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn)
+        {
+            host.hub.guests.update(i, |g| {
+                g.dimension = destination.id().to_owned();
+                restore_replacement(g);
+            });
+        }
+        self.reinitialize_server_player(uuid, conn);
+        if let Some(original) = original {
+            self.dispatch_player_clone_with_original(original, uuid, &name, was_death);
+        }
+        true
+    }
+
     /// `ServerPlayer.restoreFrom`: retain the old player's state before replacing any data.
     pub(in crate::game) fn retain_original_player(
         &self,
         conn: u32,
-        detached_attachments: Option<Attachments>,
+        detached_attachments: Attachments,
     ) -> Option<RetainedOriginalPlayer> {
         if !mod_api::__private::listened(mod_api::HookId::PlayerClone) {
             return None;
@@ -115,7 +326,7 @@ impl Game<'_> {
                 guest.saved.as_ref(),
             )
             .cloned(),
-            attachments: detached_attachments.unwrap_or_else(|| (*guest.attachments).clone()),
+            attachments: RetainedOriginalAttachments::new(detached_attachments),
         })
     }
 
@@ -128,6 +339,15 @@ impl Game<'_> {
         name: &str,
         was_death: bool,
     ) {
+        let open_tokens = self.transactions.open_tokens();
+        original
+            .attachments
+            .slot
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .set_active_frames(open_tokens);
+        self.transactions
+            .push_retained_original(Arc::clone(&original.attachments.slot));
         self.player_state.cloning_players.push(player);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.native_player_clone(
@@ -138,6 +358,7 @@ impl Game<'_> {
             );
         }));
         self.player_state.cloning_players.pop();
+        self.transactions.pop_retained_original();
         if let Err(panic) = result {
             std::panic::resume_unwind(panic);
         }
@@ -147,9 +368,11 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::{Dim, native_guest_turn_tests::with_guests};
-    use mod_api::{AttachmentType, Holder, Hooks, PlayerCloneEvent, ServerHost};
-    use std::sync::{Arc, Mutex};
+    use crate::game::native_guest_turn_tests::with_guests;
+    use mod_api::{
+        AttachmentType, Holder, Hooks, HostTransaction, PlayerCloneEvent,
+        PlayerContainerCloseEvent, ServerHost,
+    };
     use sunrise_core::nbt::{JavaString, Tag};
 
     const VALUE: AttachmentType<i32> = AttachmentType {
@@ -213,10 +436,8 @@ mod tests {
                 event.original.dimension().unwrap().to_string(),
                 dimension.id()
             );
-            assert_eq!(
-                event.original.level().unwrap().dimension_id(),
-                dimension.id()
-            );
+            let original_level = event.original.level().unwrap();
+            assert_eq!(original_level.dimension_id(), dimension.id());
             assert_eq!(event.original.health(), if self.death { 0.0 } else { 13.0 });
             assert_eq!(event.original.experience().level, 7);
             let effects = event.original.effects();
@@ -244,6 +465,15 @@ mod tests {
             assert_eq!(original_data.get(&outside), Some(&Tag::Int(1)));
             assert_eq!(original_data.get(&persisted), Some(&persisted_value));
             let replacement = host.player(event.player).unwrap();
+            // Cross-dimension clone: replacement is already in its destination level while
+            // the retained original preserves its source level.
+            let replacement_level = replacement.level(host).unwrap();
+            assert_eq!(replacement_level.dimension_id(), Dim::Overworld.id());
+            assert_eq!(
+                replacement.dimension(host).unwrap().to_string(),
+                Dim::Overworld.id()
+            );
+            assert_ne!(original_level, replacement_level);
             let replacement_data = replacement.persistent_data(host).unwrap();
             assert_eq!(replacement_data.get(&outside), None);
             assert_eq!(replacement_data.get(&persisted), Some(&persisted_value));
@@ -300,25 +530,34 @@ mod tests {
                 Ok(Some(31))
             );
             assert_eq!(
+                SAVED.has(host, Holder::Player(event.player)),
+                Ok(!self.death)
+            );
+            // Copied serializable entries start undecoded (independent of original's decoded cache).
+            assert_eq!(
+                SAVED.with_decoded(host, Holder::Player(event.player), |value| value.copied()),
+                Ok(None)
+            );
+            assert_eq!(
                 SAVED.get(host, Holder::Player(event.player)),
                 Ok(if self.death { 0 } else { 31 })
             );
 
+            // Codec-less attachment exists only on original until explicitly written to replacement,
+            // on both death and End credits return (NeoForge AttachmentInternals.copyEntityAttachments).
             assert_eq!(event.original.attachment(&VALUE), Ok(73));
+            assert_eq!(VALUE.has(host, Holder::Player(event.player)), Ok(false));
             assert_eq!(event.original.attachment(&RETAINED), Ok(17));
             assert_eq!(
-                VALUE.get(host, Holder::Player(event.player)),
-                Ok(if self.death { 0 } else { 73 })
+                RETAINED.with_decoded(host, Holder::Player(event.player), |value| value.copied()),
+                Ok(None)
             );
             assert_eq!(RETAINED.get(host, Holder::Player(event.player)), Ok(17));
 
             // Writes and removals on original affect only original, leaving replacement untouched.
             assert_eq!(event.original.set_attachment(&VALUE, 100), Ok(()));
             assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(100)));
-            assert_eq!(
-                VALUE.get(host, Holder::Player(event.player)),
-                Ok(if self.death { 0 } else { 73 })
-            );
+            assert_eq!(VALUE.has(host, Holder::Player(event.player)), Ok(false));
             assert_eq!(event.original.remove_attachment(&RETAINED), Ok(Some(17)));
             assert_eq!(event.original.has_attachment(&RETAINED), Ok(false));
             assert_eq!(RETAINED.get(host, Holder::Player(event.player)), Ok(17));
@@ -472,7 +711,262 @@ mod tests {
     #[ignore = "daily"]
     fn unsubscribed_clone_does_not_capture() {
         mod_platform::testing::with_mods(Vec::<mod_api::ModEntry>::new().into(), || {
-            with_guests(|game| assert!(game.retain_original_player(12, None).is_none()));
+            with_guests(|game| {
+                assert!(
+                    game.retain_original_player(12, Attachments::default())
+                        .is_none()
+                );
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn death_clone_sees_menu_close_inventory_and_filters_close_listener_attachments() {
+        struct CloseAndClone {
+            closed: Arc<Mutex<usize>>,
+            cloned: Arc<Mutex<usize>>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for CloseAndClone {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                r.register_attachment_type("clone:unsaved", false).unwrap();
+                r.register_attachment_type("clone:saved", false).unwrap();
+                r.register_attachment_type("clone:retained", false).unwrap();
+            }
+
+            fn player_container_close(
+                &self,
+                host: &mut dyn ServerHost,
+                event: &mut PlayerContainerCloseEvent<'_>,
+            ) {
+                VALUE.set(host, Holder::Player(event.player), 55).unwrap();
+                SAVED.set(host, Holder::Player(event.player), 66).unwrap();
+                RETAINED
+                    .set(host, Holder::Player(event.player), 77)
+                    .unwrap();
+                *self.closed.lock().unwrap() += 1;
+            }
+
+            fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
+                assert_eq!(*self.closed.lock().unwrap(), 1);
+                // Crafting inputs returned by menu close appear on the retained original's inventory.
+                let returned_count = event
+                    .original
+                    .with_inventory(|inv| inv.iter().map(|(_, stack)| stack.count()).sum::<u32>());
+                assert_eq!(returned_count, 3);
+                // Attachments written during menu close belong to the old player and are filtered
+                // by copy_on_death before reaching the replacement.
+                assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(55)));
+                assert_eq!(event.original.existing_attachment(&SAVED), Ok(Some(66)));
+                assert_eq!(event.original.existing_attachment(&RETAINED), Ok(Some(77)));
+                assert_eq!(VALUE.has(host, Holder::Player(event.player)), Ok(false));
+                assert_eq!(SAVED.has(host, Holder::Player(event.player)), Ok(false));
+                assert_eq!(RETAINED.get(host, Holder::Player(event.player)), Ok(77));
+                *self.cloned.lock().unwrap() += 1;
+            }
+        }
+
+        crate::game::native_entity_refs::tests::run_with_game_stack(|| {
+            let closed = Arc::new(Mutex::new(0));
+            let cloned = Arc::new(Mutex::new(0));
+            let mods = vec![mod_api::ModEntry::new(
+                "clone",
+                Box::new(CloseAndClone {
+                    closed: closed.clone(),
+                    cloned: cloned.clone(),
+                }),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                with_guests(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    game.lan_open_crafting(12, [0, 64, 0]);
+                    {
+                        let host = game.lan.as_mut().unwrap();
+                        let table = host
+                            .menus
+                            .get_mut(&12)
+                            .unwrap()
+                            .crafting
+                            .table
+                            .as_mut()
+                            .expect("crafting table opened");
+                        table
+                            .2
+                            .load_slot(1, Some(ItemStack::new("minecraft:stick", 3)));
+                        host.hub.guests.update(0, |guest| {
+                            guest.dead = true;
+                            guest.health = 0.0;
+                        });
+                    }
+                    game.guest_respawn(12);
+                    assert_eq!(*closed.lock().unwrap(), 1);
+                    assert_eq!(*cloned.lock().unwrap(), 1);
+                });
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn unsubscribed_end_return_copies_only_serializable_attachments() {
+        struct DeclareOnly;
+
+        #[mod_api::__subscriptions]
+        impl Hooks for DeclareOnly {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                r.register_attachment_type("clone:unsaved", false).unwrap();
+                r.register_attachment_type("clone:saved", false).unwrap();
+                r.register_attachment_type("clone:retained", false).unwrap();
+            }
+        }
+
+        crate::game::native_entity_refs::tests::run_with_game_stack(|| {
+            let mods = vec![mod_api::ModEntry::new("clone", Box::new(DeclareOnly))].into();
+            mod_platform::testing::with_mods(mods, || {
+                with_guests(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    game.enter_level(Dim::End).unwrap();
+                    let host = game.lan.as_mut().unwrap();
+                    host.hub.guests.update(0, |guest| {
+                        guest.dimension = Dim::End.id().to_owned();
+                    });
+                    let attachments = host.hub.guests.attachments_mut(12).unwrap();
+                    VALUE.set(attachments, Holder::Level, 73).unwrap();
+                    SAVED.set(attachments, Holder::Level, 31).unwrap();
+                    RETAINED.set(attachments, Holder::Level, 17).unwrap();
+                    let play = host.play.entry(12).or_default();
+                    play.won_game = true;
+                    play.respawn_requested = true;
+                    game.handle_server_portal(12);
+
+                    let host: &mut dyn ServerHost = game;
+                    assert_eq!(VALUE.has(host, Holder::Player(12)), Ok(false));
+                    assert_eq!(
+                        SAVED.with_decoded(host, Holder::Player(12), |v| v.copied()),
+                        Ok(None)
+                    );
+                    assert_eq!(SAVED.get(host, Holder::Player(12)), Ok(31));
+                    assert_eq!(
+                        RETAINED.with_decoded(host, Holder::Player(12), |v| v.copied()),
+                        Ok(None)
+                    );
+                    assert_eq!(RETAINED.get(host, Holder::Player(12)), Ok(17));
+                });
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn failed_transaction_rolls_back_both_original_and_replacement_attachments() {
+        struct AbortWriter {
+            heard: Arc<Mutex<usize>>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for AbortWriter {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                r.register_attachment_type("clone:unsaved", false).unwrap();
+                r.register_attachment_type("clone:defaulted", false)
+                    .unwrap();
+                r.register_attachment_type("clone:saved", false).unwrap();
+                r.register_attachment_type("clone:retained", false).unwrap();
+            }
+
+            fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
+                let aborted: Result<(), ()> = host.transaction(|host, _| {
+                    VALUE.set(host, Holder::Player(event.player), 555).unwrap();
+                    event.original.set_attachment(&VALUE, 444).unwrap();
+                    assert_eq!(event.original.remove_attachment(&RETAINED), Ok(Some(17)));
+                    assert_eq!(event.original.attachment(&DEFAULTED), Ok(41));
+                    assert_eq!(event.original.existing_attachment(&SAVED), Ok(Some(31)));
+                    // Inner committed transaction must still roll back when outer aborts.
+                    host.transaction(|_, _| {
+                        event.original.set_attachment(&VALUE, 445).unwrap();
+                        Ok::<(), ()>(())
+                    })
+                    .unwrap();
+                    assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(445)));
+                    assert_eq!(VALUE.get(host, Holder::Player(event.player)), Ok(555));
+                    Err(())
+                });
+                assert_eq!(aborted, Err(()));
+                assert_eq!(VALUE.has(host, Holder::Player(event.player)), Ok(false));
+                assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(73)));
+                assert_eq!(event.original.has_attachment(&RETAINED), Ok(true));
+                assert_eq!(event.original.has_attachment(&DEFAULTED), Ok(false));
+                assert_eq!(
+                    event
+                        .original
+                        .with_decoded_attachment(&SAVED, |value| value.copied()),
+                    Ok(None)
+                );
+                *self.heard.lock().unwrap() += 1;
+            }
+        }
+
+        struct CleanObserver {
+            heard: Arc<Mutex<usize>>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for CleanObserver {
+            fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
+                assert_eq!(VALUE.has(host, Holder::Player(event.player)), Ok(false));
+                assert_eq!(RETAINED.get(host, Holder::Player(event.player)), Ok(17));
+                assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(73)));
+                assert_eq!(event.original.has_attachment(&RETAINED), Ok(true));
+                assert_eq!(event.original.has_attachment(&DEFAULTED), Ok(false));
+                assert_eq!(
+                    event
+                        .original
+                        .with_decoded_attachment(&SAVED, |value| value.copied()),
+                    Ok(None)
+                );
+                *self.heard.lock().unwrap() += 1;
+            }
+        }
+
+        crate::game::native_entity_refs::tests::run_with_game_stack(|| {
+            let writer_heard = Arc::new(Mutex::new(0));
+            let observer_heard = Arc::new(Mutex::new(0));
+            let mods = vec![
+                mod_api::ModEntry::new(
+                    "clone",
+                    Box::new(AbortWriter {
+                        heard: writer_heard.clone(),
+                    }),
+                ),
+                mod_api::ModEntry::new(
+                    "observer",
+                    Box::new(CleanObserver {
+                        heard: observer_heard.clone(),
+                    }),
+                ),
+            ]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                with_guests(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    let host = game.lan.as_mut().unwrap();
+                    host.hub.guests.update(0, |guest| {
+                        guest.dead = true;
+                        guest.health = 0.0;
+                    });
+                    let attachments = host.hub.guests.attachments_mut(12).unwrap();
+                    RETAINED.set(attachments, Holder::Level, 17).unwrap();
+                    SAVED.set(attachments, Holder::Level, 31).unwrap();
+                    let saved = Attachments::from_nbt(attachments.to_nbt());
+                    attachments.replace_contents(saved);
+                    VALUE.set(attachments, Holder::Level, 73).unwrap();
+                    game.guest_respawn(12);
+                    assert_eq!(*writer_heard.lock().unwrap(), 1);
+                    assert_eq!(*observer_heard.lock().unwrap(), 1);
+                });
+            });
         });
     }
 }
