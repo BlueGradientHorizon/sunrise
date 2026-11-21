@@ -27,7 +27,6 @@ use crate::chunk::block_entity::{
     BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer, ModFluidTanks,
 };
 use crate::fast_hash::{FxHashMap, FxHashSet};
-use std::collections::HashMap;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -87,7 +86,7 @@ struct LiveTicker {
 
 #[derive(Default)]
 pub struct BlockEntities {
-    map: HashMap<Pos, BlockEntity>,
+    map: FxHashMap<Pos, BlockEntity>,
     /// Runtime contents subscriptions, retired with their observer identity.
     pub contents_watches: ContentsWatches,
     generations: FxHashMap<Pos, u64>,
@@ -247,7 +246,7 @@ fn forget_mod(mods: &mut FxHashMap<(i32, i32), FxHashSet<Pos>>, pos: Pos) {
 }
 
 impl std::ops::Deref for BlockEntities {
-    type Target = HashMap<Pos, BlockEntity>;
+    type Target = FxHashMap<Pos, BlockEntity>;
     fn deref(&self) -> &Self::Target {
         &self.map
     }
@@ -1198,6 +1197,7 @@ mod lease_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     fn hopper() -> BlockEntity {
         BlockEntity::Chest(vec![None; 5])
