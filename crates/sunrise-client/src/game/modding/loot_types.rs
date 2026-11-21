@@ -1,5 +1,5 @@
 //! Direct, owner-scoped adapters for the two loot map-codec registries.
-use super::api_values::{TryIntoApi, TryIntoEngine};
+use super::api_values::{TryIntoApi, TryIntoEngine, loot_values::loot_params};
 #[cfg(test)]
 #[path = "loot_types/tests.rs"]
 mod tests;
@@ -78,14 +78,11 @@ impl Registry for Codecs {
             .functions
             .get(kind)
             .ok_or_else(|| format!("unknown loot function type {kind}"))?;
-        let snapshot = ctx
-            .try_into_api()
-            .map_err(|error| format!("context: {error:?}"))?;
         let stack = stack
             .try_into_api()
             .map_err(|error| format!("input stack: {error:?}"))?;
         let mut context = Context {
-            snapshot,
+            facts: ctx,
             random,
             tags: crate::game::loot_tags::LootTags(tags),
         };
@@ -106,11 +103,8 @@ impl Registry for Codecs {
             .conditions
             .get(kind)
             .ok_or_else(|| format!("unknown loot condition type {kind}"))?;
-        let snapshot = ctx
-            .try_into_api()
-            .map_err(|error| format!("context: {error:?}"))?;
         let mut context = Context {
-            snapshot,
+            facts: ctx,
             random,
             tags: crate::game::loot_tags::LootTags(tags),
         };
@@ -118,13 +112,13 @@ impl Registry for Codecs {
     }
 }
 struct Context<'a> {
-    snapshot: mod_api::LootContext,
+    facts: &'a loot::LootContext<'a>,
     random: &'a mut dyn RollRandom,
     tags: crate::game::loot_tags::LootTags<'a>,
 }
 impl mod_api::LootTypeContext for Context<'_> {
-    fn snapshot(&self) -> mod_api::LootContext {
-        self.snapshot.clone()
+    fn params(&self) -> mod_api::LootParamsView<'_> {
+        loot_params(*self.facts)
     }
     fn tags(&self) -> &dyn mod_api::Tags {
         &self.tags

@@ -32,7 +32,7 @@ impl loot::types::Registry for QueryCodec {
         _: &dyn LootTags,
     ) -> Result<bool, String> {
         CONTEXT.with(|value| {
-            *value.borrow_mut() = Some((ctx.table_id().to_owned(), ctx.queried_stack.clone()))
+            *value.borrow_mut() = Some((ctx.table_id().to_owned(), ctx.queried_stack.cloned()))
         });
         Ok(true)
     }

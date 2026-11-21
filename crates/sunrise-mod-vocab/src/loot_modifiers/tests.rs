@@ -58,10 +58,14 @@ impl LoadReader for Reader {
 }
 struct Roll(LegacyRandomSource);
 impl LootModifierContext for Roll {
-    fn snapshot(&self) -> LootContext {
-        let mut context = LootContext::new(0);
-        context.queried_table_id = "test:root".into();
-        context
+    fn params(&self) -> LootParamsView<'_> {
+        LootParamsView::new(
+            crate::__private::LootParamsParts {
+                queried_table_id: Some("test:root"),
+                ..Default::default()
+            },
+            |_| Err(crate::TextFormError::Unavailable),
+        )
     }
     fn random(&mut self) -> &mut dyn RandomSource {
         self
@@ -122,7 +126,7 @@ impl GlobalLootModifier for Modifier {
         context: &mut dyn LootModifierContext,
         mut generated: Vec<LootStack>,
     ) -> Result<Vec<LootStack>, LootModifierError> {
-        assert_eq!(context.snapshot().queried_table_id, "test:root");
+        assert_eq!(context.params().queried_table_id(), "test:root");
         generated.reverse();
         generated[1].count -= context.random().next_int_bound(2);
         generated.extend(context.roll_raw(&Identifier::parse("test:raw").unwrap())?);

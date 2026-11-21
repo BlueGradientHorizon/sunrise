@@ -420,11 +420,17 @@ impl<R: sunrise_core::random::RandomSource> super::Context<'_, R> {
         if !self.data.types.contains(kind, false) {
             return false;
         }
-        let snapshot = self.roll_facts(0);
+        let facts = super::query_context::roll_facts(
+            &self.query,
+            self.place.as_deref(),
+            self.entity,
+            self.biome,
+            self.luck,
+        );
         match self
             .data
             .types
-            .test(kind, data, &snapshot, &mut self.random, self.data)
+            .test(kind, data, &facts, &mut self.random, self.data)
         {
             Ok(value) => value,
             Err(reason) => {
@@ -442,11 +448,17 @@ impl<R: sunrise_core::random::RandomSource> super::Context<'_, R> {
         if !self.data.types.contains(kind, true) {
             return stack;
         }
-        let snapshot = self.roll_facts(0);
+        let facts = super::query_context::roll_facts(
+            &self.query,
+            self.place.as_deref(),
+            self.entity,
+            self.biome,
+            self.luck,
+        );
         match self
             .data
             .types
-            .apply(kind, data, &snapshot, &mut self.random, self.data, &stack)
+            .apply(kind, data, &facts, &mut self.random, self.data, &stack)
         {
             Ok(value) => value,
             Err(reason) => {

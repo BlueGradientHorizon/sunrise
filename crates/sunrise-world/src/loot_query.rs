@@ -1,31 +1,32 @@
 use super::*;
-impl<'a, R: RandomSource> Context<'a, R> {
-    pub(super) fn roll_facts(&self, seed: i64) -> LootContext<'a> {
-        LootContext {
-            queried_table_id: self.query.id(),
-            queried_stack: self.query.queried_stack.clone(),
-            entity: self.entity.map(|e| &e.this),
-            damage: self.entity.and_then(|e| e.damage.as_ref()),
-            player: self.entity.and_then(|e| e.player.as_ref()),
-            tool: self.query.tool.as_ref().map(|stack| LootTool {
-                item: stack.item.clone(),
-                enchantments: stack.enchantments.clone(),
-            }),
-            block: None,
-            luck: self.luck,
-            biome: self.biome,
-            seed,
-            place: self.place.clone(),
-        }
+pub(super) fn roll_facts<'a>(
+    query: &'a query::LootQuery,
+    place: Option<&'a LootPlace>,
+    entity: Option<EntityFacts<'a>>,
+    biome: Option<&'a str>,
+    luck: f32,
+) -> LootContext<'a> {
+    LootContext {
+        queried_table_id: query.id(),
+        queried_stack: query.queried_stack.as_ref(),
+        entity: entity.map(|e| e.this),
+        damage: entity.and_then(|e| e.damage),
+        player: entity.and_then(|e| e.player),
+        tool: query
+            .tool
+            .as_ref()
+            .map(|stack| stack as &dyn LootToolAccess),
+        block: None,
+        luck,
+        biome,
+        place,
     }
 }
 
-impl LootContext<'_> {
-    /// Queried id, including the unknown fallback before the root completes.
-    pub fn table_id(&self) -> &str {
-        self.queried_table_id
-            .as_deref()
-            .unwrap_or(query::UNKNOWN_LOOT_TABLE)
+impl<'a> LootContext<'a> {
+    /// Queried id, including the unknown id before the root completes.
+    pub fn table_id(&self) -> &'a str {
+        self.queried_table_id.unwrap_or(query::UNKNOWN_LOOT_TABLE)
     }
 }
 impl LootData {
@@ -83,7 +84,7 @@ impl LootData {
             visited: Vec::new(),
             luck: params.luck,
             open_water,
-            entity: Some(params),
+            entity: Some(params.into()),
             enchanted_level: None,
         };
         let items = c.roll_root(Some(table), json);

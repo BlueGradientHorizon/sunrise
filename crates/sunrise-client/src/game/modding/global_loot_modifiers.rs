@@ -135,16 +135,12 @@ impl ModifierApply for Adapter {
         roll: &mut dyn ModifierRoll,
         generated: &[loot::LootStack],
     ) -> Result<Vec<loot::LootStack>, String> {
-        let snapshot = roll
-            .facts()
-            .try_into_api()
-            .map_err(|error| format!("context: {error:?}"))?;
         let generated = generated
             .iter()
             .map(TryIntoApi::try_into_api)
             .collect::<Result<_, _>>()
             .map_err(|error| format!("generated: {error:?}"))?;
-        let mut context = RollAdapter { roll, snapshot };
+        let mut context = RollAdapter { roll };
         self.0
             .apply(&mut context, generated)
             .map_err(|error| error.to_string())?
@@ -159,11 +155,10 @@ impl ModifierApply for Adapter {
 }
 struct RollAdapter<'a> {
     roll: &'a mut dyn ModifierRoll,
-    snapshot: mod_api::LootContext,
 }
 impl mod_api::LootModifierContext for RollAdapter<'_> {
-    fn snapshot(&self) -> mod_api::LootContext {
-        self.snapshot.clone()
+    fn params(&self) -> mod_api::LootParamsView<'_> {
+        super::api_values::loot_values::loot_params(self.roll.facts())
     }
     fn random(&mut self) -> &mut dyn mod_api::RandomSource {
         self

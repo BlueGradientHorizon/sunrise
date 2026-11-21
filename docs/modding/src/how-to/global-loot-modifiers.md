@@ -84,7 +84,7 @@ can order listeners against it.
 `GlobalLootModifier::apply` takes a borrowed `LootModifierContext` and the preceding list as
 `Vec<LootStack>`. It returns the replacement list or a typed error. Like loot functions and
 conditions, it is a data-only callback: it receives no `Host` or world-write access. Its capabilities
-are the facts snapshot, the borrowed roll random and raw sub-rolls. Keep implementations
+are borrowed parameters, the borrowed roll random and raw sub-rolls. Keep implementations
 `Send + Sync` and retain no borrowed context beyond the callback.
 
 The list keeps signed counts and arbitrary component patches. A modifier may add, remove, replace
@@ -95,9 +95,9 @@ prepared instance through the standard retained-callback policy. Only when the I
 materializes its unsigned engine stack does a negative count become zero, retaining that list
 position; subsequent modifiers still observe the original signed count.
 
-`context.snapshot()` reads the current facts and the set-once queried root table id. Missing facts
-stay missing. Its legacy `seed` field is zero: obtaining a snapshot does not draw a new seed.
-`context.random()` borrows the actual selected roll source through `RandomSource`, the existing
+`context.params()` lends the current parameters, including `queried_table_id()` for the
+set-once root id. Optional parameters stay absent unless supplied. Reading them does not draw
+randomness. `context.random()` borrows the actual selected roll source through `RandomSource`, the existing
 shared draw capability; do not create a separate seeded generator. `context.roll_raw(&table_id)`
 rolls into an appendable list using the same parameters, selected random, visited-table guards and
 data generation. It runs neither the modifier pass nor another stack splitter. A missing table
@@ -107,12 +107,12 @@ The server's root pass is after table functions and stack splitting, before call
 container shuffle. Nested tables and raw sub-rolls do not run it. `loot_drops` and
 `container_loot_filled` are separate later moments, not aliases for global loot modifiers.
 
-## What a snapshot holds per caller
+## What parameters are available per caller
 
 Each caller supplies vanilla's parameters for its roll, and only those; the rest stay missing.
-`entity` is `THIS_ENTITY`, `tool` is `TOOL`, and `place.origin` is `ORIGIN`.
+`entity()` reads `THIS_ENTITY`, `tool()` reads `TOOL`, and `origin()` reads `ORIGIN`.
 
-| Roll | `entity` | `tool` | `place.origin` | `luck` |
+| Roll | `entity()` | `tool()` | `origin()` | `luck()` |
 | --- | --- | --- | --- | --- |
 | Piglin barter | the piglin | none | none | 0 |
 | Advancement reward | the rewarded player | none | the player's position | 0 |

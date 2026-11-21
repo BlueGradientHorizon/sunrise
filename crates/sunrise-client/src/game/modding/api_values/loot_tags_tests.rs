@@ -28,6 +28,7 @@ impl ModLootFunction for TagReader {
         mut stack: LootStack,
         context: &mut dyn LootTypeContext,
     ) -> Result<LootStack, String> {
+        assert!(context.params().tool().is_none());
         let tags = context.tags();
         let id = data.value()["tag"].as_str().unwrap_or("test:ingredients");
         let tag = tags.key(&mod_api::Identifier::parse(id).unwrap()).unwrap();

@@ -1,12 +1,15 @@
 //! Shared queried parameters and NeoForge conditions for both loot evaluators.
 use super::LootStack;
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{OnceCell, RefCell},
+    rc::Rc,
+};
 pub use sunrise_core::UNKNOWN_LOOT_TABLE;
 
 /// Parameters shared unchanged by all nested tables. The first id set wins.
 #[derive(Default)]
 pub struct LootQuery {
-    id: RefCell<Option<String>>,
+    id: OnceCell<String>,
     /// The stack whose data is being queried. No existing engine caller sets it.
     pub queried_stack: Option<LootStack>,
     /// Tool retained by the world evaluator and its nested tables.
@@ -16,22 +19,22 @@ impl LootQuery {
     /// An unset query with stack parameters retained for every nested table.
     pub fn new(queried_stack: Option<LootStack>, tool: Option<LootStack>) -> Self {
         Self {
-            id: RefCell::new(None),
+            id: OnceCell::new(),
             queried_stack,
             tool,
         }
     }
     /// Set once, either by the caller or after the root completes.
     pub fn set_id(&self, id: &str) {
-        self.id.borrow_mut().get_or_insert_with(|| id.to_owned());
+        self.id.get_or_init(|| id.to_owned());
     }
     /// The stored id, if a caller or completed root supplied one.
-    pub fn id(&self) -> Option<String> {
-        self.id.borrow().clone()
+    pub fn id(&self) -> Option<&str> {
+        self.id.get().map(String::as_str)
     }
-    /// Unset contexts always report the unknown-table fallback.
-    pub fn table_id(&self) -> String {
-        self.id().unwrap_or_else(|| UNKNOWN_LOOT_TABLE.into())
+    /// Unset contexts report the unknown-table id until the root finishes.
+    pub fn table_id(&self) -> &str {
+        self.id().unwrap_or(UNKNOWN_LOOT_TABLE)
     }
     /// Set-once id completion, called by each evaluator's `roll_root` after
     /// all nested tables. Nested raw rolls never call this.
@@ -66,7 +69,7 @@ pub fn condition(
         "neoforge:loot_table_id" => Some(
             value["loot_table_id"]
                 .as_str()
-                .is_some_and(|id| id == query.id.borrow().as_deref().unwrap_or(UNKNOWN_LOOT_TABLE)),
+                .is_some_and(|id| id == query.table_id()),
         ),
         "neoforge:can_item_perform_ability" => Some(
             tool.zip(value["ability"].as_str())

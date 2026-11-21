@@ -19,45 +19,40 @@ impl mod_api::ModLootCondition for Reader {
         _: &mod_api::LootEntryData,
         context: &mut dyn mod_api::LootTypeContext,
     ) -> Result<bool, String> {
-        let snapshot = context.snapshot();
-        assert_eq!(snapshot.queried_table_id, "minecraft:blocks/short_grass");
-        let stack = snapshot.queried_stack.as_ref().unwrap();
+        let params = context.params();
+        assert_eq!(params.queried_table_id(), "minecraft:blocks/short_grass");
+        let stack = params.queried_stack().unwrap();
         assert_eq!(
             mod_api::__private::item_key_id(stack.item()).unwrap(),
             "minecraft:stick"
         );
         assert_eq!(stack.count(), 3);
         assert_eq!(stack.damage(), 2);
+        let retained = stack.project().unwrap();
+        assert_eq!((retained.count(), retained.damage()), (3, 2));
         Ok(true)
     }
 }
 #[test]
 fn queried_parameters_reach_native_mod_condition() {
     crate::game::api_values::prepare_stack_boundary_tests();
+    let stack = engine::LootStack {
+        item: "minecraft:stick".into(),
+        count: 3,
+        damage: 2,
+        enchantments: vec![],
+        potion: None,
+        map: false,
+        exploration: None,
+        ominous_amplifier: None,
+        stew_effects: vec![],
+        names: vec![],
+        components: vec![],
+    };
     let ctx = engine::LootContext {
-        queried_table_id: Some("minecraft:blocks/short_grass".into()),
-        queried_stack: Some(engine::LootStack {
-            item: "minecraft:stick".into(),
-            count: 3,
-            damage: 2,
-            enchantments: vec![],
-            potion: None,
-            map: false,
-            exploration: None,
-            ominous_amplifier: None,
-            stew_effects: vec![],
-            names: vec![],
-            components: vec![],
-        }),
-        entity: None,
-        damage: None,
-        player: None,
-        tool: None,
-        block: None,
-        luck: 0.0,
-        biome: None,
-        seed: 0,
-        place: None,
+        queried_table_id: Some("minecraft:blocks/short_grass"),
+        queried_stack: Some(&stack),
+        ..Default::default()
     };
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new("reader", Box::new(Reader))].into(),

@@ -430,20 +430,6 @@ pub(super) fn emit<'a>(
             .as_ref()
             .filter(|_| contract == Contract::Collect && !isolated_collect);
         for (name, ty) in args.iter().chain(collected) {
-            let mut owned_ty = (*ty).clone();
-            struct OwnedLootContext;
-            impl syn::visit_mut::VisitMut for OwnedLootContext {
-                fn visit_type_path_mut(&mut self, path: &mut syn::TypePath) {
-                    if path.path.segments.len() == 1 && path.path.segments[0].ident == "LootContext"
-                    {
-                        path.path.segments[0].arguments = syn::PathArguments::None;
-                    } else {
-                        syn::visit_mut::visit_type_path_mut(self, path);
-                    }
-                }
-            }
-            syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
-            let ty = &owned_ty;
             if isolated_collect {
                 struct MutableBorrow(bool);
                 impl<'ast> syn::visit::Visit<'ast> for MutableBorrow {
@@ -1488,7 +1474,6 @@ fn stack_crossing_routed(
         "GameRuleValue",
         "PlacementContext",
         "LootStack",
-        "LootContext",
         "ParticleOptions",
     ];
     const BLOCK_VALUES: &[&str] = &["BlockState", "LandingWrite", "InsideWrite"];

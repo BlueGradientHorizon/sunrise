@@ -1,4 +1,17 @@
 use super::*;
+use sunrise_world::loot::LootToolAccess;
+
+impl LootToolAccess for ItemStack {
+    fn item_id(&self) -> &str {
+        &self.item
+    }
+
+    fn enchantment_at(&self, index: usize) -> Option<(&str, i32)> {
+        self.enchantments()
+            .get(index)
+            .map(|(id, level)| (id.as_ref(), *level as i32))
+    }
+}
 
 impl<R: RandomSource> LootContext<'_, R> {
     pub(super) fn stock_condition(&self, c: &Value) -> Option<bool> {
@@ -84,37 +97,19 @@ impl<R: RandomSource> LootContext<'_, R> {
             })
             .collect()
     }
-    /// The context a mod's own loot kind sees in this engine: the block and
-    /// the tool it has, and a seed from the roll's random. The entity, the
-    /// damage, the player and the biome belong to the main loot engine's
-    /// rolls; they are None here (docs/modding/src/how-to/native-mods.md).
-    #[cfg(test)]
-    pub(super) fn native_loot_context(
-        &self,
-        random: &mut R,
-    ) -> sunrise_world::loot::LootContext<'_> {
-        self.roll_facts(random.next_long())
-    }
-    pub(super) fn roll_facts(&self, seed: i64) -> sunrise_world::loot::LootContext<'_> {
+    /// Borrow the parameters this evaluator has; random is lent separately.
+    pub(super) fn roll_facts(&self) -> sunrise_world::loot::LootContext<'_> {
         sunrise_world::loot::LootContext {
             queried_table_id: self.query.id(),
-            queried_stack: self.query.queried_stack.clone(),
+            queried_stack: self.query.queried_stack.as_ref(),
             entity: self.target.map(|(entity, _)| entity),
             damage: None,
             player: None,
             block: (!self.block.is_empty()).then_some(self.block),
-            tool: self.held.map(|h| sunrise_world::loot::LootTool {
-                item: h.item.to_string(),
-                enchantments: h
-                    .enchantments()
-                    .iter()
-                    .map(|(id, lvl)| (id.to_string(), *lvl as i32))
-                    .collect(),
-            }),
+            tool: self.held.map(|tool| tool as &dyn LootToolAccess),
             luck: 0.0,
             biome: None,
-            seed,
-            place: self.place.clone(),
+            place: self.place.as_deref(),
         }
     }
 }
@@ -270,7 +265,7 @@ impl<R: RandomSource> sunrise_world::loot::global_modifiers::ModifierRoll
     for ModifierScope<'_, '_, R>
 {
     fn facts(&self) -> sunrise_world::loot::LootContext<'_> {
-        self.context.roll_facts(0)
+        self.context.roll_facts()
     }
     fn next_int(&mut self) -> i32 {
         self.random.next_int()

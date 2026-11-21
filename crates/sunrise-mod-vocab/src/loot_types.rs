@@ -1,5 +1,5 @@
 //! Static, unsynced loot function and condition map-codec registries.
-use crate::{Identifier, LootContext, LootStack, RandomSource, Tags};
+use crate::{Identifier, LootParamsView, LootStack, RandomSource, Tags};
 #[path = "loot_types/owned.rs"]
 pub(crate) mod owned;
 
@@ -25,10 +25,10 @@ impl LootEntryData {
 }
 
 /// Facts, tags and the actual random of one active loot evaluation.
-/// This borrow cannot be retained by a codec. Snapshot reads consume no random.
+/// This borrow cannot be retained by a codec. Reading parameters consumes no random.
 pub trait LootTypeContext {
     /// Optional parameters, level facts, luck and the set-once queried table id.
-    fn snapshot(&self) -> LootContext;
+    fn params(&self) -> LootParamsView<'_>;
     /// Authoritative merged tags of this evaluation.
     fn tags(&self) -> &dyn Tags;
     /// Every draw advances the evaluator's selected random, in call order.

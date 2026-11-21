@@ -71,7 +71,7 @@ fn root_adapters_preserve_output_and_random_without_modifiers() {
             "adapter {adapter}"
         );
         assert_eq!(
-            query.id().as_deref(),
+            query.id(),
             Some(if adapter == 1 {
                 "neoforge:unknown_loot_table"
             } else {

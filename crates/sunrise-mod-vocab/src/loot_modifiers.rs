@@ -3,7 +3,7 @@
 //! Register a serializer once; data files under `loot_modifiers/` select its
 //! prepared instances. A top-level roll runs them after its table functions and
 //! stack splitter. Nested tables and raw sub-rolls never invoke this pass.
-use crate::{DataLoadContext, Identifier, LootContext, LootStack, RandomSource};
+use crate::{DataLoadContext, Identifier, LootParamsView, LootStack, RandomSource};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -150,10 +150,9 @@ pub trait GlobalLootModifier: Send + Sync + 'static {
 /// selected roll random, not a level random or an independently seeded stream.
 /// A mod cannot retain this context beyond the callback.
 pub trait LootModifierContext {
-    /// Current optional facts and the set-once queried root id. The snapshot's
-    /// legacy `seed` field is zero: reading facts never draws a replacement seed.
-    /// Use [`Self::random`] for all modifier randomness.
-    fn snapshot(&self) -> LootContext;
+    /// Borrow the current optional parameters and the set-once queried root id.
+    /// Reading parameters consumes no random; use [`Self::random`] for all draws.
+    fn params(&self) -> LootParamsView<'_>;
     /// Borrow the selected roll's actual random through the shared draw capability.
     /// Draws advance that source in order, including draws made by raw sub-rolls.
     fn random(&mut self) -> &mut dyn RandomSource;

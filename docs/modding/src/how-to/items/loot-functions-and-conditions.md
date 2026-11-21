@@ -70,12 +70,11 @@ successful edit. A function's rejected output leaves its preceding stack intact;
 a condition call failure is diagnosed and does not pass. Callback failures warn once
 per type id in each retained data generation, not once per roll.
 
-The context supplies optional facts through `snapshot()`,
-authoritative tags through `tags()`, and `random()`. See [Reading tags](loot-tags.md).
-Use only that random source: it is the evaluator's actual selected stream, not a
-new generator seeded from a snapshot. Reading facts consumes no random; the
-snapshot's `seed` field is zero. Codecs are shared immutable declarations and
-must not keep random state between calls.
+The context lends `LootParamsView` through `params()`, authoritative tags through
+`tags()`, and the evaluator's actual selected random stream through `random()`.
+See [Reading tags](loot-tags.md). Reading parameters consumes no random. Use the
+roll's random directly, and end any parameter borrow before drawing. Codecs are
+shared immutable declarations and must not keep random state between calls.
 
 Functions run entry first, then pool, then table. A `sequence` passes each
 function's output to the next. Conditions under `all_of` and `any_of` run in
@@ -93,17 +92,21 @@ splitting happens after the table functions. Boundary conversion validates the
 whole candidate before writeback. The items evaluator consumes stacks into its
 ordinary item representation and has no structure-search capability.
 
-Both evaluators carry optional entity, damage, player, tool, block, luck, biome
-and place facts when their caller supplies them. `place` contains origin,
-block-entity data and level facts (dimension, game time, time of day, rain and
-thunder). Missing context facts are not fabricated by a table's declared set.
+`params.entity()`, `damage()`, `last_damage_player()`, `tool()`, `block()` and
+`biome()` return only parameters the caller supplied. The place reads are
+`origin()`, `block_entity()` and `level()`; the level view lends dimension, elapsed
+game time, day time and weather. `luck()` is the value applied to the roll. For
+example, `params.entity().and_then(|entity| entity.equipment("mainhand"))`
+borrows that exact slot's signed `LootStackView`. Candidate components iterate
+in patch order, including removals; text names are projected only if read.
 
-`queried_table_id` is the caller's first supplied id, or
+`params.queried_table_id()` is the caller's first supplied id, or
 `neoforge:unknown_loot_table` until the root and all nested tables finish.
 The root then sets its id before global modifiers; nested tables never write it.
-`queried_stack` is distinct from the tool and remains absent in existing callers.
-Both facts cross Wire unchanged. Consequently `neoforge:loot_table_id` inside a
-table normally matches the fallback rather than the root's name.
+`params.queried_stack()` lends an `ItemStackView` when a queried inventory stack
+is supplied. This is distinct from the tool. Neither view is serializable.
+`neoforge:loot_table_id` inside a table normally matches the unknown id rather
+than the root's name.
 
 `neoforge:can_item_perform_ability` reads the tool and its plain, case-sensitive
 `ability` string, such as `shears_dig`. Without a tool it is false. Unknown names

@@ -17,8 +17,7 @@ impl ModLootFunction for Codec {
         mut stack: mod_api::LootStack,
         context: &mut dyn mod_api::LootTypeContext,
     ) -> Result<mod_api::LootStack, String> {
-        assert!(context.snapshot().place.is_none());
-        assert_eq!(context.snapshot().seed, 0);
+        assert!(context.params().origin().is_none());
         let draw = context.random().next_int_bound(5);
         self.0
             .lock()
@@ -46,7 +45,7 @@ impl ModLootCondition for Codec {
         data: &LootEntryData,
         context: &mut dyn LootTypeContext,
     ) -> Result<bool, String> {
-        assert!(context.snapshot().place.is_none());
+        assert!(context.params().origin().is_none());
         let draw = context.random().next_int_bound(5);
         self.0
             .lock()

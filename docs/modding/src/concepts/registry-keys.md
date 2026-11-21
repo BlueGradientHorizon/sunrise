@@ -238,7 +238,7 @@ Use API-owned values rather than importing engine or package-loader types.
 | Value | Contract |
 | --- | --- |
 | `TooltipDisplay::for_stack` | Takes an API `ItemStack`; its effective tooltip component includes vanilla's implicit defaults. |
-| `LootContext`, `LootStack` | Own their facts. Candidate items use `ItemKey`; counts are signed. Ordered `Option<Tag>` patches preserve removals and NBT types; names are `Text` trees. Writeback is atomic. |
+| `LootParamsView`, `LootStackView`, `LootStack` | Parameters and candidate views borrow the roll; only `LootStack` owns its data. Candidate counts and damage are signed, and ordered NBT patches preserve removals. Names on borrowed candidates are projected on read. |
 | `ItemBar`, `ItemRarity` | Describe item resource properties. |
 | `Side` | Package metadata: `Client` or `Both`, not the executing logical `HostSide`. |
 | `Suggestion` | Construct with `Suggestion::new((start, end), text)`. Offsets are bytes; `tooltip` and `int_value` are writable. |

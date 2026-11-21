@@ -2457,7 +2457,7 @@ impl<R: RandomSource> LootContext<'_, R> {
                 if !self.items.loot_types.contains(k, false) {
                     return false;
                 }
-                let ctx = self.roll_facts(0);
+                let ctx = self.roll_facts();
                 match self.items.loot_types.test(k, c, &ctx, random, self.items) {
                     Ok(holds) => holds,
                     Err(reason) => {
@@ -2987,7 +2987,7 @@ impl<R: RandomSource> LootContext<'_, R> {
                     if !self.items.loot_types.contains(k, true) {
                         continue;
                     }
-                    let ctx = self.roll_facts(0);
+                    let ctx = self.roll_facts();
                     mod_function(
                         k,
                         f,
@@ -4634,9 +4634,10 @@ mod tests {
     fn a_mod_function_changes_the_stack_the_items_engine_drops() {
         let items = Items::for_tests(HashMap::new());
         let props = sunrise_world::chunk::BlockProperties::new();
-        let mut random = LegacyRandom::new(7);
-        let block = ctx(&items, None, &props, "minecraft:stone");
-        let native = block.native_loot_context(&mut random);
+        let mut held = ItemStack::new("minecraft:diamond_pickaxe", 1);
+        held.enchant("minecraft:fortune", 3);
+        let block = ctx(&items, Some(&held), &props, "minecraft:stone");
+        let native = block.roll_facts();
         let mut stack = ItemStack::new("minecraft:stone", 1);
         mod_function(
             "mymod:seven",
@@ -4644,7 +4645,11 @@ mod tests {
             &native,
             &items,
             &mut stack,
-            |_, _, _, loot| {
+            |_, _, facts, loot| {
+                let tool = facts.tool.unwrap();
+                assert_eq!(tool.item_id(), "minecraft:diamond_pickaxe");
+                assert_eq!(tool.enchantment_at(0), Some(("minecraft:fortune", 3)));
+                assert!(tool.enchantment_at(1).is_none());
                 loot.item = "minecraft:diamond".to_owned();
                 loot.count = 7;
                 loot.components.push((
@@ -5012,9 +5017,8 @@ mod tests {
         let info = items.get("minecraft:stick").expect("stick");
         assert!(info.components.iter().any(|c| c == "minecraft:rarity"));
         let props = sunrise_world::chunk::BlockProperties::new();
-        let mut random = LegacyRandom::new(7);
         let block = ctx(&items, None, &props, "minecraft:stone");
-        let native = block.native_loot_context(&mut random);
+        let native = block.roll_facts();
         let mut stack = epic_stick();
         mod_function(
             "mymod:plain",
@@ -5033,9 +5037,8 @@ mod tests {
     fn a_mod_function_that_changes_nothing_keeps_the_stacks_form() {
         let items = Items::for_tests(HashMap::new());
         let props = sunrise_world::chunk::BlockProperties::new();
-        let mut random = LegacyRandom::new(7);
         let block = ctx(&items, None, &props, "minecraft:stone");
-        let native = block.native_loot_context(&mut random);
+        let native = block.roll_facts();
         let mut stack = ItemStack::new("minecraft:diamond_sword", 1);
         stack.enchant("minecraft:sharpness", 3);
         stack

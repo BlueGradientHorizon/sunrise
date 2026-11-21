@@ -31,6 +31,7 @@ mod query_context;
 mod root;
 #[path = "loot_types.rs"]
 pub mod types;
+mod views;
 pub use fill::ContainerLootContext;
 #[path = "loot/tags.rs"]
 mod loot_tags;
@@ -122,49 +123,33 @@ impl<'a> PackOverlay<'a> {
     }
 }
 
-/// The tool a loot context names: its item id and enchantments.
-#[derive(Clone)]
-pub struct LootTool {
-    pub item: String,
-    pub enchantments: Vec<(String, i32)>,
-}
+/// Engine reader for the tool's existing identity and enchantments.
+pub use mod_api::__private::LootToolAccess;
 
-/// What a mod's own loot kinds see of the roll: the entity, the damage,
-/// the player who killed it, the tool, the block, the luck, the biome,
-/// where the roll happens. Registered types borrow the evaluator's actual random. The tool and
-/// block are filled by the items engine (block drops, entity drops,
-/// loot_table, interact_loot); the entity, damage and player by the main
-/// loot engine; each is None in the other. A table without a mod's kinds
-/// draws nothing and stays bit-for-bit the same.
+/// Parameters borrowed from either evaluator for the duration of a loot operation.
+/// Randomness is lent separately from these immutable inputs.
+#[derive(Clone, Copy, Default)]
 pub struct LootContext<'a> {
-    /// First id wins; written after the root and all nested rolls, before #1270's modifier pass.
-    /// Unset reads as `UNKNOWN_LOOT_TABLE`; nested rolls never write it.
-    pub queried_table_id: Option<String>,
-    /// Stack whose data is queried; unchanged through nested rolls, absent in existing callers.
-    pub queried_stack: Option<LootStack>,
-    /// The entity the table names (`this`), if any.
+    /// First id wins; the root sets it after nested rolls and before global modifiers.
+    pub queried_table_id: Option<&'a str>,
+    /// The queried stack, shared by nested rolls.
+    pub queried_stack: Option<&'a LootStack>,
+    /// `THIS_ENTITY`, when supplied.
     pub entity: Option<&'a LootEntity>,
-    /// The damage that killed it, if any.
+    /// `DAMAGE_SOURCE`, when supplied.
     pub damage: Option<&'a LootDamage>,
-    /// The player whose kill dropped the table (`LootEntity`), if any.
+    /// `LAST_DAMAGE_PLAYER`, when supplied.
     pub player: Option<&'a LootEntity>,
-    /// The tool used, if any. The items engine fills it (all of its
-    /// tables: block drops, entity drops, loot_table, interact_loot);
-    /// the main loot engine has no tool in its context.
-    pub tool: Option<LootTool>,
-    /// The block a block-drop table breaks, if any. The items engine
-    /// fills it; the main loot engine has no block in its context.
+    /// `TOOL`, when supplied.
+    pub tool: Option<&'a dyn LootToolAccess>,
+    /// Block identifier for a block or block-interaction roll.
     pub block: Option<&'a str>,
     /// `LootContext.getLuck`.
     pub luck: f32,
-    /// The biome the roll is in, if any.
+    /// The biome the roll is in, if supplied.
     pub biome: Option<&'a str>,
-    /// Zero for registered codecs: their scoped context lends the actual roll random.
-    pub seed: i64,
-    /// Where the roll happens: the origin, the block entity and the level,
-    /// when the game rolled the table at a place (a broken block's drops,
-    /// a mob's death loot); None for the other rolls. Either engine fills it.
-    pub place: Option<Arc<LootPlace>>,
+    /// The roll's already scoped origin, block entity and level, if supplied.
+    pub place: Option<&'a LootPlace>,
 }
 
 /// One generated item stack.
@@ -1043,12 +1028,9 @@ impl LootData {
     /// attacker's `equipment_drops` effects (Looting) applied to `chance`.
     pub fn equipment_drop_chance(&self, params: &EntityLootParams, chance: f32) -> f32 {
         // Enchantment.damageContext: no luck and no killing player.
-        let damage_params = EntityLootParams {
-            this: params.this.clone(),
-            damage: params.damage.clone(),
+        let damage_params = EntityFacts {
             player: None,
-            luck: 0.0,
-            attacker: params.attacker.clone(),
+            ..params.into()
         };
         let mut c = Context {
             query: query::current_query(),
@@ -1059,7 +1041,7 @@ impl LootData {
             visited: Vec::new(),
             luck: 0.0,
             open_water: None,
-            entity: Some(&damage_params),
+            entity: Some(damage_params),
             enchanted_level: None,
         };
         let mut chance = chance;
@@ -1159,7 +1141,7 @@ impl LootData {
             visited: Vec::new(),
             luck: params.luck,
             open_water: None,
-            entity: Some(params),
+            entity: Some(params.into()),
             enchanted_level,
         };
         let items = c.roll_root(Some(table), json);
@@ -1305,25 +1287,40 @@ struct Context<'a, R> {
     /// A fishing hook's `is_open_water` for `entity_properties` (None: no entity).
     open_water: Option<bool>,
     /// The entity, damage source and killer parameters.
-    entity: Option<&'a EntityLootParams>,
+    entity: Option<EntityFacts<'a>>,
     /// Asked for a death's enchantment levels; None for every other roll.
     enchanted_level: Option<&'a mut EnchantedLevel<'a, R>>,
 }
 type Sink<'s, R> = dyn FnMut(&mut Context<'_, R>, LootStack) + 's;
+
+#[derive(Clone, Copy)]
+struct EntityFacts<'a> {
+    this: &'a LootEntity,
+    damage: Option<&'a LootDamage>,
+    player: Option<&'a LootEntity>,
+    attacker: Option<&'a LootEntity>,
+}
+
+impl<'a> From<&'a EntityLootParams> for EntityFacts<'a> {
+    fn from(params: &'a EntityLootParams) -> Self {
+        Self {
+            this: &params.this,
+            damage: params.damage.as_ref(),
+            player: params.player.as_ref(),
+            attacker: params.attacker.as_ref(),
+        }
+    }
+}
 
 impl<R: RandomSource> Context<'_, R> {
     /// A `LootContext.EntityTarget` parameter.
     fn target(&self, name: &str) -> Option<&LootEntity> {
         let p = self.entity?;
         match name {
-            "this" => Some(&p.this),
-            "attacker" => p
-                .damage
-                .as_ref()
-                .and_then(|d| d.source.as_ref())
-                .or(p.attacker.as_ref()),
-            "direct_attacker" => p.damage.as_ref()?.direct.as_ref(),
-            "attacking_player" => p.player.as_ref(),
+            "this" => Some(p.this),
+            "attacker" => p.damage.and_then(|d| d.source.as_ref()).or(p.attacker),
+            "direct_attacker" => p.damage?.direct.as_ref(),
+            "attacking_player" => p.player,
             _ => None,
         }
     }
@@ -1489,7 +1486,7 @@ impl<R: RandomSource> Context<'_, R> {
                 }
                 // DamageSourcePredicate (false without a damage source).
                 "minecraft:damage_source_properties" => {
-                    let Some(damage) = self.entity.and_then(|p| p.damage.as_ref()) else {
+                    let Some(damage) = self.entity.and_then(|p| p.damage) else {
                         return false;
                     };
                     let p = &c["predicate"];

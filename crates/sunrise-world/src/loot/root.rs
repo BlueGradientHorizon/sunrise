@@ -23,7 +23,13 @@ impl<R: RandomSource + Clone> Context<'_, R> {
 
 impl<R: RandomSource + Clone> global_modifiers::ModifierRoll for Context<'_, R> {
     fn facts(&self) -> LootContext<'_> {
-        self.roll_facts(0)
+        query_context::roll_facts(
+            &self.query,
+            self.place.as_deref(),
+            self.entity,
+            self.biome,
+            self.luck,
+        )
     }
     fn next_int(&mut self) -> i32 {
         self.random.next_int()

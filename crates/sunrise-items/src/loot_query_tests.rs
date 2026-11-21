@@ -38,7 +38,7 @@ impl sunrise_world::loot::types::Registry for QueryCodec {
         _: &dyn sunrise_world::loot::LootTags,
     ) -> std::result::Result<bool, String> {
         OBSERVED_CONTEXT.with(|value| {
-            *value.borrow_mut() = Some((ctx.table_id().to_owned(), ctx.queried_stack.clone()))
+            *value.borrow_mut() = Some((ctx.table_id().to_owned(), ctx.queried_stack.cloned()))
         });
         Ok(true)
     }
@@ -115,7 +115,7 @@ fn every_root_splits_after_outer_functions_with_one_random_draw() {
             "adapter {adapter}"
         );
         assert_eq!(
-            query.id().as_deref(),
+            query.id(),
             Some(if adapter == 2 {
                 "neoforge:unknown_loot_table"
             } else if adapter == 5 {
@@ -197,7 +197,7 @@ fn public_block_and_interaction_roots_complete_on_the_selected_random() {
             });
             assert_eq!(drops.len(), 1);
             assert_eq!((&*drops[0].item, drops[0].count), (expected_item, 1));
-            assert_eq!(query.id().as_deref(), Some(id));
+            assert_eq!(query.id(), Some(id));
             assert_eq!(
                 <(u64, Option<f64>)>::from(&random),
                 <(u64, Option<f64>)>::from(&expected_random)
