@@ -699,7 +699,7 @@ pub(crate) fn replaceable(
     if let Some(why) = check.refusal {
         return Err(why);
     }
-    reexports::check_body(source, &found.module, &found.function.block)
+    reexports::check_body(source, &found.module, sig, &found.function.block)
 }
 
 /// The names a module's own items define, for explicit re-export (an explicit name outranks the

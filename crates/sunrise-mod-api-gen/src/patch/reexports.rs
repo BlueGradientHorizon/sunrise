@@ -29,7 +29,8 @@ struct Binding {
     module: Option<String>,
     // Which module and its descendants can see this name in the original source. `None` is pub.
     limit: Option<String>,
-    restricted_import: bool,
+    // A non-public import in a module whose imports the copy cannot repeat.
+    blocked: Option<String>,
 }
 
 fn within(module: &str, ancestor: &str) -> bool {
@@ -181,7 +182,7 @@ impl Scope {
                     Binding {
                         module: matches!(item, Item::Mod(_)).then(|| format!("{module}::{name}")),
                         limit: limit(module, vis),
-                        restricted_import: false,
+                        blocked: None,
                     },
                 );
             }
@@ -196,6 +197,7 @@ type Lookup = Result<Option<Binding>, Unresolved>;
 
 struct Walk<'a> {
     source: &'a mut Source,
+    origin: &'a str,
     // `use super::*` and sibling globs can reach the very name already being looked up.
     active: HashSet<(String, String)>,
 }
@@ -213,16 +215,15 @@ impl Walk<'_> {
         Some(scope)
     }
 
-    fn imported_module(&mut self, scope: &str, import: &Import) -> Option<String> {
+    fn import_path(&mut self, module: &str, import: &Import, follow: bool) -> Option<Binding> {
         if import.external || import.conditional {
             return None;
         }
-        let (module, tail) = relative(scope, &import.path);
-        let mut module = module.to_owned();
-        for name in tail {
-            module = self.binding(&module, name, true).ok().flatten()?.module?;
-        }
-        Some(module)
+        self.path(module, &import.path, follow).ok().flatten()
+    }
+
+    fn import_block(&self, module: &str, import: &Import) -> Option<String> {
+        (import.limit.is_some() && !within(self.origin, module)).then(|| module.to_owned())
     }
 
     fn binding(&mut self, module: &str, name: &str, follow: bool) -> Lookup {
@@ -236,7 +237,7 @@ impl Walk<'_> {
             return Ok(Some(Binding {
                 module: Some(child),
                 limit: Some(module.to_owned()),
-                restricted_import: false,
+                blocked: None,
             }));
         }
         if scope.imports.is_empty() && scope.globs.is_empty() {
@@ -258,14 +259,22 @@ impl Walk<'_> {
     fn import_binding(&mut self, scope: &Scope, module: &str, name: &str, follow: bool) -> Lookup {
         if let Some(import) = scope.imports.get(name) {
             let import = import.as_ref().ok_or(Unresolved)?;
+            // A mirror writes this import out again, so its original destination must resolve
+            // from the mirror too. An external public alias is already usable as-is.
+            let mirrored = within(self.origin, module);
+            let destination = (mirrored || follow)
+                .then(|| self.import_path(module, import, follow))
+                .flatten();
             return Ok(Some(Binding {
-                module: if follow {
-                    self.imported_module(module, import)
+                blocked: if mirrored {
+                    destination
+                        .as_ref()
+                        .and_then(|target| target.blocked.clone())
                 } else {
-                    None
+                    self.import_block(module, import)
                 },
+                module: destination.and_then(|target| target.module),
                 limit: import.limit.clone(),
-                restricted_import: import.limit.is_some(),
             }));
         }
         if scope.opaque {
@@ -274,8 +283,9 @@ impl Walk<'_> {
         let mut found = None;
         for import in &scope.globs {
             // A glob we cannot read (including an external crate) might provide this name too.
-            let from = self.imported_module(module, import).ok_or(Unresolved)?;
-            if let Some(mut binding) = self.binding(&from, name, follow)?
+            let from = self.import_path(module, import, true).ok_or(Unresolved)?;
+            let from_module = from.module.as_deref().ok_or(Unresolved)?;
+            if let Some(mut binding) = self.binding(from_module, name, follow)?
                 && binding
                     .limit
                     .as_ref()
@@ -284,7 +294,13 @@ impl Walk<'_> {
                 if found.is_some() {
                     return Err(Unresolved);
                 }
-                binding.restricted_import |= import.limit.is_some();
+                // Preserve the provider of a restricted name even for an unqualified
+                // reference through the mirror's own glob.
+                binding.blocked = if within(self.origin, module) {
+                    from.blocked.or(binding.blocked)
+                } else {
+                    self.import_block(module, import).or(binding.blocked)
+                };
                 if let Some(limit) = &import.limit
                     && binding.limit.as_ref().is_none_or(|old| within(limit, old))
                 {
@@ -296,60 +312,96 @@ impl Walk<'_> {
         Ok(found)
     }
 
-    fn blocked(&mut self, origin: &str, path: &[String]) -> Option<String> {
-        let (module, tail) = relative(origin, path);
+    fn path(&mut self, written_in: &str, path: &[String], follow: bool) -> Lookup {
+        let (module, tail) = relative(written_in, path);
         let mut module = module.to_owned();
+        let mut blocked = None;
         for (index, name) in tail.iter().enumerate() {
-            let binding = self
-                .binding(&module, name, index + 1 < tail.len())
-                .ok()
-                .flatten()?;
+            let last = index + 1 == tail.len();
+            let Some(mut binding) = self.binding(&module, name, !last || follow)? else {
+                return Ok(None);
+            };
             if binding
                 .limit
                 .as_ref()
-                .is_some_and(|limit| !within(origin, limit))
+                .is_some_and(|limit| !within(written_in, limit))
             {
-                return None;
+                return Ok(None);
             }
-            // The copy's module and its ancestors are mirrors, which repeat their imports.
-            if binding.restricted_import && !within(origin, &module) {
-                return Some(module);
+            binding.blocked = blocked.or(binding.blocked);
+            if last {
+                return Ok(Some(binding));
             }
-            module = binding.module?;
+            let Some(next) = binding.module else {
+                // This can be an associated-item path. A known restriction on the prefix
+                // already makes it unusable in the copy.
+                return Ok(binding.blocked.is_some().then_some(binding));
+            };
+            module = next;
+            blocked = binding.blocked;
         }
-        None
+        Ok(Some(Binding {
+            module: Some(module),
+            limit: None,
+            blocked,
+        }))
     }
+}
+
+// Syn keeps attributes on the concrete nodes, not on the enclosing enums.
+macro_rules! attrs {
+    ($kind:ident, $node:expr; $($variant:ident),+ $(,)?) => {
+        match $node {
+            $($kind::$variant(node) => node.attrs.as_slice(),)+
+            _ => &[],
+        }
+    };
 }
 
 pub(super) fn check_body(
     source: &mut Source,
     module: &str,
+    signature: &syn::Signature,
     body: &syn::Block,
 ) -> Result<(), String> {
+    // Don't guess whether a bare name denotes an import when a pattern could bind it.
+    #[derive(Default)]
+    struct Values(HashSet<String>);
+
+    impl<'ast> Visit<'ast> for Values {
+        fn visit_pat_ident(&mut self, pat: &'ast syn::PatIdent) {
+            self.0.insert(unraw(&pat.ident));
+            syn::visit::visit_pat_ident(self, pat);
+        }
+    }
+
     struct Check<'a> {
         walk: Walk<'a>,
-        origin: &'a str,
         local: Vec<Scope>,
+        values: HashSet<String>,
         refusal: Option<String>,
     }
     impl Check<'_> {
         fn path(&mut self, parts: &[String]) {
-            if self.refusal.is_some() || parts.len() < 2 {
+            if self.refusal.is_some() || parts.is_empty() {
                 return;
             }
             let first = &parts[0];
             if !matches!(first.as_str(), "crate" | "self" | "super")
-                && self.local.iter().any(|scope| {
-                    scope.opaque
-                        || !scope.globs.is_empty()
-                        || scope.items.contains_key(first)
-                        || scope.imports.contains_key(first)
-                })
+                && ((parts.len() == 1 && self.values.contains(first))
+                    || self.local.iter().any(|scope| {
+                        scope.opaque
+                            || !scope.globs.is_empty()
+                            || scope.items.contains_key(first)
+                            || scope.imports.contains_key(first)
+                    }))
             {
                 // A block-local binding can shadow the module's name. Don't guess its target.
                 return;
             }
-            if let Some(module) = self.walk.blocked(self.origin, parts) {
+            if let Ok(Some(binding)) = self.walk.path(self.walk.origin, parts, false)
+                && let Some(module) = binding.blocked
+            {
                 self.refusal = Some(format!(
                     "its body names `{}`, which crosses a non-public `use` in `{module}`",
                     parts.join("::")
@@ -368,12 +420,67 @@ pub(super) fn check_body(
                 })
                 .peekable();
             if items.peek().is_some() {
-                self.local.push(Scope::read(self.origin, items));
+                self.local.push(Scope::read(self.walk.origin, items));
                 syn::visit::visit_block(self, block);
                 self.local.pop();
             } else {
                 syn::visit::visit_block(self, block);
             }
+        }
+
+        fn visit_expr(&mut self, expr: &'ast syn::Expr) {
+            use syn::Expr;
+            if !conditional(attrs!(Expr, expr;
+                Array, Assign, Async, Await, Binary, Block, Break, Call, Cast, Closure, Const,
+                Continue, Field, ForLoop, Group, If, Index, Infer, Let, Lit, Loop, Macro, Match,
+                MethodCall, Paren, Path, Range, RawAddr, Reference, Repeat, Return, Struct, Try,
+                TryBlock, Tuple, Unary, Unsafe, While, Yield,
+            )) {
+                syn::visit::visit_expr(self, expr);
+            }
+        }
+
+        fn visit_item(&mut self, item: &'ast Item) {
+            if !conditional(attrs!(Item, item;
+                Const, Enum, ExternCrate, Fn, ForeignMod, Impl, Macro, Mod, Static, Struct,
+                Trait, TraitAlias, Type, Union, Use,
+            )) {
+                syn::visit::visit_item(self, item);
+            }
+        }
+
+        fn visit_local(&mut self, local: &'ast syn::Local) {
+            if !conditional(&local.attrs) {
+                syn::visit::visit_local(self, local);
+            }
+        }
+
+        fn visit_arm(&mut self, arm: &'ast syn::Arm) {
+            if !conditional(&arm.attrs) {
+                syn::visit::visit_arm(self, arm);
+            }
+        }
+
+        fn visit_field_value(&mut self, field: &'ast syn::FieldValue) {
+            if !conditional(&field.attrs) {
+                syn::visit::visit_field_value(self, field);
+            }
+        }
+
+        fn visit_stmt_macro(&mut self, stmt: &'ast syn::StmtMacro) {
+            if !conditional(&stmt.attrs) {
+                syn::visit::visit_stmt_macro(self, stmt);
+            }
+        }
+
+        fn visit_expr_path(&mut self, expr: &'ast syn::ExprPath) {
+            if expr.qself.is_none()
+                && expr.path.leading_colon.is_none()
+                && expr.path.segments.len() == 1
+            {
+                self.path(&[unraw(&expr.path.segments[0].ident)]);
+            }
+            syn::visit::visit_expr_path(self, expr);
         }
 
         fn visit_path(&mut self, path: &'ast syn::Path) {
@@ -388,7 +495,7 @@ pub(super) fn check_body(
         }
 
         fn visit_item_use(&mut self, item: &'ast ItemUse) {
-            if item.leading_colon.is_none() && !conditional(&item.attrs) {
+            if item.leading_colon.is_none() {
                 imports(item, |_, parts| self.path(&parts));
             }
         }
@@ -396,13 +503,17 @@ pub(super) fn check_body(
         // An inline module nested inside the body has its own scope, not the copy's scope.
         fn visit_item_mod(&mut self, _: &'ast syn::ItemMod) {}
     }
+    let mut values = Values::default();
+    values.visit_signature(signature);
+    values.visit_block(body);
     let mut check = Check {
         walk: Walk {
             source,
+            origin: module,
             active: HashSet::new(),
         },
-        origin: module,
         local: Vec::new(),
+        values: values.0,
         refusal: None,
     };
     check.visit_block(body);

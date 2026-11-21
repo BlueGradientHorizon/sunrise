@@ -213,6 +213,108 @@ fn shadowed() { use public as inner; inner::f(); }
 }
 
 #[test]
+fn only_unconditional_body_paths_can_prove_a_restricted_crossing() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+mod hooks {
+    mod imp {
+        pub fn f() {}
+        macro_rules! m { () => { () }; }
+        pub(crate) use m;
+    }
+    pub(super) use imp::{f, m};
+}
+fn active() { hooks::f(); }
+fn gated_macro() {
+    #[cfg(test)]
+    hooks::m!();
+}
+fn gated_block() {
+    #[cfg(test)]
+    { hooks::f(); }
+}
+fn gated_local() {
+    #[cfg(unix)]
+    let _value = hooks::f();
+}
+fn gated_arm() {
+    match 0 {
+        #[cfg(feature = "optional")]
+        0 => hooks::f(),
+        _ => (),
+    }
+}
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::{name}"));
+    assert_eq!(check("active").unwrap_err().0, "E_MIXIN_NOT_REPLACEABLE");
+    for name in ["gated_block", "gated_local", "gated_arm", "gated_macro"] {
+        check(name).unwrap();
+    }
+}
+
+#[test]
+fn a_bare_reference_follows_the_mirrors_import_to_its_provider() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+mod native_hooks {
+    mod imp { pub fn queue() {} }
+    pub(super) use imp::queue as restricted;
+}
+mod native_level_effects {
+    use super::native_hooks::restricted as queue;
+    fn by_alias() { queue(); }
+}
+mod glob_user {
+    use super::native_hooks::*;
+    fn by_glob() { restricted(); }
+    fn shadowed_by_parameter(restricted: fn()) { restricted(); }
+    fn shadowed_by_local() { let restricted = || {}; restricted(); }
+    fn shadowed_by_item() { fn restricted() {} restricted(); }
+}
+mod opaque_glob_user {
+    use super::native_hooks::*;
+    use ::opaque::*;
+    fn not_proven() { restricted(); }
+}
+pub mod public_hooks { pub fn queue() {} }
+use self::public_hooks::queue as public_alias;
+fn through_public_alias() { public_alias(); }
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::{name}"));
+    for (name, binding) in [
+        ("native_level_effects::by_alias", "queue"),
+        ("glob_user::by_glob", "restricted"),
+    ] {
+        let (code, why) = check(name).unwrap_err();
+        assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+        assert!(
+            why.contains(&format!("`{binding}`"))
+                && why.contains("`sunrise_client::game::native_hooks`"),
+            "{why}"
+        );
+    }
+    for name in [
+        "through_public_alias",
+        "glob_user::shadowed_by_parameter",
+        "glob_user::shadowed_by_local",
+        "glob_user::shadowed_by_item",
+        "opaque_glob_user::not_proven",
+    ] {
+        check(name).unwrap();
+    }
+}
+
+#[test]
 fn a_target_is_checked_by_its_key_and_its_text() {
     let root = fixture();
     let index = index(root.path(), &BTreeSet::new()).unwrap();
