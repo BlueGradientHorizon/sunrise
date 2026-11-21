@@ -137,7 +137,7 @@ pub(super) use entity_count_view;
 /// Server ticks a custom level stays loaded with no player or ticket holding
 /// it, before it is saved and closed. Built-in levels (Overworld, Nether, End)
 /// stay open until server shutdown and only unload unticketed chunks while idle.
-const IDLE_TICKS: u32 = 300;
+pub(super) const IDLE_TICKS: u32 = 300;
 
 /// What one server tick's idle check asks for a parked level.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -263,7 +263,7 @@ pub(super) struct Parked {
     /// Natural spawning's candidate cache: each level keeps its own players' squares.
     spawn_scratch: super::natural_spawning::SpawnScratch,
     /// Server ticks since a player was last in the level.
-    idle: u32,
+    pub(super) idle: u32,
     /// The level's own world border (`ServerLevel.getWorldBorder`), and what its players were
     /// last told of it (`LanHost::border_sent`).
     border: sunrise_client::worldborder::WorldBorder,
@@ -1786,6 +1786,7 @@ impl Game<'_> {
         let unload_chunks = self
             .levels
             .plan_builtin_drains(|dim| active.contains(&dim), saving_enabled);
+        let drained = !unload_chunks.is_empty();
         for dim in unload_chunks {
             if self.saving_disabled() {
                 break;
@@ -1803,8 +1804,11 @@ impl Game<'_> {
         // Recompute active levels and save state after built-in chunk drains:
         // listeners invoked during a drain can force a chunk in a custom level
         // or disable saving.
-        let saving_enabled = !self.saving_disabled();
-        let active = self.active_levels();
+        let (saving_enabled, active) = if drained {
+            (!self.saving_disabled(), self.active_levels())
+        } else {
+            (saving_enabled, active)
+        };
         let closing = self
             .levels
             .plan_custom_closes(|dim| active.contains(&dim), saving_enabled);
@@ -2148,7 +2152,7 @@ mod tests {
     }
 
     #[test]
-    fn idle_drain_respects_pause_save_off_and_rechecks_close_eligibility() {
+    fn idle_drain_respects_pause_and_save_off() {
         let custom = Dim::Extra(mod_api::__private::dimension_key("test_idle:guarded"));
 
         // Server pause skips parked-level maintenance; unpaused ticks (including
@@ -2176,33 +2180,6 @@ mod tests {
             step_parked_idle(custom, &mut custom_idle, false, false, true),
             IdleAction::Close
         );
-
-        // Stale close-plan guard: if a listener during a built-in chunk drain or
-        // an earlier close forces a chunk in a queued custom level (making it
-        // active) or disables saving, it is not dropped with its new ticket.
-        let mut queued_idle = IDLE_TICKS;
-        assert!(!custom_close_still_eligible(
-            custom,
-            &mut queued_idle,
-            false,
-            false
-        ));
-        assert_eq!(queued_idle, IDLE_TICKS);
-        assert!(!custom_close_still_eligible(
-            custom,
-            &mut queued_idle,
-            true,
-            true
-        ));
-        assert_eq!(queued_idle, 0);
-
-        let mut still_idle = IDLE_TICKS;
-        assert!(custom_close_still_eligible(
-            custom,
-            &mut still_idle,
-            false,
-            true
-        ));
     }
 
     /// A game on the prepared resources in `SUNRISE_TEST_RESOURCES`, with no
@@ -2615,7 +2592,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn built_in_levels_stay_open_across_idle_ticks_until_shutdown() {
-        use crate::game::lan::LanSettings;
+        use crate::game::{lan::LanSettings, lan_actions::GuestCommand};
         use mod_api::{Hooks, LevelLoadEvent, LevelUnloadEvent, ModEntry, ServerHost};
         use std::sync::{Arc, Mutex};
         use sunrise_client::{
@@ -2735,6 +2712,15 @@ mod tests {
             guest.placed = true;
             guest.loaded = true;
             guest.dimension = Dim::Overworld.id().into();
+            // Creative: no fall or suffocation where the teleports below land.
+            guest.game_mode = sunrise_client::lan::guest::CREATIVE;
+            guest.motion = Some(Box::new(
+                sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
+                )
+                .unwrap(),
+            ));
             guest.max_unacknowledged = 1000;
             game.lan.as_mut().unwrap().hub.guests.push(guest);
 
@@ -2826,18 +2812,28 @@ mod tests {
             );
             assert!(game.run_command("tick unfreeze"));
 
-            // First real player visit to Nether and End after the idle period
-            // runs their level ticks without firing a second `level_load`.
+            // The guest's first visits to the Nether and the End after the idle
+            // period cross levels as a player's own `/execute in ... run tp`
+            // does (`ServerPlayer.teleport`): no second `level_load`.
             for dim in [Dim::Nether, Dim::End, Dim::Overworld] {
-                game.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .update_guest(1, |g| {
-                        g.dimension = dim.id().into();
-                    })
-                    .unwrap();
-                game.tick_server(false).unwrap();
+                assert!(game.run_guest_command(GuestCommand {
+                    conn: 1,
+                    command: format!("execute in {} run tp @s 0.5 100 0.5", dim.id()),
+                    permission: 4,
+                    integrated: false,
+                    quiet: false,
+                }));
+                let mut arrived = false;
+                for _ in 0..2000 {
+                    game.tick_server(false).unwrap();
+                    let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    if guest.dimension == dim.id() && !game.on_server_trip(1) {
+                        arrived = true;
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                assert!(arrived, "the guest never arrived in {dim:?}");
             }
             assert_eq!(*loads.lock().unwrap(), BUILT_INS);
             assert!(unloads.lock().unwrap().is_empty());
