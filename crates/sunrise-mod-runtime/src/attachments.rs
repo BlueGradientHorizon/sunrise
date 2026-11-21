@@ -148,8 +148,6 @@ pub enum Holder {
     BlockEntity([i32; 3]),
     Chunk([i32; 2]),
     Level,
-    /// A detached player's map, available only during its clone hook.
-    OriginalPlayer(u64),
 }
 
 /// Whether borrowing a map may create publication authority for a new value.
@@ -336,9 +334,6 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
             policy,
             write,
         } = form;
-        if matches!(holder, Holder::OriginalPlayer(_)) {
-            return Err(AttachmentError::MissingHolder);
-        }
         Attachments::store(
             self.attachments(holder, AttachmentAccess::Store)?,
             namespace,
@@ -360,9 +355,6 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         sync: bool,
     ) -> Result<(), AttachmentError> {
         AttachmentHost::validate_attachment(self, namespace, name, sync)?;
-        if matches!(holder, Holder::OriginalPlayer(_)) {
-            return Err(AttachmentError::MissingHolder);
-        }
         Attachments::discard(
             self.attachments(holder, AttachmentAccess::Existing)?,
             namespace,
@@ -436,8 +428,7 @@ pub struct AttachmentSync {
 }
 
 impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
-    /// Read a value, inserting its default if absent except on an original-player snapshot;
-    /// see `get_existing`.
+    /// Read a value, inserting its default if absent; see `get_existing`.
     pub fn get<S: AttachmentStore + ?Sized>(
         &self,
         store: &mut S,
@@ -447,9 +438,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
             return Ok(value);
         }
         let value = (self.default)();
-        if !matches!(holder, Holder::OriginalPlayer(_)) {
-            self.keep(store, holder, value.clone(), AttachmentWrite::Default)?;
-        }
+        self.keep(store, holder, value.clone(), AttachmentWrite::Default)?;
         Ok(value)
     }
     /// Whether a holder carries a value, like NeoForge's `hasData`; never inserts the default.
@@ -480,9 +469,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
             return Ok(None);
         };
         let value = self.decode(&saved)?;
-        if !matches!(holder, Holder::OriginalPlayer(_)) {
-            self.keep(store, holder, value.clone(), AttachmentWrite::Decoded)?;
-        }
+        self.keep(store, holder, value.clone(), AttachmentWrite::Decoded)?;
         Ok(Some(value))
     }
     /// Read the decoded value through `read` without cloning it: what a read of one part of a
@@ -879,11 +866,12 @@ impl Attachments {
         registration
     }
 
-    /// Restore content (including saved data and queued sync) without detaching the
-    /// current live registration. Any binding on `replacement` is discarded, not
-    /// retired. Unchanged entries keep their index slots and shared row backing.
+    /// Replace content (including saved data and queued sync) without detaching the
+    /// current live registration, returning the detached previous contents. Any
+    /// binding on `replacement` is discarded, not retired. Unchanged entries keep
+    /// their index slots and shared row backing.
     #[doc(hidden)]
-    pub fn replace_contents(&mut self, mut replacement: Self) {
+    pub fn swap_contents(&mut self, mut replacement: Self) -> Self {
         replacement.registration = self.registration.take();
         let previous = std::mem::replace(self, replacement);
         if let Some(registration) = &self.registration {
@@ -899,6 +887,15 @@ impl Attachments {
                 .collect();
             registration.publisher.publish(&changes);
         }
+        previous
+    }
+
+    /// Restore content (including saved data and queued sync) without detaching the
+    /// current live registration. Any binding on `replacement` is discarded, not
+    /// retired. Unchanged entries keep their index slots and shared row backing.
+    #[doc(hidden)]
+    pub fn replace_contents(&mut self, replacement: Self) {
+        let _ = self.swap_contents(replacement);
     }
 
     // All canonical entry mutations publish the same Arc the map keeps. Retain the
@@ -1883,55 +1880,65 @@ mod tests {
         assert_eq!(SYNCED.get(&mut map, Holder::Level), Ok(7));
     }
     #[test]
-    fn original_player_reads_never_store_defaults_or_decoded_values() {
-        struct One(Attachments);
-        impl AttachmentHost for One {
-            fn validate_attachment(
-                &self,
-                namespace: &str,
-                name: &str,
-                sync: bool,
-            ) -> Result<(), AttachmentError> {
-                let _ = (namespace, name, sync);
-                Ok(())
-            }
-            fn attachments(
-                &mut self,
-                _: Holder,
-                _: AttachmentAccess,
-            ) -> Result<&mut Attachments, AttachmentError> {
-                Ok(&mut self.0)
-            }
-        }
-        let mut host = One(Attachments::default());
-        let holder = Holder::OriginalPlayer(1);
-        assert_eq!(COUNTER.get(&mut host, holder), Ok(0));
-        assert_eq!(COUNTER.has(&mut host, holder), Ok(false));
-        assert_eq!(COUNTER.get_existing(&mut host, holder), Ok(None));
-        for write in [
-            AttachmentWrite::Set,
-            AttachmentWrite::Default,
-            AttachmentWrite::Decoded,
-        ] {
-            assert_eq!(
-                AttachmentStore::store(
-                    &mut host,
-                    holder,
-                    "test",
-                    "counter",
-                    Arc::new(9i32),
-                    AttachmentForm {
-                        encoded: None,
-                        policy: COUNTER.policy(),
-                        write,
-                    }
-                ),
-                Err(AttachmentError::MissingHolder),
-            );
-        }
-        host.0.apply_sync(change("counter", Some(42)));
-        assert_eq!(COUNTER.get_existing(&mut host, holder), Ok(Some(42)));
-        assert_eq!(COUNTER.get_existing(&mut host, holder), Ok(Some(42)));
+    fn swap_contents_returns_detached_previous_map_with_normal_host_operations() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static DECODES: AtomicUsize = AtomicUsize::new(0);
+        let counting = AttachmentType {
+            namespace: "test",
+            name: "counter",
+            default: || 0,
+            codec: Some(AttachmentCodec {
+                encode,
+                decode: |saved| {
+                    DECODES.fetch_add(1, Ordering::Relaxed);
+                    decode(saved)
+                },
+            }),
+            copy_on_death: false,
+            sync: false,
+        };
+        let mut seed = Attachments::default();
+        COUNTER.set(&mut seed, Holder::Level, 42).unwrap();
+        let mut live = Attachments::from_nbt(seed.to_nbt());
+        let index = Arc::new(Mutex::new(index::AttachmentIndex::default()));
+        live.bind_index(&index, 1);
+
+        let mut replacement = Attachments::default();
+        COUNTER.set(&mut replacement, Holder::Level, 100).unwrap();
+        let mut previous = live.swap_contents(replacement);
+
+        assert!(!previous.has_index_binding());
+        assert!(live.has_index_binding());
+        assert_eq!(indexed_values(&index, &COUNTER), [(1, 100)]);
+        assert!(rows(&index, &SYNCED).is_empty());
+
+        let holder = Holder::Player(1);
+        assert!(previous.decoded("test", "counter").unwrap().is_none());
+        assert_eq!(counting.get_existing(&mut previous, holder), Ok(Some(42)));
+        assert_eq!(counting.get_existing(&mut previous, holder), Ok(Some(42)));
+        assert_eq!(DECODES.load(Ordering::Relaxed), 1);
+        assert!(previous.decoded("test", "counter").unwrap().is_some());
+
+        assert_eq!(SYNCED.has(&mut previous, holder), Ok(false));
+        assert_eq!(SYNCED.get(&mut previous, holder), Ok(7));
+        assert_eq!(SYNCED.has(&mut previous, holder), Ok(true));
+        assert_eq!(SYNCED.get_existing(&mut previous, holder), Ok(Some(7)));
+
+        COUNTER.set(&mut previous, holder, 55).unwrap();
+        assert_eq!(COUNTER.get_existing(&mut previous, holder), Ok(Some(55)));
+
+        assert_eq!(COUNTER.remove(&mut previous, holder), Ok(Some(55)));
+        assert_eq!(COUNTER.has(&mut previous, holder), Ok(false));
+        assert_eq!(SYNCED.remove(&mut previous, holder), Ok(Some(7)));
+        assert_eq!(SYNCED.has(&mut previous, holder), Ok(false));
+
+        assert_eq!(indexed_values(&index, &COUNTER), [(1, 100)]);
+        assert!(rows(&index, &SYNCED).is_empty());
+        assert_eq!(COUNTER.get_existing(&mut live, holder), Ok(Some(100)));
+        assert_eq!(SYNCED.has(&mut live, holder), Ok(false));
+
+        COUNTER.set(&mut live, holder, 101).unwrap();
+        assert_eq!(indexed_values(&index, &COUNTER), [(1, 101)]);
     }
 
     #[test]
