@@ -73,12 +73,15 @@ impl Game<'_> {
     }
     /// The server's half once a totem fired: use it up (main hand first),
     /// count it, set health to 1, then clear and apply its effects. Returns
-    /// the player's body, for entity event 35, which the caller broadcasts,
-    /// with the protector copy the activation animation shows.
+    /// the player's body with the protector copy the activation animation shows.
+    /// A server guest's entity event is broadcast before the hit's Post.
     pub(super) fn apply_totem(&mut self) -> Option<Body> {
-        if !self.player.as_ref()?.health.totem_used {
+        let p = self.player.as_mut()?;
+        if !p.health.totem_used {
             return None;
         }
+        let entity = p.entity_id;
+        let post = p.health.pending_damage_post.take();
         // The mods hear a server player's totem before it is used up.
         if let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
             self.native_player_totem(uuid, &name);
@@ -122,11 +125,82 @@ impl Game<'_> {
         for effect in self.death_effects(&protector) {
             self.apply_consume_effect(&protector, &effect, None, user);
         }
+        self.update_totem_ready();
+        if self.lan_acting.is_some()
+            && let Some(host) = &self.lan
+        {
+            host.hub.entity_event(entity, TOTEM_EVENT);
+        }
+        if let Some(post) = post {
+            self.finish_damage_post(entity, "minecraft:player", &post);
+        }
         Some(Body {
             protector: Some(protector),
             ..body
         })
     }
+    /// Finish a hit before its caller can hurt the acting player again. Protection and
+    /// `ServerPlayer.die` both run on the current body, not its between-turn projection.
+    pub(in crate::game) fn finish_guest_damage(&mut self) {
+        let (Some(conn), Some(player)) = (self.lan_acting, self.player.as_mut()) else {
+            return;
+        };
+        let entity = player.entity_id;
+        if player.health.totem_used {
+            if let Some(body) = self.apply_totem()
+                && self.serving.is_none()
+                && !self.is_dedicated_server()
+            {
+                self.totem_event(TrackingTarget::Entity(entity), body);
+            }
+            return;
+        }
+        if !player.health.dead || player.health.health() > 0.0 {
+            return;
+        }
+        let post = player.health.pending_damage_post.take();
+        let Some(index) = self.guest_index(conn) else {
+            return;
+        };
+        if self
+            .lan
+            .as_ref()
+            .is_some_and(|host| host.hub.guests[index].dead)
+        {
+            return;
+        }
+        // The killing blow and its weapon must reach the combat tracker before die reads it.
+        // Packet and motion events still belong to the normal turn drain.
+        use sunrise_client::{health::HealthEvent, motion::MotionEvent};
+        let events: Vec<_> = self
+            .player
+            .as_mut()
+            .into_iter()
+            .flat_map(|body| {
+                body.events.extract_if(.., |event| {
+                    matches!(
+                        event,
+                        MotionEvent::Health(
+                            HealthEvent::ArmorHurt { .. }
+                                | HealthEvent::Criterion { .. }
+                                | HealthEvent::MobHurt
+                                | HealthEvent::RecordedDamage { .. }
+                                | HealthEvent::Statistic { .. }
+                        )
+                    )
+                })
+            })
+            .collect();
+        if !events.is_empty() {
+            self.record_combat(&events);
+            self.wear_armor(&events);
+        }
+        self.guest_die(index, conn);
+        if let Some(post) = post {
+            self.finish_damage_post(entity, "minecraft:player", &post);
+        }
+    }
+
     /// The window's player's totem: the server's half, then the event to
     /// the guests and to this window's own client.
     pub(super) fn tick_totem(&mut self) {

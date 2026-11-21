@@ -223,20 +223,42 @@ pub fn isolated_failures() -> u64 {
     LISTENER_SERIAL.get().1
 }
 
+/// Dispatch keys include engine-invoked callbacks that are not themselves catalog hooks.
+#[derive(Clone, Copy)]
+pub(crate) enum Callback {
+    Hook(generated::HookId),
+    DamageReduction,
+}
+
+impl From<generated::HookId> for Callback {
+    fn from(hook: generated::HookId) -> Self {
+        Self::Hook(hook)
+    }
+}
+
+impl Callback {
+    fn index(self) -> usize {
+        match self {
+            Self::Hook(hook) => hook as usize,
+            Self::DamageReduction => generated::HOOK_COUNT,
+        }
+    }
+}
+
 /// Mark `id`'s listener of `hook` disabled for the rest of the session: it is skipped by
 /// that one hook alone — its other hooks, Parts, and every other mod's listeners are
 /// untouched, unlike a whole-mod disable. Returns `true` only on the first panic for
 /// `(hook, id)`, so the error log line and error toast fire once.
-pub(crate) fn poison(hook: generated::HookId, id: &'static str) -> bool {
+fn poison(callback: Callback, id: &'static str) -> bool {
     let (entered, trapped) = LISTENER_SERIAL.get();
     LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
     let Some(installed) = installed() else {
         return true;
     };
     let mut poisons = installed.poisons.lock().unwrap_or_else(|e| e.into_inner());
-    let sets =
-        poisons.get_or_insert_with(|| std::vec![None; generated::HOOK_COUNT].into_boxed_slice());
-    let first = sets[hook as usize]
+    let sets = poisons
+        .get_or_insert_with(|| std::vec![None; generated::HOOK_COUNT + 1].into_boxed_slice());
+    let first = sets[callback.index()]
         .get_or_insert_with(std::collections::HashSet::new)
         .insert(id);
     installed
@@ -245,7 +267,7 @@ pub(crate) fn poison(hook: generated::HookId, id: &'static str) -> bool {
     first
 }
 
-fn is_poisoned(installed: &Installed, hook: generated::HookId, id: &str) -> bool {
+fn is_poisoned(installed: &Installed, callback: impl Into<Callback>, id: &str) -> bool {
     // One atomic load on the usual path: the sets only fill on a panic.
     !installed
         .poison_free
@@ -255,12 +277,12 @@ fn is_poisoned(installed: &Installed, hook: generated::HookId, id: &str) -> bool
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
-            .and_then(|poisons| poisons[hook as usize].as_ref())
+            .and_then(|poisons| poisons[callback.into().index()].as_ref())
             .is_some_and(|poisoned| poisoned.contains(id))
 }
 
 /// Whether `id`'s listener of `hook` is poisoned for the session.
-pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
+pub(crate) fn poisoned(hook: impl Into<Callback>, id: &str) -> bool {
     installed().is_some_and(|installed| is_poisoned(installed, hook, id))
 }
 
@@ -270,13 +292,13 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
 /// rest of the session (leaving other hooks and other mods running), logs an `error!` line naming
 /// the mod, hook, and panic message, and queues one [`HookPanicReport`] for the client's error
 /// toast.
-pub(crate) fn record_hook_panic(
-    hook_id: generated::HookId,
+fn record_hook_panic(
+    callback: Callback,
     hook: &'static str,
     mod_id: &'static str,
     payload: &(dyn std::any::Any + Send),
 ) {
-    if poison(hook_id, mod_id) {
+    if poison(callback, mod_id) {
         log_and_queue_panic(hook, mod_id, payload);
     }
 }
@@ -322,7 +344,7 @@ pub(crate) enum DispatchOutcome<T> {
 /// the listener.
 #[inline]
 pub(crate) fn invoke<T>(
-    hook_id: generated::HookId,
+    hook_id: impl Into<Callback>,
     hook: &'static str,
     mod_id: &'static str,
     contained: bool,
@@ -333,7 +355,7 @@ pub(crate) fn invoke<T>(
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
+            record_hook_panic(hook_id.into(), hook, mod_id, &*payload);
             dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }

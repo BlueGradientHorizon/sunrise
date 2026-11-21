@@ -155,6 +155,7 @@ fn the_totem_hook_fires_after_the_health_is_gone_and_a_cancel_lets_the_mob_die()
             Damage::of(DamageKind::Generic),
         );
         assert_eq!(hit.health, 0.0);
+        game.mob_died(&hit);
     });
     assert_eq!(
         heard.totem,
@@ -180,6 +181,7 @@ fn an_uncanceled_totem_saves_the_mob() {
         assert!(hit.extra.main_hand_stack().is_none());
     });
     assert_eq!(heard.totem.len(), 1);
+    assert_eq!(heard.order, ["shield", "totem", "post"]);
 }
 
 /// The hit's level is the one the hit draws from: a mod's draw moves the world's random on by

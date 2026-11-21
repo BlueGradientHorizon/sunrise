@@ -1724,8 +1724,34 @@ impl Game<'_> {
             self.particles.add(&options, [x, y, z], [xa, ya, za]);
         }
     }
+    /// Settle a killing hit while its damage owner still has the level in place.
+    pub(in crate::game) fn finish_mob_damage_at(&mut self, index: usize) {
+        let Some(mob) = self.mobs.get_mut(index) else {
+            return;
+        };
+        let Some(post) = mob.pending_damage_post.take() else {
+            return;
+        };
+        let id = mob.id;
+        let kind = mob.kind.clone();
+        if self.died.insert(id) {
+            // The death hooks may remove or revive the body. Do not hold a row borrow
+            // across them or recover the hit state from the body afterward.
+            let death = mob.clone();
+            self.mob_die(&death);
+        }
+        self.finish_damage_post(id as i32, &kind.id, &post);
+    }
+
     /// LivingEntity.die / dropAllDeathLoot.
     pub(super) fn mob_died(&mut self, m: &Mob) {
+        self.mob_die(m);
+        if let Some(post) = &m.pending_damage_post {
+            self.finish_damage_post(m.id as i32, &m.kind.id, post);
+        }
+    }
+
+    fn mob_die(&mut self, m: &Mob) {
         // The killing blow for the drop hooks, before the player's hit is forgotten.
         let source = (!mod_api::__private::mods().is_empty()).then(|| self.mob_damage_source(m));
         let killer = self
@@ -2054,6 +2080,7 @@ impl Game<'_> {
             source.attacker_species = self.mobs.iter().find(|m| m.id == id).map(|m| m.species());
         }
         let mut killed = false;
+        let mut settle = false;
         let mut hurt = false;
         let mut infested = Vec::new();
         let catch_up = self.catch_up_countdowns(source.attacker, target);
@@ -2096,6 +2123,8 @@ impl Game<'_> {
                 aim,
             );
             hurt = hit;
+            // Squid.hurtServer can report false after its superclass accepted a lethal hit.
+            settle = t.pending_damage_post.is_some();
             if hit && catch_up && t.invulnerable > previous_invulnerable {
                 t.hurt_time = (t.hurt_time - 1).max(0);
                 t.invulnerable = (t.invulnerable - 1).max(0);
@@ -2117,6 +2146,13 @@ impl Game<'_> {
                     }
                 }
             }
+        }
+        if settle && let Some(index) = target_index {
+            self.finish_mob_damage_at(index);
+            killed &= self
+                .mobs
+                .get(index)
+                .is_some_and(|m| m.id == target && !m.alive());
         }
         for (at, velocities) in infested {
             self.spawn_infested(at, velocities);
@@ -3007,8 +3043,8 @@ impl Game<'_> {
                     let plan =
                         self.prepare_knockback_credit(mob as i32, None, self.combat.attack());
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
-                        m.damage(
+                    if let Some(index) = self.mob_index.find(&self.mobs, mob) {
+                        self.mobs[index].damage(
                             crate::game::entity::damage_level_of!(
                                 self,
                                 self.combat.attack(),
@@ -3018,6 +3054,7 @@ impl Game<'_> {
                             amount,
                             sunrise_client::mobs::Damage::of(kind),
                         );
+                        self.finish_mob_damage_at(index);
                     }
                 }
                 MobEvent::SetTarget { mob, target } => {
@@ -4360,18 +4397,6 @@ impl Game<'_> {
                 };
                 default_push = Some(([xd, zd], source));
             }
-            // The thorns hurt the entity that caused the hit, if there is one.
-            // Thorns' own hit is no attack, so nothing answers it
-            // (`doPostAttackEffects` runs from the attacks, not `hurtServer`).
-            let killed = self.player.as_ref().is_some_and(|p| {
-                super::wither::killed(true, p.health.dead_or_dying(), p.health.totem_used)
-            });
-            if let Some(a) = attacker.or(owner)
-                && !(post_attack_if_alive && killed)
-                && damage_type != "minecraft:thorns"
-            {
-                self.thorns(a);
-            }
         }
         // LivingEntity.playSecondaryHurtSound: a thorns hit that landed whole
         // sounds where the player stands, for everyone around.
@@ -4454,6 +4479,18 @@ impl Game<'_> {
                 r.knockback = Some([p.velocity.x, p.velocity.y, p.velocity.z]);
             }
         }
+        self.finish_guest_damage();
+        // The attack runs `EnchantmentHelper.doPostAttackEffects` after `hurtServer` returns.
+        let killed = self.player.as_ref().is_some_and(|p| {
+            super::wither::killed(true, p.health.dead_or_dying(), p.health.totem_used)
+        });
+        if outcome.hurt
+            && let Some(a) = attacker.or(owner)
+            && !(post_attack_if_alive && killed)
+            && damage_type != "minecraft:thorns"
+        {
+            self.thorns(a);
+        }
         outcome.hurt
     }
     /// A status effect from a mob, arrow or splash potion (`addEffect`).
@@ -4495,6 +4532,7 @@ impl Game<'_> {
             canceled = o.canceled;
         }
         self.combat.forget_noted(canceled);
+        self.finish_guest_damage();
     }
     /// `Player.aiStep` touching arrows in its box grown by (1, 0.5, 1):
     /// `AbstractArrow.playerTouch`, then `Player.take`'s pickup sound at the
@@ -7353,6 +7391,7 @@ impl Game<'_> {
                 if hurt {
                     self.remember_mob_player_credit(id);
                 }
+                self.finish_mob_damage_at(index);
             }
             // Parrot.mobInteract: parrot food may tame a wild one (one time in
             // ten); a parrot never takes it as Animal food (isFood is false).

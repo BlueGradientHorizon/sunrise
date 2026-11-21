@@ -263,9 +263,16 @@ impl Game<'_> {
         };
         let old_health = self.mobs[index].health;
         let hurt = deals_damage && self.hurt_by_player(index, total, Damage::spear(from));
-        if hurt && old_health > 0.0 && !self.mobs[index].alive() {
+        let index = if hurt && old_health > 0.0 && !self.mobs[index].alive() {
+            self.finish_mob_damage_at(index);
+            let Some(index) = self.mob_index.find(&self.mobs, id) else {
+                return hurt;
+            };
             self.native_kill_event(index);
-        }
+            index
+        } else {
+            index
+        };
         // causeExtraKnockback: a push of 0.4, then the weapon's Knockback.
         if deals_knockback {
             let (xd, zd) = self.extra_knockback_direction();

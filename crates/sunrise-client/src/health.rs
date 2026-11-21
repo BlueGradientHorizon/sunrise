@@ -15,7 +15,7 @@ use sunrise_world::{
     damage_reduction::Bypass,
     damage_source::{Catalog, DamageSource, DamageTypeId, Scaling},
     food::{Difficulty, FoodData},
-    living_damage::DamageStat,
+    living_damage::{DamageStat, DamageState},
     living_hurt::{HurtState, HurtTag, HurtWorld, PendingHurt},
     player_health::{PlayerAttributeHealth, PlayerFloatIds},
     player_hurt::{CausingEntity, PlayerHurtWorld, ServerPlayerHurtWorld},
@@ -69,6 +69,9 @@ pub struct DamageHooks {
     /// check and the cooldown, with the health damage it took, 0 included
     /// (`LivingDamageEvent.Post`).
     pub post: Option<fn(DamageLevel<'_>, Hurting<'_>, &DamageContainer)>,
+    /// The owning game dispatches lethal hits after `die`, and player totem hits after use.
+    /// These continuations are retained only if a native Post listener is present.
+    pub defer_post: Option<fn() -> bool>,
     /// `native_living_knockback`: `LivingEntity.knockback`, at its start
     /// (`LivingKnockBackEvent`), on the raw strength and before the knockback resistance and
     /// the motion change. It may change the [`Knock`]; true cancels it.
@@ -91,6 +94,7 @@ impl DamageHooks {
         incoming: None,
         pre: None,
         post: None,
+        defer_post: None,
         knockback: None,
         totem: None,
         shield: None,
@@ -528,7 +532,73 @@ impl<'a> DamageLevel<'a> {
             hook(self.reborrow(), hurting, container);
         }
     }
+
+    /// Close an accepted hit or give its owning game the same hit state to lend after the
+    /// death or player totem continuation has run.
+    pub fn finish_damage(
+        &mut self,
+        hurting: Hurting<'_>,
+        container: DamageContainer,
+        defer: bool,
+    ) -> Option<std::sync::Arc<PendingDamagePost>> {
+        if defer && let Some(listened) = self.hooks.defer_post {
+            if !listened() {
+                return None;
+            }
+            let source = match hurting {
+                Hurting::Mob(_, source) => mob_source(source, self.attack),
+                Hurting::Player(_, source)
+                | Hurting::Dragon(_, source)
+                | Hurting::ArmorStand(_, source)
+                | Hurting::Entity(_, _, source) => source,
+            };
+            return Some(std::sync::Arc::new(PendingDamagePost {
+                damage_type: source.damage_type.to_owned(),
+                causing: source.causing,
+                direct: source.direct,
+                position: source.position,
+                lent_entity: self
+                    .effects
+                    .as_ref()
+                    .and_then(|effects| effects.lent.as_ref())
+                    .map(|lent| lent.id),
+                container: std::sync::Mutex::new(Some(container.into_state())),
+            }));
+        }
+        self.damage_post(hurting, &container);
+        None
+    }
 }
+/// The hit moved through a game-owned death or player totem continuation. Mob death paths
+/// clone the body for loot; those copies share one completion rather than delivering twice.
+#[derive(Debug)]
+pub struct PendingDamagePost {
+    damage_type: String,
+    causing: i32,
+    direct: i32,
+    position: Option<[f64; 3]>,
+    lent_entity: Option<i32>,
+    container: std::sync::Mutex<Option<DamageState>>,
+}
+
+impl PendingDamagePost {
+    /// Take this hit's completion so exactly one caller can lend it to Post.
+    pub fn take(&self) -> Option<(HurtSource<'_>, DamageState, Option<i32>)> {
+        let state = self
+            .container
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()?;
+        let source = HurtSource {
+            damage_type: &self.damage_type,
+            causing: self.causing,
+            direct: self.direct,
+            position: self.position,
+        };
+        Some((source, state, self.lent_entity))
+    }
+}
+
 /// A level's random and attachments, taken out of its world while the world is read
 /// elsewhere (the mob tick), and put back after.
 pub struct LentLevel {
@@ -965,6 +1035,8 @@ pub struct PlayerHealth {
     /// of yet (`indicateDamage`).
     pub indicated_dir: Option<f32>,
     pub dead: bool,
+    /// The lethal or totem-saving damage Post, pending the game's owning continuation.
+    pub pending_damage_post: Option<std::sync::Arc<PendingDamagePost>>,
     pub sync_velocity: bool,
     pub game_time: i64,
     pub tick_count: i32,
@@ -1022,6 +1094,7 @@ impl PlayerHealth {
             hurt_dir: 0.0,
             indicated_dir: None,
             dead: false,
+            pending_damage_post: None,
             sync_velocity: false,
             game_time: 0,
             tick_count: 0,
@@ -1243,6 +1316,9 @@ impl PlayerMotion {
         hit.pending = self.in_combat(level, resources, rules, &mut hit, |combat, state| {
             Ok(combat.hurt_until_helmet(state, amount)?)
         })?;
+        if let Some(pending) = &mut hit.pending {
+            pending.record_shield_damage(hit.shield_damage as f32);
+        }
         Ok(hit)
     }
     /// Select the inner hit before synchronous ordinary equipment wear.
@@ -1406,6 +1482,7 @@ impl PlayerMotion {
             living_cause: hit.living_cause,
             events: &mut self.events,
             dead: &mut h.dead,
+            pending_damage_post: &mut h.pending_damage_post,
             sync_velocity: &mut h.sync_velocity,
             game_time: h.game_time,
             status: self.status.clone(),
@@ -1502,6 +1579,7 @@ pub(crate) struct Environment<'a> {
     pub(crate) living_cause: bool,
     pub(crate) events: &'a mut Vec<MotionEvent>,
     pub(crate) dead: &'a mut bool,
+    pub(crate) pending_damage_post: &'a mut Option<std::sync::Arc<PendingDamagePost>>,
     pub(crate) sync_velocity: &'a mut bool,
     pub(crate) game_time: i64,
     /// Resistance, fire resistance and armor protection (effects.rs).
@@ -1808,7 +1886,6 @@ impl ServerDamageEnvironment<Attributes> for Environment<'_> {
         self.phase("entity-damage")
     }
     fn damage_pre(&mut self, container: &mut DamageContainer) -> io::Result<()> {
-        container.record_shield_damage(self.shield_damage as f32);
         let source = self
             .level
             .attack()
@@ -2100,13 +2177,18 @@ impl HurtWorld for Environment<'_> {
     fn attacker_criterion(&mut self, _: &mut State, _: f32, _: f32, _: bool) -> io::Result<()> {
         Ok(())
     }
-    fn damage_post(&mut self, _: &mut State, container: &DamageContainer) -> io::Result<()> {
+    fn damage_post(&mut self, _: &mut State, container: DamageContainer) -> io::Result<()> {
         let source = self
             .level
             .attack()
             .player_source(&self.source.definition().name, self.causing);
-        self.level
-            .damage_post(Hurting::Player(self.entity, source), container);
+        if let Some(post) = self.level.finish_damage(
+            Hurting::Player(self.entity, source),
+            container,
+            *self.dead || self.totem_fired,
+        ) {
+            *self.pending_damage_post = Some(post);
+        }
         Ok(())
     }
 }
@@ -2296,22 +2378,24 @@ mod tests {
 
     #[test]
     fn player_post_records_fresh_hit_decision() {
-        use sunrise_world::living_damage::DamageValues;
-        static SEEN: std::sync::Mutex<Vec<super::DamageContainer>> =
-            std::sync::Mutex::new(Vec::new());
+        struct Observed {
+            should_cause_side_effects: bool,
+            health_damage: f32,
+            post_attack_invulnerability_ticks: i32,
+            invulnerability_reduction: f32,
+        }
+        static SEEN: std::sync::Mutex<Vec<Observed>> = std::sync::Mutex::new(Vec::new());
         fn post(
             _: super::DamageLevel<'_>,
             _: super::Hurting<'_>,
             container: &super::DamageContainer,
         ) {
-            // Converting to plain values and back must preserve the damage decision.
-            let values = DamageValues::from(container);
-            assert_eq!(
-                values.should_cause_side_effects,
-                container.should_cause_side_effects()
-            );
-            assert_eq!(super::DamageContainer::from(values), *container);
-            SEEN.lock().unwrap().push(container.clone());
+            SEEN.lock().unwrap().push(Observed {
+                should_cause_side_effects: container.should_cause_side_effects(),
+                health_damage: container.health_damage(),
+                post_attack_invulnerability_ticks: container.post_attack_invulnerability_ticks(),
+                invulnerability_reduction: container.reduction(super::Reduction::Invulnerability),
+            });
         }
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
@@ -2349,13 +2433,18 @@ mod tests {
         assert_eq!(seen.len(), 2, "the refused hit must not fire Post");
         let flags: Vec<_> = seen
             .iter()
-            .map(|hit| hit.should_cause_side_effects())
+            .map(|hit| hit.should_cause_side_effects)
             .collect();
         assert_eq!(flags, [true, false]);
+        let invuln: Vec<_> = seen
+            .iter()
+            .map(|hit| hit.invulnerability_reduction)
+            .collect();
+        assert_eq!(invuln, [0.0, 2.0]);
         // Both first hits deal 2 and leave 20 ticks: neither value determines freshness.
         for hit in &seen[..2] {
-            assert_eq!(hit.health_damage(), 2.0);
-            assert_eq!(hit.post_attack_invulnerability_ticks(), 20);
+            assert_eq!(hit.health_damage, 2.0);
+            assert_eq!(hit.post_attack_invulnerability_ticks, 20);
         }
     }
 
@@ -2488,8 +2577,7 @@ mod tests {
     static SEEN: std::sync::Mutex<Vec<(i32, String, f32)>> = std::sync::Mutex::new(Vec::new());
     /// Sets the native damage hook of these tests (global: it stays set for
     /// the process): for entities 9001 to 9004 and 9011 to 9013 it records the
-    /// hit, cancels x1's, doubles x2's, makes 9003's -5 and 9004's NaN, and gives 9005's hit an
-    /// armor and an absorption reduction modifier.
+    /// hit, cancels x1's, doubles x2's, and gives 9005's hit armor and absorption modifiers.
     fn set_hook() -> (super::DamageHooks, fn(i32) -> Vec<(String, f32)>) {
         use super::{DamageContainer, DamageLevel, Hurting, Victim};
         fn hook(
@@ -2511,15 +2599,21 @@ mod tests {
             let amount = container.new_damage();
             SEEN.lock().unwrap().push((entity, seen, amount));
             match entity {
-                9002 | 9012 => container.set_new_damage(amount * 2.0),
-                9003 => container.set_new_damage(-5.0),
-                9004 => container.set_new_damage(f32::NAN),
+                9002 | 9012 => container.record_new_damage(amount * 2.0),
                 9005 => {
-                    use sunrise_world::living_damage::{Reduction, ReductionChange};
-                    container.add_reduction_modifier(Reduction::Armor, ReductionChange::Add(1.0));
-                    container.add_reduction_modifier(Reduction::Armor, ReductionChange::Scale(2.0));
-                    container
-                        .add_reduction_modifier(Reduction::Absorption, ReductionChange::Scale(0.5));
+                    use sunrise_world::living_damage::Reduction;
+                    container.add_reduction_modifier(
+                        Reduction::Armor,
+                        Box::new(|_: &DamageContainer, v: f32| v + 1.0),
+                    );
+                    container.add_reduction_modifier(
+                        Reduction::Armor,
+                        Box::new(|_: &DamageContainer, v: f32| v * 2.0),
+                    );
+                    container.add_reduction_modifier(
+                        Reduction::Absorption,
+                        Box::new(|_: &DamageContainer, v: f32| v * 0.5),
+                    );
                 }
                 _ => {}
             }
@@ -2568,11 +2662,6 @@ mod tests {
         let mut doubled = mob(9002);
         assert!(doubled.damage(level, 2.0, hit));
         assert_eq!(doubled.health, 6.0);
-        // LivingEntity.hurtServer: a negative amount hurts by 0, a NaN by
-        // Float.MAX_VALUE.
-        let (mut negative, mut nan) = (mob(9003), mob(9004));
-        assert!(negative.damage(level, 2.0, hit) && nan.damage(level, 2.0, hit));
-        assert!(negative.health == 10.0 && nan.health <= 0.0);
         // 8 damage on a mob with 1.5 absorption hearts. Armor took none: +1 then x2 is 2, so 6
         // goes on. The hearts would take their 1.5; half of it is 0.75, so 5.25 reaches the
         // health (10 - 5.25) and 0.75 hearts are left.

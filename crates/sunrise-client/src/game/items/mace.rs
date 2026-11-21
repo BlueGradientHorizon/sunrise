@@ -743,9 +743,17 @@ impl Game<'_> {
             // only when it landed.
             let old_health = self.mobs[i].health;
             if self.hurt_by_player(i, amount, source) {
-                if old_health > 0.0 && !self.mobs[i].alive() {
+                let i = if old_health > 0.0 && !self.mobs[i].alive() {
+                    self.finish_mob_damage_at(i);
+                    // Death hooks can change the list before the sweep's own effects.
+                    let Some(i) = self.mob_index.find(&self.mobs, id) else {
+                        continue;
+                    };
                     self.native_kill_event(i);
-                }
+                    i
+                } else {
+                    i
+                };
                 let plan = self.prepare_knockback_credit(id as i32, None, &attack);
                 let mut credit = plan.lend(&mut self.last_hurt_by_player);
                 let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);

@@ -487,12 +487,16 @@ impl Game<'_> {
     /// `Zombie.hurtServer`'s reinforcement requests before the command returns.
     /// Health-changing hits also raise their damage vibration before return.
     fn command_damage_mob(&mut self, id: u32, amount: f32, damage: Damage) -> bool {
+        let Some(index) = self.mob_index.find(&self.mobs, id) else {
+            return false;
+        };
         let plan = self.prepare_knockback_credit(id as i32, damage.attacker, self.combat.attack());
         let attack = self.combat.attack();
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
         let mut reinforcements = Vec::new();
-        let mut health_changed = false;
-        let hurt = self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+        let health_changed;
+        let hurt = {
+            let m = &mut self.mobs[index];
             let queued = m.outbox.len();
             let old_health = m.health;
             let hurt = m.damage(
@@ -505,7 +509,7 @@ impl Game<'_> {
                 reinforcements = take_new_reinforcements(&mut m.outbox, queued);
             }
             hurt
-        });
+        };
         if hurt {
             if damage.attacker == Some(Who::Player) {
                 self.remember_mob_player_credit(id);
@@ -524,6 +528,7 @@ impl Game<'_> {
                 self.mob_damage_event(id);
             }
         }
+        self.finish_mob_damage_at(index);
         for (mob, target) in reinforcements {
             self.call_reinforcements(mob, target);
         }

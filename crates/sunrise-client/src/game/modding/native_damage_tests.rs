@@ -69,14 +69,19 @@ impl Hooks for Probe {
         let direct = item_id(event.weapon);
         let causing = item_id(event.causing_weapon);
         if causing.as_deref() == Some("minecraft:iron_sword") {
-            event.container.set_new_damage(1.0);
+            event.container.set_new_damage(1.0).unwrap();
         }
         self.0.lock().unwrap().weapons.push((direct, causing));
         if event.entity == 225020 && event.source.position == Some([0.0, 0.0, -2.0]) {
-            event.container.set_new_damage(4.0);
+            event.container.set_new_damage(4.0).unwrap();
         }
         if event.entity == 225001 {
-            event.container.set_new_damage(4.0);
+            event.container.set_new_damage(4.0).unwrap();
+        }
+        if event.entity == 225033 {
+            event
+                .container
+                .add_reduction_modifier(Reduction::Armor, |_, _| -1.0e38);
         }
         mod_api::Flow::Continue
     }
@@ -87,12 +92,17 @@ impl Hooks for Probe {
         }
     }
     fn living_damage_pre(&self, level: &mut dyn HitHost, event: &mut LivingDamagePreEvent<'_>) {
-        let container = &mut *event.container;
+        let container = &mut event.container;
         if matches!(event.entity, 225003 | 225008) {
-            container.set_new_damage(2.0);
+            container.set_new_damage(2.0).unwrap();
         }
         if event.entity == 225010 {
             level.with_random(|random| random.next_int()).unwrap();
+        }
+        if event.entity == 225033 {
+            assert_eq!(container.new_damage(), 1.0e38);
+            assert_eq!(container.reduction(Reduction::MobEffects), 0.0);
+            container.set_new_damage(1.0).unwrap();
         }
         let heard = (
             event.entity,
@@ -155,19 +165,24 @@ fn the_original_damage_is_the_hit_before_the_incoming_hook() {
 
 #[test]
 #[ignore = "daily"]
-fn pre_sets_the_health_lost_and_the_last_hurt_the_cooldown_compares() {
+fn pre_sets_health_lost_but_cooldown_compares_the_outer_hit() {
     let heard = heard(|game| {
         let mut pig = mob(game, 225003, "minecraft:pig");
         assert!(pig.damage(
             damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
-            6.0,
+            10.0,
             Damage::of(DamageKind::Generic)
         ));
         assert_eq!(pig.health, 8.0);
-        // The inflicted damage reaches `lastHurt`.
-        assert_eq!(pig.last_hurt, 2.0);
+        assert_eq!(pig.last_hurt, 10.0);
+        assert!(!pig.damage(
+            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            5.0,
+            Damage::of(DamageKind::Generic)
+        ));
+        assert_eq!(pig.health, 8.0);
     });
-    assert_eq!(heard.pre, [(225003, 6.0, 2.0, 0.0)]);
+    assert_eq!(heard.pre, [(225003, 10.0, 2.0, 0.0)]);
     assert_eq!(heard.post, [(225003, 2.0)]);
 }
 
@@ -308,7 +323,7 @@ fn post_fires_for_a_player_hit_a_shield_blocked_whole() {
 #[ignore = "daily"]
 fn a_hit_inside_the_cooldown_no_stronger_than_the_last_fires_no_post() {
     let heard = heard(|game| {
-        // Pre sets 225003's damage to 2, which `lastHurt` keeps.
+        // Pre sets the health damage to 2 without changing `lastHurt`.
         let mut pig = mob(game, 225003, "minecraft:pig");
         let source = Damage::of(DamageKind::Generic);
         assert!(pig.damage(
@@ -337,34 +352,81 @@ fn post_fires_once_for_a_killing_blow_on_a_mob() {
             Damage::of(DamageKind::Generic)
         ));
         assert_eq!(pig.health, 0.0);
+        game.mob_died(&pig);
     });
-    // `living_death` is settled by the game's next tick, after the hurt and its Post.
     assert_eq!(heard.post, [(225016, 100.0)]);
 }
 
-/// What a killing blow tells a mod, in order: `("post", entity)` and `("death", entity)`.
+/// Damage and death hooks in the order the engine invokes them.
 #[derive(Default)]
 struct DeathOrder {
     heard: Mutex<Vec<(&'static str, i64)>>,
     cancel: std::sync::atomic::AtomicBool,
+    revive: std::sync::atomic::AtomicBool,
 }
 
 struct DeathProbe(Arc<DeathOrder>);
 
 #[mod_api::__subscriptions]
 impl Hooks for DeathProbe {
+    fn living_incoming_damage(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut LivingIncomingDamageEvent<'_>,
+    ) -> mod_api::Flow {
+        self.0
+            .heard
+            .lock()
+            .unwrap()
+            .push(("incoming", i64::from(event.entity)));
+        mod_api::Flow::Continue
+    }
+    fn living_damage_pre(&self, _: &mut dyn HitHost, event: &mut LivingDamagePreEvent<'_>) {
+        self.0
+            .heard
+            .lock()
+            .unwrap()
+            .push(("pre", i64::from(event.entity)));
+    }
     fn living_damage_post(&self, _: &mut dyn HitHost, event: &mut LivingDamagePostEvent<'_>) {
         let entity = i64::from(event.entity);
         self.0.heard.lock().unwrap().push(("post", entity));
     }
-    fn living_death(
+    fn living_use_totem(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut mod_api::LivingUseTotemEvent<'_>,
+    ) -> mod_api::Flow {
+        self.0
+            .heard
+            .lock()
+            .unwrap()
+            .push(("totem", i64::from(event.entity)));
+        mod_api::Flow::Continue
+    }
+    fn living_death_post(
         &self,
         _: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::LivingDeathPostEvent<'_>,
+    ) {
+        self.0
+            .heard
+            .lock()
+            .unwrap()
+            .push(("death-tail", i64::from(event.entity)));
+    }
+    fn living_death(
+        &self,
+        host: &mut dyn mod_api::ServerHost,
         event: &mut mod_api::LivingDeathEvent<'_>,
     ) -> mod_api::Flow {
         let entity = i64::from(event.entity);
         self.0.heard.lock().unwrap().push(("death", entity));
         if self.0.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            if self.0.revive.load(std::sync::atomic::Ordering::Relaxed) {
+                let entity = host.entity(event.entity).unwrap();
+                assert!(host.living(entity).unwrap().set_health(host, 5.0));
+            }
             mod_api::Flow::Cancel
         } else {
             mod_api::Flow::Continue
@@ -407,14 +469,22 @@ fn killing_blow(cancel: bool) -> (Vec<(&'static str, i64)>, f32) {
     (heard, health)
 }
 
-/// Sunrise's order, not NeoForge's (whose Post follows the death processing): a killing blow's
-/// Post fires once, then the death hooks, as the maintainers ruled on #3963.
+/// As at NeoForge's `hurtServer` tail: a killing blow's Post follows the death hooks.
 #[test]
 #[ignore = "daily"]
-fn a_killing_blows_post_fires_once_before_the_death_hooks() {
+fn a_killing_blows_post_fires_once_after_the_death_hooks() {
     assert_eq!(
         killing_blow(false),
-        (vec![("post", 225017), ("death", 225017)], 0.0)
+        (
+            vec![
+                ("incoming", 225017),
+                ("pre", 225017),
+                ("death", 225017),
+                ("death-tail", 225017),
+                ("post", 225017)
+            ],
+            0.0
+        )
     );
 }
 
@@ -422,11 +492,295 @@ fn a_killing_blows_post_fires_once_before_the_death_hooks() {
 /// without a second Post or death on the next tick.
 #[test]
 #[ignore = "daily"]
-fn a_cancelled_deaths_post_fires_once_before_the_death_hooks() {
+fn a_cancelled_deaths_post_fires_once_after_the_death_hooks() {
     assert_eq!(
         killing_blow(true),
-        (vec![("post", 225017), ("death", 225017)], 0.0)
+        (
+            vec![
+                ("incoming", 225017),
+                ("pre", 225017),
+                ("death", 225017),
+                ("post", 225017)
+            ],
+            0.0
+        )
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn guest_strike_posts_before_returning_from_the_authoritative_death() {
+    use crate::game::native_player_death::tests::add_guest;
+    use std::sync::atomic::Ordering::Relaxed;
+    let trace = Arc::new(DeathOrder::default());
+    trace.cancel.store(true, Relaxed);
+    trace.revive.store(true, Relaxed);
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            add_guest(game);
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| guest.load_timeout = 0);
+            let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            game.guest_struck_by(1, |game| {
+                assert!(game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false));
+                assert_eq!(game.player.as_ref().unwrap().health.health(), 5.0);
+                assert_eq!(
+                    *trace.heard.lock().unwrap(),
+                    [
+                        ("incoming", entity),
+                        ("pre", entity),
+                        ("death", entity),
+                        ("post", entity)
+                    ]
+                );
+                trace.cancel.store(false, Relaxed);
+                // A stronger hit in the same turn can kill the now-living body.
+                assert!(game.hurt_player_from(200.0, None, "minecraft:generic", Some(None), false));
+                assert!(game.lan.as_ref().unwrap().hub.guests[0].dead);
+                assert_eq!(trace.heard.lock().unwrap().last(), Some(&("post", entity)));
+            })
+            .unwrap();
+            game.guest_die(0, 1);
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", entity),
+                    ("pre", entity),
+                    ("death", entity),
+                    ("post", entity),
+                    ("incoming", entity),
+                    ("pre", entity),
+                    ("death", entity),
+                    ("death-tail", entity),
+                    ("post", entity),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_sweep_finishes_its_lethal_hit_before_the_next_hit() {
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+            player.entity_id = 7;
+            game.player = Some(player);
+            game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
+            let mut first = mob(game, 225031, "minecraft:pig");
+            first.health = 0.5;
+            let second = mob(game, 225032, "minecraft:pig");
+            game.mobs.push(first);
+            game.mobs.push(second);
+            let area = sunrise_core::geometry::Aabb::new(
+                Vec3::new(-1.0, -1.0, -1.0),
+                Vec3::new(1.0, 2.0, 2.0),
+            );
+            game.sweep_damage(area, super::mace::Spared::Nothing, 1.0);
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", 225031),
+                    ("pre", 225031),
+                    ("death", 225031),
+                    ("death-tail", 225031),
+                    ("post", 225031),
+                    ("incoming", 225032),
+                    ("pre", 225032),
+                    ("post", 225032),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn splash_water_finishes_a_lethal_hit_before_the_next_target() {
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let mut first = mob(game, 225041, "minecraft:blaze");
+            first.health = 0.5;
+            let second = mob(game, 225042, "minecraft:blaze");
+            game.mobs.push(first);
+            game.mobs.push(second);
+            let water = ItemStack::new("minecraft:splash_potion", 1).with_potion("minecraft:water");
+            game.affect_entities_around(&water, Vec3::ZERO, false);
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", 225041),
+                    ("pre", 225041),
+                    ("death", 225041),
+                    ("death-tail", 225041),
+                    ("post", 225041),
+                    ("incoming", 225042),
+                    ("pre", 225042),
+                    ("post", 225042),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn squid_finishes_the_lethal_hit_its_subclass_reports_false() {
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let mut squid = mob(game, 225045, "minecraft:squid");
+            squid.health = 0.5;
+            game.mobs.push(squid);
+            assert!(!game.mob_hits_mob(225045, 1.0, Damage::of(DamageKind::Magic)));
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", 225045),
+                    ("pre", 225045),
+                    ("death", 225045),
+                    ("death-tail", 225045),
+                    ("post", 225045),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn borrowed_air_damage_settles_before_the_next_mob_tick() {
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let mut first = mob(game, 225043, "minecraft:axolotl");
+            let mut second = mob(game, 225044, "minecraft:axolotl");
+            first.position = Vec3::new(1.0, 80.0, 1.0);
+            second.position = Vec3::new(3.0, 80.0, 1.0);
+            first.health = 0.5;
+            first.air = -19;
+            second.air = -19;
+            game.mobs.push(first);
+            game.mobs.push(second);
+            game.tick_creature_entities().unwrap();
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", 225043),
+                    ("pre", 225043),
+                    ("death", 225043),
+                    ("death-tail", 225043),
+                    ("post", 225043),
+                    ("incoming", 225044),
+                    ("pre", 225044),
+                    ("post", 225044),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
+    use crate::game::native_player_death::tests::add_guest;
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            add_guest(game);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.load_timeout = 0;
+                guest.inventory[guest.selected] =
+                    Some(ItemStack::new("minecraft:totem_of_undying", 1));
+            });
+            let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            game.guest_struck_by(1, |game| {
+                assert!(game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false));
+                assert!(game.inventory[game.selected].is_none());
+                assert_eq!(game.player.as_ref().unwrap().health.health(), 1.0);
+                assert_eq!(
+                    *trace.heard.lock().unwrap(),
+                    [
+                        ("incoming", entity),
+                        ("pre", entity),
+                        ("totem", entity),
+                        ("post", entity)
+                    ]
+                );
+            })
+            .unwrap();
+            assert!(!game.lan.as_ref().unwrap().hub.guests[0].dead);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn player_pre_keeps_live_damage_when_resistance_does_not_record_a_reduction() {
+    let heard = heard(|game| {
+        let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+        player.entity_id = 225033;
+        player.status.resistance = Some(4);
+        game.player = Some(player);
+        game.set_game_mode(GameMode::Survival);
+        assert!(game.hurt_player_from(10.0, None, "minecraft:magic", Some(None), false));
+        assert_eq!(game.player.as_ref().unwrap().health.health(), 19.0);
+    });
+    assert_eq!(heard.post, [(225033, 1.0)]);
 }
 
 #[test]
@@ -697,13 +1051,15 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
     }
 }
 
+/// Live borrowing crosses `living_damage_pre` with no snapshot conversion, preserving
+/// recorded reductions and writing `set_new_damage` straight back to the engine container.
 #[test]
 #[ignore = "daily"]
 fn snapshot_crosses_the_real_damage_hook_with_reductions() {
     let log = heard(|game| {
         let mut container = sunrise_world::living_damage::DamageContainer::new(10.0);
         container.record_reduction(sunrise_world::living_damage::Reduction::Armor, 3.5);
-        container.enter_pre(6.5);
+        container.record_new_damage(6.5);
         damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None).damage_pre(
             sunrise_client::health::Hurting::Player(
                 225003,
@@ -723,28 +1079,4 @@ fn snapshot_crosses_the_real_damage_hook_with_reductions() {
         );
     });
     assert_eq!(log.pre, [(225003, 10.0, 2.0, 3.5)]);
-}
-
-#[test]
-#[ignore = "daily"]
-fn unsubscribed_damage_does_not_convert() {
-    mod_platform::testing::with_mods(Vec::<mod_api::ModEntry>::new().into(), || {
-        with_game(|game| {
-            super::api_values::damage::CONVERSIONS.with(|count| count.set(0));
-            let mut container = sunrise_world::living_damage::DamageContainer::new(10.0);
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None).damage_pre(
-                sunrise_client::health::Hurting::Player(
-                    225003,
-                    HurtSource {
-                        damage_type: "minecraft:generic",
-                        causing: 0,
-                        direct: 0,
-                        position: None,
-                    },
-                ),
-                &mut container,
-            );
-            super::api_values::damage::CONVERSIONS.with(|count| assert_eq!(count.get(), 0));
-        })
-    });
 }
