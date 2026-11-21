@@ -9,6 +9,7 @@ use sunrise_mod_runtime::attachments::{self as runtime, index};
 /// value can be used for captures made outside a transaction.
 // no wire: borrows the capturing host's frame tracker.
 #[derive(Clone, Copy, Default)]
+#[non_exhaustive]
 pub struct AttachmentReadScope<'host>(pub(crate) Option<&'host runtime::AttachmentQueryScopes>);
 
 impl crate::AccessRefusal for AttachmentRowError {
@@ -71,6 +72,7 @@ impl<T: Send + Sync + 'static> AttachmentQuery<'_, T> {
 
 /// A fallible cursor borrowing the snapshot of an [`AttachmentQuery`].
 // no wire: borrows a live snapshot and tracks a local cursor position.
+#[non_exhaustive]
 pub struct AttachmentIter<'q, T: 'static>(runtime::AttachmentIter<'q, AttachmentHolder, T>);
 
 impl<'q, T: Send + Sync + 'static> AttachmentIter<'q, T> {

@@ -57,6 +57,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentQueryMut<'_, T> {
 
 /// A fallible cursor borrowing the snapshot of an [`AttachmentQueryMut`].
 // no wire: borrows an in-process snapshot and its attachment key.
+#[non_exhaustive]
 pub struct AttachmentIterMut<'q, T: 'static> {
     rows: AttachmentIter<'q, T>,
     key: &'q AttachmentType<T>,

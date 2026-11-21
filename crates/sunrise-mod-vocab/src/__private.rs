@@ -291,8 +291,6 @@ pub mod game {
     use crate::*;
     use std::fmt::Debug;
 
-    pub use crate::entity::attachment_query::validate_attachment_write;
-
     /// A type's fields the game reads, as `value.fields().name`.
     pub trait Fields {
         type Fields<'a>
