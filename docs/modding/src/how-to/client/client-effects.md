@@ -118,8 +118,8 @@ fn register_client_tooltip_component_factories(
    - To add, reorder, replace or remove elements on any item's tooltip, implement
      `Hooks::render_tooltip_gather_components` and push
      `TooltipElement::Component(TooltipComponent::custom(data))` alongside `TooltipElement::Text`.
-     Text lines wrap automatically when the tooltip overflows both sides of the screen, and
-     setting `*event.max_width` to a positive value tightens wrapping further. Return
+     Text lines wrap automatically when the tooltip overflows both sides of the screen. Set
+     `event.max_width = width` with a positive `width` to tighten wrapping further. Return
      `Flow::Cancel` to skip the tooltip (neither `render_tooltip_pre` nor
      `render_tooltip_texture` runs).
 
@@ -134,24 +134,27 @@ fn render_tooltip_pre(
     _host: &dyn mod_api::ClientHost,
     event: &mut mod_api::RenderTooltipPreEvent<'_>,
 ) -> mod_api::Flow {
-    let total_width = event.draw.with_tooltip_font(event.font, |font| {
-        event.components.iter().map(|c| c.width(font)).max().unwrap_or(0)
+    let _first_component_size = event.draw.with_tooltip_font(event.font, |font| {
+        let component = event.components.first()?;
+        Some([component.width(font)?, component.height(font)?])
     });
-    let _pos = event.positioner.position_tooltip(
-        [event.screen[0] as i32, event.screen[1] as i32],
-        [event.place.x, event.place.y],
-        [total_width, 10],
-    );
     // Replace the font used for measurement and drawing without rewrapping text lines:
     *event.font = mod_api::Identifier::parse("minecraft:alt").unwrap();
     mod_api::Flow::Continue
 }
 ```
 
+   `TooltipImage.size` no longer exists. Supply dimensions in your `ClientTooltipComponent`'s
+   `width` and `height` implementations. To read a component's dimensions, use
+   `component.width(font)` and `component.height(font)` in Pre, as above (`None` means
+   measurement failed). Gather sees unprepared data, not dimensions. The `width` and `height`
+   passed to `draw_image` are for the entire tooltip's content box, not that component.
+
    Custom components can be inspected with `component.downcast_ref::<ChargeBarClient>()`,
-   and built-in lines and bundles with `as_text()` and `as_bundle()`. Set `event.place.x` /
-   `event.place.y` to move the anchor, or return `Flow::Cancel` to suppress the box, component
-   passes and `render_tooltip_texture` (anything drawn through `event.draw` stays visible).
+   and built-in lines and bundles with `as_text()` and `as_bundle()`. Use `event.positioner`
+   to compute placement, or set `event.place.x` / `event.place.y` to move the anchor. Return
+   `Flow::Cancel` to suppress the box, component passes and `render_tooltip_texture` (anything
+   drawn through `event.draw` stays visible).
    Use `Hooks::render_tooltip_texture` to override the tooltip style sprites (`event.texture`)
    or solid background/border colours.
 
@@ -159,10 +162,11 @@ Every prepared component — including zero-width or zero-height components — 
 the two-pass draw order (`draw_text` for every component, then `draw_image` for every
 component, matching `GuiGraphicsExtractor.tooltip`). An unregistered custom payload aborts
 that tooltip before `render_tooltip_pre`, `render_tooltip_texture`, or painting with an error
-log (without affecting later tooltips). If a mod's factory, measurement, draw, or
-payload/component drop panics, that mod's tooltip component callbacks are disabled for the
-session with a log entry and error toast, and any partial paint from the panicking draw pass is
-discarded.
+log (without affecting later tooltips). A failed measurement or component draw aborts that
+whole tooltip, including the background and any earlier component paint. Pre listener paint
+stays visible. A panic in a factory, component callback, or destructor for retained tooltip data,
+renderer, or factory captures disables the owning callback for the session, with a log entry
+and error toast naming the mod.
 
 ## Drawing a second world camera
 

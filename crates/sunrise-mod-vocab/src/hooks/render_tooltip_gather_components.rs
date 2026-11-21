@@ -9,10 +9,11 @@ pub trait Hooks {
     /// measuring. Add, change, reorder or remove elements; each element is then
     /// prepared into a `PreparedTooltipComponent` (custom components via
     /// factories registered in `register_client_tooltip_component_factories`)
-    /// before `render_tooltip_pre` runs. `max_width` starts at -1, no limit,
-    /// which leaves the lines as they are; a mod that sets it wraps every line
-    /// wider than that, in GUI pixels. Set `cancel` and nothing is drawn, and
-    /// neither `render_tooltip_pre` nor `render_tooltip_texture` is asked.
+    /// before `render_tooltip_pre` runs. Gather wraps logical text in the item's
+    /// tooltip font when it cannot fit on either side of the cursor. Assign a positive
+    /// GUI-pixel width to `event.max_width` to further constrain wrapping (`-1` by
+    /// default). Return `Flow::Cancel` and nothing is drawn; neither
+    /// `render_tooltip_pre` nor `render_tooltip_texture` is asked.
     /// Asked each frame the tooltip shows, never for one the stack hides.
     /// Client-side.
     #[hook(

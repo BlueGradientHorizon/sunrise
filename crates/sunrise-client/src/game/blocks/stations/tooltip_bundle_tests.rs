@@ -115,7 +115,7 @@ fn bundle_no_listener_order_and_draw_position() {
         assert!(elements[1].as_bundle().is_some());
         assert_eq!(
             game.measure_prepared_item(&elements[1], &font, sunrise_client::font::DEFAULT),
-            (96, 45)
+            Some((96, 45))
         );
         assert!(elements[2].as_text().is_some());
         let batch = draw(game, &stack);
@@ -133,6 +133,25 @@ fn bundle_gather_moves_image_to_end() {
         grid(game, &batch, 20.0, false);
     });
 }
+#[test]
+#[ignore = "daily"]
+fn bundle_gather_keeps_vanillas_selected_slot() {
+    run(Some(true), |game| {
+        let mut stack = bundle();
+        stack.data_mut().bundle_selected = sunrise_client::item_data::BundleSelected(0);
+        let lines = vec![(sunrise_client::text::Text::literal("Name"), u32::MAX)];
+        let elements = game
+            .gather_tooltip_components(&stack, lines, 10, (320.0, 240.0))
+            .unwrap_ready();
+        let PreparedTooltipItem::Bundle { contents, .. } = &elements[1] else {
+            panic!("the unchanged bundle must still be prepared");
+        };
+        // The transient selection isn't in the API stack patch. Keeping the original
+        // vanilla source is necessary for ClientBundleTooltip's selected-item tooltip.
+        assert_eq!(contents.selected(), 0);
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn bundle_gather_removes_grid_and_height() {
@@ -175,7 +194,7 @@ fn bundle_empty_text_gathers_image_at_zero() {
         assert!(elements[0].as_bundle().is_some());
         assert_eq!(
             game.measure_prepared_item(&elements[0], &font, sunrise_client::font::DEFAULT),
-            (96, 45)
+            Some((96, 45))
         );
     });
 }
@@ -200,7 +219,7 @@ fn bundle_empty_contents_keeps_image() {
         assert!(elements[1].as_bundle().is_some());
         assert_eq!(
             game.measure_prepared_item(&elements[1], &font, sunrise_client::font::DEFAULT),
-            (96, 39)
+            Some((96, 39))
         );
         let batch = draw(game, &stack);
         grid(game, &batch, 20.0, false);
@@ -324,7 +343,7 @@ impl Hooks for ClearLines {
                 event.components[0].height(font),
             )
         });
-        assert_eq!(size, (96, 45));
+        assert_eq!(size, (Some(96), Some(45)));
         self.0.store(true, std::sync::atomic::Ordering::Relaxed);
         mod_api::Flow::Continue
     }

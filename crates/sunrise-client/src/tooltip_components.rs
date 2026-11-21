@@ -3,37 +3,28 @@
 //! to [`PreparedTooltipComponent`]s once at client startup.
 
 use mod_api::{
-    __private::game::CallbackOwner, ClientTooltipComponentFactoriesRegistrar,
-    PreparedTooltipComponent, TooltipComponent, TooltipComponentFactory,
-    content::crash::current_native_mod,
+    ClientTooltipComponentFactoriesRegistrar, PreparedTooltipComponent, TooltipComponent,
+    TooltipComponentFactory,
 };
 #[cfg(any(test, feature = "test-tooltip-factories"))]
 use std::cell::RefCell;
 use std::{any::TypeId, collections::HashMap, sync::OnceLock};
 
-#[derive(Clone)]
-struct RegisteredFactory {
-    owner: Option<CallbackOwner>,
-    factory: TooltipComponentFactory,
-}
-
 /// Client startup registrar collecting custom tooltip component factories before freeze.
 #[derive(Default)]
 pub struct TooltipComponentFactories {
-    factories: HashMap<TypeId, RegisteredFactory>,
+    factories: HashMap<TypeId, TooltipComponentFactory>,
 }
 
 impl ClientTooltipComponentFactoriesRegistrar for TooltipComponentFactories {
     fn register_factory(&mut self, factory: TooltipComponentFactory) {
-        let owner = current_native_mod().map(CallbackOwner::for_mod);
-        self.factories
-            .insert(factory.__type_id(), RegisteredFactory { owner, factory });
+        self.factories.insert(factory.__type_id(), factory);
     }
 }
 
 /// Frozen lookup table of client tooltip component factories published at client startup.
 pub struct FrozenTooltipComponentFactories {
-    factories: HashMap<TypeId, RegisteredFactory>,
+    factories: HashMap<TypeId, TooltipComponentFactory>,
 }
 
 static FACTORIES: OnceLock<FrozenTooltipComponentFactories> = OnceLock::new();
@@ -62,9 +53,8 @@ pub fn with_test_factories<R>(factories: TooltipComponentFactories, f: impl FnOn
     struct Restore(Option<FrozenTooltipComponentFactories>);
     impl Drop for Restore {
         fn drop(&mut self) {
-            TEST_FACTORIES.with(|slot| {
-                *slot.borrow_mut() = self.0.take();
-            });
+            let replaced = TEST_FACTORIES.with(|slot| slot.replace(self.0.take()));
+            drop(replaced);
         }
     }
     let previous = TEST_FACTORIES.with(|slot| {
@@ -151,43 +141,30 @@ pub fn create(
             owner: component.__owner_id(),
         });
     };
+    let prepare = |factory: Option<&TooltipComponentFactory>| {
+        let factory = factory.ok_or_else(|| TooltipComponentPrepareError::MissingFactory {
+            type_name,
+            owner: component.__owner_id(),
+        })?;
+        factory
+            .__create(data)
+            .ok_or_else(|| TooltipComponentPrepareError::FactoryFailed {
+                type_name,
+                owner: factory.__owner_id().or_else(|| component.__owner_id()),
+            })
+    };
     #[cfg(any(test, feature = "test-tooltip-factories"))]
     if let Some(found) = TEST_FACTORIES.with(|slot| {
         slot.borrow()
             .as_ref()
             .map(|frozen| frozen.factories.get(&type_id).cloned())
     }) {
-        return match found {
-            Some(entry) => {
-                let factory_owner = entry.owner.as_ref().map(CallbackOwner::id);
-                entry.factory.__create(data, entry.owner).ok_or(
-                    TooltipComponentPrepareError::FactoryFailed {
-                        type_name,
-                        owner: factory_owner.or_else(|| component.__owner_id()),
-                    },
-                )
-            }
-            None => Err(TooltipComponentPrepareError::MissingFactory {
-                type_name,
-                owner: component.__owner_id(),
-            }),
-        };
+        return prepare(found.as_ref());
     }
-    let Some(entry) = FACTORIES
-        .get()
-        .and_then(|frozen| frozen.factories.get(&type_id))
-    else {
-        return Err(TooltipComponentPrepareError::MissingFactory {
-            type_name,
-            owner: component.__owner_id(),
-        });
-    };
-    let factory_owner = entry.owner.as_ref().map(CallbackOwner::id);
-    entry.factory.__create(data, entry.owner.clone()).ok_or(
-        TooltipComponentPrepareError::FactoryFailed {
-            type_name,
-            owner: factory_owner.or_else(|| component.__owner_id()),
-        },
+    prepare(
+        FACTORIES
+            .get()
+            .and_then(|frozen| frozen.factories.get(&type_id)),
     )
 }
 
@@ -210,7 +187,8 @@ pub fn has_factories() -> bool {
 mod tests {
     use super::*;
     use mod_api::{
-        ClientTooltipComponent, Identifier, Text, TextFormError, TooltipComponentData, TooltipFont,
+        __private::game::CallbackOwner, ClientTooltipComponent, Identifier, Text, TextFormError,
+        TooltipComponentData, TooltipFont, content::crash::current_native_mod,
     };
 
     struct MetricData(i32);
@@ -276,8 +254,8 @@ mod tests {
             with_test_factories(factories, || {
                 assert!(has_factories());
                 let prepared = create(&data).expect("registered factory should prepare component");
-                assert_eq!(prepared.width(&font), 36);
-                assert_eq!(prepared.height(&font), 20);
+                assert_eq!(prepared.width(&font), Some(36));
+                assert_eq!(prepared.height(&font), Some(20));
                 assert!(matches!(
                     create(&unknown),
                     Err(TooltipComponentPrepareError::MissingFactory { .. })
@@ -307,6 +285,64 @@ mod tests {
             assert!(panicked.is_err());
             assert!(!has_factories());
         });
+    }
+
+    #[test]
+    fn replacing_a_tooltip_factory_contains_the_displaced_capture_drop() {
+        use std::sync::{Arc, Mutex};
+
+        struct PanicOnDrop(Arc<Mutex<Vec<Option<&'static str>>>>);
+        impl Drop for PanicOnDrop {
+            fn drop(&mut self) {
+                self.0.lock().unwrap().push(current_native_mod());
+                panic!("factory capture drop");
+            }
+        }
+
+        mod_platform::__private::initialize().unwrap();
+        let mut factories = TooltipComponentFactories::default();
+        let registrar: &mut dyn ClientTooltipComponentFactoriesRegistrar = &mut factories;
+        let dropped_under = Arc::new(Mutex::new(Vec::new()));
+        let displaced_capture = PanicOnDrop(dropped_under.clone());
+        let retained_capture = PanicOnDrop(dropped_under.clone());
+        CallbackOwner::for_mod("displaced_tooltip_factory")
+            .call("test", "register", || {
+                registrar.register::<MetricData, MetricClient>(move |_| {
+                    let _capture = &displaced_capture;
+                    MetricClient {
+                        width: 1,
+                        height: 1,
+                    }
+                });
+            })
+            .unwrap();
+        CallbackOwner::for_mod("replacement_tooltip_factory")
+            .call("test", "register", || {
+                registrar.register::<MetricData, MetricClient>(move |data| {
+                    let _capture = &retained_capture;
+                    MetricClient {
+                        width: data.0,
+                        height: 20,
+                    }
+                });
+            })
+            .expect("the replaced factory's destructor must not unwind through this registration");
+        assert_eq!(
+            *dropped_under.lock().unwrap(),
+            [Some("displaced_tooltip_factory")]
+        );
+        with_test_factories(factories, || {
+            let font = StubFont(Identifier::parse("minecraft:default").unwrap());
+            let data = TooltipComponent::custom(MetricData(13));
+            assert_eq!(create(&data).unwrap().width(&font), Some(13));
+        });
+        assert_eq!(
+            *dropped_under.lock().unwrap(),
+            [
+                Some("displaced_tooltip_factory"),
+                Some("replacement_tooltip_factory")
+            ]
+        );
     }
 
     #[test]
@@ -368,60 +404,50 @@ mod tests {
         let height_calls = Arc::new(AtomicUsize::new(0));
         let hand_calls = Arc::new(AtomicUsize::new(0));
 
+        mod_platform::__private::initialize().unwrap();
         let mut factories = TooltipComponentFactories::default();
-        let insert_owned = |factories: &mut TooltipComponentFactories,
-                            mod_id: &'static str,
-                            factory: TooltipComponentFactory| {
-            factories.factories.insert(
-                factory.__type_id(),
-                RegisteredFactory {
-                    owner: Some(CallbackOwner::for_mod(mod_id)),
-                    factory,
-                },
-            );
-        };
-
+        let registrar: &mut dyn ClientTooltipComponentFactoriesRegistrar = &mut factories;
         let c_calls = create_calls.clone();
-        insert_owned(
-            &mut factories,
-            "panic_create_mod",
-            TooltipComponentFactory::new::<PanicCreateData, MetricClient>(move |_| {
-                c_calls.fetch_add(1, Ordering::Relaxed);
-                panic!("create boom");
-            }),
-        );
+        CallbackOwner::for_mod("panic_create_mod")
+            .call("test", "register", || {
+                registrar.register::<PanicCreateData, MetricClient>(move |_| {
+                    c_calls.fetch_add(1, Ordering::Relaxed);
+                    panic!("create boom");
+                });
+            })
+            .unwrap();
         let w_calls = width_calls.clone();
-        insert_owned(
-            &mut factories,
-            "panic_width_mod",
-            TooltipComponentFactory::new::<PanicWidthData, PanicWidthClient>(move |_| {
-                PanicWidthClient(w_calls.clone())
-            }),
-        );
+        CallbackOwner::for_mod("panic_width_mod")
+            .call("test", "register", || {
+                registrar.register::<PanicWidthData, PanicWidthClient>(move |_| {
+                    PanicWidthClient(w_calls.clone())
+                });
+            })
+            .unwrap();
         let h_calls = height_calls.clone();
-        insert_owned(
-            &mut factories,
-            "panic_height_mod",
-            TooltipComponentFactory::new::<PanicHeightData, PanicHeightClient>(move |_| {
-                PanicHeightClient(h_calls.clone())
-            }),
-        );
+        CallbackOwner::for_mod("panic_height_mod")
+            .call("test", "register", || {
+                registrar.register::<PanicHeightData, PanicHeightClient>(move |_| {
+                    PanicHeightClient(h_calls.clone())
+                });
+            })
+            .unwrap();
         let s_calls = hand_calls.clone();
-        insert_owned(
-            &mut factories,
-            "panic_hand_mod",
-            TooltipComponentFactory::new::<PanicHandData, PanicHandClient>(move |_| {
-                PanicHandClient(s_calls.clone())
-            }),
-        );
-        insert_owned(
-            &mut factories,
-            "healthy_mod",
-            TooltipComponentFactory::new::<HealthyData, MetricClient>(|d| MetricClient {
-                width: d.0,
-                height: 14,
-            }),
-        );
+        CallbackOwner::for_mod("panic_hand_mod")
+            .call("test", "register", || {
+                registrar.register::<PanicHandData, PanicHandClient>(move |_| {
+                    PanicHandClient(s_calls.clone())
+                });
+            })
+            .unwrap();
+        CallbackOwner::for_mod("healthy_mod")
+            .call("test", "register", || {
+                registrar.register::<HealthyData, MetricClient>(|d| MetricClient {
+                    width: d.0,
+                    height: 14,
+                });
+            })
+            .unwrap();
 
         let font = StubFont(Identifier::parse("minecraft:default").unwrap());
         with_test_factories(factories, || {
@@ -446,9 +472,9 @@ mod tests {
 
             let panic_width = TooltipComponent::custom(PanicWidthData);
             let prepared = create(&panic_width).expect("factory succeeds before width panics");
-            assert_eq!(prepared.width(&font), 0);
+            assert_eq!(prepared.width(&font), None);
             assert_eq!(width_calls.load(Ordering::Relaxed), 1);
-            assert_eq!(prepared.width(&font), 0);
+            assert_eq!(prepared.width(&font), None);
             assert_eq!(width_calls.load(Ordering::Relaxed), 1);
             assert!(matches!(
                 create(&panic_width),
@@ -460,9 +486,9 @@ mod tests {
 
             let panic_height = TooltipComponent::custom(PanicHeightData);
             let prepared = create(&panic_height).expect("factory succeeds before height panics");
-            assert_eq!(prepared.height(&font), 0);
+            assert_eq!(prepared.height(&font), None);
             assert_eq!(height_calls.load(Ordering::Relaxed), 1);
-            assert_eq!(prepared.height(&font), 0);
+            assert_eq!(prepared.height(&font), None);
             assert_eq!(height_calls.load(Ordering::Relaxed), 1);
             assert!(matches!(
                 create(&panic_height),
@@ -489,8 +515,8 @@ mod tests {
             // Sibling mod factory remains completely unaffected.
             let healthy = TooltipComponent::custom(HealthyData(48));
             let prepared = create(&healthy).expect("healthy sibling remains enabled");
-            assert_eq!(prepared.width(&font), 48);
-            assert_eq!(prepared.height(&font), 14);
+            assert_eq!(prepared.width(&font), Some(48));
+            assert_eq!(prepared.height(&font), Some(14));
         });
     }
 }

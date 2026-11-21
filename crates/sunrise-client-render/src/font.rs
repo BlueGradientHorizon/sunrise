@@ -1136,6 +1136,15 @@ impl Font {
             .sum::<f32>()
             .ceil()
     }
+    /// `Font.width(FormattedText)` on text with legacy codes already resolved,
+    /// before bidi shaping or visual reordering.
+    pub fn width_formatted_with_font(&self, t: &Text, default_font: &str) -> i32 {
+        sunrise_core::mth::ceil_f32(
+            t.chars()
+                .map(|(c, s)| self.advance_with_default(c, s, default_font))
+                .sum(),
+        )
+    }
     /// `Font.width(FormattedCharSequence)` of a sequence a component built
     /// with `FormattedCharSequence.forward`: every character is a glyph, a
     /// `§` included (`StringDecomposer.iterate`, not `iterateFormatted`).

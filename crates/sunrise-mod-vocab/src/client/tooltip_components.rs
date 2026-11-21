@@ -39,7 +39,7 @@ impl Drop for OwnedTooltipData {
 
 #[derive(Clone)]
 enum Repr {
-    Bundle(ItemStack),
+    Bundle(Arc<ItemStack>),
     Custom {
         type_id: TypeId,
         type_name: &'static str,
@@ -59,7 +59,7 @@ impl TooltipComponent {
     /// Wrap a bundle stack for vanilla's built-in bundle contents tooltip component.
     pub fn bundle(stack: ItemStack) -> Self {
         Self {
-            repr: Repr::Bundle(stack),
+            repr: Repr::Bundle(Arc::new(stack)),
         }
     }
 
@@ -82,7 +82,7 @@ impl TooltipComponent {
     /// Borrow the bundle stack if this is a built-in bundle component.
     pub fn as_bundle(&self) -> Option<&ItemStack> {
         match &self.repr {
-            Repr::Bundle(stack) => Some(stack),
+            Repr::Bundle(stack) => Some(stack.as_ref()),
             Repr::Custom { .. } => None,
         }
     }
@@ -195,8 +195,9 @@ pub trait ClientTooltipComponent: 'static {
     /// Width of this component in GUI pixels (`ClientTooltipComponent.getWidth`).
     fn width(&self, font: &dyn TooltipFont) -> i32;
 
-    /// Whether this tooltip should still appear while the cursor holds an item stack
-    /// (`ClientTooltipComponent.showTooltipWithItemInHand`, default `false`).
+    /// Whether this tooltip should still appear for a hovered container slot while the cursor
+    /// holds an item stack (`ClientTooltipComponent.showTooltipWithItemInHand`, default `false`).
+    /// Recipe and trade previews do not use this check.
     fn show_tooltip_with_item_in_hand(&self) -> bool {
         false
     }
@@ -207,8 +208,9 @@ pub trait ClientTooltipComponent: 'static {
         let _ = (font, x, y, draw);
     }
 
-    /// Draw this component's graphics at `(x, y)` inside a tooltip content box of `(width, height)`
-    /// GUI pixels during the tooltip's image pass (`ClientTooltipComponent.extractImage`).
+    /// Draw this component's graphics at `(x, y)` during `ClientTooltipComponent.extractImage`.
+    /// `width` and `height` are the entire tooltip's content-box dimensions in GUI pixels,
+    /// not this component's measurements.
     fn draw_image(
         &self,
         font: &dyn TooltipFont,
@@ -276,6 +278,24 @@ impl<C: ClientTooltipComponent + 'static> AnyClientTooltipComponent for C {
 type ErasedTooltipComponentFactory =
     dyn Fn(&(dyn Any + Send + Sync)) -> Option<Box<dyn AnyClientTooltipComponent>> + Send + Sync;
 
+struct OwnedTooltipFactory {
+    create: Option<Box<ErasedTooltipComponentFactory>>,
+    owner: Option<CallbackOwner>,
+}
+
+impl Drop for OwnedTooltipFactory {
+    fn drop(&mut self) {
+        if let Some(create) = self.create.take() {
+            match self.owner.as_ref() {
+                Some(owner) => owner.dispose("tooltip_component", "factory_drop", create),
+                None => {
+                    let _ = contain_unwind(move || drop(create));
+                }
+            }
+        }
+    }
+}
+
 // no wire: process-local tooltip component factory closure.
 // exhaustive: opaque factory wrapper with private representation.
 /// Type-erased client factory mapping one [`TooltipComponentData`] type into a
@@ -284,20 +304,25 @@ type ErasedTooltipComponentFactory =
 pub struct TooltipComponentFactory {
     type_id: TypeId,
     type_name: &'static str,
-    create: Arc<ErasedTooltipComponentFactory>,
+    callback: Arc<OwnedTooltipFactory>,
 }
 
 impl TooltipComponentFactory {
     /// Wrap a typed factory converting `&T` into a [`ClientTooltipComponent`] `C`.
+    /// The mod creating the factory owns its callbacks and the disposal of its captures.
     pub fn new<T: TooltipComponentData, C: ClientTooltipComponent + 'static>(
         factory: impl Fn(&T) -> C + Send + Sync + 'static,
     ) -> Self {
+        let owner = crate::content::crash::current_native_mod().map(CallbackOwner::for_mod);
         Self {
             type_id: TypeId::of::<T>(),
             type_name: std::any::type_name::<T>(),
-            create: Arc::new(move |data| {
-                let typed = data.downcast_ref::<T>()?;
-                Some(Box::new(factory(typed)))
+            callback: Arc::new(OwnedTooltipFactory {
+                create: Some(Box::new(move |data| {
+                    let typed = data.downcast_ref::<T>()?;
+                    Some(Box::new(factory(typed)))
+                })),
+                owner,
             }),
         }
     }
@@ -316,26 +341,29 @@ impl TooltipComponentFactory {
         self.type_name
     }
 
+    /// The mod that owns this factory, for preparation diagnostics.
+    // hidden: engine diagnostics attribute failures to the factory's owning mod.
+    #[doc(hidden)]
+    pub fn __owner_id(&self) -> Option<&'static str> {
+        self.callback.owner.as_ref().map(CallbackOwner::id)
+    }
+
     /// Invoke the factory under panic containment, returning `None` if the type mismatches,
     /// the owner is disabled, or the factory panics.
-    // hidden: engine tooltip preparation invokes registered factories with their owner.
+    // hidden: engine tooltip preparation invokes registered factories.
     #[doc(hidden)]
-    pub fn __create(
-        &self,
-        data: &(dyn Any + Send + Sync),
-        owner: Option<CallbackOwner>,
-    ) -> Option<PreparedTooltipComponent> {
-        let built = match owner.as_ref() {
+    pub fn __create(&self, data: &(dyn Any + Send + Sync)) -> Option<PreparedTooltipComponent> {
+        let create = self.callback.create.as_deref()?;
+        let built = match self.callback.owner.as_ref() {
             Some(owner) => owner
-                .call("tooltip_component", "create", || (self.create)(data))
-                .ok()
-                .flatten(),
-            None => contain_unwind(|| (self.create)(data)).ok().flatten(),
-        };
-        built.map(|component| PreparedTooltipComponent {
+                .call("tooltip_component", "create", || create(data))
+                .ok(),
+            None => contain_unwind(|| create(data)).ok(),
+        }??;
+        Some(PreparedTooltipComponent {
             repr: PreparedRepr::Custom {
-                component: Some(component),
-                owner,
+                component: Some(built),
+                owner: self.callback.owner.clone(),
             },
         })
     }
@@ -471,39 +499,36 @@ impl PreparedTooltipComponent {
     }
 
     /// Measured width of this component in GUI pixels using `font`.
-    /// Returns `0` if a custom component is disabled or panics.
-    pub fn width(&self, font: &dyn TooltipFont) -> i32 {
+    /// `None` means measurement failed, including when a custom component is disabled or panics.
+    pub fn width(&self, font: &dyn TooltipFont) -> Option<i32> {
         match &self.repr {
-            PreparedRepr::Text { text, .. } => font.width(text).unwrap_or(0),
-            PreparedRepr::Bundle { .. } => 96,
-            PreparedRepr::Custom { .. } => {
-                self.call_custom("width", |c| c.width(font)).unwrap_or(0)
-            }
+            PreparedRepr::Text { text, .. } => font.width(text).ok(),
+            PreparedRepr::Bundle { .. } => Some(96),
+            PreparedRepr::Custom { .. } => self.call_custom("width", |c| c.width(font)),
         }
     }
 
     /// Measured height of this component in GUI pixels using `font`.
-    /// Returns `0` if a custom component is disabled or panics.
-    pub fn height(&self, font: &dyn TooltipFont) -> i32 {
+    /// `None` means measurement failed, including when a custom component is disabled or panics.
+    pub fn height(&self, font: &dyn TooltipFont) -> Option<i32> {
         match &self.repr {
-            PreparedRepr::Text { .. } => 10,
+            PreparedRepr::Text { .. } => Some(10),
             PreparedRepr::Bundle {
                 non_empty_height, ..
             } => match *non_empty_height {
-                Some(height) => height,
+                Some(height) => Some(height),
                 None => {
                     let desc =
                         Text::translate("item.minecraft.bundle.empty.description", Vec::new());
-                    font.split(&desc, 96)
-                        .map_or(0, |lines| {
-                            (lines.len() as i32).wrapping_mul(font.line_height())
-                        })
-                        .wrapping_add(21)
+                    let lines = font.split(&desc, 96).ok()?;
+                    Some(
+                        (lines.len() as i32)
+                            .wrapping_mul(font.line_height())
+                            .wrapping_add(21),
+                    )
                 }
             },
-            PreparedRepr::Custom { .. } => {
-                self.call_custom("height", |c| c.height(font)).unwrap_or(0)
-            }
+            PreparedRepr::Custom { .. } => self.call_custom("height", |c| c.height(font)),
         }
     }
 
@@ -637,8 +662,8 @@ impl fmt::Debug for PreparedTooltipComponent {
 }
 
 impl dyn DrawContext + '_ {
-    /// Borrow the tooltip font `font` for measurement or splitting, falling back to
-    /// `minecraft:default` when unknown.
+    /// Borrow the tooltip font `font` for measurement or splitting. An unknown font ID
+    /// uses missing glyphs, not `minecraft:default`; explicit style fonts still apply.
     pub fn with_tooltip_font<R>(
         &self,
         font: &Identifier,
@@ -732,12 +757,11 @@ mod tests {
 
         let factory =
             TooltipComponentFactory::new::<CustomData, CustomClient>(|d| CustomClient(d.0));
-        let owner = CallbackOwner::for_mod("test_tooltip_ok");
         let prepared = factory
-            .__create(data.__as_any().unwrap(), Some(owner))
+            .__create(data.__as_any().unwrap())
             .expect("factory should build component");
-        assert_eq!(prepared.width(&font), 30);
-        assert_eq!(prepared.height(&font), 15);
+        assert_eq!(prepared.width(&font), Some(30));
+        assert_eq!(prepared.height(&font), Some(15));
         assert!(prepared.show_tooltip_with_item_in_hand());
         assert_eq!(
             prepared.downcast_ref::<CustomClient>().map(|c| c.0),
@@ -755,14 +779,16 @@ mod tests {
             }
         }
         let panicking_owner = CallbackOwner::for_mod("test_tooltip_panic");
-        let panicking_factory =
+        let mut panicking_factory =
             TooltipComponentFactory::new::<CustomData, PanickingClient>(|_| PanickingClient);
+        Arc::get_mut(&mut panicking_factory.callback).unwrap().owner =
+            Some(panicking_owner.clone());
         let prepared = panicking_factory
-            .__create(data.__as_any().unwrap(), Some(panicking_owner.clone()))
+            .__create(data.__as_any().unwrap())
             .expect("factory built panicking client");
-        assert_eq!(prepared.height(&font), 0);
+        assert_eq!(prepared.height(&font), None);
         assert!(!panicking_owner.is_enabled());
-        assert_eq!(prepared.width(&font), 0);
+        assert_eq!(prepared.width(&font), None);
     }
 
     #[test]

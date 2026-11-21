@@ -14,8 +14,10 @@ pub trait Hooks {
     /// tooltip box once measured. `font` is the font identifier used for measurement and
     /// drawing (starting at `minecraft:default` or the tooltip's font); change it to
     /// measure and draw with a replacement font without rewrapping already-split text
-    /// lines. `draw` is the tooltip's GUI drawing context; custom drawing stays visible
-    /// even when the tooltip is cancelled. Set `cancel` (return `Flow::Cancel`) and the
+    /// lines. A prepared component's `width` and `height` return `None` on failure,
+    /// distinct from a valid size of zero. A failed component measurement or draw
+    /// aborts the whole tooltip. `draw` is the tooltip's GUI drawing context; paint
+    /// from Pre stays visible on cancellation or failure. Return `Flow::Cancel` and the
     /// tooltip box and components are not drawn and `render_tooltip_texture` is not asked.
     /// Asked each frame a tooltip shows, only while a mod listens. Client-side.
     #[hook(

@@ -72,10 +72,10 @@ pub trait DrawContext {
     fn text(&mut self, text: &str, at: [f32; 2], argb: u32, shadow: bool) {
         unimplemented!("DrawContext::text")
     }
-    /// Draw a formatted [`Text`] component at `(x, y)` in GUI pixels using font `font`
-    /// (falling back to `minecraft:default` when unknown), in `argb` (`0xAARRGGBB`; opaque
-    /// white is `0xFFFFFFFF`), with optional drop shadow. Returns the drawn width in GUI
-    /// pixels, or [`TextFormError`] if `text` exceeds vanilla's component-depth limit.
+    /// Draw formatted [`Text`] at `(x, y)` in GUI pixels, in `argb` (`0xAARRGGBB`) with optional
+    /// drop shadow. `font` applies where the text has no explicit font. An unknown font ID uses
+    /// missing glyphs, not `minecraft:default`. Returns the drawn width in GUI pixels, or
+    /// [`TextFormError`] if `text` exceeds vanilla's component-depth limit.
     fn text_with_font(
         &mut self,
         font: &Identifier,

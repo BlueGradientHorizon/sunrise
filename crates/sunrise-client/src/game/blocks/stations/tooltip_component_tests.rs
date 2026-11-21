@@ -306,7 +306,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
         assert_eq!((wide.0, wide.1), (500, 12));
         assert_eq!(
             game.measure_prepared_item(&mixed[n + 1], &tooltip_font, sunrise_client::font::DEFAULT),
-            (500, 12)
+            Some((500, 12))
         );
         // Bundle component kept in order.
         assert!(mixed[n + 2].as_bundle().is_some());
@@ -1140,11 +1140,9 @@ fn audit_88_no_listener_fast_path_and_invalid_text_skipped_individually() {
     });
 }
 
-/// Verifies panic containment across factory creation, `width`, `height`,
-/// `show_tooltip_with_item_in_hand`, `draw_text`, and `draw_image`: partial `HudBatch` vertices
-/// from panicking draw passes are rolled back via `paint_checkpoint().discard(batch)`, each
-/// failing factory registration is disabled for subsequent tooltips, and sibling components still
-/// draw.
+/// A failed component aborts only its tooltip: no background or component paint survives,
+/// including paint from a successful text pass before the image pass panics. Pre's own paint
+/// survives, and healthy owners can still draw other tooltips.
 #[test]
 #[ignore = "daily"]
 fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory() {
@@ -1214,13 +1212,17 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
         }
     }
 
-    struct DrawImagePanicClient(Arc<AtomicUsize>);
+    struct DrawImagePanicClient(Arc<AtomicUsize>, Arc<AtomicBool>);
     impl ClientTooltipComponent for DrawImagePanicClient {
         fn height(&self, _: &dyn TooltipFont) -> i32 {
             10
         }
         fn width(&self, _: &dyn TooltipFont) -> i32 {
             20
+        }
+        fn draw_text(&self, _: &dyn TooltipFont, x: i32, y: i32, draw: &mut dyn DrawContext) {
+            draw.fill([x as f32, y as f32, 8.0, 8.0], 0xFFDE_AD03);
+            self.1.store(true, Ordering::Relaxed);
         }
         fn draw_image(
             &self,
@@ -1231,6 +1233,7 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
             _: i32,
             draw: &mut dyn DrawContext,
         ) {
+            assert!(self.1.load(Ordering::Relaxed));
             self.0.fetch_add(1, Ordering::Relaxed);
             draw.fill([x as f32, y as f32, 8.0, 8.0], 0xFFDE_AD02);
             panic!("tooltip draw_image panic");
@@ -1345,7 +1348,7 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
         }
     }
 
-    struct DrawImagePanicMod(Arc<AtomicUsize>);
+    struct DrawImagePanicMod(Arc<AtomicUsize>, Arc<AtomicBool>);
     #[mod_api::__subscriptions]
     impl Hooks for DrawImagePanicMod {
         fn register_client_tooltip_component_factories(
@@ -1354,10 +1357,11 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
             event: &mut RegisterClientTooltipComponentFactoriesEvent<'_>,
         ) {
             let calls = self.0.clone();
+            let text_drawn = self.1.clone();
             event
                 .factories
                 .register::<DrawImagePanicData, DrawImagePanicClient>(move |_| {
-                    DrawImagePanicClient(calls.clone())
+                    DrawImagePanicClient(calls.clone(), text_drawn.clone())
                 });
         }
     }
@@ -1375,6 +1379,14 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
                 .factories
                 .register::<SiblingData, SiblingClient>(move |_| SiblingClient(calls.clone()));
         }
+        fn render_tooltip_pre(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut RenderTooltipPreEvent<'_>,
+        ) -> Flow {
+            event.draw.fill([3.0, 3.0, 2.0, 2.0], 0xFFAA_BBCC);
+            Flow::Continue
+        }
     }
 
     let create_calls = Arc::new(AtomicUsize::new(0));
@@ -1383,6 +1395,7 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
     let hand_calls = Arc::new(AtomicUsize::new(0));
     let text_calls = Arc::new(AtomicUsize::new(0));
     let image_calls = Arc::new(AtomicUsize::new(0));
+    let image_component_text_drawn = Arc::new(AtomicBool::new(false));
     let sibling_calls = Arc::new(AtomicUsize::new(0));
 
     let mods: Mods = vec![
@@ -1402,7 +1415,10 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
         ),
         ModEntry::new(
             "panic_draw_image",
-            Box::new(DrawImagePanicMod(image_calls.clone())),
+            Box::new(DrawImagePanicMod(
+                image_calls.clone(),
+                image_component_text_drawn.clone(),
+            )),
         ),
         ModEntry::new(
             "healthy_sibling",
@@ -1412,9 +1428,30 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
     .into();
 
     with_mod_factories(mods, |game| {
-        let font = crate::game::host::draw::EngineTooltipFont {
-            font: &game.gui.atlas.font,
-            id: &DEFAULT_FONT_ID,
+        let assert_aborts = |mut component: PreparedTooltipItem| {
+            let mut batch = HudBatch::scratch([320, 240]);
+            assert_eq!(
+                game.draw_prepared_tooltip(
+                    &mut batch,
+                    None,
+                    std::slice::from_mut(&mut component),
+                    [10, 20],
+                    DEFAULT_FONT_ID.clone(),
+                    true,
+                ),
+                None
+            );
+            assert!(
+                !batch.vertices.is_empty(),
+                "Pre listener paint must survive"
+            );
+            assert!(
+                batch
+                    .vertices
+                    .iter()
+                    .all(|v| v.color == rgba(0xAA, 0xBB, 0xCC, 0xFF)),
+                "neither the background nor either component pass may leave paint"
+            );
         };
 
         // 1. Factory creation panic: caught and disabled on subsequent tooltips.
@@ -1429,22 +1466,22 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
         ));
         assert_eq!(create_calls.load(Ordering::Relaxed), 1);
 
-        // 2. width panic: caught, returns 0, disables factory for subsequent tooltips.
+        // 2. Width failure aborts instead of producing a 0px measurement.
         let width_comp = game
             .prepare_tooltip_component(&TooltipComponent::custom(WidthPanicData))
             .unwrap();
-        assert_eq!(width_comp.as_custom().unwrap().width(&font), 0);
+        assert_aborts(width_comp);
         assert_eq!(width_calls.load(Ordering::Relaxed), 1);
         assert!(matches!(
             game.prepare_tooltip_component(&TooltipComponent::custom(WidthPanicData)),
             Err(TooltipComponentPrepareError::FactoryFailed { .. })
         ));
 
-        // 3. height panic: caught, returns 0, disables factory for subsequent tooltips.
+        // 3. Height failure also aborts after a successful width measurement.
         let height_comp = game
             .prepare_tooltip_component(&TooltipComponent::custom(HeightPanicData))
             .unwrap();
-        assert_eq!(height_comp.as_custom().unwrap().height(&font), 0);
+        assert_aborts(height_comp);
         assert_eq!(height_calls.load(Ordering::Relaxed), 1);
         assert!(matches!(
             game.prepare_tooltip_component(&TooltipComponent::custom(HeightPanicData)),
@@ -1467,55 +1504,19 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
             Err(TooltipComponentPrepareError::FactoryFailed { .. })
         ));
 
-        // 5 & 6. draw_text and draw_image panics: partial HudBatch vertices rolled back via
-        // paint_checkpoint().discard(batch), failing registrations disabled, sibling still draws.
-        let mut components = vec![
-            game.prepare_tooltip_component(&TooltipComponent::custom(DrawTextPanicData))
-                .unwrap(),
-            game.prepare_tooltip_component(&TooltipComponent::custom(DrawImagePanicData))
-                .unwrap(),
-            game.prepare_tooltip_component(&TooltipComponent::custom(SiblingData))
-                .unwrap(),
-        ];
-        let mut batch = HudBatch::scratch([320, 240]);
-        assert!(
-            game.draw_prepared_tooltip(
-                &mut batch,
-                None,
-                &mut components,
-                [10, 20],
-                DEFAULT_FONT_ID.clone(),
-                true
-            )
-            .is_some()
-        );
+        // 5 & 6. Either pass can fail; after a successful text pass the image failure must
+        // still discard the text, the partial image, and the background together.
+        for payload in [
+            TooltipComponent::custom(DrawTextPanicData),
+            TooltipComponent::custom(DrawImagePanicData),
+        ] {
+            assert_aborts(game.prepare_tooltip_component(&payload).unwrap());
+        }
         assert_eq!(text_calls.load(Ordering::Relaxed), 1);
         assert_eq!(image_calls.load(Ordering::Relaxed), 1);
-        assert_eq!(sibling_calls.load(Ordering::Relaxed), 1);
-        assert!(
-            !batch
-                .vertices
-                .iter()
-                .any(|v| v.color == rgba(0xDE, 0xAD, 0x01, 0xFF)),
-            "partial draw_text paint before panic must be rolled back"
-        );
-        assert!(
-            !batch
-                .vertices
-                .iter()
-                .any(|v| v.color == rgba(0xDE, 0xAD, 0x02, 0xFF)),
-            "partial draw_image paint before panic must be rolled back"
-        );
-        assert!(
-            batch
-                .vertices
-                .iter()
-                .any(|v| v.color == rgba(0x12, 0xEF, 0x34, 0xFF)),
-            "healthy sibling component must still draw"
-        );
+        assert!(image_component_text_drawn.load(Ordering::Relaxed));
 
-        // Subsequent tooltips skip disabled factories and never re-run panicking callbacks, while
-        // the healthy sibling keeps preparing and drawing normally.
+        // Subsequent tooltips skip disabled factories while the healthy owner can still draw.
         assert!(matches!(
             game.prepare_tooltip_component(&TooltipComponent::custom(DrawTextPanicData)),
             Err(TooltipComponentPrepareError::FactoryFailed { .. })
@@ -1524,24 +1525,27 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
             game.prepare_tooltip_component(&TooltipComponent::custom(DrawImagePanicData)),
             Err(TooltipComponentPrepareError::FactoryFailed { .. })
         ));
-        let mut second_batch = HudBatch::scratch([320, 240]);
+        let mut batch = HudBatch::scratch([320, 240]);
+        let mut sibling = game
+            .prepare_tooltip_component(&TooltipComponent::custom(SiblingData))
+            .unwrap();
         assert!(
             game.draw_prepared_tooltip(
-                &mut second_batch,
+                &mut batch,
                 None,
-                &mut components,
+                std::slice::from_mut(&mut sibling),
                 [10, 20],
                 DEFAULT_FONT_ID.clone(),
-                true
+                true,
             )
             .is_some()
         );
-        assert_eq!(text_calls.load(Ordering::Relaxed), 1);
-        assert_eq!(image_calls.load(Ordering::Relaxed), 1);
-        assert_eq!(sibling_calls.load(Ordering::Relaxed), 2);
+        assert_eq!(sibling_calls.load(Ordering::Relaxed), 1);
         assert!(
-            game.prepare_tooltip_component(&TooltipComponent::custom(SiblingData))
-                .is_ok()
+            batch
+                .vertices
+                .iter()
+                .any(|v| v.color == rgba(0x12, 0xEF, 0x34, 0xFF))
         );
     });
 }
@@ -2086,12 +2090,67 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
     });
 }
 
-/// Finding 6: station screen hovered-slot tooltip evaluates `show_tooltip_with_item_in_hand`
-/// exactly once before Gather/render, so a stateful component that returns `true` only on its
-/// first query still draws its tooltip.
 #[test]
 #[ignore = "daily"]
-fn station_hovered_slot_checks_show_tooltip_with_item_in_hand_once() {
+fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
+    struct Width25;
+    #[mod_api::__subscriptions]
+    impl Hooks for Width25 {
+        fn render_tooltip_gather_components(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut RenderTooltipGatherComponentsEvent<'_>,
+        ) -> Flow {
+            event.max_width = 25;
+            Flow::Continue
+        }
+    }
+
+    use sunrise_client::resource_source::{Resource, ResourceSource};
+    // Logical lam + alef each take 9px; their visual ligature takes 5px. With a 2px
+    // space between the words, the unsplit text is 38px logical but only 12px shaped.
+    let source = ResourceSource::indexed(std::collections::BTreeMap::from([(
+        "assets/minecraft/font/default.json".into(),
+        Resource::bytes(br#"{"providers":[{"type":"space","advances":{"\u0644":9,"\u0627":9,"\ufefb":5," ":2}}]}"#.to_vec()),
+    )]));
+    for listened in [false, true] {
+        let mods = if listened {
+            vec![ModEntry::new("tooltip_wrap_25", Box::new(Width25))]
+        } else {
+            Vec::new()
+        };
+        with_mod_factories(mods.into(), |game| {
+            game.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+            let stack = ItemStack::new("minecraft:stick", 1);
+            let line = sunrise_client::text::Text::literal("\u{644}\u{627} \u{644}\u{627}");
+            // The listener uses max_width; the fast path gets the same 25px from the screen edge.
+            let width = if listened { 320.0 } else { 51.0 };
+            let mut components = game
+                .gather_tooltip_components(&stack, vec![(line, u32::MAX)], 10, (width, 240.0))
+                .unwrap_ready();
+            assert_eq!(
+                text_lines(&components),
+                ["\u{644}\u{627}", "\u{644}\u{627}"]
+            );
+            let mut batch = HudBatch::scratch([width, 240.0]);
+            let rect = game.draw_prepared_tooltip(
+                &mut batch,
+                Some(&stack),
+                &mut components,
+                [10, 20],
+                DEFAULT_FONT_ID.clone(),
+                true,
+            );
+            assert_eq!(rect, Some([22.0, 8.0, 5.0, 20.0]));
+        });
+    }
+}
+
+/// A hovered slot checks carried-item visibility once; stonecutter and merchant previews do
+/// not check it at all, even for a component that would refuse a second query.
+#[test]
+#[ignore = "daily"]
+fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
     struct OnceHandData;
     impl TooltipComponentData for OnceHandData {}
 
@@ -2130,6 +2189,8 @@ fn station_hovered_slot_checks_show_tooltip_with_item_in_hand_once() {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             let stick = r.item_key("minecraft:stick");
             r.item_part(stick, OnceImage);
+            let slab = r.item_key("minecraft:deepslate_tile_slab");
+            r.item_part(slab, OnceImage);
         }
         fn register_client_tooltip_component_factories(
             &self,
@@ -2194,6 +2255,63 @@ fn station_hovered_slot_checks_show_tooltip_with_item_in_hand_once() {
             gather_calls.load(Ordering::Relaxed),
             1,
             "tooltip must render on first true show_tooltip_with_item_in_hand answer"
+        );
+
+        // Both previews bypass that same callback (which would now answer false).
+        assert!(game.open_station([0, 64, 0], "minecraft:stonecutter"));
+        let recipe = game
+            .station_recipes()
+            .stonecutting
+            .iter()
+            .position(|r| r.result.item.as_ref() == "minecraft:deepslate_tile_slab")
+            .expect("stonecutter must have a deepslate tile slab recipe");
+        let station = game.station.as_mut().unwrap();
+        station.inputs[0] = Some(ItemStack::new("minecraft:deepslate", 1));
+        station.stone.recipes = vec![recipe];
+        game.carried = Some(ItemStack::new("minecraft:stone", 1));
+        let mut batch = HudBatch::scratch([512, 512]);
+        let (ox, oy) = game.inventory_origin(&batch);
+        game.cursor = (ox + 60.0, oy + 25.0);
+        assert!(game.draw_station(&mut batch));
+        assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            gather_calls.load(Ordering::Relaxed),
+            2,
+            "stonecutter preview gathers"
+        );
+
+        use sunrise_client::merchant::{ItemCost, MerchantOffer, Session};
+        game.open_remote_merchant(
+            Session::new(
+                vec![MerchantOffer {
+                    base_cost_a: ItemCost {
+                        stack: ItemStack::new("minecraft:stick", 1),
+                    },
+                    cost_b: None,
+                    result: ItemStack::new("minecraft:bread", 1),
+                    uses: 0,
+                    max_uses: 12,
+                    reward_exp: true,
+                    special_price_diff: 0,
+                    demand: 0,
+                    price_multiplier: 0.0,
+                    xp: 1,
+                }],
+                true,
+            ),
+            None,
+        );
+        game.carried = Some(ItemStack::new("minecraft:stone", 1));
+        let mut batch = HudBatch::scratch([512, 512]);
+        let (ox, oy) = game.inventory_origin(&batch);
+        // Merchant screen is shifted left 50px; hover the first payment in the first offer.
+        game.cursor = (ox - 40.0, oy + 26.0);
+        assert!(game.draw_station(&mut batch));
+        assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            gather_calls.load(Ordering::Relaxed),
+            3,
+            "merchant preview gathers"
         );
     });
 }
