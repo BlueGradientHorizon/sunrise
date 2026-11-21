@@ -139,7 +139,16 @@ fn block_parts_xp_and_explosion_contract() {
                         tool: Option<&sunrise_client::items::ItemStack>,
                         override_xp| {
                 game.with_level(|_, level, _| {
-                    level.block_dropped(pos, state, None, tool, Vec::new(), override_xp)
+                    let block_entity = level.resident_block_entity(pos);
+                    level.block_dropped(
+                        pos,
+                        state,
+                        None,
+                        tool,
+                        block_entity,
+                        Vec::new(),
+                        override_xp,
+                    )
                 })
                 .experience
             };
@@ -173,7 +182,12 @@ fn block_parts_xp_and_explosion_contract() {
             assert_eq!(drop(game, ore, Some(&silk), xp), 3);
             *game.held_mut() = None;
             assert_eq!(drop(game, spawner, Some(&silk), None), 7);
-            for (answer, expected) in [(-1, 0), (i32::MAX, 32767), (7, 7)] {
+            for (answer, expected) in [
+                (-1, 0),
+                (50_000, 50_000),
+                (i32::MAX, i32::MAX as u32),
+                (7, 7),
+            ] {
                 amount.store(answer, Ordering::Relaxed);
                 assert_eq!(drop(game, ore, None, None), expected);
             }

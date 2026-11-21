@@ -2027,6 +2027,7 @@ impl Game<'_> {
                         age,
                         ..Default::default()
                     },
+                    origin_group: None,
                 }
             })
             .filter(|drop| drop.stack.count > 0 && &*drop.stack.item != "minecraft:air")
@@ -3402,9 +3403,35 @@ impl Game<'_> {
                     }
                     if drop {
                         let entity = by.or(breaker);
+                        let key = (pos[0], pos[1], pos[2]);
+                        // Level.destroyBlock binds its original subject before the roll.
+                        // A writable loot listener can replace it before BlockDrops runs.
+                        let data = if self.native_authoritative()
+                            && mod_api::__private::listened(mod_api::HookId::BlockDrops)
+                        {
+                            match self.world.block_entities.get(&key) {
+                                Some(row)
+                                    if mod_api::__private::listened(mod_api::HookId::LootDrops) =>
+                                {
+                                    self.saved_block_entity_data(
+                                        key,
+                                        row,
+                                        &self.res.facts().get(old).name,
+                                    )
+                                }
+                                Some(_) => None,
+                                None => super::spill::saved_entity(&self.world, pos)
+                                    .and_then(super::spill::packed_block_entity_payload),
+                            }
+                        } else {
+                            None
+                        };
+                        let block_entity =
+                            super::spill::BlockDropEntity::at(&self.world, key, data.as_ref());
                         let mut drops = self.roll_block_loot(pos, old, entity, Default::default());
                         self.native_block_loot(pos, old, None, None, None, &mut drops);
-                        let dropped = self.entity_block_dropped(pos, old, entity, drops);
+                        let dropped =
+                            self.entity_block_dropped(pos, old, entity, block_entity, drops);
                         let canceled = dropped.canceled;
                         self.spawn_block_drops(pos, dropped);
                         // InfestedBlock.spawnAfterBreak runs after the drops,

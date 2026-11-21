@@ -11,6 +11,93 @@ mod draw;
 #[path = "stations/tooltip.rs"]
 mod tooltip;
 use super::smithing_icons::smithing_slot_icons;
+struct EngineTooltipLines<'a>(&'a mut Vec<(sunrise_client::text::Text, u32)>);
+
+impl mod_api::TooltipLinesAccess for EngineTooltipLines<'_> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn color(&self, index: usize) -> Option<u32> {
+        self.0.get(index).map(|&(_, color)| color)
+    }
+
+    fn get(&self, index: usize) -> Option<Result<(mod_api::Text, u32), mod_api::TextFormError>> {
+        self.0.get(index).map(TryIntoApi::try_into_api)
+    }
+
+    fn push(&mut self, text: mod_api::Text, color: u32) -> Result<(), mod_api::TextFormError> {
+        self.0.push((text.try_into_engine(&())?, color));
+        Ok(())
+    }
+
+    fn insert(
+        &mut self,
+        index: usize,
+        text: mod_api::Text,
+        color: u32,
+    ) -> Result<bool, mod_api::TextFormError> {
+        if index > self.0.len() {
+            return Ok(false);
+        }
+        self.0.insert(index, (text.try_into_engine(&())?, color));
+        Ok(true)
+    }
+
+    fn set(
+        &mut self,
+        index: usize,
+        text: mod_api::Text,
+        color: u32,
+    ) -> Result<bool, mod_api::TextFormError> {
+        if index >= self.0.len() {
+            return Ok(false);
+        }
+        let converted = text.try_into_engine(&())?;
+        self.0[index] = (converted, color);
+        Ok(true)
+    }
+
+    fn set_color(&mut self, index: usize, color: u32) -> bool {
+        let Some((_, slot)) = self.0.get_mut(index) else {
+            return false;
+        };
+        *slot = color;
+        true
+    }
+
+    fn remove(
+        &mut self,
+        index: usize,
+    ) -> Option<Result<(mod_api::Text, u32), mod_api::TextFormError>> {
+        if index >= self.0.len() {
+            return None;
+        }
+        let removed = self.0.remove(index);
+        Some(removed.try_into_api())
+    }
+
+    fn pop(&mut self) -> Option<Result<(mod_api::Text, u32), mod_api::TextFormError>> {
+        self.0.pop().map(|removed| removed.try_into_api())
+    }
+
+    fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    fn truncate(&mut self, len: usize) {
+        self.0.truncate(len);
+    }
+
+    fn swap(&mut self, a: usize, b: usize) -> bool {
+        if a >= self.0.len() || b >= self.0.len() {
+            return false;
+        }
+        self.0.swap(a, b);
+        true
+    }
+}
+
 /// Invalid measurements must not reach tooltip positioning or reserve empty space.
 fn tooltip_component_size(size: Option<[f32; 2]>) -> Option<[f32; 2]> {
     size.filter(|size| size.iter().all(|v| v.is_finite() && *v > 0.0))
@@ -2091,24 +2178,19 @@ impl Game<'_> {
         if mod_callbacks
             && shown
             && mod_api::__private::listened(mod_api::HookId::ItemTooltip)
-            && let Ok(stack) = stack.try_into_api()
+            && let Ok(metadata) = crate::game::api_values::stack_read_metadata(stack)
         {
-            let display = mod_api::item::item_tooltip::TooltipDisplay::for_stack(&stack);
-            let Ok(mut api_lines) = lines.try_into_api() else {
-                return lines;
-            };
+            let project = |metadata| crate::game::api_values::project_stack(stack, metadata).ok();
+            let mut access = EngineTooltipLines(&mut lines);
             self.native_item_tooltip(mod_api::__private::ItemTooltipCall {
                 player: self.own_uuid(),
                 player_entity_id: self.own_entity_id(),
-                stack: &stack,
+                stack: mod_api::ItemStackView::resident(metadata, &project),
                 display: &display,
                 advanced,
                 creative,
-                lines: &mut api_lines,
+                lines: mod_api::TooltipLines::new(&mut access),
             });
-            if let Ok(converted) = api_lines.try_into_engine(&()) {
-                lines = converted;
-            }
         }
         lines
     }
@@ -2737,11 +2819,12 @@ mod tests {
                 if self.0.swap(true, Ordering::Relaxed) {
                     event
                         .lines
-                        .push((mod_api::Text::literal(REENTERED), u32::MAX));
+                        .push(mod_api::Text::literal(REENTERED), u32::MAX)
+                        .unwrap();
                     return;
                 }
                 // Asking for the same stack must return base lines, not enter another listener.
-                let nested = ItemResource::of(event.stack)
+                let nested = ItemResource::of(&event.stack.project().unwrap())
                     .tooltip(host, event.advanced, event.creative)
                     .unwrap();
                 self.0.store(false, Ordering::Relaxed);
@@ -2755,7 +2838,8 @@ mod tests {
                 )));
                 event
                     .lines
-                    .push((mod_api::Text::literal("listener"), u32::MAX));
+                    .push(mod_api::Text::literal("listener"), u32::MAX)
+                    .unwrap();
             }
         }
         let mods: Mods = vec![ModEntry::new(
@@ -2998,9 +3082,11 @@ mod tests {
             }
             fn item_tooltip(&self, _: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
                 assert_eq!(
-                    event.lines[..3]
+                    event
+                        .lines
                         .iter()
-                        .map(|(t, _)| t.clone())
+                        .take(3)
+                        .map(|line| line.unwrap().0)
                         .collect::<Vec<_>>(),
                     ["Stick", "part", "minecraft:stick"].map(mod_api::Text::literal)
                 );
@@ -3012,7 +3098,8 @@ mod tests {
                 event.lines.pop();
                 event
                     .lines
-                    .push((mod_api::Text::literal("event"), u32::MAX));
+                    .push(mod_api::Text::literal("event"), u32::MAX)
+                    .unwrap();
             }
         }
         let mods: Mods = vec![ModEntry::new("lore", Box::new(Mod))].into();
@@ -3364,6 +3451,74 @@ mod tests {
         assert_eq!((s.scroll, s.start), (1.0, 16));
         s.stone.recipes.truncate(12);
         assert!(!s.stonecutter_scrolls());
+    }
+    #[test]
+    #[ignore = "daily"]
+    fn item_tooltip_invalid_edit_keeps_other_listeners_lines() {
+        use mod_api::{ClientHost, Hooks, ItemTooltipEvent, ModEntry, Mods, Text, TextFormError};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+
+        struct ValidListener;
+        #[mod_api::__subscriptions]
+        impl Hooks for ValidListener {
+            fn item_tooltip(&self, host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
+                assert_eq!(event.stack.item().id(host), Some("minecraft:white_banner"));
+                assert_eq!(event.stack.count(), 3);
+                assert!(event.display.name_visible(false));
+                assert!(!event.display.shows("minecraft:banner_patterns"));
+                event
+                    .lines
+                    .push(Text::literal("listener one"), u32::MAX)
+                    .unwrap();
+            }
+        }
+
+        struct InvalidListener(Arc<AtomicBool>);
+        #[mod_api::__subscriptions]
+        impl Hooks for InvalidListener {
+            fn item_tooltip(&self, _: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
+                let mut too_deep = Text::literal("leaf");
+                for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                    too_deep = Text::literal("parent").append(too_deep);
+                }
+                assert_eq!(
+                    event.lines.push(too_deep.clone(), u32::MAX),
+                    Err(TextFormError::TooDeep)
+                );
+                assert_eq!(
+                    event.lines.set(0, too_deep, u32::MAX),
+                    Err(TextFormError::TooDeep)
+                );
+                self.0.store(true, Ordering::Relaxed);
+            }
+        }
+
+        let ran_second = Arc::new(AtomicBool::new(false));
+        let mods: Mods = vec![
+            ModEntry::new("first", Box::new(ValidListener)),
+            ModEntry::new("second", Box::new(InvalidListener(ran_second.clone()))),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                game.settings.file.set(
+                    "advancedItemTooltips",
+                    sunrise_client::options_file::V::Bool(false),
+                );
+                let mut banner = sunrise_client::mobs::raider::ominous_banner();
+                banner.count = 3;
+                let lines: Vec<String> = game
+                    .stack_tooltip_lines(&banner, false, false)
+                    .iter()
+                    .map(|(text, _)| text.plain())
+                    .collect();
+                assert!(ran_second.load(Ordering::Relaxed));
+                assert_eq!(lines, ["Ominous Banner", "listener one"]);
+            });
+        });
     }
 }
 

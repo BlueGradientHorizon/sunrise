@@ -6,17 +6,17 @@
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Game, GameLevel, Screen};
 use mod_api::EntityRef;
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 use sunrise_client::{
     block_entity_item, block_entity_nbt,
     containers::BlockEntity,
     furnace::FurnaceCooking,
-    items::{BlockLootRoll, ItemStack},
+    items::{BlockLootRoll, ItemStack, Items},
 };
 use sunrise_core::position::BlockPos;
-use sunrise_core::random::RandomSource;
+use sunrise_core::random::{LevelRandom, RandomSource};
 use {
-    sunrise_core::nbt::Tag,
+    sunrise_core::nbt::{Compound, Tag},
     sunrise_world::{
         level::{LevelEvent, removal, removal::PreRemove},
         registry::BlockStateId,
@@ -234,31 +234,71 @@ pub(super) struct Spawn {
     pub(super) delay: u32,
 }
 
+/// The block-entity context bound to a block break at the moment the break begins, so a
+/// replacement block entity placed at the same position before drops fire (for example by a
+/// `player_destroyed_block` listener) never leaks into `block_drops` or `exp_drop`.
+#[derive(Clone, Copy)]
+pub(in crate::game) enum BlockDropEntity<'a> {
+    /// No block entity belongs to this break (explosions, blocks without one, or an
+    /// already-removed player break that had no block entity).
+    None,
+    /// A block entity that was resident at `pos` with this exact generation when the break
+    /// started. Resolves to a live `BlockEntityRef` only while that same generation remains
+    /// resident at `pos`.
+    Resident(u64, Option<&'a Compound>),
+    /// Read-only saved data (including `CustomName`) of a removed or packed block entity.
+    /// Never resolves a resident handle at `pos`.
+    Saved(&'a Compound),
+}
+
+impl<'a> BlockDropEntity<'a> {
+    pub(super) fn at(
+        world: &sunrise_client::world::World,
+        key: (i32, i32, i32),
+        data: Option<&'a Compound>,
+    ) -> Self {
+        if world.block_entities.get(&key).is_some()
+            && let Some(generation) = world.block_entities.generation(&key)
+        {
+            Self::Resident(generation, data)
+        } else {
+            data.map_or(Self::None, Self::Saved)
+        }
+    }
+}
+
 /// What a broken block spawns (`GameLevel::block_dropped`).
 /// Prepared engine item entity; API snapshots exist only while a listener runs.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct BlockItemDrop {
+pub(crate) struct BlockItemDrop<P = [f64; 3]> {
     pub(super) random: Option<ItemRandom>,
     pub(super) stack: ItemStack,
-    pub(super) position: [f64; 3],
-    pub(super) velocity: [f64; 3],
+    pub(super) position: P,
+    pub(super) velocity: P,
     pub(super) pickup_delay: u32,
     /// The item-entity state a drop hook set.
     pub(super) state: DropState,
+    /// For explosion shares, the merged-stack group this prepared entry came from.
+    /// Preserved across in-place edits (`PreparedDropMut`); cleared on `replace`/`push`/`insert`.
+    pub(super) origin_group: Option<usize>,
 }
 
-impl BlockItemDrop {
+impl<P: From<[f64; 3]>> BlockItemDrop<P> {
     /// The drop as the mods hear and edit it.
     pub(super) fn from_api(drop: &mod_api::ItemDrop, stack: ItemStack) -> Self {
         Self {
             random: None,
             stack,
-            position: drop.position,
-            velocity: drop.velocity,
+            position: drop.position.into(),
+            velocity: drop.velocity.into(),
             pickup_delay: drop.pickup_delay,
             state: DropState::of(drop),
+            origin_group: None,
         }
     }
+}
+
+impl BlockItemDrop {
     /// The constructor random the item entity joins with, carrying the state a hook set. A drop
     /// with no state set keeps its random as it was (none: drawn when it joins).
     pub(super) fn random_with_state(&self) -> Option<ItemRandom> {
@@ -273,9 +313,252 @@ impl BlockItemDrop {
     }
 }
 
-pub(super) struct BlockDrops {
+/// Explosion shares defer their inherited position and motion until read or joined. Each
+/// observed field materializes the vanilla prefix of its own random stream, only once.
+pub(super) struct ExplosionDropCaptures {
+    anchors: Vec<[i32; 3]>,
+    positions: Vec<[f64; 3]>,
+    constructors: Vec<ItemRandom>,
+}
+
+impl ExplosionDropCaptures {
+    pub(super) fn new(anchors: Vec<[i32; 3]>) -> Self {
+        Self {
+            anchors,
+            positions: Vec::new(),
+            constructors: Vec::new(),
+        }
+    }
+
+    pub(super) fn started(&self) -> bool {
+        !self.positions.is_empty() || !self.constructors.is_empty()
+    }
+
+    pub(super) fn position(&mut self, group: usize, random: &mut LevelRandom) -> [f64; 3] {
+        while self.positions.len() <= group {
+            self.positions
+                .push(pop_position(random, self.anchors[self.positions.len()]));
+        }
+        self.positions[group]
+    }
+
+    pub(super) fn constructor(&mut self, group: usize) -> ItemRandom {
+        while self.constructors.len() <= group {
+            self.constructors.push(prepare_item_random(None));
+        }
+        self.constructors[group]
+    }
+}
+
+pub(super) trait DropCoordinates: Copy + From<[f64; 3]> + Into<Option<[f64; 3]>> {}
+impl DropCoordinates for [f64; 3] {}
+impl DropCoordinates for Option<[f64; 3]> {}
+
+struct EnginePreparedDrops<'a, P> {
+    items: &'a mut Vec<BlockItemDrop<P>>,
+    items_registry: &'a Items,
+    // The read-only level host does not lend its RNG. Write the offset draws made by
+    // this scoped view back to the level before any subsequent world action.
+    explosion: Option<RefCell<(&'a mut ExplosionDropCaptures, LevelRandom)>>,
+}
+
+impl<P: DropCoordinates> EnginePreparedDrops<'_, P> {
+    fn convert(
+        &self,
+        drop: &mod_api::ItemDrop,
+    ) -> Result<BlockItemDrop<P>, mod_api::StackWriteError> {
+        let stack = drop.stack.try_into_engine(self.items_registry)?;
+        Ok(BlockItemDrop::from_api(drop, stack))
+    }
+}
+
+impl<P: DropCoordinates> mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_, P> {
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    fn stack_metadata(
+        &self,
+        index: usize,
+    ) -> Option<(mod_api::ItemKey, std::num::NonZeroU32, Option<u32>)> {
+        crate::game::api_values::stack_read_metadata(&self.items.get(index)?.stack).ok()
+    }
+
+    fn project_stack(
+        &self,
+        index: usize,
+        metadata: (mod_api::ItemKey, std::num::NonZeroU32, Option<u32>),
+    ) -> Option<mod_api::ItemStack> {
+        crate::game::api_values::project_stack(&self.items.get(index)?.stack, metadata).ok()
+    }
+
+    fn position(&self, index: usize) -> Option<[f64; 3]> {
+        let item = self.items.get(index)?;
+        let position: Option<_> = item.position.into();
+        position.or_else(|| {
+            let (captures, random) = &mut *self.explosion.as_ref()?.borrow_mut();
+            Some(captures.position(item.origin_group?, random))
+        })
+    }
+
+    fn velocity(&self, index: usize) -> Option<[f64; 3]> {
+        let item = self.items.get(index)?;
+        let velocity: Option<_> = item.velocity.into();
+        velocity.or_else(|| {
+            let (captures, _) = &mut *self.explosion.as_ref()?.borrow_mut();
+            Some(captures.constructor(item.origin_group?).velocity)
+        })
+    }
+
+    fn pickup_delay(&self, index: usize) -> Option<u32> {
+        self.items.get(index).map(|item| item.pickup_delay)
+    }
+
+    fn thrower(&self, index: usize) -> Option<Option<u128>> {
+        self.items.get(index).map(|item| item.state.thrower)
+    }
+
+    fn target(&self, index: usize) -> Option<Option<u128>> {
+        self.items.get(index).map(|item| item.state.target)
+    }
+
+    fn no_gravity(&self, index: usize) -> Option<bool> {
+        self.items.get(index).map(|item| item.state.no_gravity)
+    }
+
+    fn age(&self, index: usize) -> Option<i32> {
+        self.items.get(index).map(|item| item.state.age)
+    }
+
+    fn set_stack(
+        &mut self,
+        index: usize,
+        stack: mod_api::ItemStack,
+    ) -> Result<bool, mod_api::StackWriteError> {
+        if index >= self.items.len() {
+            return Ok(false);
+        }
+        let converted = stack.try_into_engine(self.items_registry)?;
+        self.items[index].stack = converted;
+        Ok(true)
+    }
+
+    fn set_position(&mut self, index: usize, position: [f64; 3]) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.position = position.into();
+        true
+    }
+
+    fn set_velocity(&mut self, index: usize, velocity: [f64; 3]) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.velocity = velocity.into();
+        true
+    }
+
+    fn set_pickup_delay(&mut self, index: usize, pickup_delay: u32) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.pickup_delay = pickup_delay;
+        true
+    }
+
+    fn set_thrower(&mut self, index: usize, thrower: Option<u128>) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.state.thrower = thrower;
+        true
+    }
+
+    fn set_target(&mut self, index: usize, target: Option<u128>) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.state.target = target;
+        true
+    }
+
+    fn set_no_gravity(&mut self, index: usize, no_gravity: bool) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.state.no_gravity = no_gravity;
+        true
+    }
+
+    fn set_age(&mut self, index: usize, age: i32) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.state.age = age;
+        true
+    }
+
+    fn push(&mut self, drop: mod_api::ItemDrop) -> Result<(), mod_api::StackWriteError> {
+        let converted = self.convert(&drop)?;
+        self.items.push(converted);
+        Ok(())
+    }
+
+    fn insert(
+        &mut self,
+        index: usize,
+        drop: mod_api::ItemDrop,
+    ) -> Result<bool, mod_api::StackWriteError> {
+        if index > self.items.len() {
+            return Ok(false);
+        }
+        let converted = self.convert(&drop)?;
+        self.items.insert(index, converted);
+        Ok(true)
+    }
+
+    fn replace(
+        &mut self,
+        index: usize,
+        drop: mod_api::ItemDrop,
+    ) -> Result<bool, mod_api::StackWriteError> {
+        if index >= self.items.len() {
+            return Ok(false);
+        }
+        let converted = self.convert(&drop)?;
+        self.items[index] = converted;
+        Ok(true)
+    }
+
+    fn remove(&mut self, index: usize) -> bool {
+        if index >= self.items.len() {
+            return false;
+        }
+        self.items.remove(index);
+        true
+    }
+
+    fn clear(&mut self) {
+        self.items.clear();
+    }
+
+    fn truncate(&mut self, len: usize) {
+        self.items.truncate(len);
+    }
+
+    fn swap(&mut self, a: usize, b: usize) -> bool {
+        if a >= self.items.len() || b >= self.items.len() {
+            return false;
+        }
+        self.items.swap(a, b);
+        true
+    }
+}
+
+pub(super) struct BlockDrops<P = [f64; 3]> {
     /// The item entities to add, as the mods left them.
-    pub(super) items: Vec<BlockItemDrop>,
+    pub(super) items: Vec<BlockItemDrop<P>>,
     /// The experience points to award at the block's centre.
     pub(super) experience: u32,
     /// A mod canceled the break's drops: `spawnAfterBreak` doesn't run.
@@ -360,6 +643,17 @@ pub(super) fn pop_position(
     ]
 }
 
+/// `Block.popResource` draws the level offsets even when the rule prevents
+/// constructing (or capturing) an item entity.
+pub(super) fn admitted_pop_position(
+    random: &mut impl RandomSource,
+    pos: [i32; 3],
+    block_drops: bool,
+) -> Option<[f64; 3]> {
+    let at = pop_position(random, pos);
+    block_drops.then_some(at)
+}
+
 /// `Block.popResourceFromFace`'s position and motion: an item on the clicked
 /// face, moved off that face and jittered across the other two axes.
 pub(super) fn pop_position_from_face(
@@ -435,6 +729,15 @@ pub(super) fn saved_entity(
         .cloned()
 }
 
+/// The read-only payload of an entity kept in packed chunk data, not its loader metadata.
+pub(super) fn packed_block_entity_payload(tag: Tag) -> Option<Compound> {
+    let Tag::Compound(mut data) = tag else {
+        return None;
+    };
+    data.remove(&"keepPacked".into());
+    Some(super::native_block_entity_refs::block_entity_payload(data))
+}
+
 /// Keep `tag` as the block entity at its position Sunrise does not model,
 /// replacing the one there.
 pub(super) fn put_saved_entity(
@@ -469,11 +772,8 @@ pub(in crate::game) struct RemovalOutputs {
 
 impl GameLevel<'_> {
     fn pop_resource(&mut self, pos: [i32; 3], stack: ItemStack) {
-        let at = pop_position(&mut self.world.random, pos);
-        // `Block.popResource` draws its three offsets, then its private
-        // overload reads `GameRules.BLOCK_DROPS` and pops nothing while it is
-        // off: the level random advances either way.
-        if self.rules.block_drops {
+        if let Some(at) = admitted_pop_position(&mut self.world.random, pos, self.rules.block_drops)
+        {
             self.spill.spawns.push(Spawn {
                 random: None,
                 stack,
@@ -591,12 +891,23 @@ impl GameLevel<'_> {
         let key = (pos.x, pos.y, pos.z);
         let at = [pos.x, pos.y, pos.z];
         self.unpack_loot(super::container_loot::LootTarget::Block(key), None);
-        if let Some(entity) = self.world.block_entities.get(&key) {
+        let packed_data = if let Some(entity) = self.world.block_entities.get(&key) {
             let saved = self.encode_live_block_entity(key, entity, &self.facts.get(state).name);
             self.pending.record_from(self.world, at, saved);
-        } else if let Some(tag) = saved_entity(self.world, [pos.x, pos.y, pos.z]) {
+            None
+        } else if let Some(tag) = saved_entity(self.world, at) {
             self.pending.record_saved(at, &tag);
-        }
+            if self.native_authoritative
+                && mod_api::__private::listened(mod_api::HookId::BlockDrops)
+            {
+                packed_block_entity_payload(tag)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let block_entity = BlockDropEntity::at(self.world, key, packed_data.as_ref());
         let dynamic = self.pending.dynamic(at);
         let machine = self
             .drop_tool
@@ -617,7 +928,8 @@ impl GameLevel<'_> {
             .drop_entity
             .filter(|_| self.drop_breaker_at == Some(pos));
         let drops = self.roll_block_loot(pos, state, entity, roll, None);
-        let dropped = self.block_dropped(pos, state, None, tool.as_ref(), drops, None);
+        let dropped =
+            self.block_dropped(pos, state, None, tool.as_ref(), block_entity, drops, None);
         for item in dropped.items {
             if let Some(kept) = self.drop_into.as_mut().filter(|_| machine) {
                 kept.push(item.stack);
@@ -688,13 +1000,14 @@ impl GameLevel<'_> {
         state: BlockStateId,
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
+        block_entity: BlockDropEntity<'_>,
         stacks: Vec<ItemStack>,
         exp_to_drop: Option<u32>,
     ) -> BlockDrops {
         let items = stacks
             .into_iter()
             .filter(|stack| &*stack.item != "minecraft:air" && stack.count > 0)
-            .map(|stack| self.block_drop_item([pos.x, pos.y, pos.z], stack))
+            .filter_map(|stack| self.block_drop_item([pos.x, pos.y, pos.z], stack))
             .collect();
         // `tryDropExperience` samples before the silk touch effect zeroes the
         // part/vanilla starting amount before the global break_block event; a
@@ -702,7 +1015,7 @@ impl GameLevel<'_> {
         let name = self.facts.get(state).name.clone();
         let silk = tool.is_some_and(|tool| tool.enchantment_level("minecraft:silk_touch") > 0);
         let experience = exp_to_drop
-            .or_else(|| self.part_break_experience(pos, state, breaker, tool))
+            .or_else(|| self.part_break_experience(pos, state, breaker, tool, block_entity))
             .unwrap_or_else(|| {
                 removal::break_experience(&mut self.world.random, &name)
                     .filter(|_| !silk || &*name == "minecraft:spawner")
@@ -718,37 +1031,46 @@ impl GameLevel<'_> {
             state,
             breaker,
             tool,
+            block_entity,
             BlockDrops {
                 items,
                 experience,
                 canceled: false,
             },
+            None,
         )
     }
-    /// Build item entities only after vanilla has finished merging stacks.
-    pub(super) fn block_drop_item(&mut self, at: [i32; 3], stack: ItemStack) -> BlockItemDrop {
-        let position = pop_position(&mut self.world.random, at);
+    /// Capture the item entity only if `Block.popResource` would construct it.
+    pub(super) fn block_drop_item(
+        &mut self,
+        at: [i32; 3],
+        stack: ItemStack,
+    ) -> Option<BlockItemDrop> {
+        let position = admitted_pop_position(&mut self.world.random, at, self.rules.block_drops)?;
         let random = prepare_item_random(None);
-        BlockItemDrop {
+        Some(BlockItemDrop {
             random: Some(random),
             stack,
             position,
             velocity: random.velocity,
             pickup_delay: 10,
             state: DropState::default(),
-        }
+            origin_group: None,
+        })
     }
     /// The one event/filter boundary for prepared block item entities and XP.
     /// Explosions supply their merged entities, keeping that caller's zero
     /// initial experience; the event may still award it.
-    pub(super) fn block_drops_ready(
+    pub(super) fn block_drops_ready<P: DropCoordinates>(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
-        dropped: BlockDrops,
-    ) -> BlockDrops {
+        block_entity: BlockDropEntity<'_>,
+        dropped: BlockDrops<P>,
+        explosion: Option<&mut ExplosionDropCaptures>,
+    ) -> BlockDrops<P> {
         let BlockDrops {
             mut items,
             mut experience,
@@ -756,30 +1078,58 @@ impl GameLevel<'_> {
         } = dropped;
         if self.native_authoritative
             && mod_api::__private::listened(mod_api::HookId::BlockDrops)
-            && let Ok(mut snapshots) = items.try_into_api()
+            && let Ok(api_state) = state.try_into_api()
         {
-            let (block_entity, breaker_entity) = self.drop_event_refs(pos, breaker);
-            let mut next_experience = experience;
-            let mut next_canceled = canceled;
-            self.native_block_drops(crate::game::native_hooks::BlockDropsCall {
+            let tool_metadata = tool.and_then(|stack| {
+                if stack.count == 0 || &*stack.item == "minecraft:air" {
+                    return None;
+                }
+                match crate::game::api_values::stack_read_metadata(stack) {
+                    Ok(metadata) => Some(metadata),
+                    Err(error) => {
+                        log::warn!(
+                            "block_drops at {pos:?}: omitting unrepresentable tool '{}' (count {}): {error:?}",
+                            stack.item,
+                            stack.count,
+                        );
+                        None
+                    }
+                }
+            });
+            let (block_entity_ref, breaker_entity) =
+                self.drop_event_refs(pos, breaker, block_entity);
+            let block_entity_data = match block_entity {
+                BlockDropEntity::Saved(data) => Some(data),
+                BlockDropEntity::Resident(_, data) if block_entity_ref.is_none() => data,
+                BlockDropEntity::None | BlockDropEntity::Resident(..) => None,
+            };
+            let project_tool = |metadata| {
+                tool.and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
+            };
+            let tool_view = tool_metadata
+                .map(|metadata| mod_api::ItemStackView::resident(metadata, &project_tool));
+            let items_registry = self.items;
+            let mut drops_access = EnginePreparedDrops {
+                items: &mut items,
+                items_registry,
+                explosion: explosion
+                    .map(|captures| RefCell::new((captures, self.world.random.clone()))),
+            };
+            self.native_block_drops(mod_api::__private::BlockDropsCall {
                 dimension: self.dimension,
                 pos,
-                state,
+                state: api_state,
                 breaker,
                 breaker_entity,
-                block_entity,
-                tool,
-                drops: &mut snapshots,
-                experience: &mut next_experience,
-                cancel: &mut next_canceled,
+                block_entity: block_entity_ref,
+                block_entity_data,
+                tool: tool_view,
+                drops: mod_api::PreparedBlockDrops::new(&mut drops_access),
+                experience: &mut experience,
+                cancel: &mut canceled,
             });
-            if let Ok(mut next_items) = snapshots.try_into_engine(self.items) {
-                for (next, original) in next_items.iter_mut().zip(&items) {
-                    next.random = original.random;
-                }
-                items = next_items;
-                experience = next_experience;
-                canceled = next_canceled;
+            if let Some(explosion) = drops_access.explosion {
+                self.world.random = explosion.into_inner().1;
             }
         }
         if canceled || !self.rules.block_drops {
@@ -1425,7 +1775,9 @@ mod tests {
             event: &mut mod_api::BlockDropsEvent<'_>,
         ) -> mod_api::Flow {
             if event.drops.iter().any(|d| {
-                mod_api::__private::item_key_id(d.stack.item()).unwrap() == "minecraft:dirt"
+                d.stack().is_some_and(|s| {
+                    mod_api::__private::item_key_id(s.item()) == Some("minecraft:dirt")
+                })
             }) {
                 return mod_api::Flow::Cancel;
             }
@@ -1461,6 +1813,7 @@ mod tests {
                         state,
                         None,
                         None,
+                        BlockDropEntity::None,
                         vec![ItemStack::new(item, 1)],
                         exp_to_drop,
                     )
@@ -1487,6 +1840,260 @@ mod tests {
                 assert_eq!(after, dirt_after);
                 assert!(taken.canceled && taken.items.is_empty() && taken.experience == 0);
             });
+        });
+    }
+
+    /// Removing drop 0 shifts drop 1 without stealing drop 0's `ItemRandom`, and a later
+    /// listener's invalid stack edit or out-of-bounds edit is rejected per call without rolling
+    /// back earlier listeners' valid drop mutations or experience.
+    #[test]
+    #[ignore = "daily"]
+    fn block_drops_per_edit_rejection_and_random_preservation() {
+        use mod_api::{BlockDropsEvent, Flow, Hooks, ItemDrop, ModEntry, Mods, StackWriteError};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        use sunrise_core::random::LegacyRandom;
+
+        struct MutatingListener;
+        #[mod_api::__subscriptions]
+        impl Hooks for MutatingListener {
+            fn block_drops(
+                &self,
+                _: &dyn mod_api::LevelHost,
+                event: &mut BlockDropsEvent<'_>,
+            ) -> Flow {
+                assert_eq!(event.drops.len(), 2);
+                assert!(event.drops.remove(0));
+                assert_eq!(event.drops.len(), 1);
+                event.drops.get_mut(0).unwrap().set_pickup_delay(25);
+                let diamond = mod_api::ItemStack::new(
+                    mod_api::__private::item_key("minecraft:diamond").unwrap(),
+                    1,
+                )
+                .unwrap();
+                event
+                    .drops
+                    .push(ItemDrop::new(
+                        diamond,
+                        [1.5, 65.0, 2.5],
+                        [0.0, 0.2, 0.0],
+                        10,
+                    ))
+                    .unwrap();
+                event.experience = 9;
+                Flow::Continue
+            }
+        }
+
+        struct InvalidEditListener(Arc<AtomicBool>);
+        #[mod_api::__subscriptions]
+        impl Hooks for InvalidEditListener {
+            fn block_drops(
+                &self,
+                _: &dyn mod_api::LevelHost,
+                event: &mut BlockDropsEvent<'_>,
+            ) -> Flow {
+                assert_eq!(event.drops.len(), 2);
+                let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
+                let invalid = mod_api::ItemStack::new(stone, 65).unwrap();
+                let invalid_drop = ItemDrop::new(invalid.clone(), [1.5, 65.0, 2.5], [0.0; 3], 10);
+                assert_eq!(
+                    event.drops.push(invalid_drop),
+                    Err(StackWriteError::CountExceeded { maximum: 64 })
+                );
+                assert_eq!(
+                    event.drops.get_mut(0).unwrap().set_stack(invalid),
+                    Err(StackWriteError::CountExceeded { maximum: 64 })
+                );
+                let valid = ItemDrop::new(
+                    mod_api::ItemStack::new(stone, 1).unwrap(),
+                    [1.5, 65.0, 2.5],
+                    [0.0; 3],
+                    10,
+                );
+                assert_eq!(event.drops.insert(99, valid), Ok(false));
+                assert!(!event.drops.remove(99));
+                assert_eq!(event.drops.len(), 2);
+                let surviving = event.drops.get(0).unwrap();
+                assert_eq!(
+                    mod_api::__private::item_key_id(surviving.stack().unwrap().item()),
+                    Some("minecraft:cobblestone")
+                );
+                assert_eq!(surviving.pickup_delay(), 25);
+                self.0.store(true, Ordering::Relaxed);
+                Flow::Continue
+            }
+        }
+
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            let pos = BlockPos::new(1, 64, 2);
+            let break_of = |game: &mut Game<'_>| {
+                game.world.random =
+                    sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(7));
+                let dropped = game.with_level(|_, level, _| {
+                    level.block_dropped(
+                        pos,
+                        stone,
+                        None,
+                        None,
+                        BlockDropEntity::None,
+                        vec![
+                            ItemStack::new("minecraft:stone", 1),
+                            ItemStack::new("minecraft:cobblestone", 1),
+                        ],
+                        None,
+                    )
+                });
+                (dropped, game.world.random.next_int())
+            };
+
+            let ((baseline, baseline_after), entity_seeds) =
+                sunrise_client::random_source::record_seeds(|| break_of(game));
+            assert_eq!(baseline.items.len(), 2);
+            assert!(baseline.items[0].random.is_some());
+            assert!(baseline.items[1].random.is_some());
+            assert_ne!(baseline.items[0].random, baseline.items[1].random);
+
+            let ran_second = Arc::new(AtomicBool::new(false));
+            let mods: Mods = vec![
+                ModEntry::new("first", Box::new(MutatingListener)),
+                ModEntry::new("second", Box::new(InvalidEditListener(ran_second.clone()))),
+            ]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                let (heard, after) =
+                    sunrise_client::random_source::replay_seeds(Arc::clone(&entity_seeds), || {
+                        break_of(game)
+                    });
+                assert!(entity_seeds.complete());
+                assert!(ran_second.load(Ordering::Relaxed));
+                assert_eq!(after, baseline_after);
+                assert_eq!(heard.experience, 9);
+                assert!(!heard.canceled);
+                assert_eq!(heard.items.len(), 2);
+                assert_eq!(&*heard.items[0].stack.item, "minecraft:cobblestone");
+                assert_eq!(heard.items[0].stack.count, 1);
+                assert_eq!(heard.items[0].pickup_delay, 25);
+                assert_eq!(heard.items[0].position, baseline.items[1].position);
+                assert_eq!(heard.items[0].velocity, baseline.items[1].velocity);
+                assert_eq!(heard.items[0].random, baseline.items[1].random);
+                assert_ne!(heard.items[0].random, baseline.items[0].random);
+                assert_eq!(&*heard.items[1].stack.item, "minecraft:diamond");
+                assert_eq!(heard.items[1].stack.count, 1);
+                assert_eq!(heard.items[1].position, [1.5, 65.0, 2.5]);
+                assert_eq!(heard.items[1].velocity, [0.0, 0.2, 0.0]);
+                assert_eq!(heard.items[1].pickup_delay, 10);
+                assert_eq!(heard.items[1].random, None);
+            });
+        });
+    }
+
+    /// An empty or unrepresentable optional tool (such as an unregistered item from an older
+    /// save) omits only `event.tool` and still dispatches `block_drops` so listeners can edit
+    /// drops and experience or cancel the break.
+    #[test]
+    #[ignore = "daily"]
+    fn block_drops_dispatches_with_empty_or_unrepresentable_tool() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use sunrise_core::random::LegacyRandom;
+
+        struct ToolOmitListener(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for ToolOmitListener {
+            fn block_drops(
+                &self,
+                _: &dyn mod_api::LevelHost,
+                event: &mut mod_api::BlockDropsEvent<'_>,
+            ) -> mod_api::Flow {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                assert!(
+                    event.tool.is_none(),
+                    "empty or unrepresentable tools omit only event.tool"
+                );
+                if event.drops.iter().any(|drop| {
+                    drop.stack().is_some_and(|stack| {
+                        mod_api::__private::item_key_id(stack.item()) == Some("minecraft:dirt")
+                    })
+                }) {
+                    return mod_api::Flow::Cancel;
+                }
+                event.drops.get_mut(0).unwrap().set_pickup_delay(44);
+                event.experience += 5;
+                mod_api::Flow::Continue
+            }
+        }
+
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let registry = game.pack.assets.registry;
+            let ore = registry.default_state("minecraft:diamond_ore").unwrap();
+            let dirt = registry.default_state("minecraft:dirt").unwrap();
+            let pos = BlockPos::new(1, 64, 2);
+            let calls = Arc::new(AtomicUsize::new(0));
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+                "tool-omit",
+                Box::new(ToolOmitListener(calls.clone())),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                for tool in [
+                    ItemStack::new("missingmod:ghost_pick", 1),
+                    ItemStack::new("minecraft:air", 1),
+                    ItemStack::new("minecraft:diamond_pickaxe", 0),
+                ] {
+                    game.world.random =
+                        sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(7));
+                    let edited = game.with_level(|_, level, _| {
+                        level.block_dropped(
+                            pos,
+                            ore,
+                            None,
+                            Some(&tool),
+                            BlockDropEntity::None,
+                            vec![ItemStack::new("minecraft:diamond", 1)],
+                            Some(3),
+                        )
+                    });
+                    assert!(!edited.canceled);
+                    assert_eq!(edited.experience, 8);
+                    assert_eq!(edited.items.len(), 1);
+                    assert_eq!(edited.items[0].pickup_delay, 44);
+
+                    let canceled = game.with_level(|_, level, _| {
+                        level.block_dropped(
+                            pos,
+                            dirt,
+                            None,
+                            Some(&tool),
+                            BlockDropEntity::None,
+                            vec![ItemStack::new("minecraft:dirt", 1)],
+                            Some(3),
+                        )
+                    });
+                    assert!(canceled.canceled);
+                    assert!(canceled.items.is_empty());
+                    assert_eq!(canceled.experience, 0);
+                }
+            });
+            assert_eq!(calls.load(Ordering::Relaxed), 6);
         });
     }
 

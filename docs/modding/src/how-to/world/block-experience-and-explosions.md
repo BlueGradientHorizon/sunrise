@@ -9,26 +9,38 @@ sample, before enchantments. `None` leaves the answer to another attached part
 and then vanilla. The query receives the dimension, state, position, optional
 block entity, breaker entity handle and tool. The level host reads without writing;
 `level.block_entity_data(entity)` reads the supplied entity's saved data without
-identity metadata and refuses stale handles. Answers are clamped to 0 through
-32,767. Player breaks supply the part's answer to the global `break_block`
-event's `exp_to_drop`, after Silk Touch suppresses the starting amount (except
-for spawners). An explicit global override is applied as given. `block_drops` sees the resulting amount afterwards.
+identity metadata and refuses stale handles. Negative answers are clamped to 0;
+positive values are awarded as given. Player breaks supply the part's answer to
+the global `break_block` event's `exp_to_drop`, after Silk Touch suppresses the
+starting amount (except for spawners). An explicit global override is applied as
+given. `block_drops` sees the resulting amount afterwards.
 Level and mob breaks use the shared resource-drop path. A canceled player break
 or a break that does not harvest produces no award.
 
 `block_drops(level, event)` hears the drops after that. Besides the breaking
-player's UUID (`breaker`) and the `tool`, it carries `breaker_entity`, the
-entity that broke the block (the player, or the mob whose own break of it is
-running: a ravager's), and `block_entity`, the block's block entity.
-`breaker_entity` is not set when no entity broke the block (a piston, water, a
-neighbour update, `/setblock destroy`) or for explosions. `block_entity` is set
-whenever the block has one at that moment, whoever broke it, and not for
-explosions, whose blocks are gone before the event. A player's break removes the
-block entity from the world first, so its saved data, taken before the removal
-(its `CustomName` too: copy a chest's name onto its drop), is held through the
-event: `level.block_entity_data(entity)` reads it and, as with `exp_drop`, a
-stale handle is refused. The data is released when the event ends, also if a
-listener panics; keep nothing from it but what you copied.
+player's UUID (`breaker`), it carries `tool` as `Option<ItemStackView<'_>>`
+(lazy component projection; call `project()` to copy components on demand),
+`breaker_entity`, the entity that broke the block (the player, or the mob whose
+own break of it is running: a ravager's), and `drops` as a live
+`PreparedBlockDrops<'_>` view. Read entries or mutate them in place via
+`PreparedDropView` and `PreparedDropMut` to preserve each prepared drop's RNG,
+or add, replace or copy entries via owned `ItemDrop` captures. Stack writes are
+validated per edit with `StackWriteError`, so one invalid edit leaves all other
+drops, `experience` and cancel state intact. `breaker_entity` is not set when no
+entity broke the block (a piston, water, a neighbour update, `/setblock destroy`)
+or for explosions. `block_entity` is `Option<BlockEntityRef>` only while the
+original entity is resident. `block_entity_data` is `Option<&Compound>` carrying
+the original entity's read-only payload when no resident handle is available:
+for a player break after removal, for a level-side or mob break of an entity
+stored only in the chunk (such as a decorated pot), or for a mob break after a
+`loot_drops` listener removes or replaces the original entity. A replacement's
+handle is never passed. The payload preserves `CustomName` but excludes identity
+and position. Explosions and breaks of blocks without a block entity provide
+neither field. Copy any data you need to retain past the event.
+
+With the `block_drops` rule off, the level still draws the drop positions, but
+no item entities are constructed, so the hook starts with an empty list. No
+items or experience spawn after the event.
 
 ## Explosions
 
@@ -42,6 +54,19 @@ The engine writes air after the callback, including when the callback
 replaced the block. Vanilla's separate `wasExploded` behavior follows removal.
 Air, spared blocks, canceled explosions and explosions that keep blocks produce
 no callback. The initial explosion experience amount is zero.
+
+An explosion's `block_drops` list contains only that block's shares of merged
+stacks. Unchanged shares rejoin one entity per group. Reading a position or
+velocity prepares that field through its group in vanilla order. Without edits,
+each group draws its remaining fields and joins before the next group's
+remaining draws. A drop or experience edit prepares the original captures
+before items join. An experience orb's join listener can change `block_drops`
+without discarding items already admitted by the event.
+
+Compatible order edits across blocks all apply. Editing a field keeps that
+entry's place relative to its peers without fixing their order relative to each
+other. An earlier block wins only when a later order would conflict, and
+otherwise ready groups join in vanilla order.
 
 `explosion_resistance(level, event)` answers `Some(resistance)` to replace the
 block's own explosion resistance against `event.explosion`, as a ray of the
@@ -275,7 +300,10 @@ step runs as a blast's does, in vanilla's order:
    causing entity.
 3. The drops of the whole call are merged (a stack is offered to every earlier
    pile, up to 16 a pile; the rest starts a pile at that block) and popped
-   after the last block, in the order the piles began.
+   after the last block, in the order the piles began if no listener edits the
+   drops. Reordering a `block_drops` list changes the order of its joins;
+   editing just a field keeps that entry's place without ordering its peers.
+   A merged group shared by several blocks still joins only once.
 4. With `fire`, a third of the cells left air above a solid block catch fire,
    under `None` too.
 

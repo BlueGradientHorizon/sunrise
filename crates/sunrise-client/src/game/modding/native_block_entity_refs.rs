@@ -761,11 +761,15 @@ pub(super) fn save_without_metadata(
     block: &str,
     items: &crate::items::Items,
 ) -> Option<Compound> {
-    let mut data = save_with_metadata(world, pos, entity, block, items)?;
+    save_with_metadata(world, pos, entity, block, items).map(block_entity_payload)
+}
+
+/// The saved block entity's payload, with its world identity and position removed.
+pub(super) fn block_entity_payload(mut data: Compound) -> Compound {
     for key in ["id", "x", "y", "z"] {
         data.remove(&key.into());
     }
-    Some(data)
+    data
 }
 
 /// Whether the block entity keeps a `CustomName` (`Nameable`): its saved form does.

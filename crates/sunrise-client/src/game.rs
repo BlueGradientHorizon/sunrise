@@ -6552,6 +6552,7 @@ impl Game<'_> {
         let live = (!self.creative)
             .then(|| self.live_block_entity(key, &facts.name))
             .flatten();
+        let mut saved_data = None;
         // Mod data is encoded only if the removed block goes on to roll loot.
         let mod_source = match &live {
             Some((BlockEntity::Mod(_), _)) => Some((
@@ -6574,6 +6575,13 @@ impl Game<'_> {
                     && let Some(tag) = spill::saved_entity(&self.world, pos)
                 {
                     self.pending.record_saved(pos, &tag);
+                    // Pots and other saved-only entities have no resident object, but
+                    // this is still the original entity the break is about to remove.
+                    if self.native_authoritative()
+                        && mod_api::__private::listened(mod_api::HookId::BlockDrops)
+                    {
+                        saved_data = spill::packed_block_entity_payload(tag);
+                    }
                 }
                 None
             }
@@ -6621,9 +6629,13 @@ impl Game<'_> {
                 // Block.dropResources: the item entities, then spawnAfterBreak's
                 // experience, with the mods' say between the two.
                 let breaker = Some(self.native_acting_id());
+                let block_entity_data = live
+                    .as_ref()
+                    .and_then(|(_, data)| data.as_ref())
+                    .or(saved_data.as_ref());
                 let dropped = self.player_block_dropped(
                     (pos, state),
-                    (breaker, held.as_ref(), live),
+                    (breaker, held.as_ref(), block_entity_data),
                     (stacks, exp_to_drop),
                 );
                 let canceled = dropped.canceled;
