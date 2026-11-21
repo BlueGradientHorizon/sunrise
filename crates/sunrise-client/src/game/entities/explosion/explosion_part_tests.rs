@@ -243,7 +243,7 @@ fn block_parts_xp_and_explosion_contract() {
             let chest_handle = game
                 .block_entity(game.level("minecraft:overworld").unwrap(), [1, 64, 1])
                 .unwrap();
-            let mut drops = ExplosionDrops::default();
+            let mut drops = Vec::new();
             for x in 1..=4 {
                 game.explosion_hit_block(
                     [x, 64, 1],
@@ -274,7 +274,7 @@ fn block_parts_xp_and_explosion_contract() {
                     sunrise_client::containers::BlockEntity::Chest(contents),
                 );
                 blast.1.store(mode, Ordering::Relaxed);
-                let mut drops = ExplosionDrops::default();
+                let mut drops = Vec::new();
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     game.explosion_hit_block(
                         [1, 64, 1],
@@ -527,7 +527,7 @@ fn block_parts_answer_drops_from_explosions() {
         let start = blast();
         // Each row: the block at x 2 (its part answers) and x 3 (unanswered).
         let hit = |game: &mut Game<'_>, state, z| {
-            let mut drops = ExplosionDrops::default();
+            let mut drops = Vec::new();
             for x in 2..=3 {
                 game.world.set(x, 64, z, state).unwrap();
                 if state == dirt {
@@ -555,7 +555,7 @@ fn block_parts_answer_drops_from_explosions() {
                 .unwrap();
                 assert_eq!(game.world.block(x, 64, z), game.world.air);
             }
-            drops.stacks
+            drops
         };
         // Refused dirt drops nothing; the dirt beside it drops one.
         let stacks = hit(game, dirt, 1);

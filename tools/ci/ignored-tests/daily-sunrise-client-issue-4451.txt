@@ -625,7 +625,6 @@ sunrise-client game::explosion::explosion_part_tests::block_parts_answer_drops_f
 sunrise-client game::explosion::explosion_part_tests::block_parts_answer_explosion_resistance lib daily resources
 sunrise-client game::explosion::explosion_part_tests::block_parts_xp_and_explosion_contract lib daily resources
 sunrise-client game::explosion::shulker_lock_drop_tests::destruction_captures_the_external_shulker_lock_before_removal lib daily resources
-sunrise-client game::explosion::tests::explosion_and_mob_breaks_apply_block_drops lib daily resources
 sunrise-client game::explosion::tests::rays_reusing_their_last_block_explode_what_each_step_did lib daily resources
 sunrise-client game::extras::mouse_tweaks::result_tests::a_chests_first_slot_keeps_its_own_item lib daily resources
 sunrise-client game::extras::mouse_tweaks::result_tests::a_predicted_take_carries_the_servers_result_and_empties_its_slot lib daily resources

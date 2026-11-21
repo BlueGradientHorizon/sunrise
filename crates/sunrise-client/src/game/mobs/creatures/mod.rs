@@ -2027,7 +2027,6 @@ impl Game<'_> {
                         age,
                         ..Default::default()
                     },
-                    origin_group: None,
                 }
             })
             .filter(|drop| drop.stack.count > 0 && &*drop.stack.item != "minecraft:air")
