@@ -1585,9 +1585,20 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
-            assert!(game.run_command(
-                r#"summon minecraft:armor_stand 3 64 5 {Tags:["turn_me"],Rotation:[45f,0f]}"#
-            ));
+            let run = |game: &mut Game<'_>, command| {
+                game.chat_capture = Some(Vec::new());
+                let ok = game.as_console_in_spawn_level(|g| g.run_command(command));
+                let feedback = game.chat_capture.take().unwrap();
+                assert!(
+                    ok,
+                    "{command}: {:?}",
+                    feedback.iter().map(|m| m.plain()).collect::<Vec<_>>()
+                );
+            };
+            run(
+                game,
+                r#"summon minecraft:armor_stand 3 64 5 {Tags:["turn_me"],Rotation:[45f,0f]}"#,
+            );
             let stand = game.armor_stands.iter_mut().next().unwrap();
             let id = stand.id as i32;
             let (command, expected) = match case.as_str() {
@@ -1608,7 +1619,7 @@ mod tests {
                     .iter()
                     .any(|p| matches!(p, Clientbound::AddEntity(a) if a.id == id))
             );
-            assert!(game.run_command(command));
+            run(game, command);
             let packets = track_stands(game, &mut level, &mut tracker);
             assert!(packets.iter().any(|p| {
                 matches!(p, Clientbound::RotateHead(r) if r.id == id && r.head_yaw == expected[1])
