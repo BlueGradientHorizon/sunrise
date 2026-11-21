@@ -42,14 +42,19 @@ impl PhaseRefusal {
             .unwrap_or_else(|error| error.into_inner())
             .insert((self.mod_id, self.operation));
         if first {
-            log::warn!(
-                "native refusal: {} hook {}: mod API {} is unavailable during {:?}",
-                self.mod_id,
-                crate::content::crash::current_native_call().map_or("unknown", |call| call.hook),
-                self.operation,
-                self.phase
-            );
+            self.report_each();
         }
+    }
+
+    /// Report this invocation without suppressing future reports of the same refusal.
+    pub(crate) fn report_each(&self) {
+        log::warn!(
+            "native refusal: {} hook {}: mod API {} is unavailable during {:?}",
+            self.mod_id,
+            crate::content::crash::current_native_call().map_or("unknown", |call| call.hook),
+            self.operation,
+            self.phase
+        );
     }
 }
 
@@ -78,6 +83,11 @@ pub fn enter_scope(mod_id: &'static str) -> OuterScope {
         mod_id,
         refusal: None,
     })))
+}
+
+/// Temporarily leave the mod's phase scope while executing delegated engine code.
+pub(crate) fn suspend_scope() -> OuterScope {
+    OuterScope(SCOPE.replace(None))
 }
 
 /// Closes the scope, restores the outer one, and returns the refusal the scope latched.

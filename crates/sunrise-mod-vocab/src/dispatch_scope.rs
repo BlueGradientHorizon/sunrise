@@ -111,6 +111,12 @@ impl ModGuard {
         }
     }
 
+    pub(crate) fn unattributed() -> Self {
+        let mut guard = Self::empty();
+        guard.owner = Some(crate::content::crash::push(None));
+        guard
+    }
+
     #[inline]
     fn clear(&mut self) {
         if let Some((frame, call)) = self.owner.take() {
@@ -192,7 +198,7 @@ impl Scope {
     pub(crate) fn replace(self, guard: &mut ModGuard, call: ModCall) {
         guard.clear();
         if self.installed {
-            let owner = crate::content::crash::push(call);
+            let owner = crate::content::crash::push(Some(call));
             if let Some((enter, leave)) = self.timing {
                 *guard = enter(ModGuardFactory { leave, owner }, call);
             } else {

@@ -593,7 +593,18 @@ fn register_special_model_renderers() {
             name(replaced.later)
         );
     }
-    sunrise_client::item_render::install_special_model_factories(factories);
+    sunrise_client::item_render::install_special_model_factories(
+        factories
+            .into_iter()
+            .filter_map(|(kind, (owner, factory))| {
+                let owner = owner?;
+                Some((
+                    kind,
+                    sunrise_client::item_render::OwnedSpecialModelFactory::new(owner, factory),
+                ))
+            })
+            .collect(),
+    );
 }
 /// The client presentation registrations, kept once at start, before resources load: the
 /// dimension transition screens, the entity spectator shaders, the render pipelines and the entity

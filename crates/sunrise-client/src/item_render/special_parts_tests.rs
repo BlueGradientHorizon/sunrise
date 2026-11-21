@@ -251,10 +251,20 @@ impl ItemDrawEnv for PanEnv {
     }
 }
 
+fn owned_factory<C: 'static, R: SpecialModelRenderer>(
+    decode: impl for<'a> Fn(mod_api::SpecialModelConfig<'a>) -> Result<C, String>
+    + Send
+    + Sync
+    + 'static,
+    bake: impl Fn(C, &dyn SpecialModelBakeContext) -> Result<R, String> + Send + Sync + 'static,
+) -> OwnedSpecialModelFactory {
+    OwnedSpecialModelFactory::new("special_test", SpecialModelFactory::new(decode, bake))
+}
+
 fn pan_factories(on_bake: impl Fn(u8) + Send + Sync + 'static) -> SpecialModelFactories {
     BTreeMap::from([(
         "spt:pan".into(),
-        SpecialModelFactory::new(
+        owned_factory(
             |config| config.decode::<PanConfig>(),
             move |config, bake| {
                 on_bake(config.handle);
@@ -437,7 +447,7 @@ fn each_special_draw_reads_effective_components_and_current_context() {
 }
 
 #[test]
-fn a_fault_rolls_back_and_disables_the_type_only_in_its_resource_generation() {
+fn a_failed_special_draw_rolls_back_but_only_a_panic_disables_its_type() {
     let root = tempfile::tempdir().unwrap();
     write_composite(root.path());
     write(
@@ -464,7 +474,7 @@ fn a_fault_rolls_back_and_disables_the_type_only_in_its_resource_generation() {
         "minecraft:item_model".into(),
         Some(serde_json::json!("spt:pan")),
     );
-    for count in [4, 15, 16] {
+    for count in [4, 16, 15] {
         let generation = renderer(root.path(), 2, 2, &factories);
         assert!(is_missing(&generation, &unreadable));
         assert_eq!(quads(&generation, &draw(&generation, &working)).len(), 6);
@@ -482,13 +492,13 @@ fn a_fault_rolls_back_and_disables_the_type_only_in_its_resource_generation() {
         assert_eq!(colors.len(), 18);
         assert_eq!(colors[..6], [GREY as u32; 6]);
         assert_eq!(colors[6..], [WHITE as u32; 12]);
-        assert!(
-            is_missing(&generation, &working),
-            "the sibling node of the same type was not disabled"
-        );
+        assert_eq!(is_missing(&generation, &working), count == 15);
     }
     let reloaded = renderer(root.path(), 2, 2, &factories);
-    assert_eq!(quads(&reloaded, &draw(&reloaded, &working)).len(), 6);
+    assert!(
+        is_missing(&reloaded, &working),
+        "reload must not clear the draw panic"
+    );
 }
 
 fn sprites() -> HashMap<String, Rect> {
@@ -550,14 +560,14 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
     factories.extend([
         (
             "spt:decode-panic".into(),
-            SpecialModelFactory::new(
+            owned_factory(
                 |_| -> Result<Pan, String> { panic!("decoder panicked") },
                 |pan, _| Ok(pan),
             ),
         ),
         (
             "spt:bake-panic".into(),
-            SpecialModelFactory::new(
+            owned_factory(
                 |_| Ok(()),
                 |(), _| -> Result<Pan, String> { panic!("baker panicked") },
             ),
@@ -581,6 +591,41 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
         &definitions["spt:other"].model,
         sunrise_assets::item_model::ItemModelNode::RegisteredSpecial { .. },
     ));
+}
+
+#[test]
+fn a_disabled_override_never_reveals_the_builtin_decoder() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const ITEM: &str = r#"{"model":{"type":"special","base":"spt:item/base","model":{"type":"minecraft:trident"}}}"#;
+    let temp = tempfile::tempdir().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let factories = BTreeMap::from([(
+        "minecraft:trident".into(),
+        owned_factory(
+            {
+                let calls = calls.clone();
+                move |_| -> Result<Pan, String> {
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    panic!("override decoder panicked")
+                }
+            },
+            |pan, _| Ok(pan),
+        ),
+    )]);
+    let first = renderer(temp.path(), 2, 2, &factories);
+    assert!(first.decode_definition(ITEM, None).is_ok());
+    let failure = first.decode_definition(ITEM, Some(&factories)).unwrap_err();
+    assert!(failure.to_string().contains("override decoder panicked"));
+
+    let reloaded = renderer(temp.path(), 2, 2, &factories);
+    for generation in [&first, &reloaded] {
+        let failure = generation
+            .decode_definition(ITEM, Some(&factories))
+            .unwrap_err();
+        assert!(failure.to_string().contains("owner is disabled"));
+    }
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
 }
 
 #[test]
@@ -667,7 +712,7 @@ fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
     };
     let factories = BTreeMap::from([(
         "spt:pan".into(),
-        SpecialModelFactory::new(|config| config.decode::<PanConfig>(), bake),
+        owned_factory(|config| config.decode::<PanConfig>(), bake),
     )]);
     let renderer = renderer(temp.path(), 2, 2, &factories);
     assert!(renderer.models.definitions.contains_key("spt:pan"));
@@ -801,7 +846,10 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
         r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"spt:fault","handle":2}}}"#,
     );
     let mut factories = pan_factories(|_| {});
-    factories.insert("spt:fault".into(), factories["spt:pan"].clone());
+    factories.insert(
+        "spt:fault".into(),
+        owned_factory(|config| config.decode::<PanConfig>(), Pan::bake),
+    );
     let renderer = renderer(&root, 2, 2, &factories);
     let env = PanEnv(FakeHost::new());
     let resolve = |item: &str, count, display| {
@@ -899,8 +947,8 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
         6
     );
     assert!(is_missing(&resolve("spt:pan", 14, DisplayContext::Gui)));
-    // The nested callback's own type is disabled, not the parent that submitted it.
-    assert!(is_missing(&resolve("spt:fault", 1, DisplayContext::Gui)));
+    // A nested refusal aborts only the current layer; the same type can draw a later item.
+    assert!(!is_missing(&resolve("spt:fault", 1, DisplayContext::Gui)));
     let quads_of = |count| quads(&renderer, &resolve("spt:pan", count, DisplayContext::Gui)).len();
     assert_eq!(quads_of(20), 64 * 6);
     assert!(is_missing(&resolve("spt:pan", 21, DisplayContext::Gui)));

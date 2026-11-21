@@ -13,6 +13,7 @@ ids = [
     "type:ConfigurationTaskRegistrationError",
     "type:ConfigurationTaskRegistrationError.EmptyType",
     "type:ConfigurationTaskRegistrationError.DuplicateType",
+    "type:ConfigurationTaskRegistrationError.CallbackFailed",
     "hook:configuration_task_start",
     "hook:configuration_task_start.connection",
     "hook:configuration_task_start.task_type",
@@ -51,14 +52,16 @@ ids = [
     "type:ConfigurationTaskError.WrongContext",
     "method:IPayloadContext::finish_configuration_task",
 ]
-why = "Each connection now owns its ordered task instances, so their state stays with them and only the registered task runs. A delayed reply cannot complete a newer task or another connection's task. Completion publishes after the outermost commit and its deferred sends, so rollback cannot advance the queue."
+why = "Each connection owns its ordered task instances, as at NeoForge's RegisterConfigurationTasksEvent.register and vanilla's ServerConfigurationPacketListenerImpl.startNextTask. A delayed reply cannot complete a newer task or another connection's task. Completion publishes after the outermost commit and its deferred sends, so rollback cannot advance the queue. Task type lookup runs as the registering mod; a panic refuses that registration and disables only that mod's task implementation for the session. Disposing of a rejected or skipped Rust task stays under that same owner's panic policy so its destructor cannot replace the admission diagnostic or crash the server. A phase refusal from the listener or task type lookup discards only that listener's staged tasks, reservations and diagnostic."
 migrate = """
-In `Hooks::register_configuration_tasks` (now version 2), replace \
+In `Hooks::register_configuration_tasks` (now version 3), replace \
 `event.tasks.push(ConfigurationTask::new(id))` with `event.register(MyTask { id, ... })`. \
 Define `MyTask: Send + 'static` and implement `ConfigurationTask`; replace the old record's \
 `id` field with your own, returned by `task_type(&self) -> &Identifier`. A nonempty type \
-must be unique per connection. Handle `ConfigurationTaskRegistrationError::EmptyType` and \
-`DuplicateType(id)`; the first refusal aborts admission even if ignored. The event still \
+must be unique per connection. Handle `ConfigurationTaskRegistrationError::EmptyType`, \
+`DuplicateType(id)` and `CallbackFailed(reason)`; the first error aborts admission even if ignored. \
+Keep `task_type` side-effect-free and return its identifier without panicking: that panic logs and queues an error toast naming the mod, and future registrations of the same implementation by that mod skip `task_type`. Keep `Drop` non-panicking too: a rejected or skipped task is still dropped, and a destructor panic is reported without replacing the original registration error. \
+Do not rely on tasks or reservations from a phase-refused listener (including a refusal in `task_type`); the next listener can register those types. The event still \
 provides `connection`, `player` and `name`, and `event.connection.has_channel(host, channel)` \
 still works in registration.
 

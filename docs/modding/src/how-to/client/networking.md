@@ -31,24 +31,27 @@ No packet inspection or editing beyond the existing `ClientPacket` view is provi
 
 ## Configuration tasks before play
 
-The server's `register_configuration_tasks` hook (version 2) runs once per
+The server's `register_configuration_tasks` hook (version 3) runs once per
 connecting client, including vanilla clients, after the built-in registry, tag
 and resource-pack steps. Use `event.connection.has_channel(host, &channel)`
 to check what the peer negotiated before registering a task.
 
-Implement `ConfigurationTask` on a `Send + 'static` struct and pass an instance
-to `event.register(task)`. Its `task_type(&self) -> &Identifier` supplies a
-namespaced ID, read once at registration. The ID must be nonempty and unique
-among all tasks registered for that connection. `register` returns
-`ConfigurationTaskRegistrationError::EmptyType` or `DuplicateType(id)` for an
-invalid submission. The first refusal aborts registration and admission and
-supplies the disconnect diagnostic, even if its result is ignored.
+Implement `ConfigurationTask` for a `Send + 'static` struct and pass an instance to
+`event.register(MyTask { id, ... })`. Return its namespaced type from
+`task_type(&self) -> &Identifier`. The server reads it once as the registering mod;
+it must be nonempty and unique across all listeners for that connection. `register`
+returns `EmptyType` or `DuplicateType(id)` for an invalid type and `CallbackFailed(reason)`
+if reading the type panics. The first error refuses admission and supplies the disconnect
+diagnostic even if the listener ignores it. A phase refusal in the listener or in `task_type`
+instead discards only that listener's staged tasks, reservations and diagnostic. Rejected task
+instances are dropped under the registering mod's panic policy, including when the implementation
+was already disabled and `task_type` was skipped. Keep `Drop` non-panicking: a destructor panic
+is logged and shown in an error toast with the mod's name; it does not replace the first diagnostic.
 
-The server calls `start` once on that instance, then calls the optional `tick`
-at most once each later server tick while it waits. Both methods take
-`&mut self`, `host: &mut dyn ServerHost` and `context: &mut ConfigurationTaskContext<'_>`.
-Keep state shared by `start` and `tick` in the task struct. Tasks run in
-registration order without holding the connection's task lock.
+Implement `start` and, if needed, `tick`, both with `&mut self`, `host: &mut dyn ServerHost`
+and `context: &mut ConfigurationTaskContext<'_>`. Keep per-connection state in the task
+struct. Only the registered instance runs: once for `start`, then at most once per later
+server tick while pending, in registration order and without holding the connection task lock.
 
 | Task callback operation | Call |
 | --- | --- |
@@ -79,9 +82,11 @@ wins over `finish`. An explicit payload-handler disconnect discards the request
 even if the rest of the handler succeeds.
 
 A refused task payload send, explicit `fail`, or callback panic aborts the task
-callback and closes that client with the configuration-error reason. Check the
-channel before sending to an optional or vanilla peer, then request completion
-or explain why it cannot join.
+callback and closes that client with the configuration-error reason. Start and tick
+run as the registering mod. Disabled callbacks are skipped. A panic disables the
+mod's task implementation for this session; ordinary errors do not. Check the channel
+before sending to an optional or vanilla peer, then request completion or explain why it
+cannot join.
 
 There is **no per-task timeout**. A client answering keep-alives can remain in
 configuration indefinitely while its task waits. The connection's ordinary idle

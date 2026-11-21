@@ -763,7 +763,9 @@ pub fn worker_panic_report(info: &std::panic::PanicHookInfo, side: &'static str)
 pub fn install(home: PathBuf, side: &'static str) {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        if contained_panic(info) {
+        // A retained owner reports its panic and returns control to the caller. Do not
+        // emit a fatal crash report or terminate a worker before that scope unwinds.
+        if contained_panic(info) || mod_api::__private::game::retained_callback_active() {
             return;
         }
         default(info);
