@@ -139,3 +139,120 @@ fn placement_preview_checks_obstruction_without_changing_the_level() {
         }
     }
 }
+
+#[test]
+#[ignore = "daily"]
+fn redstone_updates_respect_the_preview_level_side() {
+    use super::super::{DryLevel, dry_level::PredictionBase};
+    use std::collections::HashMap;
+    use sunrise_core::{geometry::Direction, position::BlockPos, random::LegacyRandom};
+    use sunrise_world::{
+        level::{Behaviours, BlockEntityNeighbors, LevelAccess, Ticks, data::load_registry, flags},
+        registry::BlockStateId,
+    };
+
+    struct Level {
+        cells: HashMap<BlockPos, BlockStateId>,
+        air: BlockStateId,
+        client_side: bool,
+    }
+    impl BlockEntityNeighbors for Level {}
+    impl PredictionBase for Level {}
+    impl LevelAccess for Level {
+        fn block_state(&self, pos: BlockPos) -> BlockStateId {
+            self.cells.get(&pos).copied().unwrap_or(self.air)
+        }
+        fn set_raw(&mut self, _: BlockPos, _: BlockStateId) -> Option<BlockStateId> {
+            panic!("preview must not write to the live level");
+        }
+        fn is_loaded(&self, _: BlockPos) -> bool {
+            true
+        }
+        fn is_client_side(&self) -> bool {
+            self.client_side
+        }
+        fn random(&mut self) -> &mut LegacyRandom {
+            panic!("preview must not advance the live level's random source");
+        }
+        fn game_time(&self) -> i64 {
+            0
+        }
+    }
+
+    let resources = std::path::PathBuf::from(
+        std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
+    );
+    let registry = load_registry(&resources).unwrap();
+    let behaviours = Behaviours::load(&registry, &resources).unwrap();
+    let default = |block| registry.default_state(block).unwrap();
+    let state = |block, props: &[(&str, &str)]| {
+        let mut descriptor = registry.state(default(block)).unwrap().clone();
+        for &(key, value) in props {
+            descriptor.properties.insert(key.into(), value.into());
+        }
+        registry.id(&descriptor).unwrap()
+    };
+    let observer = state("minecraft:observer", &[("powered", "true")]);
+    let repeater = state(
+        "minecraft:repeater",
+        &[("facing", "north"), ("locked", "true")],
+    );
+    let cake = default("minecraft:cake");
+    let comparator = default("minecraft:comparator");
+    let pos = BlockPos::new(0, 1, 0);
+    let west = BlockPos::new(-1, 1, 0);
+    let conductor_pos = BlockPos::new(1, 1, 0);
+    let comparator_pos = BlockPos::new(2, 1, 0);
+
+    for client_side in [true, false] {
+        // Put the unsupported comparator beyond a conductor: ordinary six-way
+        // notification and source shape updates must not reach it.
+        let base = Level {
+            cells: HashMap::from([
+                (conductor_pos, default("minecraft:stone")),
+                (comparator_pos, comparator),
+            ]),
+            air: default("minecraft:air"),
+            client_side,
+        };
+        let mut dry = DryLevel::new(&base);
+        let mut ticks = Ticks::default();
+        assert!(behaviours.set_block(
+            &mut dry,
+            &mut ticks,
+            pos,
+            observer,
+            flags::UPDATE_MOVE_BY_PISTON | flags::UPDATE_KNOWN_SHAPE,
+        ));
+        let observer_powered = dry.block_state(pos) == observer;
+
+        let mut dry = DryLevel::new(&base);
+        let mut ticks = Ticks::default();
+        let repeater_locked = behaviours.update_shape(
+            &mut dry,
+            &mut ticks,
+            repeater,
+            pos,
+            Direction::West,
+            west,
+            base.air,
+        ) == repeater;
+
+        assert!(behaviours.set_block(
+            &mut dry,
+            &mut ticks,
+            pos,
+            cake,
+            flags::UPDATE_NEIGHBORS | flags::UPDATE_KNOWN_SHAPE,
+        ));
+        assert_eq!(dry.block_state(pos), cake);
+        let comparator_retained = dry.block_state(comparator_pos) == comparator;
+
+        assert_eq!(
+            (observer_powered, repeater_locked, comparator_retained),
+            (client_side, client_side, client_side),
+            "observer powered, repeater locked, comparator retained (client_side={client_side})"
+        );
+    }
+}

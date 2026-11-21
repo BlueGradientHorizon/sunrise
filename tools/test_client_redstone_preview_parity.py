@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Check powered client placement guards in vanilla and Sunrise's prediction preview.
+"""Check client placement and redstone update guards against vanilla.
 
-The Java side calls the shipped onPlace methods on a client level. The Rust
-regression runs actual placement through DryLevel, including server-side controls
-and obstruction/loading/height checks. This does not replay a flying machine.
+The Java oracle runs shipped block and ClientLevel methods without a game
+window. The Rust tests run placement and neighbor updates through DryLevel,
+with server-side controls. This does not replay a flying machine.
 """
 import os
 try:
@@ -28,13 +28,11 @@ def main():
               'dev.sunriselab.parity.VanillaClientRedstonePreviewOracle'])
     with (work / 'rust.log').open('w', encoding='utf-8') as output:
         base.run(['cargo', 'test', '--locked', '-p', 'sunrise-client', '--lib',
-                  'game::remote::tests::placement_preview_tests::'
-                  'placement_preview_checks_obstruction_without_changing_the_level',
-                  '--', '--exact', '--ignored'], stdout=output,
-                 env={**os.environ, "SUNRISE_TEST_RESOURCES": str(lab.RESOURCES)})
-    if '1 passed; 0 failed' not in (work / 'rust.log').read_text(encoding='utf-8'):
-        raise AssertionError('placement preview regression did not run')
-    print('Powered client TNT/piston placement guards match vanilla; server controls pass.')
+                  'game::remote::tests::placement_preview_tests::', '--', '--ignored'],
+                 stdout=output, env={**os.environ, "SUNRISE_TEST_RESOURCES": str(lab.RESOURCES)})
+    if '2 passed; 0 failed' not in (work / 'rust.log').read_text(encoding='utf-8'):
+        raise AssertionError('placement preview and redstone guard regressions did not run')
+    print('Client placement and redstone update guards match vanilla; server controls pass.')
 
 
 if __name__ == '__main__':
