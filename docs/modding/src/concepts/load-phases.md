@@ -112,15 +112,34 @@ game thread.
 
 ## Load contexts
 
-`DataLoadContext` and `LoopContext` expose frozen registry and settings metadata. Use
-`DataLoadOrigin` to identify the load origin and `LoopSide` to identify the owning side.
-Registry entries retain registry ID order.
+`DataLoadContext`, `LoopContext` and `WorldgenHost` lend frozen metadata for their resource
+generation. `registry(name)` returns `Option<&[String]>` in registry ID order,
+`setting(mod_id, key)` returns `Option<&str>`, and `mods()` returns `&LoadedMods` in dispatch order.
+The getters do not read files. `None` means the registry or setting is unavailable, not that it is
+present and empty. Use the references within the callback; take an owned value only if it must
+outlive the context borrow. Use `DataLoadOrigin` to identify the load origin and `LoopSide` to identify
+the owning side.
+
+`DataLoadContext::fluid_tags()` borrows the recipe pass's fluid-tag table. It returns `None` when
+there is no recipe overlay, `Some(&[])` when that overlay has no fluid tags, and otherwise a slice
+of `(tag ID, members)` pairs with each tag's members in source order.
+
+During registration, `RegistrationContext::mods()` already lends the startup inventory.
+`RegistrationContext::registry` and `RegistrationContext::setting` still return their original
+owned results and report `RegistrationReadError` as described above.
+[Chunk disk callbacks](../how-to/chunk-data-load.md) also borrow registry names, but from the
+resource generation retained by their worker.
+
+### Ordinary Host reads
 
 In World, both client and server hosts expose `registry_entry(registry, id)`,
 `registry_entries(registry)` and `registry_entry_in_tag(&entry, tag)`. These read the
 current side's live registry and merged tags, not pending reload data. Unknown or
 unavailable registries and entries return `None`; an absent tag or a tag that does
 not contain the entry returns `Some(false)`. Enumeration yields each identity once.
+
+`ConfigHost::setting` still returns `Option<String>` on an ordinary `Host`; it is not the
+captured `Option<&str>` read on a load, loop or worldgen context.
 
 Server world-generation reads use the published decoded owners, including the
 live feature data in worlds without a terrain locator. Invalid source files do

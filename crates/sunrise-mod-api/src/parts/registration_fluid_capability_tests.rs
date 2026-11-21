@@ -42,11 +42,7 @@ mod tests {
         tags.insert("fixture:empty".to_owned(), vec![]);
         TestReader {
             registries: Default::default(),
-            tags: tags
-                .into_iter()
-                .map(|(k, v)| (k, Arc::from(v)))
-                .collect::<Vec<_>>()
-                .into(),
+            tags: Some(tags.into_iter().map(|(k, v)| (k, Arc::from(v))).collect()),
         }
     }
     fn parse(s: &str) -> Option<FluidIngredient> {

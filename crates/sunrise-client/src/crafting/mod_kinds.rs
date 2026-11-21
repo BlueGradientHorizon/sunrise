@@ -158,13 +158,13 @@ impl mod_api::LoopContext for CraftingRemainderView<'_> {
     fn side(&self) -> mod_api::LoopSide {
         self.context.side()
     }
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+    fn registry(&self, name: &str) -> Option<&[String]> {
         self.context.registry(name)
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         self.context.setting(mod_id, key)
     }
-    fn mods(&self) -> mod_api::LoadedMods {
+    fn mods(&self) -> &mod_api::LoadedMods {
         self.context.mods()
     }
 }
