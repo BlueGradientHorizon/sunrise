@@ -259,7 +259,7 @@ struct Params {
     near: i32,
     cam_x: i32,
     cam_z: i32,
-    /// The tables' first column: x, 0, z, 0.
+    /// The tables' first cell: x, y, z, 0.
     first: [i32; 4],
     /// Their entries along x, y and z, and 0.
     cells: [u32; 4],
@@ -267,10 +267,10 @@ struct Params {
     w: [[i32; 4]; 2],
     /// Cave culling's graph (`Reach`): from x, from z, radius, lowest section y.
     reach: [i32; 4],
-    /// Its height in sections, and the level's (the sky band's top section).
+    /// Its height in sections, and padding to keep 16-byte uniform layout.
     reach_height: i32,
-    reach_sections: i32,
-    /// `REACH`, `SKY`, `EYE`, `OCCLUDE`, `PROBE`.
+    _reach_pad: i32,
+    /// `REACH`, `EYE`, `OCCLUDE`, `PROBE`.
     flags: u32,
     /// With `EYE`, where the eye's keys start in `tables`, in words.
     eyes: u32,
@@ -303,9 +303,6 @@ const FAILED: u8 = 3;
 /// In `Params::flags` (the shader's `REACH`): cave culling's graph is in
 /// `reach`.
 const REACH: u32 = 1;
-/// In `Params::flags` (the shader's `SKY`): its search reached the box's top
-/// layer, so the sky band above a clamped box is reached.
-const SKY: u32 = 2;
 /// In `Params::flags` (the shader's `EYE`): solid quads facing away from the
 /// eye are left out, its keys in `tables` from `Params::eyes`.
 const EYE: u32 = 4;
@@ -477,14 +474,18 @@ fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Params> {
     }
     let radius = input.radius.max(0);
     let side = 2 * radius + 1;
-    let height = input.sections.max(0);
+    let cam_sy = resident::camera_section_y(input.camera, input.min_y);
+    let (y0, ny_i32) = match resident::vertical_section_range(cam_sy, radius, input.sections) {
+        Some((lo, hi)) => (lo, hi - lo + 1),
+        None => (0, 0),
+    };
     let (cx, cz) = resident::camera_column(input.camera);
     let (x0, z0) = (cx - radius, cz - radius);
     let origin = |key| resident::origin(key, input.min_y, input.camera).as_vec3();
     words.extend((x0..x0 + side).map(|x| origin((x, 0, 0)).x.to_bits()));
-    words.extend((0..height).map(|y| origin((0, y, 0)).y.to_bits()));
+    words.extend((y0..y0 + ny_i32).map(|y| origin((0, y, 0)).y.to_bits()));
     words.extend((z0..z0 + side).map(|z| origin((0, 0, z)).z.to_bits()));
-    let (nx, ny) = (side as usize, height as usize);
+    let (nx, ny) = (side as usize, ny_i32 as usize);
     let axes = [0..nx, nx..nx + ny, nx + ny..words.len()];
     // Along each axis, the largest origin plus 24: more than any corner of a box
     // (its ends reach 23) or of a column's box.
@@ -558,8 +559,8 @@ fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Params> {
         near: radius,
         cam_x: cx,
         cam_z: cz,
-        first: [x0, 0, z0, 0],
-        cells: [side as u32, height as u32, side as u32, 0],
+        first: [x0, y0, z0, 0],
+        cells: [side as u32, ny_i32 as u32, side as u32, 0],
         w: [[w[0], w[1], w[2], w[3]], [w[4], w[5], 0, 0]],
         flags: if input.eye.is_some() { EYE } else { 0 },
         eyes,
@@ -1420,8 +1421,8 @@ impl GpuCulling {
                 self.reach_generation = Some(r.generation);
             }
             params.reach = [r.from_x, r.from_z, r.radius, r.y0];
-            (params.reach_height, params.reach_sections) = (r.height, r.sections);
-            params.flags |= REACH | if r.sky_reached { SKY } else { 0 };
+            params.reach_height = r.height;
+            params.flags |= REACH;
         }
         uploads.buffer(encoder, &self.params, 0, bytemuck::bytes_of(&params));
         // A frame that occludes reads phase 2's blocks too; the boxes to test
@@ -2178,7 +2179,7 @@ mod tests {
             ("w", offset_of!(Params, w)),
             ("reach", offset_of!(Params, reach)),
             ("reach_height", offset_of!(Params, reach_height)),
-            ("reach_sections", offset_of!(Params, reach_sections)),
+            ("_reach_pad", offset_of!(Params, _reach_pad)),
             ("flags", offset_of!(Params, flags)),
             ("eyes", offset_of!(Params, eyes)),
             ("occl", offset_of!(Params, occl)),
@@ -2225,7 +2226,6 @@ mod tests {
             ("STATS", STATS),
             ("UNBOUNDED", u64::from(UNBOUNDED)),
             ("REACH", u64::from(REACH)),
-            ("SKY", u64::from(SKY)),
             ("FADING", u64::from(FADING)),
             ("EYE", u64::from(EYE)),
             ("RUN_WORDS", RUN_WORDS),
@@ -2519,6 +2519,7 @@ mod tests {
             let height = match case % 8 {
                 0 => 1.0e5,
                 4 => -1.0e5,
+                1 | 5 => f64::from(rng.range(-64, 320)),
                 _ if ahead => 8.0,
                 _ => f64::from(rng.range(-2_100, 2_100)),
             };
@@ -2615,7 +2616,7 @@ mod tests {
                 );
                 let c = [
                     v.key.0 - params.first[0],
-                    v.key.1,
+                    v.key.1 - params.first[1],
                     v.key.2 - params.first[2],
                 ];
                 let c = c.map(|c| c as usize);
@@ -2670,10 +2671,22 @@ mod tests {
                 );
                 let (cx, cz) = resident::camera_column(base);
                 let (x, z) = (cx + rng.range(-1, 1), cz + rng.range(-1, 1));
-                // Up to four sections of a column, each with whole-block bounds of
-                // its own (`rounded_box` keeps them as they are).
-                let low = rng.range(0, 20);
-                let high = low + rng.range(0, 3);
+                // Keep columns inside vanilla's vertical render-distance band across the ±4 block bisection.
+                let (lo_min, hi_min) = resident::vertical_section_range(
+                    resident::camera_section_y(base - DVec3::Y * 4.0, min_y),
+                    3,
+                    24,
+                )
+                .unwrap();
+                let (lo_max, hi_max) = resident::vertical_section_range(
+                    resident::camera_section_y(base + DVec3::Y * 4.0, min_y),
+                    3,
+                    24,
+                )
+                .unwrap();
+                let (lo_y, hi_y) = (lo_min.max(lo_max), hi_min.min(hi_max));
+                let low = rng.range(lo_y, hi_y);
+                let high = (low + rng.range(0, 3)).min(hi_y);
                 let mut rows: Vec<(i32, [Vec3; 2])> = (low..=high)
                     .map(|y| {
                         let [ex, ey, ez] = [0, 1, 2].map(|_| {
@@ -2884,9 +2897,8 @@ mod tests {
         // Cave culling's graph while a case has one (its generation, from x and
         // z, radius, height and whether its search reached the sky) and its bits.
         let (mut graph, mut bits) = (None, Vec::new());
-        // Sections the frustum keeps with a graph, those it leaves out, and
-        // those above its box it leaves out and keeps.
-        let (mut graphed, mut unreached, mut band) = (0, 0, [0; 2]);
+        // Sections the frustum keeps with a graph, and those it leaves out.
+        let (mut graphed, mut unreached) = (0, 0);
         // Sections drawn from an eye, those with a bucket left out, those in
         // three runs or more; the record at the section's edge, and whether it
         // was drawn.
@@ -2945,13 +2957,14 @@ mod tests {
                 graph = given.then(|| {
                     let span = match case {
                         20 => 100,
-                        _ if rng.below(2) == 0 => radius + 2,
+                        _ if rng.below(2) == 0 => radius,
                         _ => rng.range(1, radius + 3),
                     };
-                    let rows = if case % 4 < 2 && case != 20 {
-                        rng.range(3, 8)
+                    let (y0, rows) = if case % 4 < 2 && case != 20 {
+                        let rows = rng.range(3, 8);
+                        (rng.range(0, height - rows), rows)
                     } else {
-                        height + 2
+                        (0, height)
                     };
                     let cells = ((2 * span + 1).pow(2) * rows) as usize;
                     bits.clear();
@@ -2959,20 +2972,18 @@ mod tests {
                         (0..cells.div_ceil(32)).map(|_| rng.bits() as u32 | rng.bits() as u32),
                     );
                     let from = (cx + rng.range(-1, 1), cz + rng.range(-1, 1));
-                    (rng.bits(), from, span, rows, case % 8 < 4)
+                    (rng.bits(), from, span, y0, rows)
                 });
             }
             // Cave culling off at the edge: its section is drawn whatever a graph says.
             let graph_given = graph.filter(|_| !at_edge);
-            let reach = graph_given.map(|(generation, from, span, rows, sky_reached)| Reach {
+            let reach = graph_given.map(|(generation, from, span, y0, rows)| Reach {
                 generation,
                 from_x: from.0,
                 from_z: from.1,
                 radius: span,
-                y0: -1,
+                y0,
                 height: rows,
-                sections: height,
-                sky_reached,
                 bits: &bits,
             });
             if case == 12 {
@@ -3094,15 +3105,9 @@ mod tests {
                 let reached = reach.is_none_or(|r| r.contains(key));
                 // In view, but fading: the CPU's.
                 faded += usize::from(fading && reached && keeps(&params, &words, &record));
-                if kept && let Some(r) = reach {
+                if kept && reach.is_some() {
                     graphed += 1;
                     unreached += usize::from(!reached);
-                    // Above the box, over its columns: the sky band.
-                    let over = (key.0 - r.from_x).abs() <= r.radius
-                        && (key.2 - r.from_z).abs() <= r.radius;
-                    if over && key.1 >= r.y0 + r.height {
-                        band[usize::from(reached)] += 1;
-                    }
                 }
                 if kept && reached {
                     let origin = resident::origin(key, min_y, camera).as_vec3();
@@ -3214,10 +3219,6 @@ mod tests {
         assert!(
             unreached * 10 > graphed && unreached < graphed,
             "{unreached} of {graphed} in view unreached"
-        );
-        assert!(
-            band[0] > 0 && band[1] > 0,
-            "the sky band left out and kept {band:?}"
         );
     }
 

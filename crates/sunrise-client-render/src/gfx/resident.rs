@@ -43,6 +43,8 @@ pub(crate) trait ResidentSize {
 pub struct Resident<T> {
     /// The minimum Y of section index 0 (the level's column).
     min_y: i32,
+    /// Number of vertical sections in the level's column (`Level.getSectionsCount`).
+    sections: i32,
     items: Vec<(SectionKey, T)>,
     bounds: Vec<Option<[Vec3; 2]>>,
     /// Per slot, whether the section is marked: within the render distance,
@@ -64,6 +66,7 @@ impl<T> Default for Resident<T> {
     fn default() -> Self {
         Self {
             min_y: crate::chunk::MIN_Y,
+            sections: crate::chunk::SECTIONS as i32,
             items: Vec::new(),
             bounds: Vec::new(),
             marked: Vec::new(),
@@ -146,6 +149,10 @@ impl<T> Resident<T> {
     /// Sections from now on count from `min_y` (a level of another column).
     pub fn set_min_y(&mut self, min_y: i32) {
         self.min_y = min_y;
+    }
+    /// Sets the level's vertical section count for vanilla's vertical render-distance clamp.
+    pub fn set_sections(&mut self, sections: i32) {
+        self.sections = sections;
     }
     /// The minimum Y of section index 0.
     pub fn min_y(&self) -> i32 {
@@ -383,6 +390,26 @@ pub(super) fn camera_column(camera: DVec3) -> (i32, i32) {
     )
 }
 
+/// Camera's 0-based section Y index (`(Mth.floor(camera.y) - min_y) >> 4`).
+pub(super) fn camera_section_y(camera: DVec3, min_y: i32) -> i32 {
+    (sunrise_core::mth::floor(camera.y) - min_y) >> 4
+}
+
+/// Vanilla 26.3 inclusive 0-based section Y range `[lo, hi]` for `SectionOcclusionGraph`.
+pub(super) fn vertical_section_range(
+    cam_sy: i32,
+    radius: i32,
+    sections: i32,
+) -> Option<(i32, i32)> {
+    if sections <= 0 || radius < 0 {
+        return None;
+    }
+    let last = sections - 1;
+    let lo = cam_sy.saturating_sub(radius).clamp(0, last);
+    let hi = cam_sy.saturating_add(radius).clamp(0, last);
+    Some((lo, hi))
+}
+
 /// The world AABB (min, max) of a section from its origin and optional tight bounds.
 #[inline]
 fn section_box(min: Vec3, bounds: Option<[Vec3; 2]>) -> (Vec3, Vec3) {
@@ -411,6 +438,14 @@ fn in_view_with_bounds(
     bounds: Option<[Vec3; 2]>,
 ) -> Option<(f64, Vec3)> {
     if !in_view_distance(camera_column(camera), radius, key.0, key.2) {
+        return None;
+    }
+    let (lo_y, hi_y) = vertical_section_range(
+        camera_section_y(camera, crate::chunk::MIN_Y),
+        radius,
+        crate::chunk::SECTIONS as i32,
+    )?;
+    if key.1 < lo_y || key.1 > hi_y {
         return None;
     }
     in_frustum(key, crate::chunk::MIN_Y, camera, frustum, false, bounds)
@@ -477,11 +512,24 @@ impl<T> Resident<T> {
         out: &mut Vec<Visible>,
     ) {
         let from = camera_column(camera);
+        let vertical =
+            vertical_section_range(camera_section_y(camera, self.min_y), radius, self.sections);
         for column in &self.columns {
             let near = in_view_distance(from, radius, column.x, column.z);
             if !near && !beyond(column.x, column.z) {
                 continue;
             }
+            let (lo_y, hi_y) = if near {
+                let Some((lo, hi)) = vertical else {
+                    continue;
+                };
+                if column.high < lo || column.low > hi {
+                    continue;
+                }
+                (lo, hi)
+            } else {
+                (i32::MIN, i32::MAX)
+            };
             let list = if marked_only_near && near {
                 &column.marked
             } else {
@@ -494,8 +542,10 @@ impl<T> Resident<T> {
             let oz = f64::from(column.z * 16) - camera.z;
             let min_x = ox as f32;
             let min_z = oz as f32;
-            let low_oy = (f64::from(self.min_y + column.low * 16) - camera.y) as f32;
-            let high_oy = (f64::from(self.min_y + column.high * 16) - camera.y) as f32;
+            let col_low = column.low.max(lo_y);
+            let col_high = column.high.min(hi_y);
+            let low_oy = (f64::from(self.min_y + col_low * 16) - camera.y) as f32;
+            let high_oy = (f64::from(self.min_y + col_high * 16) - camera.y) as f32;
             let min = Vec3::new(min_x, low_oy, min_z);
             let max = Vec3::new(min_x + 16.0, high_oy + 16.0, min_z + 16.0);
             let inside = frustum.contains(min, max);
@@ -508,6 +558,9 @@ impl<T> Resident<T> {
 
             if inside {
                 for &(y, slot) in list {
+                    if near && (y < lo_y || y > hi_y) {
+                        continue;
+                    }
                     let key = (column.x, y, column.z);
                     if near && !reachable(key) {
                         continue;
@@ -525,6 +578,9 @@ impl<T> Resident<T> {
                 }
             } else {
                 for &(y, slot) in list {
+                    if near && (y < lo_y || y > hi_y) {
+                        continue;
+                    }
                     let key = (column.x, y, column.z);
                     if near && !reachable(key) {
                         continue;

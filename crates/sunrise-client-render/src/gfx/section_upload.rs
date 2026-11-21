@@ -688,6 +688,7 @@ impl Renderer {
             self.layout = layout;
             self.occlusion = occlusion::Occlusion::new(layout.min_y(), layout.sections() as i32);
             self.sections.set_min_y(layout.min_y());
+            self.sections.set_sections(layout.sections() as i32);
         }
     }
     /// Lays the sections out as `translucent_split` says for the shader pack that

@@ -34,18 +34,18 @@ struct Params {
     near: i32,
     cam_x: i32,
     cam_z: i32,
-    // The tables' first column: x, 0, z, 0.
+    // The tables' first cell: x, y, z, 0.
     first: vec4<i32>,
     // Their entries along x, y and z, and 0.
     cells: vec4<u32>,
     // Each frustum plane's w term, its margin in, then 0, 0.
     w: array<vec4<i32>, 2>,
     // Cave culling's graph (occlusion.rs `Reach`): from x, from z, radius, lowest
-    // section y; its height in sections and the level's; REACH, SKY, EYE,
-    // OCCLUDE and PROBE; where the eye's keys start in `tables`.
+    // section y; its height in sections and padding; REACH, EYE, OCCLUDE, PROBE;
+    // where the eye's keys start in `tables`.
     reach: vec4<i32>,
     reach_height: i32,
-    reach_sections: i32,
+    _reach_pad: i32,
     flags: u32,
     eyes: u32,
     // Occlusion (OCCLUDE): this frame's stamp (never 0), where the boxes to
@@ -124,10 +124,8 @@ const DRAWN2: u32 = 10u;
 // gpu_culling.rs `rounded_box` for a box past what its codes hold: no plane
 // rejects it.
 const UNBOUNDED: u32 = 0x80000000u;
-// In `params.flags`: cave culling's graph is in `params.reach`, and its search
-// reached the box's top layer (the sky band).
+// In `params.flags`: cave culling's graph is in `params.reach`.
 const REACH: u32 = 1u;
-const SKY: u32 = 2u;
 // In a section's `a.w`: it fades in or out, and the CPU draws it with its fade.
 const FADING: u32 = 1u;
 // In `params.flags`: solid quads facing away from the eye are left out, its
@@ -203,10 +201,7 @@ fn near(x: i32, z: i32) -> bool {
     return gx * gx + gz * gz < r * r;
 }
 
-// occlusion.rs `Occlusion::contains` (`Graph::contains`): with no graph, or with
-// cave culling off, every section; in the searched box, whether the search
-// reached it; above a clamped box, over its columns and within the level, the
-// sky band (all of it or none); else none. `Reach::contains` on the CPU.
+// occlusion.rs `Occlusion::contains` (`Reach::contains`): true when cave culling is off or cell is reached.
 fn reached(key: vec3<i32>) -> bool {
     if (params.flags & REACH) == 0u {
         return true;
@@ -215,11 +210,8 @@ fn reached(key: vec3<i32>) -> bool {
     let dx = key.x - params.reach.x;
     let dz = key.z - params.reach.y;
     let dy = key.y - params.reach.w;
-    if dx < -r || dx > r || dz < -r || dz > r || dy < 0 {
+    if dx < -r || dx > r || dz < -r || dz > r || dy < 0 || dy >= params.reach_height {
         return false;
-    }
-    if dy >= params.reach_height {
-        return (params.flags & SKY) != 0u && key.y >= 0 && key.y <= params.reach_sections;
     }
     let i = u32(((dz + r) * (2 * r + 1) + dx + r) * params.reach_height + dy);
     return ((reached_cells[i >> 5u] >> (i & 31u)) & 1u) != 0u;

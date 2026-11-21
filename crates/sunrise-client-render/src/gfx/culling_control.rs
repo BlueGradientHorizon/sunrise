@@ -1,5 +1,10 @@
 use super::*;
 
+/// Section occlusion graph radius in chunks for `distance` in blocks (`ViewArea.getViewDistance`).
+pub(super) fn occlusion_radius(distance: f32) -> i32 {
+    (distance / 16.0) as i32
+}
+
 impl Renderer {
     /// Whether sections are drawn as one index list per frame (`flat`).
     pub fn flat_draws(&self) -> bool {
@@ -240,7 +245,7 @@ impl Renderer {
     /// a search this starts runs on its worker while the frame is prepared,
     /// and `render` takes it if it has finished.
     pub fn start_occlusion(&mut self, camera: DVec3, distance: f32) {
-        self.occlusion.update(camera, (distance / 16.0) as i32 + 2);
+        self.occlusion.update(camera, occlusion_radius(distance));
     }
     /// Whether the camera's current section graph knows this section is
     /// reachable. `None` means the graph cannot safely answer for this camera
@@ -251,5 +256,99 @@ impl Renderer {
         camera_section: SectionKey,
     ) -> Option<bool> {
         self.occlusion.visible_for_camera(key, camera_section)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+    use std::path::Path;
+
+    const SECTION_WITNESS: &str =
+        include_str!("../../../../tools/witness/26.3/section_visibility/witness.json");
+
+    /// Vanilla 26.3 witnesses: `start_occlusion` uses exact `ViewArea.getViewDistance()` (no `+ 2`).
+    #[test]
+    fn occlusion_radius_matches_vanilla_26_3_view_distance() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tools/witness/26.3/genpvp_menu/settled.json");
+        let settled: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("missing menu witness {}: {e}", path.display())),
+        )
+        .expect("valid settled.json");
+        assert_eq!(settled["meta"]["game_version"].as_str(), Some("26.3"));
+        let effective_rd = settled["meta"]["options"]["effectiveRenderDistance"]
+            .as_i64()
+            .or_else(|| settled["meta"]["options"]["renderDistance"].as_i64())
+            .expect("effectiveRenderDistance") as i32;
+        assert_eq!(occlusion_radius((effective_rd * 16) as f32), effective_rd);
+
+        let witness: Value = serde_json::from_str(SECTION_WITNESS).expect("valid witness JSON");
+        let cases = witness["cases"].as_array().expect("cases");
+        let parse_f64 = |hex: &str| {
+            let s = hex
+                .strip_prefix("0x")
+                .or_else(|| hex.strip_prefix("0X"))
+                .unwrap_or(hex);
+            f64::from_bits(u64::from_str_radix(s, 16).expect("f64 hex"))
+        };
+        let mut checked = 0;
+        for name in [
+            "genpvp_menu_level",
+            "genpvp_menu_rd6_misses_lobby",
+            "genpvp_menu_rd7_reaches_lobby",
+            "vertical_clamp_overworld_rd8_mid",
+        ] {
+            let case = cases
+                .iter()
+                .find(|c| c["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("missing case {name}"));
+            let rd = case["render_distance"].as_i64().expect("rd") as i32;
+            let got_rd = occlusion_radius((rd * 16) as f32);
+            assert_eq!(got_rd, rd, "case {name}: radius must equal view distance");
+
+            let min_y = case["min_y"].as_i64().expect("min_y") as i32;
+            let sections = case["sections"].as_i64().expect("sections") as i32;
+            let min_sec_y = case["min_section_y"].as_i64().expect("min_section_y") as i32;
+            let bits = case["camera_bits"].as_array().expect("camera_bits");
+            let camera = DVec3::new(
+                parse_f64(bits[0].as_str().unwrap()),
+                parse_f64(bits[1].as_str().unwrap()),
+                parse_f64(bits[2].as_str().unwrap()),
+            );
+            let mut expected: Vec<[i32; 3]> = case["reached_sections"]
+                .as_array()
+                .expect("reached_sections")
+                .iter()
+                .map(|s| {
+                    let a = s.as_array().unwrap();
+                    [
+                        a[0].as_i64().unwrap() as i32,
+                        a[1].as_i64().unwrap() as i32,
+                        a[2].as_i64().unwrap() as i32,
+                    ]
+                })
+                .collect();
+            expected.sort_unstable();
+
+            let mut o = occlusion::Occlusion::new(min_y, sections);
+            o.settle(camera, got_rd);
+            let mut actual = Vec::new();
+            for x in -rd - 2..=rd + 2 {
+                for z in -rd - 2..=rd + 2 {
+                    for y in 0..sections {
+                        if o.contains((x, y, z)) {
+                            actual.push([x, y + min_sec_y, z]);
+                        }
+                    }
+                }
+            }
+            actual.sort_unstable();
+            assert_eq!(actual, expected, "case {name}");
+            checked += 1;
+        }
+        assert_eq!(checked, 4);
     }
 }
