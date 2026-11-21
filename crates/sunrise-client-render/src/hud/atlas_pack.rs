@@ -231,9 +231,25 @@ impl HudAtlas {
             .filter(|&size| size != (w, h));
             let flags = mcmeta.as_deref().and_then(TextureFlags::from_mcmeta);
             let animated = frames && animation.is_some();
+            // Mod-registered atlases (`ns:gui/atlases/...`) are bounded only by the GPU atlas
+            // texture limit (`MAX_ATLAS_SIZE`, leaving room for `GLYPH_ROWS`), not the GUI widget
+            // size filter. Skip an oversized sprite with a diagnostic rather than failing other
+            // sprites.
+            let registered_atlas = name
+                .split_once(':')
+                .map_or(name.as_str(), |(_, p)| p)
+                .starts_with("gui/atlases/");
+            if registered_atlas
+                && (w >= MAX_ATLAS_SIZE || h.saturating_add(GLYPH_ROWS + 1) > MAX_ATLAS_SIZE)
+            {
+                log::warn!(
+                    "skipped registered atlas sprite {path} ({w}x{h}): exceeds GPU atlas limit {MAX_ATLAS_SIZE}x{MAX_ATLAS_SIZE}"
+                );
+                return None;
+            }
             // Vanilla particle atlases accept sprites of any size.
             let particle = name.starts_with("particle/") || name.contains(":particle/");
-            let (gw, gh) = if particle {
+            let (gw, gh) = if particle || registered_atlas {
                 (0, 0)
             } else {
                 gui_size.unwrap_or((w, h))

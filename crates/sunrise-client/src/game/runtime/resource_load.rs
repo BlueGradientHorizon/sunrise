@@ -168,6 +168,7 @@ pub(super) fn load_core(
     resources: &sunrise_assets::resource_source::ResourceRoot,
     additional_data: &[Arc<sunrise_client::datapack::DataPack>],
     conditions: &sunrise_world::conditions::LoadConditions,
+    emissive_sprites: &[mod_api::Answered<mod_api::EmissiveSpriteRegistration>],
     load_role: mods::LoadRole,
     parallel: bool,
     progress: &Progress,
@@ -222,9 +223,9 @@ pub(super) fn load_core(
                     if headless {
                         assets.reload_for_server(resources)
                     } else if let Some(parsed) = parsed_models {
-                        assets.reload_with_models(resources, parsed)
+                        assets.reload_with_models_and_emissive(resources, parsed, emissive_sprites)
                     } else {
-                        assets.reload(resources)
+                        assets.reload_with_emissive(resources, emissive_sprites)
                     }
                 })
                 .map_err(|e| e.to_string())?;
@@ -596,10 +597,13 @@ pub(super) fn load_resources_for_mods(
     let role = load_role.execution;
     let mut root = resolved.prepared().to_path_buf();
     let headless = !role.is_client();
-    let texture_atlases = if headless {
-        Vec::new()
+    let (texture_atlases, emissive_sprites) = if headless {
+        (Vec::new(), Vec::new())
     } else {
-        client_reload::collect_texture_atlases()
+        (
+            client_reload::collect_texture_atlases(),
+            client_reload::collect_emissive_sprites(),
+        )
     };
     resolved = client_reload::stage_texture_atlases(resolved, &texture_atlases);
     let threads = settings.sunrise.worker_threads();
@@ -660,6 +664,7 @@ pub(super) fn load_resources_for_mods(
                         &resolved,
                         &additional_data,
                         &conditions,
+                        &emissive_sprites,
                         load_role,
                         parallel,
                         progress,

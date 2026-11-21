@@ -1,18 +1,14 @@
-//! Stage the sprites of mod-registered texture atlases (`register_texture_atlases`) into a
-//! client resource generation, as GUI textures under each sprite's `sprite_name`.
+//! Stage the sprites of mod-registered texture atlases (`register_texture_atlases`) and collect
+//! mod-registered emissive sprite pairs (`emissive`) for a client resource generation.
 use super::Game;
 use mod_api::__private::game::*;
-use mod_api::{Identifier, TextureAtlasRegistration};
+use mod_api::{Answered, EmissiveSpriteRegistration, Identifier, TextureAtlasRegistration};
 use std::collections::BTreeMap;
 use sunrise_assets::resource_source::{Resource, ResourceRoot, ResourceSource};
 use sunrise_client::atlas_sources::{self, SpriteOrigin};
+use sunrise_client::hud::{GLYPH_ROWS, MAX_ATLAS_SIZE};
 
-/// Atlases one load accepts, across all mods.
-const MAX_ATLASES: usize = 32;
-/// Sprites of those atlases one load stages, across all mods.
-const MAX_SPRITES: usize = 4096;
-
-pub(in crate::game) fn collect_texture_atlases() -> Vec<TextureAtlasRegistration> {
+pub(in crate::game) fn collect_texture_atlases() -> Vec<Answered<TextureAtlasRegistration>> {
     let mut atlases = Vec::new();
     if mod_api::__private::listened(mod_api::HookId::RegisterTextureAtlases) {
         let _phase =
@@ -22,12 +18,22 @@ pub(in crate::game) fn collect_texture_atlases() -> Vec<TextureAtlasRegistration
     atlases
 }
 
+pub(in crate::game) fn collect_emissive_sprites() -> Vec<Answered<EmissiveSpriteRegistration>> {
+    let mut layers = Vec::new();
+    if mod_api::__private::listened(mod_api::HookId::Emissive) {
+        let _phase =
+            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+        Game::native_emissive(&mod_api::RegistrationContext::new(), &mut layers);
+    }
+    layers
+}
+
 /// The root with every registered atlas's sprites added as GUI textures: a file sprite as the
 /// texture itself (with its `.mcmeta`), a generated one (`unstitch`, `paletted_permutations`)
 /// encoded once. Passive data stays as it was.
 pub(in crate::game) fn stage_texture_atlases(
     root: ResourceRoot,
-    atlases: &[TextureAtlasRegistration],
+    atlases: &[Answered<TextureAtlasRegistration>],
 ) -> ResourceRoot {
     stage_with(
         root,
@@ -39,7 +45,7 @@ pub(in crate::game) fn stage_texture_atlases(
 /// [`stage_texture_atlases`] asking `mods` for the sources' answers.
 fn stage_with(
     root: ResourceRoot,
-    atlases: &[TextureAtlasRegistration],
+    atlases: &[Answered<TextureAtlasRegistration>],
     mods: &dyn atlas_sources::ModSources,
 ) -> ResourceRoot {
     if atlases.is_empty() {
@@ -49,77 +55,108 @@ fn stage_with(
     // The game's atlases are listed (and the mods' sources asked for them) over the stack the packs
     // gave, before the staged textures extend it: no reader or directory source sees one.
     atlas_sources::shared(source, mods);
-    // The atlases admitted, then each listed from its own definition and asked of the mods under
-    // its own id, once.
-    let mut seen = Vec::new();
+    // Admit atlases following NeoForge `RegisterTextureAtlasesEvent.register` (`putIfAbsent`
+    // against `AtlasManager.KNOWN_ATLASES` and earlier registrations): first registration stands,
+    // with per-atlas diagnostics naming the mod and earlier owner.
+    let mut seen: BTreeMap<Identifier, (&'static str, Identifier)> = BTreeMap::new();
     let mut admitted = Vec::new();
-    for registration in atlases {
-        match admit(registration, &seen) {
-            Ok(()) => {
-                seen.push(registration.atlas.clone());
-                admitted.push(registration);
-            }
-            Err(error) => {
-                log::warn!(
-                    "Sunrise: texture atlas {} skipped: {error}",
-                    registration.atlas
-                );
-            }
+    for entry in atlases {
+        let registration = &entry.answer;
+        if atlas_sources::is_builtin_atlas(&registration.atlas) {
+            log::error!(
+                "Sunrise: mod '{}' cannot register texture atlas '{}': collides with built-in engine atlas (AtlasManager.KNOWN_ATLASES)",
+                entry.mod_id,
+                registration.atlas
+            );
+            continue;
         }
+        if let Some((prev_mod, prev_def)) = seen.get(&registration.atlas) {
+            log::error!(
+                "Sunrise: mod '{}' duplicate texture atlas '{}' (definition '{}') ignored; already registered by mod '{}' (definition '{}')",
+                entry.mod_id,
+                registration.atlas,
+                registration.definition,
+                prev_mod,
+                prev_def
+            );
+            continue;
+        }
+        seen.insert(
+            registration.atlas.clone(),
+            (entry.mod_id, registration.definition.clone()),
+        );
+        admitted.push(entry);
     }
     let mut listed = atlas_sources::registered(
         source,
         mods,
         &admitted
             .iter()
-            .map(|registration| (&registration.atlas, &registration.definition))
+            .map(|entry| (&entry.answer.atlas, &entry.answer.definition))
             .collect::<Vec<_>>(),
     );
     let mut files = BTreeMap::new();
-    let mut sprites = 0;
-    for registration in admitted {
+    let mut staged_owners: BTreeMap<String, (Identifier, &'static str)> = BTreeMap::new();
+    for entry in admitted {
+        let registration = &entry.answer;
         let atlas = &registration.atlas;
         let Some(listed) = listed.remove(atlas) else {
             log::warn!(
-                "Sunrise: texture atlas {atlas} skipped: no usable definition {}",
+                "Sunrise: mod '{}' texture atlas '{}' skipped: no usable definition '{}'",
+                entry.mod_id,
+                atlas,
                 definition_file(&registration.definition)
             );
             continue;
         };
         for (id, origin) in &listed.sprites {
-            if sprites == MAX_SPRITES {
-                log::warn!("Sunrise: texture atlas {atlas}: sprites past {MAX_SPRITES} skipped");
-                break;
-            }
             let Ok(sprite) = Identifier::parse(id) else {
+                log::warn!(
+                    "Sunrise: mod '{}' texture atlas '{}': invalid sprite identifier '{}'; skipping",
+                    entry.mod_id,
+                    atlas,
+                    id
+                );
                 continue;
             };
             let name = registration.sprite_name(&sprite);
             let path = atlas_sources::texture_resource(&name.to_string(), "textures");
-            if source.contains(&path) || files.contains_key(&path) {
+            if let Some((prev_atlas, prev_mod)) = staged_owners.get(&path) {
+                log::warn!(
+                    "Sunrise: mod '{}' texture atlas '{}' sprite '{}' collides at '{}' with atlas '{}' from mod '{}'; keeping first",
+                    entry.mod_id,
+                    atlas,
+                    id,
+                    path,
+                    prev_atlas,
+                    prev_mod
+                );
                 continue;
             }
+            if source.contains(&path) {
+                // Match vanilla `TextureManager.register`: a registered atlas replaces an
+                // existing resource at that target location and logs the replacement.
+                log::warn!(
+                    "Sunrise: mod '{}' texture atlas '{}' sprite '{}' replaces existing pack texture at '{}'",
+                    entry.mod_id,
+                    atlas,
+                    id,
+                    path
+                );
+            }
             if stage_sprite(source, origin, &path, &mut files) {
-                sprites += 1;
+                staged_owners.insert(path, (atlas.clone(), entry.mod_id));
             } else {
-                log::warn!("Sunrise: texture atlas {atlas}: sprite {id} could not be loaded");
+                log::warn!(
+                    "Sunrise: mod '{}' texture atlas '{}': sprite '{}' could not be loaded",
+                    entry.mod_id,
+                    atlas,
+                    id
+                );
             }
         }
     }
     root.with_runtime_textures(files)
-}
-
-fn admit(registration: &TextureAtlasRegistration, seen: &[Identifier]) -> Result<(), &'static str> {
-    if matches!(registration.atlas.namespace(), "minecraft" | "sunrise") {
-        return Err("the game's own atlases can't be registered");
-    }
-    if seen.contains(&registration.atlas) {
-        return Err("the atlas is already registered");
-    }
-    if seen.len() == MAX_ATLASES {
-        return Err("too many atlases");
-    }
-    Ok(())
 }
 
 /// The definition `assets/<namespace>/atlases/<path>.json`. The root already holds the file's
@@ -127,6 +164,13 @@ fn admit(registration: &TextureAtlasRegistration, seen: &[Identifier]) -> Result
 /// the pack filters, as `SpriteSourceList.load` does), so this one read sees all of them.
 fn definition_file(id: &Identifier) -> String {
     format!("assets/{}/atlases/{}.json", id.namespace(), id.path())
+}
+
+fn fits_gpu_atlas(width: u32, height: u32) -> bool {
+    width > 0
+        && height > 0
+        && width < MAX_ATLAS_SIZE
+        && height.saturating_add(GLYPH_ROWS + 1) <= MAX_ATLAS_SIZE
 }
 
 fn stage_sprite(
@@ -154,7 +198,21 @@ fn stage_sprite(
         let file = atlas_sources::texture_resource(texture, "textures");
         sunrise_client::hud::decode_bytes(&source.read(&file).ok()?).ok()
     };
-    let Some(png) = atlas_sources::generate(origin, &load).and_then(encode) else {
+    let Some(image) = atlas_sources::generate(origin, &load) else {
+        return false;
+    };
+    if !fits_gpu_atlas(image.0, image.1) {
+        log::warn!(
+            "Sunrise: generated atlas sprite '{}' ({}x{}) exceeds GPU atlas limit {}x{}; skipping",
+            path,
+            image.0,
+            image.1,
+            MAX_ATLAS_SIZE,
+            MAX_ATLAS_SIZE
+        );
+        return false;
+    }
+    let Some(png) = encode(image) else {
         return false;
     };
     files.insert(path.to_owned(), Resource::bytes(png));
@@ -194,6 +252,17 @@ mod tests {
         TextureAtlasRegistration {
             atlas: Identifier::parse(atlas).unwrap(),
             definition: Identifier::parse(definition).unwrap(),
+        }
+    }
+
+    fn answered(
+        mod_id: &'static str,
+        atlas: &str,
+        definition: &str,
+    ) -> Answered<TextureAtlasRegistration> {
+        Answered {
+            mod_id,
+            answer: registration(atlas, definition),
         }
     }
 
@@ -238,10 +307,10 @@ mod tests {
                 ("assets/minecraft/atlases/blocks.json", ICONS.into()),
             ]),
             &[
-                registration("icons_mod:icons", "icons_mod:icons"),
-                registration("icons_mod:icons", "icons_mod:icons"),
-                registration("minecraft:blocks", "minecraft:blocks"),
-                registration("icons_mod:missing", "icons_mod:missing"),
+                answered("icons_mod", "icons_mod:icons", "icons_mod:icons"),
+                answered("dup_mod", "icons_mod:icons", "icons_mod:icons"),
+                answered("bad_mod", "minecraft:blocks", "minecraft:blocks"),
+                answered("icons_mod", "icons_mod:missing", "icons_mod:missing"),
             ],
         );
         let source = staged.source();
@@ -275,13 +344,133 @@ mod tests {
         assert!(
             !source
                 .contains("assets/minecraft/textures/gui/atlases/blocks/icons_mod/icons/heart.png"),
-            "the game's atlases are refused"
+            "built-in engine atlases are refused"
+        );
+    }
+
+    #[test]
+    fn minecraft_and_sunrise_non_builtin_atlases_are_accepted_while_builtin_atlases_are_refused() {
+        let heart = fixture_png(2, 2, 123);
+        let def = r#"{"sources":[{"type":"single","resource":"icons_mod:icons/heart","sprite":"icons_mod:heart"}]}"#;
+        let staged = stage_texture_atlases(
+            root(&[
+                ("assets/minecraft/atlases/custom_icons.json", def.into()),
+                ("assets/sunrise/atlases/custom_icons.json", def.into()),
+                ("assets/minecraft/atlases/blocks.json", def.into()),
+                ("assets/minecraft/atlases/gui.json", def.into()),
+                ("assets/minecraft/atlases/armor_trims.json", def.into()),
+                ("assets/icons_mod/textures/icons/heart.png", heart.clone()),
+            ]),
+            &[
+                answered("mod_a", "minecraft:custom_icons", "minecraft:custom_icons"),
+                answered("mod_b", "sunrise:custom_icons", "sunrise:custom_icons"),
+                answered("mod_c", "minecraft:blocks", "minecraft:blocks"),
+                answered("mod_d", "minecraft:gui", "minecraft:gui"),
+                answered("mod_e", "minecraft:armor_trims", "minecraft:armor_trims"),
+            ],
+        );
+        let source = staged.source();
+        assert_eq!(
+            source
+                .read("assets/minecraft/textures/gui/atlases/custom_icons/icons_mod/heart.png")
+                .unwrap(),
+            heart
+        );
+        assert_eq!(
+            source
+                .read("assets/sunrise/textures/gui/atlases/custom_icons/icons_mod/heart.png")
+                .unwrap(),
+            heart
+        );
+        assert!(
+            !source.contains("assets/minecraft/textures/gui/atlases/blocks/icons_mod/heart.png")
+        );
+        assert!(!source.contains("assets/minecraft/textures/gui/atlases/gui/icons_mod/heart.png"));
+        assert!(
+            !source
+                .contains("assets/minecraft/textures/gui/atlases/armor_trims/icons_mod/heart.png")
+        );
+    }
+
+    #[test]
+    fn more_than_32_atlases_and_more_than_4096_sprites_are_staged_without_private_caps() {
+        let dot = fixture_png(1, 1, 55);
+        let single_def =
+            r#"{"sources":[{"type":"single","resource":"bulk:dot","sprite":"bulk:dot"}]}"#;
+        let many_sources: String = (0..4150)
+            .map(|i| format!(r#"{{"type":"single","resource":"bulk:dot","sprite":"bulk:s{i}"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        let big_def = format!(r#"{{"sources":[{many_sources}]}}"#);
+        let staged_many_atlases = {
+            let registrations: Vec<_> = (0..40)
+                .map(|i| answered("bulk", &format!("bulk:atlas_{i}"), "bulk:one"))
+                .collect();
+            stage_texture_atlases(
+                root(&[
+                    ("assets/bulk/atlases/one.json", single_def.into()),
+                    ("assets/bulk/textures/dot.png", dot.clone()),
+                ]),
+                &registrations,
+            )
+        };
+        let atlas_count = staged_many_atlases
+            .source()
+            .list("assets/bulk/textures/gui/atlases/")
+            .len();
+        assert_eq!(atlas_count, 40);
+
+        let staged_many_sprites = stage_texture_atlases(
+            root(&[
+                ("assets/bulk/atlases/big.json", big_def.into_bytes()),
+                ("assets/bulk/textures/dot.png", dot),
+            ]),
+            &[answered("bulk", "bulk:big", "bulk:big")],
+        );
+        let sprite_count = staged_many_sprites
+            .source()
+            .list("assets/bulk/textures/gui/atlases/big/")
+            .len();
+        assert_eq!(sprite_count, 4150);
+    }
+
+    #[test]
+    fn registered_atlas_sprite_replaces_existing_pack_file_while_duplicate_atlas_keeps_first() {
+        let old_pack = fixture_png(2, 2, 10);
+        let first_png = fixture_png(2, 2, 111);
+        let second_png = fixture_png(2, 2, 222);
+        let def_first =
+            r#"{"sources":[{"type":"single","resource":"mod_a:first","sprite":"mod_a:icon"}]}"#;
+        let def_second =
+            r#"{"sources":[{"type":"single","resource":"mod_a:second","sprite":"mod_a:icon"}]}"#;
+        let staged = stage_texture_atlases(
+            root(&[
+                ("assets/mod_a/atlases/first.json", def_first.into()),
+                ("assets/mod_a/atlases/second.json", def_second.into()),
+                ("assets/mod_a/textures/first.png", first_png.clone()),
+                ("assets/mod_a/textures/second.png", second_png),
+                (
+                    "assets/mod_a/textures/gui/atlases/icons/mod_a/icon.png",
+                    old_pack,
+                ),
+            ]),
+            &[
+                answered("mod_a", "mod_a:icons", "mod_a:first"),
+                answered("mod_b", "mod_a:icons", "mod_a:second"),
+            ],
+        );
+        assert_eq!(
+            staged
+                .source()
+                .read("assets/mod_a/textures/gui/atlases/icons/mod_a/icon.png")
+                .unwrap(),
+            first_png
         );
     }
 
     #[test]
     fn a_reload_lists_the_sprites_from_the_definition_as_the_packs_now_give_it() {
-        let registrations = [registration("icons_mod:icons", "icons_mod:icons")];
+        let registrations = [answered("icons_mod", "icons_mod:icons", "icons_mod:icons")];
         let first = stage_texture_atlases(
             root(&[
                 ("assets/icons_mod/atlases/icons.json", ICONS.into()),
@@ -380,7 +569,10 @@ mod tests {
         let staged = |selected: &[Pack]| {
             let source = packs::resources(layer(&[]), selected).unwrap();
             let root = ResourceRoot::new("prepared".into(), "cache".into(), source);
-            stage_texture_atlases(root, &[registration("icons_mod:icons", "icons_mod:icons")])
+            stage_texture_atlases(
+                root,
+                &[answered("icons_mod", "icons_mod:icons", "icons_mod:icons")],
+            )
         };
         let sprite = |name: &str| {
             format!("assets/icons_mod/textures/gui/atlases/icons/icons_mod/{name}.png")
@@ -551,8 +743,8 @@ mod tests {
         let staged = stage_with(
             staged_root,
             &[
-                registration("icons_mod:first", "minecraft:pack_icons"),
-                registration("icons_mod:second", "minecraft:pack_icons"),
+                answered("icons_mod", "icons_mod:first", "minecraft:pack_icons"),
+                answered("icons_mod", "icons_mod:second", "minecraft:pack_icons"),
             ],
             &mods,
         );
@@ -662,7 +854,7 @@ mod tests {
                         fixture_png(2, 2, 2),
                     ),
                 ]),
-                &[registration("icons_mod:icons", "icons_mod:icons")],
+                &[answered("icons_mod", "icons_mod:icons", "icons_mod:icons")],
             )
         };
         let gui = "assets/icons_mod/textures/gui/atlases/icons/icons_mod";
@@ -695,6 +887,56 @@ mod tests {
             let empty = stage("checker_mod:empty", 40);
             assert!(!empty.source().contains(&checker));
             assert!(empty.source().contains(&star) && empty.source().contains(&heart));
+        });
+    }
+
+    struct EmissiveMod(&'static str, &'static str);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for EmissiveMod {
+        fn emissive(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::EmissiveEvent<'_>,
+        ) {
+            event.register(EmissiveSpriteRegistration::new(
+                Identifier::parse(self.0).unwrap(),
+                Identifier::parse(self.1).unwrap(),
+            ));
+        }
+    }
+
+    #[test]
+    fn collect_emissive_sprites_gathers_typed_registrations_with_mod_attribution() {
+        let mods: mod_api::Mods = vec![
+            mod_api::ModEntry::new(
+                "alpha",
+                Box::new(EmissiveMod("minecraft:block/stone", "alpha:glow/stone")),
+            ),
+            mod_api::ModEntry::new(
+                "beta",
+                Box::new(EmissiveMod("beta:block/lamp", "beta:block/lamp_e")),
+            ),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            let collected = collect_emissive_sprites();
+            assert_eq!(collected.len(), 2);
+            assert_eq!(collected[0].mod_id, "alpha");
+            assert_eq!(
+                collected[0].answer,
+                EmissiveSpriteRegistration::new(
+                    Identifier::parse("minecraft:block/stone").unwrap(),
+                    Identifier::parse("alpha:glow/stone").unwrap(),
+                )
+            );
+            assert_eq!(collected[1].mod_id, "beta");
+            assert_eq!(
+                collected[1].answer,
+                EmissiveSpriteRegistration::new(
+                    Identifier::parse("beta:block/lamp").unwrap(),
+                    Identifier::parse("beta:block/lamp_e").unwrap(),
+                )
+            );
         });
     }
 }

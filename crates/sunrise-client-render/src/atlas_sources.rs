@@ -666,6 +666,30 @@ pub fn registered(
         .collect()
 }
 
+/// Built-in engine atlas paths under `minecraft:` (`AtlasManager.KNOWN_ATLASES` in vanilla 26.3).
+pub const KNOWN_ATLASES: &[&str] = &[
+    "armor_trims",
+    "banner_patterns",
+    "beds",
+    "blocks",
+    "items",
+    "chests",
+    "decorated_pot",
+    "gui",
+    "map_decorations",
+    "paintings",
+    "particles",
+    "shield_patterns",
+    "shulker_boxes",
+    "signs",
+    "celestials",
+];
+
+/// Whether `id` names one of vanilla's built-in engine atlases (`AtlasManager.KNOWN_ATLASES`).
+pub fn is_builtin_atlas(id: &Identifier) -> bool {
+    id.namespace() == "minecraft" && KNOWN_ATLASES.contains(&id.path())
+}
+
 /// Sprite listings of the engine atlases (`AtlasManager.KNOWN_ATLASES`). A definition on its own
 /// does not register an atlas. Mod-registered atlases are listed under their own IDs by
 /// [`registered`], even when several atlas IDs use the same definition.
@@ -677,30 +701,18 @@ impl Listing {
     /// The listing of `source`, asking `mods` for each entry of a registered type.
     pub fn build(source: &crate::resource_source::ResourceSource, mods: &dyn ModSources) -> Self {
         let textures = sorted_textures(source);
-        let atlases = [
-            "banner_patterns",
-            "blocks",
-            "items",
-            "chests",
-            "decorated_pot",
-            "gui",
-            "map_decorations",
-            "paintings",
-            "particles",
-            "shield_patterns",
-            "shulker_boxes",
-            "celestials",
-        ]
-        .into_iter()
-        .filter_map(|atlas| {
-            let id = Identifier::parse(atlas).expect("known engine atlas id");
-            let sources = definition(source, mods, &id)?;
-            Some((
-                id.to_string(),
-                list_atlas(source, &textures, mods, &id, &sources),
-            ))
-        })
-        .collect();
+        let atlases = KNOWN_ATLASES
+            .iter()
+            .copied()
+            .filter_map(|atlas| {
+                let id = Identifier::parse(atlas).expect("known engine atlas id");
+                let sources = definition(source, mods, &id)?;
+                Some((
+                    id.to_string(),
+                    list_atlas(source, &textures, mods, &id, &sources),
+                ))
+            })
+            .collect();
         Self { atlases }
     }
     /// The sprites `atlas` lists; none for an atlas without a definition.

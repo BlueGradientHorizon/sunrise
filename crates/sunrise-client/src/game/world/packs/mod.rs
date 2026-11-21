@@ -402,15 +402,17 @@ impl Game<'_> {
         // registering mod for crash attribution.
         let client_listeners = self.register_client_reload_listeners();
         let texture_atlases = super::client_reload::collect_texture_atlases();
+        let emissive_sprites = super::client_reload::collect_emissive_sprites();
         super::mods::register_fluid_models(self.options.execution_role);
         let stage = move |progress: &crate::game::Progress| {
-            stage_pack(
+            stage_pack_with_emissive(
                 &vanilla,
                 &selected,
                 &server,
                 &mod_sources,
                 client_listeners,
                 &texture_atlases,
+                &emissive_sprites,
                 &assets,
                 &res,
                 &context,
@@ -686,7 +688,39 @@ pub(super) fn stage_pack(
     server: &[Pack],
     mod_sources: &super::mods::ModsState,
     client_listeners: mod_api::ClientListenerRegistry,
-    texture_atlases: &[mod_api::TextureAtlasRegistration],
+    texture_atlases: &[mod_api::Answered<mod_api::TextureAtlasRegistration>],
+    assets: &Arc<Assets>,
+    res: &Resources,
+    context: &WorkerContext,
+    force_unicode: bool,
+    japanese: bool,
+    progress: &super::Progress,
+) -> sunrise_client::Result<StagedPack> {
+    stage_pack_with_emissive(
+        vanilla_root,
+        selected,
+        server,
+        mod_sources,
+        client_listeners,
+        texture_atlases,
+        &[],
+        assets,
+        res,
+        context,
+        force_unicode,
+        japanese,
+        progress,
+    )
+}
+
+pub(super) fn stage_pack_with_emissive(
+    vanilla_root: &Path,
+    selected: &[String],
+    server: &[Pack],
+    mod_sources: &super::mods::ModsState,
+    client_listeners: mod_api::ClientListenerRegistry,
+    texture_atlases: &[mod_api::Answered<mod_api::TextureAtlasRegistration>],
+    emissive_sprites: &[mod_api::Answered<mod_api::EmissiveSpriteRegistration>],
     assets: &Arc<Assets>,
     res: &Resources,
     context: &WorkerContext,
@@ -731,7 +765,7 @@ pub(super) fn stage_pack(
             )
         });
         (
-            assets.reload(&resource_root),
+            assets.reload_with_emissive(&resource_root, emissive_sprites),
             atlas.join(),
             panorama.join(),
             small
