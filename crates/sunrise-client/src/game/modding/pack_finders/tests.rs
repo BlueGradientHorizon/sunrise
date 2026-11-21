@@ -199,6 +199,46 @@ fn restricted_pack_discovery_refuses_game_text_reads() {
 }
 
 #[test]
+fn a_panicking_pack_finder_does_not_reserve_its_pack_id() {
+    struct FailingFinder(Finder);
+    #[mod_api::__subscriptions]
+    impl Hooks for FailingFinder {
+        fn add_pack_finders(&self, host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
+            self.0.add_pack_finders(host, event);
+            panic!("finder failed after offering its pack");
+        }
+    }
+    let fixture = Fixture::new(false);
+    let sources = fixture.sources();
+    let finder = |required| Finder {
+        feature: false,
+        required,
+        position: PackPosition::Bottom,
+        hidden: false,
+    };
+    with_mods(
+        vec![
+            ModEntry::new("failing", Box::new(FailingFinder(finder(true)))),
+            ModEntry::new("healthy", Box::new(finder(false))),
+        ]
+        .into(),
+        || {
+            let packs = discover(PackType::ClientResources, &sources);
+            assert_eq!(packs.len(), 1);
+            assert_eq!(packs[0].id, fixture.asset_id());
+            assert!(!packs[0].selection.as_ref().unwrap().required);
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "failing",
+                    hook: "add_pack_finders",
+                }]
+            );
+        },
+    );
+}
+
+#[test]
 fn hidden_packs_reach_the_screens_marked_hidden_and_still_apply() {
     let fixture = Fixture::new(false);
     let sources = fixture.sources();

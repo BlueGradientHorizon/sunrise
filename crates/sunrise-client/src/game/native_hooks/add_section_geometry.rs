@@ -9,6 +9,6 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         renderers: &mut mod_api::SectionGeometryRegistry,
     ) {
-        Self::fire_add_section_geometry(context, renderers);
+        Self::fire_add_section_geometry(context, |listen| renderers.register_listener(listen));
     }
 }

@@ -122,12 +122,13 @@ impl From<crate::TextFormError> for PackFinderError {
 
 /// The typed builder handed to `add_pack_finders`, rebuilt for each discovery.
 /// Registration performs no resource reload and does not select optional packs.
+/// A panicking or phase-refused callback contributes none of its packs.
 pub trait PackFinders {
     /// The kind of repository currently being discovered.
     fn pack_type(&self) -> PackType;
     /// Add a bundled pack to this repository. A registration for the other pack
     /// type is ignored, allowing one hook implementation to describe both kinds.
     /// Refuses an invalid title with [`PackFinderError::Text`], including components
-    /// deeper than 512 nodes; a refusal leaves the repository unchanged.
+    /// deeper than 512 nodes; a refusal is logged and leaves the repository unchanged.
     fn add_pack_finders(&mut self, pack: PackRegistration) -> Result<(), PackFinderError>;
 }

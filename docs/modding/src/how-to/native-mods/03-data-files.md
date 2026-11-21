@@ -2,6 +2,9 @@
 
 A mod has one top-level `data/` tree and one `assets/` tree, with the same namespace and
 content checks as a content mod. They are normal pack resources, not a second native-only data folder.
+`Hooks::add_pack_finders` can also offer an optional bundled pack to a pack repository.
+`event.packs.add_pack_finders` returns and logs rejected entries; a pack does not enter the repository
+if its registration callback panics or incurs a phase refusal.
 [Server data reload listeners](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/world/server_reload.rs) register through
 `Hooks::add_server_reload_listeners`. During registration, use `event.listeners.get_registry().iter()`
 to read names in registration order and `event.listeners.get_graph().iter()` to read dependency pairs

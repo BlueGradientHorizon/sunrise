@@ -6,6 +6,6 @@ impl Game<'_> {
         &mut self,
         packs: &mut crate::game::pack_finders::Registry,
     ) {
-        self.fire_add_pack_finders(packs);
+        self.fire_add_pack_finders(|listen| packs.register_listener(listen));
     }
 }

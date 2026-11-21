@@ -204,8 +204,8 @@ Part methods run elsewhere, and each one's own documentation says where:
   worker threads, several chunks at once. Feature placement also runs on the server thread when the game places a
   feature there: a sapling growing, a command, `LevelRef::place_feature`. A query asked once at start, such as
   `BiomeSource::possible_biomes`, is not a worker call. They get a `WorldgenHost` or no host at all, never a `Host`.
-- **Meshing workers.** `add_section_geometry` itself runs once at client start, to register renderers; each
-  renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
+- **Meshing workers.** `add_section_geometry` itself runs once at client start, to register renderers. A panic or
+  phase refusal in registration discards only that callback's renderers. Each renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
   block tint source is asked there too, and also outside meshing, for example for terrain particles and blocks a
   piston moves. Both get no host.
 - **Chunk workers.** `chunk_data_load` and `chunk_data_save` run where a chunk's record is decoded or encoded, with a

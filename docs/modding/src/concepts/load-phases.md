@@ -7,6 +7,8 @@ the mod registers, and no world until the World phase.
 enters Reloading and returns to the phase it came from.](../images/load-phases.svg)
 
 Registration, config loading and reload-listener registration all use the installed dependency order.
+A failed `extend_poi_types` callback publishes none of its pending block-state predicates;
+other mods still extend the existing types.
 The resolver keeps bundle-order ties, checks present optional dependencies and refuses cycles. Content-only
 packages stay after code in the loaded-mod inventory; listener-specific edges use `ReloadOrder`.
 
