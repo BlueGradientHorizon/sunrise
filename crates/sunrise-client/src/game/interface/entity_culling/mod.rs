@@ -7,9 +7,9 @@ use super::{
 };
 use sunrise_client::graphics::EntityCullingMode;
 use sunrise_client::voxel_occlusion::Culler as OcclusionCuller;
+pub use sunrise_client_gameplay::entity_occlusion::{EntityCullDecision, at};
 pub(super) use sunrise_client_gameplay::entity_occlusion::{
-    EntityCullDecision, EntityOcclusion, at, cull_box, default_range, entity_view_scale,
-    orb_in_view,
+    EntityOcclusion, cull_box, default_range, entity_view_scale, orb_in_view,
 };
 use sunrise_client_gameplay::occlusion_culling::QuerySource;
 use sunrise_core::geometry::{Aabb, Vec3};

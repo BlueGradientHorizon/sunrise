@@ -15,5 +15,7 @@ The flag follows the live entity across dimensions but is never saved. The sette
 Use `EntityRef::hurt` on the server with the fully qualified id of a registered damage type, vanilla
 or modded. Hurt hooks see that exact id. The direct and causing entities are separate from the type:
 passing a player as the cause of `minecraft:explosion` does not turn it into `minecraft:player_explosion`.
+A return value of `true` means the hurt was accepted, not necessarily that the entity lost health.
+For example, a heart-bound Creaking can react to a hit without losing health.
 
 <!-- section-pages -->

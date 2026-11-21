@@ -2,7 +2,8 @@
 
 use super::LanHost;
 use std::time::Instant;
-pub(super) use sunrise_gameplay::lan::event_timings::*;
+use sunrise_gameplay::lan::event_timings::{Burst, EventKind};
+pub use sunrise_gameplay::lan::event_timings::{EventTimings, UseDetail, event_kind};
 
 /// Notes how long the event that started at `started` took (`spans::note`), with what it
 /// was about when `Game::event_detail` said.

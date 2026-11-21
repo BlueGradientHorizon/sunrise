@@ -1229,6 +1229,7 @@ pub fn main() -> sunrise_client::Result<()> {
                     others: $snapshot,
                     live_mobs: None,
                     dragon: None,
+                    armor_stands: &[],
                     leash_boats: &[],
                     who_lookup: None,
                     others_grid: $grid,

@@ -5,7 +5,8 @@
 use super::Game;
 use sunrise_core::bounding_box::BoundingBox;
 
-pub(super) use sunrise_gameplay::test_entities::{Aabb, aabb_of, inflate, intersects, standing};
+pub(super) use sunrise_gameplay::test_entities::{Aabb, intersects, standing};
+pub use sunrise_gameplay::test_entities::{aabb_of, inflate};
 
 impl Game<'_> {
     /// `level.getEntitiesOfClass(Entity.class, bounds, mob -> !(mob instanceof

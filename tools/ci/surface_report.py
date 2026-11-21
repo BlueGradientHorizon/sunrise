@@ -4,9 +4,10 @@ Exports the surface of the merge base and of the checked-out tree with the head'
 writes the classified report to the job summary. The base comes from the event: on `pull_request` the checkout is
 GitHub's merge commit, whose first parent is the base; on a dispatch with `pr`, GitHub's compare API gives the merge
 base of that pull request's head and its base branch. Only that one commit is fetched (`--depth 1`, in CI's shallow
-checkout; a full clone is never fetched shallow), and only its `crates/`, `tools/layering` and Cargo manifests are
-unpacked. The exporter uses the manifests to identify workspace library names. The engine catalogs are read from
-source. CI compares published loops, not listed internals.
+checkout; a full clone is never fetched shallow), and `crates/`, `tools/layering`, Cargo manifests, and workspace
+members outside `crates/` are unpacked. This includes non-crates library source such as `docs/modding/examples/`.
+The exporter uses the manifests to identify workspace library names. The engine catalogs are read from source. CI
+compares published loops, not listed internals.
 To audit internals too, use --with-internals; --trees BASE HEAD accepts local source trees, which it only reads. With --build-base-tool, a BASE the head's tool cannot read is exported by BASE's own `sunrise-stage`,
 built from that tree: it compiles and runs BASE's code, build scripts included, so pass it only for a whole checkout
 you trust.
@@ -104,8 +105,18 @@ def fetch_commit(sha: str, depth: int, git_text=git) -> None:
         git_text("fetch", "-q", "--no-tags", "origin", sha)
 
 
-def unpack(sha: str, into: Path, paths=("crates", "tools/layering", ":(glob)**/Cargo.toml")) -> None:
+def archive_paths(sha: str) -> tuple[str, ...]:
+    """The source needed to export a surface at `sha`, including libraries outside crates/."""
+    manifest = tomllib.loads(git("show", f"{sha}:Cargo.toml"))
+    members = manifest.get("workspace", {}).get("members", [])
+    extras = sorted({member for member in members if not member.startswith("crates/")})
+    return ("crates", "tools/layering", ":(glob)**/Cargo.toml", *extras)
+
+
+def unpack(sha: str, into: Path, paths: tuple[str, ...] | None = None) -> None:
     fetch_commit(sha, 1)
+    if paths is None:
+        paths = archive_paths(sha)
     with subprocess.Popen(["git", "archive", sha, *paths], cwd=ROOT, stdout=subprocess.PIPE) as archive:
         # `-m`: files take the time of this extraction, not the commit's. Cargo decides a unit is fresh by source
         # mtime, and the surface-base target is shared by trees of different commits, so an older commit's tree must
