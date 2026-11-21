@@ -728,6 +728,43 @@ fn definition(item: &Item) -> Option<(&syn::Ident, &[syn::Attribute])> {
     Some((ident, attrs))
 }
 
+/// The condition an attribute puts on an item's existence. `cfg_attr(P, ...)` imposes
+/// its nested conditions only when P holds; other nested attributes need not apply to a use.
+fn cfg_predicate(meta: &syn::Meta) -> Option<proc_macro2::TokenStream> {
+    let syn::Meta::List(list) = meta else {
+        return None;
+    };
+    let cfg = list.path.is_ident("cfg");
+    if !cfg && !list.path.is_ident("cfg_attr") {
+        return None;
+    }
+    let (when, conditions) = list
+        .parse_args_with(|input: syn::parse::ParseStream| {
+            // Keep Rust's cfg predicate tokens verbatim (including `true` and `false`,
+            // which aren't attribute metadata), but leave out the separating comma.
+            let mut when = proc_macro2::TokenStream::new();
+            while !input.is_empty() && !input.peek(syn::Token![,]) {
+                when.extend([input.parse::<proc_macro2::TokenTree>()?]);
+            }
+            input.parse::<Option<syn::Token![,]>>()?;
+            let attrs =
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?;
+            Ok((
+                when,
+                attrs.iter().filter_map(cfg_predicate).collect::<Vec<_>>(),
+            ))
+        })
+        .ok()?;
+    if cfg {
+        return Some(when);
+    }
+    (!conditions.is_empty()).then(|| quote!(any(not(#when), all(#(#conditions),*))))
+}
+
+fn cfg_predicates(attrs: &[syn::Attribute]) -> impl Iterator<Item = proc_macro2::TokenStream> {
+    attrs.iter().filter_map(|attr| cfg_predicate(&attr.meta))
+}
+
 /// A module's own `macro_rules!` items that it does not export.
 fn module_macros(items: &[Item]) -> Vec<syn::ItemMacro> {
     items
@@ -1542,13 +1579,6 @@ fn mirror(
             matches!(item, Item::ExternCrate(krate)
                 if krate.rename.as_ref().is_some_and(|(_, name)| name == "std"))
         });
-    let cfgs = |attrs: &[syn::Attribute]| {
-        attrs
-            .iter()
-            .filter(|attr| attr.path().is_ident("cfg"))
-            .cloned()
-            .collect::<Vec<_>>()
-    };
     let mut glob = false;
     let mut thread_locals = Vec::new();
     for item in &items {
@@ -1562,8 +1592,9 @@ fn mirror(
                         .into_iter()
                         .filter(|item| matches!(item.vis, syn::Visibility::Public(_)))
                         .map(|item| {
-                            let mut cfg = cfgs(&mac.attrs);
-                            cfg.extend(cfgs(&item.attrs));
+                            let cfg = cfg_predicates(&mac.attrs)
+                                .chain(cfg_predicates(&item.attrs))
+                                .collect();
                             (item.ident, cfg)
                         }),
                 ),
@@ -1574,7 +1605,7 @@ fn mirror(
     public.extend(thread_locals.iter().map(|(ident, _)| ident.to_string()));
     // One `pub use` brings every namespace a name has: `pub mod render;` beside
     // `pub fn render` is one re-export, under the cfg either item is compiled under.
-    let mut names: Vec<(syn::Ident, Vec<Vec<syn::Attribute>>)> = Vec::new();
+    let mut names: Vec<(syn::Ident, Vec<Vec<proc_macro2::TokenStream>>)> = Vec::new();
     // Keep the prebuilt game's test-item filter on re-exports, not on binding detection.
     let re_exported = defined
         .filter(|(ident, attrs)| {
@@ -1585,7 +1616,7 @@ fn mirror(
                             && attr.to_token_stream().to_string().contains("test"))
                 })
         })
-        .map(|(ident, attrs)| (ident.clone(), cfgs(attrs)));
+        .map(|(ident, attrs)| (ident.clone(), cfg_predicates(attrs).collect()));
     for (ident, cfg) in re_exported
         .chain(thread_locals)
         .filter(|(ident, _)| !reserved.contains(&ident.to_string()))
@@ -1598,16 +1629,10 @@ fn mirror(
     }
     let explicit = names.into_iter().map(|(ident, cfgs)| {
         let cfg = match cfgs.as_slice() {
-            [cfg] => quote!(#(#cfg)*),
+            [cfg] => quote!(#(#[cfg(#cfg)])*),
             _ if cfgs.iter().any(Vec::is_empty) => quote!(),
             _ => {
-                let each = cfgs.iter().map(|attrs| {
-                    let predicates = attrs
-                        .iter()
-                        .filter_map(|attr| attr.meta.require_list().ok())
-                        .map(|list| &list.tokens);
-                    quote!(all(#(#predicates),*))
-                });
+                let each = cfgs.iter().map(|cfg| quote!(all(#(#cfg),*)));
                 quote!(#[cfg(any(#(#each),*))])
             }
         };
@@ -2309,6 +2334,44 @@ mod tests {
         );
         assert!(
             out.contains("#[cfg(unix)]#[cfg(not(test))]pubuse::lower::anim::RELEASED;"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn re_exports_keep_conditions_added_by_cfg_attr() {
+        let mut source = source_of(
+            "lower::anim",
+            r#"
+            #[cfg_attr(true, cfg(unix,), cfg(target_pointer_width = "64"))]
+            thread_local! {
+                #[cfg_attr(windows, cfg_attr(target_env = "msvc", cfg(target_arch = "x86_64")))]
+                pub static SHARED: u8 = 0;
+            }
+            #[cfg_attr(windows, cfg(target_arch = "aarch64"), inline)]
+            pub fn ordinary() {}
+            #[cfg(unix)]
+            pub mod ordinary {}
+            "#,
+        );
+        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
+            .unwrap()
+            .to_string()
+            .replace(' ', "");
+        assert!(!out.contains("pubuse::lower::anim::*;"), "{out}");
+        assert!(
+            out.contains(concat!(
+                r#"#[cfg(any(not(true),all(unix,target_pointer_width="64")))]"#,
+                r#"#[cfg(any(not(windows),all(any(not(target_env="msvc"),all(target_arch="x86_64")))))]"#,
+                "pubuse::lower::anim::SHARED;",
+            )),
+            "{out}"
+        );
+        assert!(
+            out.contains(concat!(
+                r#"#[cfg(any(all(any(not(windows),all(target_arch="aarch64"))),all(unix)))]"#,
+                "pubuse::lower::anim::ordinary;",
+            )),
             "{out}"
         );
     }
