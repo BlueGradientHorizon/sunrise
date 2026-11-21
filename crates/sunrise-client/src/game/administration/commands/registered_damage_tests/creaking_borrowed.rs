@@ -6,7 +6,8 @@ use crate::game::{
     sculk::TEST_POSTED_EVENT_ORDER,
 };
 use mod_api::{
-    BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates, ServerHost, VanillaGameEventEvent,
+    ActiveEffect, BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates, ServerHost,
+    VanillaGameEventEvent,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::{
@@ -36,6 +37,13 @@ struct Heard {
 struct Watch {
     heard: Arc<Mutex<Heard>>,
     replace_protector: bool,
+    effect_edit: Option<EffectEdit>,
+}
+
+#[derive(Clone, Copy)]
+enum EffectEdit {
+    RemoveEarlier,
+    ReplaceCurrent,
 }
 
 #[mod_api::__subscriptions]
@@ -48,7 +56,7 @@ impl Hooks for Watch {
         if event.event != "minecraft:entity_action" {
             return Flow::Continue;
         }
-        let peer = {
+        let (mob, peer) = {
             let mut heard = self.heard.lock().unwrap();
             if event.cause != Some(heard.mob) {
                 return Flow::Continue;
@@ -60,8 +68,22 @@ impl Hooks for Watch {
                 position: mob.position(host).unwrap(),
                 peer_velocity,
             });
-            peer
+            (mob, peer)
         };
+        if let Some(edit) = self.effect_edit {
+            let living = host.living(mob).unwrap();
+            let id = match edit {
+                EffectEdit::RemoveEarlier => "minecraft:speed",
+                EffectEdit::ReplaceCurrent => "minecraft:instant_damage",
+            };
+            let effect = host.effect_key(id).unwrap();
+            assert!(living.remove_effect(host, effect));
+            if matches!(edit, EffectEdit::ReplaceCurrent) {
+                assert!(
+                    living.add_effect(host, &ActiveEffect::new(effect, 40, 0, false, true, true))
+                );
+            }
+        }
         if let Some(peer) = peer {
             // Move the already-selected peer to the opposite side, out of range.
             assert!(peer.teleport_to(host, [3.5, 64.0, 4.5], None));
@@ -96,17 +118,25 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
             "protector",
             "mismatched_protector",
             "cramming",
+            "effect_shift",
+            "effect_replaced",
         ],
     ) {
         return;
     }
     let case = std::env::var(CASE).unwrap();
+    let effect_edit = match case.as_str() {
+        "effect_shift" => Some(EffectEdit::RemoveEarlier),
+        "effect_replaced" => Some(EffectEdit::ReplaceCurrent),
+        _ => None,
+    };
     let heard = Arc::new(Mutex::new(Heard::default()));
     let mods = vec![mod_api::ModEntry::new(
         "watch",
         Box::new(Watch {
             heard: heard.clone(),
             replace_protector: case == "protector",
+            effect_edit,
         }),
     )]
     .into();
@@ -190,6 +220,12 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                 creaking.ai.ai_paused = true;
                 creaking.velocity = Vec3::new(0.8, 0.0, 0.0);
                 Some(peer)
+            } else if effect_edit.is_some() {
+                let creaking = game.mob_object_mut(mob).unwrap();
+                creaking.add_effect("minecraft:speed", 40, 0);
+                creaking.add_effect("minecraft:instant_damage", 1, 0);
+                creaking.add_effect("minecraft:fire_resistance", 40, 0);
+                None
             } else {
                 let y = game.mob_object(mob).unwrap().eye_y().floor() as i32;
                 assert!(game.run_command(&format!("setblock 4 {y} 4 minecraft:stone")));
@@ -232,6 +268,27 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                 creaking.velocity
             );
             assert_eq!(creaking.alive(), case != "mismatched_protector");
+            if let Some(edit) = effect_edit {
+                let duration = |id| {
+                    creaking
+                        .extra
+                        .effects
+                        .iter()
+                        .find(|effect| effect.id == id)
+                        .map(|effect| effect.duration)
+                };
+                let (speed, damage) = match edit {
+                    EffectEdit::RemoveEarlier => (None, None),
+                    EffectEdit::ReplaceCurrent => (Some(39), Some(40)),
+                };
+                assert_eq!(duration("minecraft:speed"), speed);
+                assert_eq!(duration("minecraft:instant_damage"), damage);
+                assert_eq!(
+                    duration("minecraft:fire_resistance"),
+                    Some(40),
+                    "the structurally changed pass stops after the current instance"
+                );
+            }
             let phase = if peer.is_some() { 8 } else { 7 };
             assert_eq!(creaking.extra.ints[0], if reacted != 0 { phase } else { 0 });
             let first = heard.lock().unwrap().reactions.clone();

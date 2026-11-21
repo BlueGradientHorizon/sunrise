@@ -4552,7 +4552,8 @@ struct EffectPass {
     index: usize,
     end: usize,
     max_absorption: f32,
-    interrupted: Option<EffectTick>,
+    interrupted: Option<SuspendedEffect>,
+    stop_after_current: bool,
 }
 
 impl EffectPass {
@@ -4562,14 +4563,42 @@ impl EffectPass {
             end: m.extra.effects.len(),
             max_absorption: super::armor::max_absorption(m),
             interrupted: None,
+            stop_after_current: false,
         }
     }
+
+    fn suspend(
+        mut self,
+        effects: &mut [super::StoredEffect],
+        i: usize,
+        end: usize,
+        tick: EffectTick,
+    ) -> Self {
+        // A stamp belongs to the instance, not the index where the vector stores it.
+        for (index, effect) in effects.iter_mut().enumerate() {
+            effect.pass_slot = index + 1;
+        }
+        self.index = i;
+        self.end = end;
+        self.interrupted = Some(SuspendedEffect {
+            instance: (i < effects.len()).then_some(i + 1),
+            instances: effects.len(),
+            tick,
+        });
+        self
+    }
+}
+
+#[derive(Debug)]
+struct SuspendedEffect {
+    instance: Option<usize>,
+    instances: usize,
+    tick: EffectTick,
 }
 
 #[derive(Debug)]
 struct EffectTick {
     effect: &'static str,
-    infinite: bool,
     expired: bool,
     changes: std::vec::IntoIter<super::MobEffectChange>,
 }
@@ -4614,7 +4643,24 @@ fn tick_effects_until_hurt(
     };
     let mut i = pass.index;
     while pass.interrupted.is_some() || (i < m.extra.effects.len() && i < first) {
-        let tick = if let Some(tick) = pass.interrupted.take() {
+        let tick = if let Some(SuspendedEffect {
+            instance,
+            instances,
+            tick,
+        }) = pass.interrupted.take()
+        {
+            let effects = &m.extra.effects;
+            // LivingEntity catches the iterator's concurrent-modification exception.
+            // The interrupted instance finishes first, but a structurally edited list
+            // is not advanced. An in-place update does not invalidate the iterator.
+            pass.stop_after_current |= effects.len() != instances
+                || effects
+                    .iter()
+                    .enumerate()
+                    .any(|(index, effect)| effect.pass_slot != index + 1);
+            i = instance
+                .and_then(|slot| effects.iter().position(|effect| effect.pass_slot == slot))
+                .unwrap_or(effects.len());
             tick
         } else {
             let (effect, amp) = (m.extra.effects[i].id, m.extra.effects[i].amplifier);
@@ -4688,23 +4734,16 @@ fn tick_effects_until_hurt(
             after_effect(m);
             let tick = EffectTick {
                 effect,
-                infinite,
                 expired,
                 changes: changes.into_iter(),
             };
             if pause_hurt && super::creaking::has_pending_hurt(m) {
-                return Some(EffectPass {
-                    index: i,
-                    end: first,
-                    interrupted: Some(tick),
-                    ..pass
-                });
+                return Some(pass.suspend(&mut m.extra.effects, i, first, tick));
             }
             tick
         };
         let EffectTick {
             effect,
-            infinite,
             expired,
             mut changes,
         } = tick;
@@ -4715,17 +4754,16 @@ fn tick_effects_until_hurt(
                     m.damage(level, amount, Damage::of(kind));
                     after_effect(m);
                     if pause_hurt && super::creaking::has_pending_hurt(m) {
-                        return Some(EffectPass {
-                            index: i,
-                            end: first,
-                            interrupted: Some(EffectTick {
+                        return Some(pass.suspend(
+                            &mut m.extra.effects,
+                            i,
+                            first,
+                            EffectTick {
                                 effect,
-                                infinite,
                                 expired,
                                 changes,
-                            }),
-                            ..pass
-                        });
+                            },
+                        ));
                     }
                 }
             }
@@ -4735,7 +4773,7 @@ fn tick_effects_until_hurt(
                 if let Some(hidden) = m.extra.effect_chains.iter_mut().find(|e| e.id == effect) {
                     hidden.tick_down();
                 }
-                if !infinite {
+                if m.extra.effects[i].duration != -1 {
                     m.extra.effects[i].duration -= 1;
                 }
             } else {
@@ -4749,7 +4787,7 @@ fn tick_effects_until_hurt(
                 if effect == "minecraft:absorption" {
                     m.absorption = m.absorption.min(4.0 * (hidden.amplifier + 1) as f32);
                 }
-                m.extra.effects[i] = super::StoredEffect::from_instance(effect, &hidden);
+                m.extra.effects[i].update_from_instance(&hidden);
                 // `tickServer`'s onExpire: `onEffectUpdated(instance, true, null)`,
                 // the modifiers of the amplifier that is active now.
                 m.set_effect_modifiers(effect, Some(hidden.amplifier));
@@ -4781,6 +4819,9 @@ fn tick_effects_until_hurt(
             first -= 1;
         } else {
             i += 1;
+        }
+        if pass.stop_after_current {
+            break;
         }
     }
     if m.effects_dirty {

@@ -129,7 +129,7 @@ mod world;
 pub use world::{TargetInfo, single_player_pos, visual_clip};
 pub mod zombie_villager;
 /// A mob's stored active effect with its registry index resolved once at creation.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct StoredEffect {
     pub id: &'static str,
     pub duration: i32,
@@ -137,6 +137,17 @@ pub struct StoredEffect {
     pub registry_index: Option<usize>,
     /// `MobEffectInstance.showIcon`, kept apart from the particle flag: the saved `show_icon`.
     pub show_icon: bool,
+    // Assigned only while an effect pass is suspended. Zero belongs to a new instance.
+    pass_slot: usize,
+}
+impl PartialEq for StoredEffect {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.duration == other.duration
+            && self.amplifier == other.amplifier
+            && self.registry_index == other.registry_index
+            && self.show_icon == other.show_icon
+    }
 }
 impl StoredEffect {
     /// `new MobEffectInstance(effect, duration, amplifier)`: its icon shows.
@@ -147,6 +158,7 @@ impl StoredEffect {
             amplifier,
             registry_index: sunrise_client_core::potions::effect(id).map(|def| def.index),
             show_icon: true,
+            pass_slot: 0,
         }
     }
     /// Copy a registered instance after an update or hidden-effect promotion, without resolving again.
@@ -157,7 +169,15 @@ impl StoredEffect {
             amplifier: instance.amplifier,
             registry_index: instance.registry_index,
             show_icon: instance.show_icon,
+            pass_slot: 0,
         }
+    }
+
+    fn update_from_instance(&mut self, instance: &crate::effects::EffectInstance) {
+        *self = Self {
+            pass_slot: self.pass_slot,
+            ..Self::from_instance(self.id, instance)
+        };
     }
 }
 
@@ -4674,7 +4694,10 @@ impl Mob {
     /// modifier (the saved `attributes` hold one the effect was given with).
     pub fn load_effect(&mut self, effect: StoredEffect) {
         self.extra.effects.retain(|e| e.id != effect.id);
-        self.extra.effects.push(effect);
+        self.extra.effects.push(StoredEffect {
+            pass_slot: 0,
+            ..effect
+        });
         self.effects_dirty = true;
     }
     /// `LivingEntity.addEffect` of a `MobEffectInstance` with its flags: the effect as
@@ -4734,7 +4757,7 @@ impl Mob {
             self.extra.effect_chains.push(*hidden);
         }
         if let Some(i) = index {
-            self.extra.effects[i] = StoredEffect::from_instance(effect, &active);
+            self.extra.effects[i].update_from_instance(&active);
         } else {
             self.extra
                 .effects
