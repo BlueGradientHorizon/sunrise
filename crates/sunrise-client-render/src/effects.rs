@@ -5,6 +5,7 @@
 use crate::particles::{ParticleOptions, ParticleType};
 use sunrise_client_core::potions;
 use sunrise_protocol::entity_data::Value;
+use sunrise_world::attributes::Operation;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EffectInstance {
@@ -132,13 +133,14 @@ impl EffectInstance {
         }
         self.client_blend = (self.client_blend.1, !self.ends_within(0));
     }
-    /// Counts down this instance and its hidden chain without promoting it.
+    /// `MobEffectInstance.tickDownDuration` and `mapDuration`: tick the hidden
+    /// chain too, preserving both zero and the infinite sentinel.
     pub fn tick_down(&mut self) {
         if let Some(h) = self.hidden.as_mut() {
             h.tick_down();
         }
-        if !self.infinite() {
-            self.duration -= 1;
+        if self.duration != 0 && !self.infinite() {
+            self.duration = self.duration.wrapping_sub(1);
         }
     }
     fn downgrade(&mut self) {
@@ -576,11 +578,11 @@ impl PlayerEffects {
         }
     }
     /// Attribute modifiers of active effects: (attribute, id, amount, operation).
-    pub fn modifiers(&self) -> Vec<(&'static str, &'static str, f64, &'static str)> {
+    pub fn modifiers(&self) -> Vec<EffectModifier> {
         let mut out = Vec::new();
         for e in &self.list {
             if let Some((a, id, amount, op)) = effect_modifier(e.id) {
-                out.push((a, id, amount * f64::from(e.amplifier + 1), op));
+                out.push((a, id, amount * f64::from(e.amplifier.wrapping_add(1)), op));
             }
         }
         out
@@ -625,73 +627,86 @@ impl StatusFlags {
     }
 }
 
+pub type EffectModifier = (&'static str, &'static str, f64, Operation);
+
 /// The attribute modifier an effect adds at amplifier 0
 /// (`MobEffect.addAttributeModifier`): (attribute, id, amount, operation).
 /// Each level multiplies the amount (`amplifier + 1`). Vanilla's amounts are
 /// `float` literals widened to the modifier's `double`, so `f64::from` the
 /// `f32` to keep the low digits.
-pub fn effect_modifier(effect: &str) -> Option<(&'static str, &'static str, f64, &'static str)> {
+pub fn effect_modifier(effect: &str) -> Option<EffectModifier> {
     match effect {
         "speed" => Some((
             "minecraft:movement_speed",
             "minecraft:effect.speed",
             f64::from(0.2f32),
-            "add_multiplied_total",
+            Operation::AddMultipliedTotal,
         )),
         "slowness" => Some((
             "minecraft:movement_speed",
             "minecraft:effect.slowness",
             f64::from(-0.15f32),
-            "add_multiplied_total",
+            Operation::AddMultipliedTotal,
         )),
         "haste" => Some((
             "minecraft:attack_speed",
             "minecraft:effect.haste",
             f64::from(0.1f32),
-            "add_multiplied_total",
+            Operation::AddMultipliedTotal,
         )),
         "mining_fatigue" => Some((
             "minecraft:attack_speed",
             "minecraft:effect.mining_fatigue",
             f64::from(-0.1f32),
-            "add_multiplied_total",
+            Operation::AddMultipliedTotal,
         )),
         "strength" => Some((
             "minecraft:attack_damage",
             "minecraft:effect.strength",
             3.0,
-            "add_value",
+            Operation::AddValue,
         )),
         "weakness" => Some((
             "minecraft:attack_damage",
             "minecraft:effect.weakness",
             -4.0,
-            "add_value",
+            Operation::AddValue,
         )),
         "jump_boost" => Some((
             "minecraft:safe_fall_distance",
             "minecraft:effect.jump_boost",
             1.0,
-            "add_value",
+            Operation::AddValue,
         )),
         "health_boost" => Some((
             "minecraft:max_health",
             "minecraft:effect.health_boost",
             4.0,
-            "add_value",
+            Operation::AddValue,
         )),
         "absorption" => Some((
             "minecraft:max_absorption",
             "minecraft:effect.absorption",
             4.0,
-            "add_value",
+            Operation::AddValue,
         )),
-        "luck" => Some(("minecraft:luck", "minecraft:effect.luck", 1.0, "add_value")),
+        "invisibility" => Some((
+            "minecraft:waypoint_transmit_range",
+            "minecraft:effect.waypoint_transmit_range_hide",
+            -1.0,
+            Operation::AddMultipliedTotal,
+        )),
+        "luck" => Some((
+            "minecraft:luck",
+            "minecraft:effect.luck",
+            1.0,
+            Operation::AddValue,
+        )),
         "unluck" => Some((
             "minecraft:luck",
             "minecraft:effect.unluck",
             -1.0,
-            "add_value",
+            Operation::AddValue,
         )),
         _ => None,
     }

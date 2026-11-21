@@ -38,7 +38,13 @@ impl Game<'_> {
                     spectator: g.spectator(),
                     transmit_range: transmit_range(
                         crouching,
-                        g.effects.get("invisibility").is_some(),
+                        // A newly placed guest without its motion body yet
+                        // has the range from Player.createAttributes.
+                        g.motion.as_ref().map_or(PLAYER_RANGE, |p| {
+                            p.attributes
+                                .computed_value_of("minecraft:waypoint_transmit_range")
+                                .unwrap_or_default()
+                        }),
                         g.armor[0].as_ref(),
                     ),
                     receive_range: PLAYER_RANGE,

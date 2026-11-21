@@ -302,7 +302,7 @@ impl Game<'_> {
 
     /// A guest's body is only `Player` during its turn; retained command state
     /// must use its connection so the next server tick still finds that body.
-    pub(super) fn waypoint_target(&self, t: Target) -> Target {
+    pub(in crate::game) fn waypoint_target(&self, t: Target) -> Target {
         match t {
             Target::Player => self.lan_acting.map_or(t, Target::Guest),
             _ => t,
@@ -387,12 +387,19 @@ impl Game<'_> {
         }
         self.waypoint_transmitters();
         for t in dirty {
-            let on = self.transmit_range(t) > 0.0;
-            if let Some(tracked) = self.cmds.waypoints.as_mut() {
-                tracked.retain(|x| *x != t);
-                if on {
-                    tracked.push(t);
-                }
+            self.update_waypoint_transmitter(t);
+        }
+    }
+    /// `LivingEntity.onAttributeUpdated`: change the manager's tracked set.
+    pub(in crate::game) fn update_waypoint_transmitter(&mut self, target: Target) {
+        if self.cmds.waypoints.is_none() {
+            self.waypoint_transmitters();
+        }
+        let on = self.transmit_range(target) > 0.0;
+        if let Some(tracked) = self.cmds.waypoints.as_mut() {
+            tracked.retain(|t| *t != target);
+            if on {
+                tracked.push(target);
             }
         }
     }
