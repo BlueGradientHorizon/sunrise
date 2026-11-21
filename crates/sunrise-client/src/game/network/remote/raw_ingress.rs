@@ -67,7 +67,7 @@ impl Game<'_> {
                 while self.client_inbox.is_open()
                     && let Some(task) = tasks.pop_front()
                 {
-                    self.run_client_task(task);
+                    task.run(self);
                 }
             }
         }

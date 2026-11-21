@@ -1148,6 +1148,5 @@
   "sunrise.studio.topbar.view_short": "View",
   "sunrise.studio.unknown_server": "Unknown",
   "sunrise.title.not_affiliated": "Not affiliated with Mojang or Microsoft",
-  "sunrise.title.playing_offline": "Playing offline",
-  "sunrise.toast.client_task_failed": "Mod's client task failed"
+  "sunrise.title.playing_offline": "Playing offline"
 }

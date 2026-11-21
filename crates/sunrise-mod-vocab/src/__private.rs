@@ -94,16 +94,16 @@ pub fn install(mods: Mods) {
 
 // no wire: process-local diagnostic report, never crosses the wire.
 // exhaustive: internal two-field report for the game client's toast queue.
-/// One hook-listener panic queued for the game client's error toast.
+/// One mod callback panic queued for the game client's error toast.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HookPanicReport {
     /// The `[mod] id` of the panicking mod.
     pub mod_id: &'static str,
-    /// The hook name in which the mod panicked.
+    /// The hook or retained callback in which the mod panicked.
     pub hook: &'static str,
 }
 
-/// Drain queued hook-listener panic reports for the game client's error toast.
+/// Drain queued mod callback panic reports for the game client's error toast.
 pub fn take_hook_panics() -> Vec<HookPanicReport> {
     crate::runtime::take_hook_panics()
 }
@@ -116,6 +116,18 @@ pub fn hook_dispatch_depth() -> u32 {
 /// Run one mod's startup `Hooks::register` callback under the unified hook-dispatch failure rule.
 pub fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
     crate::runtime::invoke_registration(mod_id, call)
+}
+
+/// Run one engine-owned retained callback using the hook dispatcher's panic boundary and
+/// diagnostics. The caller skips disabled callbacks; `disable` records the first panic and
+/// returns whether to report it. A phase refusal is reported without disabling anything.
+pub fn invoke_retained<T>(
+    mod_id: &'static str,
+    callback: &'static str,
+    disable: impl FnOnce() -> bool,
+    call: impl FnOnce() -> T,
+) -> Option<T> {
+    crate::runtime::invoke_retained(mod_id, callback, disable, call)
 }
 
 /// Revision of the enabled mod set, for engine caches of hook answers.

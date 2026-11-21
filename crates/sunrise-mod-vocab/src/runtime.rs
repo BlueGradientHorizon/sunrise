@@ -74,7 +74,7 @@ pub(crate) struct Installed {
     /// answers through one atomic load, so a dispatch with no poison pays nothing.
     poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
     poison_free: std::sync::atomic::AtomicBool,
-    /// Hook-listener panic reports queued for this installed set's client error toast.
+    /// Mod callback panic reports queued for this installed set's client error toast.
     hook_panics: std::sync::Mutex<Vec<HookPanicReport>>,
     has_hook_panics: std::sync::atomic::AtomicBool,
 }
@@ -227,9 +227,7 @@ pub fn isolated_failures() -> u64 {
 /// that one hook alone — its other hooks, Parts, and every other mod's listeners are
 /// untouched, unlike a whole-mod disable. Returns `true` only on the first panic for
 /// `(hook, id)`, so the error log line and error toast fire once.
-pub(crate) fn poison(hook: generated::HookId, id: &'static str) -> bool {
-    let (entered, trapped) = LISTENER_SERIAL.get();
-    LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+fn poison(hook: generated::HookId, id: &'static str) -> bool {
     let Some(installed) = installed() else {
         return true;
     };
@@ -264,23 +262,6 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
     installed().is_some_and(|installed| is_poisoned(installed, hook, id))
 }
 
-/// Record a mod callback panic under the unified dispatch failure rule.
-///
-/// On the first panic for `(hook_id, mod_id)`, disables that mod's callback for that hook for the
-/// rest of the session (leaving other hooks and other mods running), logs an `error!` line naming
-/// the mod, hook, and panic message, and queues one [`HookPanicReport`] for the client's error
-/// toast.
-pub(crate) fn record_hook_panic(
-    hook_id: generated::HookId,
-    hook: &'static str,
-    mod_id: &'static str,
-    payload: &(dyn std::any::Any + Send),
-) {
-    if poison(hook_id, mod_id) {
-        log_and_queue_panic(hook, mod_id, payload);
-    }
-}
-
 fn log_and_queue_panic(
     hook: &'static str,
     mod_id: &'static str,
@@ -292,7 +273,7 @@ fn log_and_queue_panic(
         .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
         .unwrap_or("panic");
     log::error!(
-        "mod {mod_id} panicked in hook {hook} and has been disabled for this hook for the rest of the session: {reason}"
+        "mod {mod_id} panicked in {hook}; the callback is disabled for the rest of the session: {reason}"
     );
     if let Some(installed) = installed() {
         let mut queue = installed
@@ -314,9 +295,9 @@ pub(crate) enum DispatchOutcome<T> {
 
 /// Run one mod callback under the unified hook-dispatch failure rule.
 ///
-/// A panic disables `(hook_id, mod_id)` for the rest of the session, reports it once via
-/// [`record_hook_panic`] (error log line plus error toast), and returns
-/// [`DispatchOutcome::Panicked`] without unwinding into the game or stopping other mods.
+/// A panic disables `(hook_id, mod_id)` for the rest of the session, reports it once (error log
+/// line plus error toast), and returns [`DispatchOutcome::Panicked`] without unwinding into the
+/// game or stopping other mods.
 /// Outside `World` (`contained == true`), a load-phase refusal returns
 /// [`DispatchOutcome::Refused`] so the caller reports it each time without latching or disabling
 /// the listener.
@@ -328,12 +309,51 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
+    invoke_with_panic(
+        mod_id,
+        hook,
+        || poison(hook_id, mod_id),
+        || refusable(contained, call),
+    )
+}
+
+/// Run a callback whose owning service tracks disablement rather than the generated hook table.
+pub(crate) fn invoke_retained<T>(
+    mod_id: &'static str,
+    callback: &'static str,
+    disable: impl FnOnce() -> bool,
+    call: impl FnOnce() -> T,
+) -> Option<T> {
+    let _guard = mark_mod(mod_id, callback);
+    match invoke_with_panic(mod_id, callback, disable, || {
+        refusable(outside_world(), call)
+    }) {
+        DispatchOutcome::Ok(value) => Some(value),
+        DispatchOutcome::Refused(refusal) => {
+            refusal.report();
+            None
+        }
+        DispatchOutcome::Panicked => None,
+    }
+}
+
+#[inline]
+fn invoke_with_panic<T>(
+    mod_id: &'static str,
+    callback: &'static str,
+    disable: impl FnOnce() -> bool,
+    call: impl FnOnce() -> Result<T, crate::world::phase_refusal::PhaseRefusal>,
+) -> DispatchOutcome<T> {
     let _scope = DispatchPanicScope::enter();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
+            let (entered, trapped) = LISTENER_SERIAL.get();
+            LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+            if disable() {
+                log_and_queue_panic(callback, mod_id, &*payload);
+            }
             dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }
@@ -449,17 +469,18 @@ impl<T> RegistrationMap<T> {
 /// failure, logging the error, and queueing a client error toast so the caller can roll back the
 /// mod's partial registrations and continue with remaining mods.
 pub(crate) fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
-    let _scope = DispatchPanicScope::enter();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
-        Ok(()) => true,
-        Err(payload) => {
-            let (entered, trapped) = LISTENER_SERIAL.get();
-            LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
-            log_and_queue_panic("register", mod_id, &*payload);
-            dispose_panic_payload(payload);
-            false
-        }
-    }
+    matches!(
+        invoke_with_panic(
+            mod_id,
+            "register",
+            || true,
+            || {
+                call();
+                Ok(())
+            }
+        ),
+        DispatchOutcome::Ok(())
+    )
 }
 
 /// The process-wide list in dispatch order, or an empty list before installation.

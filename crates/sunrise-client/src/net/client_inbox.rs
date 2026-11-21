@@ -144,23 +144,31 @@ type Task = Box<dyn FnOnce(&mut dyn mod_api::ClientHost) + Send>;
 
 /// An executor callback, with the mod that obtained the handle.
 pub struct ClientTask {
-    pub owner: &'static str,
+    owner: &'static str,
     run: Option<Task>,
     panicked: Arc<AtomicBool>,
 }
 
 impl ClientTask {
-    pub fn is_disabled(&self) -> bool {
+    fn is_disabled(&self) -> bool {
         self.panicked.load(Ordering::Acquire)
     }
 
-    pub fn disable_owner(&self) {
-        self.panicked.store(true, Ordering::Release);
+    fn invoke(&self, call: impl FnOnce()) {
+        let _ = mod_api::__private::invoke_retained(
+            self.owner,
+            "client_executor",
+            || !self.panicked.swap(true, Ordering::AcqRel),
+            call,
+        );
     }
 
-    pub fn run(&mut self, host: &mut dyn mod_api::ClientHost) {
-        if let Some(run) = self.run.take() {
-            run(host);
+    /// Call on the client thread with its live host unless this owner's executor has panicked.
+    pub fn run(mut self, host: &mut dyn mod_api::ClientHost) {
+        if !self.is_disabled()
+            && let Some(run) = self.run.take()
+        {
+            self.invoke(|| run(host));
         }
     }
 }
@@ -169,13 +177,8 @@ impl Drop for ClientTask {
     fn drop(&mut self) {
         // A discarded closure can still have a mod-owned destructor. In particular a
         // submission racing shutdown must not unwind on its producer's thread.
-        if let Some(run) = self.run.take()
-            && let Err(error) = crate::crash::contain(|| drop(run))
-        {
-            log::error!(
-                "Mod {} panicked dropping client executor work: {error}",
-                self.owner
-            );
+        if let Some(run) = self.run.take() {
+            self.invoke(|| drop(run));
         }
     }
 }

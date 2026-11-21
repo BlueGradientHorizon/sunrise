@@ -6,7 +6,6 @@
 //! and attenuated, multi-channel buffers (stereo music and records) played
 //! direct as OpenAL does.
 mod streams;
-pub use streams::stage_stream_placements;
 
 use crate::Result;
 use crate::sound_engine::{
@@ -1888,7 +1887,7 @@ impl Audio {
     /// on demand.
     pub fn open_stream(
         &self,
-        owner: &str,
+        owner: &'static str,
         spec: &mod_api::StreamSpec,
         entity_pos: Option<[f64; 3]>,
         source: Box<dyn mod_api::AudioStream>,

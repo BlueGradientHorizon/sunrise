@@ -16,8 +16,8 @@ pub const AUDIO_STREAMS_TOTAL: u32 = 1_024;
 /// Reads must do bounded, nonblocking work: do not wait on I/O, locks, another thread or a tick.
 /// An async or network producer bridges through its own nonblocking buffer read here. Muting the
 /// stream does not pause demand. The worker drops an admitted source at EOF or after stop,
-/// without waiting for another device callback. A panic in [`read`](Self::read) stops only this
-/// stream.
+/// without waiting for another device callback. A panic in [`read`](Self::read) immediately
+/// stops this stream and its source callback, and the shared log and error toast name the mod.
 // no wire: the mixer owns and calls this native source in-process.
 pub trait AudioStream: Send + 'static {
     /// Fill at most `pcm.len() / channels` whole frames of interleaved signed 16-bit PCM in the
@@ -68,9 +68,9 @@ pub enum StreamPlacement {
 pub enum AudioStreamState {
     /// Open and playing, even if silent because it is muted or has no PCM ready.
     Playing,
-    /// Over: the pull source ended and its PCM drained, it reported an invalid frame count, its
-    /// followed entity became untracked or removed, the listener changed dimension or left the
-    /// level, `stop` was called, the handle was dropped, or the game's sound output went away.
+    /// Over: the pull source ended and its PCM drained, it returned an invalid frame count or
+    /// panicked, its followed entity became untracked or removed, the listener changed dimension
+    /// or left the level, `stop` was called, the handle was dropped, or sound output went away.
     /// It never plays again.
     #[default]
     Stopped,
@@ -268,25 +268,22 @@ impl AudioStreamRef {
     }
     /// Moves the stream to [`StreamPlacement::Flat`] (at the listener, with no panning or
     /// distance fade). Callable from any thread without a [`ClientHost`] and never waits on the
-    /// mixer. False once the stream has stopped. Inside a [`ClientExecutor`](crate::ClientExecutor)
-    /// task, the placement only publishes after the task returns successfully.
+    /// mixer. Publishes the placement immediately; false once the stream has stopped.
     pub fn set_flat(&self) -> bool {
         self.source.set_placement(&StreamPlacement::Flat, None)
     }
     /// Moves the stream to [`StreamPlacement::At(at)`]. Callable from any thread without a
     /// [`ClientHost`] and never waits on the mixer. False, changing nothing, when any coordinate
     /// is not finite or once the stream has stopped. Stereo streams accept any finite position
-    /// and play un-spatialized. Inside a [`ClientExecutor`](crate::ClientExecutor) task,
-    /// the placement only publishes after the task returns successfully.
+    /// and play un-spatialized. A successful call publishes the placement immediately.
     pub fn set_position(&self, at: [f64; 3]) -> bool {
         self.source.set_placement(&StreamPlacement::At(at), None)
     }
     /// Moves the stream to follow `entity` on the client thread, resolving its position eagerly
     /// through `host`. False, changing nothing, when the client does not currently track
     /// `entity`, its position is not finite, or once the stream has stopped. Stereo streams
-    /// accept any tracked entity and play un-spatialized. In an executor task, `true`
-    /// accepts the placement for publication after the task returns successfully. If
-    /// the stream stops before publication, the client reports the refusal in the log.
+    /// accept any tracked entity and play un-spatialized. A successful call publishes the
+    /// placement immediately, including in a client executor task.
     ///
     /// In `client_setup`, use `if let Some(executor) = host.client_executor()` to obtain a
     /// [`ClientExecutor`](crate::ClientExecutor), then clone it into a network-thread

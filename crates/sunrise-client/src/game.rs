@@ -4016,7 +4016,6 @@ struct Game<'a> {
     client_backlog: std::collections::VecDeque<raw_backlog::Received>,
     client_backlog_tasks: std::collections::VecDeque<sunrise_client::net::ClientTask>,
     client_backlog_serial: Option<u64>,
-    client_executor: client_executor::State,
     /// The current connection came from Realms (retained for reconnect).
     realm_session: bool,
     /// The server this window connected to last over the network: kept while something may
@@ -7087,7 +7086,6 @@ impl Game<'_> {
         // The ToastManager draws over every screen, the title and the
         // options included: the narrator's toast follows the player there.
         self.draw_narrator_toast(&mut batch);
-        self.draw_client_task_errors(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
@@ -13615,7 +13613,6 @@ impl<'a> Game<'a> {
             client_backlog: Default::default(),
             client_backlog_tasks: Default::default(),
             client_backlog_serial: None,
-            client_executor: Default::default(),
             realm_session: false,
             last_connection: None,
             connection_open: false,

@@ -1,19 +1,7 @@
 //! Mod-owned work submitted to the client application's packet/task drain.
 use super::Game;
 use mod_api::ClientExecutor;
-use sunrise_client::{
-    audio::stage_stream_placements,
-    crash::{self, ModCall},
-    hud::{self, HudBatch},
-    net::ClientTask,
-    text::Text,
-    toasts::SystemToast,
-};
-
-#[derive(Default)]
-pub(super) struct State {
-    pub(super) errors: Vec<SystemToast>,
-}
+use sunrise_client::crash;
 
 impl Game<'_> {
     pub(in crate::game) fn client_executor(&self) -> Option<ClientExecutor> {
@@ -28,83 +16,6 @@ impl Game<'_> {
         self.client_backlog.clear();
         self.client_backlog_tasks.clear();
     }
-
-    pub(super) fn run_client_task(&mut self, mut task: ClientTask) {
-        if task.is_disabled() {
-            return;
-        }
-        enum Failure {
-            Refused(mod_api::__private::PhaseRefusal),
-            Panicked(String),
-        }
-        let owner = task.owner;
-        let guard = crash::enter_native_mod(ModCall {
-            id: owner,
-            hook: "client_executor",
-            part: None,
-        });
-        let result = stage_stream_placements(owner, || {
-            crash::contain(|| mod_api::__private::contain_refusal(owner, || task.run(self)))
-                .map_err(Failure::Panicked)?
-                .map_err(Failure::Refused)
-        });
-        drop(guard);
-        match result {
-            Ok(()) => {}
-            Err(Failure::Refused(refusal)) => refusal.report(),
-            Err(Failure::Panicked(error)) => {
-                task.disable_owner();
-                log::error!("Mod {owner} panicked in client executor work: {error}");
-                let toast = SystemToast::new(
-                    Text::tr("sunrise.toast.client_task_failed", &[]),
-                    Some(Text::literal(owner)),
-                )
-                .with_title_color(hud::rgba(255, 85, 85, 255));
-                if let Some(toast) = self.add_system_toast(toast) {
-                    self.client_executor.errors.push(toast);
-                }
-            }
-        }
-    }
-
-    pub(super) fn draw_client_task_errors(&mut self, batch: &mut HudBatch) {
-        if self.client_executor.errors.is_empty() {
-            return;
-        }
-        let mut used = self.toast_slots_used()
-            | u32::from(self.title.as_ref().is_some_and(|title| title.has_toast()));
-        let multiplier = self.settings.notification_display_time;
-        let mut sound = None;
-        self.client_executor.errors.retain_mut(|toast| {
-            if toast.slot.is_none() {
-                toast.slot = (0..Self::TOAST_SLOTS).find(|slot| used & (1 << slot) == 0);
-            }
-            let Some(slot) = toast.slot else {
-                return true;
-            };
-            let (change, finished) = toast.update(multiplier);
-            sound = sound.or(change);
-            if !finished {
-                used |= 1 << slot;
-                if !self.ui.hide_gui {
-                    toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
-                }
-            }
-            !finished
-        });
-        if let Some(show) = sound {
-            self.audio.play(
-                if show {
-                    "minecraft:ui.toast.in"
-                } else {
-                    "minecraft:ui.toast.out"
-                },
-                None,
-                1.0,
-                1.0,
-            );
-        }
-    }
 }
 
 #[cfg(test)]
@@ -114,15 +25,15 @@ mod tests {
         EventLoopCtl, native_entity_refs::tests::with_client_game, raw_backlog::Received,
     };
     use mod_api::{
-        __private::{ModPhase, PhaseOwner},
-        AudioStream, AudioStreamRef, AudioStreamState, ClientDisconnectingEvent, ClientHost, Flow,
-        Hooks, ModEntry, SoundSource, StreamSpec, ToastAddEvent, ToastKind,
+        __private::{HookPanicReport, ModPhase, PhaseOwner, take_hook_panics},
+        AudioStream, AudioStreamRef, AudioStreamState, ClientDisconnectingEvent, ClientHost, Hooks,
+        ModEntry, SoundSource, StreamSpec,
     };
     use std::{
         sync::{Arc, Mutex, mpsc},
         thread,
     };
-    use sunrise_client::net::Event;
+    use sunrise_client::{crash::ModCall, net::Event};
 
     struct PanickingPayload;
     impl Drop for PanickingPayload {
@@ -236,7 +147,6 @@ mod tests {
             .expect("dropping a late client task must not unwind from execute");
             assert_eq!(Arc::strong_count(&captured), 1);
             game.poll_remote().unwrap();
-            assert!(game.client_executor.errors.is_empty());
         });
     }
 
@@ -268,7 +178,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn executor_discards_panicked_retargets_and_disables_only_the_failed_owner() {
+    fn executor_panic_reports_and_disables_only_the_failed_owner_without_undoing_live_placement() {
         struct Silent;
         impl AudioStream for Silent {
             fn read(&mut self, pcm: &mut [i16]) -> usize {
@@ -277,27 +187,7 @@ mod tests {
             }
         }
 
-        struct Listener;
-        #[mod_api::__subscriptions]
-        impl Hooks for Listener {
-            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
-                if event.kind == ToastKind::System {
-                    match event.description.as_ref().map(|text| &text.content) {
-                        Some(mod_api::text::TextContent::Literal(owner)) if owner == "canceled" => {
-                            return Flow::Cancel;
-                        }
-                        Some(mod_api::text::TextContent::Literal(owner)) if owner == "failed" => {
-                            *event.title = mod_api::Text::literal("Executor callback failed");
-                        }
-                        _ => {}
-                    }
-                }
-                Flow::Continue
-            }
-        }
-
-        let mods = vec![ModEntry::new("toast_listener", Box::new(Listener))].into();
-        mod_platform::testing::with_mods(mods, || {
+        mod_platform::testing::with_mods(Default::default(), || {
             with_client_game(|game| {
                 let _world = PhaseOwner::scope(ModPhase::World);
                 game.init_remote_for_replay().unwrap();
@@ -322,7 +212,6 @@ mod tests {
 
                 let failed = executor(game, "failed");
                 let second_handle = executor(game, "failed");
-                let canceled = executor(game, "canceled");
                 let other = executor(game, "other");
                 let (record, calls) = mpsc::channel();
                 let retarget = failed_stream.clone();
@@ -333,16 +222,19 @@ mod tests {
                         .unwrap();
                     std::panic::panic_any(PanickingPayload);
                 }));
-                canceled.execute(Box::new(|_| panic!("cancel this toast")));
                 let queued = record.clone();
                 second_handle.execute(Box::new(move |_| queued.send(("queued", false)).unwrap()));
                 let retarget = other_stream.clone();
                 let report = record.clone();
-                other.execute(Box::new(move |host| {
-                    report
-                        .send(("other", retarget.set_entity(host, entity)))
-                        .unwrap();
-                }));
+                thread::spawn(move || {
+                    other.execute(Box::new(move |host| {
+                        report
+                            .send(("other", retarget.set_entity(host, entity)))
+                            .unwrap();
+                    }));
+                })
+                .join()
+                .unwrap();
 
                 game.poll_remote().unwrap();
                 assert_eq!(
@@ -365,19 +257,22 @@ mod tests {
                 .unwrap();
                 assert_eq!(calls.try_recv(), Err(mpsc::TryRecvError::Disconnected));
 
-                // Removing the target stops a stream only if its retarget reached the mixer.
+                // A live placement survives a later panic: both streams now follow the entity.
                 use sunrise_protocol::packets::play::{Clientbound, RemoveEntities};
                 game.apply_packet(Clientbound::RemoveEntities(RemoveEntities {
                     ids: vec![20],
                 }))
                 .unwrap();
                 game.follow_audio_stream_entities();
-                assert_eq!(failed_stream.state(), AudioStreamState::Playing);
+                assert_eq!(failed_stream.state(), AudioStreamState::Stopped);
                 assert_eq!(other_stream.state(), AudioStreamState::Stopped);
-                assert_eq!(game.client_executor.errors.len(), 1);
-                let error = &game.client_executor.errors[0];
-                assert_eq!(error.title.plain(), "Executor callback failed");
-                assert_eq!(error.message.as_ref().unwrap().plain(), "failed");
+                assert_eq!(
+                    take_hook_panics(),
+                    [HookPanicReport {
+                        mod_id: "failed",
+                        hook: "client_executor",
+                    }]
+                );
             });
         });
     }
@@ -402,7 +297,7 @@ mod tests {
                     calls.try_iter().collect::<Vec<_>>(),
                     ["before refusal", "next task"]
                 );
-                assert!(game.client_executor.errors.is_empty());
+                assert!(take_hook_panics().is_empty());
             });
         });
     }

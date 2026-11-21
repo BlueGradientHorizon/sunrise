@@ -2,7 +2,6 @@
 use super::{Control, Ring, pcm};
 use mod_api::{AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStream};
 use std::{
-    panic::{AssertUnwindSafe, catch_unwind},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering::*},
@@ -293,23 +292,26 @@ impl PullJob {
         let offered = needed.min((scratch.len() / channels) as u64) as usize;
         let buffer = &mut scratch[..offered * channels];
         buffer.fill(0);
-        let frames = match catch_unwind(AssertUnwindSafe(|| self.source.read(buffer))) {
-            Ok(frames) if frames <= offered => frames,
-            Ok(frames) => {
-                log::warn!(
-                    "mod `{}` audio stream returned invalid frame count {frames} (offered {offered}); stopping stream",
-                    self.control.owner
-                );
-                return false;
-            }
-            Err(_) => {
-                log::error!(
-                    "mod `{}` audio stream panicked in AudioStream::read; stopping stream",
-                    self.control.owner
-                );
-                return false;
-            }
+        let control = &self.control;
+        let source = &mut self.source;
+        let Some(frames) = mod_api::__private::invoke_retained(
+            control.owner,
+            "AudioStream::read",
+            || {
+                control.stop();
+                true // This job retires after the first panic.
+            },
+            || source.read(buffer),
+        ) else {
+            return false;
         };
+        if frames > offered {
+            log::warn!(
+                "mod `{}` audio stream returned invalid frame count {frames} (offered {offered}); stopping stream",
+                self.control.owner
+            );
+            return false;
+        }
         let samples = &buffer[..frames * channels];
         let filled = if downsample {
             self.downsample
@@ -597,6 +599,23 @@ mod tests {
         finish.send(()).unwrap();
         worker.join().unwrap();
         assert!(control.job_retired.load(Acquire));
+    }
+
+    #[test]
+    fn panicking_read_queues_the_shared_attributed_diagnostic() {
+        mod_api::testing::with_dispatch(Default::default(), || {
+            let mut rig = Rig::new(|_| panic!("test audio source panic"));
+            assert_eq!(rig.play::<4>(), [0.0; 4]);
+            assert!(!rig.refill());
+            assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "mod",
+                    hook: "AudioStream::read",
+                }]
+            );
+        });
     }
 
     #[test]

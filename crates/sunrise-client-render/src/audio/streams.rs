@@ -15,12 +15,9 @@ use mod_api::{
     AudioStreamState, EntityRef, SpecFault, StreamPlacement, StreamSpec,
 };
 use pull::{Demand, PullJob, Worker};
-use std::{
-    cell::RefCell,
-    sync::{
-        Arc, Mutex, MutexGuard,
-        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering::*, fence},
-    },
+use std::sync::{
+    Arc, Mutex, MutexGuard,
+    atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering::*, fence},
 };
 
 /// Internal capacity of the worker-to-callback PCM ring, in milliseconds at the source rate.
@@ -148,7 +145,7 @@ pub(super) struct Control {
     /// The stream's `SoundSource` index.
     category: usize,
     range: f32,
-    owner: String,
+    owner: &'static str,
     /// Charges this ring's bytes to its owner until the voice and job have both retired.
     pcm_bytes: usize,
     volume: AtomicU32,
@@ -263,47 +260,6 @@ fn check_placement(
     ))
 }
 
-struct PlacementEdit {
-    control: Arc<Control>,
-    placement: Held,
-    view: View,
-}
-
-thread_local! {
-    static TASK_PLACEMENTS: RefCell<Option<Vec<PlacementEdit>>> = const { RefCell::new(None) };
-}
-
-/// Run one client executor task with stream placements unpublished until it succeeds.
-/// Unlike undoing a live placement, this never exposes the failed task to the mixer.
-pub fn stage_stream_placements<T, E>(
-    owner: &str,
-    run: impl FnOnce() -> Result<T, E>,
-) -> Result<T, E> {
-    struct Restore(Option<Vec<PlacementEdit>>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            TASK_PLACEMENTS.replace(self.0.take());
-        }
-    }
-    let scope = Restore(TASK_PLACEMENTS.replace(Some(Vec::new())));
-    let result = run();
-    let pending = TASK_PLACEMENTS.take().expect("client task placement scope");
-    drop(scope);
-    if result.is_ok() {
-        for PlacementEdit {
-            control,
-            placement,
-            view,
-        } in pending
-        {
-            if !control.place(control.lock(), placement, view) {
-                log::warn!("Mod {owner}: client executor stream placement refused: stream stopped");
-            }
-        }
-    }
-    result
-}
-
 /// A mod's end of a stream: what `AudioStreamRef` calls. Dropping it stops the stream.
 pub(super) struct StreamHandle {
     control: Arc<Control>,
@@ -315,23 +271,6 @@ impl AudioStreamSource for StreamHandle {
         let Ok((placement, view)) = check_placement(placement, entity_pos) else {
             return false;
         };
-        let staged = TASK_PLACEMENTS.try_with(|pending| {
-            let mut pending = pending.borrow_mut();
-            let pending = pending.as_mut()?;
-            let _held = c.lock();
-            let open = !c.closed.load(Acquire);
-            if open {
-                pending.push(PlacementEdit {
-                    control: self.control.clone(),
-                    placement,
-                    view,
-                });
-            }
-            Some(open)
-        });
-        if let Ok(Some(open)) = staged {
-            return open;
-        }
         c.place(c.lock(), placement, view)
     }
     fn set_volume(&self, volume: f32) -> bool {
@@ -441,7 +380,7 @@ impl StreamPool {
     pub(super) fn open(
         &self,
         mixer: &Mutex<Mixer>,
-        owner: &str,
+        owner: &'static str,
         spec: &StreamSpec,
         entity_pos: Option<[f64; 3]>,
         source: Box<dyn AudioStream>,
@@ -527,7 +466,7 @@ impl StreamPool {
             rate: spec.rate,
             category: spec.category.index(),
             range: spec.range,
-            owner: owner.to_owned(),
+            owner,
             pcm_bytes: ring.bytes,
             volume: AtomicU32::new(spec.volume.clamp(0.0, 1.0).to_bits()),
             closed: AtomicBool::new(false),
@@ -895,14 +834,14 @@ mod tests {
         }
         fn open(
             &self,
-            owner: &str,
+            owner: &'static str,
             spec: &StreamSpec,
         ) -> Result<Arc<dyn AudioStreamSource>, AudioRefusal> {
             self.open_at_entity(owner, spec, None)
         }
         fn open_at_entity(
             &self,
-            owner: &str,
+            owner: &'static str,
             spec: &StreamSpec,
             entity_pos: Option<[f64; 3]>,
         ) -> Result<Arc<dyn AudioStreamSource>, AudioRefusal> {
@@ -1102,21 +1041,16 @@ mod tests {
         let rig = Rig::new();
         let low_rate = StreamSpec::new(SoundSource::Voice, 1, 1_000);
         let mut open = Vec::new();
-        for _ in 0..AUDIO_STREAMS_PER_MOD {
+        for _ in 0..256 {
             open.push(rig.open("m0", &low_rate).unwrap());
         }
         assert!(matches!(
             rig.open("m0", &low_rate),
             Err(AudioRefusal::ModStreamLimit)
         ));
-        let mut owner_index = 1usize;
-        while open.len() < AUDIO_STREAMS_TOTAL as usize {
-            let owner = format!("m{owner_index}");
-            owner_index += 1;
-            let batch =
-                (AUDIO_STREAMS_TOTAL as usize - open.len()).min(AUDIO_STREAMS_PER_MOD as usize);
-            for _ in 0..batch {
-                open.push(rig.open(&owner, &low_rate).unwrap());
+        for owner in ["m1", "m2", "m3"] {
+            for _ in 0..256 {
+                open.push(rig.open(owner, &low_rate).unwrap());
             }
         }
         assert!(matches!(

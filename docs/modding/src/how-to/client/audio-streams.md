@@ -38,7 +38,7 @@ The mixer owns the `Send + 'static` source. Keep `read` bounded and nonblocking:
 - Returning `1..=pcm.len() / channels` publishes that many whole frames. To play temporary silence without ending the stream (for example, while waiting on a network peer), return `n > 0` frames without writing to the zeroed `pcm` slice.
 - Returning a count larger than `pcm.len() / channels` stops the stream immediately without publishing.
 
-The worker drops an admitted source off the device callback at EOF or after stop, even if no further callback runs after you stop it. A panic in `read` stops only that stream.
+The worker drops an admitted source off the device callback at EOF or after stop, even if no further callback runs after you stop it. A panic in `read` immediately stops that stream and its source callback. The shared log and error toast name the mod; unrelated streams continue.
 
 ## Async and network producers
 
@@ -118,10 +118,9 @@ worker_executor.execute(Box::new(move |host| {
 
 `set_entity` checks tracking when the task runs, after the packet phase. It returns `false`
 if a packet removed the entity or moved the client to another level, even if that packet was
-published during packet handling after the task was submitted. A task's accepted placements
-(`set_entity`, `set_flat`, `set_position`) do not reach the mixer until the task returns
-successfully. A panic discards them. If another thread stops the stream before a placement
-can publish, the client logs the refusal.
+published during packet handling after the task was submitted. A successful `set_entity`,
+`set_flat`, or `set_position` publishes the placement immediately. A later panic in the task does
+not undo that placement.
 
 ## Threading
 
