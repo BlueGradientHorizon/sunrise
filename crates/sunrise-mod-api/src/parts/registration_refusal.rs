@@ -1,5 +1,15 @@
-//! Native registration savepoint and rollback.
+//! Native registration diagnostics, savepoint, and rollback.
 use super::*;
+
+impl DiagnosticsRegistrar for PartRegistrar {
+    fn refuse(&mut self, reason: &str) {
+        self.current_refusals.push(reason.to_owned());
+    }
+
+    fn warn(&mut self, key: &str, args: &[&str]) {
+        self.current_warnings.push(LoadingMessage::new(key, args));
+    }
+}
 
 impl PartRegistrar {
     pub(crate) fn registration_checkpoint(&self) -> impl FnOnce(&mut Self) + use<> {
@@ -108,7 +118,7 @@ mod tests {
         fn subscribed(&self) -> &'static [Option<crate::HookId>] {
             &[]
         }
-        fn register(&self, r: &mut dyn Registrar, cx: &RegistrationContext) {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             r.recipe_book_type_with_fields("broken:book", "reused_open", "reused_filter")
                 .unwrap();
             r.declare_fluid("before");
@@ -119,9 +129,9 @@ mod tests {
                 .transform(|data: &crate::Compound, _: crate::StructureTransform| Ok(data.clone()))
                 .build();
             r.block_entity_part(&kind, Callback).unwrap();
-            cx.refuse("bootstrap failed: café\nmissing bridge");
-            cx.refuse("ignored");
-            cx.warn("test.warn.bridge", &["missing"]);
+            r.refuse("bootstrap failed: café\nmissing bridge");
+            r.refuse("second refusal: missing config");
+            r.warn("test.warn.bridge", &["missing"]);
             r.declare_fluid("foreign:after");
         }
     }
@@ -141,14 +151,8 @@ mod tests {
         fn subscribed(&self) -> &'static [Option<crate::HookId>] {
             &[]
         }
-        fn register(&self, r: &mut dyn Registrar, cx: &RegistrationContext) {
-            // Diagnostics follow the borrowed context, not the dispatch thread's scope.
-            std::thread::scope(|scope| {
-                scope
-                    .spawn(|| cx.warn("test.warn.optional", &["jei"]))
-                    .join()
-                    .unwrap();
-            });
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            r.warn("test.warn.optional", &["jei"]);
             r.declare_fluid("soup");
         }
     }
@@ -181,9 +185,9 @@ mod tests {
         fn subscribed(&self) -> &'static [Option<crate::HookId>] {
             &[]
         }
-        fn register(&self, _: &mut dyn Registrar, cx: &RegistrationContext) {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             for i in 0..18 {
-                cx.warn("test.warn.many", &[&i.to_string()]);
+                r.warn("test.warn.many", &[&i.to_string()]);
             }
         }
     }
@@ -203,14 +207,14 @@ mod tests {
         assert_eq!(warns[0].args(), ["jei"]);
         assert!(crate::__private::registration_warnings("quiet").is_empty());
         let many = crate::__private::registration_warnings("many");
-        assert_eq!(many.len(), 16);
+        assert_eq!(many.len(), 18);
         assert_eq!(many[0].key(), "test.warn.many");
         assert_eq!(many[0].args(), ["0"]);
-        assert_eq!(many[15].args(), ["15"]);
+        assert_eq!(many[17].args(), ["17"]);
     }
 
     #[test]
-    fn refusal_rolls_back_only_its_owner_and_preserves_the_reason() {
+    fn refusal_rolls_back_only_its_owner_and_preserves_all_reasons() {
         let mods = [
             ModEntry::new("healthy", Box::new(Healthy)),
             ModEntry::new("broken", Box::new(Refuses)),
@@ -229,7 +233,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             registrar.refused,
-            ["mod broken refused registration: bootstrap failed: café\nmissing bridge"]
+            [
+                "mod broken refused registration: bootstrap failed: café\nmissing bridge",
+                "mod broken refused registration: second refusal: missing config",
+            ]
         );
         assert_eq!(registrar.warnings.len(), 1);
         let (owner, warnings) = &registrar.warnings[0];
@@ -253,5 +260,52 @@ mod tests {
         assert!(keys.declared_fluids.contains_key("later:soup"));
         assert!(!keys.declared_fluids.contains_key("broken:before"));
         assert!(!keys.declared_fluids.contains_key("foreign:after"));
+    }
+
+    #[test]
+    fn long_utf8_refusals_and_warnings_are_kept_verbatim() {
+        let long_reason = format!("{}é!", "r".repeat(4096));
+        let long_key = format!("{}é!", "k".repeat(4096));
+        let long_arg = format!("{}é!", "a".repeat(4096));
+        struct Verbatim {
+            reason: String,
+            key: String,
+            arg: String,
+        }
+        impl Hooks for Verbatim {
+            fn subscribed(&self) -> &'static [Option<crate::HookId>] {
+                &[]
+            }
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                r.refuse(&self.reason);
+                r.refuse("");
+                r.warn(&self.key, &[&self.arg]);
+            }
+        }
+        let mods = [ModEntry::new(
+            "verbatim",
+            Box::new(Verbatim {
+                reason: long_reason.clone(),
+                key: long_key.clone(),
+                arg: long_arg.clone(),
+            }),
+        )];
+        let registrar = super::super::register_all(&mods, |_| false);
+        assert_eq!(
+            registrar.refused,
+            [
+                format!("mod verbatim refused registration: {long_reason}"),
+                String::from("mod verbatim refused registration: "),
+            ]
+        );
+        let [(owner, warnings)] = registrar.warnings.as_slice() else {
+            panic!("expected warnings from one mod");
+        };
+        assert_eq!(*owner, "verbatim");
+        let [warning] = warnings.as_slice() else {
+            panic!("expected one warning");
+        };
+        assert_eq!(warning.key(), long_key);
+        assert_eq!(warning.args(), [long_arg]);
     }
 }

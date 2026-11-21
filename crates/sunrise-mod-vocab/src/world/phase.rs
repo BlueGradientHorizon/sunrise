@@ -725,9 +725,6 @@ impl std::error::Error for RegistrationReadError {}
 /// - [`setting`](Self::setting): the settings on disk for the loaded packages when registration
 ///   began. Later writes are not seen.
 ///
-/// In [`Hooks::register`](crate::Hooks::register), this context also records [`warn`](Self::warn)
-/// and [`refuse`](Self::refuse) diagnostics for the mod being registered.
-///
 /// ```compile_fail
 /// use mod_api::{Host, RegistrationContext};
 /// fn game(_: &dyn Host) {}
@@ -751,8 +748,6 @@ pub struct RegistrationContext {
     pub(crate) mods: LoadedMods,
     pub(crate) data: Option<RegistrationData>,
     pub(crate) declaration_refusals: std::sync::Mutex<Vec<crate::__private::DeclarationRefusal>>,
-    pub(crate) diagnostics:
-        Option<Arc<std::sync::Mutex<crate::__private::RegistrationDiagnostics>>>,
     pub(crate) instance_dir: Option<crate::InstanceDirectory>,
     /// The game's startup screen, for [`progress`](Self::progress) and
     /// [`message`](Self::message); none without a game.
@@ -769,7 +764,6 @@ impl RegistrationContext {
             mods: LoadedMods::new(),
             data,
             declaration_refusals: Default::default(),
-            diagnostics: None,
             instance_dir,
             startup: crate::world::startup_progress::installed(),
             runtime,
