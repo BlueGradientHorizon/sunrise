@@ -26,7 +26,7 @@ pub trait BlockScreenEffectRenderer: Sync {
 
 // no wire: the drawing context is a frame-local borrow.
 /// The overlay's original extraction inputs and its camera-space drawing scope.
-// exhaustive: the game assembles the inputs and frame borrow together for submission.
+#[non_exhaustive]
 pub struct BlockScreenEffectRender<'a> {
     /// The overlay selected at extraction.
     pub effect: BlockScreenEffect,
@@ -40,6 +40,26 @@ pub struct BlockScreenEffectRender<'a> {
     pub hide_gui: bool,
     /// Camera-space quads, under the first-person hand's projection and before the GUI.
     pub draw: &'a mut dyn CameraDrawContext,
+}
+
+// hidden: only the engine has the original extraction, frame timing, and draw scope.
+#[doc(hidden)]
+pub fn block_screen_effect_render(
+    effect: BlockScreenEffect,
+    state: BlockState,
+    pos: BlockPos,
+    partial_tick: f32,
+    hide_gui: bool,
+    draw: &mut dyn CameraDrawContext,
+) -> BlockScreenEffectRender<'_> {
+    BlockScreenEffectRender {
+        effect,
+        state,
+        pos,
+        partial_tick,
+        hide_gui,
+        draw,
+    }
 }
 
 impl ExtractBlockScreenEffectEvent<'_> {

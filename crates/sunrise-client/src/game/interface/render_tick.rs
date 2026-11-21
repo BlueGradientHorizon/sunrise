@@ -2,7 +2,8 @@
 //! campfire smoke and rain splashes (`ClientLevel.tickWeatherEffects`).
 use super::{Dim, Game, api_values::TryIntoApi, host::draw::GameCameraDrawContext};
 use mod_api::{
-    __private::SelectedBlockScreenEffectRenderer, BlockScreenEffect, BlockScreenEffectRender,
+    __private::{SelectedBlockScreenEffectRenderer, block_screen_effect_render},
+    BlockScreenEffect,
 };
 use sunrise_client::assets::Properties;
 use sunrise_client::camera::NearPlane;
@@ -448,14 +449,14 @@ impl Game<'_> {
             let mut quads = CameraQuads::new(hand_projection);
             if custom.renderer.submit(
                 self,
-                BlockScreenEffectRender {
+                block_screen_effect_render(
                     effect,
-                    state: custom.state,
-                    pos: custom.pos,
-                    partial_tick: partial,
-                    hide_gui: self.ui.hide_gui,
-                    draw: &mut GameCameraDrawContext::new(self, &mut quads),
-                },
+                    custom.state,
+                    custom.pos,
+                    partial,
+                    self.ui.hide_gui,
+                    &mut GameCameraDrawContext::new(self, &mut quads),
+                ),
             ) {
                 match effect {
                     BlockScreenEffect::Block => effects.block = None,
