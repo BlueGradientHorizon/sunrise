@@ -1,0 +1,4 @@
+# Registry tooling only; no `mod_api` surface item changed.
+ids = []
+why = "The Sunrise registry now stages and mirrors packages and native binaries in sunrise-org/sunrise-mods. The package library and submission service use the same repository instead of retaining the old Horizon release default. This is Sunrise-only; vanilla and NeoForge have no registry release mirror."
+migrate = "If a deployment sets REGISTRY_REPO to horizon-rust/horizon-mods only to select the default, remove that setting or set it to sunrise-org/sunrise-mods. Keep intentional test bases and the author release URLs in published file and binaries rows unchanged."
