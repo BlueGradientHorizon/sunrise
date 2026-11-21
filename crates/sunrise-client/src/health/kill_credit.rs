@@ -10,6 +10,13 @@ use crate::{
 pub trait KnockbackCredit {
     /// Commit accepted-hit player responsibility before the default push.
     fn accepted_mob_hit(&mut self, mob: &mut Mob);
+    /// `LivingEntity.resolvePlayerResponsibleForDamage`: commit this hit's
+    /// player/tamed-wolf responsibility (if any) and report whether a live
+    /// player is responsible while the 100-tick memory timer is active.
+    fn resolve_player_responsible(&mut self, mob: &mut Mob) -> bool {
+        self.accepted_mob_hit(mob);
+        mob.ai.last_hurt_by_player > 0
+    }
     /// The credit entity and its main hand. Zero means a genuinely unresolved credit.
     fn snapshot<'a>(
         &'a self,

@@ -2159,7 +2159,41 @@ impl Game<'_> {
         if killed && let Some(Who::Mob(killer)) = source.attacker {
             self.zombie_killed(killer, target);
         }
+        self.settle_warden_hurt(target);
         hurt
+    }
+    /// Run `Warden.hurtServer`'s anger and target selection synchronously after a hit,
+    /// matching vanilla even while ticked simulation is frozen or the base hurt call returned false.
+    pub(in crate::game) fn settle_warden_hurt(&mut self, id: u32) {
+        let Some(index) = self.mobs.iter().position(|m| {
+            m.id == id
+                && m.extra
+                    .warden
+                    .as_ref()
+                    .is_some_and(|st| st.has_pending_hurt())
+        }) else {
+            return;
+        };
+        let uuid = self.level.player_uuid;
+        let others: Vec<_> = self
+            .mobs
+            .iter()
+            .map(|m| seen(m, uuid, self.items()))
+            .collect();
+        let mut mob = self.mobs.swap_remove(index);
+        let mut events = Vec::new();
+        {
+            let world = self.mob_world_base(&others);
+            sunrise_client::mobs::warden::handle_hurt(&mut mob, &world, &mut events);
+        }
+        self.mobs.push(mob);
+        let last = self.mobs.len() - 1;
+        if index < last {
+            self.mobs.swap(index, last);
+        }
+        if !events.is_empty() {
+            let _ = self.handle_mob_events(events);
+        }
     }
     /// `LivingEntity.resolvePlayerResponsibleForDamage` after `source` hurt a
     /// mob: a tame wolf's hit is its owner's (`setLastHurtByPlayer(uuid, 100)`),
@@ -2781,8 +2815,9 @@ impl Game<'_> {
                     // Only a creeper or a wither empties the hives it blows up.
                     // The creeper is already gone from the list, so the event
                     // carries its kind. A sulfur cube's blast is TNT's.
-                    let mut source =
-                        super::explosion::ExplosionSource::default().with_silence(silent);
+                    let mut source = super::explosion::ExplosionSource::default()
+                        .with_silence(silent)
+                        .with_direct_kind(sunrise_client::health::DirectEntity::Living);
                     if let Some(id) = source_mob
                         && matches!(species, Species::Creeper | Species::Wither)
                     {
@@ -5583,6 +5618,12 @@ impl Game<'_> {
         let result = self.with_attack(attack, |g| g.projectile_hit_landed(p, hit));
         self.settle_dealt_absorbed(p.owner == Some(Who::Player));
         result?;
+        if let Hit::Entity {
+            who: Who::Mob(id), ..
+        } = hit
+        {
+            self.settle_warden_hurt(id);
+        }
         // The hit's hurt teleports an enderman or a shulker now (`hurtServer`).
         self.settle_hurt_teleports()
     }

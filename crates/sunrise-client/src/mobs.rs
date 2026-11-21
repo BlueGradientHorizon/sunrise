@@ -3336,6 +3336,8 @@ pub struct MobWorld<'a> {
     pub live_mobs: Option<&'a dyn LiveMobs>,
     /// The separately simulated dragon, visible to revenge and melee goals.
     pub dragon: Option<(u32, TargetInfo)>,
+    /// The separately simulated armor stands (`LivingEntity` causes for `Warden.hurtServer`).
+    pub armor_stands: &'a [crate::entities::ArmorStand],
     /// The boats and rafts a lead can hang on (`Holder::Boat`): id and state.
     pub leash_boats: &'a [(u32, leash::HolderState)],
     /// `others` by position, when the caller keeps one (the mob ticks).
@@ -3964,6 +3966,7 @@ impl Mob {
         // follows `super.hurtServer` whatever it answered (a hurt cooldown, a
         // dead enderman), its hurt sound's pitch included.
         let enderman = self.species() == Species::Enderman;
+        let warden = self.species() == Species::Warden;
         let mut passed_invulnerability = false;
         let hurt = self.hurt_server(
             level,
@@ -3974,6 +3977,12 @@ impl Mob {
         );
         if enderman && passed_invulnerability {
             enderman::after_hurt(self, &source, level.attack().direct.is_some());
+        }
+        // `Warden.hurtServer` runs its own anger/targeting reaction after
+        // `super.hurtServer` regardless of whether `super.hurtServer` accepted
+        // the hit (e.g. when the hit was rejected on hurt cooldown).
+        if warden && !self.extra.client_side {
+            warden::hurt(self, &source, level.attack());
         }
         hurt
     }
@@ -4008,7 +4017,14 @@ impl Mob {
         }
         *passed_invulnerability = true;
         if !self.alive() {
-            return false;
+            return reflected;
+        }
+        if self.species() == Species::Creaking {
+            match creaking::hurt_server(self, &source, level) {
+                creaking::HurtOutcome::Proceed => {}
+                creaking::HurtOutcome::Reacted => return true,
+                creaking::HurtOutcome::Refused => return false,
+            }
         }
         if !self.attacker_allows_damage(&source)
             || !ai::accepts_damage(self, &source, amount, level.attack())
@@ -4083,7 +4099,9 @@ impl Mob {
         let cooldown = self.invulnerable as f32 > 10.0 && !source.kind.bypasses_cooldown();
         if cooldown {
             if incoming <= self.last_hurt {
-                return false;
+                // `Ghast.hurtServer` returns true for a reflected large fireball
+                // even when `super.hurtServer` refuses it on hurt cooldown.
+                return reflected;
             }
             amount = incoming - self.last_hurt;
         }
@@ -4260,7 +4278,7 @@ impl Mob {
             };
             self.knockback(level, f64::from(0.4f32), dx, dz, &source, amount);
         }
-        ai::after_hurt(self, &source, level.attack());
+        ai::after_hurt(self, &source);
         if self.health <= 0.0 {
             self.health = 0.0;
             // `LivingEntity.hurtServer`: a killing blow is taken by a
@@ -4346,7 +4364,9 @@ impl Mob {
         }
         // Squid.hurtServer (also GlowSquid's result): parent health damage has
         // happened, but without a last living attacker the subclass returns false.
-        success
+        // Ghast.hurtServer returns true for a reflected large fireball whatever
+        // super.hurtServer did.
+        (success || reflected)
             && (!matches!(self.species(), Species::Squid | Species::GlowSquid)
                 || self.ai.last_hurt_by.is_some())
     }
@@ -5971,6 +5991,21 @@ mod fire_resistance_damage_tests {
                 assert_eq!(resistant.health, 10.0);
                 assert_eq!(resistant.invulnerable, 0);
             }
+
+            // Even when `super.hurtServer` refuses on hurt cooldown, `Ghast.hurtServer` still
+            // reports success for a reflected large fireball.
+            let mut cooling = ghast();
+            cooling.invulnerable = 20;
+            cooling.last_hurt = 2000.0;
+            assert!(
+                cooling.damage(
+                    &mut test_level.level().attacked_by(&large_fireball),
+                    1.0,
+                    source,
+                ),
+                "reflected LargeFireball must return true on hurt cooldown for {kind:?}"
+            );
+            assert_eq!(cooling.health, 10.0);
         }
 
         // Varying entities with fixed fireball damage type: non-LargeFireball direct entity or

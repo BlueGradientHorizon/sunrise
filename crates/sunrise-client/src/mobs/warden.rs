@@ -392,6 +392,9 @@ impl Warden {
     pub fn target(&self) -> Option<Who> {
         self.brain.mem.attack_target.value()
     }
+    pub fn has_pending_hurt(&self) -> bool {
+        !self.hurt_by.is_empty()
+    }
 }
 
 pub fn register(m: &mut Mob) {
@@ -492,15 +495,18 @@ pub fn can_be_targeted(m: &Mob) -> bool {
 }
 
 /// `Warden.canTargetEntity`: living, neither creative nor spectator, not a
-/// warden, not an ally, not invulnerable, alive.
+/// warden, not an armor stand, not an ally, not invulnerable, alive.
 pub fn can_target(w: &MobWorld, warden: u32, who: Who) -> bool {
     let targetable = match who {
         Who::Player => w
             .selected_player()
             .is_some_and(|p| p.alive && !p.creative && !p.spectator),
-        Who::Mob(id) => w
-            .seen(id)
-            .is_some_and(|s| s.alive && s.species != Species::Warden && !s.invulnerable),
+        Who::Mob(id) => {
+            w.seen(id)
+                .is_some_and(|s| s.alive && s.species != Species::Warden && !s.invulnerable)
+                || w.dragon
+                    .is_some_and(|(dragon, target)| dragon == id && target.alive)
+        }
     };
     targetable && !allied(&w.teams, warden, Some(who))
 }
@@ -583,7 +589,7 @@ pub fn hurt(m: &mut Mob, source: &Damage, attack: &crate::health::Attack) {
     }
 }
 /// The rest of `Warden.hurtServer`.
-fn handle_hurt(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
+pub fn handle_hurt(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     let hurt = m
         .extra
         .warden
@@ -1490,6 +1496,28 @@ mod tests {
                 "different causing and direct entity must be indirect for {kind:?}"
             );
         }
+
+        // 3. Hurt cooldown rejection still runs Warden.hurtServer's reaction.
+        let mut m = warden();
+        m.invulnerable = 20;
+        m.last_hurt = 10.0;
+        let before = m.health;
+        let source = Damage {
+            kind: mob_projectile,
+            attacker: Some(Who::Mob(5)),
+            from: None,
+            attacker_species: None,
+        };
+        assert!(
+            !m.damage(&mut test_level.level().attacked_by(&same_mob), 1.0, source),
+            "hit within hurt cooldown should return false"
+        );
+        assert_eq!(m.health, before);
+        assert_eq!(
+            m.extra.warden.as_ref().unwrap().hurt_by,
+            [(Some(Who::Mob(5)), true)],
+            "Warden still reacts to a hit rejected on hurt cooldown"
+        );
     }
 }
 

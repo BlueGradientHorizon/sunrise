@@ -292,7 +292,7 @@ impl Game<'_> {
         attack
     }
     /// Classify an explicit `/damage` or `EntityRef::hurt` direct entity target.
-    pub(super) fn target_direct_entity(
+    pub(in crate::game) fn target_direct_entity(
         direct: Option<Target>,
         projectiles: &[sunrise_client::projectiles::Projectile],
     ) -> sunrise_client::health::DirectEntity {
@@ -371,7 +371,7 @@ impl Game<'_> {
             Target::Mob(id) => {
                 let attacker = cause.or(by).and_then(|t| match t {
                     Target::Player | Target::Guest(_) => Some(Who::Player),
-                    Target::Mob(i) => Some(Who::Mob(i)),
+                    Target::Mob(i) | Target::Dragon(i) | Target::Stand(i) => Some(Who::Mob(i)),
                     _ => None,
                 });
                 let attacker_species = match attacker {
@@ -557,6 +557,8 @@ impl Game<'_> {
         for (mob, target) in reinforcements {
             self.call_reinforcements(mob, target);
         }
+        // Warden.hurtServer's anger and target update, refused hit or not, before return.
+        self.settle_warden_hurt(id);
         // Enderman.hurtServer's teleport, refused hit or not, before the command returns.
         if let Err(e) = self.settle_hurt_teleports() {
             log::warn!("Sunrise: /damage: enderman teleport: {e}");

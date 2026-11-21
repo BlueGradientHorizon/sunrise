@@ -102,24 +102,38 @@ pub fn tear_down(m: &mut Mob, events: &mut Vec<MobEvent>) {
     m.voice("entity.creaking.death", events);
     m.removed = true;
 }
-/// `Creaking.hurtServer` for a heart-bound creaking: no damage, only the
-/// invulnerability animation and the heart's reaction. Returns whether the
-/// normal damage path should run.
-pub fn accepts_damage(m: &mut Mob, source: &Damage, attack: &crate::health::Attack) -> bool {
+/// Result of `Creaking.hurtServer` before `LivingEntity`'s health damage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HurtOutcome {
+    /// Unbound, or `#bypasses_invulnerability`: proceed through `LivingEntity.hurtServer`.
+    Proceed,
+    /// Heart-bound and reacted (no health loss; `hurtServer` returns `true`).
+    Reacted,
+    /// Heart-bound and refused (`hurtServer` returns `false`).
+    Refused,
+}
+/// `Creaking.hurtServer` for a heart-bound creaking: no health loss, only the
+/// invulnerability animation and the heart's reaction. A valid reaction returns
+/// [`HurtOutcome::Reacted`] (`true`), while a refusal returns [`HurtOutcome::Refused`] (`false`).
+pub fn hurt_server(
+    m: &mut Mob,
+    source: &Damage,
+    level: &mut crate::health::DamageLevel<'_>,
+) -> HurtOutcome {
     if !heart_bound(m) || source.kind.bypasses_invulnerability() {
-        return true;
+        return HurtOutcome::Proceed;
     }
     if source.is_fire() || !m.alive() || m.extra.ints[INVULNERABLE] > 0 {
-        return false;
+        return HurtOutcome::Refused;
     }
-    let by_player = attack.is_player_responsible(source);
-    let direct = attack.direct_entity(source);
+    let by_player = level.resolve_player_responsible(m, source);
+    let direct = level.attack().direct_entity(source);
     if !direct.is_living() && !direct.is_projectile() && !by_player {
-        return false;
+        return HurtOutcome::Refused;
     }
     m.extra.ints[INVULNERABLE] = INVULNERABILITY_TICKS;
     m.extra.counter |= HURT | if by_player { HURT_BY_PLAYER } else { 0 };
-    false
+    HurtOutcome::Reacted
 }
 /// The rest of `Creaking.hurtServer` for a heart-bound creaking, run by the
 /// host right after the damage: whether its heart still protects it, and
@@ -671,7 +685,8 @@ mod tests {
         };
         let custom = DamageKind::Named(NamedDamage::new("example:hit", 0));
 
-        // 1. Vary damage type with fixed Living or Projectile direct entity: always reacts.
+        // 1. Vary damage type with fixed Living or Projectile direct entity:
+        // reacts, keeps health unchanged, and returns true (accepted).
         let living_attack = Attack {
             attacker: 5,
             direct: Some(5),
@@ -687,13 +702,18 @@ mod tests {
         for attack in [&living_attack, &projectile_attack] {
             for kind in [DamageKind::Generic, DamageKind::Magic, custom] {
                 let mut m = bound();
+                let before = m.health;
                 let source = Damage {
                     kind,
                     attacker: Some(Who::Mob(5)),
                     from: None,
                     attacker_species: None,
                 };
-                assert!(!m.damage(&mut test_level.level().attacked_by(attack), 1.0, source));
+                assert!(
+                    m.damage(&mut test_level.level().attacked_by(attack), 1.0, source),
+                    "valid reaction must return true for {kind:?}"
+                );
+                assert_eq!(m.health, before, "bound creaking must not lose health");
                 assert_eq!(
                     m.extra.ints[INVULNERABLE], INVULNERABILITY_TICKS,
                     "{kind:?}"
@@ -703,7 +723,7 @@ mod tests {
         }
 
         // 2. Vary entities with fixed melee/projectile damage types: non-living/non-projectile
-        // direct entity without a responsible player does NOT trigger a reaction.
+        // direct entity without player credit returns false and does not react.
         let non_living_attack = Attack {
             attacker: 5,
             direct: Some(20),
@@ -730,69 +750,88 @@ mod tests {
                 )),
             ] {
                 let mut m = bound();
+                let before = m.health;
                 let source = Damage {
                     kind,
                     attacker,
                     from: None,
                     attacker_species: None,
                 };
-                assert!(!m.damage(&mut test_level.level().attacked_by(attack), 1.0, source));
+                assert!(
+                    !m.damage(&mut test_level.level().attacked_by(attack), 1.0, source),
+                    "refused hit must return false for {kind:?}"
+                );
+                assert_eq!(m.health, before);
                 assert_eq!(m.extra.ints[INVULNERABLE], 0, "{kind:?}");
                 assert_eq!(m.extra.counter & (HURT | HURT_BY_PLAYER), 0, "{kind:?}");
             }
         }
 
-        // 3. Responsible player (directly, or via tame wolf's resolved owner) triggers HURT_BY_PLAYER
-        // even when the direct entity is neither living nor a projectile (e.g. TNT or area-effect cloud).
+        // 3. Player hit refreshes the 100-tick timed player credit and returns true with unchanged
+        // health; a later ownerless follow-up still reacts while that credit is live, and refuses
+        // once the timer expires.
         let player_tnt = Attack {
             attacker: 7,
             direct: Some(20),
             direct_kind: Some(DirectEntity::Other),
-            player_responsible: true,
             ..Default::default()
         };
         let mut m = bound();
+        let before = m.health;
         let source = Damage {
             kind: DamageKind::Generic,
             attacker: Some(Who::Player),
             from: None,
             attacker_species: None,
         };
-        assert!(!m.damage(
+        assert!(m.damage(
             &mut test_level.level().attacked_by(&player_tnt),
             1.0,
             source
         ));
+        assert_eq!(m.health, before);
+        assert_eq!(m.ai.last_hurt_by_player, 100);
         assert_eq!(m.extra.ints[INVULNERABLE], INVULNERABILITY_TICKS);
         assert_eq!(
             m.extra.counter & (HURT | HURT_BY_PLAYER),
             HURT | HURT_BY_PLAYER
         );
 
-        let tame_wolf_tnt = Attack {
-            attacker: 9,
-            direct: Some(20),
-            direct_kind: Some(DirectEntity::Other),
-            player_responsible: true,
-            ..Default::default()
-        };
-        let mut m = bound();
-        let source = Damage {
-            kind: DamageKind::Generic,
-            attacker: Some(Who::Mob(9)),
-            from: None,
-            attacker_species: None,
-        };
+        // On invulnerability animation cooldown: refused (returns false).
         assert!(!m.damage(
-            &mut test_level.level().attacked_by(&tame_wolf_tnt),
+            &mut test_level.level().attacked_by(&player_tnt),
             1.0,
             source
         ));
+
+        // After the 8-tick animation ends, an ownerless follow-up still reacts via remembered
+        // player credit (`last_hurt_by_player > 0`).
+        m.extra.ints[INVULNERABLE] = 0;
+        m.extra.counter = 0;
+        m.ai.last_hurt_by_player = 50;
+        assert!(m.damage(
+            &mut test_level.level().attacked_by(&entityless_attack),
+            1.0,
+            Damage::of(DamageKind::Generic),
+        ));
+        assert_eq!(m.health, before);
         assert_eq!(m.extra.ints[INVULNERABLE], INVULNERABILITY_TICKS);
         assert_eq!(
             m.extra.counter & (HURT | HURT_BY_PLAYER),
             HURT | HURT_BY_PLAYER
         );
+
+        // Once the timed credit expires, the same ownerless hit is refused.
+        m.extra.ints[INVULNERABLE] = 0;
+        m.extra.counter = 0;
+        m.ai.last_hurt_by_player = 0;
+        assert!(!m.damage(
+            &mut test_level.level().attacked_by(&entityless_attack),
+            1.0,
+            Damage::of(DamageKind::Generic),
+        ));
+        assert_eq!(m.extra.ints[INVULNERABLE], 0);
+        assert_eq!(m.extra.counter & (HURT | HURT_BY_PLAYER), 0);
     }
 
     #[test]

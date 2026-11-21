@@ -60,12 +60,6 @@ impl Attack {
             source.direct == 0
         }
     }
-    /// `LivingEntity.resolvePlayerResponsibleForDamage`: whether a player is
-    /// responsible for this hit (either directly as causing player, or as a
-    /// tame wolf's resolved owner).
-    pub fn is_player_responsible(&self, damage: &Damage) -> bool {
-        self.player_responsible || damage.attacker == Some(Who::Player)
-    }
     /// `DamageSource.getWeaponItem`: melee's direct living entity or a projectile's saved weapon.
     pub fn weapon_of(&self, direct: i32) -> Option<&crate::items::ItemStack> {
         if direct == 0 {

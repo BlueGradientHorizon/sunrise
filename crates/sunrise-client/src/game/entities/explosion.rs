@@ -218,6 +218,8 @@ pub(super) struct ExplosionSource {
     pub(super) portal_proof: bool,
     /// The entity that exploded and its kind (`Explosion.getDirectSourceEntity`), when known.
     entity: Option<(u32, &'static str)>,
+    /// Explicit vanilla class of the blast's direct source entity, when already known.
+    direct_kind: Option<sunrise_client::health::DirectEntity>,
 }
 impl ExplosionSource {
     pub(super) fn with_silence(mut self, silent: bool) -> Self {
@@ -230,6 +232,10 @@ impl ExplosionSource {
     }
     pub(super) fn with_entity(mut self, id: u32, kind: &'static str) -> Self {
         self.entity = Some((id, kind));
+        self
+    }
+    pub(super) fn with_direct_kind(mut self, kind: sunrise_client::health::DirectEntity) -> Self {
+        self.direct_kind = Some(kind);
         self
     }
 }
@@ -959,6 +965,89 @@ impl Game<'_> {
             push: Vec3::new(dir[0] * power, dir[1] * power, dir[2] * power),
         })
     }
+    /// Resolve the blast's `DamageSource.getDirectEntity()` id and class once per blast.
+    pub(super) fn resolve_blast_direct(
+        &self,
+        source: ExplosionSource,
+    ) -> (i32, sunrise_client::health::DirectEntity) {
+        use sunrise_client::health::DirectEntity;
+        let id = source
+            .entity
+            .map(|(id, _)| id)
+            .or(self.combat.explosion_direct)
+            .or(self.combat.explosion_source);
+        let Some(id) = id else {
+            return (0, DirectEntity::Other);
+        };
+        let kind = source.direct_kind.unwrap_or_else(|| {
+            if let Some((_, kind)) = source.entity {
+                match kind {
+                    "minecraft:fireball" => return DirectEntity::LargeFireball,
+                    "minecraft:arrow" | "minecraft:spectral_arrow" | "minecraft:trident" => {
+                        return DirectEntity::Arrow;
+                    }
+                    "minecraft:wither_skull"
+                    | "minecraft:small_fireball"
+                    | "minecraft:dragon_fireball"
+                    | "minecraft:snowball"
+                    | "minecraft:egg"
+                    | "minecraft:ender_pearl"
+                    | "minecraft:llama_spit"
+                    | "minecraft:wind_charge"
+                    | "minecraft:breeze_wind_charge"
+                    | "minecraft:shulker_bullet"
+                    | "minecraft:splash_potion"
+                    | "minecraft:lingering_potion"
+                    | "minecraft:experience_bottle"
+                    | "minecraft:firework_rocket"
+                    | "minecraft:fishing_bobber" => return DirectEntity::Projectile,
+                    "minecraft:creeper"
+                    | "minecraft:wither"
+                    | "minecraft:sulfur_cube"
+                    | "minecraft:player"
+                    | "minecraft:armor_stand"
+                    | "minecraft:ender_dragon" => return DirectEntity::Living,
+                    "minecraft:tnt" | "minecraft:tnt_minecart" | "minecraft:end_crystal" => {
+                        return DirectEntity::Other;
+                    }
+                    _ => {}
+                }
+            }
+            self.entity_direct_kind(id)
+        });
+        (id as i32, kind)
+    }
+
+    /// Classify a live or recently exploded entity id into its vanilla `DirectEntity` family.
+    fn entity_direct_kind(&self, id: u32) -> sunrise_client::health::DirectEntity {
+        use sunrise_client::health::DirectEntity;
+        if let Some(shot) = self.creatures.projectiles.iter().find(|shot| shot.id == id) {
+            return Self::projectile_direct_entity(&shot.kind);
+        }
+        if self.tridents.iter().any(|t| t.id == id) {
+            return DirectEntity::Arrow;
+        }
+        if self.rockets.iter().any(|r| r.id == id) || self.fishing_hook_by_id(id).is_some() {
+            return DirectEntity::Projectile;
+        }
+        if self.mobs.iter().any(|m| m.id == id)
+            || self.armor_stands.iter().any(|s| s.id == id)
+            || self.dragon.as_ref().is_some_and(|d| d.id == id)
+            || self
+                .player
+                .as_ref()
+                .is_some_and(|p| p.entity_id as u32 == id)
+            || self
+                .lan
+                .as_ref()
+                .is_some_and(|h| h.hub.guests.iter().any(|g| g.entity_id as u32 == id))
+            || self.combat.exploded_kinds.iter().any(|(mob, _)| *mob == id)
+        {
+            return DirectEntity::Living;
+        }
+        DirectEntity::Other
+    }
+
     /// `ServerExplosion.hurtEntities` (player, mobs, items, primed TNT, minecarts);
     /// the player takes `damage_type`. Returns the players whose clients add a
     /// push from the explosion packet, and how much (`explosion_hurt_player`).
@@ -969,7 +1058,7 @@ impl Game<'_> {
         damage_type: &str,
         interaction: BlockInteraction,
         blocks: &[[i32; 3]],
-        blast_entity: Option<(u32, &'static str)>,
+        blast_source_spec: ExplosionSource,
     ) -> Vec<(u32, [f64; 3])> {
         if radius < 1.0e-5 {
             return Vec::new();
@@ -1075,6 +1164,27 @@ impl Game<'_> {
             }
         }
         // Mobs. `WitherBoss.hurtServer`: a wither shrugs off an undead cause.
+        let (blast_direct_id, blast_direct_kind) = self.resolve_blast_direct(blast_source_spec);
+        let mut blast_attack = self.combat.attack().clone();
+        blast_attack.direct = Some(blast_direct_id);
+        blast_attack.direct_kind = Some(blast_direct_kind);
+        if blast_attack.attacker == 0
+            && let Some(Some(cause)) = &self.combat.explicit_explosion_cause
+            && cause.player
+        {
+            blast_attack.attacker = cause.entity.0 as i32;
+        }
+        if blast_attack.player_uuid.is_none() {
+            if let Some(Some(cause)) = &self.combat.explicit_explosion_cause
+                && cause.player
+            {
+                blast_attack.player_uuid = self.player_uuid_of(cause.guest);
+            } else if self.combat.blast_owner_player
+                && self.combat.explicit_explosion_cause.is_none()
+            {
+                blast_attack.player_uuid = self.player_uuid_of(self.combat.blast_guest);
+            }
+        }
         let cause = self
             .combat
             .explicit_explosion_cause
@@ -1178,8 +1288,8 @@ impl Game<'_> {
                 match handle {
                     _ if !hurts => {}
                     EntityHandle::Mob(i) => {
-                        let hurtable = teams_allow(self, self.mob_team(self.mobs[i].id));
-                        let m = &mut self.mobs[i];
+                        let victim = self.mobs[i].id;
+                        let hurtable = teams_allow(self, self.mob_team(victim));
                         // The exploding mob is the damage source's entity, so
                         // victims it kills drop its charged-creeper loot
                         // (`Creeper.killedEntity`).
@@ -1203,7 +1313,7 @@ impl Game<'_> {
                                     attacker
                                         .as_ref()
                                         .map(|&(id, _)| id)
-                                        .filter(|&o| o != m.id)
+                                        .filter(|&o| o != victim)
                                         .filter(|_| {
                                             self.combat
                                                 .explicit_explosion_cause
@@ -1220,50 +1330,25 @@ impl Game<'_> {
                         // `EXPLOSION_KNOCKBACK_RESISTANCE`, not `KNOCKBACK_RESISTANCE`:
                         // its base is 0 for every mob type, so iron golems and
                         // ravagers are pushed.
-                        let victim = m.id;
-                        let mut blast_attack = self.combat.attack().clone();
-                        if let Some((direct_id, direct_kind)) = blast_entity {
-                            blast_attack.direct = Some(direct_id as i32);
-                            blast_attack.direct_kind = Some(match direct_kind {
-                                "minecraft:fireball" => {
-                                    sunrise_client::health::DirectEntity::LargeFireball
-                                }
-                                "minecraft:wither_skull" => {
-                                    sunrise_client::health::DirectEntity::Projectile
-                                }
-                                "minecraft:creeper" | "minecraft:wither" => {
-                                    sunrise_client::health::DirectEntity::Living
-                                }
-                                _ => sunrise_client::health::DirectEntity::Other,
-                            });
-                        } else if let Some(direct_id) = self.combat.explosion_direct {
-                            let direct_kind = self
-                                .creatures
-                                .projectiles
-                                .iter()
-                                .find(|shot| shot.id == direct_id)
-                                .map_or(sunrise_client::health::DirectEntity::Other, |shot| {
-                                    Self::projectile_direct_entity(&shot.kind)
-                                });
-                            blast_attack.direct = Some(direct_id as i32);
-                            blast_attack.direct_kind = Some(direct_kind);
-                        } else if let Some(source_mob) = self.combat.explosion_source {
-                            blast_attack.direct = Some(source_mob as i32);
-                            blast_attack.direct_kind =
-                                Some(sunrise_client::health::DirectEntity::Living);
-                        }
+                        let plan = self.prepare_knockback_credit(
+                            victim as i32,
+                            source.attacker,
+                            &blast_attack,
+                        );
+                        let mut credit = plan.lend(&mut self.last_hurt_by_player);
                         let hurt = hurt_mob(
                             crate::game::entity::damage_level_of!(
                                 self,
                                 &blast_attack,
-                                no_push,
+                                &mut credit,
                                 None
                             ),
-                            m,
+                            &mut self.mobs[i],
                             hurtable,
                             cause,
                             (amount, source),
                         );
+                        self.settle_warden_hurt(victim);
                         if hurt {
                             if source.attacker == Some(Who::Player) {
                                 let guest = self.combat.blast_guest;
@@ -1797,7 +1882,7 @@ impl Game<'_> {
             damage_type,
             interaction,
             &targets,
-            source.entity,
+            source,
         );
         self.combat.blast_hit_list = outer;
         self.combat.blast_hit_ids = outer_ids;
@@ -2217,7 +2302,7 @@ impl Game<'_> {
                     "minecraft:explosion",
                     BlockInteraction::Destroy,
                     &[],
-                    None,
+                    ExplosionSource::default(),
                 );
                 let mut remaining: Vec<_> = self
                     .dropped

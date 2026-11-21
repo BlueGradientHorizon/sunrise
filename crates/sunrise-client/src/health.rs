@@ -404,6 +404,23 @@ impl<'a> DamageLevel<'a> {
             credit.accepted_mob_hit(mob);
         }
     }
+    /// `LivingEntity.resolvePlayerResponsibleForDamage` for a mob: a player's
+    /// hit refreshes the 100-tick timer, a tame wolf's refreshes or clears it
+    /// through the credit loan, and any other source preserves remembered player
+    /// credit while its timer is active.
+    pub fn resolve_player_responsible(
+        &mut self,
+        mob: &mut crate::mobs::Mob,
+        source: &crate::mobs::Damage,
+    ) -> bool {
+        if source.attacker == Some(crate::mobs::Who::Player) {
+            mob.ai.last_hurt_by_player = 100;
+        }
+        match &mut self.credit {
+            Credit::Loan(credit) => credit.resolve_player_responsible(mob),
+            Credit::Memory | Credit::NoPush => mob.ai.last_hurt_by_player > 0,
+        }
+    }
     /// Only the game bridge calls this after checking for a knockback subscriber. Without a
     /// site's loan the credit comes from the pushed entity's own hurt memories and this hit's
     /// attack ([`kill_credit::from_memory`]).
@@ -745,9 +762,6 @@ pub struct Attack {
     pub projectile_weapon: Option<crate::items::ItemStack>,
     /// The verified causing player's UUID, when the attacker is a player.
     pub player_uuid: Option<[i32; 4]>,
-    /// Whether `LivingEntity.resolvePlayerResponsibleForDamage` resolves a live player for this
-    /// hit (a causing player, or a tame wolf's resolved owner).
-    pub player_responsible: bool,
     /// What it holds, or none when it is not known (no native mod listens: the game only
     /// records it then).
     pub held: Held,
@@ -762,14 +776,16 @@ pub static NO_ATTACK: Attack = Attack {
     position: None,
     projectile_weapon: None,
     player_uuid: None,
-    player_responsible: false,
     held: [None, None],
 };
 /// Whether vanilla's factory for `damage_type` passes the projectile as
 /// `DamageSource.getDirectEntity` (`arrow`, `trident`, `thrown`, `spit`,
 /// `fireball`, `unattributed_fireball`, `wither_skull`, `wind_charge`,
 /// `fireworks`, `mob_projectile`, `indirect_magic`). `magic()` does not, and
-/// neither does a blast: those stay entity-free even during a projectile's impact.
+/// blast damage types (`explosion`, `player_explosion`, `bad_respawn_point`) do
+/// not imply a projectile either, though a blast can still supply a projectile
+/// explicitly via [`Attack::direct`] / [`Attack::direct_kind`] (for example, a
+/// `LargeFireball` or `WitherSkull` explosion).
 pub fn names_its_projectile(damage_type: &str) -> bool {
     matches!(
         damage_type,

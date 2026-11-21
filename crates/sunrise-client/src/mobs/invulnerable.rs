@@ -29,8 +29,6 @@ impl Mob {
             || !self.alive()
             || self.removed
             || self.is_invulnerable_to(source)
-            || (source.is_fire()
-                && self.fire_immune()
-                && !self.reflected_fireball(source, &crate::health::NO_ATTACK))
+            || (source.is_fire() && self.fire_immune())
     }
 }

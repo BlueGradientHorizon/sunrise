@@ -318,7 +318,8 @@ impl Game<'_> {
                     at,
                     1.0,
                     super::explosion::ExplosionSource::default()
-                        .with_silence(g.entity_silent(p.id)),
+                        .with_silence(g.entity_silent(p.id))
+                        .with_entity(p.id, "minecraft:wither_skull"),
                 )
             })
         });
