@@ -554,6 +554,17 @@ impl Game<'_> {
                                 &mut trample,
                             )
                         }
+                        Some(Pause::AfterAirDamage(damage)) => {
+                            sunrise_client::mobs::riders::resume_after_air_damage(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                damage,
+                                &mut events,
+                                &mut trample,
+                            )
+                        }
                         Some(Pause::Trample) => sunrise_client::mobs::riders::resume_after_trample(
                             &mut mobs,
                             i,
@@ -812,8 +823,10 @@ impl Game<'_> {
             // The lift is a position write made by the owning game, not by
             // the borrowed mob. Give it the live section table as well.
             let trampling = matches!(pause, Some(Pause::Trample));
-            let trample_sections = section_table.as_ref().filter(|_| trampling);
-            if let Some(sections) = trample_sections {
+            let live_sections = section_table
+                .as_ref()
+                .filter(|_| trampling || matches!(pause, Some(Pause::AfterAirDamage(_))));
+            if let Some(sections) = live_sections {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
@@ -836,6 +849,12 @@ impl Game<'_> {
                         Pause::Breathing { air, .. } => {
                             air_answer = self.ask_mob_breath(air);
                         }
+                        Pause::AfterAirDamage(_) => {
+                            let victim = snapshot[cursor].id;
+                            if let Some(i) = self.mob_index.find(&self.mobs, victim) {
+                                self.finish_mob_damage_at(i);
+                            }
+                        }
                         Pause::Trample => {
                             let trample = trample.as_ref().expect("the trample pause was stored");
                             self.trample_farmland(trample.mob, false, trample.decision());
@@ -856,7 +875,7 @@ impl Game<'_> {
                 }
             }))
             .err();
-            if let Some(sections) = trample_sections {
+            if let Some(sections) = live_sections {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),

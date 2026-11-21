@@ -655,6 +655,49 @@ fn splash_water_finishes_a_lethal_hit_before_the_next_target() {
 
 #[test]
 #[ignore = "daily"]
+fn borrowed_air_damage_settles_before_the_next_mob_tick() {
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let mut first = mob(game, 225043, "minecraft:axolotl");
+            let mut second = mob(game, 225044, "minecraft:axolotl");
+            first.position = Vec3::new(1.0, 80.0, 1.0);
+            second.position = Vec3::new(3.0, 80.0, 1.0);
+            first.health = 0.5;
+            first.air = -19;
+            second.air = -19;
+            game.mobs.push(first);
+            game.mobs.push(second);
+            game.tick_creature_entities().unwrap();
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", 225043),
+                    ("pre", 225043),
+                    ("death", 225043),
+                    ("death-tail", 225043),
+                    ("post", 225043),
+                    ("incoming", 225044),
+                    ("pre", 225044),
+                    ("post", 225044),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
     use crate::game::native_player_death::tests::add_guest;
     let trace = Arc::new(DeathOrder::default());

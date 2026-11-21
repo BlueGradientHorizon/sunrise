@@ -1106,8 +1106,16 @@ pub enum Pause {
         /// `Entity.computeSpeed`, read before the tick moved the mob.
         known_speed: Vec3,
     },
+    /// A lethal air-supply hit needs its owning level before baseTick goes on.
+    AfterAirDamage(AirDamageResume),
     /// The caller's trample slot holds the continuation.
     Trample,
+}
+
+#[derive(Debug)]
+pub struct AirDamageResume {
+    contact: Contact,
+    known_speed: Vec3,
 }
 
 #[derive(Debug)]
@@ -1201,6 +1209,9 @@ pub fn tick(
                 let breath = Some(air.step.vanilla);
                 resume_after_breathing(m, w, level, events, air, known_speed, breath, None)
             }
+            TickProgress::Paused(Pause::AfterAirDamage(resume)) => {
+                resume_after_air_damage(m, w, level, events, resume, None)
+            }
             TickProgress::Paused(Pause::Trample) => {
                 unreachable!("hostless travel cannot pause")
             }
@@ -1274,6 +1285,12 @@ fn tick_until_pause(
             after_base_tick(m, w, level, events, was_on_fire, known_speed, trample)
         }
         BaseTick::Air(air) => TickProgress::Paused(Pause::Breathing { air, known_speed }),
+        BaseTick::AfterAirDamage(contact) => {
+            TickProgress::Paused(Pause::AfterAirDamage(AirDamageResume {
+                contact,
+                known_speed,
+            }))
+        }
     }
 }
 
@@ -1296,8 +1313,39 @@ pub fn resume_after_breathing(
     if let Some(breath) = breath {
         finish_air(m, w, level, events, air.step, air.damage, breath);
     }
-    let was_on_fire = base_tick_after_air(m, w, level, events, air.contact);
-    after_base_tick(m, w, level, events, was_on_fire, known_speed, trample)
+    let resume = AirDamageResume {
+        contact: air.contact,
+        known_speed,
+    };
+    if m.pending_damage_post.is_some() && trample.is_some() {
+        TickProgress::Paused(Pause::AfterAirDamage(resume))
+    } else {
+        resume_after_air_damage(m, w, level, events, resume, trample)
+    }
+}
+
+/// Continue baseTick after the owning game settled a lethal air-supply hit.
+pub(super) fn resume_after_air_damage(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    resume: AirDamageResume,
+    trample: Option<&mut Option<MobTrample>>,
+) -> TickProgress {
+    if m.removed {
+        return TickProgress::Complete(false);
+    }
+    let was_on_fire = base_tick_after_air(m, w, level, events, resume.contact);
+    after_base_tick(
+        m,
+        w,
+        level,
+        events,
+        was_on_fire,
+        resume.known_speed,
+        trample,
+    )
 }
 
 /// The tick after `Entity.baseTick`, up to the fox's consumption boundary.
@@ -2202,6 +2250,7 @@ fn keeps_its_air(m: &Mob) -> bool {
 enum BaseTick {
     Done(bool),
     Air(AirPause),
+    AfterAirDamage(Contact),
 }
 
 #[cfg(test)]
@@ -2210,7 +2259,9 @@ impl BaseTick {
     fn was_on_fire(self) -> bool {
         match self {
             Self::Done(was_on_fire) => was_on_fire,
-            Self::Air(_) => panic!("the base tick stopped at its air update"),
+            Self::Air(_) | Self::AfterAirDamage(_) => {
+                panic!("the base tick stopped at its air update")
+            }
         }
     }
 }
@@ -2384,6 +2435,13 @@ fn base_tick(
                 });
             }
             finish_air(m, w, level, events, step, damage, step.vanilla);
+            if m.pending_damage_post.is_some() {
+                return BaseTick::AfterAirDamage(Contact {
+                    fire,
+                    lava,
+                    at: contact_at,
+                });
+            }
         }
     }
     BaseTick::Done(base_tick_after_air(
