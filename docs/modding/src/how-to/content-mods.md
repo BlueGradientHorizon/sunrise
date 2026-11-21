@@ -268,6 +268,14 @@ Pick-block takes the block's item by default. `"pick_item": "<item id>"` names a
 is (air for `"item": false`). It is an item of the mod or a vanilla one, and the load fails naming the block when no
 such item exists. A sign's wall form picks its sign's item through `wall_block`, so it declares no `pick_item`.
 
+`"suspicious_stew_effects": [{"id": "minecraft:night_vision", "duration": 100}]` makes the block a suspicious stew
+source. Entries are applied in order; duration is in ticks and defaults to 160 when omitted. An unknown mob effect is
+reported when content loads. Native `Block` declarations give the same list as `(effect ID, duration in ticks)` pairs.
+Food & Drinks and Search show one stew for each distinct list, and feeding the block's item to a brown mooshroom
+lets you milk it into that stew. The item must place the block: neither `block_item` nor `pick_item` makes an item
+place it. This does not add a crafting recipe. To craft the stew, supply a `minecraft:crafting_shapeless` recipe with
+the block's item, a bowl and two `#minecraft:mushrooms`, and set `minecraft:suspicious_stew_effects` on the result.
+
 `push_reaction` sets vanilla's `BlockBehaviour.Properties.pushReaction` to `"PUSH_PULL"`, `"PUSH"`, `"POPPED"`, `"IMMOVEABLE"`, or `"IGNORE_ENTITY"`.
 
 `random_ticks` makes a block tick randomly whatever its template does, as vanilla's

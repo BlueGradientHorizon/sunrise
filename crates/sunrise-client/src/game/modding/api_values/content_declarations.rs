@@ -199,6 +199,15 @@ impl TryIntoEngine<()> for mod_api::Block {
                 .transpose()?,
             block_item: self.block_item.clone(),
             components: component_patch("block", &self.id, &self.components)?,
+            suspicious_stew_effects: self.suspicious_stew_effects.as_ref().map(|effects| {
+                effects
+                    .iter()
+                    .map(|(id, duration)| engine::StewEffect {
+                        id: id.clone(),
+                        duration: *duration,
+                    })
+                    .collect()
+            }),
             connects_to: self.connects_to.clone(),
             thickness: self.thickness,
             wood_type: self.wood_type.clone(),
