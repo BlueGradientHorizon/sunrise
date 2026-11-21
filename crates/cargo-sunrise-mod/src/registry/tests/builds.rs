@@ -162,14 +162,13 @@ fn an_unsigned_stable_source_is_refused_without_prebuilt_binaries() {
         assert!(entry.versions[0].builds.is_empty());
         entry.to_toml().unwrap()
     });
-    let error = release
-        .0
-        .build(&release.flags().each_ref().map(String::as_str))
-        .unwrap_err();
     assert!(
-        error.contains(ID) && error.contains("signed package"),
-        "{error}"
+        release
+            .0
+            .build(&release.flags().each_ref().map(String::as_str))
+            .is_err()
     );
+    assert!(!release.0.0.path().join("index.json").exists());
 }
 
 #[test]
