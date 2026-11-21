@@ -23,6 +23,7 @@ impl Game<'_> {
                     pos[2] + o[2] / 2,
                 ))
             })
+            // Only an exact nested call refuses; it contributes nothing to the offer sum.
             .filter_map(|o| {
                 let at = BlockPos::new(pos[0] + o[0], pos[1] + o[1], pos[2] + o[2]);
                 let state = self.world.block(at.x, at.y, at.z);
@@ -79,6 +80,7 @@ impl Game<'_> {
             self.pack.assets.registry.len(),
             |state| {
                 let origin = BlockPos::new(0, 0, 0);
+                // Only an exact nested call refuses; the snapshot then has no particle source.
                 self.enchant_power(None, state, origin, origin)
                     .unwrap_or_default()
             },
