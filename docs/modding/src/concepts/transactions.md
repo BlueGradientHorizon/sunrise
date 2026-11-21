@@ -67,8 +67,9 @@ right away; block updates and replacement effects wait for the outermost commit.
 `LevelRef::destroy_block` returns `Ok(None)` while a transaction is open, before
 running loot, experience or break effects.
 
-Other direct writes are not journaled: direct item-entity stack writes,
-`LivingRef::set_equipment`, and the armor-stand `slot_set` paths take
+`ItemEntityRef::set_stack` joins the ambient transaction journal as well: an abort restores
+the item entity's previous stack. Other direct writes are not journaled:
+`LivingRef::set_equipment` and the armor-stand `slot_set` paths take
 effect immediately, even inside a transaction. Equipment sounds and equip/unequip
 events from `LivingRef::set_equipment` also happen immediately. An abort does not
 undo these writes or effects. Use journaled capability handlers when you need rollback.
