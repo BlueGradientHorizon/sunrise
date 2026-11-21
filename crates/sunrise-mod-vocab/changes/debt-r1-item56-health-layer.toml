@@ -1,0 +1,37 @@
+ids = [
+    "hook:health_hud",
+    "hook:health_hud.inputs",
+    "hook:health_hud.wi",
+    "hook:health_hud.hi",
+    "method:Hooks::health_hud",
+    "type:HealthHudEvent",
+    "type:HealthHudEvent.inputs",
+    "type:HealthHudEvent.wi",
+    "type:HealthHudEvent.hi",
+    "type:client::hud_layout::HealthInputs",
+    "type:client::hud_layout::HealthInputs.tick",
+    "type:client::hud_layout::HealthInputs.millis",
+    "type:client::hud_layout::HealthInputs.health",
+    "type:client::hud_layout::HealthInputs.max_health",
+    "type:client::hud_layout::HealthInputs.absorption",
+    "type:client::hud_layout::HealthInputs.armor",
+    "type:client::hud_layout::HealthInputs.food",
+    "type:client::hud_layout::HealthInputs.saturation",
+    "type:client::hud_layout::HealthInputs.kind",
+    "type:client::hud_layout::HealthInputs.regeneration",
+    "type:client::hud_layout::HealthInputs.hunger",
+    "type:client::hud_layout::HealthInputs.hardcore",
+    "type:client::hud_layout::HealthInputs.damage_cooldown",
+    "type:client::hud_layout::HealthInputs.air",
+    "type:client::hud_layout::HealthInputs.max_air",
+    "type:client::hud_layout::HealthInputs.under_water",
+    "type:client::hud_layout::HealthInputs.vehicle_hearts",
+]
+why = "Vanilla 26.3 updates the heart flash in Hud.extractPlayerHealth and the bubble sound in Hud.extractAirBubbles. NeoForge's Hud.extractHealthLevel keeps the heart update inside the layer. GuiLayerManager.renderInner fires RenderGuiLayerEvent.Pre once, then calls the installed layer body unless Pre cancels; RegisterGuiLayersEvent replaces or wraps that body. Remove the second health callback and update vanilla's display state only when its body runs."
+migrate = """
+Remove `Hooks::health_hud` and the `HealthHudEvent` and `HealthInputs` imports. In `Hooks::register_gui_layers`, use `event.layers.replace_layer(\"minecraft:player_health\", Box::new(move |host, draw| { /* paint */ }))` instead of returning `Some(Vec<GuiDraw>)`. Submit the drawing directly through `draw`, for example with `draw.fill` and `draw.sprite`. Replace `event.wi` and `event.hi` with `let [w, h] = draw.size();` (GUI pixels as `f32`).
+
+There is no replacement `event.inputs` snapshot. Get the local player with `host.local_player()`; then use `host.living(player.entity())` and `living.health(host)`, `living.max_health(host)`, `living.absorption(host)` and `living.attribute_value(host, \"minecraft:armor\")` for the corresponding values. Read food and saturation from `player.food(host)` (`level` and `saturation`). Read hunger and regeneration from `living.potion_affected(host, effect_key)` using keys resolved at load. A custom body owns its visual state, including its heart sprites and timing. The old HUD-only fields have no equivalent snapshot; use the vanilla body if you need its flash and bubble behaviour.
+
+If you returned `None` on frames that should use vanilla, use `event.layers.wrap_layer(\"minecraft:player_health\", Box::new(move |ctx| { /* choose a body */ }))` instead. Read the player through `ctx.host()`, paint with `ctx.with_draw(&mut |draw| { /* custom paint */ })`, and call `ctx.draw_previous()` on frames that should keep the previous body. Use `gui_layer_pre` with `Flow::Cancel` to skip the entire slot for a frame. `player_heart_type` still changes vanilla heart sprites, but does not run when the vanilla body is skipped. The separate vehicle-health slot is unchanged.
+"""

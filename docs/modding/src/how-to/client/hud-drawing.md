@@ -53,8 +53,22 @@ runs. For work that must happen even when the HUD is hidden, use the independent
 
 ## Status rows and fixed text positions
 
-`minecraft:player_health` is still a single GUI layer for hearts, armour, food and air. Cancelling it
-in `gui_layer_pre` hides all four. `health_hud` replaces their combined drawing, not the separate
+`minecraft:player_health` is a single GUI layer for hearts, armour, food and air. Cancel it with
+`gui_layer_pre`, or install a custom body in `register_gui_layers`:
+
+```rust,ignore
+event.layers.replace_layer("minecraft:player_health", Box::new(|host, draw| {
+    let Some(player) = host.local_player() else { return };
+    let Some(living) = host.living(player.entity()) else { return };
+    let Some(health) = living.health(host) else { return };
+    let [w, h] = draw.size();
+    draw.fill([w / 2.0 - 91.0, h - 39.0, health, 4.0], 0xFFE0_4040);
+}));
+```
+
+Use `wrap_layer` and call `ctx.draw_previous()` if the vanilla rows should still draw. Vanilla
+heart flashing, the `player_heart_type` sprite choice and air-bubble sound are part of the vanilla
+body, so they run only when that body runs. Replacing this layer does not replace the separate
 `minecraft:vehicle_health` layer.
 
 Adding a taller status bar does not move the selected item name or the action bar. The name starts

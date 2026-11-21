@@ -5,7 +5,7 @@
 //! helpers the other layouts share (`hud_overlays`, `chat`). Computed without
 //! drawing so the parity fixture can compare them with the vanilla client.
 use crate::{font::Font, text::Text};
-pub use mod_api::client::hud_layout::{Blend, HealthInputs, HeartKind, PoseOp};
+pub use mod_api::client::hud_layout::{Blend, HeartKind, PoseOp};
 use std::borrow::Cow;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
@@ -490,6 +490,33 @@ pub fn experience_colored(
         self::text(&mut out, Text::literal(text), x, y, color, false);
     }
     out
+}
+
+// no wire: the vanilla layout reads these only during HUD extraction.
+/// The local player's state read by `Hud.extractPlayerHealth`.
+pub struct HealthInputs {
+    /// `Hud.tickCount`.
+    pub tick: i32,
+    /// `Util.getMillis()` now.
+    pub millis: i64,
+    pub health: f32,
+    pub max_health: f32,
+    pub absorption: f32,
+    pub armor: i32,
+    pub food: i32,
+    pub saturation: f32,
+    pub kind: HeartKind,
+    pub regeneration: bool,
+    pub hunger: bool,
+    pub hardcore: bool,
+    /// `damageCooldownTime > 0`.
+    pub damage_cooldown: bool,
+    /// `getAirSupply`, `getMaxAirSupply`, `isEyeInFluid(WATER)`.
+    pub air: i32,
+    pub max_air: i32,
+    pub under_water: bool,
+    /// `getVehicleMaxHearts` of the ridden living vehicle (0 = none).
+    pub vehicle_hearts: i32,
 }
 
 /// State kept between frames (`Hud.lastHealth`, `displayHealth`, ...).

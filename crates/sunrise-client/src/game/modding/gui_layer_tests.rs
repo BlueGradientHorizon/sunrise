@@ -6,10 +6,12 @@ use super::{
 };
 use mod_api::{
     ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
-    RegisterGuiLayersEvent, RegistrationContext, content::crash::current_native_mod,
+    PlayerHeartTypeEvent, RegisterGuiLayersEvent, RegistrationContext,
+    content::crash::current_native_mod,
 };
-use std::sync::Mutex;
-use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
+use std::sync::{Arc, Mutex};
+use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch, motion::PlayerMotion};
+use sunrise_core::geometry::Vec3;
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
@@ -151,6 +153,116 @@ impl Hooks for Editor {
 
 fn take() -> Vec<String> {
     std::mem::take(&mut *LOG.lock().unwrap())
+}
+
+const PLAYER_HEALTH: &str = "minecraft:player_health";
+// Equal RGB channels make the marker's packed vertex colour independent of channel order.
+const HEALTH_MARKER: u32 = 0xFF2D_2D2D;
+
+#[derive(Default)]
+struct HealthTrace {
+    cancel: bool,
+    calls: Vec<&'static str>,
+}
+
+struct HealthLayer {
+    replace: bool,
+    trace: Arc<Mutex<HealthTrace>>,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for HealthLayer {
+    fn register_gui_layers(&self, _: &RegistrationContext, event: &mut RegisterGuiLayersEvent<'_>) {
+        if self.replace {
+            let trace = self.trace.clone();
+            assert!(event.layers.replace_layer(
+                PLAYER_HEALTH,
+                Box::new(move |_, draw| {
+                    trace.lock().unwrap().calls.push("replacement");
+                    draw.fill([2.0, 2.0, 4.0, 4.0], HEALTH_MARKER);
+                }),
+            ));
+        }
+    }
+
+    fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
+        if event.layer == PLAYER_HEALTH {
+            let mut trace = self.trace.lock().unwrap();
+            trace.calls.push("pre");
+            if trace.cancel {
+                return Flow::Cancel;
+            }
+        }
+        Flow::Continue
+    }
+
+    fn player_heart_type(&self, _: &mut dyn ClientHost, _: &mut PlayerHeartTypeEvent) {
+        self.trace.lock().unwrap().calls.push("hearts");
+    }
+
+    fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
+        if event.layer == PLAYER_HEALTH {
+            self.trace.lock().unwrap().calls.push("post");
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn health_extraction_runs_only_in_the_vanilla_layer_body() {
+    const CASE: &str = "SUNRISE_HEALTH_LAYER_FIXTURE";
+    if run_fresh_cases(
+        "game::gui_layer_tests::health_extraction_runs_only_in_the_vanilla_layer_body",
+        CASE,
+        &["vanilla", "replace"],
+    ) {
+        return;
+    }
+    let replace = std::env::var(CASE).unwrap() == "replace";
+    let trace = Arc::new(Mutex::new(HealthTrace::default()));
+    with_client_game(|game| {
+        mod_platform::__private::install(
+            vec![ModEntry::new(
+                "health-test",
+                Box::new(HealthLayer {
+                    replace,
+                    trace: trace.clone(),
+                }),
+            )]
+            .into(),
+        );
+        mods::register_gui_layers(ExecutionRole::Client);
+        game.title = None;
+        game.screen = super::Screen::Playing;
+        game.ui.hide_gui = false;
+        game.set_mode_id(0);
+        let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
+        player.health.set_health(12.0, false).unwrap();
+        // Above water with missing air, vanilla draws bubbles and resets the sound latch.
+        player.air = 200;
+        game.player = Some(player);
+        game.health_hud.last_health = 17;
+        game.health_hud.last_bubble_pop_sound = 3;
+
+        for cancel in [true, false] {
+            trace.lock().unwrap().cancel = cancel;
+            let batch = game.hud_layers([640, 480]);
+            let calls = std::mem::take(&mut trace.lock().unwrap().calls);
+            let expected: &[&str] = match (cancel, replace) {
+                (true, _) => &["pre"],
+                (false, true) => &["pre", "replacement", "post"],
+                (false, false) => &["pre", "hearts", "post"],
+            };
+            assert_eq!(calls.as_slice(), expected);
+            assert_eq!(
+                batch.vertices.iter().any(|v| v.color == HEALTH_MARKER),
+                !cancel && replace,
+            );
+            let (health, bubble) = if cancel || replace { (17, 3) } else { (12, 0) };
+            assert_eq!(game.health_hud.last_health, health);
+            assert_eq!(game.health_hud.last_bubble_pop_sound, bubble);
+        }
+    });
 }
 
 #[test]

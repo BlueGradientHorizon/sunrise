@@ -4,7 +4,7 @@
 pub trait Hooks {
     /// Before a vanilla or mod HUD layer (`RenderGuiLayerEvent.Pre`). Draw below the
     /// layer through `event.draw`, or return `Flow::Cancel` to skip its entire body
-    /// and `gui_layer_post`. Cancellation skips painting, not the layer's game logic.
+    /// (including its render bookkeeping) and `gui_layer_post`. Gameplay ticks are unaffected.
     /// A wrapped or replaced layer fires this once, with the slot's original ID.
     /// To change a layer's body rather than veto the whole slot, wrap or replace it
     /// at startup in `register_gui_layers`.

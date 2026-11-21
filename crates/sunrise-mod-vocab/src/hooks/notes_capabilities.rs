@@ -184,15 +184,13 @@ pub trait Notes {
   `list(&folder, after, limit)` returns lexicographically ordered names strictly after the cursor, at most `limit` entries; start with `None`, continue with the last name, and stop on an empty page.
   `ConfigPath::root()` lists the mod's own root; `limit` must be 1 through `CONFIG_LIST_MAX` (1024), otherwise `InvalidPage` ([config and bulk storage](../how-to/mod-settings.md)).
 
-- The player-health HUD rows through `health_hud`: every frame the HUD draws them, the
-  hook hears the layout's inputs (`HealthInputs`) and the screen's GUI size, and a mod that answers with
-  draws replaces all the rows — armour, hearts, food, air and the heights above the hotbar — for that
-  frame. Nothing answered draws Sunrise's own.
+- To draw custom player-health rows, replace or wrap `minecraft:player_health` in
+  `register_gui_layers` and paint through the installed body's `DrawContext`. `gui_layer_pre` can veto the
+  entire slot. Vanilla's armour, hearts, food and air extraction runs only when its body draws.
 
 - Which hearts the player's health bar draws through `player_heart_type` (NeoForge's `PlayerHeartTypeEvent`):
-  each frame the HUD draws the hearts, `kind` comes in as vanilla's pick (poisoned, withered, frozen or normal) and a mod
-  may set another. It runs before `health_hud`, whose `inputs.kind` carries the answer; only the heart sprites
-  change.
+  when the vanilla player-health body draws its hearts, `kind` comes in as vanilla's pick (poisoned, withered,
+  frozen or normal) and a mod may set another. Only the heart sprites change.
 
 - Where each boss bar is drawn through `customize_boss_event_progress` (NeoForge's
   `CustomizeGuiOverlayEvent.BossEventProgress`): once a frame per bar, in the order the server added them, `x` and

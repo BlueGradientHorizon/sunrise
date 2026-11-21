@@ -7335,75 +7335,60 @@ impl Game<'_> {
             } else {
                 self.draw_mount_hud(&mut batch, wi, hi, &mut status_heights)
             };
-            let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
-            let kind = (!self.creative && !spectator)
-                .then(|| self.player_heart_kind())
-                .flatten();
-            if let Some(kind) = kind
-                && let Some(p) = &mut self.player
-            {
-                let effects = &self.potions.effects;
-                // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
-                // the surface, not merely in the water block.
-                let under_water = p.is_eye_in_fluid(sunrise_client::motion::WATER);
-                let inputs = hud_layout::HealthInputs {
-                    tick: visual_ticks as i32,
-                    millis: visual_millis,
-                    health: p.health.health(),
-                    max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                    absorption: p.health.absorption(),
-                    armor: p
-                        .attribute("minecraft:armor")
-                        .or_else(|_| p.attribute("armor"))
-                        .unwrap_or(0.0) as i32,
-                    food: p.health.food.food,
-                    saturation: p.health.food.saturation,
-                    kind,
-                    regeneration: effects.get("regeneration").is_some(),
-                    hunger: effects.get("hunger").is_some(),
-                    hardcore: self.level.hardcore,
-                    damage_cooldown: p.health.hurt.cooldown > 0,
-                    air: p.air,
-                    max_air: 300,
-                    under_water,
-                    vehicle_hearts,
-                };
-                let at = [p.position.x, p.position.y, p.position.z];
-                // The native mods' health HUD (`native_health_hud`): a mod
-                // that answers draws every row instead.
-                let mut native_health_hud = None;
-                self.native_health_hud(&inputs, wi, hi, &mut native_health_hud);
-                let replacement = native_health_hud.as_deref();
-                let vanilla;
-                let layers;
-                let (draws, paint_steps) = if let Some(draws) = &replacement {
-                    (*draws, std::slice::from_ref(draws))
-                } else {
-                    vanilla = self.health_hud.layout(&inputs, wi, hi, &mut status_heights);
-                    layers = vanilla.layers();
-                    (vanilla.draws(), layers.as_slice())
-                };
-                self.keep_status_rows(draws, wi, hi);
-                // Keep the four paint steps under the same public layer for now.
+            if !self.creative && !spectator && self.player.is_some() {
+                // Hud.extractPlayerHealth owns both the status draws and their frame state.
+                // Keep extraction in the vanilla body so a veto or replacement skips it.
                 self.gui_layer(
                     VanillaGuiLayer::PlayerHealth,
                     &mut batch,
                     &mut |g, batch| {
-                        hud_layout::paint_layers(batch, &g.gui.atlas, paint_steps);
+                        let (tick, millis) = (g.visual_ticks() as i32, g.visual_millis());
+                        let Some(kind) = g.player_heart_kind() else {
+                            return;
+                        };
+                        let Some(p) = &g.player else { return };
+                        let effects = &g.potions.effects;
+                        let inputs = hud_layout::HealthInputs {
+                            tick,
+                            millis,
+                            health: p.health.health(),
+                            max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+                            absorption: p.health.absorption(),
+                            armor: p
+                                .attribute("minecraft:armor")
+                                .or_else(|_| p.attribute("armor"))
+                                .unwrap_or(0.0) as i32,
+                            food: p.health.food.food,
+                            saturation: p.health.food.saturation,
+                            kind,
+                            regeneration: effects.get("regeneration").is_some(),
+                            hunger: effects.get("hunger").is_some(),
+                            hardcore: g.level.hardcore,
+                            damage_cooldown: p.health.hurt.cooldown > 0,
+                            air: p.air,
+                            max_air: 300,
+                            // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
+                            under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
+                            vehicle_hearts,
+                        };
+                        let at = [p.position.x, p.position.y, p.position.z];
+                        let rows = g.health_hud.layout(&inputs, wi, hi, &mut status_heights);
+                        g.keep_status_rows(rows.draws(), wi, hi);
+                        hud_layout::paint_layers(batch, &g.gui.atlas, &rows.layers());
+                        // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
+                        // by this client only.
+                        if let Some((volume, pitch)) = g.health_hud.bubble_pop_sound.take() {
+                            let players = sunrise_client::settings::SOUND_SOURCES
+                                .iter()
+                                .position(|s| *s == "player")
+                                .unwrap_or(0);
+                            let capture = g.audio.capture.take();
+                            g.audio
+                                .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
+                            g.audio.capture = capture;
+                        }
                     },
                 );
-                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
-                // by this client only.
-                if let Some((volume, pitch)) = self.health_hud.bubble_pop_sound.take() {
-                    let players = sunrise_client::settings::SOUND_SOURCES
-                        .iter()
-                        .position(|s| *s == "player")
-                        .unwrap_or(0);
-                    let capture = self.audio.capture.take();
-                    self.audio
-                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
-                    self.audio.capture = capture;
-                }
             }
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
