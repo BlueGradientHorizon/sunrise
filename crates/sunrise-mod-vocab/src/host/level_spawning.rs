@@ -116,6 +116,34 @@ pub trait LevelSpawningBackendMut {
         spawn: &EntitySpawn,
     ) -> Option<EntityRef>;
     /// Side: server.
+    /// Spawns a falling block (`FallingBlockEntity`) of `state` at `pos` (its bottom centre)
+    /// with initial `velocity` (blocks a tick, `Entity.setDeltaMovement`) in the level,
+    /// without altering the block at `pos`: it falls, lands and places itself as sand does, or
+    /// drops as an item where it cannot. `falling` controls item dropping (`drop_item`) and
+    /// anvil-style landing damage (`hurts`, 2 a block fallen up to 40). The live entity keeps
+    /// the exact `velocity` (network packets quantize through `LpVec3` on send), accepts any
+    /// valid block state including air (which vanilla discards on its first tick in
+    /// `FallingBlockEntity.tick`), and imposes no per-level count cap.
+    ///
+    /// Returns `Err(LevelWriteError::Stale)` for a stale handle or closed level,
+    /// `Err(LevelWriteError::Unavailable)` on a client, for a parked level, or outside the
+    /// world phase, and `Err(LevelWriteError::InvalidState(_))` for an unknown block state.
+    /// Returns `Ok(None)`, with nothing left in the level, for a position or velocity that is
+    /// not finite, a position outside `Level.isInSpawnableBounds`, an unloaded chunk,
+    /// exhausted entity ids, or a falling block a mod kept out in `entity_join_level`. Inside
+    /// a transaction its join waits for the root commit, so a mod keeping the falling block
+    /// out is not known at the call: the handle is returned and reads stale from the commit
+    /// on.
+    #[access(WorldOnly)]
+    fn level_spawn_falling_block(
+        &mut self,
+        level: LevelRef,
+        state: BlockState,
+        pos: [f64; 3],
+        velocity: [f64; 3],
+        falling: Falling,
+    ) -> Result<Option<EntityRef>, LevelWriteError>;
+    /// Side: server.
     /// Sets the level's natural spawning limits ([`SpawnLimits`]), from the next
     /// spawn pass on. They hold until the world closes, while the level is
     /// parked and across its closing and opening again, and are not saved: the

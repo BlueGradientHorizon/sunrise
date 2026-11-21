@@ -1,0 +1,43 @@
+ids = [
+    "method:prelude::EntitiesServerHost::spawn_falling_block",
+    "handle:LevelRef::spawn_falling_block",
+]
+why = """
+In vanilla Minecraft 26.3, falling blocks are created and added through the level
+(`FallingBlockEntity.fall`, `ServerLevel.addFreshEntity` / `ServerLevel.addEntity`,
+`Level.isInSpawnableBounds`), keep their full live velocity from `Entity.setDeltaMovement`
+(with `ClientboundAddEntityPacket` / `ClientboundSetEntityMotionPacket` quantizing solely
+at packet encoding via `Vec3.LP_STREAM_CODEC` / `LpVec3`), impose no 1,024 per-level count
+quota, and accept any block state including air (discarding air on its first tick in
+`FallingBlockEntity.tick`).
+
+Previously `ServerHost::spawn_falling_block` took a string `dimension: &str`, returned a
+bare `bool`, clamped live velocity to 3.9 blocks/tick, refused air states, imposed an
+invented 1,024-entity cap, and bypassed `entity_constructing` / `entity_join_level` join
+flushing. Replacing it with `LevelRef::spawn_falling_block` routes falling-block creation
+through the typed level handle, returns `Result<Option<EntityRef>, LevelWriteError>` (so
+wrong-phase, stale, client, parked, and unknown-state calls return typed errors instead of
+unwinding or returning `false`), removes the invented quota and premature velocity clamp,
+and shares one canonical `FallingBlockEntity` constructor with `LevelEvent::FallingBlock`.
+"""
+migrate = """
+Replace `host.spawn_falling_block(dimension, state, pos, velocity, falling)` with:
+
+```rust,ignore
+let Some(level) = host.level(dimension) else { return; };
+match level.spawn_falling_block(host, state, pos, velocity, falling) {
+    Ok(Some(entity)) => { /* spawned EntityRef */ }
+    Ok(None) => { /* non-finite pos/velocity, out of spawnable bounds, unloaded chunk, exhausted ids, or cancelled join */ }
+    Err(err) => { /* Stale, Unavailable (client, parked level, wrong phase), or InvalidState */ }
+}
+```
+
+- Live velocity is no longer clamped to 3.9 blocks/tick; if your mod relied on that clamp,
+  clamp the vector before calling `spawn_falling_block`.
+- Air block states are no longer rejected at spawn; vanilla discards air falling blocks on
+  their first tick (`FallingBlockEntity.tick`). Check for air beforehand if you want to
+  skip spawning one.
+- There is no longer a 1,024 per-level falling-block cap.
+- `entity_constructing` and `entity_join_level` now fire for spawned falling blocks (and
+  join announcements defer to root commit inside a transaction, rolling back on abort).
+"""

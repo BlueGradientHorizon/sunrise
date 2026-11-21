@@ -1,0 +1,2 @@
+sunrise-client game::native_falling::tests::level_spawn_falling_block_joins_cancel_and_roll_back_in_transactions lib daily resources
+sunrise-client game::native_falling::tests::level_spawn_falling_block_preserves_state_flags_unclamped_velocity_and_bounds lib daily resources
