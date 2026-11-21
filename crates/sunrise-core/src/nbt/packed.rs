@@ -1,251 +1,214 @@
-//! Compact output of the network NBT decoder, not another wire codec.
+//! A size-preserving, lossless staging layout for the network decoder's output.
+//!
+//! The wire type bytes serve as the tape's opcodes, including homogeneous list
+//! element types. The decoder writes native counts and values, and string
+//! records contain decoded UTF-16 units and their original footprints. There
+//! are no per-node slots or offsets. Arrays use the same slab as everything
+//! else; there is also no retained copy of the original bytes. The inverse
+//! layout writes the exact packet back as it materializes the checked values,
+//! including accepted noncanonical strings and signed floating-point zero.
 use super::{
-    ArrayKind, Compound, DecodeOutput, Error, JavaString, Limits, Tag, network_reader,
-    read_network_with_reader, unwrap_list_element,
+    ArrayKind, Compound, DecodeOutput, Error, JavaString, Limits, Tag, double_tag, float_tag,
+    network_reader, read_network_with_reader, unwrap_list_element,
 };
 
-/// Decoded NBT roots in insertion order, staged without materializing maps or list slots.
-/// Only the network decoder can add a non-string root; materialization cannot fail.
-#[derive(Default)]
-pub struct NetworkTape {
-    parts: Vec<Part>,
-    text: Vec<u16>,
-    arrays: Vec<ArraySpan>,
-    longs: Vec<i64>,
-    origin: usize,
+/// Stage one network root into the corresponding range of a copy of `wire`.
+/// The destination has the same layout length, including its type byte. On
+/// success it contains a checked tape root and this returns its type and length.
+/// Only the prefix read by the decoder is touched; discard it on failure.
+pub fn pack_network(wire: &[u8], copy: &mut [u8], limits: Limits) -> Result<(u8, usize), Error> {
+    read_network_with_reader(&mut network_reader(wire, limits), &mut Pack(copy))
 }
 
-#[derive(Clone, Copy)]
-enum Part {
-    End,
-    Byte(i8),
-    Short(i16),
-    Int(i32),
-    Long,
-    Float(u32),
-    Double,
-    Array,
-    Text(u32),
-    List(u32),
-    Compound,
-    EndCompound,
-    EmptyCompounds(u32),
-}
-const _: () = assert!(size_of::<Part>() <= 8);
+struct Pack<'a>(&'a mut [u8]);
 
-struct ArraySpan {
-    start: usize,
-    len: usize,
-    kind: ArrayKind,
-}
-
-impl NetworkTape {
-    /// Add one nameless root at `offset` in the shared backing buffer, returning
-    /// its type ID and the consumed byte count. Discard the tape on failure.
-    pub fn read(
-        &mut self,
-        bytes: &[u8],
-        offset: usize,
-        limits: Limits,
-    ) -> Result<(u8, usize), Error> {
-        self.origin = offset;
-        read_network_with_reader(&mut network_reader(&bytes[offset..], limits), self)
-    }
-
-    /// Convert the already checked fixed-width array bodies in place to native words.
-    /// Applying a second time restores the exact original packet for observation.
-    pub fn swap_array_endianness(&self, bytes: &mut [u8]) {
-        if cfg!(target_endian = "little") {
-            for span in &self.arrays {
-                let width = span.kind.width();
-                if width != 1 {
-                    for word in bytes[span.start..span.start + span.len].chunks_exact_mut(width) {
-                        word.reverse();
-                    }
-                }
-            }
-        }
-    }
-
-    /// Store a string already decoded by an enclosing protocol.
-    pub fn push_string(&mut self, value: JavaString) {
-        self.parts.push(Part::Text(
-            u32::try_from(value.0.len()).expect("bounded network string"),
-        ));
-        self.text.extend(value.0);
-    }
-
-    /// Release any spare capacity before retaining the tape in a queue.
-    pub fn shrink_to_fit(&mut self) {
-        self.parts.shrink_to_fit();
-        self.text.shrink_to_fit();
-        self.arrays.shrink_to_fit();
-        self.longs.shrink_to_fit();
-    }
-
-    /// Bytes of the owned staging allocations.
-    pub fn owned_heap_bytes(&self) -> usize {
-        self.parts.capacity() * size_of::<Part>()
-            + self.text.capacity() * size_of::<u16>()
-            + self.arrays.capacity() * size_of::<ArraySpan>()
-            + self.longs.capacity() * size_of::<i64>()
-    }
-
-    /// Materialize roots from the tape and the shared backing buffer's native words.
-    pub fn tags<'a>(&'a self, native_arrays: &'a [u8]) -> impl Iterator<Item = Tag> + 'a {
-        let mut materialize = Materialize {
-            parts: &self.parts,
-            text: &self.text,
-            arrays: self.arrays.iter(),
-            native_arrays,
-            longs: &self.longs,
-            empty_compounds: 0,
-        };
-        std::iter::from_fn(move || {
-            (!materialize.parts.is_empty() || materialize.empty_compounds != 0)
-                .then(|| materialize.tag())
-        })
-    }
-}
-
-impl DecodeOutput for NetworkTape {
+impl DecodeOutput for Pack<'_> {
     type Value = u8;
     type List = ();
-    type Map = usize;
+    type Map = ();
     type Key = ();
 
-    fn scalar(&mut self, tag: Tag) -> u8 {
+    fn scalar(&mut self, offset: usize, wire: &[u8], tag: Tag) -> u8 {
         let id = tag.id();
-        let part = match tag {
-            Tag::End => Part::End,
-            Tag::Byte(v) => Part::Byte(v),
-            Tag::Short(v) => Part::Short(v),
-            Tag::Int(v) => Part::Int(v),
-            Tag::Long(v) => {
-                self.longs.push(v);
-                Part::Long
-            }
-            Tag::Float(v) => Part::Float(v),
-            Tag::Double(v) => {
-                self.longs.push(v as i64);
-                Part::Double
-            }
-            Tag::String(v) => {
-                self.push_string(v);
-                return id;
-            }
-            _ => unreachable!("the network decoder writes collections directly"),
-        };
-        self.parts.push(part);
+        let out = &mut self.0[offset..offset + wire.len()];
+        match tag {
+            Tag::End | Tag::Byte(_) => {}
+            Tag::Short(n) => out.copy_from_slice(&n.to_ne_bytes()),
+            Tag::Int(n) => out.copy_from_slice(&n.to_ne_bytes()),
+            Tag::Long(n) => out.copy_from_slice(&n.to_ne_bytes()),
+            Tag::Float(bits) => out.copy_from_slice(&bits.to_ne_bytes()),
+            Tag::Double(bits) => out.copy_from_slice(&bits.to_ne_bytes()),
+            Tag::String(value) => pack_string(out, wire, value),
+            _ => unreachable!("the network decoder emits collections directly"),
+        }
         id
     }
+
     fn array(&mut self, kind: ArrayKind, offset: usize, bytes: &[u8]) -> u8 {
-        self.arrays.push(ArraySpan {
-            start: self.origin + offset,
-            len: bytes.len(),
-            kind,
-        });
-        self.parts.push(Part::Array);
+        let width = kind.width();
+        self.0[offset - 4..offset].copy_from_slice(&((bytes.len() / width) as u32).to_ne_bytes());
+        swap_words(&mut self.0[offset..offset + bytes.len()], width);
         match kind {
             ArrayKind::Byte => 7,
             ArrayKind::Int => 11,
             ArrayKind::Long => 12,
         }
     }
-    fn list(&mut self, len: usize) {
-        self.parts.push(Part::List(len as u32));
+
+    fn list(&mut self, offset: usize, len: usize) {
+        self.0[offset..offset + 4].copy_from_slice(&(len as u32).to_ne_bytes());
     }
+
     fn push(&mut self, _: &mut (), _: u8) {}
     fn end_list(&mut self, _: ()) -> u8 {
         9
     }
-    fn compound(&mut self) -> Self::Map {
-        let index = self.parts.len();
-        self.parts.push(Part::Compound);
-        index
+    fn compound(&mut self) {}
+    fn contains(&self, _: &(), _: &JavaString) -> bool {
+        unreachable!("the network decoder does not use disk duplicate checking")
     }
-    fn contains(&self, _: &Self::Map, _: &JavaString) -> bool {
-        unreachable!("strict duplicate checking belongs to bounded disk reads")
+    fn key(&mut self, offset: usize, wire: &[u8], key: JavaString) {
+        pack_string(&mut self.0[offset..offset + wire.len()], wire, key);
     }
-    fn key(&mut self, key: JavaString) {
-        self.push_string(key);
+    fn insert(&mut self, _: &mut (), _: (), _: u8) -> bool {
+        false // The network tape does not use the disk heap quota.
     }
-    fn insert(&mut self, _: &mut usize, _: (), _: u8) -> bool {
-        false // Network tapes do not use the disk heap quota.
-    }
-    fn end_compound(&mut self, index: usize) -> u8 {
-        if self.parts.len() != index + 1 {
-            self.parts.push(Part::EndCompound);
-        } else {
-            self.parts.pop();
-            // An empty compound can take one wire byte in a homogeneous list.
-            // A run occupies one tape slot, not one slot per decoded node.
-            if let Some(Part::EmptyCompounds(count)) = self.parts.last_mut()
-                && *count != u32::MAX
-            {
-                *count += 1;
-            } else {
-                self.parts.push(Part::EmptyCompounds(1));
-            }
-        }
+    fn end_compound(&mut self, _: ()) -> u8 {
         10
     }
 }
 
-struct Materialize<'a> {
-    parts: &'a [Part],
-    text: &'a [u16],
-    arrays: std::slice::Iter<'a, ArraySpan>,
-    native_arrays: &'a [u8],
-    longs: &'a [i64],
-    empty_compounds: u32,
+fn pack_string(out: &mut [u8], wire: &[u8], value: JavaString) {
+    let (len, mut out) = out.split_at_mut(2);
+    len.copy_from_slice(&((wire.len() - 2) as u16).to_ne_bytes());
+    let mut original = &wire[2..];
+    for unit in value.0 {
+        // The authoritative decoder already matched and decoded these spans.
+        // The original width is sufficient to recover *any* accepted encoding.
+        let width = match original[0] {
+            0..=127 => 1,
+            192..=223 => 2,
+            _ => 3,
+        };
+        let slot = take(&mut out, width);
+        match slot {
+            [b] => *b = unit as u8,
+            [high, low] => {
+                *high = 0x80 | (unit >> 8) as u8;
+                *low = unit as u8;
+            }
+            [marker, a, b] => {
+                *marker = 0xc0;
+                [*a, *b] = unit.to_ne_bytes();
+            }
+            _ => unreachable!("each decoded UTF-16 unit has a footprint of one to three bytes"),
+        }
+        original = &original[width..];
+    }
 }
 
-impl Materialize<'_> {
-    fn tag(&mut self) -> Tag {
-        if self.empty_compounds != 0 {
-            self.empty_compounds -= 1;
-            return Tag::Compound(Compound::new());
+/// Materialize one root from the checked tape made by [`pack_network`],
+/// restoring its wire bytes in place and advancing past the root. Only a
+/// successful `pack_network` output, beginning at its root, may be passed in.
+pub fn unpack_network(tape: &mut &mut [u8]) -> Tag {
+    let opcode = take(tape, 1)[0];
+    materialize(tape, opcode)
+}
+
+fn materialize(tape: &mut &mut [u8], opcode: u8) -> Tag {
+    match opcode {
+        0 => Tag::End,
+        1 => Tag::Byte(take(tape, 1)[0] as i8),
+        2 => Tag::Short(i16::from_ne_bytes(restore_word(tape))),
+        3 => Tag::Int(i32::from_ne_bytes(restore_word(tape))),
+        4 => Tag::Long(i64::from_ne_bytes(restore_word(tape))),
+        5 => float_tag(u32::from_ne_bytes(restore_word(tape))),
+        6 => double_tag(u64::from_ne_bytes(restore_word(tape))),
+        7 => materialize_array(tape, ArrayKind::Byte),
+        8 => Tag::String(materialize_string(tape)),
+        9 => {
+            let element = take(tape, 1)[0];
+            let len = u32::from_ne_bytes(restore_word(tape));
+            Tag::List(
+                (0..len)
+                    .map(|_| unwrap_list_element(materialize(tape, element)))
+                    .collect(),
+            )
         }
-        match take(&mut self.parts, 1)[0] {
-            Part::End => Tag::End,
-            Part::Byte(v) => Tag::Byte(v),
-            Part::Short(v) => Tag::Short(v),
-            Part::Int(v) => Tag::Int(v),
-            Part::Long => Tag::Long(take(&mut self.longs, 1)[0]),
-            Part::Float(v) => Tag::Float(v),
-            Part::Double => Tag::Double(take(&mut self.longs, 1)[0] as u64),
-            Part::Array => {
-                let span = self.arrays.next().expect("one span per staged array");
-                let bytes = &self.native_arrays[span.start..span.start + span.len];
-                span.kind.tag(bytes, true)
-            }
-            Part::Text(len) => Tag::String(JavaString(take(&mut self.text, len).to_vec())),
-            Part::List(len) => {
-                Tag::List((0..len).map(|_| unwrap_list_element(self.tag())).collect())
-            }
-            Part::Compound => {
-                let mut compound = Compound::new();
-                while !matches!(self.parts[0], Part::EndCompound) {
-                    let Tag::String(key) = self.tag() else {
-                        unreachable!("each field has a decoded key")
-                    };
-                    compound.insert(key, self.tag());
+        10 => {
+            let mut compound = Compound::new();
+            loop {
+                let field = take(tape, 1)[0];
+                if field == 0 {
+                    break;
                 }
-                self.parts = &self.parts[1..];
-                Tag::Compound(compound)
+                let key = materialize_string(tape);
+                compound.insert(key, materialize(tape, field));
             }
-            Part::EndCompound => unreachable!("only a compound reads its terminator"),
-            Part::EmptyCompounds(count) => {
-                self.empty_compounds = count - 1;
-                Tag::Compound(Compound::new())
+            Tag::Compound(compound)
+        }
+        11 => materialize_array(tape, ArrayKind::Int),
+        12 => materialize_array(tape, ArrayKind::Long),
+        _ => unreachable!("the tape was emitted by the authoritative decoder"),
+    }
+}
+
+fn materialize_string(tape: &mut &mut [u8]) -> JavaString {
+    let len = u16::from_ne_bytes(restore_word(tape));
+    let mut bytes = take(tape, usize::from(len));
+    let mut units = Vec::with_capacity(bytes.len());
+    while let Some(&first) = bytes.first() {
+        let unit = match first {
+            0..=0x7f => u16::from(take(&mut bytes, 1)[0]),
+            0x80..=0xbf => {
+                let span = take(&mut bytes, 2);
+                let unit = u16::from_be_bytes([span[0] & 0x3f, span[1]]);
+                span.copy_from_slice(&[0xc0 | (unit >> 6) as u8, 0x80 | (unit & 63) as u8]);
+                unit
             }
+            _ => {
+                let span = take(&mut bytes, 3);
+                let unit = u16::from_ne_bytes([span[1], span[2]]);
+                span.copy_from_slice(&[
+                    0xe0 | (unit >> 12) as u8,
+                    0x80 | ((unit >> 6) & 63) as u8,
+                    0x80 | (unit & 63) as u8,
+                ]);
+                unit
+            }
+        };
+        units.push(unit);
+    }
+    JavaString(units)
+}
+
+fn materialize_array(tape: &mut &mut [u8], kind: ArrayKind) -> Tag {
+    let count = u32::from_ne_bytes(restore_word(tape)) as usize;
+    let bytes = take(tape, count * kind.width());
+    let tag = kind.tag(bytes, true);
+    swap_words(bytes, kind.width());
+    tag
+}
+
+fn swap_words(bytes: &mut [u8], width: usize) {
+    if cfg!(target_endian = "little") && width != 1 {
+        for word in bytes.chunks_exact_mut(width) {
+            word.reverse();
         }
     }
 }
 
-fn take<'a, T>(remaining: &mut &'a [T], len: u32) -> &'a [T] {
-    let (read, rest) = remaining.split_at(len as usize);
-    *remaining = rest;
-    read
+fn restore_word<const N: usize>(tape: &mut &mut [u8]) -> [u8; N] {
+    let bytes = take(tape, N);
+    let native = (&*bytes).try_into().expect("fixed-width tape word");
+    if cfg!(target_endian = "little") {
+        bytes.reverse();
+    }
+    native
+}
+
+fn take<'a>(tape: &mut &'a mut [u8], len: usize) -> &'a mut [u8] {
+    let (head, rest) = std::mem::take(tape).split_at_mut(len);
+    *tape = rest;
+    head
 }

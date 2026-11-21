@@ -239,6 +239,16 @@ fn a_pairing_bundle_accepts_a_wire_valid_high_expansion_attachment() {
 #[test]
 #[ignore = "daily"]
 fn a_memory_only_snapshot_fits_ingress_despite_its_expanded_empty_compounds() {
+    assert_memory_snapshot_fits(10, 0);
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_memory_only_snapshot_fits_ingress_despite_millions_of_byte_nodes() {
+    assert_memory_snapshot_fits(1, 249);
+}
+
+fn assert_memory_snapshot_fits(element_opcode: u8, fill: u8) {
     use sunrise_core::nbt::Tag;
     use sunrise_mod_runtime::attachments::Holder;
     use sunrise_protocol::attachment_sync;
@@ -256,15 +266,16 @@ fn a_memory_only_snapshot_fits_ingress_despite_its_expanded_empty_compounds() {
     let mut server = Connection::local(server);
 
     // Each value is under the NBT node limit. The packet exceeds even a
-    // compressed TCP frame's decoded limit. An eight-byte slot per empty
-    // compound plus the original packet would exceed 96 MiB on this route.
+    // compressed TCP frame's decoded limit. Retaining an eight-byte slot per
+    // node in addition to the encoded packet would exceed 96 MiB.
     const FIELDS: u8 = 12;
     const COUNT: i32 = 980_000;
     let mut body = vec![0, 37, 1, FIELDS];
     for index in 0..FIELDS {
-        body.extend([1, b'a', 1, b'a' + index, 10, 9, 0, 1, b'l', 10]);
+        body.extend([1, b'a', 1, b'a' + index, 10, 9, 0, 1, b'l', element_opcode]);
         body.extend(COUNT.to_be_bytes());
-        body.resize(body.len() + COUNT as usize + 1, 0);
+        body.resize(body.len() + COUNT as usize, fill);
+        body.push(0);
     }
     let wire = body.len();
     assert!(wire > sunrise_protocol::frame::MAX_UNCOMPRESSED);
@@ -274,6 +285,7 @@ fn a_memory_only_snapshot_fits_ingress_despite_its_expanded_empty_compounds() {
         channel: attachment_sync::CHANNEL.into(),
         data: body,
     });
+    let old_charge = Event::Packet(Box::new(attachments.clone())).ingress_charge();
     let reader = play_reader(reader, writer.clone(), send, data, transport);
     server.send(&attachments.encode()).unwrap();
     drop(server);
@@ -281,6 +293,7 @@ fn a_memory_only_snapshot_fits_ingress_despite_its_expanded_empty_compounds() {
         .recv_timeout_owned(Duration::from_secs(15))
         .unwrap()
         .into_parts();
+    assert!(event.ingress_charge() <= old_charge);
     let Event::AttachmentSync(staged) = event else {
         panic!("expected staged memory attachment sync");
     };
@@ -298,11 +311,11 @@ fn a_memory_only_snapshot_fits_ingress_despite_its_expanded_empty_compounds() {
             panic!("expected an attachment list");
         };
         assert_eq!(items.len(), COUNT as usize);
-        assert!(
-            items
-                .iter()
-                .all(|item| matches!(item, Tag::Compound(map) if map.is_empty()))
-        );
+        assert!(items.iter().all(|tag| match tag {
+            Tag::Compound(map) => element_opcode == 10 && map.is_empty(),
+            Tag::Byte(n) => element_opcode == 1 && *n == -7,
+            _ => false,
+        }));
     }
     drop(credit);
     assert_eq!(events.stats().reserved_bytes, 0);
@@ -354,7 +367,7 @@ struct Registration(Arc<Probe>);
 impl Hooks for Registration {
     fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
         let mut handlers = registrar.payload_handlers();
-        let mut payloads = handlers.registrar("1");
+        let payloads = handlers.registrar("1");
         for (thread, channels) in [
             (HandlerThread::Main, [MAIN, PANIC_MAIN]),
             (HandlerThread::Network, [NETWORK, PANIC_NETWORK]),
@@ -633,18 +646,14 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
                     (4, network_thread)
                 ]
             );
+            // Test installations are thread-local; the Main call publishes a notice
+            // here. Network exercises the same boundary on the physical reader.
             assert_eq!(
                 mod_api::__private::take_hook_panics(),
-                [
-                    mod_api::__private::HookPanicReport {
-                        mod_id: "bundle_order_probe",
-                        hook: "payload"
-                    },
-                    mod_api::__private::HookPanicReport {
-                        mod_id: "bundle_order_probe",
-                        hook: "payload"
-                    },
-                ]
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "bundle_order_probe",
+                    hook: "payload",
+                }]
             );
             for (channel, marker, bytes) in [(MAIN, 1, 8 * 1024), (NETWORK, 3, 1)] {
                 let (id, payload) = server_reader.recv().unwrap();

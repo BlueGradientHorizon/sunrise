@@ -102,15 +102,15 @@ pub fn encode(message: &Message) -> Result<Vec<u8>> {
 
 /// A payload's message, materialized immediately by callers that don't queue it.
 pub fn decode(data: &[u8]) -> Result<Message> {
-    let (holder, replace, changes) = decode_changes(data, |r, namespace, name| {
+    let (holder, replace, _, changes) = decode_changes(data, |r, [namespace, name]| {
         let value = match r.nbt_within(value_limits())? {
             Tag::Compound(value) => Some(value),
             Tag::End => None,
             _ => return Err(Error::new("attachment sync: value is not a compound")),
         };
         Ok(AttachmentSync {
-            namespace,
-            name,
+            namespace: namespace.text.as_str().into(),
+            name: name.text.as_str().into(),
             value,
         })
     })?;
@@ -128,10 +128,28 @@ pub fn decode_staged(
     staged::stage(payload)
 }
 
+struct AttachmentName {
+    text: String,
+    prefix: std::ops::Range<usize>,
+    bytes: usize,
+}
+
+impl AttachmentName {
+    fn read(r: &mut Reader<'_>) -> Result<Self> {
+        let start = r.position();
+        let (text, bytes) = r.string_field(MAX_NAME)?;
+        Ok(Self {
+            text,
+            prefix: start..r.position() - bytes,
+            bytes,
+        })
+    }
+}
+
 fn decode_changes<T>(
     data: &[u8],
-    mut change: impl FnMut(&mut Reader<'_>, nbt::JavaString, nbt::JavaString) -> Result<T>,
-) -> Result<(Holder, bool, Vec<T>)> {
+    mut change: impl FnMut(&mut Reader<'_>, [AttachmentName; 2]) -> Result<T>,
+) -> Result<(Holder, bool, usize, Vec<T>)> {
     let mut r = Reader::new(data);
     let holder = match r.varint()? {
         0 => Holder::Entity(r.varint()? as u32),
@@ -142,17 +160,18 @@ fn decode_changes<T>(
         kind => return Err(Error::new(format!("attachment sync: holder kind {kind}"))),
     };
     let replace = r.bool()?;
-    let changes = (0..r.count(r.remaining())?)
+    let count = r.count(r.remaining())?;
+    let start = r.position();
+    let changes = (0..count)
         .map(|_| {
-            let namespace = r.string(MAX_NAME)?;
-            let name = r.string(MAX_NAME)?;
-            change(&mut r, namespace.as_str().into(), name.as_str().into())
+            let names = [AttachmentName::read(&mut r)?, AttachmentName::read(&mut r)?];
+            change(&mut r, names)
         })
         .collect::<Result<_>>()?;
     if r.remaining() != 0 {
         return Err(Error::new("attachment sync: trailing bytes"));
     }
-    Ok((holder, replace, changes))
+    Ok((holder, replace, start, changes))
 }
 
 #[cfg(test)]
@@ -216,14 +235,19 @@ mod tests {
 
     #[test]
     fn staged_and_eager_use_the_same_network_nbt_values_and_errors() {
-        // Level, replace, one a:b. The list has an empty compound, a
-        // mixed-list wrapper with a repeated empty key, and another empty compound.
-        let header = [4, 1, 1, 1, b'a', 1, b'b'];
+        // The namespace uses Java's surrogate replacement and a nonminimal
+        // five-byte length; the name is one supplementary character. The list
+        // has two empty compounds and a mixed-list wrapper with a repeated key.
+        let header = [
+            4, 1, 1, 0x83, 0x80, 0x80, 0x80, 0x70, 0xed, 0xa0, 0x80, 4, 0xf0, 0x9f, 0x98, 0x80,
+        ];
         #[rustfmt::skip]
         let value = [
             10, 9, 0, 1, b'l', 10, 0, 0, 0, 3, 0, 1, 0, 0, 1, 1, 0, 0, 2, 0, 0,
             5, 0, 1, b'f', 128, 0, 0, 0,
-            8, 0, 1, b's', 0, 5, 0xc0, 0x80, 0xed, 0xa0, 0x80,
+            8, 0, 1, b's', 0, 8, 0xc0, 0x80, 0xed, 0xa0, 0x80, 0xe0, 0x81, 0x81,
+            6, 0, 1, b'd', 128, 0, 0, 0, 0, 0, 0, 0,
+            4, 0, 1, b'v', 128, 0, 0, 0, 0, 0, 0, 7,
             7, 0, 1, b'b', 0, 0, 0, 2, 0xde, 0xad,
             11, 0, 1, b'i', 0, 0, 0, 1, 1, 2, 3, 4,
             12, 0, 1, b'a', 0, 0, 0, 1, 128, 0, 0, 0, 0, 0, 0, 7,
@@ -233,8 +257,8 @@ mod tests {
             holder: Holder::Level,
             replace: true,
             changes: vec![AttachmentSync {
-                namespace: "a".into(),
-                name: "b".into(),
+                namespace: "�".into(),
+                name: "😀".into(),
                 value: Some(
                     [
                         (
@@ -246,7 +270,12 @@ mod tests {
                             ]),
                         ),
                         ("f".into(), Tag::Float(0)),
-                        ("s".into(), Tag::String(nbt::JavaString(vec![0, 0xd800]))),
+                        (
+                            "s".into(),
+                            Tag::String(nbt::JavaString(vec![0, 0xd800, 65])),
+                        ),
+                        ("d".into(), Tag::Double(0)),
+                        ("v".into(), Tag::Long(i64::MIN + 7)),
                         ("b".into(), Tag::ByteArray(vec![0xde, 0xad])),
                         ("i".into(), Tag::IntArray(vec![0x0102_0304])),
                         ("a".into(), Tag::LongArray(vec![i64::MIN + 7])),

@@ -604,7 +604,8 @@ impl std::error::Error for Error {}
 type Visit<'s> = &'s mut dyn FnMut(&mut ListElements<'_, '_, '_>) -> Result<(), Error>;
 
 mod packed;
-pub use packed::NetworkTape;
+#[doc(hidden)]
+pub use packed::{pack_network, unpack_network};
 
 /// Outputs of the same decoder. The tape retains compound entries in insertion
 /// order; the tree output inserts them immediately and also supports disk quotas.
@@ -614,14 +615,14 @@ trait DecodeOutput {
     type Map;
     type Key;
 
-    fn scalar(&mut self, value: Tag) -> Self::Value;
+    fn scalar(&mut self, offset: usize, wire: &[u8], value: Tag) -> Self::Value;
     fn array(&mut self, kind: ArrayKind, offset: usize, bytes: &[u8]) -> Self::Value;
-    fn list(&mut self, len: usize) -> Self::List;
+    fn list(&mut self, offset: usize, len: usize) -> Self::List;
     fn push(&mut self, list: &mut Self::List, value: Self::Value);
     fn end_list(&mut self, list: Self::List) -> Self::Value;
     fn compound(&mut self) -> Self::Map;
     fn contains(&self, map: &Self::Map, key: &JavaString) -> bool;
-    fn key(&mut self, key: JavaString) -> Self::Key;
+    fn key(&mut self, offset: usize, wire: &[u8], key: JavaString) -> Self::Key;
     fn insert(&mut self, map: &mut Self::Map, key: Self::Key, value: Self::Value) -> bool;
     fn end_compound(&mut self, map: Self::Map) -> Self::Value;
 }
@@ -685,13 +686,17 @@ impl DecodeOutput for Tree {
     type Map = Compound;
     type Key = JavaString;
 
-    fn scalar(&mut self, value: Tag) -> Tag {
-        value
+    fn scalar(&mut self, _: usize, _: &[u8], value: Tag) -> Tag {
+        match value {
+            Tag::Float(bits) => float_tag(bits),
+            Tag::Double(bits) => double_tag(bits),
+            value => value,
+        }
     }
     fn array(&mut self, kind: ArrayKind, _: usize, bytes: &[u8]) -> Tag {
         kind.tag(bytes, false)
     }
-    fn list(&mut self, len: usize) -> Vec<Tag> {
+    fn list(&mut self, _: usize, len: usize) -> Vec<Tag> {
         Vec::with_capacity(len)
     }
     fn push(&mut self, list: &mut Vec<Tag>, value: Tag) {
@@ -706,7 +711,7 @@ impl DecodeOutput for Tree {
     fn contains(&self, map: &Compound, key: &JavaString) -> bool {
         map.contains_key(key)
     }
-    fn key(&mut self, key: JavaString) -> JavaString {
+    fn key(&mut self, _: usize, _: &[u8], key: JavaString) -> JavaString {
         key
     }
     fn insert(&mut self, map: &mut Compound, key: JavaString, value: Tag) -> bool {
@@ -715,6 +720,14 @@ impl DecodeOutput for Tree {
     fn end_compound(&mut self, map: Compound) -> Tag {
         Tag::Compound(map)
     }
+}
+
+fn float_tag(bits: u32) -> Tag {
+    Tag::Float(if f32::from_bits(bits) == 0.0 { 0 } else { bits })
+}
+
+fn double_tag(bits: u64) -> Tag {
+    Tag::Double(if f64::from_bits(bits) == 0.0 { 0 } else { bits })
 }
 
 /// ListTag.addAndUnwrap checks the final map after any duplicate keys.
@@ -871,20 +884,15 @@ impl<'a> Reader<'a, '_> {
         id: u8,
         output: &mut O,
     ) -> Result<O::Value, Error> {
+        let offset = self.offset;
         let tag = match id {
             0 => Tag::End,
             1 => Tag::Byte(self.byte()? as i8),
             2 => Tag::Short(i16::from_be_bytes(self.number()?)),
             3 => Tag::Int(i32::from_be_bytes(self.number()?)),
             4 => Tag::Long(i64::from_be_bytes(self.number()?)),
-            5 => {
-                let bits = u32::from_be_bytes(self.number()?);
-                Tag::Float(if f32::from_bits(bits) == 0.0 { 0 } else { bits })
-            }
-            6 => {
-                let bits = u64::from_be_bytes(self.number()?);
-                Tag::Double(if f64::from_bits(bits) == 0.0 { 0 } else { bits })
-            }
+            5 => Tag::Float(u32::from_be_bytes(self.number()?)),
+            6 => Tag::Double(u64::from_be_bytes(self.number()?)),
             8 => {
                 let value = self.string()?;
                 self.charge(2 * value.0.len() as u64)?;
@@ -892,7 +900,7 @@ impl<'a> Reader<'a, '_> {
             }
             _ => return Err(self.error("unknown tag type")),
         };
-        Ok(output.scalar(tag))
+        Ok(output.scalar(offset, &self.bytes[offset..self.offset], tag))
     }
     fn array_payload<O: DecodeOutput>(
         &mut self,
@@ -912,7 +920,7 @@ impl<'a> Reader<'a, '_> {
     ) -> Result<O::Value, Error> {
         let (element_id, len) = self.list_header()?;
         self.charge(4 * len as u64)?;
-        let mut values = output.list(len);
+        let mut values = output.list(self.offset - 4, len);
         for _ in 0..len {
             let value = self.decode(element_id, depth + 1, output)?;
             output.push(&mut values, value);
@@ -932,17 +940,19 @@ impl<'a> Reader<'a, '_> {
             if id == 0 {
                 break;
             }
+            let offset = self.offset;
             let name = self.string()?;
+            let wire = &self.bytes[offset..self.offset];
             self.charge(28 + 2 * name.0.len() as u64)?;
             if self.strict && output.contains(&map, &name) {
                 return Err(self.error("duplicate key"));
             }
             let (key, value) = if id == 9 && depth <= 1 && self.streams(&name) {
                 let value = self.stream_list(depth + 1)?;
-                (output.key(name), output.scalar(value))
+                (output.key(offset, wire, name), output.scalar(0, &[], value))
             } else if parent && !self.strict && self.bounds(&name) {
                 match self.bounded_payload(id, depth + 1)? {
-                    Some(value) => (output.key(name), output.scalar(value)),
+                    Some(value) => (output.key(offset, wire, name), output.scalar(0, &[], value)),
                     None => continue,
                 }
             } else {
@@ -951,7 +961,7 @@ impl<'a> Reader<'a, '_> {
                 } else {
                     0
                 };
-                let key = output.key(name);
+                let key = output.key(offset, wire, name);
                 (key, self.decode(id, depth + 1, output)?)
             };
             // Java maps retain the last duplicate key and charge new entries only.
@@ -1319,7 +1329,7 @@ fn read_network_with_reader<O: DecodeOutput>(
     let id = reader.byte()?;
     // NbtIo.readAnyTag returns End directly without loading its payload.
     let tag = if id == 0 {
-        output.scalar(Tag::End)
+        output.scalar(1, &[], Tag::End)
     } else {
         reader.decode(id, 0, output)?
     };
