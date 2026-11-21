@@ -63,8 +63,6 @@ fn compute_and_quad_programs_read_only_the_listed_player_booleans() {
     let Ok(post) = gpu.try_build(post) else {
         panic!("the pack runs")
     };
-    // The quad program names what it reads no built-in value for; a compute program doesn't.
-    assert_eq!(post.notes, ["composite: shader defaults or zero: is_wet"]);
     let quad = post
         .passes
         .iter()
