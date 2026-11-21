@@ -8,16 +8,23 @@ use std::{
     path::{Path, PathBuf},
 };
 
-// Files defining workspace types used in declaration inputs, and the paths by which
-// the reader names them (including re-exports). Registry crates such as semver,
-// serde_json and toml are out of scope.
-#[rustfmt::skip]
-const EXTERNAL_DECLARATIONS: &[(&str, &[&str])] = &[
-    ("../sunrise-core/src/arm_pose.rs", &["sunrise_core::arm_pose::ArmPose"]),
-    ("../sunrise-mod-vocab/src/content/package_side.rs", &["mod_vocab::Side"]),
-    ("../sunrise-mod-vocab/src/world/package_details.rs", &["mod_vocab::DependencyOrder", "mod_vocab::DependencyOrder::After"]),
+// Workspace types used in declaration inputs, by the paths the reader names them with
+// (re-exports included). The guard follows each path to the file that defines its type.
+// Registry crates such as semver, serde_json and toml are out of scope.
+const EXTERNAL_DECLARATIONS: &[&str] = &[
+    "sunrise_core::arm_pose::ArmPose",
+    "mod_vocab::Side",
+    "mod_vocab::DependencyOrder",
+    "mod_vocab::DependencyOrder::After",
     // The field's custom deserializer maps names to this vocabulary instead of deriving Serde.
-    ("../sunrise-mod-vocab/src/client/types.rs", &["mod_vocab::NoteInstrument", "mod_vocab::NoteInstrument::ALL"]),
+    "mod_vocab::NoteInstrument",
+    "mod_vocab::NoteInstrument::ALL",
+];
+
+// Where each such crate keeps its sources.
+const EXTERNAL_CRATES: &[(&str, &str)] = &[
+    ("sunrise_core", "../sunrise-core/src"),
+    ("mod_vocab", "../sunrise-mod-vocab/src"),
 ];
 
 #[rustfmt::skip]
@@ -87,20 +94,35 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
     let mut files = Vec::new();
     for stem in ["manifest", "content"] {
         files.push(format!("{stem}.rs"));
-        sources(Path::new(stem), &mut files);
+        sources(Path::new("src"), Path::new(stem), &mut files);
     }
     files.sort();
-    let paths = files
+    let mut paths: Vec<_> = files
         .iter()
-        .map(|file| (file.as_str(), Path::new("src").join(file)))
-        .chain(
-            EXTERNAL_DECLARATIONS
+        .map(|file| (file.clone(), Path::new("src").join(file)))
+        .collect();
+    let external: BTreeSet<_> = EXTERNAL_DECLARATIONS
+        .iter()
+        .map(|path| {
+            let mut segments = path.split("::");
+            let krate = segments.next().unwrap();
+            let src = EXTERNAL_CRATES
                 .iter()
-                .map(|&(file, _)| (file, PathBuf::from(file))),
-        );
+                .find(|&&(name, _)| name == krate)
+                .unwrap_or_else(|| panic!("{path}: no source folder listed for {krate}"))
+                .1;
+            defining_file(Path::new(src), &segments.collect::<Vec<_>>())
+                .unwrap_or_else(|e| panic!("{path}: {e}, so its Serde form can't be audited"))
+        })
+        .collect();
+    paths.extend(
+        external
+            .into_iter()
+            .map(|file| (file.to_str().unwrap().replace('\\', "/"), file)),
+    );
     let known_paths: BTreeSet<_> = EXTERNAL_DECLARATIONS
         .iter()
-        .flat_map(|&(_, paths)| paths.iter().copied())
+        .copied()
         .chain(NOT_DECLARATIONS.iter().map(|&(path, _reason)| path))
         .collect();
     let corpus = crate::corpus::entries();
@@ -116,7 +138,7 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
         }
         for (item, feature) in blind_spots(&source_tokens) {
             if let Some(fixtures) =
-                reviewed.remove(&[file.to_owned(), item.to_owned(), feature.clone()])
+                reviewed.remove(&[file.clone(), item.to_owned(), feature.clone()])
             {
                 assert!(
                     !fixtures.is_empty(),
@@ -163,16 +185,217 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
     );
 }
 
-fn sources(dir: &Path, files: &mut Vec<String>) {
-    for entry in fs::read_dir(Path::new("src").join(dir)).unwrap() {
+fn sources(root: &Path, dir: &Path, files: &mut Vec<String>) {
+    for entry in fs::read_dir(root.join(dir)).unwrap() {
         let entry = entry.unwrap();
         let path = dir.join(entry.file_name());
         if entry.file_type().unwrap().is_dir() {
-            sources(&path, files);
+            sources(root, &path, files);
         } else if path.extension().is_some_and(|ext| ext == "rs") {
             files.push(path.to_str().unwrap().replace('\\', "/"));
         }
     }
+}
+
+/// The file that defines the type a declaration path names, by following the path: modules from
+/// the crate root, then the type, with any variant or associated item after it left over. A name
+/// the root does not define is followed through the root's re-exports, which for `mod_vocab` are
+/// the fragments in `exports/` its build script assembles. Anything else (an alias, a re-export
+/// below the root, a name no traced file defines) is an error: a type of the same name elsewhere
+/// in the crate is not the declaration.
+fn defining_file(src: &Path, path: &[&str]) -> Result<PathBuf, String> {
+    definition(src, path, true)
+}
+
+fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, String> {
+    let read = |file: &Path| {
+        fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()))
+    };
+    // The root's scope is `lib.rs` and the export fragments included into it.
+    let mut root = read(&src.join("lib.rs"));
+    if let Ok(entries) = fs::read_dir(src.join("exports")) {
+        for entry in entries {
+            root.push('\n');
+            root.push_str(&read(&entry.unwrap().path()));
+        }
+    }
+    let (mut module, mut file, mut rest) = (src.to_path_buf(), src.join("lib.rs"), path);
+    let mut text = read(&file);
+    while let [name, tail @ ..] = rest {
+        let scope = top_level(&tokens(if module == src { &root } else { &text }));
+        let Some(declared) = scope.windows(3).position(|decl| decl == ["mod", name, ";"]) else {
+            break;
+        };
+        let attributes = scope[..declared]
+            .rsplit(|token| matches!(*token, ";" | "}"))
+            .next()
+            .unwrap();
+        if attributes.windows(2).any(|pair| pair == ["path", "="]) {
+            return Err(format!(
+                "{} gives `mod {name}` a #[path], which this guard does not follow",
+                file.display()
+            ));
+        }
+        let inner = [format!("{name}.rs"), format!("{name}/mod.rs")]
+            .into_iter()
+            .map(|file| module.join(file))
+            .find(|file| file.is_file())
+            .ok_or_else(|| format!("no file for `mod {name}` of {}", file.display()))?;
+        (module, file, rest) = (module.join(name), inner, tail);
+        text = read(&file);
+    }
+    let Some(&name) = rest.first() else {
+        return Err(format!("{} is a module", file.display()));
+    };
+    // A type declared inside a nested module or a function body is another type.
+    for pair in top_level(&tokens(&text)).windows(2) {
+        match pair {
+            ["struct" | "enum" | "union", found] if *found == name => return Ok(file),
+            ["type", found] if *found == name => {
+                return Err(format!(
+                    "{} makes {name} an alias; name its target",
+                    file.display()
+                ));
+            }
+            _ => {}
+        }
+    }
+    // One hop: what the root re-exports must be defined where the re-export points.
+    if module != src || !at_root {
+        return Err(format!("{} does not define {name}", file.display()));
+    }
+    let mut exports = Vec::new();
+    root_exports(&tokens(&root), &mut exports);
+    let named: BTreeSet<_> = exports
+        .iter()
+        .filter(|(exported, target)| *exported == name && target.len() > 1)
+        .map(|(_, target)| target)
+        .collect();
+    let mut found: BTreeSet<_> = match named.len() {
+        0 => exports
+            .iter()
+            .filter(|(exported, _)| *exported == "*")
+            .filter_map(|(_, module)| {
+                definition(src, &[module.as_slice(), &[name]].concat(), false).ok()
+            })
+            .collect(),
+        _ => named
+            .into_iter()
+            .map(|target| definition(src, target, false))
+            .collect::<Result<_, _>>()?,
+    };
+    match (found.pop_first(), found.is_empty()) {
+        (Some(file), true) => Ok(file),
+        (Some(_), false) => Err(format!("the crate root exports more than one {name}")),
+        (None, _) => Err(format!(
+            "the crate root neither defines nor traceably re-exports {name}"
+        )),
+    }
+}
+
+/// The tokens outside every brace pair: a file's own items, without their bodies.
+fn top_level<'a>(tokens: &[&'a str]) -> Vec<&'a str> {
+    let mut depth = 0;
+    let mut out = Vec::new();
+    for &token in tokens {
+        if token == "}" {
+            depth -= 1;
+        }
+        if depth == 0 {
+            out.push(token);
+        }
+        if token == "{" {
+            depth += 1;
+        }
+    }
+    out
+}
+
+/// What a file's own `use` items bring into its scope: the name each binds (`*` for a glob) and
+/// the path it comes from, without `crate` and `self`.
+fn root_exports<'a>(tokens: &[&'a str], out: &mut Vec<(&'a str, Vec<&'a str>)>) {
+    let mut depth = 0;
+    let mut rest = tokens;
+    while let [token, tail @ ..] = rest {
+        rest = tail;
+        match *token {
+            "{" => depth += 1,
+            "}" => depth -= 1,
+            "use" if depth == 0 => use_tree(&mut rest, &mut Vec::new(), out),
+            _ => {}
+        }
+    }
+}
+
+fn use_tree<'a>(
+    tokens: &mut &[&'a str],
+    prefix: &mut Vec<&'a str>,
+    out: &mut Vec<(&'a str, Vec<&'a str>)>,
+) {
+    if let ["{", tail @ ..] = *tokens {
+        *tokens = tail;
+        while !tokens.starts_with(&["}"]) {
+            use_tree(tokens, prefix, out);
+            if let [",", tail @ ..] = *tokens {
+                *tokens = tail;
+            }
+        }
+        *tokens = &tokens[1..];
+        return;
+    }
+    let (&segment, tail) = tokens.split_first().expect("use path segment");
+    *tokens = tail;
+    if let [":", ":", tail @ ..] = *tokens {
+        *tokens = tail;
+        let named = !matches!(segment, "crate" | "self");
+        if named {
+            prefix.push(segment);
+        }
+        use_tree(tokens, prefix, out);
+        if named {
+            prefix.pop();
+        }
+        return;
+    }
+    let mut target = prefix.clone();
+    let mut name = segment;
+    match segment {
+        "*" => {}
+        "self" => name = prefix.last().copied().unwrap_or("self"),
+        _ => target.push(segment),
+    }
+    if let ["as", renamed, tail @ ..] = *tokens {
+        (name, *tokens) = (renamed, tail);
+    }
+    out.push((name, target));
+}
+
+#[test]
+fn a_same_named_type_elsewhere_is_not_the_declaration() {
+    let src = Path::new(env!("CARGO_TARGET_TMPDIR")).join("source-guard-decoy");
+    let _ = fs::remove_dir_all(&src);
+    fs::create_dir_all(src.join("exports")).unwrap();
+    fs::create_dir_all(src.join("content")).unwrap();
+    fs::write(src.join("lib.rs"), "mod content; mod decoy;").unwrap();
+    fs::write(src.join("exports/sides.rs"), "pub use content::side::Side;").unwrap();
+    fs::write(src.join("decoy.rs"), "pub enum Side {}").unwrap();
+    fs::write(src.join("content/mod.rs"), "pub(crate) mod side;").unwrap();
+    let side = src.join("content/side.rs");
+
+    fs::write(&side, "pub enum Side {}").unwrap();
+    assert_eq!(defining_file(&src, &["Side", "Client"]), Ok(side.clone()));
+    // The referenced definition moved out of reach: the decoy must not stand in for it.
+    fs::write(&side, "pub use elsewhere::Side;").unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
+    fs::write(&side, "pub type Side = crate::decoy::Side;").unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
+    fs::write(&side, "mod tests { pub enum Side {} }").unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
+    // A stale file beside a redirected module is not that module.
+    fs::write(&side, "pub enum Side {}").unwrap();
+    let redirected = "#[path = \"moved/side.rs\"] pub(crate) mod side;";
+    fs::write(src.join("content/mod.rs"), redirected).unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
 }
 
 fn workspace_paths(tokens: &[&str]) -> BTreeSet<String> {
