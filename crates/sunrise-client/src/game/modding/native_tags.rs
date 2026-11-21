@@ -3,7 +3,7 @@ use mod_api::{ItemKey, TagKey, TagMembers};
 use sunrise_items::items::{Items, TagRegistry};
 
 pub(super) fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Option<bool> {
-    let items = items?;
+    let items = items.filter(|items| items.tags_loaded(TagRegistry::Item))?;
     let item = mod_api::__private::item_key_id(item)?;
     mod_api::__private::with_tag_name(tag, |name| {
         Some(
@@ -94,6 +94,25 @@ macro_rules! impl_tags {
 }
 pub(super) use impl_tags;
 impl_tags!(super::Game<'_>, game, game.native_tag_items());
+
+#[cfg(test)]
+pub(in crate::game) const PACK_BINDING_CASES: [(&str, &[u8], bool); 3] = [
+    (
+        "optional_only",
+        br#"{"values":[{"id":"binding:not_registered","required":false}]}"#,
+        true,
+    ),
+    (
+        "broken_parent",
+        br##"{"values":["minecraft:stick","#binding:absent"]}"##,
+        false,
+    ),
+    (
+        "broken_nested",
+        br##"{"values":["#binding:absent"]}"##,
+        false,
+    ),
+];
 
 #[cfg(test)]
 mod tests {

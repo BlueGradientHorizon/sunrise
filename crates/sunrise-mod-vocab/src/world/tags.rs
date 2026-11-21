@@ -21,9 +21,9 @@ impl TagKey {
 #[derive(Clone, Debug, PartialEq, Eq)]
 // exhaustive: the lookup can only find a tag, miss it, or be unavailable.
 pub enum TagMembers<K> {
-    /// The snapshot has no tag of this name.
+    /// No tag by this name bound, including a definition with an unresolved required entry.
     Missing,
-    /// The loaded tag's members in vanilla's order. The list may be empty.
+    /// The bound tag's members in vanilla's order. Missing optional entries are skipped; the list may be empty.
     Members(Vec<K>),
     /// The snapshot or a required key mapping is unavailable. No partial list is returned.
     Unavailable,

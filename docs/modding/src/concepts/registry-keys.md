@@ -355,8 +355,10 @@ for either an absent tag or a loaded empty tag. Use `tags.items(tag_key)`,
 `tags.blocks(tag_key)` or `tags.fluids(tag_key)` to tell them apart. Each returns a
 `TagMembers<K>` for the registry's key type:
 
-- `Missing`: the loaded table has no tag by this name.
-- `Members(keys)`: the loaded tag's keys in vanilla's order. The list can be empty.
+- `Missing`: no tag with this name was bound. An unresolved required entry, including a
+  required reference to another unbound tag, keeps the whole tag out of the table.
+- `Members(keys)`: the bound tag's keys in vanilla's order. Absent optional entries are
+  skipped, so a declared tag can be present with no members.
 - `Unavailable`: that registry's authoritative tag table has not been applied, or a member
   key cannot be resolved. The query never returns partial membership.
 

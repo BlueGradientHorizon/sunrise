@@ -262,6 +262,7 @@ mod tests {
                 };
                 assert_eq!(seen.lock().unwrap()[0].stone_in_block_tag, Some(true));
                 assert_eq!(seen.lock().unwrap()[0].items, TagMembers::Unavailable);
+                assert_eq!(seen.lock().unwrap()[0].stick_in_item_tag, None);
                 assert_eq!(item_reads(game), (None, None, None));
 
                 game.handle_packet(C::UpdateTags(UpdateTags {
@@ -273,19 +274,59 @@ mod tests {
                 .unwrap();
                 assert_eq!(item_reads(game), (Some(false), Some(0), None));
                 assert_eq!(seen.lock().unwrap()[1].items, TagMembers::Missing);
+                assert_eq!(seen.lock().unwrap()[1].stick_in_item_tag, Some(false));
 
-                game.handle_packet(C::UpdateTags(update(
-                    &builtin,
-                    &[
-                        (
-                            "minecraft:item",
-                            "test:items",
-                            &["minecraft:potion", "minecraft:stick"],
-                        ),
-                        ("minecraft:item", "test:empty_items", &[]),
-                    ],
-                )))
+                let mut files: Vec<_> = crate::game::native_tags::PACK_BINDING_CASES
+                    .iter()
+                    .map(|(path, bytes, _)| {
+                        (format!("tags/binding:item/{path}"), vec![bytes.to_vec()])
+                    })
+                    .collect();
+                files.extend([
+                    (
+                        "tags/test:item/items".into(),
+                        vec![br#"{"values":["minecraft:potion","minecraft:stick"]}"#.to_vec()],
+                    ),
+                    (
+                        "tags/test:item/empty_items".into(),
+                        vec![br#"{"values":[]}"#.to_vec()],
+                    ),
+                ]);
+                let overlay = sunrise_world::loot::PackOverlay::new(&files);
+                let root = &game.options.resources;
+                let item_data = &game.res.core.item_data;
+                let sources =
+                    crate::game::lan::sync::server_sources(root, item_data, &overlay).unwrap();
+                let wire = sunrise_client::lan::data::SyncData::load(
+                    root,
+                    &overlay,
+                    item_data.defaults(),
+                    &sources,
+                )
                 .unwrap();
+                // Deliver just the item table: the block/fluid snapshots above are independent.
+                let registries = wire
+                    .tags
+                    .registries
+                    .into_iter()
+                    .filter(|tags| tags.registry == "minecraft:item")
+                    .collect();
+                game.handle_packet(C::UpdateTags(UpdateTags { registries }))
+                    .unwrap();
+                for (path, _, is_bound) in crate::game::native_tags::PACK_BINDING_CASES {
+                    let key = mod_api::__private::tag_key(
+                        &Identifier::parse(&format!("binding:{path}")).unwrap(),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        mod_api::Tags::items(game, key),
+                        if is_bound {
+                            TagMembers::Members(vec![])
+                        } else {
+                            TagMembers::Missing
+                        }
+                    );
+                }
                 assert_eq!(item_reads(game), (Some(true), Some(2), Some(potion)));
                 assert_eq!(
                     seen.lock().unwrap()[2],

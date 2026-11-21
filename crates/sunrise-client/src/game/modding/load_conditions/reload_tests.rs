@@ -68,6 +68,12 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
     );
     let empty_tag = pack.join("data/reload_conditions/tags/item/empty.json");
     write(&empty_tag, br#"{"values":[]}"#);
+    for (path, bytes, _) in crate::game::native_tags::PACK_BINDING_CASES {
+        write(
+            &pack.join(format!("data/binding/tags/item/{path}.json")),
+            bytes,
+        );
+    }
     for (name, condition) in [
         (
             "registered",
@@ -112,6 +118,20 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                     )
                     .unwrap()
                 };
+                for (path, _, is_bound) in crate::game::native_tags::PACK_BINDING_CASES {
+                    let tag = mod_api::__private::tag_key(
+                        &mod_api::Identifier::parse(&format!("binding:{path}")).unwrap(),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        item_tags(game, tag),
+                        if is_bound {
+                            mod_api::TagMembers::Members(vec![])
+                        } else {
+                            mod_api::TagMembers::Missing
+                        }
+                    );
+                }
                 let empty = key("empty");
                 let flag = key("flag");
                 assert_eq!(item_tags(game, empty), mod_api::TagMembers::Members(vec![]));

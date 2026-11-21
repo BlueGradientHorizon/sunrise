@@ -47,11 +47,9 @@ impl TagLayers {
                     continue;
                 };
                 let (prefix, name) = id.strip_prefix('#').map_or(("", id), |name| ("#", name));
-                let id = if name.contains(':') {
-                    format!("{prefix}{name}")
-                } else {
-                    format!("{prefix}minecraft:{name}")
-                };
+                let (ns, path) = name.split_once(':').unwrap_or(("minecraft", name));
+                let ns = if ns.is_empty() { "minecraft" } else { ns };
+                let id = format!("{prefix}{ns}:{path}");
                 self.0.push(Entry {
                     id,
                     required: entry
@@ -72,16 +70,16 @@ impl TagLayers {
     /// Bind one tag to registry IDs and already bound nested tags. A missing
     /// required addition fails the entire tag; missing optional entries and
     /// removals never do. Members retain their insertion order.
-    pub fn build(
+    pub fn build<'a>(
         &self,
         contains: impl Fn(&str) -> bool,
-        mut members: impl FnMut(&str) -> Option<Vec<String>>,
+        mut members: impl FnMut(&str) -> Option<&'a [String]>,
     ) -> Option<Vec<String>> {
         let mut out = Vec::new();
         for entry in &self.0 {
             let ids = match entry.id.strip_prefix('#') {
                 Some(tag) => members(tag),
-                None => contains(&entry.id).then(|| vec![entry.id.clone()]),
+                None => contains(&entry.id).then_some(std::slice::from_ref(&entry.id)),
             };
             let Some(ids) = ids else {
                 if entry.required && !entry.remove {
@@ -91,9 +89,9 @@ impl TagLayers {
             };
             for id in ids {
                 if entry.remove {
-                    out.retain(|kept| kept != &id);
-                } else if !out.contains(&id) {
-                    out.push(id);
+                    out.retain(|kept| kept != id);
+                } else if !out.contains(id) {
+                    out.push(id.clone());
                 }
             }
         }
@@ -115,12 +113,15 @@ impl TagLayers {
         let mut seen = HashSet::new();
         for required in [true, false] {
             for &name in &names {
-                for id in raw[name].0.iter().filter_map(|entry| {
-                    ((entry.required && !entry.remove) == required)
-                        .then(|| entry.id.strip_prefix('#'))
-                        .flatten()
-                }) {
-                    if !raw.contains_key(id) {
+                for id in raw[name]
+                    .0
+                    .iter()
+                    .filter(|entry| (entry.required && !entry.remove) == required)
+                    .filter_map(|entry| entry.id.strip_prefix('#'))
+                {
+                    if !raw.contains_key(id)
+                        || dependencies.get(name).is_some_and(|ids| ids.contains(&id))
+                    {
                         continue;
                     }
                     pending.clear();
@@ -150,7 +151,7 @@ impl TagLayers {
             pending.push((name, false));
             while let Some((name, ready)) = pending.pop() {
                 if ready {
-                    match raw[name].build(&contains, |id| bound.get(id).cloned()) {
+                    match raw[name].build(&contains, |id| bound.get(id).map(Vec::as_slice)) {
                         Some(members) => {
                             bound.insert(name.to_owned(), members);
                         }
@@ -183,7 +184,19 @@ pub fn load(
     overlay: &PackOverlay<'_>,
     contains: impl Fn(&str) -> bool,
 ) -> io::Result<HashMap<String, Vec<String>>> {
-    let mut raw = HashMap::new();
+    Ok(TagLayers::bind(
+        kind,
+        &layers(root, kind, overlay)?,
+        contains,
+    ))
+}
+
+pub(crate) fn layers(
+    root: &Path,
+    kind: &str,
+    overlay: &PackOverlay<'_>,
+) -> io::Result<HashMap<String, TagLayers>> {
+    let mut raw = HashMap::<_, TagLayers>::new();
     let data = root.join("data");
     for namespace in crate::json_folder::namespaces(&data) {
         let dir = data.join(&namespace).join("tags").join(kind);
@@ -193,21 +206,55 @@ pub fn load(
             Err(error) => return Err(error),
         };
         for file in &folder.files {
-            let value = serde_json::from_slice(file.bytes()?)?;
-            raw.insert(
-                format!("{namespace}:{}", file.name),
-                TagLayers::from_file(&value),
-            );
+            match file
+                .bytes()
+                .and_then(|bytes| Ok(serde_json::from_slice(bytes)?))
+            {
+                Ok(value) => {
+                    raw.insert(
+                        format!("{namespace}:{}", file.name),
+                        TagLayers::from_file(&value),
+                    );
+                }
+                Err(error) => log::warn!(
+                    "Sunrise: couldn't read tag file {}: {error}",
+                    file.path.display()
+                ),
+            }
         }
     }
     for (id, files) in overlay.tag_kind(kind) {
         for bytes in files {
-            if let Ok(value) = serde_json::from_slice(bytes) {
-                raw.entry(id.clone()).or_default().push(&value);
+            match serde_json::from_slice(bytes) {
+                Ok(value) => raw.entry(id.clone()).or_default().push(&value),
+                Err(error) => log::warn!("Sunrise: couldn't read {kind} tag {id}: {error}"),
             }
         }
     }
-    Ok(TagLayers::bind(kind, &raw, contains))
+    Ok(raw)
+}
+
+/// Registry IDs from the prepared game report, which includes admitted
+/// content-mod entries. A synthetic root may not have a report.
+pub fn builtin_ids(root: &Path) -> io::Result<HashMap<String, HashSet<String>>> {
+    let path = root.join("registries.json");
+    let value = match std::fs::read(path) {
+        Ok(bytes) => serde_json::from_slice::<Value>(&bytes)?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(HashMap::new()),
+        Err(error) => return Err(error),
+    };
+    Ok(value
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(kind, value)| {
+            let entries = value["entries"].as_object()?;
+            Some((
+                kind.strip_prefix("minecraft:").unwrap_or(kind).to_owned(),
+                entries.keys().cloned().collect(),
+            ))
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -217,16 +264,59 @@ mod tests {
 
     #[test]
     fn removals_apply_in_layer_order_and_replace_drops_them() {
-        let mut things = TagLayers::from_file(&json!({"values": ["stone", "dirt"]}));
+        let mut things = TagLayers::from_file(&json!({"values": ["stone", "dirt", "#test:other"]}));
         things.push(&json!({"values": [], "remove": ["dirt", "#test:other"]}));
-        things.push(&json!({"values": ["sand", "gravel", {"id":"stone", "remove":true}]}));
-        let members = |tag: &str| (tag == "test:other").then(|| vec!["minecraft:sand".into()]);
+        things.push(&json!({"values": ["gravel", "sand", {"id":"stone", "remove":true}]}));
+        let other = ["minecraft:sand".into()];
+        let members = |tag: &str| (tag == "test:other").then_some(other.as_slice());
         assert_eq!(
             things.build(|_| true, members).unwrap(),
-            ["minecraft:sand", "minecraft:gravel"]
+            ["minecraft:gravel", "minecraft:sand"]
         );
         things.push(&json!({"replace": true, "values": ["dirt"]}));
         assert_eq!(things.build(|_| true, members).unwrap(), ["minecraft:dirt"]);
+    }
+
+    #[test]
+    fn unresolved_required_entries_omit_tags_and_optional_entries_do_not() {
+        let raw = [
+            ("test:empty", json!({"values":[]})),
+            ("test:required", json!({"values":["test:pinned", {"id":"test:absent", "required":true}]})),
+            ("test:dependent", json!({"values":["#test:required"]})),
+            ("test:optional", json!({"values":[{"id":"test:absent", "required":false}, {"id":"#test:required", "required":false}], "remove":["#test:required", "test:absent"]})),
+            ("test:admitted", json!({"values":["#test:empty", "test:pinned", "test:pinned"]})),
+        ].into_iter().map(|(name, file)| (name.to_owned(), TagLayers::from_file(&file))).collect();
+        assert_eq!(
+            TagLayers::bind("item", &raw, |id| id == "test:pinned"),
+            HashMap::from([
+                ("test:empty".into(), vec![]),
+                ("test:optional".into(), vec![]),
+                ("test:admitted".into(), vec!["test:pinned".into()]),
+            ])
+        );
+    }
+
+    #[test]
+    fn shared_nested_tags_are_built_once_without_a_depth_cap() {
+        let mut raw = HashMap::new();
+        for i in 0..128 {
+            let child = format!("#test:{}", i + 1);
+            raw.insert(
+                format!("test:{i}"),
+                TagLayers::from_file(&json!({"values":[child,child]})),
+            );
+        }
+        raw.insert(
+            "test:128".into(),
+            TagLayers::from_file(&json!({"values":["minecraft:stick", "minecraft:potion"]})),
+        );
+        let calls = std::cell::Cell::new(0);
+        let tags = TagLayers::bind("item", &raw, |_| {
+            calls.set(calls.get() + 1);
+            assert!(calls.get() <= 2);
+            true
+        });
+        assert_eq!(tags["test:0"], ["minecraft:stick", "minecraft:potion"]);
     }
 
     #[test]

@@ -24,14 +24,13 @@ impl ModLootFunction for TagReader {
     }
     fn apply(
         &self,
-        _: &LootEntryData,
+        data: &LootEntryData,
         mut stack: LootStack,
         context: &mut dyn LootTypeContext,
     ) -> Result<LootStack, String> {
         let tags = context.tags();
-        let tag = tags
-            .key(&mod_api::Identifier::parse("test:ingredients").unwrap())
-            .unwrap();
+        let id = data.value()["tag"].as_str().unwrap_or("test:ingredients");
+        let tag = tags.key(&mod_api::Identifier::parse(id).unwrap()).unwrap();
         stack.count = match tags.items(tag) {
             mod_api::TagMembers::Members(members) if members.is_empty() => 1,
             mod_api::TagMembers::Members(members) => {
@@ -119,6 +118,55 @@ fn loot_types_read_current_membership_and_order_after_tag_reload() {
                 );
                 assert_eq!(value.count, expected_count);
                 assert_eq!(holds, expected_holds);
+            }
+        },
+    );
+}
+
+#[test]
+fn registered_loot_function_reads_only_tags_bound_by_the_pack_loader() {
+    use sunrise_core::random::LegacyRandom;
+    use sunrise_world::loot::{LootData, PackOverlay};
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("items.json"), r#"{"minecraft:stick":{}}"#).unwrap();
+    let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
+    let cases = crate::game::native_tags::PACK_BINDING_CASES;
+    let mut files = Vec::new();
+    for (name, bytes, _) in cases {
+        files.push((format!("tags/binding:item/{name}"), vec![bytes.to_vec()]));
+        let table = serde_json::json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:stick"}]}],
+            "modifier":{"type":"tag_reader:count","tag":format!("binding:{name}")}});
+        files.push((
+            format!("loot_table/binding:{name}"),
+            vec![serde_json::to_vec(&table).unwrap()],
+        ));
+    }
+    with_mods(
+        vec![ModEntry::new("tag_reader", Box::new(TagReader))].into(),
+        || {
+            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
+                .unwrap();
+            mod_api::__private::resolve_items(["minecraft:stick"]).unwrap();
+            let loot = LootData::load_with_types(
+                root.path(),
+                &PackOverlay::new(&files),
+                &defaults,
+                crate::game::loot_types::capture(),
+            )
+            .unwrap();
+            for (name, _, is_bound) in cases {
+                let drops = loot.roll(
+                    &format!("binding:{name}"),
+                    &mut LegacyRandom::new(0),
+                    0.0,
+                    None,
+                    None,
+                );
+                assert_eq!(
+                    drops.iter().map(|stack| stack.count).sum::<i32>(),
+                    i32::from(is_bound),
+                    "{name}"
+                );
             }
         },
     );
