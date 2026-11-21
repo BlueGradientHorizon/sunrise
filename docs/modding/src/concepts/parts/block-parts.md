@@ -61,7 +61,8 @@ Keep the callback a pure function of the level, position and state, without side
 
 `BlockPart::enchant_power_bonus` receives the queried `state`, provider `pos`, `table_pos`,
 and a read-only host. `event.power` starts at 1.0 for `#minecraft:enchantment_power_provider`
-and 0.0 otherwise. Set it to a finite answer to override the default.
+and 0.0 otherwise. Explicit reads receive the answer unchanged; offers and particles keep the
+default if the Part answers with NaN or infinity.
 
 For live offers and `LevelRef::get_enchant_power_bonus`, `event.level` names the level to use
 for contextual reads, even if it is not the level in play. An explicit query may supply a state

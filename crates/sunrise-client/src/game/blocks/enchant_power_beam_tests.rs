@@ -18,6 +18,7 @@ use sunrise_core::position::BlockPos;
 const TABLE: [i32; 3] = [8, 64, 8];
 const PROVIDER: [i32; 3] = [12, 64, 8];
 const UNRELATED_TABLE: [i32; 3] = [9, 64, 8];
+const POWER_NAN: f32 = f32::from_bits(0x7fc0_1234);
 
 #[derive(Clone, Default)]
 struct QueryProbe {
@@ -32,21 +33,46 @@ impl BlockPart for QueryProbe {
         self.calls.fetch_add(1, Ordering::Relaxed);
         let pos = [event.pos.x, event.pos.y, event.pos.z];
         let table = [event.table_pos.x, event.table_pos.y, event.table_pos.z];
+        let bookshelf = host.block_state_id("minecraft:bookshelf").unwrap();
+        if event.state == bookshelf {
+            assert_eq!(event.power, 1.0);
+            event.power = if table == TABLE {
+                f32::INFINITY
+            } else {
+                POWER_NAN
+            };
+            return;
+        }
+        let stone = host.block_state_id("minecraft:stone").unwrap();
+        let contextual_power = if level.block_state(host, pos) == Some(stone) {
+            -0.5
+        } else {
+            1.25
+        };
+        let material = host.block_state_id("minecraft:gold_block").unwrap();
+        if event.state == material {
+            event.power = contextual_power;
+            return;
+        }
         assert_eq!(pos, PROVIDER);
         assert_eq!(table, UNRELATED_TABLE);
         assert_eq!(event.state, host.block_state_id("minecraft:glass").unwrap());
         assert_eq!(event.power, 0.0);
-        if self.cycles {
+        event.power = if self.cycles {
             assert_eq!(
-                level.get_enchant_power_bonus(host, pos, event.state, table),
+                level.get_enchant_power_bonus(
+                    host,
+                    [pos[0] + 1, pos[1], pos[2]],
+                    event.state,
+                    TABLE
+                ),
                 Err(LevelReadError::Unavailable)
             );
-        }
-        let stone = host.block_state_id("minecraft:stone").unwrap();
-        event.power = if level.block_state(host, pos) == Some(stone) {
-            -0.5
+            level
+                .get_enchant_power_bonus(host, pos, material, table)
+                .unwrap()
         } else {
-            1.25
+            contextual_power
         };
     }
 }
@@ -57,6 +83,10 @@ impl Hooks for QueryProbe {
         for name in ["minecraft:glass", "minecraft:gold_block"] {
             let key = r.block_key(name);
             r.block_part(key, self.clone());
+        }
+        if self.cycles {
+            let bookshelf = r.block_key("minecraft:bookshelf");
+            r.block_part(bookshelf, self.clone());
         }
     }
 }
@@ -140,8 +170,26 @@ fn enchant_power_query_reads_the_named_server_level_and_refuses_cycles() {
             );
             assert_eq!(
                 calls.load(Ordering::Relaxed),
-                2,
-                "only the selected state is asked"
+                4,
+                "each glass provider delegated to the material exactly once"
+            );
+            let bookshelf = host.block_state_id("minecraft:bookshelf").unwrap();
+            assert_eq!(
+                nether
+                    .get_enchant_power_bonus(host, PROVIDER, bookshelf, UNRELATED_TABLE)
+                    .unwrap()
+                    .to_bits(),
+                POWER_NAN.to_bits()
+            );
+            assert_eq!(
+                nether.get_enchant_power_bonus(host, PROVIDER, bookshelf, TABLE),
+                Ok(f32::INFINITY)
+            );
+            place(game, [2, 0, 0], "minecraft:bookshelf");
+            assert_eq!(
+                game.count_bookshelves(TABLE),
+                1,
+                "offers keep the tag default"
             );
             game.native_lifecycle
                 .begin_open(mod_api::Authority::IntegratedServer);
@@ -149,7 +197,7 @@ fn enchant_power_query_reads_the_named_server_level_and_refuses_cycles() {
                 nether.get_enchant_power_bonus(game, PROVIDER, glass, UNRELATED_TABLE),
                 Err(LevelReadError::Stale)
             );
-            assert_eq!(calls.load(Ordering::Relaxed), 2);
+            assert_eq!(calls.load(Ordering::Relaxed), 7);
         },
     );
 }

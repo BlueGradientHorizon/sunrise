@@ -13,17 +13,15 @@ use sunrise_world::{
     registry::{BlockRegistry, BlockStateId},
 };
 
-/// Provider arguments other than the level, state and provider position.
+/// Kinds of contextual block provider dispatched by the game.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum BlockProviderQuery {
-    EnchantPower { table: BlockPos },
+    EnchantPower,
 }
 
 #[derive(PartialEq, Eq)]
 struct BlockQueryKey {
     game: *const (),
-    level: Option<LevelRef>,
-    pos: BlockPos,
     state: BlockStateId,
     query: BlockProviderQuery,
 }
@@ -43,21 +41,17 @@ impl Drop for PopBlockQuery {
 }
 
 impl Game<'_> {
-    /// A provider may ask another state for its answer. Refuse only a query already active on
-    /// this thread, without substituting a value. Only actual dispatch enters here. The vector
-    /// keeps its capacity, so only a new deepest nesting may allocate.
+    /// Refuse re-entry for the same state and query kind in this game, regardless of level and
+    /// position. A provider can delegate to another state. Only actual dispatch enters here;
+    /// the vector retains its capacity between calls.
     pub(super) fn with_block_provider_query<R>(
         &self,
-        level: Option<LevelRef>,
-        pos: BlockPos,
         state: BlockStateId,
         query: BlockProviderQuery,
         ask: impl FnOnce() -> R,
     ) -> Option<R> {
         let key = BlockQueryKey {
             game: std::ptr::from_ref(self).cast(),
-            level,
-            pos,
             state,
             query,
         };
