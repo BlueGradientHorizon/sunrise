@@ -269,6 +269,9 @@ impl Game<'_> {
                 }
                 BundleStep::Transfer(packet) => self.handle_listener_transfer(packet, turn)?,
                 BundleStep::Close(notice) => {
+                    if let Some(remote) = &self.remote {
+                        remote.session.close_after_pending();
+                    }
                     // Discard the old listener only after its remaining handlers run.
                     turn.end.get_or_insert(notice);
                 }

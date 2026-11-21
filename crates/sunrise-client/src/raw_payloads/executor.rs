@@ -71,13 +71,15 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
             && matches!(incoming.body, Body::Payload(_))
         {
             // This is a wire record on the dedicated client reader, not work
-            // staged by a mod. Main rechecks the payload epoch on delivery.
-            if let Err(error) = events.send_wait(crate::net::Event::RawPayload(Box::new(incoming)))
+            // staged by a mod. A closed reader leaves the old epoch to main:
+            // an already-admitted bundle may still have inline payloads to run.
+            use crate::net::ingress::{Refusal, Refused};
+            if let Err(Refused {
+                reason: Refusal::Pressure,
+                ..
+            }) = events.send_wait(crate::net::Event::RawPayload(Box::new(incoming)))
             {
-                endpoint.disconnect(failure(&format!(
-                    "payload main refused: {:?}",
-                    error.reason
-                )));
+                endpoint.disconnect(failure("payload main refused: Pressure"));
             }
             return;
         }
