@@ -494,7 +494,7 @@ impl TravelTrample {
             level,
             self.movement.wanted,
             self.movement.moved,
-            self.movement.effect,
+            (self.movement.trample.position, self.movement.trample.state),
             events,
         );
         self.tail.finish(mob, w, level, events);
@@ -505,7 +505,6 @@ struct MoveTrample {
     trample: FarmlandTrample,
     wanted: Vec3,
     moved: Vec3,
-    effect: (BlockPos, BlockStateId),
 }
 
 impl Mob {
@@ -1001,12 +1000,13 @@ impl Mob {
         // checkFallDamage reads the landing block (getOnPosLegacy).
         self.supporting = self.supporting_block(w, moved);
         let effect = self.restitution_contact(w);
-        if let Some(trample) = self.species_check_fall_damage(w, level, moved, events, pause) {
+        if let Some(trample) =
+            self.species_check_fall_damage(w, level, moved, effect, events, pause)
+        {
             return Some(MoveTrample {
                 trample,
                 wanted,
                 moved,
-                effect,
             });
         }
         self.finish_move(w, level, wanted, moved, effect, events);
@@ -1130,13 +1130,14 @@ impl Mob {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         moved: Vec3,
+        effect: (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
         pause: bool,
     ) -> Option<FarmlandTrample> {
         if self.kind.flags.lava_walker && self.fluids.in_lava {
             self.fall_distance = 0.0;
         } else if !matches!(self.kind.species, super::Species::Bat | super::Species::Bee) {
-            return self.check_fall_damage(w, level, moved, events, pause);
+            return self.check_fall_damage(w, level, moved, effect, events, pause);
         }
         None
     }
@@ -1154,7 +1155,7 @@ impl Mob {
     ) -> Option<FarmlandTrample> {
         self.on_ground = on_ground;
         self.supporting = self.supporting_block(w, delta);
-        self.species_check_fall_damage(w, level, delta, events, true)
+        self.species_check_fall_damage(w, level, delta, self.restitution_contact(w), events, true)
     }
     /// LivingEntity.checkFallDamage: the fluid state refreshed out of water
     /// (touching water resets the fall), then Entity.checkFallDamage.
@@ -1163,6 +1164,7 @@ impl Mob {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         moved: Vec3,
+        effect: (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
         pause: bool,
     ) -> Option<FarmlandTrample> {
@@ -1181,8 +1183,8 @@ impl Mob {
         }
         if self.on_ground {
             if self.fall_distance > 0.0 {
-                self.landing_dust(w, events);
-                if let Some(trample) = self.fall_on_block(w, level, events, pause) {
+                self.landing_dust(w, effect, events);
+                if let Some(trample) = self.fall_on_block(w, level, effect, events, pause) {
                     return Some(trample);
                 }
             }
@@ -1192,9 +1194,13 @@ impl Mob {
     }
     /// The block particles `LivingEntity.checkFallDamage` sends up from the
     /// block a mob lands on, by the power of the fall.
-    fn landing_dust(&self, w: &MobWorld, events: &mut Vec<MobEvent>) {
-        let pos = self.block_on_legacy(w);
-        let state = w.world.block(pos[0], pos[1], pos[2]);
+    fn landing_dust(
+        &self,
+        w: &MobWorld,
+        (position, state): (BlockPos, BlockStateId),
+        events: &mut Vec<MobEvent>,
+    ) {
+        let pos = [position.x, position.y, position.z];
         let Some(count) = landing_dust_count(self.fall_distance, self.safe_fall_distance()) else {
             return;
         };
@@ -1468,11 +1474,11 @@ impl Mob {
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
+        (position, state): (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
         pause: bool,
     ) -> Option<FarmlandTrample> {
-        let pos = self.block_on_legacy(w);
-        let state = w.world.block(pos[0], pos[1], pos[2]);
+        let pos = [position.x, position.y, position.z];
         let species = self.species();
         let entity = if super::doors::is_zombie(species) {
             LandingEntityKind::Zombie
@@ -1493,7 +1499,7 @@ impl Mob {
                 pos,
             },
             state,
-            BlockPos::new(pos[0], pos[1], pos[2]),
+            position,
             entity,
             distance,
             pause,
@@ -3604,7 +3610,14 @@ mod tests {
                 m.fall_distance = 4.5;
                 let mut test_level = crate::health::TestLevel::new(0);
                 let mut events = Vec::new();
-                m.check_fall_damage(w, &mut test_level.level(), Vec3::ZERO, &mut events, false);
+                m.check_fall_damage(
+                    w,
+                    &mut test_level.level(),
+                    Vec3::ZERO,
+                    m.restitution_contact(w),
+                    &mut events,
+                    false,
+                );
                 let dust: Vec<i32> = events
                     .iter()
                     .filter_map(|e| match e {
@@ -3915,6 +3928,7 @@ mod tests {
                     mob.fall_on_block(
                         w,
                         &mut crate::health::TestLevel::new(0).level(),
+                        mob.restitution_contact(w),
                         &mut events,
                         false,
                     );
@@ -4211,7 +4225,13 @@ mod farmland_event_tests {
                 mob.fall_distance = 5.0;
                 let mut events = Vec::new();
                 let mut damage = crate::health::TestLevel::new(0);
-                mob.fall_on_block(w, &mut damage.level(), &mut events, false);
+                mob.fall_on_block(
+                    w,
+                    &mut damage.level(),
+                    mob.restitution_contact(w),
+                    &mut events,
+                    false,
+                );
                 // The write, then the event the rule posts for it.
                 assert!(
                     matches!(

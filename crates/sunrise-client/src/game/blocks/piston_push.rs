@@ -1329,21 +1329,36 @@ impl Game<'_> {
         };
         let server = !self.options.execution_role.is_client() && self.remote.is_none();
         if let EntityHandle::Mob(i) = handle {
-            let m = &self.mobs[i];
-            if server
-                && !m.extra.passenger
-                && m.extra.mount.is_none()
-                && m.rider.is_none()
-                && m.extra.rider.is_none()
-                && self.riding != Some(m.id)
-                && self.lan.as_ref().is_none_or(|host| {
-                    !host
-                        .hub
+            let mob = &self.mobs[i];
+            // The controlling player's side owns a ridden mob's restitution.
+            // Even an observing copy updates support after a vertical move.
+            let authoritative = if server {
+                use super::commands::Target;
+                let own = (self.riding == Some(mob.id))
+                    .then(|| self.riding_player())
+                    .flatten();
+                let guests = self.lan.as_ref().into_iter().flat_map(|host| {
+                    host.hub
                         .guests
                         .iter()
-                        .any(|g| host.hub.here(g) && g.vehicle == Some(m.id))
-                })
-            {
+                        .filter(|g| host.hub.here(g) && g.vehicle == Some(mob.id))
+                });
+                let mut players = guests
+                    .map(|g| (g.entity_id as u32, Target::Guest(g.conn)))
+                    .chain(own.map(|(id, _)| (id, Target::Player)))
+                    .peekable();
+                let controller = if players.peek().is_some() {
+                    self.first_seated_passenger(mob.id)
+                        .filter(|&(_, _, is_player)| is_player)
+                        .and_then(|(_, first, _)| players.find(|(id, _)| *id == first))
+                } else {
+                    None
+                };
+                !controller.is_some_and(|(_, rider)| self.native_player_controls(mob, rider))
+            } else {
+                self.drives(mob)
+            };
+            if authoritative || wanted.y.abs() > 0.0 {
                 let mut mobs = self.mobs.lift();
                 let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
                 // Restitution may call a block Part. Return both loans, including
@@ -1359,7 +1374,9 @@ impl Game<'_> {
                         &self.damage_hooks,
                     );
                     mobs[i].update_pushed_support(&world, wanted, moved);
-                    mobs[i].restitute_movement(&world, &mut level, wanted, moved);
+                    if authoritative {
+                        mobs[i].restitute_movement(&world, &mut level, wanted, moved);
+                    }
                 }));
                 lent.give_back(&mut self.world);
                 self.mobs
@@ -2526,6 +2543,10 @@ mod h255_mob_piston_ground_tests {
             added_push(game, i, Vec3::ZERO);
             assert!(game.mobs[i].on_ground);
             assert_eq!(game.mobs[i].position, Vec3::new(8.5, 202.0, 4.5));
+            game.mobs[i].set_saddle(Some(sunrise_client::items::ItemStack::new(
+                "minecraft:saddle",
+                1,
+            )));
             assert!(game.run_command("ride @s mount 000000ff-0000-0001-0000-000000000014"));
             assert_eq!(game.riding, Some(game.mobs[i].id));
             added_push(game, i, Vec3::new(0.51, 0.0, 0.0));
@@ -2537,8 +2558,13 @@ mod h255_mob_piston_ground_tests {
             game.mobs[i].sync_position = false;
             added_push(game, i, Vec3::new(0.0, -0.5, 0.0));
             assert_eq!(
-                game.mobs[i].velocity.y, 0.0,
-                "occupied restitution stays outside this slice"
+                game.mobs[i].velocity.y, -1.0,
+                "the controlling rider's client owns restitution"
+            );
+            assert_eq!(game.mobs[i].position.y, 202.0);
+            assert!(
+                game.mobs[i].on_ground,
+                "even the observer records vertical collision"
             );
             assert!(!game.mobs[i].sync_position);
             assert!(game.run_command("ride @s dismount"));
@@ -2591,7 +2617,7 @@ mod h255_mob_piston_ground_tests {
                 Role::IntegratedServer,
                 false,
                 Vec3::new(0.25, 0.0, 0.0),
-                true,
+                false,
             ),
             (
                 Role::IntegratedServer,
@@ -2605,7 +2631,7 @@ mod h255_mob_piston_ground_tests {
                 let before = game.mobs[i].position;
                 added_push(game, i, movement);
                 assert_eq!(game.mobs[i].position, before.add_vector(movement));
-                assert_eq!(game.mobs[i].on_ground, on_ground);
+                assert_eq!(game.mobs[i].on_ground, on_ground, "{role:?}, NoAI={no_ai}");
             });
         }
     }

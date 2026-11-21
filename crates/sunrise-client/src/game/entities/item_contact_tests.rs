@@ -351,6 +351,68 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
 
 #[test]
 #[ignore = "daily"]
+fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
+    use crate::game::minecarts::{CartKind, Minecart};
+    crate::game::in_own_process(
+        "game::item_contact_tests::tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives",
+        || {
+            let part = BounceProbe::default();
+            let mods: mod_api::Mods =
+                vec![mod_api::ModEntry::new("bounce", Box::new(part.clone()))].into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_hooks::install_block_contact_hooks();
+                crate::game::native_entity_refs::tests::with_game(|game| {
+                    let glass = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:glass")
+                        .unwrap();
+                    for (id, fall, survives) in [(71, 0.0, true), (72, 3.5, false)] {
+                        game.world = World::new(game.res.facts().air, 1);
+                        game.world
+                            .chunks
+                            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                        game.world.set(4, 63, 4, glass).unwrap();
+                        game.carts.clear();
+                        let mut cart = Minecart::new(id, CartKind::Tnt, Vec3::new(4.5, 64.25, 4.5));
+                        cart.fall_distance = fall;
+                        cart.velocity = Vec3::new(0.0, -1.0, 0.0);
+                        game.carts.push(cart.clone());
+                        part.calls.lock().unwrap().clear();
+                        let result = sunrise_client::block_contact::in_level(
+                            game.tick,
+                            Some(game.dim.id()),
+                            || game.move_cart(&mut cart, Vec3::new(0.0, -1.0, 0.0)),
+                        );
+                        assert_eq!(cart.position.y.to_bits(), 64.0_f64.to_bits());
+                        assert_eq!(result, survives);
+                        assert_eq!(game.carts.iter().any(|cart| cart.id == id), survives);
+                        let calls = part.calls.lock().unwrap();
+                        if survives {
+                            assert_eq!(
+                                *calls,
+                                [(
+                                    false,
+                                    id as i32,
+                                    "minecraft:tnt_minecart".to_owned(),
+                                    [4, 63, 4]
+                                )]
+                            );
+                            assert!(cart.velocity.y > 0.0);
+                        } else {
+                            assert!(calls.is_empty());
+                        }
+                    }
+                });
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
 fn item_support_survives_idle_then_clears_on_an_airborne_move() {
     crate::game::in_own_process(
         "game::item_contact_tests::item_support_survives_idle_then_clears_on_an_airborne_move",
