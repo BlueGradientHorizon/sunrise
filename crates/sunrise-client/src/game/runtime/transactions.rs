@@ -446,7 +446,6 @@ pub(super) enum After {
         sunrise_client::net::PreparedPacket,
         mod_api::ServerboundPlayPacket,
     ),
-    Cauldron(super::cauldron_interactions::Effects),
     Composter(super::composter::Effects),
     /// A mod's world pickup or placement of fluid, its block already set: what is left of it
     /// (`Game::commit_fluid_write`).
@@ -1605,7 +1604,6 @@ impl Game<'_> {
             After::Trade(effect) => self.commit_merchant_effect(*effect),
             After::Payload(payload) => payload.publish(),
             After::Packet(packet, body) => self.publish_mod_held(packet, body),
-            After::Cauldron(effects) => self.commit_cauldron_effects(effects),
             After::Composter(effects) => self.commit_composter_effects(effects),
             After::FluidWrite(written) => self.commit_fluid_write(*written),
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
@@ -2318,11 +2316,17 @@ mod tests {
                 game.creative = false;
                 game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert!(seen.lock().unwrap().is_empty());
                 game.close_storage_transaction(false);
                 assert!(seen.lock().unwrap().is_empty());
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert_eq!(
                     seen.lock().unwrap().as_slice(),
                     &[(
@@ -2333,7 +2337,10 @@ mod tests {
                 game.world.set(pos[0], pos[1], pos[2], empty).unwrap();
                 game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert_eq!(seen.lock().unwrap().len(), 1);
                 game.close_storage_transaction(true);
             })
@@ -2370,7 +2377,10 @@ mod tests {
                     game.inventory[0] = Some(ItemStack::new("minecraft:glass_bottle", 2));
                 };
                 setup(game);
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert_eq!(
                     drops.lock().unwrap().as_slice(),
                     &[
@@ -2381,12 +2391,18 @@ mod tests {
                 drops.lock().unwrap().clear();
                 setup(game);
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert!(drops.lock().unwrap().is_empty());
                 game.close_storage_transaction(false);
                 assert!(drops.lock().unwrap().is_empty());
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 game.close_storage_transaction(true);
                 assert_eq!(
                     drops.lock().unwrap().as_slice(),
@@ -2434,7 +2450,10 @@ mod tests {
             let before = game.stats.get("custom", "minecraft:fill_cauldron");
             game.audio.capture = Some(Vec::new());
             game.open_storage_transaction();
-            assert!(game.use_on_cauldron(pos).unwrap());
+            assert_eq!(
+                game.use_on_cauldron(pos).unwrap(),
+                sunrise_client::cauldron::Outcome::Success
+            );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             game.close_storage_transaction(false);
@@ -2447,7 +2466,10 @@ mod tests {
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             game.open_storage_transaction();
             game.open_storage_transaction();
-            assert!(game.use_on_cauldron(pos).unwrap());
+            assert_eq!(
+                game.use_on_cauldron(pos).unwrap(),
+                sunrise_client::cauldron::Outcome::Success
+            );
             game.close_storage_transaction(false);
             assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
@@ -2457,7 +2479,10 @@ mod tests {
             game.close_storage_transaction(true);
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
-            assert!(game.use_on_cauldron(pos).unwrap());
+            assert_eq!(
+                game.use_on_cauldron(pos).unwrap(),
+                sunrise_client::cauldron::Outcome::Success
+            );
             assert_ne!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
                 &*game.inventory[0].as_ref().unwrap().item,

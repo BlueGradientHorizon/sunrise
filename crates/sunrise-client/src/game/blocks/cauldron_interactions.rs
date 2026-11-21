@@ -1,7 +1,7 @@
-//! Prepared cauldron callbacks and their authoritative action savepoint.
+//! Prepared cauldron callbacks and their server-side dispatch.
 use super::*;
 use mod_api::{
-    __private::game::{RegistrationContextNew, discard_registration},
+    __private::game::{CallbackOwner, RegistrationContextNew, discard_registration},
     HookId,
 };
 use std::{cell::RefCell, sync::Arc};
@@ -11,18 +11,22 @@ use sunrise_client::cauldron::interactions::Dispatcher;
 pub(super) struct Callback {
     pub(super) handler: Arc<dyn mod_api::Interaction>,
     pub(super) owner: &'static str,
+    pub(super) guard: Option<Arc<CallbackOwner>>,
+}
+impl Callback {
+    fn new(handler: Arc<dyn mod_api::Interaction>) -> Self {
+        let owner = mod_api::__private::cauldron_owner();
+        let guard = CallbackOwner::new(owner).map(Arc::new);
+        Self {
+            handler,
+            owner,
+            guard,
+        }
+    }
 }
 pub(super) type Table = Dispatcher<Callback>;
 thread_local! {
     static TABLE: RefCell<Arc<Table>> = RefCell::new(Arc::new(Table::default()));
-}
-/// Share the reentry boundary between authoritative and predicted decisions.
-pub(super) fn enter_decision() -> Option<Active> {
-    if ACTIVE.with(|active| active.replace(true)) {
-        None
-    } else {
-        Some(Active)
-    }
 }
 pub(super) fn snapshot() -> Arc<Table> {
     TABLE.with_borrow(Arc::clone)
@@ -85,7 +89,7 @@ impl<'a> Registrar<'a> {
                 self.error = Some(error);
             }
         } else {
-            for Callback { handler, owner } in pending
+            for Callback { handler, owner, .. } in pending
                 .table
                 .into_mod_handlers()
                 .chain(pending.all.into_iter().map(|(_, callback)| callback))
@@ -149,14 +153,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         else {
             return self.refuse(Error::UnknownItem);
         };
-        self.insert(
-            block.to_string(),
-            item.to_string(),
-            Callback {
-                handler,
-                owner: mod_api::__private::cauldron_owner(),
-            },
-        );
+        self.insert(block.to_string(), item.to_string(), Callback::new(handler));
         Ok(())
     }
     fn register_to_all(
@@ -169,13 +166,8 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         else {
             return self.refuse(mod_api::CauldronRegistrationError::UnknownItem);
         };
-        self.all.push((
-            Target::Item(item.to_string()),
-            Callback {
-                handler,
-                owner: mod_api::__private::cauldron_owner(),
-            },
-        ));
+        self.all
+            .push((Target::Item(item.to_string()), Callback::new(handler)));
         Ok(())
     }
     fn register_tag(
@@ -193,14 +185,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         let Some(tag) = tag_id(tag) else {
             return self.refuse(Error::InvalidTag);
         };
-        self.insert_tag(
-            block.to_string(),
-            tag,
-            Callback {
-                handler,
-                owner: mod_api::__private::cauldron_owner(),
-            },
-        );
+        self.insert_tag(block.to_string(), tag, Callback::new(handler));
         Ok(())
     }
     fn register_tag_to_all(
@@ -211,13 +196,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         let Some(tag) = tag_id(tag) else {
             return self.refuse(mod_api::CauldronRegistrationError::InvalidTag);
         };
-        self.all.push((
-            Target::Tag(tag),
-            Callback {
-                handler,
-                owner: mod_api::__private::cauldron_owner(),
-            },
-        ));
+        self.all.push((Target::Tag(tag), Callback::new(handler)));
         Ok(())
     }
 }
@@ -230,200 +209,69 @@ impl Game<'_> {
         );
         registrar.finish()
     }
-}
-
-thread_local! { static ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
-pub(super) struct Active;
-impl Drop for Active {
-    fn drop(&mut self) {
-        ACTIVE.with(|active| active.set(false));
-    }
-}
-
-/// Effects owned by the existing transaction journal, published at root commit only.
-pub(super) struct Effects {
-    player: u128,
-    pos: [i32; 3],
-    sound: Option<String>,
-    event: Option<&'static str>,
-    statistics: Vec<String>,
-    item: String,
-}
-impl Game<'_> {
-    pub(super) fn commit_cauldron_effects(&mut self, effects: Effects) {
-        self.native_as_player(effects.player, |game| {
-            for stat in &effects.statistics {
-                if stat == "minecraft:used" {
-                    game.award_stat("used", &effects.item, 1);
-                } else {
-                    game.award_stat("custom", stat, 1);
-                }
-            }
-        });
-        if let Some(sound) = effects.sound {
-            self.audio.play(
-                &sound,
-                Some(effects.pos.map(|v| f64::from(v) + 0.5)),
-                1.0,
-                1.0,
-            );
-        }
-        if let Some(event) = effects.event {
-            self.post_block_game_event(event, effects.pos, None, None);
-        }
-    }
-    /// Read-only selection followed by one authoritative action savepoint.
+    /// Invoke a mod's authoritative cauldron interaction on the server.
     pub(super) fn use_mod_cauldron(
         &mut self,
         pos: [i32; 3],
         under_water: bool,
         callback: &Callback,
-        table: &Arc<Table>,
-    ) -> bool {
-        use crate::game::api_values::{TryIntoApi, TryIntoEngine};
-        use mod_api::{CauldronDecision, CauldronFire, CauldronPlan, CauldronUse};
-        let Some(_active) = enter_decision() else {
-            return true;
+    ) -> sunrise_client::cauldron::Outcome {
+        use crate::game::api_values::TryIntoApi;
+        use mod_api::{CauldronDecision, CauldronUse};
+        use sunrise_client::cauldron::Outcome;
+        let Some(guard) = callback.guard.as_ref() else {
+            log::warn!(
+                "cauldron interaction for {} has no installed owner",
+                callback.owner
+            );
+            return Outcome::Pass;
         };
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-            || -> std::result::Result<bool, ()> {
-                let held = self.held().cloned().ok_or(())?;
-                let before = self.world.block(pos[0], pos[1], pos[2]);
-                let index = api_values::block_state::current().map_err(|_| ())?;
-                let epoch = self.native_lifecycle.epoch().ok_or(())?;
-                let player = self.native_acting_id();
-                let dimension = self.dim;
-                let actor = mod_api::EntityRef::new(epoch, self.native_acting_entity());
-                let input = CauldronUse {
-                    dimension: mod_api::Identifier::parse(self.dim.id()).map_err(|_| ())?,
-                    pos,
-                    state: index.to_api(before).map_err(|_| ())?,
-                    actor,
-                    hand: match self.hand {
-                        Hand::Main => mod_api::Hand::Main,
-                        Hand::Off => mod_api::Hand::Off,
-                    },
-                    held: held.try_into_api().map_err(|_| ())?,
-                    underwater: under_water,
-                    creative: self.creative,
-                };
-                let _owner = mod_api::__private::enter(callback.owner, "cauldron_interaction");
-                let plan = match callback.handler.decide(self, &input) {
-                    CauldronDecision::Consume => CauldronPlan::default(),
-                    CauldronDecision::Success(plan) => plan,
-                    // `Pass`, and any decision this build doesn't know: no action.
-                    _ => return Ok(false),
-                };
-                let unchanged = |game: &mut Game<'_>| {
-                    Arc::ptr_eq(table, &snapshot())
-                        && game.dim == dimension
-                        && game.native_lifecycle.epoch() == Some(epoch)
-                        && game.native_acting_id() == player
-                        && game.hand
-                            == match input.hand {
-                                mod_api::Hand::Main => Hand::Main,
-                                mod_api::Hand::Off => Hand::Off,
-                            }
-                        && game.world.block(pos[0], pos[1], pos[2]) == before
-                        && game.held() == Some(&held)
-                        && api_values::block_state::current()
-                            .is_ok_and(|now| Arc::ptr_eq(&index, &now))
-                };
-                if !unchanged(self) {
-                    return Err(());
-                }
-                // Validate the complete untrusted proposal before entering the write phase.
-                if plan.statistics.len() > 2
-                    || (plan.statistics.len() == 2 && plan.statistics[0] == plan.statistics[1])
-                {
-                    return Err(());
-                }
-                if plan.sound.as_ref().is_some_and(|sound| {
-                    !chat::command_export(&self.options.resources, true).is_some_and(|registry| {
-                        registry
-                            .ids("minecraft:sound_event")
-                            .iter()
-                            .any(|known| known == &sound.to_string())
-                    })
-                }) || plan.statistics.iter().any(|stat| {
-                    let name = stat.to_string();
-                    name != "minecraft:used"
-                        && !name.strip_prefix("minecraft:").is_some_and(|key| {
-                            sunrise_client::scoreboard::CUSTOM_STATS.contains(&key)
-                        })
-                }) {
-                    return Err(());
-                }
-                let block = plan
-                    .block
-                    .map(|state| index.to_engine(state))
-                    .transpose()
-                    .map_err(|_| ())?;
-                if let Some(block) = block {
-                    let state = self.pack.assets.registry.state(block).ok_or(())?;
-                    if !table.contains_block(&state.name) {
-                        return Err(());
-                    }
-                }
-                let exchange = plan
-                    .exchange
-                    .as_ref()
-                    .map(|stack| stack.try_into_engine(self.items()))
-                    .transpose()
-                    .map_err(|_| ())?;
-                let event = match plan
-                    .fluid_event
-                    .as_ref()
-                    .map(ToString::to_string)
-                    .as_deref()
-                {
-                    None => None,
-                    Some("minecraft:fluid_place") => Some("minecraft:fluid_place"),
-                    Some("minecraft:fluid_pickup") => Some("minecraft:fluid_pickup"),
-                    _ => return Err(()),
-                };
-                let effects = Effects {
-                    player,
-                    pos,
-                    event,
-                    sound: plan.sound.as_ref().map(ToString::to_string),
-                    statistics: plan.statistics.iter().map(ToString::to_string).collect(),
-                    item: held.item.to_string(),
-                };
-                let failures = mod_api::runtime::isolated_failures();
-                self.storage_transaction(|game, _| {
-                    game.journal_player(player);
-                    if callback.handler.fire(game, &input, &plan) != CauldronFire::Applied
-                        || mod_api::runtime::isolated_failures() != failures
-                        || !unchanged(game)
-                    {
-                        return Err(());
-                    }
-                    if let Some(block) = block
-                        && !game.journal_set_block(pos, block)
-                    {
-                        return Err(());
-                    }
-                    if let Some(exchange) = exchange {
-                        let slot = game.held_slot();
-                        let mut hand = powder_snow::HeldSlot {
-                            game,
-                            slot,
-                            dropper: Some(player),
-                        };
-                        sunrise_client::cauldron::create_filled_result(&mut hand, exchange, true);
-                    }
-                    game.after_commit(transactions::After::Cauldron(effects));
-                    Ok(())
-                })?;
-                Ok(true)
+        let Some(held) = self.held().cloned() else {
+            return Outcome::Pass;
+        };
+        let before = self.world.block(pos[0], pos[1], pos[2]);
+        let Ok(index) = api_values::block_state::current() else {
+            return Outcome::Pass;
+        };
+        let Ok(state) = index.to_api(before) else {
+            return Outcome::Pass;
+        };
+        let Some(epoch) = self.native_lifecycle.epoch() else {
+            return Outcome::Pass;
+        };
+        let player_id = self.native_acting_id();
+        let entity_id = self
+            .player_lookup_entity(player_id)
+            .unwrap_or_else(|| self.native_acting_entity());
+        let actor = mod_api::EntityRef::new(epoch, entity_id);
+        let player = mod_api::__private::game::player_ref(actor, player_id);
+        let level = self.level_ref(epoch, self.dim.key());
+        let Ok(held) = held.try_into_api() else {
+            return Outcome::Pass;
+        };
+        let input = CauldronUse {
+            level,
+            pos,
+            state,
+            player,
+            hand: match self.hand {
+                Hand::Main => mod_api::Hand::Main,
+                Hand::Off => mod_api::Hand::Off,
             },
-        ));
-        match result {
-            Ok(Ok(consumed)) => consumed,
-            _ => {
-                log::warn!("cauldron action refused for {}", callback.owner);
-                true
+            held,
+            underwater: under_water,
+            creative: self.creative,
+        };
+        let decision = guard.call("cauldron interaction", "cauldron_interaction", || {
+            callback.handler.interact(self, &input)
+        });
+        match decision {
+            Ok(CauldronDecision::Success) => Outcome::Success,
+            Ok(CauldronDecision::Consume) => Outcome::Consume,
+            Ok(_) => Outcome::Pass,
+            Err(why) => {
+                log::warn!("cauldron interaction refused: {why}");
+                Outcome::Pass
             }
         }
     }
