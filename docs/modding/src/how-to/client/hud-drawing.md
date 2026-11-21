@@ -1,8 +1,10 @@
 # Drawing on the HUD and in screens
 
 A HUD layer, a screen or a tooltip hook draws through the `DrawContext` it is handed, in GUI pixels. Each call
-is one of vanilla's `GuiGraphics` calls: `fill`, `text`, `sprite`, `item_stack` and the others. `gui_paint`
-takes a buffer of `GuiDraw` ops for the same calls, with `Push` / `Pop` for the pose.
+is one of vanilla's `GuiGraphics` calls: `fill`, `text`, `sprite`, `item_stack` and the others.
+[Draw through a canvas](gui-paint.md#drawing-directly-with-a-canvas) with `draw_gui` to group
+fills, styled text and blits in lexical pose and scissor scopes. `gui_paint` takes a buffer of
+`GuiDraw` ops, with `Push` / `Pop` for the pose.
 
 `ClientHost::debug_overlay_visible()` reports whether the client draws its debug overlay this frame. In
 `render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with

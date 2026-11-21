@@ -1,5 +1,9 @@
 # Turning what a GUI paint draws
 
+When drawing [through a canvas](gui-paint.md#drawing-directly-with-a-canvas), pass `PoseOp::Rotate`
+and any other pose operations to `canvas.scope`. A non-finite angle refuses the scope with
+`GuiDrawError::NotFinite` before the callback runs.
+
 A `gui_paint` buffer moves what it draws with a pose: `GuiDraw::Push(ops)` applies `ops` to a copy of the
 current pose (`pose().pushMatrix()`, then the ops) and `GuiDraw::Pop` brings the one before back. Besides
 `PoseOp::Translate(x, y)` and `PoseOp::Scale(x, y)`, `PoseOp::Rotate(angle)` turns it by `angle` radians, as

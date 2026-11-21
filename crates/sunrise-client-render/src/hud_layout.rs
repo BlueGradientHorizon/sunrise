@@ -874,6 +874,26 @@ impl ResolvedGuiQuad {
     }
 }
 
+/// Paint a float-rectangle `fillGradient` with ARGB colours at its input y edges.
+/// A zero extent or one-axis inversion draws nothing. The caller checks for finite geometry.
+pub fn paint_fill_gradient(
+    batch: &mut HudBatch,
+    atlas: &HudAtlas,
+    [x, y, w, h]: [f32; 4],
+    top: u32,
+    bottom: u32,
+) {
+    if w == 0.0 || h == 0.0 || (w > 0.0) != (h > 0.0) {
+        return;
+    }
+    let (rect, top, bottom) = if w < 0.0 {
+        ((x + w, y + h, -w, -h), bottom, top)
+    } else {
+        ((x, y, w, h), top, bottom)
+    };
+    batch.fill_gradient(atlas, rect, abgr(top), abgr(bottom));
+}
+
 /// Draws the calls with the HUD batch under their poses; items are left to
 /// the caller (they need the item renderer) and so are the vignette and
 /// nausea blits (their blending needs the screen-effect pipeline).

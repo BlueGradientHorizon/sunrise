@@ -86,6 +86,16 @@ pub trait DrawContext {
     fn item_stack(&mut self, stack: &ItemStack, at: [f32; 2], size: f32) -> bool {
         unimplemented!("DrawContext::item_stack")
     }
+    /// Lend a GUI canvas with an identity pose for one drawing group. Draws commit in order
+    /// on `Ok(())`; an `Err` from `draw` or an unwind discards the entire group, including
+    /// any successful nested scopes. Only draws through the canvas are part of the group;
+    /// the callback's own state changes and other host calls are not rolled back.
+    fn draw_gui(
+        &mut self,
+        draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
+    ) -> Result<(), GuiDrawError> {
+        Err(GuiDrawError::Unavailable)
+    }
     /// Paint GUI extraction calls through this window's atlas, including player faces, under
     /// their poses: every op, an `Item` as vanilla's `item` then `itemDecorations` (the stack of
     /// the local player's hotbar slot, scaled about its pivot, then its decorations unscaled) and

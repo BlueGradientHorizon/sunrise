@@ -6,6 +6,10 @@ and shows only the part inside a box. `DrawContext::push_clip(rect)` opens such 
 between the two is cut to `rect`, `[x, y, w, h]` in GUI pixels as `fill` takes it: the visible part of a sprite,
 a glyph or an item stays.
 
+For transactional drawing [through a canvas](gui-paint.md#drawing-directly-with-a-canvas), pass
+`Some(rect)` to `canvas.scope`. That scissor applies only inside the callback and uses the child
+scope's pose at entry; later pose changes do not move it.
+
 ```rust,ignore
 fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>) {
     let [x, y, w, h] = self.list_box;

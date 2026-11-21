@@ -1,5 +1,34 @@
 # Painting a GUI command buffer
 
+## Drawing directly with a canvas
+
+`DrawContext::draw_gui` lends a `GuiCanvas` with an identity pose. Draw inside its callback rather
+than building a list of commands. Everything the callback draws commits in order on `Ok(())`;
+returning an error (including `GuiDrawError::Abort`) discards the group. A nested `scope` applies pose
+operations in order and optionally scissors to `[x, y, w, h]` in the resulting local coordinates.
+Its clip stays fixed in screen space even when a descendant changes pose. A refused call draws
+nothing. Propagate its error with `?` or, if you have an alternative, handle it and continue.
+
+```rust,ignore
+use mod_api::{GuiDrawError, Text, client::hud_layout::PoseOp};
+
+let result: Result<(), GuiDrawError> = draw.draw_gui(&mut |canvas| {
+    canvas.scope(
+        &[PoseOp::Translate(20.0, 20.0), PoseOp::Scale(2.0, 2.0)],
+        Some([0.0, 0.0, 60.0, 16.0]),
+        &mut |panel| {
+            panel.fill([0.0, 0.0, 60.0, 16.0], 0xC020_2020)?;
+            panel.text(&Text::literal("60 FPS"), [4.0, 4.0], 0xFFFF_FFFF, true)
+        },
+    )
+});
+```
+
+A nested scope that returns an error leaves its parent unchanged. Widgets, scenes and other
+host state are not part of the transaction; use the ordinary `DrawContext` for those draws.
+
+## Command buffer
+
 `DrawContext::gui_paint(&[GuiDraw])` draws a buffer of vanilla's `GuiGraphics` calls in order, under their poses
 (`GuiDraw::Push` / `Pop`). Every op in it is drawn, or none is: an op the paint cannot draw refuses the whole buffer
 with a `GuiPaintError` that names it and its index, so a mod can draw it another way.

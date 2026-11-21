@@ -5,6 +5,9 @@ use crate::game::{
 };
 use mod_api::{prelude::*, *};
 
+#[path = "draw/gui_canvas.rs"]
+mod gui_canvas;
+
 /// [`DrawContext`] on the game's `crate::hud::HudBatch`: one per hook call.
 pub(crate) struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
@@ -71,6 +74,12 @@ impl DrawContext for GameDrawContext<'_, '_> {
         };
         self.game
             .native_item_stack(&mut *self.surface, &stack, at, size)
+    }
+    fn draw_gui(
+        &mut self,
+        draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
+    ) -> Result<(), GuiDrawError> {
+        gui_canvas::GameGuiCanvas::draw(self.surface, &self.game.gui.atlas, draw)
     }
     fn gui_paint(&mut self, draws: &[GuiDraw]) -> Result<(), GuiPaintError> {
         let draws = draws.try_into_engine(&())?;

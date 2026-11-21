@@ -12,8 +12,9 @@ pub enum PoseOp {
     /// `Matrix3x2fStack.rotate(angle)`: a turn by `angle` radians about the current pose's
     /// origin, applied after the ops before it, as vanilla composes them. Positive angles turn
     /// clockwise on screen (y grows downwards). Everything drawn after it follows: fills,
-    /// sprites, blits and text. A NaN or infinite angle is refused with
-    /// `E_GUI_POSE_ROTATE_NOT_FINITE` in the log and leaves the pose as it was.
+    /// sprites, blits and text. [`GuiCanvas::scope`](crate::GuiCanvas::scope) refuses a NaN or
+    /// infinite angle with [`crate::GuiDrawError::NotFinite`]. In a `gui_paint` buffer it is
+    /// logged as `E_GUI_POSE_ROTATE_NOT_FINITE` and leaves the pose as it was.
     Rotate(f32),
 }
 /// The render pipeline of a texture blit.
