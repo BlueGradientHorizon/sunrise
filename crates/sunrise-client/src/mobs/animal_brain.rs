@@ -1657,9 +1657,18 @@ impl B {
                     && now >= *spawn_at
                 {
                     // spawnChildFromBreeding: spawn the egg/baby and rest both parents.
+                    // When baby_entity_spawn has listeners on a live-baby route, defer the
+                    // initiating parent's cooldown until Game::breed so an uncanceled empty
+                    // slot does not leave the parent cooled down.
                     let Who::Mob(id) = partner else { return };
-                    m.extra.in_love = 0;
-                    m.extra.age = 6000;
+                    let live_baby = !matches!(
+                        m.species(),
+                        Species::Turtle | Species::Frog | Species::Sniffer
+                    );
+                    if !(cx.w.asks_baby_spawn && live_baby) {
+                        m.extra.in_love = 0;
+                        super::finalize::set_age(m, 6000, Some(cx.w));
+                    }
                     cx.events.push(MobEvent::Breed {
                         parent: m.id,
                         partner: id,

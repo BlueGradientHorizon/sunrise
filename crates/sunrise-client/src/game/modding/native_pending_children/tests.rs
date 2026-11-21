@@ -13,10 +13,16 @@ fn initial(game: &Game<'_>, id: u32, breeding: bool) -> PendingMob {
         mob,
         uuid: Some([1, 2, 3, id as i32]),
         attachments: Attachments::default(),
+        initialized: false,
+        origin_reservation: None,
         dimension: game.dim,
         resources: game.res.clone(),
         attributes: game.motion.attributes.clone(),
-        breeding,
+        constraint: if breeding {
+            ChildConstraint::BreedingAgeable
+        } else {
+            ChildConstraint::Split
+        },
     }
 }
 
@@ -216,6 +222,7 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
                 dimension: game.dim,
+                constraint: ChildConstraint::BreedingAgeable,
             };
             let mut baby = BabyEntitySpawnChild::new(&mut slot_backing);
             let valid = cow_spec(game.dim.id(), [8.5, 64.0, 8.5], 0.0, true);
@@ -250,12 +257,50 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
                     s.size = Some(2);
                     s
                 },
+                // NeoForge BabyEntitySpawnEvent.setChild takes AgeableMob, not baby monsters.
+                PendingMobSpec::new(
+                    Identifier::parse("minecraft:zombie").unwrap(),
+                    Identifier::parse(game.dim.id()).unwrap(),
+                    [8.5, 64.0, 8.5],
+                    0.0,
+                    true,
+                ),
+                PendingMobSpec::new(
+                    Identifier::parse("minecraft:piglin").unwrap(),
+                    Identifier::parse(game.dim.id()).unwrap(),
+                    [8.5, 64.0, 8.5],
+                    0.0,
+                    true,
+                ),
             ] {
                 assert_eq!(
                     baby.construct(invalid).err(),
                     Some(UnspawnedMobError::Invalid)
                 );
             }
+            // A baby zombie constructed via a split list is also rejected by a breeding slot.
+            let mut split_tmp = Vec::new();
+            let baby_zombie = {
+                let mut list_backing = SplitChildList {
+                    children: &mut split_tmp,
+                    resources: game.res.clone(),
+                    attributes: game.motion.attributes.clone(),
+                    dimension: game.dim,
+                };
+                MobSplitChildren::new(&mut list_backing)
+                    .construct(PendingMobSpec::new(
+                        Identifier::parse("minecraft:zombie").unwrap(),
+                        Identifier::parse(game.dim.id()).unwrap(),
+                        [8.5, 64.0, 8.5],
+                        0.0,
+                        true,
+                    ))
+                    .unwrap()
+            };
+            assert_eq!(
+                baby.replace(baby_zombie).err(),
+                Some(UnspawnedMobError::Invalid)
+            );
             {
                 let mut child = baby.get_mut().unwrap();
                 assert_eq!(
@@ -271,6 +316,44 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
             }
             assert!(baby.is_present());
             assert_eq!(baby.get().unwrap().position(), Ok([71.0, 64.0, 8.5]));
+        }
+
+        // Fox breeding slot requires a fox offspring (Fox.FoxBreedGoal.breed casts to Fox).
+        let mut fox_slot = None;
+        {
+            let mut slot_backing = BabyChildSlot {
+                slot: &mut fox_slot,
+                resources: game.res.clone(),
+                attributes: game.motion.attributes.clone(),
+                dimension: game.dim,
+                constraint: ChildConstraint::BreedingFox,
+            };
+            let mut fox_baby = BabyEntitySpawnChild::new(&mut slot_backing);
+            assert_eq!(
+                fox_baby
+                    .construct(cow_spec(game.dim.id(), [8.5, 64.0, 8.5], 0.0, true))
+                    .err(),
+                Some(UnspawnedMobError::Invalid)
+            );
+            let cow_baby = UnspawnedMob::new(Box::new(initial(game, 75, true)));
+            assert_eq!(
+                fox_baby.replace(cow_baby).err(),
+                Some(UnspawnedMobError::Invalid)
+            );
+            let kit = fox_baby
+                .construct(PendingMobSpec::new(
+                    Identifier::parse("minecraft:fox").unwrap(),
+                    Identifier::parse(game.dim.id()).unwrap(),
+                    [8.5, 64.0, 8.5],
+                    0.0,
+                    true,
+                ))
+                .unwrap();
+            assert!(fox_baby.replace(kit).unwrap().is_none());
+            assert_eq!(
+                fox_baby.get().unwrap().kind().unwrap().to_string(),
+                "minecraft:fox"
+            );
         }
 
         // Split list atomic refusal on out-of-bounds insert/replace and invalid edits.
@@ -344,6 +427,7 @@ fn scoped_editors_coexist_with_mutable_server_host() {
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
                 dimension: game.dim,
+                constraint: ChildConstraint::BreedingAgeable,
             };
             callback(
                 game,
@@ -380,6 +464,7 @@ fn nested_pending_editors_use_independent_stack_frames() {
                     resources: game.res.clone(),
                     attributes: game.motion.attributes.clone(),
                     dimension: game.dim,
+                    constraint: ChildConstraint::BreedingAgeable,
                 };
                 let mut inner = BabyEntitySpawnChild::new(&mut inner_backing);
                 inner.get_mut().unwrap().set_yaw(120.0).unwrap();

@@ -9,6 +9,7 @@ impl Game<'_> {
         partner: u32,
         child: Option<&Mob>,
         order: OrbOrder,
+        reset_parent: bool,
     ) {
         if let Some(cause) = breeding_credit(&mut self.love_cause, parent.id, partner) {
             let parent_view = self.mob_entity(parent);
@@ -28,8 +29,12 @@ impl Game<'_> {
                 g.trigger_bred(&parent_view, &partner_view, child_view.as_ref());
             });
         }
+        if reset_parent && let Some(p) = self.mobs.iter_mut().find(|m| m.id == parent.id) {
+            sunrise_client::mobs::finalize::set_age(p, 6000, None);
+            p.extra.in_love = 0;
+        }
         if let Some(q) = self.mobs.iter_mut().find(|m| m.id == partner) {
-            q.extra.age = 6000;
+            sunrise_client::mobs::finalize::set_age(q, 6000, None);
             q.extra.in_love = 0;
         }
         // TurtleBreedGoal overrides Animal's finalization and never broadcasts hearts.

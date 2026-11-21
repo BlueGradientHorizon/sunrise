@@ -6,9 +6,9 @@
 
 ## Current native contract (scoped borrows)
 
-- **`baby_entity_spawn` (hook version 3, NeoForge `BabyEntitySpawnEvent`)**: lends `event.child` (`BabyEntitySpawnChild<'_>`), a scoped mutable editor for a single optional breeding child (`get`, `get_mut`, `construct`, `replace`, `take`, `clear`). Matching NeoForge's `Animal.spawnChildFromBreeding`, on cancel or an empty slot both parents are reset to age 6000 and in-love 0 with no baby, experience, statistic, advancement or hearts; otherwise the remaining child is finalized and inserted once.
-- **`mob_split` (hook version 3, NeoForge `MobSplitEvent`)**: lends `event.children` (`MobSplitChildren<'_>`), a scoped mutable editor for an unbounded `Vec`-backed ordered child list (`len`, `is_empty`, `get`, `get_mut`, `construct`, `push`, `insert`, `replace`, `remove`, `clear`). Matching NeoForge's `MobSplitEvent.getChildren()`, there is no 64-child cap; if not cancelled, every remaining child is inserted once in list order.
-- **Owned detached children (`UnspawnedMob`)**: `construct(PendingMobSpec)` validates the spec and returns an owned, non-`Copy`, engine-backed `UnspawnedMob` value. Passing it to `replace` / `push` / `insert` moves ownership once; dropping an unattached `UnspawnedMob` (including during listener unwind) cleans it up through normal Rust RAII `Drop` with no slot arena, lease token, per-listener expiry tracking, between-listener sweep, or slot/depth budget.
+- **`baby_entity_spawn` (hook version 3, NeoForge `BabyEntitySpawnEvent`)**: lends `event.child` (`BabyEntitySpawnChild<'_>`), a scoped mutable editor for a single optional breeding child (`get`, `get_mut`, `construct`, `replace`, `take`, `clear`). Dispatches even if no initial child was constructed. Replacements must be baby `AgeableMob` species (or a baby `minecraft:fox` for fox breeding). Matching NeoForge's `Animal.spawnChildFromBreeding` and `Fox.FoxBreedGoal.breed`, cancelling resets both parents to age 6000 and in-love 0 with no baby, experience, statistic, advancement or hearts; returning `Flow::Continue` with an empty slot skips spawning and finalization without resetting parents or consuming credit; accepting a child applies baby state, snaps it to the live initiating parent at yaw/pitch 0, grants fox breeder trust when breeding foxes, finalizes breeding, and inserts it once.
+- **`mob_split` (hook version 3, NeoForge `MobSplitEvent`)**: lends `event.children` (`MobSplitChildren<'_>`), a scoped mutable editor for an unbounded `Vec`-backed ordered child list (`len`, `is_empty`, `get`, `get_mut`, `construct`, `push`, `insert`, `replace`, `remove`, `clear`), including an empty list for primed sulfur cubes above size 1. Matching NeoForge's `MobSplitEvent.getChildren()`, there is no 64-child cap; if not cancelled, every surviving child completes `entity_constructing` in list order before joining once each in list order.
+- **Owned detached children (`UnspawnedMob`)**: `construct(PendingMobSpec)` validates the spec and returns an owned, non-`Copy`, engine-backed `UnspawnedMob` value. All unpublished state (UUID, constructor attachments, initialization marker) lives on the `PendingMob` off-table until publication under a fresh destination-world ID (reusing a pre-allocated breeding ID only within the exact originating dispatch when free). Passing it to `replace` / `push` / `insert` moves ownership once; dropping an unattached `UnspawnedMob` (including during listener unwind) cleans it up through normal Rust RAII `Drop` with no slot arena, lease token, per-listener expiry tracking, between-listener sweep, or slot/depth budget.
 - **No parent-staleness aborts**: no parent snapshot or staleness check runs after dispatch; listener edits and vanilla post-dispatch behaviour follow NeoForge directly.
 - **No `Wire` on scoped editors or errors**: `UnspawnedMobView`, `UnspawnedMobEditor`, `PendingChildEditor`, `UnspawnedMob`, `BabyEntitySpawnChild`, `MobSplitChildren`, `PendingMobSpec`, and `UnspawnedMobError` are in-process native types with no `Wire` impl.
 
@@ -112,14 +112,20 @@ What is built:
 - **Scoped borrows and RAII ownership.** Borrows cannot outlive their callback, and detached
   `UnspawnedMob` values are cleaned up on normal Rust drop (including during unwind) with no slot
   arena, lease expiry, or between-listener sweep.
-- **Consumed once.** After dispatch, surviving children are inserted once in order. On cancel or an
-  empty slot, breeding resets both parents to age 6000 and love 0 with no baby, experience,
-  statistic, advancement, or hearts (matching NeoForge's `Animal.spawnChildFromBreeding`), and a
-  cancelled or empty split spawns no children while keeping the construction draws and the parent's
-  death. There are no parent-staleness aborts.
-- **Unpublished while waiting.** A baby breeding hands over keeps its UUID, and its constructor
-  attachments when nothing is bound to them, outside the game's tables until it joins; a split child
-  has none before it joins. A removed or replaced baby, and a panicking listener, leave no state behind.
+- **Consumed once.** After dispatch, surviving split children complete `entity_constructing` in list
+  order before joining once each in list order. On cancel, breeding resets both parents to age 6000
+  and love 0 with no baby, experience, statistic, advancement, or hearts; on an uncanceled empty
+  slot, breeding skips spawning and finalization without resetting parents or consuming credit
+  (matching NeoForge's `Animal.spawnChildFromBreeding` and `Fox.FoxBreedGoal.breed`). When accepted
+  with a child, breeding applies baby state, snaps the child to the live initiating parent at
+  yaw/pitch 0, grants fox breeder trust when breeding foxes, finalizes breeding, and inserts the
+  child once. A cancelled or empty split spawns no children while keeping the construction draws
+  and the parent's death. There are no parent-staleness aborts.
+- **Unpublished while waiting.** A baby breeding hands over moves all unpublished state (UUID,
+  constructor attachments unbound from any index, and initialization marker) off-table onto the
+  owned `PendingMob` and clears its ID before lending; a split child has none before commit. A
+  removed, replaced, reattached, or dropped child, and a panicking listener, leave no stale state
+  or ID collisions behind.
 - **No listener.** The vanilla loop and the vanilla breeding path run as before, with no list.
 - **Eggs.** Turtle and frog breeding, sniffer egg laying and turtle hatching still make no baby and never
   fire the hook; armadillos use the ordinary animal path and do. Villagers keep their own path
@@ -130,8 +136,6 @@ Not done, and why:
 - Outer abort (a surrounding transaction restoring parent state, RNG and attachment values) and per-child
   join-veto recovery: #784. This change supplies what that coordinator consumes, a frozen, validated list
   consumed exactly once with no retry of an entered consumer, but no outer-abort fixture exists.
-- A native listener's constructor attachments that are bound to an index stay published while the baby
-  waits (they cannot be withheld without the coordinator's rollback).
 
 ## Historical proposed stages
 

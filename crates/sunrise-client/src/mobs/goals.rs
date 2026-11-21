@@ -2616,8 +2616,15 @@ impl Goal for Breed {
                 cx.w,
                 equine.is_some() || parent_variant.is_some(),
             );
-            m.extra.in_love = 0;
-            m.extra.age = 6000;
+            // NeoForge Animal.spawnChildFromBreeding / Fox.FoxBreedGoal.breed:
+            // when a baby_entity_spawn listener is present on a live-baby route, defer the
+            // initiating parent's cooldown until Game::breed so an uncanceled empty slot does
+            // not leave the parent cooled down.
+            let live_baby = !matches!(m.species(), Species::Turtle | Species::Frog);
+            if !(cx.w.asks_baby_spawn && live_baby) {
+                m.extra.in_love = 0;
+                super::finalize::set_age(m, 6000, Some(cx.w));
+            }
             // TurtleBreedGoal.breed: the mother carries an egg, not a baby.
             if m.species() == Species::Turtle {
                 m.extra.flag = true;
@@ -3352,7 +3359,7 @@ mod breeding_variant_tests {
                     }
                 )));
                 assert_eq!(parent.extra.egg_time, 8313);
-                assert_eq!(parent.extra.age, 5999);
+                assert_eq!(parent.extra.age, if asks_baby_spawn { 0 } else { 5999 });
             }
         }));
     }

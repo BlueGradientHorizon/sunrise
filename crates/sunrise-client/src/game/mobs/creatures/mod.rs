@@ -3910,14 +3910,14 @@ impl Game<'_> {
         let q = self.mobs.iter().find(|m| m.id == partner).cloned();
         // Sniffer.spawnChildFromBreeding: an egg instead of a baby.
         if p.species() == Species::Sniffer {
-            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild);
+            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild, false);
             self.lay_sniffer_egg(&p);
             return None;
         }
         // TurtleBreedGoal.breed: the goal gave the mother her egg; only the
         // experience is left, and only with mob loot on.
         if matches!(p.species(), Species::Turtle | Species::Frog) {
-            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild);
+            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild, false);
             // One `new ExperienceOrb`, not split as `ExperienceOrb.award` does.
             self.award_breeding_experience(parent, [p.position.x, p.position.y, p.position.z]);
             return None;
@@ -3985,73 +3985,129 @@ impl Game<'_> {
             true,
             SpawnSite::Raw,
             None,
-        )?;
-        'offspring: {
-            let child = &mut child;
-            child.extra.age = -24000;
-            // No Mob.finalizeSpawn either: no follow range bonus, right-handed.
-            spawning::bred_offspring(child);
-            // getBreedOffspring creates the baby without finalizeSpawn: it keeps
-            // the default (`classic`) sound variant.
-            child.extra.sound_variant = None;
-            // Fox.getBreedOffspring runs no finalizeSpawn: nothing in the
-            // baby fox's mouth.
-            if p.species() == Species::Fox {
-                child.extra.set_main_hand(None);
-            }
-            // Fox.FoxBreedGoal.breed: the baby trusts the players who fed its
-            // parents into love.
-            if p.species() == Species::Fox {
-                let parent_cause = self
-                    .love_cause
-                    .get(&parent)
-                    .copied()
-                    .and_then(|conn| self.killer_uuid(conn));
-                let partner_cause = self
-                    .love_cause
-                    .get(&partner)
-                    .copied()
-                    .and_then(|conn| self.killer_uuid(conn));
-                sunrise_client::mobs::fox::trust_breeders(
-                    child,
-                    parent_cause.map(sunrise_client::lan::playerdata::uuid_ints),
-                    partner_cause.map(sunrise_client::lan::playerdata::uuid_ints),
-                );
-            }
-            // Goat.getBreedOffspring: GoatAi.initMemories, then the baby
-            // screams if the parent a coin toss picks does, or on a 2% roll.
-            if p.species() == Species::Goat {
-                child.extra.lost_horns = [false; 2];
-                sunrise_client::mobs::finalize::goat_init_memories(child, &mut self.world.random);
-                let pick_parent = self.world.random.next_boolean();
-                let parent_screams = if pick_parent {
-                    p.extra.screaming
-                } else {
-                    q.as_ref().unwrap_or(&p).extra.screaming
-                };
-                child.extra.screaming = parent_screams || self.world.random.next_double() < 0.02;
-            }
-            // Inheritance was drawn synchronously in the breeding goal,
-            // before the parent's later same-tick aiStep rolls.
-            if let Some(o) = equine {
-                sunrise_client::mobs::equine::apply_offspring(child, &o);
-                break 'offspring;
-            }
-            // Camel.getBreedOffspring creates a camel with default attributes.
-            if sunrise_client::mobs::camel::is_camel(p.species()) {
-                break 'offspring;
-            }
-            if p.species() == Species::Cat {
-                // Cat.getBreedOffspring.
-                let other = q.as_ref().unwrap_or(&p);
-                child.extra.variant = if coin {
-                    p.extra.variant
-                } else {
-                    other.extra.variant
-                };
-                if p.extra.tame {
+        );
+        if let Some(child) = child.as_mut() {
+            'offspring: {
+                sunrise_client::mobs::finalize::set_baby(child, true);
+                // No Mob.finalizeSpawn either: no follow range bonus, right-handed.
+                spawning::bred_offspring(child);
+                // getBreedOffspring creates the baby without finalizeSpawn: it keeps
+                // the default (`classic`) sound variant.
+                child.extra.sound_variant = None;
+                // Fox.getBreedOffspring runs no finalizeSpawn: nothing in the
+                // baby fox's mouth.
+                if p.species() == Species::Fox {
+                    child.extra.set_main_hand(None);
+                }
+                // Goat.getBreedOffspring: GoatAi.initMemories, then the baby
+                // screams if the parent a coin toss picks does, or on a 2% roll.
+                if p.species() == Species::Goat {
+                    child.extra.lost_horns = [false; 2];
+                    sunrise_client::mobs::finalize::goat_init_memories(
+                        child,
+                        &mut self.world.random,
+                    );
+                    let pick_parent = self.world.random.next_boolean();
+                    let parent_screams = if pick_parent {
+                        p.extra.screaming
+                    } else {
+                        q.as_ref().unwrap_or(&p).extra.screaming
+                    };
+                    child.extra.screaming =
+                        parent_screams || self.world.random.next_double() < 0.02;
+                }
+                // Inheritance was drawn synchronously in the breeding goal,
+                // before the parent's later same-tick aiStep rolls.
+                if let Some(o) = equine {
+                    sunrise_client::mobs::equine::apply_offspring(child, &o);
+                    break 'offspring;
+                }
+                // Camel.getBreedOffspring creates a camel with default attributes.
+                if sunrise_client::mobs::camel::is_camel(p.species()) {
+                    break 'offspring;
+                }
+                if p.species() == Species::Cat {
+                    // Cat.getBreedOffspring.
+                    let other = q.as_ref().unwrap_or(&p);
+                    child.extra.variant = if coin {
+                        p.extra.variant
+                    } else {
+                        other.extra.variant
+                    };
+                    if p.extra.tame {
+                        child.extra.tame = true;
+                        child.extra.owner = p.extra.owner;
+                        let mixed = dye_mix(
+                            &self.loop_context,
+                            world_recipes!(self),
+                            &mut self.world.random,
+                            p.extra.color,
+                            other.extra.color,
+                        );
+                        child.extra.color = mixed;
+                    }
+                    break 'offspring;
+                }
+                if p.species() == Species::Wolf {
+                    // Wolf.getBreedOffspring: a parent's variant; tame parents
+                    // give a tame baby with their collar colours mixed.
+                    let other = q.as_ref().unwrap_or(&p);
+                    child.extra.variant = if coin {
+                        p.extra.variant
+                    } else {
+                        other.extra.variant
+                    };
+                    if p.extra.tame {
+                        sunrise_client::mobs::tame::set_tame(child, true);
+                        child.extra.owner = p.extra.owner;
+                        let mixed = dye_mix(
+                            &self.loop_context,
+                            world_recipes!(self),
+                            &mut self.world.random,
+                            p.extra.color,
+                            other.extra.color,
+                        );
+                        child.extra.color = mixed;
+                    }
+                    child.extra.sound_variant = wolf_voice.or_else(|| self.bred_wolf_voice(parent));
+                    break 'offspring;
+                }
+                // Panda.getBreedOffspring: genes from both parents.
+                if p.species() == Species::Panda {
+                    sunrise_client::mobs::panda::inherit(child, &p, q.as_ref().unwrap_or(&p));
+                    break 'offspring;
+                }
+                // Axolotl.getBreedOffspring: the drawn variant, and the baby is persistent.
+                if let Some(variant) = axolotl {
+                    child.extra.variant = variant;
+                    child.persistent = true;
+                    break 'offspring;
+                }
+                // Nautilus.getBreedOffspring: a tame parent's baby is tame too.
+                if p.species() == Species::Nautilus && p.extra.tame {
                     child.extra.tame = true;
                     child.extra.owner = p.extra.owner;
+                    child.persistent = true;
+                }
+                // Offspring inherit a parent's variant (pigs/cows/chickens) or mixed wool.
+                child.extra.variant = p.extra.variant;
+                // Fox, Pig, Cow and Chicken.getBreedOffspring: either parent's variant.
+                if sunrise_client::mobs::draws_parent_variant(p.species())
+                    && p.species() != Species::Cat
+                    && !coin
+                {
+                    child.extra.variant = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
+                }
+                // The rabbit's own draw above.
+                if let Some(variant) = rabbit_variant {
+                    child.extra.variant = variant;
+                }
+                if let Some(variant) = mooshroom {
+                    child.extra.variant = variant;
+                }
+                // Sheep.getBreedOffspring: the lamb's wool mixes both parents' dyes.
+                if p.species() == Species::Sheep {
+                    let other = q.as_ref().unwrap_or(&p);
                     let mixed = dye_mix(
                         &self.loop_context,
                         world_recipes!(self),
@@ -4061,81 +4117,12 @@ impl Game<'_> {
                     );
                     child.extra.color = mixed;
                 }
-                break 'offspring;
-            }
-            if p.species() == Species::Wolf {
-                // Wolf.getBreedOffspring: a parent's variant; tame parents
-                // give a tame baby with their collar colours mixed.
-                let other = q.as_ref().unwrap_or(&p);
-                child.extra.variant = if coin {
-                    p.extra.variant
-                } else {
-                    other.extra.variant
-                };
-                if p.extra.tame {
-                    sunrise_client::mobs::tame::set_tame(child, true);
-                    child.extra.owner = p.extra.owner;
-                    let mixed = dye_mix(
-                        &self.loop_context,
-                        world_recipes!(self),
-                        &mut self.world.random,
-                        p.extra.color,
-                        other.extra.color,
-                    );
-                    child.extra.color = mixed;
-                }
-                child.extra.sound_variant = wolf_voice.or_else(|| self.bred_wolf_voice(parent));
-                break 'offspring;
-            }
-            // Panda.getBreedOffspring: genes from both parents.
-            if p.species() == Species::Panda {
-                sunrise_client::mobs::panda::inherit(child, &p, q.as_ref().unwrap_or(&p));
-                break 'offspring;
-            }
-            // Axolotl.getBreedOffspring: the drawn variant, and the baby is persistent.
-            if let Some(variant) = axolotl {
-                child.extra.variant = variant;
-                child.persistent = true;
-                break 'offspring;
-            }
-            // Nautilus.getBreedOffspring: a tame parent's baby is tame too.
-            if p.species() == Species::Nautilus && p.extra.tame {
-                child.extra.tame = true;
-                child.extra.owner = p.extra.owner;
-                child.persistent = true;
-            }
-            // Offspring inherit a parent's variant (pigs/cows/chickens) or mixed wool.
-            child.extra.variant = p.extra.variant;
-            // Fox, Pig, Cow and Chicken.getBreedOffspring: either parent's variant.
-            if sunrise_client::mobs::draws_parent_variant(p.species())
-                && p.species() != Species::Cat
-                && !coin
-            {
-                child.extra.variant = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
-            }
-            // The rabbit's own draw above.
-            if let Some(variant) = rabbit_variant {
-                child.extra.variant = variant;
-            }
-            if let Some(variant) = mooshroom {
-                child.extra.variant = variant;
-            }
-            // Sheep.getBreedOffspring: the lamb's wool mixes both parents' dyes.
-            if p.species() == Species::Sheep {
-                let other = q.as_ref().unwrap_or(&p);
-                let mixed = dye_mix(
-                    &self.loop_context,
-                    world_recipes!(self),
-                    &mut self.world.random,
-                    p.extra.color,
-                    other.extra.color,
-                );
-                child.extra.color = mixed;
             }
         }
-        // BabyEntitySpawnEvent: the baby is constructed and has inherited (its draws are
-        // spent); breeding is finalized and the baby inserted after the listeners.
-        if mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn) {
+        // BabyEntitySpawnEvent: posted even if no proposed child was constructed, matching
+        // NeoForge's Animal.spawnChildFromBreeding and Fox.FoxBreedGoal.breed.
+        let listened = mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn);
+        if listened {
             let conn = self
                 .love_cause
                 .get(&parent)
@@ -4145,13 +4132,20 @@ impl Game<'_> {
                 conn.and_then(|c| self.killer_uuid(c)),
                 conn.and_then(|c| self.player_entity_id_by_connection(c)),
             );
-            match self.breed_with_listeners(parent, partner, player, child) {
-                Some(baby) => child = baby,
-                None => {
+            let constraint = if p.species() == Species::Fox {
+                super::native_pending_children::ChildConstraint::BreedingFox
+            } else {
+                super::native_pending_children::ChildConstraint::BreedingAgeable
+            };
+            match self.breed_with_listeners(parent, partner, player, child, constraint) {
+                super::pending_births::BreedOutcome::Accepted(baby) => child = baby,
+                super::pending_births::BreedOutcome::Cancelled => {
+                    // NeoForge Animal.spawnChildFromBreeding / Fox.FoxBreedGoal.breed:
+                    // only cancellation resets both parents and skips finalization.
                     breeding_credit(&mut self.love_cause, parent, partner);
                     for id in [parent, partner] {
                         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                            m.extra.age = 6000;
+                            sunrise_client::mobs::finalize::set_age(m, 6000, None);
                             m.extra.in_love = 0;
                         }
                     }
@@ -4159,13 +4153,54 @@ impl Game<'_> {
                 }
             }
         }
-        let order = if sunrise_client::mobs::orb_after_child(p.species()) {
+        let mut child = child?;
+        // NeoForge Animal.spawnChildFromBreeding / Fox.FoxBreedGoal.breed:
+        // apply post-event completion to the live initiating parent and selected child.
+        let live_parent = self
+            .mobs
+            .iter()
+            .find(|m| m.id == parent)
+            .cloned()
+            .unwrap_or(p);
+        // Fox.FoxBreedGoal.breed: the selected fox baby trusts the players who fed its parents.
+        if live_parent.species() == Species::Fox && child.species() == Species::Fox {
+            let parent_cause = self
+                .love_cause
+                .get(&parent)
+                .copied()
+                .and_then(|conn| self.killer_uuid(conn));
+            let partner_cause = self
+                .love_cause
+                .get(&partner)
+                .copied()
+                .and_then(|conn| self.killer_uuid(conn));
+            sunrise_client::mobs::fox::trust_breeders(
+                &mut child,
+                parent_cause.map(sunrise_client::lan::playerdata::uuid_ints),
+                partner_cause.map(sunrise_client::lan::playerdata::uuid_ints),
+            );
+        }
+        sunrise_client::mobs::finalize::set_baby(&mut child, true);
+        sunrise_client::mobs::living::teleports::snap_to(&mut child, live_parent.position);
+        child.yaw = 0.0;
+        child.previous_yaw = 0.0;
+        child.body_yaw = 0.0;
+        child.previous_body_yaw = 0.0;
+        child.head_yaw = 0.0;
+        child.previous_head_yaw = 0.0;
+        child.head_pitch = 0.0;
+        child.previous_head_pitch = 0.0;
+        let order = if sunrise_client::mobs::orb_after_child(live_parent.species()) {
             OrbOrder::AfterChild
         } else {
             OrbOrder::BeforeChild
         };
-        self.finalize_breeding(&p, partner, Some(&child), order);
-        let at = [p.position.x, p.position.y, p.position.z];
+        self.finalize_breeding(&live_parent, partner, Some(&child), order, listened);
+        let at = [
+            live_parent.position.x,
+            live_parent.position.y,
+            live_parent.position.z,
+        ];
         match order {
             OrbOrder::AfterChild => {
                 let joined = self.insert_spawned_mob(child);

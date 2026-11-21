@@ -356,9 +356,10 @@ pub trait BabyEntitySpawnSlot {
 /// A scoped editor for the single optional breeding child of `baby_entity_spawn`
 /// (NeoForge's `BabyEntitySpawnEvent.getChild` / `setChild`).
 ///
-/// The slot starts holding the vanilla-constructed baby (with its inheritance already drawn).
-/// Listeners may inspect it ([`Self::get`]), edit it in place ([`Self::get_mut`]), construct a
-/// new baby ([`Self::construct`]) and swap it in ([`Self::replace`]), or remove it
+/// The slot starts holding the vanilla-constructed baby (with its inheritance already drawn), or
+/// empty if breeding produced no initial child. Listeners may inspect it ([`Self::get`]), edit it
+/// in place ([`Self::get_mut`]), construct a new baby `AgeableMob` (or `minecraft:fox` for fox
+/// breeding) ([`Self::construct`]) and swap it in ([`Self::replace`]), or remove it
 /// ([`Self::take`] / [`Self::clear`]). Any [`UnspawnedMob`] not left in the slot is cleanly
 /// discarded when dropped.
 // exhaustive: only the engine constructs a breeding slot editor.

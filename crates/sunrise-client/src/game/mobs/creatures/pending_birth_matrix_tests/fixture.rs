@@ -151,8 +151,9 @@ pub fn mob_split(_: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow 
 }
 
 /// `baby_entity_spawn`: mode 0 changes nothing, 1 cancels, 2 replaces the baby with a pig baby
-/// (yaw 77.0) and drops an unattached second baby, 3 clears the baby, 4 offers a grown replacement
-/// and reports its refusal (`Invalid` is 4) in the kept baby's yaw.
+/// (tagged `"replaced_pig"`, with yaw 77.0 that breeding snaps back to 0.0) and drops an
+/// unattached second baby, 3 clears the baby without cancelling, 4 offers a grown replacement
+/// and records its refusal (`Invalid` is 4) as a tag on the kept baby.
 pub fn baby_entity_spawn(_: &mut dyn ServerHost, event: &mut BabyEntitySpawnEvent<'_>) -> Flow {
     let dim = event.dimension;
     let pig = |baby| spec("minecraft:pig", dim, [0.5, 64.0, 0.0], 0.0, None, baby);
@@ -161,6 +162,7 @@ pub fn baby_entity_spawn(_: &mut dyn ServerHost, event: &mut BabyEntitySpawnEven
         2 => {
             let mut replacement = event.child.construct(pig(true)).unwrap();
             replacement.set_yaw(77.0).unwrap();
+            replacement.add_tag("replaced_pig").unwrap();
             let prev = event.child.replace(replacement).unwrap();
             assert_eq!(prev.unwrap().kind().unwrap().to_string(), "minecraft:cow");
             let _dropped = event.child.construct(pig(true)).unwrap();
@@ -168,7 +170,12 @@ pub fn baby_entity_spawn(_: &mut dyn ServerHost, event: &mut BabyEntitySpawnEven
         3 => event.child.clear(),
         4 => {
             let grown = code(event.child.construct(pig(false)));
-            event.child.get_mut().unwrap().set_yaw(grown).unwrap();
+            event
+                .child
+                .get_mut()
+                .unwrap()
+                .add_tag(&format!("refused_{grown}"))
+                .unwrap();
         }
         _ => {}
     }

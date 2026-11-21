@@ -15,17 +15,49 @@ use sunrise_core::geometry::Vec3;
 use sunrise_mod_runtime::attachments::Attachments;
 use sunrise_world::attributes::entity::Catalog;
 
+/// Offspring constraint enforced at construction and attachment boundaries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ChildConstraint {
+    /// `MobSplitEvent.getChildren()` (`List<Mob>`): any registered mob species.
+    Split,
+    /// `BabyEntitySpawnEvent.setChild(AgeableMob)` from `Animal.spawnChildFromBreeding`.
+    BreedingAgeable,
+    /// `BabyEntitySpawnEvent.setChild` from `Fox.FoxBreedGoal.breed` (`(Fox) event.getChild()`).
+    BreedingFox,
+}
+
+impl ChildConstraint {
+    pub(super) fn is_breeding(self) -> bool {
+        !matches!(self, Self::Split)
+    }
+
+    fn allows_species(self, species: Species) -> bool {
+        match self {
+            Self::Split => true,
+            Self::BreedingAgeable => finalize::ageable(species),
+            Self::BreedingFox => species == Species::Fox,
+        }
+    }
+}
+
 /// All unpublished per-object data travels with its actual Mob. A route must move its
-/// existing UUID and attachments here, then install them only at residency commit.
+/// existing UUID, attachments, and initialization state here, then install them only at
+/// residency commit under an entity ID belonging to the destination world.
 pub(super) struct PendingMob {
     pub(super) mob: Mob,
-    /// Set for a child a mod constructed; an engine-made child already owns its published UUID.
+    /// The mob's UUID, kept off-table until publication at residency commit.
     pub(super) uuid: Option<[i32; 4]>,
+    /// All unpublished attachments (including populated constructor attachments, unbound).
     pub(super) attachments: Attachments,
+    /// Whether `EntityConstructing` has already run for this mob.
+    pub(super) initialized: bool,
+    /// Pre-allocated breeding ID reservation `(action_token, reserved_id)`, valid only for
+    /// the originating breeding dispatch when unused in the destination world.
+    pub(super) origin_reservation: Option<(u64, u32)>,
     pub(super) dimension: super::Dim,
     pub(super) resources: Arc<super::Resources>,
     pub(super) attributes: Arc<Catalog>,
-    pub(super) breeding: bool,
+    pub(super) constraint: ChildConstraint,
 }
 
 impl UnspawnedMobRead for PendingMob {
@@ -152,7 +184,9 @@ impl PendingChildWrite for PendingMob {
     }
 
     fn set_baby(&mut self, baby: bool) -> Result<(), UnspawnedMobError> {
-        if (self.breeding && !baby) || (baby && !finalize::supports_baby(self.mob.species())) {
+        if (self.constraint.is_breeding() && !baby)
+            || (baby && !finalize::supports_baby(self.mob.species()))
+        {
             return Err(UnspawnedMobError::Invalid);
         }
         finalize::set_baby(&mut self.mob, baby);
@@ -178,13 +212,13 @@ pub(super) fn construct_pending_mob(
     resources: &Arc<super::Resources>,
     attributes: &Arc<Catalog>,
     dimension: super::Dim,
-    breeding: bool,
+    constraint: ChildConstraint,
     spec: PendingMobSpec,
 ) -> Result<PendingMob, UnspawnedMobError> {
     if spec.dimension.to_string() != dimension.id()
         || !super::native_mobs::spawnable(spec.position)
         || !spec.yaw.is_finite()
-        || (breeding && !spec.baby)
+        || (constraint.is_breeding() && !spec.baby)
     {
         return Err(UnspawnedMobError::Invalid);
     }
@@ -193,7 +227,8 @@ pub(super) fn construct_pending_mob(
         .get(&spec.kind.to_string())
         .ok_or(UnspawnedMobError::Invalid)?
         .clone();
-    if (spec.baby && !finalize::supports_baby(kind.species))
+    if !constraint.allows_species(kind.species)
+        || (spec.baby && !finalize::supports_baby(kind.species))
         || !size_ok(kind.species, spec.size)
         || (kind.species == Species::SulfurCube && !spec.baby && spec.size == Some(1))
     {
@@ -216,10 +251,12 @@ pub(super) fn construct_pending_mob(
         mob,
         uuid: Some(uuid),
         attachments: Attachments::default(),
+        initialized: false,
+        origin_reservation: None,
         dimension,
         resources: resources.clone(),
         attributes: attributes.clone(),
-        breeding,
+        constraint,
     })
 }
 
@@ -229,6 +266,7 @@ pub(super) struct BabyChildSlot<'a> {
     pub(super) resources: Arc<super::Resources>,
     pub(super) attributes: Arc<Catalog>,
     pub(super) dimension: super::Dim,
+    pub(super) constraint: ChildConstraint,
 }
 
 impl BabyEntitySpawnSlot for BabyChildSlot<'_> {
@@ -249,7 +287,7 @@ impl BabyEntitySpawnSlot for BabyChildSlot<'_> {
             &self.resources,
             &self.attributes,
             self.dimension,
-            true,
+            self.constraint,
             spec,
         )?;
         Ok(UnspawnedMob::new(Box::new(pending)))
@@ -260,10 +298,12 @@ impl BabyEntitySpawnSlot for BabyChildSlot<'_> {
             .into_any()
             .downcast::<PendingMob>()
             .map_err(|_| UnspawnedMobError::Invalid)?;
-        if !valid_child(&self.resources, self.dimension, true, &pending) {
+        if !valid_child(&self.resources, self.dimension, self.constraint, &pending) {
             return Err(UnspawnedMobError::Invalid);
         }
-        pending.breeding = true;
+        pending.constraint = self.constraint;
+        pending.resources = self.resources.clone();
+        pending.attributes = self.attributes.clone();
         Ok(self
             .slot
             .replace(*pending)
@@ -303,7 +343,7 @@ impl MobSplitChildList for SplitChildList<'_> {
             &self.resources,
             &self.attributes,
             self.dimension,
-            false,
+            ChildConstraint::Split,
             spec,
         )?;
         Ok(UnspawnedMob::new(Box::new(pending)))
@@ -314,10 +354,17 @@ impl MobSplitChildList for SplitChildList<'_> {
             .into_any()
             .downcast::<PendingMob>()
             .map_err(|_| UnspawnedMobError::Invalid)?;
-        if !valid_child(&self.resources, self.dimension, false, &pending) {
+        if !valid_child(
+            &self.resources,
+            self.dimension,
+            ChildConstraint::Split,
+            &pending,
+        ) {
             return Err(UnspawnedMobError::Invalid);
         }
-        pending.breeding = false;
+        pending.constraint = ChildConstraint::Split;
+        pending.resources = self.resources.clone();
+        pending.attributes = self.attributes.clone();
         self.children.push(*pending);
         Ok(())
     }
@@ -330,10 +377,17 @@ impl MobSplitChildList for SplitChildList<'_> {
             .into_any()
             .downcast::<PendingMob>()
             .map_err(|_| UnspawnedMobError::Invalid)?;
-        if !valid_child(&self.resources, self.dimension, false, &pending) {
+        if !valid_child(
+            &self.resources,
+            self.dimension,
+            ChildConstraint::Split,
+            &pending,
+        ) {
             return Err(UnspawnedMobError::Invalid);
         }
-        pending.breeding = false;
+        pending.constraint = ChildConstraint::Split;
+        pending.resources = self.resources.clone();
+        pending.attributes = self.attributes.clone();
         self.children.insert(index, *pending);
         Ok(())
     }
@@ -350,10 +404,17 @@ impl MobSplitChildList for SplitChildList<'_> {
             .into_any()
             .downcast::<PendingMob>()
             .map_err(|_| UnspawnedMobError::Invalid)?;
-        if !valid_child(&self.resources, self.dimension, false, &pending) {
+        if !valid_child(
+            &self.resources,
+            self.dimension,
+            ChildConstraint::Split,
+            &pending,
+        ) {
             return Err(UnspawnedMobError::Invalid);
         }
-        pending.breeding = false;
+        pending.constraint = ChildConstraint::Split;
+        pending.resources = self.resources.clone();
+        pending.attributes = self.attributes.clone();
         let prev = std::mem::replace(&mut self.children[index], *pending);
         Ok(UnspawnedMob::new(Box::new(prev)))
     }
@@ -371,13 +432,13 @@ impl MobSplitChildList for SplitChildList<'_> {
     }
 }
 
-/// Whether a final child satisfies every object invariant: a registered kind, the action's
-/// dimension, a finite spawnable position and yaw, baby state the species supports (a
-/// breeding child must be one) and a size the species allows.
+/// Whether a final child satisfies every object invariant: a registered kind allowed by
+/// `constraint`, the action's dimension, a finite spawnable position and yaw, baby state the
+/// species supports (a breeding child must be one) and a size the species allows.
 fn valid_child(
     resources: &super::Resources,
     dimension: super::Dim,
-    breeding: bool,
+    constraint: ChildConstraint,
     child: &PendingMob,
 ) -> bool {
     let mob = &child.mob;
@@ -395,7 +456,8 @@ fn valid_child(
         ]
         .into_iter()
         .all(f32::is_finite)
-        && (!breeding || mob.is_baby())
+        && constraint.allows_species(species)
+        && (!constraint.is_breeding() || mob.is_baby())
         && (!mob.is_baby() || finalize::supports_baby(species))
         && match species {
             Species::Slime | Species::MagmaCube | Species::SulfurCube | Species::Phantom => {
