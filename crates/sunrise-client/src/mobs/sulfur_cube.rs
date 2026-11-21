@@ -1588,26 +1588,46 @@ mod tnt_rule_tests {
         m
     }
 
-    /// `SulfurCube.readAdditionalSaveData` is a plain `setFuse`: a loaded fuse, even 0 or one
-    /// below -1, keeps the `Invulnerable` the entity load read, and is saved back unchanged.
+    /// Vanilla 26.3 server witness (`VanillaSulfurCubeFuseOracle`, `tools/test_sulfur_cube_fuse_parity.py`).
     #[test]
     fn a_loaded_fuse_is_kept_as_it_is_and_leaves_invulnerable_alone() {
-        use sunrise_core::nbt::Tag;
-        for (fuse_tag, is_primed) in [(0, true), (40, true), (-5, false)] {
+        use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
+        let witness = include_str!("../../../../tools/witness/26.3/sulfur_cube_fuse_server.txt")
+            .replace("\r\n", "\n");
+        let mut checked = 0usize;
+        for line in witness.lines().filter(|line| !line.starts_with('#')) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            assert_eq!(fields[2], "loaded", "{line}");
+            assert_eq!(fields[7], "saved", "{line}");
+            let (fuse_snbt, inv_snbt) = (fields[0], fields[1]);
+            let expected_fuse: i32 = fields[3].parse().unwrap();
+            let expected_max: i32 = fields[4].parse().unwrap();
+            let expected_inv: bool = fields[5].parse().unwrap();
+            let expected_primed: bool = fields[6].parse().unwrap();
+            let expected_saved_fuse: i32 = fields[8].parse().unwrap();
             let mut m = tnt_cube();
-            m.invulnerable_flag = false;
-            let tag = Tag::Compound([("fuse".into(), Tag::Int(fuse_tag))].into_iter().collect());
+            // `Entity.load` parses `Invulnerable` before `SulfurCube.readAdditionalSaveData`.
+            m.invulnerable_flag = inv_snbt == "1b";
+            let snbt = match fuse_snbt {
+                "absent" => "{}".to_owned(),
+                value => format!("{{fuse:{value}}}"),
+            };
+            let tag = parse_snbt(&snbt).unwrap().0;
             from_nbt(&mut m, &tag);
-            assert_eq!(fuse(&m), fuse_tag);
-            assert_eq!(primed(&m), is_primed, "fuse:{fuse_tag}");
-            assert!(!m.invulnerable_flag, "fuse:{fuse_tag}");
-            let mut saved = sunrise_core::nbt::Compound::default();
+            assert_eq!(fuse(&m), expected_fuse, "{line}");
+            assert_eq!(max_fuse(&m), expected_max, "{line}");
+            assert_eq!(m.invulnerable_flag, expected_inv, "{line}");
+            assert_eq!(primed(&m), expected_primed, "{line}");
+            let mut saved = Compound::default();
             to_nbt(&m, &mut saved);
             assert_eq!(
-                saved.get(&sunrise_core::nbt::JavaString::from("fuse")),
-                Some(&Tag::Int(fuse_tag))
+                saved.get(&JavaString::from("fuse")),
+                Some(&Tag::Int(expected_saved_fuse)),
+                "{line}"
             );
+            checked += 1;
         }
+        assert!(checked > 0, "empty witness");
     }
 
     #[test]

@@ -1528,12 +1528,12 @@ mod tests {
         }
     }
 
-    /// #4548: SulfurCube.MAX_FUSE (19, after AbstractCubeMob.ID_SIZE) copies into
-    /// the fuse the client ticks for swell; its default, -1, is not primed
-    /// (`isPrimed`: fuse >= 0). FROM_BUCKET is 20 (#13721).
+    /// Vanilla 26.3 client witness (`VanillaSulfurCubeFuseOracle`, `tools/test_sulfur_cube_fuse_parity.py`).
     #[test]
     fn sulfur_cube_max_fuse_sets_the_client_fuse() {
-        use sunrise_client::mobs::sulfur_cube::{client_tick, fuse, primed};
+        use sunrise_client::mobs::sulfur_cube::{client_tick, fuse, max_fuse, primed};
+        let witness = include_str!("../../../../../tools/witness/26.3/sulfur_cube_fuse_client.txt")
+            .replace("\r\n", "\n");
         let root =
             std::env::temp_dir().join(format!("sunrise-sulfur-receive-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
@@ -1552,33 +1552,54 @@ mod tests {
         let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         let kind = std::sync::Arc::new(types.types["minecraft:sulfur_cube"].clone());
-        let mut m = Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0);
-        client_defaults(&mut m);
-        assert_eq!(fuse(&m), -1);
-        assert!(!primed(&m));
-        apply(&mut m, &[(19, s::INT, Value::Int(40))]);
-        assert_eq!(fuse(&m), 40);
-        assert!(primed(&m));
-        client_tick(&mut m);
-        assert_eq!(fuse(&m), 39);
-        apply(&mut m, &[(19, s::INT, Value::Int(0))]);
-        // Last fuse tick: still primed at 0 until the server removes it.
-        assert_eq!(fuse(&m), 0);
-        client_tick(&mut m);
-        assert_eq!(fuse(&m), 0);
-        apply(&mut m, &[(19, s::INT, Value::Int(-1))]);
-        assert!(!primed(&m));
-        // `setFuse` takes the synced value as it is: below -1 it stays put and unprimed.
-        apply(&mut m, &[(19, s::INT, Value::Int(-5))]);
-        client_tick(&mut m);
-        assert_eq!(fuse(&m), -5);
-        assert!(!primed(&m));
-        // The full int range: the largest fuse counts down without wrapping.
-        apply(&mut m, &[(19, s::INT, Value::Int(i32::MAX))]);
-        client_tick(&mut m);
-        assert_eq!(fuse(&m), i32::MAX - 1);
-        apply(&mut m, &[(20, s::BOOLEAN, Value::Bool(true))]);
-        assert_eq!(fuse(&m), i32::MAX - 1);
+        let mut m = None;
+        let mut rows = vec![format!("# minecraft {}", sunrise_core::VANILLA_VERSION)];
+        for line in witness.lines().filter(|line| !line.starts_with('#')) {
+            let (op, _) = line
+                .split_once(" -> ")
+                .unwrap_or_else(|| panic!("bad witness row: {line}"));
+            let parts: Vec<&str> = op.split_whitespace().collect();
+            match parts.as_slice() {
+                ["init"] => {
+                    let mut mob = Mob::new(
+                        1,
+                        std::sync::Arc::clone(&kind),
+                        sunrise_core::geometry::Vec3::ZERO,
+                        0.0,
+                    );
+                    client_defaults(&mut mob);
+                    m = Some(mob);
+                }
+                ["sync", id, "int", value] => {
+                    let id: u8 = id.parse().unwrap();
+                    let value: i32 = value.parse().unwrap();
+                    apply(m.as_mut().unwrap(), &[(id, s::INT, Value::Int(value))]);
+                }
+                ["sync", id, "bool", value] => {
+                    let id: u8 = id.parse().unwrap();
+                    let value: bool = value.parse().unwrap();
+                    apply(m.as_mut().unwrap(), &[(id, s::BOOLEAN, Value::Bool(value))]);
+                }
+                ["tick"] => {
+                    client_tick(m.as_mut().unwrap());
+                }
+                _ => panic!("unknown witness op: {op}"),
+            }
+            let mob = m.as_ref().unwrap();
+            rows.push(format!(
+                "{op} -> {} {} {} {}",
+                fuse(mob),
+                max_fuse(mob),
+                primed(mob),
+                mob.extra.scratch[3] != 0,
+            ));
+        }
+        let actual = rows.join("\n") + "\n";
+        if let Some(path) = std::env::var_os("SUNRISE_SULFUR_CUBE_CLIENT_FUSE_OUTPUT") {
+            std::fs::write(path, &actual).unwrap();
+        }
+        assert!(rows.len() > 1, "empty witness");
+        assert_eq!(actual, witness);
     }
 
     /// `Pig.onSyncedDataUpdated` and `Strider.onSyncedDataUpdated`: a synced
