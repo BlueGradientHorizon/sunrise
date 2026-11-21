@@ -113,11 +113,11 @@ impl Game<'_> {
             player.fluids.boat = boat;
             player.leather_boots = leather_boots;
             player.shift_key_down = accepted.sneaking;
+            player.record_fall_reset = game.adv.marks.fall.is_some();
             let mut side = game_side!(game);
             let mut w = motion_world!(game, side, player);
             let [x, y, z] = accepted.delta;
             let movement = Vec3::new(x, y, z);
-            let mut ground_reset = false;
             if w.set_on_ground_with_movement(accepted.on_ground, false, movement)
                 .is_ok()
                 && !touching_unloaded_chunk(at, dimensions, |x, z| {
@@ -129,34 +129,22 @@ impl Game<'_> {
                     let state = w.block_state(pos)?;
                     w.check_guest_fall_damage(y, accepted.on_ground, state, pos)
                 })();
-                ground_reset = match landed {
-                    Ok(Some(trample)) => {
-                        game.trample_farmland(id, true, trample);
-                        let Some(player) =
-                            game.player.as_mut().filter(|p| p.entity_id as u32 == id)
-                        else {
-                            return Vec::new();
-                        };
-                        side = game_side!(game);
-                        w = motion_world!(game, side, player);
-                        w.finish_trample_fall(trample).is_ok()
-                    }
-                    Ok(None) => accepted.on_ground,
-                    Err(_) => false,
-                };
-            }
-            // ServerPlayer.resetFallDistance: grant against the position and
-            // health at this reset, not the last packet or the connection tick.
-            if y > 0.0 || ground_reset {
-                w.player.fall_distance = 0.0;
-                let alive = w.player.health.health() > 0.0;
-                if let Some(start) = game.adv.marks.fall.take().filter(|_| alive) {
-                    game.trigger_distance("minecraft:fall_from_height", start);
+                if let Ok(Some(trample)) = landed {
+                    game.trample_farmland(id, true, trample);
+                    let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id)
+                    else {
+                        return Vec::new();
+                    };
+                    side = game_side!(game);
+                    w = motion_world!(game, side, player);
+                    let _ = w.finish_trample_fall(trample);
                 }
             }
-            let Some(player) = game.player.as_mut() else {
-                return Vec::new();
-            };
+            let player = w.player;
+            if y > 0.0 {
+                player.reset_fall_distance();
+            }
+            player.record_fall_reset = false;
             let moved = player
                 .position
                 .subtract(Vec3::new(from[0], from[1], from[2]));
@@ -172,7 +160,43 @@ impl Game<'_> {
         }) else {
             return;
         };
+        let fall_end = events.iter().find_map(|event| match event {
+            MotionEvent::FallDistanceReset(at) => Some(at.components()),
+            _ => None,
+        });
         self.guest_motion_events(conn, at, events);
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let Some(gi) = host.hub.guests.connection_index(conn) else {
+            return;
+        };
+        // LivingEntity.hurtServer: the turn already applied death protection.
+        // If it did not save the guest, finish ServerPlayer.die before the
+        // next packet can move them or change their drops.
+        if host.hub.guests[gi].health <= 0.0 {
+            self.guest_die(gi, conn);
+        }
+        // ServerPlayer.resetFallDistance: the first reset in this packet ends
+        // the tracked fall. Use its position and the health after protection.
+        if let Some(end) = fall_end
+            && self
+                .lan
+                .as_ref()
+                .and_then(|host| host.play.get(&conn))
+                .is_some_and(|play| play.marks.fall.is_some())
+        {
+            self.as_guest(conn, |game| {
+                if let Some(start) = game.adv.marks.fall.take()
+                    && game
+                        .player
+                        .as_ref()
+                        .is_some_and(|p| p.health.health() > 0.0)
+                {
+                    game.trigger_distance_at("minecraft:fall_from_height", start, Some(end));
+                }
+            });
+        }
     }
 
     /// The guest's connection-path body: fluid and block effects, hazards,

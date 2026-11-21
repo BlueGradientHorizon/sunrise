@@ -1,11 +1,12 @@
 //! `handlePlayerPositionChange`: a move that goes up ends the guest's fall.
 use super::guest;
 use crate::game::Game;
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 use sunrise_client::lan::guest::InboxItem;
 use sunrise_client::{
     advancements::Tree,
     chunk::Chunk,
+    items::ItemStack,
     lan::{NetConfig, hub::HubConfig},
 };
 use sunrise_core::position::ChunkPos;
@@ -16,15 +17,13 @@ const NAME: &str = "GuestBodyTest";
 const CRITERIA: [&str; 3] = ["any", "short", "five"];
 
 /// A server with one survival guest in the air at 12.5 110 12.5, over a stone floor at y 99.
-fn scene(resources: &mut Option<Arc<crate::game::Resources>>) -> Game<'_> {
+fn scene<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>, scratch: &Path) -> Game<'a> {
     let mut g = crate::game::game_tests::tests::server_game(resources);
     g.build_registries();
     g.set_allow_commands(true);
-    let scratch = std::env::current_dir().unwrap().join("guest-fall-reset");
-    assert!(!scratch.exists());
     let folder = scratch.join("data/fall/advancement");
     std::fs::create_dir_all(&folder).unwrap();
-    g.world_root = scratch.clone();
+    g.world_root = scratch.to_path_buf();
     for (name, distance) in CRITERIA.into_iter().zip([
         serde_json::Value::Null,
         serde_json::json!({"max": 1.0}),
@@ -92,22 +91,18 @@ fn scene(resources: &mut Option<Arc<crate::game::Resources>>) -> Game<'_> {
     g
 }
 
-/// One server tick in which the guest's client sent these positions, one per client tick.
-fn tick_with_moves(
-    g: &mut Game<'_>,
-    heights: &[f64],
-    before_level: (f64, Option<[f64; 3]>, [bool; 3]),
-) {
+/// One server packet drain; put a client-tick marker between reports.
+fn drain_moves(g: &mut Game<'_>, reports: impl IntoIterator<Item = (f64, u8)>) {
     g.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
         guest
             .inbox
             .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
-        for &y in heights {
+        for (y, flags) in reports {
             let to = play::MovePlayerPos {
                 x: 12.5,
                 y,
                 z: 12.5,
-                flags: 0,
+                flags,
             };
             guest
                 .inbox
@@ -118,6 +113,15 @@ fn tick_with_moves(
         }
     });
     g.tick_lan_packets();
+}
+
+/// One server tick in which the guest's client sent these airborne positions.
+fn tick_with_moves(
+    g: &mut Game<'_>,
+    heights: &[f64],
+    before_level: (f64, Option<[f64; 3]>, [bool; 3]),
+) {
+    drain_moves(g, heights.iter().map(|&y| (y, 0)));
     let guest = &g.lan.as_ref().unwrap().hub.guests[0];
     assert_eq!(guest.moves.len(), heights.len(), "every move is accepted");
     assert_eq!(guest.position[1], *heights.last().unwrap());
@@ -144,7 +148,8 @@ fn fall(g: &Game<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
 #[ignore = "daily"]
 fn a_guest_move_that_goes_up_ends_its_fall() {
     let mut resources = None;
-    let mut g = scene(&mut resources);
+    let scratch = tempfile::tempdir().unwrap();
+    let mut g = scene(&mut resources, scratch.path());
     // One block down: a fall of 1, tracked from where the tick left the guest.
     tick_with_moves(&mut g, &[109.0], (1.0, None, [false; 3]));
     assert_eq!(fall(&g), (1.0, Some([12.5, 109.0, 12.5]), [false; 3]));
@@ -190,4 +195,76 @@ fn a_guest_move_that_goes_up_ends_its_fall() {
     );
     // Half a block up from where the last fall began: any fall, and a short one.
     assert_eq!(fall(&g).2, [true, true, false]);
+}
+
+#[test]
+#[ignore = "daily"]
+fn entering_water_ends_a_tracked_fall_before_the_next_move() {
+    let mut resources = None;
+    let scratch = tempfile::tempdir().unwrap();
+    let mut g = scene(&mut resources, scratch.path());
+    assert!(g.run_command("setblock 12 104 12 minecraft:water"));
+    tick_with_moves(&mut g, &[105.0], (5.0, None, [false; 3]));
+    assert_eq!(fall(&g).1, Some([12.5, 105.0, 12.5]));
+
+    // Enter airborne water a half block down, then fall below it in the same batch.
+    drain_moves(&mut g, [(104.5, 0), (101.5, 0)]);
+    assert_eq!(g.lan.as_ref().unwrap().hub.guests[0].position[1], 101.5);
+    assert_eq!(fall(&g), (0.0, None, [true, true, false]));
+}
+
+fn lethal_landing(totem: bool) {
+    let mut resources = None;
+    let scratch = tempfile::tempdir().unwrap();
+    let mut g = scene(&mut resources, scratch.path());
+    tick_with_moves(&mut g, &[105.0], (5.0, None, [false; 3]));
+    g.as_guest(1, |game| {
+        game.player
+            .as_mut()
+            .unwrap()
+            .set_health(0.5, false)
+            .unwrap();
+        game.inventory[0] = Some(ItemStack::new("minecraft:diamond", 1));
+        if totem {
+            game.offhand = Some(ItemStack::new("minecraft:totem_of_undying", 1));
+        }
+    })
+    .unwrap();
+
+    // Land, then report stepping up, with no world or connection tick in between.
+    drain_moves(&mut g, [(100.0, 1), (100.5, 0)]);
+    let guest = &g.lan.as_ref().unwrap().hub.guests[0];
+    if totem {
+        assert!(!guest.dead);
+        assert_eq!(guest.health, 1.0);
+        assert!(guest.offhand.is_none());
+        assert_eq!(guest.position[1], 100.5);
+        assert_eq!(fall(&g), (0.0, None, [true, false, true]));
+    } else {
+        assert!(guest.dead);
+        assert_eq!(guest.position[1], 100.0);
+        assert_eq!(guest.last_death.as_ref().unwrap().1, [12, 100, 12]);
+        let drop = g
+            .dropped
+            .iter()
+            .find(|item| item.stack.item == "minecraft:diamond")
+            .unwrap();
+        assert_eq!(
+            drop.position.y,
+            100.0 + guest.eye_height() - f64::from(0.3_f32)
+        );
+        assert_eq!(fall(&g), (0.0, None, [false; 3]));
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_lethal_landing_records_death_and_drops_before_the_next_move() {
+    lethal_landing(false);
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_totem_saves_the_guest_before_its_tracked_fall_ends() {
+    lethal_landing(true);
 }
