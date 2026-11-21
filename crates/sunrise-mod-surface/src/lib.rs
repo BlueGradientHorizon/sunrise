@@ -778,9 +778,10 @@ impl Surface {
 
     /// [`Self::read`], and the ids it finds unsealed: [`Self::unsealed`]'s records, and `surface`
     /// when the document's own hash is not [`Self::document_hash`] with every list this reader
-    /// doesn't know counted in. Such a list is how a newer writer adds a collection: JSON objects
-    /// with an `id` (no whitespace or control characters) and a `hash` (32 lowercase hex
-    /// digits), whose other fields this reader skips, and it refuses any other unknown list. Other
+    /// doesn't know counted in: this reader recomputes the document hash, [`Self::read`] does not.
+    /// Such a list is how a newer writer adds a collection: JSON objects with a non-empty `id` (no
+    /// whitespace or control characters) and a `hash` (32 lowercase hex digits), whose other
+    /// fields this reader skips, and it refuses any other unknown list. Other
     /// unknown values are outside the document hash. Every id, an extension tag's
     /// `extension_tag:<registry>/<id>` included, is listed once in the whole document, and every
     /// top-level key once.
