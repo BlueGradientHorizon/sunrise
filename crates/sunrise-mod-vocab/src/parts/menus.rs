@@ -34,9 +34,9 @@ fn menu_screen_factory(
     rows.get(&index)
 }
 
-/// Whether a content menu has a registered factory from the named package.
-pub fn has_menu_screen_factory(menu: &str, owner: &str) -> bool {
-    menu_screen_factory(menu, Some(owner), None).is_some()
+/// Whether the content menu's owner or the verified stock opener's owner supplies a constructor.
+pub fn has_menu_screen_factory(menu: &str, menu_owner: Option<&str>, opener: Option<&str>) -> bool {
+    menu_screen_factory(menu, menu_owner, opener).is_some()
 }
 
 /// Build a window's screen. The outer option distinguishes an unregistered factory
@@ -163,6 +163,8 @@ pub trait MenusRegistrar {
     /// a verified mod block owned by your package opens that menu.
     /// The factory builds a fresh screen on the client for each opening. The
     /// window owns its callbacks and local slot moves until close or replacement.
+    /// If a custom menu or a stock opener with excluded slots lacks its factory,
+    /// the client warns and leaves the current menu unchanged.
     /// A duplicate or out-of-scope registration refuses installation, even if its
     /// error is ignored. A package with a factory cannot declare `side = "server"`.
     fn register_menu_screen(
@@ -193,9 +195,10 @@ pub trait MenusRegistrar {
     /// The menu remains content-owned; loading checks these roles against its
     /// actual container slots, crafting declaration and every permanent mask
     /// declared with [`Self::menu_slot_exclusions`].
-    /// Register a screen factory for this menu with [`Self::register_menu_screen`].
-    /// Its layout must set [`crate::MenuScreenLayout::recipe_book`] to this `book`.
-    /// Geometry is checked when the client constructs the screen, not here. The
+    /// To show this menu, register a factory with [`Self::register_menu_screen`]
+    /// whose layout sets [`crate::MenuScreenLayout::recipe_book`] to this `book`.
+    /// Content can load without the factory. The client checks for it when the
+    /// menu opens and validates geometry when the factory constructs the screen. The
     /// declaring mod owns the screen's presentation callbacks and slot controls.
     /// This does not turn display candidates into ingredient predicates.
     /// Invalid ownership, unknown books, duplicate menus or malformed roles

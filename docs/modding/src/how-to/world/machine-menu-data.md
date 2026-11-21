@@ -323,9 +323,10 @@ screen of a machine leads to the next.
 
 Register a constructor in `Hooks::register` with `register_menu_screen`, as with NeoForge's
 `RegisterMenuScreensEvent`. The client calls it once for the opening, after the menu's type and
-slots are known and before the window is shown. It returns a fresh `MenuScreen`. A custom menu
-without a factory closes again. When a selected factory returns `None` or produces an invalid
-layout, the client refuses that opening.
+slots are known and before the window is shown. It returns a fresh `MenuScreen`. If a custom
+menu or a stock opener with excluded slots has no registered factory, the client warns and
+keeps its current menu without sending a close. When a selected factory returns `None` or
+produces an invalid layout, the client refuses that opening.
 
 ```rust,ignore
 use mod_api::{ClientHost, MenuScreen, MenuScreenLayout, MenuScreenOpen, ScreenSlot};

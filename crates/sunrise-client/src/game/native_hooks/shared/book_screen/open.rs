@@ -40,6 +40,7 @@ impl Game<'_> {
     }
     /// Stage the current remote opening's screen for the window. Its slots
     /// are stored under `key`; `extra` was already matched to this opening.
+    /// The packet handler checked for required factories before changing menus.
     /// False refuses the opening; an ordinary stock menu needs no mod screen.
     pub(in crate::game) fn open_native_screen(
         &mut self,
@@ -92,15 +93,14 @@ impl Game<'_> {
         // Opening bytes are construction-only; the result owns its presentation.
         drop(extra);
         let Some((owner, created)) = created else {
-            if mod_type.is_some() || !hidden.is_empty() || binding.is_some() {
-                log::error!("screen for {of}: this menu requires a registered screen factory");
-                return false;
-            }
             return true;
         };
         let mut instance = match created {
             Ok(Some(instance)) => instance,
-            Ok(None) => return false,
+            Ok(None) => {
+                log::warn!("mod {owner} declined to create a screen for {of}");
+                return false;
+            }
             Err(reason) => {
                 log::error!("mod {owner} screen for {of}: {reason}");
                 return false;

@@ -430,14 +430,6 @@ impl Game<'_> {
     }
     /// ClientboundOpenScreenPacket for the menus Sunrise draws.
     pub(in crate::game) fn remote_open_screen(&mut self, p: play::OpenScreen) {
-        if self.remote.as_ref().and_then(|r| r.menu.as_ref()).is_some() || self.mod_screen.is_some()
-        {
-            // An in-place open has no intervening ContainerClose packet. Drop
-            // the replaced menu's local state, not the screen or pointer grab.
-            self.remote_close_local();
-        } else {
-            self.recipe_ui.reset_screen();
-        }
         let menu = self
             .remote
             .as_ref()
@@ -464,6 +456,25 @@ impl Game<'_> {
         let target = extra
             .as_ref()
             .map_or(target, |e| e.pos.map(|p| (p[0], p[1], p[2])));
+        let mod_type = sunrise_client::containers::mod_menu_type(&menu);
+        let block = target.and_then(|pos| self.menu_opener_block(pos, &menu));
+        let owner = mod_type.map(|kind| kind.owner);
+        // MenuScreens.create looks up the constructor before touching the active window.
+        // A stock menu only needs a native screen if its opener masks backing slots.
+        if (owner.is_some() || !mod_api::__private::menu_slot_exclusions(&menu, block).is_empty())
+            && !mod_api::__private::has_menu_screen_factory(&menu, owner, block)
+        {
+            log::warn!("no screen factory for menu {menu}, owner {owner:?}, opener {block:?}");
+            return;
+        }
+        if self.remote.as_ref().and_then(|r| r.menu.as_ref()).is_some() || self.mod_screen.is_some()
+        {
+            // An in-place open has no intervening ContainerClose packet. Drop
+            // the replaced menu's local state, not the screen or pointer grab.
+            self.remote_close_local();
+        } else {
+            self.recipe_ui.reset_screen();
+        }
         if menu == "minecraft:lectern" {
             // LecternScreen: the book and page come in the menu's content and data.
             self.remote_set_menu(Some((p.container, menu)), None);
@@ -489,7 +500,6 @@ impl Game<'_> {
             self.remote_open_merchant(p.container, title, menu_title(&p.title));
             return;
         }
-        let mod_type = sunrise_client::containers::mod_menu_type(&menu);
         let entity = match menu.as_str() {
             "minecraft:crafting" => None,
             "minecraft:furnace" | "minecraft:blast_furnace" | "minecraft:smoker" => {

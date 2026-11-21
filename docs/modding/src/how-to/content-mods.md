@@ -1107,8 +1107,9 @@ slot, and one on the container goes to the inventory, as a chest's does. `result
 block entity container's faces and insertion rules, not the menu's `inputs` list. A block-backed menu syncs the block entity's
 `data` (16-bit on the network, as vanilla's). A [blockless menu](world/machine-menu-data.md#blockless-status-menus)
 gets its initial data from its opener and syncs subsequent signed `i32` changes without reopening. A Sunrise client shows it through the
-mod's [registered screen factory](world/machine-menu-data.md#the-menus-screen); without one it closes again. `player.open_mod_menu` can open the same type without a
-block. A recipe-book binding applies to either opening; the screen factory supplies its geometry and book.
+mod's [registered screen factory](world/machine-menu-data.md#the-menus-screen). If the factory is missing,
+the client warns and keeps its current menu. `player.open_mod_menu` can open the same type without a block.
+A recipe-book binding applies to either opening; the screen factory supplies its geometry and book.
 Clients join a server only with the same mods' menu
 types, as with its blocks, and a client that isn't Sunrise's is never sent one: the block opens nothing for it. Its
 clicks run on the server's vanilla menu engine (`menu::Kind::Mod`), shift-clicks routed as `ChestMenu`'s, and buttons

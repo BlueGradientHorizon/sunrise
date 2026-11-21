@@ -100,10 +100,11 @@ Every declared role must be in the content menu, agree with its crafting grid if
 and remain available under every [permanent slot mask](../world/machine-menu-data.md#the-menus-screen).
 Register a client factory for the same menu with `r.register_menu_screen(menu, factory)`.
 The factory returns `MenuScreen::new(layout)` with the geometry and sets
-`MenuScreenLayout::recipe_book` to `Some(book.clone())`. A bound menu without a factory from
-its declaring mod is refused at load. The screen does not select the
-recipe type or determine which slots take server clicks. A book added only to the screen,
-without a menu binding, is display-only. Either kind waits for authoritative book settings.
+`MenuScreenLayout::recipe_book` to `Some(book.clone())`. Content loading checks the layout's
+recipe roles, not whether the client factory is registered. If the factory is missing when
+an open arrives, the client logs a warning and leaves its current menu unchanged. The screen
+does not select the recipe type or determine which slots take server clicks. A book added only
+to the screen, without a menu binding, is display-only. Either kind waits for authoritative book settings.
 
 For a block-backed crusher with one persistent ingredient slot and one result slot, declare
 `data/mymod/sunrise/menu/crusher.json` as `{ "slots": 2, "results": [1] }`. The block's
