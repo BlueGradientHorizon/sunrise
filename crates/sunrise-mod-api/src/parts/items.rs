@@ -153,6 +153,17 @@ pub mod tests {
     /// and what goes in is handed to the container east of it, through that container's west
     /// side.
     pub(crate) struct Pipe(pub(crate) BlockSide);
+    impl Pipe {
+        fn downstream(
+            &self,
+            host: &mut dyn ServerHost,
+        ) -> Option<Capability<dyn ResourceHandler<ItemResource>>> {
+            let [x, y, z] = self.0.pos;
+            self.0
+                .level
+                .capability(host, &ITEMS, [x + 1, y, z], Some(Direction::West))
+        }
+    }
     impl ResourceHandler<ItemResource> for Pipe {
         fn size(&self, _: &mut dyn ServerHost) -> usize {
             usize::from(self.0.side != Some(Direction::Up))
@@ -163,8 +174,14 @@ pub mod tests {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             0
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
-            0
+        fn capacity(
+            &self,
+            host: &mut dyn ServerHost,
+            _: usize,
+            resource: Option<&ItemResource>,
+        ) -> u32 {
+            self.downstream(host)
+                .map_or(0, |next| next.capacity(host, 0, resource))
         }
         fn insert_at(
             &self,
@@ -174,16 +191,8 @@ pub mod tests {
             resource: &ItemResource,
             amount: u32,
         ) -> u32 {
-            let [x, y, z] = self.0.pos;
-            let east = [x + 1, y, z];
-            let Some(next) = self
-                .0
-                .level
-                .capability(host, &ITEMS, east, Some(Direction::West))
-            else {
-                return 0;
-            };
-            next.insert_at(host, tx, 0, resource, amount)
+            self.downstream(host)
+                .map_or(0, |next| next.insert_at(host, tx, 0, resource, amount))
         }
         fn extract_at(
             &self,
@@ -209,8 +218,13 @@ pub mod tests {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             0
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
-            0
+        fn capacity(
+            &self,
+            host: &mut dyn ServerHost,
+            index: usize,
+            resource: Option<&ItemResource>,
+        ) -> u32 {
+            Pipe(self.0).capacity(host, index, resource)
         }
         fn insert_at(
             &self,
