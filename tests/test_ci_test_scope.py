@@ -175,11 +175,13 @@ class RealWorkspaceTests(unittest.TestCase):
         missing = []
         for name, found in reads(self.workspace).items():
             for path, where in sorted(found.items()):
-                listed = READERS.get(name, []) + SCANNED.get(name, [])
-                if any(under(path, excluded) for excluded in NOT_READS.get(name, ())):
+                if path in NOT_READS.get(name, ()):
                     continue
-                if not (listed if path == "." else any(under(path, entry) for entry in listed)):
-                    missing.append(f"{name} reads {path} ({where})")
+                if name in self.workspace.readers(path) or name in self.workspace.readers(path, SCANNED):
+                    continue
+                if path == "." and (READERS.get(name) or SCANNED.get(name)):
+                    continue
+                missing.append(f"{name} reads {path} ({where})")
         self.assertEqual(missing, [], "add each to READERS in tools/ci/test_scope.py, or to NOT_READS if it is no read")
 
     def test_the_scan_finds_the_reads_the_table_was_built_from(self):

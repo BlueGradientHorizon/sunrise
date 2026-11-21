@@ -934,7 +934,7 @@ fn a_private_alias_keeps_references_from_its_public_type_expansion() {
 
 #[test]
 fn a_private_alias_keeps_trait_references_from_a_qualified_associated_type() {
-    let edited = "pub trait LocalTrait { type Out; }\ntype Private = <u32 as LocalTrait>::Out;\npub fn through_alias() -> Private { unimplemented!() }\n/// A colour.";
+    let edited = "pub trait LocalTrait { type Out; }\nimpl LocalTrait for u32 { type Out = u8; }\ntype Private = <u32 as LocalTrait>::Out;\npub fn through_alias() -> Private { unimplemented!() }\n/// A colour.";
     let export = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .expect("a private alias to a public associated type is valid");
     let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
