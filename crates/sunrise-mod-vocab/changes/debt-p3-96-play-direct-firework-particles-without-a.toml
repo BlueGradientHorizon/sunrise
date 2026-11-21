@@ -1,0 +1,3 @@
+ids = ["behaviour:client_fireworks_explosions"]
+why = "Vanilla ClientLevel.createFireworks passes the explosion list straight to FireworkParticles.Starter without a list cap, while the 256-explosion bound lives on the serialized Fireworks item component (Fireworks.MAX_EXPLOSIONS and its codec). ClientHost::create_fireworks now forwards the explosions list directly to ParticleEngine::fireworks and keeps ParticleEngine's own admission and starter lifecycle, leaving the 256 limit on the Fireworks item component codec."
+migrate = "No change needed: ClientHost::create_fireworks(&request) keeps the same signature and now accepts lists of more than 256 explosions. Remove any client-side chunking or 256-explosion workaround if you added one."
