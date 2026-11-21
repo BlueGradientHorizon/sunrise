@@ -21,6 +21,7 @@ pub struct ModBlockEntityView<'a> {
 }
 
 impl<'a> ModBlockEntityView<'a> {
+    // hidden: the game supplies the detached payload for a menu hook.
     #[doc(hidden)]
     pub fn new(entity: &'a mut ModBlockEntity) -> Self {
         Self { entity }

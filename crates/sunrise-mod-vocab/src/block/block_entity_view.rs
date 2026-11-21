@@ -15,6 +15,7 @@ pub struct BlockEntityView<'a> {
 }
 
 impl<'a> BlockEntityView<'a> {
+    // hidden: the engine builds the view after checking the subject and borrowing its resident row.
     #[doc(hidden)]
     pub fn new(
         subject: BlockEntityRef,
@@ -146,6 +147,7 @@ impl BlockEntityStackView<'_> {
 pub struct BlockEntityTickScope<'a>(&'a mut dyn BlockEntityTickAccess);
 
 impl<'a> BlockEntityTickScope<'a> {
+    // hidden: the engine supplies the loan backend for this one ticker dispatch.
     #[doc(hidden)]
     pub fn new(access: &'a mut dyn BlockEntityTickAccess) -> Self {
         Self(access)
@@ -193,6 +195,7 @@ impl<'a> BlockEntityTickScope<'a> {
 }
 
 /// Engine backing for the sequential loans.
+// hidden: the engine owns the alternating view and Host loans; listeners receive BlockEntityTickScope.
 #[doc(hidden)]
 pub trait BlockEntityTickAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(BlockEntityView<'_>));
@@ -200,6 +203,7 @@ pub trait BlockEntityTickAccess {
 }
 
 /// Engine backing for a checked, journaled row loan.
+// hidden: the engine owns row access and journaling; listeners use the checked BlockEntityView methods.
 #[doc(hidden)]
 pub trait ResidentBlockEntity {
     fn id(&self) -> &str;
