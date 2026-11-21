@@ -438,7 +438,13 @@ impl<'a> Index<'a> {
                 m.path.join("::")
             ));
         }
-        let found = self.lookup(module, name, namespace, importer, &mut vec![module]);
+        let found = self.lookup(
+            module,
+            name,
+            namespace,
+            &mut vec![importer],
+            &mut vec![module],
+        );
         self.depth = self.depth.saturating_sub(1);
         found?.ok_or_else(|| {
             let m = &self.modules[module];
@@ -446,62 +452,82 @@ impl<'a> Index<'a> {
         })
     }
 
+    /// A glob imports only bindings visible to the original importer and every module
+    /// holding an intermediate glob. A hidden binding still shadows globs in its namespace.
     fn lookup(
         &mut self,
         module: usize,
         name: &str,
         namespace: Namespace,
-        importer: usize,
+        holders: &mut Vec<usize>,
         seen: &mut Vec<usize>,
     ) -> Result<Option<Found>, String> {
         let items = &self.modules[module].items;
-        if let Some((item, visibility)) = items.iter().enumerate().find_map(|(position, item)| {
-            let (attrs, visibility) = definition(item)?;
-            (default_build(attrs) && defines(item, name, namespace))
-                .then_some((position, visibility))
-        }) {
-            return Ok(self
-                .visible_from(module, visibility, importer)
-                .then_some(Found::Item(ItemId { module, item })));
+        let reachable = |vis| {
+            holders
+                .iter()
+                .all(|&holder| self.visible_from(module, vis, holder))
+        };
+        let mut shadowed = false;
+        for (item, definition_item) in items.iter().enumerate() {
+            if let Some((attrs, visibility)) = definition(definition_item)
+                && default_build(attrs)
+                && defines(definition_item, name, namespace)
+            {
+                if reachable(visibility) {
+                    return Ok(Some(Found::Item(ItemId { module, item })));
+                }
+                shadowed = true;
+            }
         }
         let mut named = Vec::new();
         let mut globs = Vec::new();
         for item in items {
             if let Item::Use(item) = item
                 && default_build(&item.attrs)
-                && self.visible_from(module, &item.vis, importer)
             {
+                let open = reachable(&item.vis);
                 uses(
                     &item.tree,
                     &mut Vec::new(),
                     &mut |path, alias| match alias {
                         Some(alias) if alias == name => {
-                            named.push((path, item.leading_colon.is_some()))
+                            named.push((path, item.leading_colon.is_some(), open))
                         }
-                        None => globs.push((path, item.leading_colon.is_some())),
+                        None if open => globs.push((path, item.leading_colon.is_some())),
                         _ => {}
                     },
                 );
             }
         }
         if matches!(namespace, Namespace::Any)
-            && let Some((path, rooted)) = named.first()
+            && let Some((path, rooted, open)) = named.first()
         {
-            return self
-                .resolve_path_in_namespace(module, path, *rooted, Namespace::Any)
-                .map(Some);
+            return if *open {
+                self.resolve_path_in_namespace(module, path, *rooted, Namespace::Any)
+                    .map(Some)
+            } else {
+                Ok(None)
+            };
         }
         let mut external_named = None;
-        for (path, rooted) in named {
+        for (path, rooted, open) in named {
             match self.resolve_path_in_namespace(module, &path, rooted, Namespace::Type) {
-                Ok(found @ Found::Item(_)) => return Ok(Some(found)),
-                Ok(found @ Found::External { .. }) => {
-                    // The index cannot tell whether an unindexed external name is a value or a
-                    // type. Try indexed glob types first; preserve the external path as fallback.
+                Ok(found @ Found::Item(_)) if open => return Ok(Some(found)),
+                Ok(found @ Found::External { .. }) if open => {
+                    // An unindexed import's namespace is unknown. Preserve the external path
+                    // so the caller can handle that without mistaking it for a local glob type.
                     external_named.get_or_insert(found);
                 }
+                Ok(_) => shadowed = true,
                 Err(_) => {}
             }
+        }
+        if shadowed {
+            return Ok(None);
+        }
+        if external_named.is_some() {
+            return Ok(external_named);
         }
         for (glob, rooted) in globs {
             let Some(target) = self.module_path(module, &glob, rooted, &mut Vec::new())? else {
@@ -511,18 +537,22 @@ impl<'a> Index<'a> {
                 continue;
             }
             seen.push(target);
-            let found = self.lookup(target, name, namespace, importer, seen);
+            holders.push(module);
+            let found = self.lookup(target, name, namespace, holders, seen);
+            holders.pop();
             seen.pop();
             if let Some(found) = found? {
-                // An opaque named import may still take precedence over a globbed type.
-                return Ok(external_named.or(Some(found)));
+                return Ok(Some(found));
             }
         }
-        Ok(external_named)
+        Ok(None)
     }
 
     /// A restricted item is visible only in the named module and its descendants.
     fn visible_from(&self, module: usize, visibility: &Visibility, importer: usize) -> bool {
+        if module == importer {
+            return true;
+        }
         let scope = &self.modules[module];
         let importer = &self.modules[importer];
         match visibility {
@@ -813,6 +843,21 @@ mod index_tests {
     use super::*;
     use std::fs;
 
+    /// Resolve a name in a module of a one-crate test index.
+    fn resolves(lib: &str, module: &[&str], name: &str) -> Option<Vec<String>> {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("k/src")).unwrap();
+        fs::write(dir.path().join("k/src/lib.rs"), lib).unwrap();
+        let mut index = Index::new(dir.path(), &[], &[("k", "k/src")]);
+        let path: Vec<String> = module.iter().map(|m| (*m).to_owned()).collect();
+        let module = index.module("k", &path).unwrap();
+        match index.resolve(module, name) {
+            Ok(Found::Item(id)) => Some(index.modules[id.module].path.clone()),
+            Ok(Found::External { path, .. }) => panic!("{name} left the crate: {path:?}"),
+            Err(_) => None,
+        }
+    }
+
     #[test]
     fn default_build_uses_debug_and_thread_local_cfgs() {
         let debug: Attribute = syn::parse_quote!(#[cfg(debug_assertions)]);
@@ -933,5 +978,32 @@ mod index_tests {
         };
         assert_eq!(index.modules[id.module].krate, "consumer");
         assert!(matches!(index.item(id), Item::Struct(item) if item.ident == "Explicit"));
+    }
+
+    #[test]
+    fn a_glob_of_a_glob_imports_only_what_every_glob_holder_can_see() {
+        let lib = "
+            pub mod z {
+                pub mod y { pub(super) struct Hidden; pub struct Shown; }
+                pub mod w { use crate::*; }
+            }
+            pub use z::y::*;
+        ";
+        assert_eq!(
+            resolves(lib, &["z", "w"], "Shown"),
+            Some(vec!["z".into(), "y".into()])
+        );
+        assert_eq!(resolves(lib, &["z", "w"], "Hidden"), None);
+    }
+
+    #[test]
+    fn a_definition_hidden_from_the_importer_still_shadows_its_modules_globs() {
+        let lib = "
+            pub mod a { struct Thing; pub use crate::b::*; }
+            pub mod b { pub struct Thing; pub struct Other; }
+            pub mod c { use crate::a::*; }
+        ";
+        assert_eq!(resolves(lib, &["c"], "Other"), Some(vec!["b".into()]));
+        assert_eq!(resolves(lib, &["c"], "Thing"), None);
     }
 }
