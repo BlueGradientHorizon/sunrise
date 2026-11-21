@@ -20,8 +20,7 @@ mod mob_conversion;
 mod mob_dispatch_panic_tests;
 mod player_loot_entity;
 mod projectile_targets;
-mod projectile_world;
-pub(super) use projectile_world::ProjWorld;
+pub(super) use sunrise_gameplay::projectile_world::ProjWorld;
 mod pufferfish_player;
 mod residency;
 #[cfg(test)]
@@ -49,7 +48,6 @@ use sunrise_client::{
     Result,
     arrows::EntityHit,
     blocks::Fluid,
-    collisions::SceneCollisions,
     crafting::Recipes,
     graphics::EntityCullingMode,
     health::{Attack, HealthEvent, HurtSource, Hurting, Knock},
@@ -63,11 +61,11 @@ use sunrise_client::{
         spawning::{self, BiomeFacts},
     },
     particles::{ParticleOptions, ParticleType},
-    projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld, clip_including_border},
+    projectiles::{Hit, Projectile, ProjectileKind},
 };
 use sunrise_client_render::render_geometry::EntitySpan;
 use sunrise_core::{
-    geometry::{Aabb, Direction, Vec3, traverse_blocks, trig::Mth},
+    geometry::{Aabb, Direction, Vec3, trig::Mth},
     position::BlockPos,
     random::RandomSource,
 };

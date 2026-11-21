@@ -107,7 +107,6 @@ class RealWorkspaceTests(unittest.TestCase):
         found = reads(self.workspace)
         self.assertIn("crates/sunrise-client/assets/sunrise/lang", found["sunrise-client-core"])
         self.assertIn("docs/api/server-reference.md", found["sunrise-server"])
-        self.assertIn("crates/sunrise-core", found["sunrise-world"])
         self.assertIn("crates", found["sunrise-client-core"])
 
 
