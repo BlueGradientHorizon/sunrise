@@ -1492,7 +1492,7 @@ impl Renderer {
         let native_input = frame
             .clouds
             .as_ref()
-            .filter(|_| native_clouds && pack_cloud_quads.is_none());
+            .filter(|_| core_clouds::native_mesh(native_clouds, pack_cloud_quads));
         let cloud_quads = if let Some(input) = native_input {
             let (rebuilt, uniform) =
                 crate::spans::time("clouds", || self.cloud_mesh.prepare(input));
@@ -3195,10 +3195,11 @@ impl Renderer {
                     });
                     let extras = oit::Extras {
                         water_mask: (water_mask_quads > 0).then_some(&mask as _),
-                        clouds: match &pack_clouds {
-                            Some(pack) => Some(pack as _),
-                            None => (cloud_quads > 0).then_some(&clouds as _),
-                        },
+                        clouds: core_clouds::oit_clouds::<
+                            dyn Fn(&mut wgpu::RenderPass<'_>, oit::Stage),
+                        >(
+                            pack_clouds.as_ref().map(|p| p as _), &clouds, cloud_quads
+                        ),
                         features: Some(&features),
                     };
                     // The draw closure below borrows all of `self`, so the timer is taken out.
@@ -3406,15 +3407,15 @@ impl Renderer {
             }
             // Under Improved Transparency a pack's clouds drew in its stages.
             if let (Some(core), Some(input)) = (&self.core_clouds, frame.clouds.as_ref())
-                && pack_cloud_quads.is_some_and(|quads| quads > 0)
-                && !pack_draws_clouds
-                && !oit_on
+                && pack_cloud_quads.is_some_and(|quads| {
+                    core_clouds::classic_pass_draws(quads, pack_draws_clouds, oit_on)
+                })
             {
                 pass.stage(self.own_timing.as_mut(), "clouds");
                 core.draw(&mut pass, !input.fast, &self.indices);
                 pass.set_bind_group(0, &self.group, &[]);
             }
-            if cloud_quads > 0 && !pack_draws_clouds && !oit_on {
+            if core_clouds::classic_pass_draws(cloud_quads, pack_draws_clouds, oit_on) {
                 pass.stage(self.own_timing.as_mut(), "clouds");
                 pass.set_pipeline(&self.cloud_pipeline);
                 pass.set_bind_group(0, &self.entity_group, &[]);

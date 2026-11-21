@@ -937,3 +937,55 @@ fn the_improved_transparency_groups_follow_new_targets_and_a_grown_faces_buffer(
     );
     assert_eq!(f32s(&texels[0]), [9.0, 0.0, 0.0, 1.0]);
 }
+
+/// Who draws a frame's clouds, as `draw_frame` chains the picks: the pack takes the frame when
+/// `pack_draws` (its faces, 4 quads here); else the native mesh is prepared (6 quads); then the
+/// classic pass draws whichever has quads outside Improved Transparency, and its stages under it
+/// (`oit_clouds`). `(classic pack, classic native, OIT stages)`.
+fn picked(frame: CloudsFrame) -> (bool, bool, Option<&'static str>) {
+    let pack_quads = frame.pack_draws().then_some(4);
+    let native_quads = if native_mesh(frame.native_clouds, pack_quads) {
+        6
+    } else {
+        0
+    };
+    let oit = frame.improved_transparency;
+    let pack = pack_quads.is_some_and(|q| classic_pass_draws(q, frame.shader_pack, oit));
+    let native = classic_pass_draws(native_quads, frame.shader_pack, oit);
+    let stages = oit
+        .then(|| oit_clouds::<str>(pack_quads.map(|_| "pack"), "native", native_quads))
+        .flatten();
+    (pack, native, stages)
+}
+
+/// The native mesh draws wherever no pack's shader does, in the pass of the frame's path: with no
+/// pack (or once a reload removed it) under Improved Transparency its stages draw the native
+/// mesh, outside it the classic pass does; with a pack its programs take the frame on each path.
+#[test]
+fn the_native_clouds_draw_in_the_frames_path_without_a_pack() {
+    let none = CloudsFrame {
+        pack_shader: false,
+        pack_oit_shader: false,
+        ..ALL
+    };
+    let improved = CloudsFrame {
+        improved_transparency: true,
+        ..ALL
+    };
+    let none_improved = CloudsFrame {
+        improved_transparency: true,
+        ..none
+    };
+    assert_eq!(picked(none_improved), (false, false, Some("native")));
+    assert_eq!(picked(improved), (false, false, Some("pack")));
+    // The pack removed: the frame is the one without a pack again.
+    assert_eq!(picked(none_improved), (false, false, Some("native")));
+    assert_eq!(picked(none), (false, true, None));
+    assert_eq!(picked(ALL), (true, false, None));
+    // A shader pack draws its own way: neither in the classic pass.
+    let shader_pack = CloudsFrame {
+        shader_pack: true,
+        ..none
+    };
+    assert_eq!(picked(shader_pack), (false, false, None));
+}

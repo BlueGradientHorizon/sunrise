@@ -592,6 +592,31 @@ impl CloudsFrame {
     }
 }
 
+/// Whether the native mesh is prepared this frame (`draw_frame`): the clouds are the game's own,
+/// and no pack's faces were prepared in its place.
+pub(crate) fn native_mesh(native_clouds: bool, pack_quads: Option<u32>) -> bool {
+    native_clouds && pack_quads.is_none()
+}
+
+/// Whether the classic world pass draws `quads` clouds, a pack's or the native mesh's: not where
+/// a shader pack draws them its own way, nor under Improved Transparency, whose stages draw them.
+pub(crate) fn classic_pass_draws(quads: u32, shader_pack_draws: bool, oit_on: bool) -> bool {
+    quads > 0 && !shader_pack_draws && !oit_on
+}
+
+/// What `Oit`'s cloud passes draw (`Extras::clouds`, `CloudRenderer.renderOit`): a pack's
+/// `OIT_CLOUDS` when its faces were prepared this frame, else the native mesh when it has quads.
+pub(crate) fn oit_clouds<'a, F: ?Sized>(
+    pack: Option<&'a F>,
+    native: &'a F,
+    native_quads: u32,
+) -> Option<&'a F> {
+    match pack {
+        Some(pack) => Some(pack),
+        None => (native_quads > 0).then_some(native),
+    }
+}
+
 /// The clouds on the renderer: a pack's `core/clouds`, or the native mesh.
 impl super::Renderer {
     /// The resource packs' `core/clouds` (`HudAtlas::clouds_shader`), or the native clouds. As
