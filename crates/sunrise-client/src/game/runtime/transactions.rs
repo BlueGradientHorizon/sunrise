@@ -129,6 +129,7 @@ impl OpenTransactions {
         if let Some(level) = self.last_mut() {
             level.block_entities.entry(pos).or_insert_with(|| Kept {
                 entity: Some(BlockEntity::Mod(Box::new(loan.entity.clone()))),
+                client_update_fields: loan.entity.client_update_fields(),
                 generation: Some(loan.identity.generation),
                 attachments: loan.attachments.cloned(),
                 hopper,
@@ -348,6 +349,9 @@ struct KeptAttachments {
 
 struct Kept {
     entity: Option<BlockEntity>,
+    /// Pre-transaction one-shot client update fields, kept separately because
+    /// `ModBlockEntity::clone` omits them.
+    client_update_fields: Option<sunrise_core::nbt::Compound>,
     generation: Option<u64>,
     /// None where it had no map: an abort removes one a write made.
     attachments: Option<Attachments>,
@@ -365,8 +369,14 @@ impl Kept {
         hoppers: &HashMap<Pos, HopperState>,
         pos: Pos,
     ) -> Self {
+        let entity = world.block_entities.get(&pos);
+        let client_update_fields = match entity {
+            Some(BlockEntity::Mod(m)) => m.client_update_fields(),
+            _ => None,
+        };
         Self {
-            entity: world.block_entities.get(&pos).cloned(),
+            entity: entity.cloned(),
+            client_update_fields,
             generation: world.block_entities.generation(&pos),
             attachments: world.block_entities.attachments(pos).cloned(),
             hopper: hoppers.get(&pos).copied(),
@@ -1057,6 +1067,7 @@ impl Game<'_> {
         pos: Pos,
         kept: &Kept,
         entity: Option<&BlockEntity>,
+        client_update_fields: Option<&sunrise_core::nbt::Compound>,
     ) {
         let Some(entity) = entity else {
             return;
@@ -1064,7 +1075,13 @@ impl Game<'_> {
         if self.world.block_entities.get(&pos).is_some() {
             return;
         }
-        self.world.block_entities.insert(pos, entity.clone());
+        let restored = entity.clone();
+        if let BlockEntity::Mod(m) = &restored
+            && let Some(fields) = client_update_fields
+        {
+            m.set_client_update_fields(fields.clone());
+        }
+        self.world.block_entities.insert(pos, restored);
         if let Some(generation) = kept.generation {
             self.world
                 .block_entities
@@ -1728,10 +1745,16 @@ impl Game<'_> {
                         && (replay_removal || b.block(now) == b.block(was))
                         && let Some(kept) = level.block_entities.get(&pos)
                     {
+                        let update_fields = match removed {
+                            Some(BlockEntity::Mod(m)) => m.client_update_fields(),
+                            Some(_) => None,
+                            None => kept.client_update_fields.clone(),
+                        };
                         self.restore_removed_block_entity(
                             pos,
                             kept,
                             removed.as_ref().or(kept.entity.as_ref()),
+                            update_fields.as_ref(),
                         );
                     }
                     if now != was {
@@ -1842,14 +1865,33 @@ impl Game<'_> {
                     if shapes(now) != shapes(entity) {
                         reshaped.push(pos);
                     }
-                    *now = entity.clone();
+                    match (entity, now) {
+                        (BlockEntity::Mod(saved), BlockEntity::Mod(live))
+                            if live.id() == saved.id() =>
+                        {
+                            live.restore_journaled(saved, kept.client_update_fields);
+                        }
+                        (entity, now) => {
+                            *now = entity.clone();
+                            if let BlockEntity::Mod(restored) = now
+                                && let Some(fields) = kept.client_update_fields
+                            {
+                                restored.set_client_update_fields(fields);
+                            }
+                        }
+                    }
                     self.world
                         .block_entities
                         .restore_generation(pos, kept.generation.unwrap());
                 }
                 // One this transaction removed comes back.
                 (Some(_), None) if level.removed_block_entities.contains_key(&pos) => {
-                    self.restore_removed_block_entity(pos, &kept, kept.entity.as_ref());
+                    self.restore_removed_block_entity(
+                        pos,
+                        &kept,
+                        kept.entity.as_ref(),
+                        kept.client_update_fields.as_ref(),
+                    );
                 }
                 _ => {}
             }

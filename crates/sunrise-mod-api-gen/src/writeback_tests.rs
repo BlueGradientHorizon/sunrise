@@ -56,17 +56,12 @@ fn untouched_writeback_runtime_and_mutants() {
             })
             .unwrap();
         let body = &text[begin + 1..end];
-        let bind_stack = if name == "menu_quick_move" {
-            "let stack = &mut *carried;"
-        } else {
-            ""
-        };
         let entity_binding = match name {
             "menu_button" => {
-                "let items = self.items(); let mut cursor = carried.try_into_api().unwrap(); let original = cursor.clone(); self.native_menu_button(\"test:menu\", None, context, &mut cursor); let (original, cursor) = (&original, &cursor);"
+                "let mut cursor = carried.try_into_api().unwrap(); let original = cursor.clone(); self.native_menu_button(\"test:menu\", None, context, &mut cursor); let items = self.items(); let (original, cursor) = (&original, &cursor);"
             }
             "menu_quick_move" => {
-                "let items = self.items(); let mut held = carried.try_into_api().unwrap(); let original = held.clone(); let mut candidate_handled = *handled; self.native_menu_quick_move(pos, entity, container_slots, slot, &mut held, &mut candidate_handled); let (original, held) = (&original, &held);"
+                "let mut held = carried.try_into_api().unwrap(); let original = held.clone(); let mut candidate_handled = *handled; self.native_menu_quick_move(pos, entity, container_slots, slot, &mut held, &mut candidate_handled); let items = self.items(); let stack = &mut *carried; let (original, held) = (&original, &held);"
             }
             _ => "let entity = 0;",
         };
@@ -82,7 +77,7 @@ fn untouched_writeback_runtime_and_mutants() {
             // Keep the adapter's early `return` inside its original unit-returning body.
             format!("(|| {{ {body} }})(); Ok(())")
         };
-        methods.push_str(&format!("fn {name}(&mut self, value: &mut Stack, entity: &mut Stack, carried: &mut Option<Stack>, stack: &mut Stack, cancel: &mut bool, handled: &mut bool) -> Result<(), InvalidReason> {{ let player = 0; let pos = [0; 3]; let context = &(); let container_slots = 1; let slot = 0; {bind_stack} {entity_binding} {body} }}"));
+        methods.push_str(&format!("fn {name}(&mut self, value: &mut Stack, entity: &mut Stack, carried: &mut Option<Stack>, stack: &mut Stack, cancel: &mut bool, handled: &mut bool) -> Result<(), InvalidReason> {{ let player = 0; let pos = [0; 3]; let context = &(); let container_slots = 1; let slot = 0; {entity_binding} {body} }}"));
     }
     let fixture = r#"
 #![allow(unused)]
@@ -208,12 +203,18 @@ fn main() {
         );
         let output = std::process::Command::new(binary).output().unwrap();
         if name == "baseline" {
-            assert_eq!(
-                String::from_utf8_lossy(&output.stderr)
-                    .matches("mod proof write refused: Unavailable")
-                    .count(),
-                1
-            );
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            for expected in [
+                "mod proof write refused: Unavailable",
+                "mod menu_button write refused: Unavailable",
+                "mod menu_quick_move write refused: Unavailable",
+            ] {
+                assert_eq!(
+                    stderr.matches(expected).count(),
+                    1,
+                    "missing or duplicate refusal log `{expected}`:\n{stderr}"
+                );
+            }
         }
         assert_eq!(
             output.status.success(),

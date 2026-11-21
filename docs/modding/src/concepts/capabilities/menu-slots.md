@@ -169,15 +169,27 @@ matching cursor, the slot's stack on a hotbar or offhand swap, each throw, and e
 took from (with the part taken). A shift-click hands over the amount it moved, and a shift-click on a crafting result
 is heard once for each craft it repeats. An exchange of the cursor and the slot, putting a stack in, a drag, a creative
 clone and a refused take are not takes. Taking from a linked container or from the player's inventory does not notify
-the block behind the menu. When `menu_quick_move` handles a shift-click, its move is heard before the click commits.
-Each take runs before the next iteration, so a listener can refill a crafting grid and the next iteration sees it.
+the block behind the menu.
 
 `menu_slot_take` (contract version 2) lends the live resident block entity and the server `Host` sequentially through
 `event.subject: BlockEntityScope<'_>` (`with_view` returns `None` if the block entity was removed or replaced during
 the call). Writes through `with_view` validate at the boundary and apply in place, marking the chunk dirty and firing
-container updates when items change (matching vanilla `BlockEntity.setChanged`). When an enclosing click transaction
-is open, a panicking listener is contained and disabled for `menu_slot_take` for the rest of the session, and the
-click undoes its transaction before resending the menu. Nothing is asked when no mod listens.
+container updates when items change (matching vanilla `BlockEntity.setChanged`). The two take routes differ in their
+transaction boundary:
+
+- **Game-routed clicks** (pickup, swap, throw, pick-all, crafting, or a shift-click left unhandled by `menu_quick_move`):
+  each take runs inside the click's enclosing transaction before the click commits, and before the next iteration (so a
+  listener can refill a crafting grid and the next iteration sees it). A panicking listener is contained and disabled
+  for `menu_slot_take` for the rest of the session, and the click aborts its enclosing transaction (undoing both the
+  click and the listener's writes) before resending the menu.
+- **Handled `menu_quick_move` shift-clicks**: `menu_quick_move` applies its remainder to the resident container slot
+  and publishes `BlockEntity.setChanged` before calling `menu_slot_take`, with no enclosing click transaction. Wrap
+  writes that must commit or abort together in `event.subject.transaction(...)`. A panicking listener is contained and
+  disabled for `menu_slot_take` for the rest of the session; any open `event.subject.transaction(...)` aborts, live
+  writes made outside a transaction survive (and still publish container updates), and the earlier quick-move
+  settlement survives.
+
+Nothing is asked when no mod listens.
 
 ## Crafted-by processing for held stacks
 

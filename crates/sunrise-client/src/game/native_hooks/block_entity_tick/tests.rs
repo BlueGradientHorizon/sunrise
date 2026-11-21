@@ -360,3 +360,73 @@ fn items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transac
         assert!(access.items_changed());
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn prequeued_client_update_fields_survive_transaction_abort_and_sync_once() {
+    crate::game::native_guest_turn_tests::with_guests(|game| {
+        let subject = place_subject(game, KIND);
+        let (handle, state) = game.resident_block_entity_target(POS).unwrap();
+        assert_eq!(handle, subject);
+        game.world.block_log = Some(Vec::new());
+        let batch_a = Compound::from([("batch".into(), Tag::String("A".into()))]);
+        let batch_b = Compound::from([("batch".into(), Tag::String("B".into()))]);
+        let identity_before = match game.world.block_entities.get(&POS) {
+            Some(BlockEntity::Mod(entity)) => entity.revision().identity(),
+            _ => panic!("live resident mod block entity missing at {POS:?}"),
+        };
+
+        {
+            let mut access = ResidentBlockEntityAccess::for_handle(game, handle, state);
+            BlockEntityScope::new(&mut access)
+                .with_view(|mut view| view.set_client_update_fields(batch_a.clone()))
+                .unwrap();
+        }
+        // Ordinary cloning still omits queued one-shot update fields.
+        let cloned = game.world.block_entities.get(&POS).unwrap().clone();
+        if let BlockEntity::Mod(cloned) = cloned {
+            assert!(!cloned.has_client_update_fields());
+        } else {
+            panic!("cloned entity must remain Mod");
+        }
+
+        {
+            let mut access = ResidentBlockEntityAccess::for_handle(game, handle, state);
+            let mut scope = BlockEntityScope::new(&mut access);
+            // Aborting a transaction that only edits a data slot preserves both the resident
+            // identity and the pre-queued one-shot batch.
+            let aborted: Result<(), ()> = scope.transaction(|scope, _| {
+                scope
+                    .with_view(|mut view| assert!(view.set_data_slot(0, 99)))
+                    .unwrap();
+                Err(())
+            });
+            assert_eq!(aborted, Err(()));
+
+            // Aborting a transaction that overwrote the queued batch restores the pre-transaction batch.
+            let aborted_overwrite: Result<(), ()> = scope.transaction(|scope, _| {
+                scope
+                    .with_view(|mut view| view.set_client_update_fields(batch_b.clone()))
+                    .unwrap();
+                Err(())
+            });
+            assert_eq!(aborted_overwrite, Err(()));
+
+            scope.host().block_entity_sync([POS.0, POS.1, POS.2]);
+        }
+
+        assert_eq!(game.world.block_log.as_deref(), Some(&[POS][..]));
+        let entity = game.world.block_entities.get(&POS).unwrap();
+        let BlockEntity::Mod(resident) = entity else {
+            panic!("live resident mod block entity missing at {POS:?}");
+        };
+        assert_eq!(resident.data, [23]);
+        assert_eq!(resident.revision().identity(), identity_before);
+        let encoder = &game.lan.as_ref().unwrap().hub.encoder;
+        assert_eq!(
+            encoder.change_tag(POS, state.0, entity),
+            Some(Tag::Compound(batch_a))
+        );
+        assert_eq!(encoder.change_tag(POS, state.0, entity), None);
+    });
+}

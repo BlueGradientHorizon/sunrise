@@ -4,7 +4,7 @@
 //! The fixtures need prepared resources.
 use crate::game::native_guest_turn_tests::{register_test_menu, with_guests};
 use mod_api::{
-    BlockEntityPart, Flow, Hooks, ITEMS, ItemPlace, ItemResource, MenuButtonEvent,
+    BlockEntityPart, Flow, Hooks, HostBlockStates, ITEMS, ItemPlace, ItemResource, MenuButtonEvent,
     MenuClickedEvent, MenuQuickMoveEvent, MenuSlotTakeEvent, ModEntry, Mods, Registrar, ServerHost,
 };
 use std::{
@@ -43,6 +43,12 @@ struct Script {
     invalid_data_slots: bool,
     /// `menu_button`: edit subject and world storage inside `subject.transaction(...)`, then panic.
     transactional_panic: bool,
+    /// `menu_quick_move`: replace the backing block at `POS` through the `Host` by cloning `SECOND`.
+    replace_backing: bool,
+    /// `menu_quick_move`: return `Flow::Cancel` after `replace_backing` (with a remainder).
+    handle_replace: bool,
+    /// `menu_quick_move`: remove the backing block at `POS` and open a fresh menu through the `Host`.
+    remove_and_reopen: bool,
     /// Put a one-shot update in the block entity (and edit data slots for `menu_button` or slots for `menu_quick_move`).
     write_update: bool,
 }
@@ -193,6 +199,54 @@ impl BlockEntityPart for Part {
             });
             event.stack.as_mut().unwrap().set_count(6).unwrap();
         }
+        if s.replace_backing {
+            assert!(
+                event
+                    .subject
+                    .host()
+                    .commands()
+                    .run_command("clone 2 64 1 2 64 1 1 64 1 replace force"),
+                "clone must replace the backing block at POS"
+            );
+            assert!(
+                event.subject.with_view(|_| ()).is_none(),
+                "view must become stale after the backing block is replaced"
+            );
+            if s.handle_replace {
+                *event.stack = Some(stone(1));
+                return Flow::Cancel;
+            }
+            return Flow::Continue;
+        }
+        if s.remove_and_reopen {
+            let host = event.subject.host();
+            let level = host.level("minecraft:overworld").unwrap();
+            let air = mod_api::BlockState::of(
+                &host.block_states(),
+                mod_api::__private::block_key("minecraft:air").unwrap(),
+                &[],
+            )
+            .unwrap();
+            assert_eq!(
+                level.set_block(
+                    host,
+                    [POS.0, POS.1, POS.2],
+                    air,
+                    mod_api::BlockUpdateFlags::KNOWN_SHAPE,
+                ),
+                Ok(true)
+            );
+            host.open_menu(
+                12,
+                1,
+                mod_api::Text::literal("reopened by menu_quick_move"),
+                Vec::new(),
+                mod_api::MenuReplace::InPlace,
+            )
+            .unwrap()
+            .expect("guest is online");
+            return Flow::Cancel;
+        }
         if s.panic {
             panic!("a listener failed");
         }
@@ -203,7 +257,10 @@ impl BlockEntityPart for Part {
     }
 
     fn menu_slot_take(&self, event: &mut MenuSlotTakeEvent<'_>) {
-        if !SCRIPT.with(|s| s.borrow().handle_cross) {
+        if !SCRIPT.with(|s| {
+            let s = s.borrow();
+            s.handle_cross || s.replace_backing
+        }) {
             return;
         }
         TAKE.set(Some((
@@ -717,141 +774,168 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
     });
 }
 
+fn mod_entity_at<'a>(game: &'a crate::game::Game<'_>, pos: (i32, i32, i32)) -> &'a ModBlockEntity {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos) else {
+        panic!("live resident block entity missing at {pos:?}");
+    };
+    entity.as_ref()
+}
+
 #[test]
 #[ignore = "daily"]
 fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entity() {
-    with_publication_mods(|| {
-        with_guests(|game| {
-            open_depot(game);
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            let cobble = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:cobblestone")
-                .unwrap();
-            game.world.set(POS.0, POS.1, POS.2, stone).unwrap();
-            game.world
-                .set(SECOND.0, SECOND.1, SECOND.2, cobble)
-                .unwrap();
-            game.world.block_entities.set_mod_containers(
-                [
-                    (
-                        stone.0,
-                        Arc::new(ModContainer {
-                            slots: 9,
-                            menu: Some(DEPOT_MENU.into()),
+    let menus = [
+        (
+            DEPOT_MENU.into(),
+            "movemod".into(),
+            9,
+            0,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            true,
+        ),
+        (
+            HEALTHY_MENU.into(),
+            "healthy_menu".into(),
+            9,
+            0,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            true,
+        ),
+    ];
+    sunrise_client::containers::with_mod_menu_types(menus, || {
+        with_publication_mods(|| {
+            with_guests(|game| {
+                open_depot(game);
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                let cobble = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:cobblestone")
+                    .unwrap();
+                game.world.set(POS.0, POS.1, POS.2, stone).unwrap();
+                game.world
+                    .set(SECOND.0, SECOND.1, SECOND.2, cobble)
+                    .unwrap();
+                game.world.block_entities.set_mod_containers(
+                    [
+                        (
+                            stone.0,
+                            Arc::new(ModContainer {
+                                slots: 9,
+                                menu: Some(DEPOT_MENU.into()),
+                                ..Default::default()
+                            }),
+                        ),
+                        (
+                            cobble.0,
+                            Arc::new(ModContainer {
+                                slots: 9,
+                                menu: Some(HEALTHY_MENU.into()),
+                                ..Default::default()
+                            }),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+                game.world.block_entities.insert(
+                    POS,
+                    BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                        "movemod:depot".into(),
+                        ModBlockEntityFields {
+                            items: vec![None; 9],
+                            data: vec![7],
                             ..Default::default()
-                        }),
-                    ),
-                    (
-                        cobble.0,
-                        Arc::new(ModContainer {
-                            slots: 9,
-                            menu: Some(HEALTHY_MENU.into()),
+                        },
+                    ))),
+                );
+                game.world.block_entities.insert(
+                    SECOND,
+                    BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                        "healthy_menu:depot".into(),
+                        ModBlockEntityFields {
+                            items: vec![None; 9],
+                            data: vec![11],
                             ..Default::default()
-                        }),
-                    ),
-                ]
-                .into_iter()
-                .collect(),
-            );
-            game.world.block_entities.insert(
-                POS,
-                BlockEntity::Mod(Box::new(ModBlockEntity::new(
-                    "movemod:depot".into(),
-                    ModBlockEntityFields {
-                        items: vec![None; 9],
-                        data: vec![7],
-                        ..Default::default()
-                    },
-                ))),
-            );
-            game.world.block_entities.insert(
-                SECOND,
-                BlockEntity::Mod(Box::new(ModBlockEntity::new(
-                    "healthy_menu:depot".into(),
-                    ModBlockEntityFields {
-                        items: vec![None; 9],
-                        data: vec![11],
-                        ..Default::default()
-                    },
-                ))),
-            );
-            let context_at = |pos: (i32, i32, i32)| mod_api::item::menu::MenuButtonContext {
-                player: 12,
-                player_entity_id: 1,
-                pos: Some([pos.0, pos.1, pos.2]),
-                id: 3,
-            };
-            let entity_at = |game: &crate::game::Game<'_>, pos: (i32, i32, i32)| {
-                let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos) else {
-                    panic!("live resident block entity missing at {pos:?}");
+                        },
+                    ))),
+                );
+                let context_at = |pos: (i32, i32, i32)| mod_api::item::menu::MenuButtonContext {
+                    player: 12,
+                    player_entity_id: 1,
+                    pos: Some([pos.0, pos.1, pos.2]),
+                    id: 3,
                 };
-                entity
-            };
-            let mut carried = Some(ItemStack::new("minecraft:stick", 3));
-            BUTTONS.set(0);
+                let mut carried = Some(ItemStack::new("minecraft:stick", 3));
+                BUTTONS.set(0);
 
-            // Invalid boundary write (`set_data_slots` > 256) returns Err without mutating storage.
-            script(Script {
-                invalid_data_slots: true,
-                ..Script::default()
-            });
-            game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
-            assert_eq!(BUTTONS.get(), 1);
-            assert_eq!(entity_at(game, POS).data, [7]);
-            assert!(!entity_at(game, POS).has_client_update_fields());
-            assert_eq!(carried, Some(ItemStack::new("minecraft:stick", 3)));
+                // Invalid boundary write (`set_data_slots` > 256) returns Err without mutating storage.
+                script(Script {
+                    invalid_data_slots: true,
+                    ..Script::default()
+                });
+                game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
+                assert_eq!(BUTTONS.get(), 1);
+                assert_eq!(mod_entity_at(game, POS).data, [7]);
+                assert!(!mod_entity_at(game, POS).has_client_update_fields());
+                assert_eq!(carried, Some(ItemStack::new("minecraft:stick", 3)));
 
-            // A panic inside `event.subject.transaction(...)` rolls back subject + world edits
-            // together, restores `carried`, and records the hook panic.
-            script(Script {
-                change_cursor: true,
-                transactional_panic: true,
-                ..Script::default()
-            });
-            game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
-            assert_eq!(BUTTONS.get(), 2);
-            assert_eq!(entity_at(game, POS).data, [7]);
-            assert!(!entity_at(game, POS).has_client_update_fields());
-            assert_eq!(inventory(game, 20), 0);
-            assert!(game.transactions.is_empty());
-            assert_eq!(carried, Some(ItemStack::new("minecraft:stick", 3)));
-            assert_eq!(
-                mod_api::__private::take_hook_panics(),
-                [mod_api::__private::HookPanicReport {
-                    mod_id: "movemod",
-                    hook: "menu_button",
-                }]
-            );
+                // A panic inside `event.subject.transaction(...)` rolls back subject + world edits
+                // together, restores `carried`, and records the hook panic.
+                script(Script {
+                    change_cursor: true,
+                    transactional_panic: true,
+                    ..Script::default()
+                });
+                game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
+                assert_eq!(BUTTONS.get(), 2);
+                assert_eq!(mod_entity_at(game, POS).data, [7]);
+                assert!(!mod_entity_at(game, POS).has_client_update_fields());
+                assert_eq!(inventory(game, 20), 0);
+                assert!(game.transactions.is_empty());
+                assert_eq!(carried, Some(ItemStack::new("minecraft:stick", 3)));
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "movemod",
+                        hook: "menu_button",
+                    }]
+                );
 
-            // The failed owner is disabled for subsequent button presses; a healthy owner still
-            // updates data slots, `client_update_fields`, and `carried` on its live resident entity.
-            script(Script {
-                change_cursor: true,
-                write_update: true,
-                ..Script::default()
+                // The failed owner is disabled for subsequent button presses; a healthy owner still
+                // updates data slots, `client_update_fields`, and `carried` on its live resident entity.
+                script(Script {
+                    change_cursor: true,
+                    write_update: true,
+                    ..Script::default()
+                });
+                game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
+                assert_eq!(BUTTONS.get(), 2);
+                assert_eq!(mod_entity_at(game, POS).data, [7]);
+                game.mod_menu_button(
+                    HEALTHY_MENU,
+                    context_at(SECOND),
+                    None,
+                    Some(SECOND),
+                    &mut carried,
+                );
+                assert_eq!(BUTTONS.get(), 3);
+                assert_eq!(mod_entity_at(game, SECOND).data, [42]);
+                assert!(mod_entity_at(game, SECOND).has_client_update_fields());
+                assert_eq!(carried, Some(ItemStack::new("minecraft:gold_ingot", 1)));
             });
-            game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
-            assert_eq!(BUTTONS.get(), 2);
-            assert_eq!(entity_at(game, POS).data, [7]);
-            game.mod_menu_button(
-                HEALTHY_MENU,
-                context_at(SECOND),
-                None,
-                Some(SECOND),
-                &mut carried,
-            );
-            assert_eq!(BUTTONS.get(), 3);
-            assert_eq!(entity_at(game, SECOND).data, [42]);
-            assert!(entity_at(game, SECOND).has_client_update_fields());
-            assert_eq!(carried, Some(ItemStack::new("minecraft:gold_ingot", 1)));
         });
     });
 }
@@ -881,12 +965,6 @@ fn menu_quick_move_validates_writes_and_contains_panics_on_live_resident_block_e
                     healthy_fields,
                 ))),
             );
-            let entity_at = |game: &crate::game::Game<'_>, pos: (i32, i32, i32)| {
-                let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos) else {
-                    panic!("live resident block entity missing at {pos:?}");
-                };
-                entity
-            };
 
             // Invalid boundary write and oversized remainder leave the live resident entity untouched.
             script(Script {
@@ -896,11 +974,15 @@ fn menu_quick_move_validates_writes_and_contains_panics_on_live_resident_block_e
             game.lan_guest_packet(12, container_click(window, 0, 1));
             assert_eq!(DISPATCHES.get(), 1);
             assert_eq!(
-                entity_at(game, POS).items[0],
+                mod_entity_at(game, POS).items[0],
                 Some(ItemStack::new("minecraft:stone", 10))
             );
-            assert!(entity_at(game, POS).items[1..3].iter().all(Option::is_none));
-            assert!(!entity_at(game, POS).has_client_update_fields());
+            assert!(
+                mod_entity_at(game, POS).items[1..3]
+                    .iter()
+                    .all(Option::is_none)
+            );
+            assert!(!mod_entity_at(game, POS).has_client_update_fields());
 
             // A panic inside `subject.transaction(...)` rolls back subject + world edits together,
             // discards the remainder/handled outputs, and disables `"movemod"` for `menu_quick_move`.
@@ -912,11 +994,15 @@ fn menu_quick_move_validates_writes_and_contains_panics_on_live_resident_block_e
             game.lan_guest_packet(12, container_click(window, 0, 1));
             assert_eq!(DISPATCHES.get(), 1);
             assert_eq!(
-                entity_at(game, POS).items[0],
+                mod_entity_at(game, POS).items[0],
                 Some(ItemStack::new("minecraft:stone", 10))
             );
-            assert!(entity_at(game, POS).items[1..3].iter().all(Option::is_none));
-            assert!(!entity_at(game, POS).has_client_update_fields());
+            assert!(
+                mod_entity_at(game, POS).items[1..3]
+                    .iter()
+                    .all(Option::is_none)
+            );
+            assert!(!mod_entity_at(game, POS).has_client_update_fields());
             assert_eq!(inventory(game, 20), 0);
             assert!(game.transactions.is_empty());
             assert_eq!(
@@ -937,8 +1023,12 @@ fn menu_quick_move_validates_writes_and_contains_panics_on_live_resident_block_e
             script(edits.clone());
             game.lan_guest_packet(12, container_click(window, 0, 1));
             assert_eq!(DISPATCHES.get(), 0);
-            assert_eq!(entity_at(game, POS).items[0], None);
-            assert!(entity_at(game, POS).items[1..3].iter().all(Option::is_none));
+            assert_eq!(mod_entity_at(game, POS).items[0], None);
+            assert!(
+                mod_entity_at(game, POS).items[1..3]
+                    .iter()
+                    .all(Option::is_none)
+            );
 
             // A healthy owner's block entity still runs `menu_quick_move` in place.
             let host = game.lan.as_mut().unwrap();
@@ -956,18 +1046,296 @@ fn menu_quick_move_validates_writes_and_contains_panics_on_live_resident_block_e
             game.lan_guest_packet(12, container_click(healthy_window, 0, 1));
             assert_eq!(DISPATCHES.get(), 1);
             assert_eq!(
-                entity_at(game, SECOND).items[0],
+                mod_entity_at(game, SECOND).items[0],
                 Some(ItemStack::new("minecraft:stone", 1))
             );
             assert_eq!(
-                entity_at(game, SECOND).items[1],
+                mod_entity_at(game, SECOND).items[1],
                 Some(ItemStack::new("minecraft:stone", 4))
             );
             assert_eq!(
-                entity_at(game, SECOND).items[2],
+                mod_entity_at(game, SECOND).items[2],
                 Some(ItemStack::new("minecraft:stone", 5))
             );
-            assert!(entity_at(game, SECOND).has_client_update_fields());
+            assert!(mod_entity_at(game, SECOND).has_client_update_fields());
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_replaced_backing_block_or_reopened_menu_never_receives_old_quick_move_settlement_or_fallback()
+{
+    with_publication_mods(|| {
+        with_guests(|game| {
+            game.build_registries();
+            let kind = Box::leak(Box::new(ModMenuType {
+                id: "minecraft:generic_9x1",
+                owner: "minecraft",
+                slots: 9,
+                player_inventory: true,
+                data_slots: 0,
+                results: Vec::new(),
+                inputs: Vec::new(),
+                crafting: None,
+                links: None,
+            }));
+            let setup = |game: &mut crate::game::Game<'_>| {
+                let window = open_depot(game);
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                let cobble = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:cobblestone")
+                    .unwrap();
+                game.world
+                    .set(SECOND.0, SECOND.1, SECOND.2, cobble)
+                    .unwrap();
+                game.world.block_entities.set_mod_containers(
+                    [
+                        (
+                            stone.0,
+                            Arc::new(ModContainer {
+                                slots: 9,
+                                inputs: vec![0],
+                                ..Default::default()
+                            }),
+                        ),
+                        (
+                            cobble.0,
+                            Arc::new(ModContainer {
+                                slots: 9,
+                                inputs: vec![0],
+                                ..Default::default()
+                            }),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+                let mut replacement = ModBlockEntityFields {
+                    items: vec![None; 9],
+                    ..Default::default()
+                };
+                replacement.items[0] = Some(ItemStack::new("minecraft:gold_ingot", 3));
+                game.world.block_entities.insert(
+                    SECOND,
+                    BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                        "healthy_menu:depot".into(),
+                        replacement,
+                    ))),
+                );
+                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                    g.inventory[20] = None;
+                    g.menu.as_mut().unwrap().mod_type = Some(kind);
+                });
+                window
+            };
+
+            // Handled quick move replaces the backing block: live Host writes survive, but the
+            // old remainder and `menu_slot_take` never touch the replacement, and the old window closes.
+            let window = setup(game);
+            script(Script {
+                write_dirt: true,
+                replace_backing: true,
+                handle_replace: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(
+                TAKE.get(),
+                None,
+                "replacement must not receive menu_slot_take for the old click"
+            );
+            assert_eq!(
+                inventory(game, 20),
+                2,
+                "valid live Host writes must survive"
+            );
+            assert_eq!(mod_entity_at(game, POS).id(), "healthy_menu:depot");
+            assert_eq!(
+                mod_entity_at(game, POS).items[0],
+                Some(ItemStack::new("minecraft:gold_ingot", 3)),
+                "old remainder must not overwrite the replacement holder"
+            );
+            assert!(
+                game.lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guest(12)
+                    .unwrap()
+                    .menu
+                    .is_none(),
+                "old menu closes once its backing holder is replaced"
+            );
+
+            // Unhandled quick move replaces the backing block: fallback routing never moves the
+            // replacement's items.
+            let window = setup(game);
+            script(Script {
+                replace_backing: true,
+                handle_replace: false,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(TAKE.get(), None);
+            assert_eq!(mod_entity_at(game, POS).id(), "healthy_menu:depot");
+            assert_eq!(
+                mod_entity_at(game, POS).items[0],
+                Some(ItemStack::new("minecraft:gold_ingot", 3)),
+                "fallback routing must not act on the replacement holder"
+            );
+            assert!(
+                game.lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guest(12)
+                    .unwrap()
+                    .menu
+                    .is_none()
+            );
+
+            // Removing the backing block and opening a new menu through the Host keeps the new
+            // menu open instead of closing it on post-hook resend.
+            let window = setup(game);
+            let old_generation = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(12)
+                .unwrap()
+                .menu_generation;
+            script(Script {
+                remove_and_reopen: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+            assert!(game.world.block_entities.get(&POS).is_none());
+            let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+            assert!(
+                guest.menu.is_some(),
+                "post-hook resend must not close a newly opened menu"
+            );
+            assert_ne!(guest.menu_generation, old_generation);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_handled_quick_move_take_panic_after_live_slot_write_still_publishes_contents_changed() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct TakePanicPart(Arc<AtomicUsize>);
+    #[mod_api::sunrise_part]
+    impl mod_api::BlockPart for TakePanicPart {
+        fn contents_changed(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut mod_api::ContentsChangedEvent,
+        ) {
+            if event.pos == mod_api::BlockPos::new(POS.0, POS.1, POS.2) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+    #[mod_api::sunrise_part]
+    impl BlockEntityPart for TakePanicPart {
+        fn menu_quick_move(&self, event: &mut MenuQuickMoveEvent<'_>) -> Flow {
+            event.stack.as_mut().unwrap().set_count(6).unwrap();
+            Flow::Cancel
+        }
+
+        fn menu_slot_take(&self, event: &mut MenuSlotTakeEvent<'_>) {
+            assert_eq!(event.taken.count(), 4);
+            let dirt =
+                mod_api::ItemStack::new(mod_api::__private::item_key("minecraft:dirt").unwrap(), 3)
+                    .unwrap();
+            event
+                .subject
+                .with_view(|mut entity| {
+                    assert_eq!(entity.set_item_slot(4, Some(dirt)), Ok(true));
+                })
+                .expect("live resident block entity");
+            panic!("take listener panicked after writing a resident slot");
+        }
+    }
+    struct TakePanicMod(Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for TakePanicMod {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            let kind = r.block_entity_type("depot").blocks(&[]).build();
+            r.block_entity_part(&kind, TakePanicPart(self.0.clone()))
+                .unwrap();
+            let stone = r.block_key("minecraft:stone");
+            r.block_part(stone, TakePanicPart(self.0.clone()));
+        }
+    }
+
+    let notices = Arc::new(AtomicUsize::new(0));
+    let mods: Mods = vec![ModEntry::new(
+        "movemod",
+        Box::new(TakePanicMod(notices.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        with_guests(|game| {
+            let kind = Box::leak(Box::new(ModMenuType {
+                id: "minecraft:generic_9x1",
+                owner: "minecraft",
+                slots: 9,
+                player_inventory: true,
+                data_slots: 0,
+                results: Vec::new(),
+                inputs: Vec::new(),
+                crafting: None,
+                links: None,
+            }));
+            let window = open_depot(game);
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |g| g.menu.as_mut().unwrap().mod_type = Some(kind));
+            notices.store(0, Ordering::Relaxed);
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+
+            assert_eq!(
+                mod_entity_at(game, POS).items[0],
+                Some(ItemStack::new("minecraft:stone", 6)),
+                "earlier quick-move remainder survives"
+            );
+            assert_eq!(
+                mod_entity_at(game, POS).items[4],
+                Some(ItemStack::new("minecraft:dirt", 3)),
+                "live slot edit outside an explicit transaction survives the take panic"
+            );
+            assert_eq!(
+                notices.load(Ordering::Relaxed),
+                2,
+                "both the remainder settlement and the surviving take-listener write publish contents_changed"
+            );
+            assert!(game.transactions.is_empty());
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "movemod",
+                    hook: "menu_slot_take",
+                }]
+            );
         });
     });
 }

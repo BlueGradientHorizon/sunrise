@@ -188,7 +188,10 @@ impl Game<'_> {
     }
 
     /// A loaded block entity of the server level in place, when a write may change it.
-    fn native_block_entity_write_key(&self, entity: BlockEntityRef) -> Option<(i32, i32, i32)> {
+    pub(super) fn native_block_entity_write_key(
+        &self,
+        entity: BlockEntityRef,
+    ) -> Option<(i32, i32, i32)> {
         if !self.level_in_place(entity.fields().level) {
             return None;
         }

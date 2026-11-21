@@ -38,10 +38,15 @@ pub trait Hooks {
     /// Writes through `subject.with_view(...)` are checked at the boundary
     /// and apply to the live resident block entity in place, marking the
     /// chunk dirty and firing container updates when items change (matching
-    /// vanilla `BlockEntity.setChanged`). When an enclosing click transaction
-    /// is open, a panicking listener is contained and disabled for
-    /// `menu_slot_take` for the rest of the session, and the click undoes its
-    /// transaction before resending the menu. Not `item_crafted` or
+    /// vanilla `BlockEntity.setChanged`). On game-routed clicks an enclosing
+    /// click transaction is open, so a panicking listener is contained and
+    /// disabled for `menu_slot_take` for the rest of the session and the click
+    /// undoes its transaction before resending the menu. On a shift-click
+    /// handled by `menu_quick_move`, the remainder is applied and published
+    /// first with no enclosing click transaction: wrap writes that must abort
+    /// together in `subject.transaction(...)`, while live writes made outside
+    /// a transaction survive (and still publish container updates) alongside
+    /// the earlier quick-move settlement. Not `item_crafted` or
     /// `item_smelted`, which keep their meaning: a result slot that gives
     /// experience or unlocks a recipe does it here through the host. Nothing
     /// is asked when no mod listens.

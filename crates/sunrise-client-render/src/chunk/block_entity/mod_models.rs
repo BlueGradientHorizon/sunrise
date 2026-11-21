@@ -223,6 +223,10 @@ impl ModBlockEntity {
     pub fn set_client_update_fields(&self, fields: Compound) {
         sunrise_mod_runtime::block_entities::set_client_update_fields(self.revision.born, fields);
     }
+    /// Clone the queued one-shot fields without consuming them (for transaction journaling).
+    pub fn client_update_fields(&self) -> Option<Compound> {
+        sunrise_mod_runtime::block_entities::client_update_fields(self.revision.born)
+    }
     /// Take the queued one-shot fields for a tag about to go to every viewer.
     pub fn take_client_update_fields(&self) -> Option<Compound> {
         sunrise_mod_runtime::block_entities::take_client_update_fields(self.revision.born)
@@ -230,6 +234,19 @@ impl ModBlockEntity {
     /// Whether one-shot fields wait for a block change.
     pub fn has_client_update_fields(&self) -> bool {
         sunrise_mod_runtime::block_entities::has_client_update_fields(self.revision.born)
+    }
+    /// Restore journaled fields, shapes and queued one-shot fields in place without
+    /// replacing this resident entity's runtime identity (`revision.born`).
+    pub fn restore_journaled(
+        &mut self,
+        saved: &ModBlockEntity,
+        client_update_fields: Option<Compound>,
+    ) {
+        self.fields = saved.fields.clone();
+        self.shapes.clone_from(&saved.shapes);
+        self.shapes_cleared = saved.shapes_cleared;
+        self.revision.changes += 1;
+        self.set_client_update_fields(client_update_fields.unwrap_or_default());
     }
 }
 /// A removed or unloaded entity's queued fields go with it.

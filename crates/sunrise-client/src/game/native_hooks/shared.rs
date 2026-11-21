@@ -71,8 +71,11 @@ fn apply_menu_button_cursor(
     if cursor == original {
         return;
     }
-    if let Ok(updated) = cursor.try_into_engine(items) {
-        *carried = updated;
+    match cursor.try_into_engine(items) {
+        Ok(updated) => *carried = updated,
+        Err(error) => {
+            log::warn!("mod menu_button write refused: {error:?}");
+        }
     }
 }
 

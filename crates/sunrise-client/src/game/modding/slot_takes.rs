@@ -47,12 +47,9 @@ impl Game<'_> {
             Game::native_menu_slot_take(kind, scope, player, menu, *slot, &taken, left.as_ref());
             access.items_changed()
         };
-        if mod_api::runtime::isolated_failures() != failures {
-            return false;
-        }
         if items_changed {
             self.after_commit(After::Changed(pos));
         }
-        true
+        mod_api::runtime::isolated_failures() == failures
     }
 }

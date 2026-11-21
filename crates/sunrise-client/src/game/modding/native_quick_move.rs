@@ -69,8 +69,26 @@ fn apply_quick_move_remainder(
             *stack = updated;
             true
         }
-        Err(_) => false,
+        Err(error) => {
+            log::warn!("mod menu_quick_move write refused: {error:?}");
+            false
+        }
     }
+}
+
+/// Admitted menu and resident block-entity identity for a single `menu_quick_move` click.
+struct QuickMoveAdmission {
+    conn: u32,
+    window: i32,
+    menu_generation: u64,
+    pos: Pos,
+    handle: mod_api::BlockEntityRef,
+    state: sunrise_world::registry::BlockStateId,
+    size: usize,
+    menu_type: Option<&'static ModMenuType>,
+    slot: usize,
+    at: MenuSlot,
+    kind: mod_api::BlockEntityTypeKey,
 }
 
 enum QuickMoveOutcome {
@@ -130,7 +148,8 @@ impl Game<'_> {
         {
             return false;
         }
-        let (size, window, menu_type) = (menu.size, menu.window, menu.mod_type);
+        let (size, window, menu_type, menu_generation) =
+            (menu.size, menu.window, menu.mod_type, g.menu_generation);
         // A mod menu type keeps its drag in the connection's machine menu
         // (`lan_machine_click`), not in `menu.drag`: a shift-click during it
         // goes there too, to only end the drag.
@@ -160,6 +179,9 @@ impl Game<'_> {
         else {
             return false;
         };
+        let Some((handle, state)) = self.resident_block_entity_target(pos) else {
+            return false;
+        };
         let slot = p.slot as usize;
         // The game's own routing reuses the pickup rule's answer asked before the hook, so the
         // click asks it once, as the client's prediction does.
@@ -171,68 +193,113 @@ impl Game<'_> {
         if !gives {
             return !asked.is_empty() && self.lan_machine_click_asked(conn, p, asked);
         }
-        let Some(outcome) = self.as_guest(conn, |g| {
-            g.run_mod_quick_move(pos, size, menu_type, slot, at, kind)
-        }) else {
+        let admission = QuickMoveAdmission {
+            conn,
+            window,
+            menu_generation,
+            pos,
+            handle,
+            state,
+            size,
+            menu_type,
+            slot,
+            at,
+            kind,
+        };
+        let Some(outcome) = self.as_guest(conn, |g| g.run_mod_quick_move(&admission)) else {
             return false;
         };
-        match outcome {
-            QuickMoveOutcome::Unhandled { items_changed } => {
-                if items_changed
-                    && let Some(host) = self.lan.as_mut()
-                    && let Some(play) = host.menus.get_mut(&conn)
-                    && play
-                        .crafting
-                        .machine
-                        .as_ref()
-                        .is_some_and(|(w, _)| *w == window)
-                {
-                    *play.crafting.machine = None;
-                }
-                return !asked.is_empty() && self.lan_machine_click_asked(conn, p, asked);
-            }
-            QuickMoveOutcome::Handled | QuickMoveOutcome::Rejected => {}
-        }
-        // The mod menu type's engine starts over from the block entity next click.
-        let Some(host) = self.lan.as_mut() else {
-            return false;
-        };
-        if let Some(play) = host.menus.get_mut(&conn)
-            && play
-                .crafting
-                .machine
-                .as_ref()
-                .is_some_and(|(w, _)| *w == window)
+        let menu_matches = self.quick_move_menu_matches(conn, window, menu_generation);
+        let holder_matches = self.quick_move_holder_matches(handle);
+        if let QuickMoveOutcome::Unhandled { items_changed } = outcome
+            && menu_matches
+            && holder_matches
         {
-            *play.crafting.machine = None;
+            if items_changed
+                && let Some(host) = self.lan.as_mut()
+                && let Some(play) = host.menus.get_mut(&conn)
+                && play
+                    .crafting
+                    .machine
+                    .as_ref()
+                    .is_some_and(|(w, _)| *w == window)
+            {
+                *play.crafting.machine = None;
+            }
+            return !asked.is_empty() && self.lan_machine_click_asked(conn, p, asked);
         }
-        // sendAllDataToRemote: the client predicted the game's routing. A mod
-        // that removed its own block leaves no menu to send: it closes, and
-        // the inventory goes out on its own.
-        if matches!(
-            self.world.block_entities.get(&pos),
-            Some(BlockEntity::Mod(_))
-        ) {
-            host.hub.resend_menu(conn, window, &self.world);
-        } else if let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) {
-            host.hub.close_container(conn);
+        // Handled, Rejected, or stale Unhandled (backing block removed/replaced or menu
+        // closed/replaced): never route the old click to a replacement or close a new menu.
+        let Some(host) = self.lan.as_mut() else {
+            return true;
+        };
+        if menu_matches {
+            // The mod menu type's engine starts over from the block entity next click.
+            if let Some(play) = host.menus.get_mut(&conn)
+                && play
+                    .crafting
+                    .machine
+                    .as_ref()
+                    .is_some_and(|(w, _)| *w == window)
+            {
+                *play.crafting.machine = None;
+            }
+            // sendAllDataToRemote: the client predicted the game's routing. A mod
+            // that removed or replaced its own block leaves no matching holder to
+            // send: close the old window and send the inventory on its own.
+            if holder_matches {
+                host.hub.resend_menu(conn, window, &self.world);
+            } else if let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) {
+                host.hub.close_container(conn);
+                host.hub.send_inventory(gi);
+            }
+        } else if let Some(gi) = host
+            .hub
+            .guests
+            .iter()
+            .position(|g| g.conn == conn && g.menu.is_none())
+        {
             host.hub.send_inventory(gi);
         }
         true
     }
 
+    fn quick_move_menu_matches(&self, conn: u32, window: i32, menu_generation: u64) -> bool {
+        self.lan.as_ref().is_some_and(|host| {
+            host.hub.guest(conn).is_some_and(|g| {
+                g.menu_generation == menu_generation
+                    && g.menu.as_ref().is_some_and(|m| m.window == window)
+            })
+        })
+    }
+
+    fn quick_move_holder_matches(&self, handle: mod_api::BlockEntityRef) -> bool {
+        let Some(pos) = self.native_block_entity_write_key(handle) else {
+            return false;
+        };
+        matches!(
+            self.world.block_entities.get(&pos),
+            Some(BlockEntity::Mod(_))
+        )
+    }
+
     /// Dispatch `MenuQuickMove` directly against the live resident block entity, validate its
     /// remainder, apply the clicked slot update, and fire `menu_slot_take` when a mod menu
     /// type's own slot moved items.
-    fn run_mod_quick_move(
-        &mut self,
-        pos: Pos,
-        size: usize,
-        menu_type: Option<&'static ModMenuType>,
-        slot: usize,
-        at: MenuSlot,
-        kind: mod_api::BlockEntityTypeKey,
-    ) -> QuickMoveOutcome {
+    fn run_mod_quick_move(&mut self, admission: &QuickMoveAdmission) -> QuickMoveOutcome {
+        let QuickMoveAdmission {
+            conn,
+            window,
+            menu_generation,
+            pos,
+            handle,
+            state,
+            size,
+            menu_type,
+            slot,
+            at,
+            kind,
+        } = *admission;
         let held = match at {
             MenuSlot::Container(k) => match self.world.block_entities.get(&pos) {
                 Some(BlockEntity::Mod(m)) => m.items.get(k).cloned().flatten(),
@@ -246,11 +313,6 @@ impl Game<'_> {
             };
         };
         let Ok(api_clicked) = clicked.try_into_api() else {
-            return QuickMoveOutcome::Unhandled {
-                items_changed: false,
-            };
-        };
-        let Some((handle, state)) = self.resident_block_entity_target(pos) else {
             return QuickMoveOutcome::Unhandled {
                 items_changed: false,
             };
@@ -278,22 +340,28 @@ impl Game<'_> {
         if !apply_quick_move_remainder(self.items(), &original, &held, &mut remainder) {
             return QuickMoveOutcome::Rejected;
         }
+        if !self.quick_move_menu_matches(conn, window, menu_generation)
+            || !self.quick_move_holder_matches(handle)
+        {
+            return QuickMoveOutcome::Handled;
+        }
         let player = self.native_acting_id();
         match at {
             MenuSlot::Container(k) => {
-                if self.world.block_entities.get(&pos).is_some() {
-                    self.journal_block_entity(pos);
-                    if let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) {
-                        if m.items.len() <= k {
-                            m.items.resize(k + 1, None);
-                        }
-                        if let Some(dest) = m.item_slot_mut(k) {
-                            *dest = remainder.clone();
-                        }
-                        self.after_commit(After::Changed(pos));
+                self.journal_block_entity(pos);
+                if let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) {
+                    if m.items.len() <= k {
+                        m.items.resize(k + 1, None);
                     }
+                    if let Some(dest) = m.item_slot_mut(k) {
+                        *dest = remainder.clone();
+                    }
+                    self.after_commit(After::Changed(pos));
                 }
-                if let Some(menu) = menu_type.filter(|menu| menu.owns_slot(k)) {
+                if let Some(menu) = menu_type.filter(|menu| menu.owns_slot(k))
+                    && self.quick_move_menu_matches(conn, window, menu_generation)
+                    && self.quick_move_holder_matches(handle)
+                {
                     let count = clicked
                         .count
                         .saturating_sub(remainder.as_ref().map_or(0, |l| l.count));
