@@ -710,7 +710,7 @@ impl Game<'_> {
         self.replay.virtual_tick_ms = 0.0;
         self.capture(false);
         if standalone {
-            self.end_client_item_use();
+            self.reset_client_item_use();
             if let Some(mut remote) = self.remote.take() {
                 remote.session.disconnect();
             }

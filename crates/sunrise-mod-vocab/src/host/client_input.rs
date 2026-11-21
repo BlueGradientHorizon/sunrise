@@ -5,14 +5,6 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait ClientInputClientHost {
     /// Side: client.
-    /// Right-clicks with these items (at most 64 ids) are mod `mod_id`'s; a later call replaces the list.
-    #[access(WorldOnly)]
-    fn claim_items(&mut self, mod_id: &str, ids: &[String]);
-    /// Side: client.
-    /// Mod `mod_id`'s events since its last poll (at most 256 wait).
-    #[access(WorldOnly)]
-    fn poll(&mut self, mod_id: &str) -> Vec<ModEvent>;
-    /// Side: client.
     /// Where the mouse is, in GUI pixels.
     #[access(ClientSetup)]
     fn cursor(&self) -> [f32; 2];

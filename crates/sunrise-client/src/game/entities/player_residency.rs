@@ -87,7 +87,7 @@ impl Game<'_> {
     }
 
     pub(super) fn remove_local_player_body(&mut self) {
-        self.end_client_item_use();
+        self.reset_client_item_use();
         self.hook.discard();
         self.resident_entities.local_player.retire();
         self.player_state.attachments.retire();

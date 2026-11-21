@@ -119,7 +119,6 @@ use self::api_values::TryIntoApi;
 pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
 pub(crate) use launch_options::Options;
 pub use native_block_entity_draw::BlockEntityDraw;
-pub use native_claimed_items::{HeldItemSlot, ModEvent};
 pub use native_configs::ConfigFile;
 pub use native_data_maps::DataMapType;
 pub use native_hooks::{PhantomSpawnResult, Shake, SleepProblem};
@@ -1721,7 +1720,6 @@ struct Game<'a> {
     /// Sunrise's own shader pack, while one is picked (`game/modding/native_shaders.rs`).
     native_shaders: native_shaders::NativeShaders,
     /// Native client mods' claimed items and unpolled events (game/modding/native_claimed_items.rs).
-    native_input: native_claimed_items::ModInput,
     /// Main-hand input captured by a client mod, independent of living-item use.
     client_item_use: Option<native_claimed_items::ActiveClientItemUse>,
     /// Native client mods' key mappings (game/modding/native_key_mappings.rs).
@@ -11327,7 +11325,6 @@ impl<'a> Game<'a> {
             recipe_tables: Default::default(),
             panel: Default::default(),
             native_shaders: Default::default(),
-            native_input: Default::default(),
             client_item_use: None,
             mod_keys: Default::default(),
             native_lifecycle: Default::default(),

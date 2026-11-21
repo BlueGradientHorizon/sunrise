@@ -1073,7 +1073,7 @@ impl Game<'_> {
         lan: bool,
         realm: bool,
     ) -> Result<()> {
-        self.end_client_item_use();
+        self.reset_client_item_use();
         self.realm_session = realm;
         self.lan_session = lan;
         self.reset_tutorial();
@@ -1403,7 +1403,7 @@ impl Game<'_> {
 
     /// Prepare a client session and remote state to receive packets from a studio replay.
     pub(super) fn init_remote_for_replay(&mut self) -> Result<()> {
-        self.end_client_item_use();
+        self.reset_client_item_use();
         self.realm_session = false;
         self.lan_session = false;
         self.reset_tutorial();
@@ -3523,7 +3523,7 @@ impl Game<'_> {
                 }
             }
             C::Respawn(p) => {
-                self.end_client_item_use();
+                self.reset_client_item_use();
                 // The new LocalPlayer copies reduced debug info through its setter.
                 self.debug_entries.invalidate();
                 let old_player = self.remote.as_ref().map(|r| (r.entity_id, r.profile));
@@ -4233,7 +4233,7 @@ impl Game<'_> {
                                 {
                                     self.use_duration = self.use_duration(&stack);
                                     self.use_start = super::using_item::UseStart::of(stack);
-                                    self.end_client_item_use();
+                                    self.reset_client_item_use();
                                 }
                             }
                             _ => {}
@@ -4725,7 +4725,7 @@ impl Game<'_> {
                 }
                 self.apply_remote_health();
                 if p.health <= 0.0 {
-                    self.end_client_item_use();
+                    self.reset_client_item_use();
                 }
                 // The death screen opens (or the respawn is asked for) with the
                 // death packet when the rule hides it.
@@ -4749,7 +4749,7 @@ impl Game<'_> {
                     r.death_message = Some(message);
                 }
                 if me {
-                    self.end_client_item_use();
+                    self.reset_client_item_use();
                 }
                 // ClientPacketListener.handlePlayerCombatKill: the death
                 // screen, whatever health was last sent, or `respawn()` at
@@ -4836,7 +4836,7 @@ impl Game<'_> {
                         r.game_mode = mode;
                     }
                     if self.spectator() {
-                        self.end_client_item_use();
+                        self.reset_client_item_use();
                     }
                 }
                 // IMMEDIATE_RESPAWN: LocalPlayer.setShowDeathScreen.
@@ -10347,7 +10347,7 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.client_item_use.is_some() || self.0.using.is_some()
     }
     fn release_using(&mut self) {
-        if !self.0.end_client_item_use() && self.0.using.is_some() {
+        if !self.0.end_client_item_use(true) && self.0.using.is_some() {
             self.0.release_remote_use();
         }
     }

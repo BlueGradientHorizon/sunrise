@@ -162,7 +162,7 @@ impl Game<'_> {
                 .stack_in(active.slot)
                 .is_some_and(|s| s.item == active.item_id)
         {
-            self.end_client_item_use();
+            self.reset_client_item_use();
         } else if self.right
             && let Some(active) = self.client_item_use.as_mut()
         {
