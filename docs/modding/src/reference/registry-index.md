@@ -2,7 +2,11 @@
 
 Use the registry to distribute content and native mods (`.smod`), modpacks (`.spack`),
 resource packs, data packs, shaders-folder packs and Sunrise shader packs (`.sshader`).
-Submit a version with `cargo sunrise-mod publish --sunrise <stable release tag>` ([Publishing your mod](../how-to/publish.md#publishing-a-stable-source-version)).
+A native mod's version is written by `cargo sunrise-mod publish --sunrise <stable release tag>`
+([Publishing your mod](../how-to/publish.md#publishing-a-stable-source-version)), which checks the package's
+`[native] sunrise` pin against that release. For every other kind, a content-only mod included, write the
+`[[versions]]` row by hand: `sunrise`, your release asset's URL as `file`, its SHA-256, its signature, and the
+project's `key` on the entry ([The entry](#the-entry)).
 Reviewed package versions are pinned by SHA-256. The registry can also list unreviewed source for
 Nightly builds. The launcher and website read schema 1 of `index.json`.
 The format is defined by `sunrise_mod_package::index` and `sunrise_mod_package::modpack`.
@@ -343,8 +347,9 @@ kept in the registry like any other project's.
 A `[[versions]]` row with `sunrise` must set `file` to the author's release asset, for example
 `https://github.com/you/example/releases/download/v0.1.0/example-0.1.0.smod`. Use the project's own
 GitHub repository (`source`, or `repo` if `source` is omitted), one plain tag segment, and the exact
-`<id>-<version>.<extension>` asset name, with the full SemVer from the package and the extension of
-the project's kind (`.smod`, `.spack`, `.zip`, `.sshader`). A bare filename is refused
+`<id>-<version>.<extension>` asset name: the row's `version`, a full SemVer, and the extension of
+the project's kind (`.smod`, `.spack`, `.zip`, `.sshader`). The row's version must agree with the package's
+own where the format carries one. A bare filename is refused
 on a stable row. The URL is immutable after publication, just like the source pin and digest.
 The registry checks the bytes from `--files/<sha256>`; the generated index still points to the package
 on the registry's `<id>-<version>` mirror. Rows without `sunrise` still use a bare filename.

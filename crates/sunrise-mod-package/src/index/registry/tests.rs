@@ -185,6 +185,13 @@ fn a_stable_source_file_has_its_kinds_extension() {
     assert_eq!(entry.source_file_name(&row), Ok("glow-1.0.0.sshader"));
     row.file = format!("{asset}.smod");
     assert!(entry.source_file_name(&row).is_err());
+    entry.kind = Kind::Other("future-pack".into());
+    assert!(
+        entry
+            .source_file_name(&row)
+            .unwrap_err()
+            .contains("future-pack")
+    );
 }
 
 #[test]

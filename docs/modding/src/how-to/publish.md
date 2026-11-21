@@ -2,8 +2,9 @@
 
 Sunrise's registry, [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods), lists mods, modpacks,
 resource packs and shader packs at [playsunrise.net/mods](https://playsunrise.net/mods). Every new or changed
-registry version row must name a stable Sunrise release in `sunrise`, so submit a version through
-[the stable source submission](#publishing-a-stable-source-version). The steps below show how to prepare and check
+registry version row must name a stable Sunrise release in `sunrise`. A native mod submits a version through
+[the stable source submission](#publishing-a-stable-source-version); for any other kind, a content-only mod
+included, write the row by hand as [the registry reference](../reference/registry-index.md#the-entry) shows. The steps below show how to prepare and check
 a local draft, and what review does with a submission.
 
 ## 1. Build and write the submission
@@ -152,7 +153,9 @@ and copies the exact bytes you signed, without rebuilding.
 
 ## Publishing a stable source version
 
-You can publish the signed `.smod` without binaries, including for a mod that is not eligible to ship them.
+A native mod can publish its signed `.smod` without binaries, including a mod that is not eligible to ship
+them. `publish --sunrise` checks the package's `[native] sunrise` pin, so it does not write a row for a
+content-only mod or a pack.
 Set `homepage` in the manifest to your project's GitHub repository. Pin the project to the stable Sunrise
 commit, build and [sign the source package](#signing), and pass a release list (`releases.json`, an array of
 `{ "tag", "commit" }` records). Use `--asset-base` for your GitHub release's download URL without the asset name:
