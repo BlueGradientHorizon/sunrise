@@ -5,6 +5,14 @@ use std::collections::BTreeMap;
 /// The fixture: path below the root, and text.
 const FILES: &[(&str, &str)] = &[
     (
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"engine-fixture\"]\n",
+    ),
+    (
+        "engine-fixture/Cargo.toml",
+        "[package]\nname = \"engine-package\"\n[lib]\nname = \"engine_library\"\n",
+    ),
+    (
         "crates/sunrise-mod-api/src/lib.rs",
         "pub use mod_vocab::*;\n",
     ),
@@ -256,11 +264,20 @@ pub fn sunrise_mod(_: TokenStream, input: TokenStream) -> TokenStream { input }
 "#,
     ),
     (
+        "crates/sunrise-mod-vocab/extension-tags/items.json",
+        r#""crates/sunrise-mod-package/src/fixture.extension-tags.json""#,
+    ),
+    (
+        "crates/sunrise-mod-vocab/extension-tags/blocks.json",
+        r#"[{"registry": "block", "id": "sunrise:fixture", "doc": "Fixture blocks."}]"#,
+    ),
+    (
+        "crates/unlisted/src/ignored.extension-tags.json",
+        "invalid JSON: the export must not read unrelated declarations",
+    ),
+    (
         "crates/sunrise-mod-package/src/fixture.extension-tags.json",
-        r#"[
-    {"registry": "item", "id": "sunrise:fixture", "doc": "Fixture items."},
-    {"registry": "block", "id": "sunrise:fixture", "doc": "Fixture blocks."}
-]"#,
+        r#"[{"registry": "item", "id": "sunrise:fixture", "doc": "Fixture items."}]"#,
     ),
     (
         "crates/sunrise-mod-package/src/manifest.rs",
@@ -312,6 +329,22 @@ const MOVE: &str = "<move>";
 
 /// The export of the fixture with `edits` (file, from, to) applied.
 fn export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Export {
+    try_export_fixture(edits, hooks, &[]).unwrap()
+}
+
+fn export_fixture_with_includes(
+    edits: &[(&str, &str, &str)],
+    hooks: &str,
+    included: &[(&str, &str)],
+) -> Export {
+    try_export_fixture(edits, hooks, included).unwrap()
+}
+
+fn try_export_fixture(
+    edits: &[(&str, &str, &str)],
+    hooks: &str,
+    included: &[(&str, &str)],
+) -> Result<Export, String> {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     for (path, text) in FILES {
@@ -333,11 +366,41 @@ fn export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Export {
         std::fs::write(path, text).unwrap();
     }
     let catalog = Catalog::parse(&[("hooks/ping.rs".into(), hooks.into())]).unwrap();
-    let mut index = crate::index::game(root, &[]);
-    build(root, &mut index, &catalog.hooks, &boundary()).unwrap()
+    let mut index = crate::index::game(root, included);
+    build(root, &mut index, &catalog.hooks, &boundary())
 }
 
 const LIB: &str = "crates/sunrise-mod-vocab/src/lib.rs";
+
+#[test]
+fn a_signature_cannot_hide_a_workspace_type_behind_an_import() {
+    let edited = "use engine_library::Secret as Imported;\npub fn leak() -> Imported { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS, &[])
+        .err()
+        .expect("the leak must fail the export");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_public_reexport_cannot_name_a_workspace_type_outside_the_seam() {
+    let edited = "pub use engine_library::Secret as Leaked;\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS, &[])
+        .err()
+        .expect("the re-export must fail the export");
+    assert!(error.contains("mod_api::Leaked"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_wire_layout_cannot_hide_a_workspace_type_behind_private_storage() {
+    let edited = "#[derive(Wire)] struct Private(engine_library::Secret);\n#[derive(Wire)] pub struct Leaked(Private);\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS, &[])
+        .err()
+        .expect("the embedded type must fail the export");
+    assert!(error.contains("mod_api::Private"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
 
 fn hashes(export: &Export) -> BTreeMap<String, String> {
     export
@@ -433,6 +496,44 @@ fn macro_calls_are_expanded_or_noted_and_ids_ignore_routes() {
         .unwrap();
     assert_eq!(thing.id, "type:shared::Thing");
     assert!(thing.paths.contains(&"s1::Thing".to_owned()));
+}
+
+#[test]
+fn a_generated_impl_on_a_glob_reexported_handle_is_recorded() {
+    let export = export_fixture_with_includes(
+        &[(
+            LIB,
+            "pub mod entity;",
+            r#"
+pub mod entity;
+pub use loan_views::*;
+pub use loan_handles::*;
+mod loan_views {
+    use crate::LoanRef;
+    pub fn loan_exists(_: LoanRef) -> bool { true }
+}
+mod loan_handles {
+    pub struct LoanRef(u32);
+}
+mod generated_handles {
+    use super::*;
+    include!(concat!(env!("OUT_DIR"), "/fixture_generated_handles.rs"));
+}
+"#,
+        )],
+        HOOKS,
+        &[(
+            "fixture_generated_handles.rs",
+            "impl LoanRef { pub fn serial(self) -> u32 { 23 } }",
+        )],
+    );
+    let exported = export
+        .surface
+        .handles
+        .iter()
+        .find(|handle| handle.id == "handle:LoanRef::serial")
+        .map(|handle| handle.contract.signature.as_str());
+    assert_eq!(exported, Some("fn serial(self) -> u32"));
 }
 
 #[test]
@@ -1060,10 +1161,7 @@ fn the_recipe_placement_protocol_is_pinned_to_the_shapes_it_carries() {
     expand::expand_modules(&mut index, &modules);
     let forms = wire_forms::wire_forms(&mut index, &modules);
     let ids = HashMap::new();
-    let mut layouts = mod_source::layouts::Layouts::new(rust::GameWires {
-        forms: &forms,
-        ids: &ids,
-    });
+    let mut layouts = mod_source::layouts::Layouts::new(rust::GameWires::new(&forms, &ids, None));
     let mut keys = Vec::new();
     for (krate, module, name) in [
         (

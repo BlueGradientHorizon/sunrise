@@ -130,7 +130,7 @@ mod generated {
         // The generated standalone-model dispatch builds the stub `Answered` and names the type through this path.
         pub(super) use super::super::Answered;
         pub(super) use super::super::{
-            Command, Config, DeclarationError, Dispensed, InteractionResult, MapDecoration,
+            Command, Config, DeclarationError, Dispensed, Hand, InteractionResult, MapDecoration,
             MapInfo, Screen, Zoom,
         };
         #[derive(Clone)]
