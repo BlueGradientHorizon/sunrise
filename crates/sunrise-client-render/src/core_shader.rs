@@ -318,19 +318,26 @@ pub fn translate_core_at(
         vertex,
         fragment,
     } = *sources;
-    let stage = |text: &str| -> Result<String, String> {
-        let expanded = expand_imports(text, dir, read).map_err(|e| e.to_string())?;
+    // Each stage's includes, the ones its defines drop deferred.
+    let stage = |text: &str| -> Result<(String, Vec<ImportRefusal>), String> {
+        let (expanded, deferred) =
+            expand_core_imports(text, dir, read).map_err(|e| e.to_string())?;
         let text = glsl_fixups::fixups(&strip_comments(&expanded));
-        Ok(texel_fetches(&text))
+        Ok((texel_fetches(&text), deferred))
     };
-    let (vertex_text, fragment_text) = (stage(vertex)?, stage(fragment)?);
+    let ((vertex_text, vertex_deferred), (fragment_text, fragment_deferred)) =
+        (stage(vertex)?, stage(fragment)?);
     let mut names = Names::default();
     let vertex_code = rewrite(&vertex_text, ShaderStage::Vertex, glue, &mut names)
         .map_err(|e| format!("vertex shader: {e}"))?;
     let fragment_code = rewrite(&fragment_text, ShaderStage::Fragment, glue, &mut names)
         .map_err(|e| format!("fragment shader: {e}"))?;
-    let vertex = compile(ShaderStage::Vertex, &vertex_code, defines, &names, provided)
-        .map_err(|e| format!("vertex shader: {e}"))?;
+    // An include the defines keep and the packs can't give refuses the shader as it did when
+    // read.
+    let vertex =
+        compile(ShaderStage::Vertex, &vertex_code, defines, &names, provided).map_err(|e| {
+            deferred_include(&e, &vertex_deferred).unwrap_or(format!("vertex shader: {e}"))
+        })?;
     let fragment = compile(
         ShaderStage::Fragment,
         &fragment_code,
@@ -338,7 +345,9 @@ pub fn translate_core_at(
         &names,
         provided,
     )
-    .map_err(|e| format!("fragment shader: {e}"))?;
+    .map_err(|e| {
+        deferred_include(&e, &fragment_deferred).unwrap_or(format!("fragment shader: {e}"))
+    })?;
     let given = locations(&vertex.0, false);
     if let Some(missing) = locations(&fragment.0, true)
         .into_iter()
@@ -420,8 +429,48 @@ pub(crate) fn expand_imports(
     dir: &str,
     read: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<String, ImportRefusal> {
+    expand_with(text, dir, read, false).map(|(text, _)| text)
+}
+
+/// [`expand_imports`] for a core shader, as vanilla's shaderc resolves its includes while it
+/// preprocesses: one the packs haven't, or that can't be read, refuses the shader only where
+/// the stage's defines keep it. It is not pasted: in its place goes a `#error` line naming it
+/// (`hz_include N`, the `N`th of the refusals returned beside the text), which the GLSL
+/// preprocessor raises only in a branch it keeps ([`deferred_include`]).
+pub(crate) fn expand_core_imports(
+    text: &str,
+    dir: &str,
+    read: &dyn Fn(&str) -> Result<Option<String>, String>,
+) -> Result<(String, Vec<ImportRefusal>), ImportRefusal> {
+    expand_with(text, dir, read, true)
+}
+
+/// The `#error` line standing for the `index`th deferred include.
+const DEFERRED_INCLUDE: &str = "#error hz_include ";
+
+/// The deferred include (of `deferred`) a translation error names, as its refusal's words: the
+/// error the preprocessor raised on its `#error` line.
+fn deferred_include(error: &str, deferred: &[ImportRefusal]) -> Option<String> {
+    let at = error.find(DEFERRED_INCLUDE)? + DEFERRED_INCLUDE.len();
+    let digits: String = error[at..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    deferred
+        .get(digits.parse::<usize>().ok()?)
+        .map(ToString::to_string)
+}
+
+fn expand_with(
+    text: &str,
+    dir: &str,
+    read: &dyn Fn(&str) -> Result<Option<String>, String>,
+    defer: bool,
+) -> Result<(String, Vec<ImportRefusal>), ImportRefusal> {
     struct Walk<'a> {
         read: &'a dyn Fn(&str) -> Result<Option<String>, String>,
+        defer: bool,
+        deferred: Vec<ImportRefusal>,
         seen: HashSet<String>,
         pastes: u32,
         scanned: usize,
@@ -461,9 +510,22 @@ pub(crate) fn expand_imports(
                         if self.pastes > MAX_PASTES {
                             return Err(ImportRefusal::TooManyPastes);
                         }
-                        let file = self.file(&id)?;
-                        let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
-                        self.walk(&file, parent, depth + 1)?;
+                        match self.file(&id) {
+                            Ok(file) => {
+                                let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
+                                self.walk(&file, parent, depth + 1)?;
+                            }
+                            Err(
+                                refusal @ (ImportRefusal::NotFound(_)
+                                | ImportRefusal::Unreadable(_)),
+                            ) if self.defer => {
+                                self.out.push('\n');
+                                self.out.push_str(DEFERRED_INCLUDE);
+                                self.out.push_str(&self.deferred.len().to_string());
+                                self.deferred.push(refusal);
+                            }
+                            Err(refusal) => return Err(refusal),
+                        }
                     }
                     self.out.push('\n');
                 } else if directive
@@ -483,13 +545,15 @@ pub(crate) fn expand_imports(
     }
     let mut walk = Walk {
         read,
+        defer,
+        deferred: Vec::new(),
         seen: HashSet::new(),
         pastes: 0,
         scanned: 0,
         out: String::new(),
     };
     walk.walk(text, dir, 0)?;
-    Ok(walk.out)
+    Ok((walk.out, walk.deferred))
 }
 
 /// `<ns:path>` under `shaders/include` (`minecraft` when there's no namespace), or `"path"` from
@@ -1352,12 +1416,33 @@ mod tests {
         let oit = "#version 330\n#ifdef OIT\nuniform sampler2D Coeff0;\n#endif\nout vec4 vertexColor;\n\
             void main() {\n#ifdef OIT\n    vertexColor = texelFetch(Coeff0, ivec2(0), 0);\n#endif\n}\n";
         translate_core(oit, fsh, &[], &include, &GLUE).unwrap();
-        let missing = "#version 330\n#moj_import <minecraft:nothing.glsl>\nvoid main() {}\n";
+        let missing = "#version 330\n#moj_import <minecraft:nothing.glsl>\n\
+            out vec4 vertexColor;\nvoid main() { vertexColor = vec4(1.0); }\n";
         let error = translate_core(missing, fsh, &[], &include, &GLUE).unwrap_err();
-        assert!(
-            error.contains("minecraft:shaders/include/nothing.glsl not found"),
-            "{error}"
-        );
+        assert_eq!(error, "minecraft:shaders/include/nothing.glsl not found");
+        // An include the defines drop is never read, as shaderc preprocesses: missing, it is no
+        // error; kept by a define, it is.
+        let branch = "#version 330\n#ifdef WANTS\n#moj_import <minecraft:nothing.glsl>\n#endif\n\
+            out vec4 vertexColor;\nvoid main() { vertexColor = vec4(1.0); }\n";
+        translate_core(branch, fsh, &[], &include, &GLUE).unwrap();
+        let error = translate_core(branch, fsh, &["WANTS"], &include, &GLUE).unwrap_err();
+        assert_eq!(error, "minecraft:shaders/include/nothing.glsl not found");
+        let unreadable = |id: &str| -> Result<Option<String>, String> {
+            if id.ends_with("nothing.glsl") {
+                Err(format!("{id}: not text"))
+            } else {
+                Ok(include(id))
+            }
+        };
+        let stages = Stages {
+            dir: "minecraft:shaders/core/",
+            vertex: branch,
+            fragment: fsh,
+        };
+        translate_core_at(&stages, &[], &unreadable, &GLUE, &|_| false).unwrap();
+        let error =
+            translate_core_at(&stages, &["WANTS"], &unreadable, &GLUE, &|_| false).unwrap_err();
+        assert_eq!(error, "minecraft:shaders/include/nothing.glsl: not text");
     }
 
     #[test]

@@ -82,6 +82,11 @@ fn drawn_frame(game: &mut super::Game<'_>) -> (Vec<u8>, usize) {
     (std::mem::take(&mut image.rgba), image.width as usize)
 }
 
+/// The pixel at `x`, `y`.
+fn pixel(frame: &(Vec<u8>, usize), x: usize, y: usize) -> [u8; 4] {
+    frame.0[(y * frame.1 + x) * 4..][..4].try_into().unwrap()
+}
+
 /// Pixels left of the hotbar and the crosshair.
 fn samples(frame: &(Vec<u8>, usize)) -> [[u8; 4]; 3] {
     let (pixels, width) = frame;
@@ -91,13 +96,13 @@ fn samples(frame: &(Vec<u8>, usize)) -> [[u8; 4]; 3] {
 }
 
 /// With Improved Transparency off and on, one session:
-/// - a pack without `core/clouds` loads no pack clouds;
+/// - a pack without `core/clouds` loads no pack clouds, and the native clouds draw (the frame
+///   differs from the clouds-off one, and a cloud's pixel is exact);
 /// - once a reload hands the renderer the pack's clouds, they cover the frame in the program's
 ///   colour for that path, fancy and fast; with the clouds off nothing of them is drawn (the
 ///   frame is the clouds-off one, to the byte);
-/// - once a reload removes them, the frame is the one drawn before the pack, to the byte. (This
-///   scene draws no native clouds anywhere in its frame, so the identity shows only that nothing
-///   of the pack's is left; the native clouds are checked in game.)
+/// - once a reload removes them, the native clouds draw again: the frame is the one drawn before
+///   the pack, to the byte.
 #[test]
 #[ignore = "daily"]
 fn a_packs_clouds_draw_with_and_without_improved_transparency() {
@@ -123,17 +128,26 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
         }
         game.screen = super::Screen::Playing;
         game.screen_fx.vignette_brightness = 0.0;
+        // Straight up at the layer, with the field of view a tick would have settled
+        // (`Camera.tick` eases the modifier from 0; this scene runs no tick).
+        game.pitch = -90.0;
+        game.view.fov_modifier = 1.0;
+        game.view.old_fov_modifier = 1.0;
         game.settings.clouds = "true".into();
         let before = drawn_frame(game);
         game.settings.clouds = "false".into();
         let off = drawn_frame(game);
+        // The native clouds are in the frame: a pixel of the cell north-west of the one above,
+        // its bottom face (`clouds.fsh`'s 0.7 of `CloudColor`, alpha 0.8 faded by the cloud fog)
+        // over the sky.
+        assert!(before.0 != off.0, "the native clouds are in the frame");
+        assert_eq!(pixel(&before, 30, 85), [166, 178, 198, 255]);
 
         let loaded = crate::game::UiResources::load(&pack(&CLOUDS), std::path::Path::new(""))
             .unwrap()
             .atlas
             .clouds_shader;
         let programs = loaded.as_deref().expect("the pack's clouds");
-        assert!(programs.classic.is_some() && programs.oit.is_some());
         game.renderer
             .as_mut()
             .unwrap()
@@ -155,7 +169,7 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
         game.settings.clouds = "true".into();
         assert!(
             drawn_frame(game).0 == before.0,
-            "the frame from before the pack"
+            "the native clouds again, to the byte"
         );
     });
 }

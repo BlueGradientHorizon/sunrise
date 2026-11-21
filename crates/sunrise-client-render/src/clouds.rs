@@ -530,12 +530,12 @@ pub mod pack {
 
     /// A pack's `core/clouds` as vanilla compiles it: for `RenderPipelines.CLOUDS` and
     /// `FLAT_CLOUDS`, and for `OIT_CLOUDS` and `OIT_FLAT_CLOUDS`, one program a stage
-    /// (`OitStage`'s order). Each is none where it doesn't translate, which leaves the native
-    /// clouds there.
+    /// (`OitStage`'s order). Vanilla requires them all: a pack whose shader can't make one
+    /// fails the load (`hud::RequiredShaderRefused`).
     #[derive(Debug)]
     pub struct Programs {
-        pub classic: Option<crate::core_shader::CoreProgram>,
-        pub oit: Option<Box<[crate::core_shader::CoreProgram; 3]>>,
+        pub classic: crate::core_shader::CoreProgram,
+        pub oit: Box<[crate::core_shader::CoreProgram; 3]>,
     }
 
     /// What [`faces`] depends on: the camera's cell and side of the layer, the range and the

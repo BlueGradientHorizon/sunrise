@@ -1,8 +1,10 @@
 //! A selected pack whose cloud texture vanilla 26.3 reads past (`CloudRenderer.prepare` throws
 //! `(5, 2) outside of image bounds (4, 6)`): the whole load fails as vanilla's does
 //! (`Minecraft.rollbackResourcePacks`, `clearResourcePacksOnError`), on a reload and at startup,
-//! and the pack's other overrides go with it. Each case runs in a process of its own, in a
-//! folder whose `resourcepacks` holds the packs.
+//! and the pack's other overrides go with it. So does a pack whose `core/clouds` one of the
+//! pipelines vanilla requires can't be made from (`ShaderManager.apply`'s "Failed to load
+//! required shader programs"), even with Improved Transparency off. Each case runs in a process
+//! of its own, in a folder whose `resourcepacks` holds the packs.
 use crate::game::model_baking_completed_tests::reload;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 
@@ -29,6 +31,11 @@ fn png(w: u32, h: u32, filled: &[[u32; 2]]) -> Vec<u8> {
 /// `resourcepacks/<name>`: a pack with its own `core/sky` (a visible override, which the atlas
 /// loads) and a 4 by 6 cloud texture with `cells` filled.
 fn write_pack(name: &str, cells: &[[u32; 2]]) {
+    write_pack_with(name, cells, &[]);
+}
+
+/// [`write_pack`] with `own` files besides.
+fn write_pack_with(name: &str, cells: &[[u32; 2]], own: &[(&str, &str)]) {
     let dir = std::env::current_dir()
         .unwrap()
         .join("resourcepacks")
@@ -56,7 +63,17 @@ fn write_pack(name: &str, cells: &[[u32; 2]]) {
         "assets/minecraft/textures/environment/clouds.png",
         &png(4, 6, cells),
     );
+    for (path, text) in own {
+        file(path, text.as_bytes());
+    }
 }
+
+/// A `clouds.fsh` (for vanilla's `clouds.vsh`) only the transmittance stage of `OIT_CLOUDS`
+/// can't use: there it reads a block no clouds pipeline gives.
+const OIT_ONLY_BROKEN_FSH: &str = "#version 330\nlayout(location = 0) in float vertexDistance;\n\
+    layout(location = 1) in vec4 vertexColor;\n\
+    layout(std140) uniform Other {\n    vec4 Tint;\n};\nlayout(location = 0) out vec4 fragColor;\n\
+    void main() {\n    fragColor = vertexColor;\n#ifdef OIT_TRANSMITTANCE\n    fragColor *= Tint;\n#endif\n}\n";
 
 /// A tall texture vanilla reads inside (`tall_inner` of the Java comparison) and one with a cell
 /// in its first column, whose west neighbour vanilla reads at (5, 2).
@@ -66,21 +83,42 @@ const PAST: &[[u32; 2]] = &[[0, 2], [2, 1]];
 #[test]
 #[ignore = "daily"]
 fn a_pack_whose_clouds_vanilla_reads_past_fails_the_load() {
-    if run_fresh_cases(NAME, CASE, &["reload", "startup"]) {
+    if run_fresh_cases(
+        NAME,
+        CASE,
+        &["reload", "startup", "shader_reload", "shader_startup"],
+    ) {
         return;
     }
     write_pack("inner", INNER);
     write_pack("past", PAST);
+    write_pack_with(
+        "oit_broken",
+        INNER,
+        &[(
+            "assets/minecraft/shaders/core/clouds.fsh",
+            OIT_ONLY_BROKEN_FSH,
+        )],
+    );
     match std::env::var(CASE).unwrap().as_str() {
-        "reload" => a_reload_fails_and_drops_the_selection(),
-        _ => a_startup_load_fails_back_to_the_games_resources(),
+        "reload" => a_reload_fails_and_drops_the_selection("file/past"),
+        "shader_reload" => a_reload_fails_and_drops_the_selection("file/oit_broken"),
+        "shader_startup" => a_startup_load_fails_back_to_the_games_resources(
+            "file/oit_broken",
+            "failed to load required shader program minecraft:pipeline/oit_transmittance_clouds",
+        ),
+        _ => a_startup_load_fails_back_to_the_games_resources(
+            "file/past",
+            "assets/minecraft/textures/environment/clouds.png: (5, 2) outside of image bounds (4, 6)",
+        ),
     }
 }
 
-/// The accepted pack loads, its sky shader and clouds in use. Selecting the refused one fails the
-/// reload: the selection is cleared and saved, the game reloads its own resources (no pack sky,
-/// vanilla's clouds), and the load-failure toast shows, as vanilla's reload does.
-fn a_reload_fails_and_drops_the_selection() {
+/// The accepted pack loads, its sky shader and clouds in use. Selecting the `refused` one fails
+/// the reload (Improved Transparency off, as it is by default): the selection is cleared and
+/// saved, the game reloads its own resources (no pack sky, vanilla's clouds, no pack clouds
+/// shader), and the load-failure toast shows, as vanilla's reload does.
+fn a_reload_fails_and_drops_the_selection(refused: &str) {
     with_client_game(|game| {
         let vanilla_clouds = game.pack.clouds.clone();
         game.settings.resource_packs = vec!["file/inner".into()];
@@ -88,9 +126,11 @@ fn a_reload_fails_and_drops_the_selection() {
         assert_eq!(game.settings.resource_packs, ["file/inner"]);
         assert!(game.gui.atlas.sky_shader.is_some());
         assert_eq!((game.pack.clouds.0, game.pack.clouds.1), (4, 6));
-        game.settings.resource_packs = vec!["file/inner".into(), "file/past".into()];
+        assert!(!game.settings.improved_transparency);
+        game.settings.resource_packs = vec!["file/inner".into(), refused.into()];
         reload(game);
         assert!(game.settings.resource_packs.is_empty());
+        assert!(game.gui.atlas.clouds_shader.is_none());
         assert!(
             game.gui.atlas.sky_shader.is_none(),
             "the pack's sky went too"
@@ -103,15 +143,14 @@ fn a_reload_fails_and_drops_the_selection() {
     });
 }
 
-/// The refused pack selected when the game starts: the load fails over to the game's own
-/// resources, with the error the pack screen shows (`clearResourcePacksOnError` then clears the
-/// saved selection, `loading_window`).
-fn a_startup_load_fails_back_to_the_games_resources() {
+/// The `refused` pack selected when the game starts: the load fails over to the game's own
+/// resources, with the error the pack screen shows, starting with `error` (`clearResourcePacksOnError`
+/// then clears the saved selection, `loading_window`).
+fn a_startup_load_fails_back_to_the_games_resources(refused: &str, error: &str) {
     use crate::game::*;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-    let selected = ["file/past".to_owned()];
+    let selected = [refused.to_owned()];
     let resolved = super::startup_root(&root, &selected, &[], &Default::default()).unwrap();
-    assert!(sunrise_client::clouds::load(resolved.source()).is_err());
     let loaded = load_resources(
         resolved,
         Vec::new(),
@@ -125,13 +164,11 @@ fn a_startup_load_fails_back_to_the_games_resources() {
         &mut |_, _| unreachable!(),
     )
     .unwrap();
-    assert_eq!(
-        loaded.pack_error.as_deref(),
-        Some(
-            "assets/minecraft/textures/environment/clouds.png: (5, 2) outside of image bounds (4, 6)"
-        )
-    );
-    assert!(loaded.gui.unwrap().atlas.sky_shader.is_none());
+    let pack_error = loaded.pack_error.unwrap();
+    assert!(pack_error.starts_with(error), "{pack_error}");
+    let gui = loaded.gui.unwrap();
+    assert!(gui.atlas.sky_shader.is_none());
+    assert!(gui.atlas.clouds_shader.is_none());
     let vanilla = sunrise_assets::resource_source::ResourceSource::directory(root);
     assert_eq!(
         *loaded.pack.clouds,

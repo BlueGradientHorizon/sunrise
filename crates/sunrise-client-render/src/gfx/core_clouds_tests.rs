@@ -68,11 +68,13 @@ fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
 const SIZE: u32 = 8;
 
 /// `program` as the classic clouds' only.
-fn classic(program: crate::core_shader::CoreProgram) -> crate::clouds::pack::Programs {
-    crate::clouds::pack::Programs {
-        classic: Some(program),
-        oit: None,
-    }
+fn classic(
+    program: &crate::core_shader::CoreProgram,
+) -> (
+    Option<&crate::core_shader::CoreProgram>,
+    Option<&[crate::core_shader::CoreProgram; 3]>,
+) {
+    (Some(program), None)
 }
 
 /// Draws `core`'s prepared faces into an 8 by 8 target cleared to transparent black, with a
@@ -217,7 +219,7 @@ fn probe(device: &wgpu::Device) -> CoreClouds {
         &|b| b == INFO_BLOCK || b == FACES,
     )
     .expect("the probe translates");
-    CoreClouds::new(device, wgpu::TextureFormat::Rgba8Unorm, &classic(program))
+    CoreClouds::new(device, wgpu::TextureFormat::Rgba8Unorm, classic(&program))
         .expect("the pipelines")
 }
 
@@ -350,7 +352,7 @@ fn vanillas_clouds_shaders_draw_a_cell_above_the_camera() {
     let Some((device, queue)) = device() else {
         return;
     };
-    let mut core = CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &classic(program))
+    let mut core = CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, classic(&program))
         .expect("pipelines");
     let mut filled = vec![false; 16];
     filled[0] = true;
@@ -408,7 +410,7 @@ fn a_clouds_shader_that_reads_no_faces_still_draws_a_quad_a_face() {
     })
     .expect("the shaders translate");
     assert!(program.other.is_empty(), "reads neither block");
-    let mut core = CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &classic(program))
+    let mut core = CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, classic(&program))
         .expect("pipelines");
     let mut filled = vec![false; 16];
     filled[3] = true;
@@ -460,7 +462,7 @@ const OIT_VSH: &str = "#version 330\n\
 fn oit_programs(
     fragment: &str,
     include: &dyn Fn(&str) -> Option<String>,
-) -> crate::clouds::pack::Programs {
+) -> [crate::core_shader::CoreProgram; 3] {
     oit_programs_of(OIT_VSH, fragment, include)
 }
 
@@ -469,21 +471,18 @@ fn oit_programs_of(
     vertex: &str,
     fragment: &str,
     include: &dyn Fn(&str) -> Option<String>,
-) -> crate::clouds::pack::Programs {
+) -> [crate::core_shader::CoreProgram; 3] {
     let stage = |s: &OitStageSource| {
         crate::core_shader::translate_core_with(vertex, fragment, s.defines, include, &GLUE, &|b| {
             b == INFO_BLOCK || b == FACES || s.samplers.contains(&b)
         })
-        .unwrap_or_else(|e| panic!("{}: {e}", s.name))
+        .unwrap_or_else(|e| panic!("{}: {e}", s.pipeline))
     };
-    crate::clouds::pack::Programs {
-        classic: None,
-        oit: Some(Box::new([
-            stage(&OIT_STAGES[0]),
-            stage(&OIT_STAGES[1]),
-            stage(&OIT_STAGES[2]),
-        ])),
-    }
+    [
+        stage(&OIT_STAGES[0]),
+        stage(&OIT_STAGES[1]),
+        stage(&OIT_STAGES[2]),
+    ]
 }
 
 /// An 8 by 8 texture of `format` usable as a target, a sampled input and a copy source.
@@ -655,8 +654,12 @@ fn vanillas_clouds_fragment_shader_draws_each_improved_transparency_stage() {
     let Some((device, queue)) = oit_device() else {
         return;
     };
-    let mut core =
-        CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &programs).expect("pipelines");
+    let mut core = CoreClouds::new(
+        &device,
+        wgpu::TextureFormat::Rgba8Unorm,
+        (None, Some(&programs)),
+    )
+    .expect("pipelines");
     assert!(core.improved_transparency() && !core.classic());
     let mut filled = vec![false; 16];
     filled[3] = true;
@@ -766,8 +769,12 @@ fn a_clouds_shader_ignoring_the_stage_defines_draws_location_0_in_each_stage() {
     let Some((device, queue)) = oit_device() else {
         return;
     };
-    let mut core =
-        CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &programs).expect("pipelines");
+    let mut core = CoreClouds::new(
+        &device,
+        wgpu::TextureFormat::Rgba8Unorm,
+        (None, Some(&programs)),
+    )
+    .expect("pipelines");
     assert!(core.improved_transparency());
     let mut filled_cells = vec![false; 16];
     filled_cells[3] = true;
@@ -867,8 +874,12 @@ fn the_improved_transparency_groups_follow_new_targets_and_a_grown_faces_buffer(
     let Some((device, queue)) = oit_device() else {
         return;
     };
-    let mut core =
-        CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &programs).expect("pipelines");
+    let mut core = CoreClouds::new(
+        &device,
+        wgpu::TextureFormat::Rgba8Unorm,
+        (None, Some(&programs)),
+    )
+    .expect("pipelines");
     let mut one = vec![false; 16];
     one[3] = true;
     let one = (4, 4, one);

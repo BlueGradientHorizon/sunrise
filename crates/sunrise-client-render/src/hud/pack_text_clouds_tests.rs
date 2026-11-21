@@ -25,7 +25,7 @@ fn source(files: &[(&str, &str)]) -> ResourceSource {
 
 /// The game's two stages, and a pack's fragment stage over them: the pack's clouds load with
 /// `CloudInfo` and `CloudFaces` given; with only the game's stages there is no pack shader; a
-/// pack stage reading another block is refused.
+/// pack stage reading another block fails the load, named by the first pipeline it can't make.
 #[test]
 fn a_pack_replacing_a_clouds_stage_is_loaded_with_the_faces_and_cloud_info() {
     let defaults = source(&[(VSH, CLOUDS_VSH), (FSH, CLOUDS_FSH)]);
@@ -34,14 +34,13 @@ fn a_pack_replacing_a_clouds_stage_is_loaded_with_the_faces_and_cloud_info() {
         "vertexColor * vec4(1.0, 0.6, 0.8, 1.0);\n}",
     );
     let root = source(&[(VSH, CLOUDS_VSH), (FSH, &pink)]);
-    let programs = load_clouds(&root, &defaults).expect("the pack's clouds");
-    let classic = programs.classic.as_ref().expect("CLOUDS");
-    assert_eq!(classic.other, ["CloudInfo", "CloudFaces"]);
-    for program in programs.oit.as_deref().expect("OIT_CLOUDS") {
+    let programs = loaded(&root, &defaults);
+    assert_eq!(programs.classic.other, ["CloudInfo", "CloudFaces"]);
+    for program in programs.oit.iter() {
         assert_eq!(program.other, ["CloudInfo", "CloudFaces"]);
     }
     assert!(
-        load_clouds(&defaults, &defaults).is_none(),
+        matches!(load_clouds(&defaults, &defaults), Ok(None)),
         "the game's own"
     );
     let other = pink.replace(
@@ -50,10 +49,19 @@ fn a_pack_replacing_a_clouds_stage_is_loaded_with_the_faces_and_cloud_info() {
     );
     let other = other.replace("vec4(1.0, 0.6, 0.8, 1.0)", "Tint");
     let root = source(&[(VSH, CLOUDS_VSH), (FSH, &other)]);
+    let refused = load_clouds(&root, &defaults).unwrap_err();
+    assert_eq!(refused.pipeline, "minecraft:pipeline/clouds");
     assert!(
-        load_clouds(&root, &defaults).is_none(),
-        "Other is not given"
+        refused.why.contains("Other is not a block or sampler"),
+        "{refused}"
     );
+}
+
+/// The packs' clouds at `root`, which must load.
+fn loaded(root: &ResourceSource, defaults: &ResourceSource) -> Arc<crate::clouds::pack::Programs> {
+    load_clouds(root, defaults)
+        .expect("the required programs")
+        .expect("the pack's clouds")
 }
 
 /// The pack's fragment stage with `declarations` before its `main` and `body` in it.
@@ -65,7 +73,7 @@ fn fragment(declarations: &str, body: &str) -> String {
 }
 
 /// The packs' clouds as the atlas loads them, the game's stages under a pack's `fsh`.
-fn clouds(fsh: &str) -> Option<Arc<crate::clouds::pack::Programs>> {
+fn clouds(fsh: &str) -> Result<Option<Arc<crate::clouds::pack::Programs>>, RequiredShaderRefused> {
     let defaults = source(&[(VSH, CLOUDS_VSH), (FSH, CLOUDS_FSH)]);
     let root = source(&[(VSH, CLOUDS_VSH), (FSH, fsh)]);
     load_clouds(&root, &defaults)
@@ -87,9 +95,9 @@ fn a_clouds_shader_is_translated_for_each_improved_transparency_stage() {
          #elif defined(OIT_ACCUMULATE) && !defined(OIT_ALPHA_ONLY)\n    fragColor = vec4(2.0);\n\
          #elif !defined(OIT)\n    fragColor = vertexColor;\n#endif",
     );
-    let programs = clouds(&fsh).expect("the pack's clouds");
-    assert_eq!(programs.classic.as_ref().unwrap().fragment_writes(), [0]);
-    let oit = programs.oit.as_deref().expect("OIT_CLOUDS");
+    let programs = clouds(&fsh).unwrap().expect("the pack's clouds");
+    assert_eq!(programs.classic.fragment_writes(), [0]);
+    let oit = &programs.oit;
     let writes: Vec<Vec<u32>> = oit.iter().map(|p| p.fragment_writes()).collect();
     assert_eq!(writes, [vec![0], vec![0, 1], vec![0]]);
 }
@@ -118,8 +126,9 @@ fn each_improved_transparency_stage_is_given_its_passs_samplers() {
          #ifdef OIT_ACCUMULATE\n\
          fragColor += texelFetch(Coeff0, ivec2(0), 0) + texelFetch(Coeff1, ivec2(0), 0);\n#endif",
     ))
+    .expect("every sampler is its stage's")
     .expect("the pack's clouds");
-    let oit = given.oit.as_deref().expect("every sampler is its stage's");
+    let oit = &given.oit;
     let at = |name: &str| {
         let index = oit[0].other.iter().position(|n| n == name).unwrap();
         crate::core_shader::other_binding(index)
@@ -132,28 +141,130 @@ fn each_improved_transparency_stage_is_given_its_passs_samplers() {
     assert!(!fragment_reads(&oit[1], "Coeff0"));
     assert!(fragment_reads(&oit[2], "DepthBoundsSampler"));
     assert!(fragment_reads(&oit[2], "Coeff0") && fragment_reads(&oit[2], "Coeff1"));
-    for (stage, sampler) in [
-        ("OIT_DEPTH_BOUNDS", "DepthBoundsSampler"),
-        ("OIT_TRANSMITTANCE", "Coeff0"),
-        ("OIT_ACCUMULATE", "Coeff2"),
+    for (stage, sampler, pipeline) in [
+        (
+            "OIT_DEPTH_BOUNDS",
+            "DepthBoundsSampler",
+            "minecraft:pipeline/oit_depth_bounds_clouds",
+        ),
+        (
+            "OIT_TRANSMITTANCE",
+            "Coeff0",
+            "minecraft:pipeline/oit_transmittance_clouds",
+        ),
+        (
+            "OIT_ACCUMULATE",
+            "Coeff2",
+            "minecraft:pipeline/oit_accumulate_clouds",
+        ),
     ] {
-        let refused = clouds(&read(stage, sampler)).expect("the classic program");
-        assert!(refused.classic.is_some(), "{stage} {sampler}");
-        assert!(refused.oit.is_none(), "{stage} {sampler}");
+        let refused = clouds(&read(stage, sampler)).unwrap_err();
+        assert_eq!(refused.pipeline, pipeline, "{stage} {sampler}");
+        assert!(
+            refused
+                .why
+                .contains(&format!("{sampler} is not a block or sampler")),
+            "{refused}"
+        );
     }
 }
 
-/// The classic program and the Improved Transparency ones load on their own: a shader whose
-/// classic variant reads a block no pipeline gives still draws under Improved Transparency.
+/// Vanilla requires every clouds program, Improved Transparency on or off: a shader only its
+/// classic variant can't use fails the load at `CLOUDS`, and one only a stage can't use at that
+/// stage's pipeline.
 #[test]
-fn a_refused_classic_clouds_program_keeps_the_improved_transparency_ones() {
-    let fsh = fragment(
-        "layout(std140) uniform Other {\n    vec4 Tint;\n};\nlayout(location = 0) out vec4 fragColor;",
-        "fragColor = vertexColor;\n#ifndef OIT\n    fragColor *= Tint;\n#endif",
+fn a_clouds_program_any_pipeline_refuses_fails_the_load() {
+    let fsh = |branch: &str| {
+        fragment(
+            "layout(std140) uniform Other {\n    vec4 Tint;\n};\nlayout(location = 0) out vec4 fragColor;",
+            &format!("fragColor = vertexColor;\n{branch}\n    fragColor *= Tint;\n#endif"),
+        )
+    };
+    let refused = clouds(&fsh("#ifndef OIT")).unwrap_err();
+    assert_eq!(refused.pipeline, "minecraft:pipeline/clouds");
+    let refused = clouds(&fsh("#ifdef OIT_TRANSMITTANCE")).unwrap_err();
+    assert_eq!(
+        refused.pipeline,
+        "minecraft:pipeline/oit_transmittance_clouds"
     );
-    let programs = clouds(&fsh).expect("the Improved Transparency programs");
-    assert!(programs.classic.is_none());
-    assert!(programs.oit.is_some());
+    let refused = clouds(&fsh("#ifdef OIT_ACCUMULATE")).unwrap_err();
+    assert_eq!(refused.pipeline, "minecraft:pipeline/oit_accumulate_clouds");
+}
+
+/// What the device would refuse when it makes a pipeline fails the load too, as vanilla's
+/// compile failure does: reading `Sampler0`, which no clouds pass binds; writing the colour
+/// target with integers.
+#[test]
+fn a_clouds_program_its_pipeline_cant_bind_or_target_fails_the_load() {
+    let sampler = fragment(
+        "uniform sampler2D Sampler0;\nlayout(location = 0) out vec4 fragColor;",
+        "fragColor = vertexColor * texture(Sampler0, vec2(0.5));",
+    );
+    let refused = clouds(&sampler).unwrap_err();
+    assert_eq!(refused.pipeline, "minecraft:pipeline/clouds");
+    assert_eq!(refused.why, "Sampler0 is not a sampler of this pipeline");
+    let integers = fragment(
+        "layout(location = 0) out ivec4 fragColor;",
+        "fragColor = ivec4(vertexColor * 255.0);",
+    );
+    let refused = clouds(&integers).unwrap_err();
+    assert_eq!(refused.pipeline, "minecraft:pipeline/clouds");
+    assert_eq!(
+        refused.why,
+        "its fragment stage writes colour target 0 with something other than floats"
+    );
+}
+
+/// A pack replacing only an include the clouds' stages use changes them: the stages are
+/// compared with their includes resolved (here the include turns on a second output). The same
+/// include as the game's changes nothing.
+#[test]
+fn a_pack_replacing_only_an_include_of_the_clouds_changes_them() {
+    const INCLUDE: &str = "assets/minecraft/shaders/include/extra.glsl";
+    let fsh = fragment(
+        "#moj_import <minecraft:extra.glsl>\nlayout(location = 0) out vec4 fragColor;\n\
+         #if EXTRA\nlayout(location = 1) out vec4 extraColor;\n#endif",
+        "fragColor = vertexColor;\n#if EXTRA\n    extraColor = vertexColor;\n#endif",
+    );
+    let game = [
+        (VSH, CLOUDS_VSH),
+        (FSH, &fsh),
+        (INCLUDE, "#define EXTRA 0\n"),
+    ];
+    let defaults = source(&game);
+    assert!(matches!(load_clouds(&defaults, &defaults), Ok(None)));
+    let root = source(&[
+        (VSH, CLOUDS_VSH),
+        (FSH, &fsh),
+        (INCLUDE, "#define EXTRA 1\n"),
+    ]);
+    let programs = loaded(&root, &defaults);
+    assert_eq!(programs.classic.fragment_writes(), [0, 1]);
+}
+
+/// An include the stage's defines drop is never read, as vanilla's shaderc preprocesses: one the
+/// packs haven't refuses only the programs whose defines keep it.
+#[test]
+fn a_missing_include_refuses_only_the_programs_that_keep_it() {
+    let behind = |branch: &str| {
+        fragment(
+            &format!(
+                "{branch}\n#moj_import <minecraft:nowhere.glsl>\n#endif\n\
+                 layout(location = 0) out vec4 fragColor;"
+            ),
+            "fragColor = vertexColor;",
+        )
+    };
+    assert!(clouds(&behind("#ifdef NEVER_DEFINED")).unwrap().is_some());
+    let refused = clouds(&behind("#ifdef OIT_TRANSMITTANCE")).unwrap_err();
+    assert_eq!(
+        refused.pipeline,
+        "minecraft:pipeline/oit_transmittance_clouds"
+    );
+    assert_eq!(
+        refused.why,
+        "minecraft:shaders/include/nowhere.glsl is not in the selected packs"
+    );
 }
 
 /// `GlslCompiler` defines `RENDERPEARL_DEPTH_IS_ZERO_TO_ONE` for every program on a backend whose
@@ -165,7 +276,5 @@ fn every_clouds_program_has_the_zero_to_one_depth_define() {
         "layout(std140) uniform Other {\n    vec4 Tint;\n};\nlayout(location = 0) out vec4 fragColor;",
         "fragColor = vertexColor;\n#ifndef RENDERPEARL_DEPTH_IS_ZERO_TO_ONE\n    fragColor *= Tint;\n#endif",
     );
-    let programs = clouds(&fsh).expect("the pack's clouds");
-    assert!(programs.classic.is_some());
-    assert!(programs.oit.is_some());
+    assert!(clouds(&fsh).expect("every program").is_some());
 }
