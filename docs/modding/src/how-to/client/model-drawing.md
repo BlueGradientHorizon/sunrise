@@ -256,7 +256,7 @@ draw.terrain_model(self.belt, options)?;
 
 ## Persistent groups
 
-- `host.create_group(model, capacity)` reserves up to 16,384 copies of a model.
+- `host.instance_groups().create_group(model, capacity)` reserves up to 16,384 copies of a model.
   Initial drawn length is zero.
 - `group.write(host, first, copies)` atomically overwrites a range and extends drawn
   length if needed. Unwritten slots start as white, full-bright identity copies at
@@ -268,8 +268,9 @@ draw.terrain_model(self.belt, options)?;
   3×4 affine pose. For each local vertex the composition is exactly
   `world = origin + group_transform * (copy_transform * local)`.
   The world-space f64 origin is not rotated or scaled. Non-finite pose values change nothing.
-- `draw.draw_instance_group(group)` draws the live length once per view. Repeated
-  submissions in that view are ignored. Culling uses the composed pose.
+- `draw.draw_instance_group(group)` explicitly submits the group's live copies for this
+  view. Repeated submissions of the same group in one view each draw again. Culling uses
+  the composed pose.
 - `group.destroy(host)` retires the handle and releases capacity and CPU caches.
   Copies already accepted for a view remain drawn; subsequent calls return `Stale`.
 
@@ -289,10 +290,10 @@ copies and copies of a block state model take the terrain model materials, not t
 block-entity program a `shaders/` pack replaces.
 There is no simulation-tick work.
 
-Only the creating mod can access a group. A foreign handle returns `GroupError::Stale`,
-as does a destroyed group, a group after resource reload or world close, or a group
-whose mod was disabled. Re-enabling starts without groups: recreate them from the
-newly published model handles. Slot reuse never revives an old handle.
+A destroyed group, a group after resource reload or world close, or a group whose
+creating mod was disabled returns `GroupError::Stale`. Re-enabling starts without
+groups: recreate them from the newly published model handles. Slot reuse never revives
+an old handle.
 
 ## Still fluids in a block entity
 

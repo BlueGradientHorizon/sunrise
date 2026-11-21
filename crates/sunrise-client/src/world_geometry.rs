@@ -64,7 +64,7 @@ pub struct WorldGeometry {
     /// `PipelineFrame.time` for this view.
     time: f32,
     copies: Vec<ModelCopy>,
-    groups: std::collections::HashSet<mod_api::InstanceGroupRef>,
+    group_submissions: u32,
     accepted_models: u32,
     model_cut: u32,
     /// The stage lines and quads go to now (`RenderLevelStage::ALL`'s index).
@@ -87,7 +87,7 @@ impl Default for WorldGeometry {
             label_scratch: Vec::with_capacity(CAPACITY as usize * 4),
             time: 0.0,
             copies: Vec::with_capacity(INSTANCE_CAPACITY as usize),
-            groups: std::collections::HashSet::with_capacity(INSTANCE_CAPACITY as usize),
+            group_submissions: 0,
             accepted_models: 0,
             model_cut: 0,
             stage: 0,
@@ -109,7 +109,7 @@ impl WorldGeometry {
         self.label_runs.clear();
         self.clear_copies();
         self.model_cut = 0;
-        self.groups.clear();
+        self.group_submissions = 0;
         self.stage = 0;
         self.stage_ends = [[0; 4]; STAGES - 1];
     }
@@ -224,13 +224,10 @@ impl WorldGeometry {
         Ok(())
     }
     pub fn group_room(&self) -> bool {
-        self.groups.len() < INSTANCE_CAPACITY as usize
+        self.group_submissions < INSTANCE_CAPACITY
     }
-    pub fn has_group(&self, group: mod_api::InstanceGroupRef) -> bool {
-        self.groups.contains(&group)
-    }
-    pub fn mark_group(&mut self, group: mod_api::InstanceGroupRef) {
-        self.groups.insert(group);
+    pub fn record_group_submission(&mut self) {
+        self.group_submissions += 1;
     }
     pub fn copy_count(&self) -> usize {
         self.copies.len()
@@ -999,5 +996,18 @@ mod tests {
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.5, 0.5]);
         draw.sort_labels();
         assert!(draw.labels()[0].is_empty());
+    }
+
+    #[test]
+    fn group_submissions_count_explicit_draws_and_reset_per_view() {
+        let mut draw = WorldGeometry::default();
+        draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
+        for _ in 0..INSTANCE_CAPACITY {
+            assert!(draw.group_room());
+            draw.record_group_submission();
+        }
+        assert!(!draw.group_room());
+        draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
+        assert!(draw.group_room());
     }
 }

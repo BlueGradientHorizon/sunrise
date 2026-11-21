@@ -722,17 +722,18 @@ mod tests {
                         part: None,
                     },
                 );
-                assert_eq!(group.write(game, 0, &[near]), Err(GroupError::Stale));
-                assert_eq!(group.set_len(game, 0), Err(GroupError::Stale));
+                // Handles are not gated on the TLS caller mod name: another mod holding the
+                // live handle can update, validate, and submit it.
+                group.write(game, 0, &[far, near]).unwrap();
+                group.set_len(game, 2).unwrap();
                 assert_eq!(
                     group.set_group_transform(game, [f32::NAN; 12]),
-                    Err(GroupError::Stale)
+                    Err(GroupError::NonFinite)
                 );
-                assert_eq!(group.destroy(game), Err(GroupError::Stale));
-                assert_eq!(
-                    context(game, &mut draw).draw_instance_group(group),
-                    Err(GroupError::Stale)
-                );
+                draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
+                context(game, &mut draw).draw_instance_group(group).unwrap();
+                assert_eq!(game.prepared_model_draws.borrow().len(), 1);
+                game.prepared_model_draws.borrow_mut().clear();
             }
             let oversized = vec![ModelInstance::at([f64::NAN; 3], 0); 16_385];
             assert_eq!(
@@ -771,7 +772,11 @@ mod tests {
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             context(game, &mut draw).draw_instance_group(group).unwrap();
             context(game, &mut draw).draw_instance_group(group).unwrap();
-            assert_eq!(expected, render(game));
+            assert_eq!(
+                game.prepared_model_draws.borrow().len(),
+                2,
+                "repeated submissions in one view draw explicitly"
+            );
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             game.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
@@ -1017,10 +1022,19 @@ mod tests {
                 game.commit_model_instances(&mut draw, camera, &mut actual);
                 assert_eq!(
                     actual.len(),
-                    expected.len(),
-                    "duplicate group draw must be ignored"
+                    expected.len() * 2,
+                    "repeated group draws in one view submit explicitly"
                 );
-                assert_eq!(pixels(game, &actual), expected_pixels, "CPU route {route}");
+                assert_eq!(
+                    pixels(game, &actual[..expected.len()]),
+                    expected_pixels,
+                    "CPU route {route}"
+                );
+                assert_eq!(
+                    pixels(game, &actual[expected.len()..]),
+                    expected_pixels,
+                    "CPU route {route} second submission"
+                );
                 replacement.write(game, 0, &[copy]).unwrap();
                 replacement.set_len(game, 0).unwrap();
                 draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0; 2]);
@@ -1054,7 +1068,7 @@ mod tests {
             assert_eq!(
                 budget.usage().instances_used,
                 16_384,
-                "refusal must not mark the group drawn"
+                "refusal leaves capacity free for a valid submission"
             );
             budget_group.destroy(game).unwrap();
             let full: Vec<_> = (0..4)
@@ -1078,7 +1092,9 @@ mod tests {
                         part: None,
                     },
                 );
-                assert_eq!(released.set_len(game, 1), Err(GroupError::Stale));
+                // Another mod holding the handle can access it while the owner stays enabled;
+                // disabling the owner retires it below.
+                released.set_len(game, 1).unwrap();
                 game.create_group(model, 1).unwrap()
             };
             game.settings.mods.disabled.insert("group-owner".into());
