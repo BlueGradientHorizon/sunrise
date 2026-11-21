@@ -11,8 +11,8 @@ Varint21FrameDecoder.decode	port	crates/sunrise-protocol/src/frame.rs::split	the
 ChatType.bind	port	crates/sunrise-client/src/lan/hub/chat.rs::Hub::handle_chat	the bound takes the chat type and the sender's display name
 ChatTypeDecoration.incomingDirectMessage	skip:data		chat_type registry bootstrap; the msg decorations come from the chat_type data
 ChatTypeDecoration.outgoingDirectMessage	skip:data		chat_type registry bootstrap; the msg decorations come from the chat_type data
-ChatTypeDecoration.decorate	port	crates/sunrise-client/src/game/network/remote/mod.rs::chat_type_decorate	the chat type's translation with its style, on the client when a PlayerChat or DisguisedChat arrives
-ChatTypeDecoration.resolveParameters	port	crates/sunrise-client/src/game/network/remote/mod.rs::chat_type_decorate	the parameter list (sender, target, content) built in format_chat
+ChatTypeDecoration.decorate	port	crates/sunrise-client/src/game/network/remote/chat.rs::chat_type_decorate	the chat type's translation with its style, on the client when a PlayerChat or DisguisedChat arrives
+ChatTypeDecoration.resolveParameters	port	crates/sunrise-client/src/game/network/remote/chat.rs::chat_type_decorate	the parameter list (sender, target, content) built in format_chat
 ClickEvent.Action.filterForSerialization	port	crates/sunrise-client-core/src/component.rs::object_style	gap: minor: a disallowed action (open_file) is dropped; vanilla refuses the whole component
 CommonComponents.optionStatus	port	crates/sunrise-client-render/src/options_ui.rs::on_off	options.on / options.off text
 CommonComponents.joinForNarration	port	crates/sunrise-client-render/src/widgets.rs::join_for_narration	the parts joined with ". " (NARRATION_SEPARATOR), as vanilla; every narrated title-and-message screen goes through it

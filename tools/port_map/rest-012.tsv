@@ -35,7 +35,7 @@ ClientboundBossEventPacket.encodeProperties	port	crates/sunrise-protocol/src/pac
 ClientboundBossEventPacket.AddOperation.dispatch	port	crates/sunrise-client/src/boss_overlay.rs::BossOverlay::apply
 ClientboundChunksBiomesPacket.ChunkBiomeData.calculateChunkSize	inline	crates/sunrise-protocol/src/packets/play.rs::ChunkBiomeData::from_biomes	the buffer grows as each section's container is written, so no size is computed or prefixed on the wire
 ClientboundChunksBiomesPacket.ChunkBiomeData.extractChunkData	port	crates/sunrise-protocol/src/packets/play.rs::ChunkBiomeData::from_biomes	the column's sections' biome containers written one after another into the buffer
-ClientboundCommandSuggestionsPacket.toSuggestions	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_command_suggestions	start, length and tooltip become the suggestion range
+ClientboundCommandSuggestionsPacket.toSuggestions	port	crates/sunrise-client/src/game/network/remote/commands.rs::Game::handle_command_suggestions	start, length and tooltip become the suggestion range
 ClientboundCommandsPacket.validateEntries	missing		minor: an impossible command tree is not rejected; from_packet skips bad child indexes
 ClientboundCommandsPacket.enumerateNodes	port	crates/sunrise-client/src/lan/commands.rs::CommandTree::packet_with	breadth-first node ids on the LAN host
 ClientboundCommandsPacket.createEntries	port	crates/sunrise-client/src/lan/commands.rs::CommandTree::packet_with	builds the node list for the LAN host's Commands packet

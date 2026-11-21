@@ -43,7 +43,7 @@ ChatLog.lookup	skip:service		chat log for chat reports
 ChatTrustLevel.evaluate	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::chat_trust	secure, modified (signed content gone or the font changed) or not secure (unsigned or expired)
 ChatTrustLevel.isModified	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::chat_trust	the signed content is not in the line, or the replacement uses another font
 ChatTrustLevel.containsModifiedStyle	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::chat_trust	the font check over the replacement component
-ChatTrustLevel.createTag	port	crates/sunrise-client/src/game/network/remote/mod.rs::ChatTrust::tag	secure has no tag; modified keeps the signed content, not secure and error have theirs
+ChatTrustLevel.createTag	port	crates/sunrise-client/src/game/network/remote/chat.rs::ChatTrust::tag	secure has no tag; modified keeps the signed content, not secure and error have theirs
 GuiMessage.splitLines	port	crates/sunrise-client-render/src/chat.rs::Chat::add_lines	gap: minor: no width reserved for a tag icon; Sunrise draws no icon tags
 GuiMessageTag.chatModified	port	crates/sunrise-client-render/src/chat.rs::Tag::modified	the modified tooltip with the original content in grey
 GuiMessageTag.Icon.extractRenderState	port	crates/sunrise-client-render/src/chat.rs::Chat::focused_tags	the chat_modified icon is drawn at the end of a message while chat is focused
