@@ -1,0 +1,2 @@
+sunrise-client game::entity_sections::tests::ticked_live_listener_vehicle_teleport_updates_passengers_without_duplicates lib daily resources
+sunrise-client game::entity_sections::tests::ticked_live_preserves_order_removals_and_reindexed_rows lib daily resources

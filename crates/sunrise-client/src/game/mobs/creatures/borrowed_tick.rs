@@ -193,6 +193,7 @@ impl Game<'_> {
             // position write was captured, stop after this mob, restore the
             // list, and tell its writes while the live row is readable.
             let mut section_yield = false;
+            let mut section_hint = None;
             {
                 let ticking = self.entity_ticking_area();
                 let listed = self.entity_tick_listed_area();
@@ -677,7 +678,12 @@ impl Game<'_> {
                                         m.id, m.join, m.previous, m.position,
                                     ),
                                 );
-                                section_yield |= round.sections();
+                            }
+                            if section_scope.is_some()
+                                && section_moves[start..].iter().any(|write| !write.delivered)
+                            {
+                                section_yield = true;
+                                section_hint = Some(i);
                             }
                         }
                         // One integer compare per captured write; a crossing is one push.
@@ -833,7 +839,8 @@ impl Game<'_> {
                 gone_rows = false;
             }
             // Mobs that joined during the pass go first on a restore: the rows move.
-            let same_rows = same_rows && self.mobs.is_empty();
+            let restored_offset = self.mobs.len();
+            let same_rows = same_rows && restored_offset == 0;
             self.mobs
                 .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
             let restored = self.mobs.stamp();
@@ -843,21 +850,21 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
-            // The lift is a position write made by the owning game, not by
-            // the borrowed mob. Give it the live section table as well.
+            // Yield callbacks run on the owning game, not the borrowed mob.
+            // Swap the live section table back in so every section update,
+            // removal and nested listener move hits one authoritative table.
             let trampling = matches!(pause, Some(Pause::Trample));
-            let trample_sections = section_table.as_ref().filter(|_| trampling);
-            if let Some(sections) = trample_sections {
+            if let Some(sections) = section_table.as_ref() {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
                 );
             }
             let callback_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                if section_yield && let Some(sections) = section_table.as_ref() {
+                if section_yield {
                     self.entity_sections_ticked_live(
-                        &mut sections.borrow_mut(),
                         &mut section_moves,
+                        section_hint.map(|index| restored_offset + index),
                     );
                 }
                 if let Some(id) = retry_rider {
@@ -910,7 +917,7 @@ impl Game<'_> {
                 }
             }))
             .err();
-            if let Some(sections) = trample_sections {
+            if let Some(sections) = section_table.as_ref() {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),

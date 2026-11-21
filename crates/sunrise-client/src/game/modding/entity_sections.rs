@@ -405,50 +405,68 @@ impl Game<'_> {
     /// preserves a listener's own position change.
     pub(super) fn entity_sections_ticked_live(
         &mut self,
-        sections: &mut EntitySections,
         moves: &mut Vec<PositionWrite>,
+        mut hint: Option<usize>,
     ) {
         let Some(scope) = self.entity_section_scope() else {
             moves.clear();
             return;
         };
-        let mut indices = sunrise_client::fast_hash::FxHashMap::default();
-        indices.extend(
-            self.mobs
-                .iter()
-                .enumerate()
-                .map(|(index, mob)| (mob.join, index)),
-        );
         for write in moves.drain(..) {
             if write.delivered {
                 continue;
             }
-            let Some(&index) = indices.get(&write.join) else {
-                sections.forget(write.id);
+            let Some(index) = hint
+                .filter(|&index| {
+                    self.mobs
+                        .get(index)
+                        .is_some_and(|mob| mob.join == write.join)
+                })
+                .or_else(|| self.mobs.locate(write.join))
+            else {
+                self.entity_section_forget(write.id);
                 continue;
             };
-            let final_position = self.mobs[index].position;
-            self.mobs.update(index, |mob| mob.position = write.to);
-            sections.moved(
+            if self.mobs[index].removed {
+                self.entity_section_forget(write.id);
+                continue;
+            }
+            hint = Some(index);
+            let before = self.native_lifecycle.entity_sections.queue.len();
+            self.native_lifecycle.entity_sections.moved(
                 scope,
                 write.id,
                 write.from.map(|from| [from.x, from.y, from.z]),
                 [write.to.x, write.to.y, write.to.z],
             );
-            self.tell_entity_sections_in(sections);
-            indices.clear();
-            indices.extend(
-                self.mobs
-                    .iter()
-                    .enumerate()
-                    .map(|(index, mob)| (mob.join, index)),
-            );
-            if let Some(&index) = indices.get(&write.join) {
-                self.mobs.update(index, |mob| {
-                    if mob.position == write.to {
-                        mob.position = final_position;
+            if self.native_lifecycle.entity_sections.busy
+                || self.native_lifecycle.entity_sections.queue.is_empty()
+            {
+                continue;
+            }
+            let pushed = self.native_lifecycle.entity_sections.queue.len() > before;
+            let final_position = self.mobs[index].position;
+            let staged = pushed && final_position != write.to;
+            if staged {
+                self.mobs.update(index, |mob| mob.position = write.to);
+            }
+            self.tell_entity_sections();
+            if staged {
+                let restore = if self
+                    .mobs
+                    .get(index)
+                    .is_some_and(|mob| mob.join == write.join)
+                {
+                    Some(index)
+                } else {
+                    self.mobs.locate(write.join)
+                };
+                if let Some(index) = restore {
+                    hint = Some(index);
+                    if !self.mobs[index].removed && self.mobs[index].position == write.to {
+                        self.mobs.update(index, |mob| mob.position = final_position);
                     }
-                });
+                }
             }
         }
     }
@@ -610,23 +628,5 @@ impl Game<'_> {
             }
         }
         self.native_lifecycle.entity_sections.end_telling(batch);
-    }
-
-    fn tell_entity_sections_in(&mut self, sections: &mut EntitySections) {
-        let Some(batch) = sections.begin_telling() else {
-            return;
-        };
-        if let Some(epoch) = self.native_lifecycle.epoch() {
-            for c in &batch {
-                let chunk_changed = c.old[0] != c.new[0] || c.old[2] != c.new[2];
-                self.native_entity_entering_section(
-                    EntityRef::new(epoch, c.id),
-                    c.old,
-                    c.new,
-                    chunk_changed,
-                );
-            }
-        }
-        sections.end_telling(batch);
     }
 }

@@ -831,3 +831,222 @@ fn an_entity_moved_into_another_level_is_told_once_at_its_next_crossing() {
         })
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn ticked_live_preserves_order_removals_and_reindexed_rows() {
+    use std::sync::atomic::AtomicU32;
+    use sunrise_core::geometry::Vec3;
+
+    type Seen = Arc<Mutex<Vec<(u32, [i32; 3], [i32; 3], Option<[f64; 3]>)>>>;
+
+    struct MutatingListener {
+        mob_a: Arc<AtomicU32>,
+        mob_b: Arc<AtomicU32>,
+        seen: Seen,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for MutatingListener {
+        fn entity_entering_section(
+            &self,
+            host: HostSide<'_>,
+            event: &mut EntityEnteringSectionEvent,
+        ) {
+            let HostSide::Server(host) = host else {
+                return;
+            };
+            let id = event.entity.id();
+            let pos = event.entity.position(host);
+            self.seen
+                .lock()
+                .unwrap()
+                .push((id, event.old_section, event.new_section, pos));
+            if id == self.mob_a.load(Ordering::Relaxed) && event.new_section == [1, 4, 0] {
+                let b = self.mob_b.load(Ordering::Relaxed);
+                assert!(host.entity(b).unwrap().discard(host));
+                let result = host
+                    .commands()
+                    .run_command_with_output("summon minecraft:cow 8.5 70.0 8.5");
+                assert!(
+                    result.success,
+                    "summon during callback: {:?}",
+                    result.feedback
+                );
+            }
+        }
+    }
+
+    let mob_a_id = Arc::new(AtomicU32::new(0));
+    let mob_b_id = Arc::new(AtomicU32::new(0));
+    let seen = Seen::default();
+    let mods = vec![mod_api::ModEntry::new(
+        "ticked-live-order",
+        Box::new(MutatingListener {
+            mob_a: mob_a_id.clone(),
+            mob_b: mob_b_id.clone(),
+            seen: seen.clone(),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let start = Vec3::new(8.5, 70.0, 8.5);
+            let mid = Vec3::new(24.5, 70.0, 8.5);
+            let end = Vec3::new(40.5, 70.0, 8.5);
+            let mob_a = floating_cow(game, [start.x, start.y, start.z]);
+            let mob_b = floating_cow(game, [start.x, start.y, start.z]);
+            let mob_c = floating_cow(game, [start.x, start.y, start.z]);
+            let mob_d = floating_cow(game, [start.x, start.y, start.z]);
+            mob_a_id.store(mob_a, Ordering::Relaxed);
+            mob_b_id.store(mob_b, Ordering::Relaxed);
+
+            let join_of = |game: &crate::game::Game<'_>, id: u32| {
+                game.mobs.iter().find(|m| m.id == id).unwrap().join
+            };
+            let join_a = join_of(game, mob_a);
+            let join_b = join_of(game, mob_b);
+            let join_c = join_of(game, mob_c);
+            let join_d = join_of(game, mob_d);
+
+            for (id, final_pos) in [(mob_a, end), (mob_b, mid), (mob_c, mid), (mob_d, mid)] {
+                let i = game.mobs.iter().position(|m| m.id == id).unwrap();
+                game.mobs.update(i, |m| m.position = final_pos);
+            }
+            // Reorder the list out of join-seq order and pass a stale hint so resolution must
+            // recover without rebuilding a map.
+            game.mobs.swap(0, 3);
+            game.mobs.swap(1, 2);
+
+            let mut delivered = PositionWrite::captured(mob_d, join_d, start, mid);
+            delivered.delivered = true;
+            let mut moves = vec![
+                PositionWrite::captured(mob_a, join_a, start, mid),
+                PositionWrite::captured(mob_b, join_b, start, mid),
+                PositionWrite::captured(mob_a, join_a, mid, end),
+                PositionWrite::captured(mob_c, join_c, start, mid),
+                delivered,
+            ];
+            game.entity_sections_ticked_live(&mut moves, Some(999));
+
+            assert!(moves.is_empty());
+            assert_eq!(
+                seen.lock().unwrap().as_slice(),
+                &[
+                    (mob_a, [0, 4, 0], [1, 4, 0], Some([mid.x, mid.y, mid.z])),
+                    (mob_a, [1, 4, 0], [2, 4, 0], Some([end.x, end.y, end.z])),
+                    (mob_c, [0, 4, 0], [1, 4, 0], Some([mid.x, mid.y, mid.z])),
+                ]
+            );
+            assert_eq!(
+                game.mobs.iter().find(|m| m.id == mob_a).unwrap().position,
+                end
+            );
+            assert!(
+                !game
+                    .native_lifecycle
+                    .entity_sections
+                    .filed
+                    .contains_key(&mob_b),
+                "discarded mob must stay forgotten"
+            );
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn ticked_live_listener_vehicle_teleport_updates_passengers_without_duplicates() {
+    use std::sync::atomic::AtomicU32;
+    use sunrise_core::geometry::Vec3;
+
+    struct TeleportVehicleListener {
+        vehicle: Arc<AtomicU32>,
+        teleported: Arc<AtomicBool>,
+        calls: Calls,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for TeleportVehicleListener {
+        fn entity_entering_section(
+            &self,
+            host: HostSide<'_>,
+            event: &mut EntityEnteringSectionEvent,
+        ) {
+            self.calls.lock().unwrap().push((
+                matches!(host, HostSide::Client(_)),
+                event.entity.id(),
+                event.old_section,
+                event.new_section,
+                event.chunk_changed,
+            ));
+            if let HostSide::Server(host) = host
+                && event.entity.id() == self.vehicle.load(Ordering::Relaxed)
+                && event.new_section == [1, 6, 0]
+                && !self.teleported.swap(true, Ordering::Relaxed)
+            {
+                assert!(event.entity.teleport_to(host, [56.5, 100.0, 8.5], None));
+            }
+        }
+    }
+
+    let vehicle_id = Arc::new(AtomicU32::new(0));
+    let teleported = Arc::new(AtomicBool::new(false));
+    let calls = Calls::default();
+    let mods = vec![mod_api::ModEntry::new(
+        "ticked-live-vehicle-tp",
+        Box::new(TeleportVehicleListener {
+            vehicle: vehicle_id.clone(),
+            teleported: teleported.clone(),
+            calls: calls.clone(),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let start = Vec3::new(8.5, 100.0, 8.5);
+            let moved = Vec3::new(24.5, 100.0, 8.5);
+            let vehicle = floating_cow(game, [start.x, start.y, start.z]);
+            let passenger = floating_cow(game, [start.x, start.y, start.z]);
+            vehicle_id.store(vehicle, Ordering::Relaxed);
+            game.mount_mob(passenger, vehicle);
+
+            let vehicle_index = game.mobs.iter().position(|m| m.id == vehicle).unwrap();
+            let vehicle_join = game.mobs[vehicle_index].join;
+            game.mobs.update(vehicle_index, |m| m.position = moved);
+            let mut moves = vec![PositionWrite::captured(vehicle, vehicle_join, start, moved)];
+
+            game.entity_sections_ticked_live(&mut moves, Some(vehicle_index));
+            assert!(moves.is_empty());
+            assert!(teleported.load(Ordering::Relaxed));
+
+            // Drain the nested crossings queued while the outer listener ran.
+            game.tell_entity_sections();
+            assert_eq!(
+                calls.lock().unwrap().as_slice(),
+                &[
+                    (false, vehicle, [0, 6, 0], [1, 6, 0], true),
+                    (false, passenger, [0, 6, 0], [2, 6, 0], true),
+                    (false, vehicle, [1, 6, 0], [3, 6, 0], true),
+                ]
+            );
+
+            // Both entities are already filed at their post-teleport sections; re-reporting their
+            // current positions produces no duplicate crossings.
+            let passenger_at = game
+                .mobs
+                .iter()
+                .find(|m| m.id == passenger)
+                .unwrap()
+                .position;
+            let vehicle_at = game.mobs.iter().find(|m| m.id == vehicle).unwrap().position;
+            game.entity_section_moved(
+                passenger,
+                None,
+                [passenger_at.x, passenger_at.y, passenger_at.z],
+            );
+            game.entity_section_moved(vehicle, None, [vehicle_at.x, vehicle_at.y, vehicle_at.z]);
+            assert_eq!(calls.lock().unwrap().len(), 3);
+        })
+    });
+}
