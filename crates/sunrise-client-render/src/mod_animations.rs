@@ -40,20 +40,21 @@ fn freeze(types: Vec<Answered<JsonAnimationTypeRegistration>>) -> BoundAnimation
                     log::error!(
                         "Mod {mod_id}: animation target {key} collides with a built-in animation target"
                     );
-                    continue;
-                }
-                if let Some(first) = targets.get(&key) {
+                } else if let Some(first) = targets.get(&key) {
                     log::error!(
                         "Mod {mod_id}: animation target {key} is already registered by {}; the first registration is kept",
                         first.owner()
                     );
+                } else if let Some(owner) = CallbackOwner::new(mod_id) {
+                    targets.insert(key, bind_animation_target(id, owner, apply, convert));
                     continue;
-                }
-                let Some(owner) = CallbackOwner::new(mod_id) else {
+                } else {
                     log::error!("Animation target {key} has no installed owner {mod_id}");
-                    continue;
-                };
-                targets.insert(key, bind_animation_target(id, owner, apply, convert));
+                }
+                // Keep their destructors apart: both captures may panic independently.
+                let owner = CallbackOwner::for_mod(mod_id);
+                owner.dispose("animation target", "drop_apply", apply);
+                owner.dispose("animation target", "drop_converter", convert);
             }
             JsonAnimationTypeRegistration::Interpolation { id, interpolate } => {
                 let key = id.to_string();
@@ -61,22 +62,27 @@ fn freeze(types: Vec<Answered<JsonAnimationTypeRegistration>>) -> BoundAnimation
                     log::error!(
                         "Mod {mod_id}: animation interpolation {key} collides with a built-in animation interpolation"
                     );
-                    continue;
-                }
-                if let Some(first) = interpolations.get(&key) {
+                } else if let Some(first) = interpolations.get(&key) {
                     log::error!(
                         "Mod {mod_id}: animation interpolation {key} is already registered by {}; the first registration is kept",
                         first.owner()
                     );
+                } else if let Some(owner) = CallbackOwner::new(mod_id) {
+                    interpolations
+                        .insert(key, bind_animation_interpolation(id, owner, interpolate));
                     continue;
-                }
-                let Some(owner) = CallbackOwner::new(mod_id) else {
+                } else {
                     log::error!("Animation interpolation {key} has no installed owner {mod_id}");
-                    continue;
-                };
-                interpolations.insert(key, bind_animation_interpolation(id, owner, interpolate));
+                }
+                CallbackOwner::for_mod(mod_id).dispose(
+                    "animation interpolation",
+                    "drop_interpolator",
+                    interpolate,
+                );
             }
-            _ => continue,
+            other => {
+                CallbackOwner::for_mod(mod_id).dispose("animation type", "drop_registration", other)
+            }
         }
     }
     BoundAnimations {

@@ -1,7 +1,7 @@
 //! The model loaders native mods register (NeoForge's `ModelEvent.RegisterLoaders`), bound at
 //! registration time so a resource load resolves each model's loader directly.
 use mod_api::{
-    __private::game::{CallbackOwner, ModelLoaderRegistration},
+    __private::game::{CallbackOwner, CallbackValue, ModelLoaderRegistration},
     Answered, ModelLoaderInput, ModelLoaderQuad, ModelLoaderSchema, ModelLoaderTexture,
 };
 use std::{
@@ -26,21 +26,26 @@ fn freeze(loaders: Vec<Answered<ModelLoaderRegistration>>) -> (ModelLoaderTable,
     let mut kept = Vec::new();
     for Answered { answer, mod_id, .. } in loaders {
         let key = answer.id.to_string();
-        if matches!(
+        let owner = if matches!(
             key.as_str(),
             "neoforge:composite" | "neoforge:obj" | "fusion:model"
         ) {
             log::error!("Mod {mod_id}: model loader {key} collides with a built-in model loader");
-            continue;
-        }
-        if bound.contains_key(&key) {
+            None
+        } else if bound.contains_key(&key) {
             log::error!(
                 "Mod {mod_id}: model loader {key} is already registered; the first registration is kept"
             );
-            continue;
-        }
-        let Some(owner) = CallbackOwner::new(mod_id) else {
-            log::error!("Model loader {key} has no installed owner {mod_id}");
+            None
+        } else {
+            let owner = CallbackOwner::new(mod_id);
+            if owner.is_none() {
+                log::error!("Model loader {key} has no installed owner {mod_id}");
+            }
+            owner
+        };
+        let Some(owner) = owner else {
+            CallbackOwner::for_mod(mod_id).dispose("model loader", "drop_baker", answer.bake);
             continue;
         };
         let schema = match answer.schema {
@@ -49,6 +54,7 @@ fn freeze(loaders: Vec<Answered<ModelLoaderRegistration>>) -> (ModelLoaderTable,
             ModelLoaderSchema::Cuboids => LoaderSchema::Cuboids,
         };
         let loader = key.clone();
+        let callback = CallbackValue::new(owner, "model loader", "drop_baker", answer.bake);
         let bake = Arc::new(
             move |model: &str,
                   config: &str,
@@ -58,9 +64,10 @@ fn freeze(loaders: Vec<Answered<ModelLoaderRegistration>>) -> (ModelLoaderTable,
                     mod_api::__private::ModPhase::Registration,
                 );
                 let input = ModelLoaderInput::new(model, config, textures);
+                let owner = callback.owner();
                 let quads = owner
                     .call("model loader", "bake_model_loader", || {
-                        (answer.bake)(&input)
+                        (callback.value())(&input)
                     })
                     .map_err(|reason| format!("loader {loader}: {reason}"))?
                     .map_err(|reason| {

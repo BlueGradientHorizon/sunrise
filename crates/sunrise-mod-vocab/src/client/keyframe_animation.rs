@@ -3,7 +3,8 @@
 //! own mobs' animations through [`AnimationChannel::sample`], and a mod plays the files it ships
 //! (`RenderAssets::animation`) on its own `ModelPart` with the same code.
 use crate::{
-    Identifier, ModelPart, RegisterJsonAnimationTypesEvent, callback_owner::CallbackOwner,
+    Identifier, ModelPart, RegisterJsonAnimationTypesEvent,
+    callback_owner::{CallbackOwner, CallbackValue},
 };
 use std::sync::Arc;
 
@@ -30,9 +31,8 @@ pub type AnimationInterpolationFn =
 
 struct BoundAnimationTargetInner {
     id: Identifier,
-    owner: CallbackOwner,
-    apply: Arc<AnimationTargetApply>,
-    convert: Arc<AnimationTargetConvert>,
+    apply: CallbackValue<Arc<AnimationTargetApply>>,
+    convert: CallbackValue<Arc<AnimationTargetConvert>>,
 }
 
 /// A custom animation target bound to its owning mod's callbacks at registration
@@ -50,7 +50,7 @@ impl BoundAnimationTarget {
 
     /// The `[mod] id` of the mod that registered this target.
     pub fn owner(&self) -> &'static str {
-        self.0.owner.id()
+        self.0.apply.owner().id()
     }
 }
 
@@ -58,7 +58,7 @@ impl std::fmt::Debug for BoundAnimationTarget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BoundAnimationTarget")
             .field("id", &self.0.id)
-            .field("owner", &self.0.owner.id())
+            .field("owner", &self.owner())
             .finish()
     }
 }
@@ -73,8 +73,7 @@ impl Eq for BoundAnimationTarget {}
 
 struct BoundInterpolationInner {
     id: Identifier,
-    owner: CallbackOwner,
-    interpolate: Arc<AnimationInterpolationFn>,
+    interpolate: CallbackValue<Arc<AnimationInterpolationFn>>,
 }
 
 /// A custom animation interpolation bound to its owning mod's callback at registration
@@ -92,7 +91,7 @@ impl BoundInterpolation {
 
     /// The `[mod] id` of the mod that registered this interpolation.
     pub fn owner(&self) -> &'static str {
-        self.0.owner.id()
+        self.0.interpolate.owner().id()
     }
 }
 
@@ -100,7 +99,7 @@ impl std::fmt::Debug for BoundInterpolation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BoundInterpolation")
             .field("id", &self.0.id)
-            .field("owner", &self.0.owner.id())
+            .field("owner", &self.owner())
             .finish()
     }
 }
@@ -124,9 +123,8 @@ pub fn bind_animation_target(
 ) -> BoundAnimationTarget {
     BoundAnimationTarget(Arc::new(BoundAnimationTargetInner {
         id,
-        owner,
-        apply,
-        convert,
+        apply: CallbackValue::new(owner.clone(), "animation target", "drop_apply", apply),
+        convert: CallbackValue::new(owner, "animation target", "drop_converter", convert),
     }))
 }
 
@@ -140,8 +138,12 @@ pub fn bind_animation_interpolation(
 ) -> BoundInterpolation {
     BoundInterpolation(Arc::new(BoundInterpolationInner {
         id,
-        owner,
-        interpolate,
+        interpolate: CallbackValue::new(
+            owner,
+            "animation interpolation",
+            "drop_interpolator",
+            interpolate,
+        ),
     }))
 }
 
@@ -152,16 +154,16 @@ pub fn convert_animation_target(
     target: &BoundAnimationTarget,
     value: [f32; 3],
 ) -> Result<[f32; 3], String> {
-    let converted = target
-        .0
-        .owner
+    let convert = &target.0.convert;
+    let converted = convert
+        .owner()
         .call("animation target", "convert_target", || {
-            (target.0.convert)(value)
+            (convert.value())(value)
         })?;
     if !converted.iter().all(|v| v.is_finite()) {
         return Err(format!(
             "mod {}: animation target {} converter returned non-finite vector {converted:?}",
-            target.0.owner.id(),
+            target.owner(),
             target.0.id
         ));
     }
@@ -196,13 +198,12 @@ impl AnimationTarget {
             Self::Rotation => part.offset_rotation(value),
             Self::Scale => part.offset_scale(value),
             Self::Custom(bound) => {
-                if !bound.0.owner.is_enabled() {
+                let apply = &bound.0.apply;
+                let owner = apply.owner();
+                if !owner.is_enabled() {
                     return;
                 }
-                let _ = bound
-                    .0
-                    .owner
-                    .call("animation target", "apply", || (bound.0.apply)(part, value));
+                let _ = owner.call("animation target", "apply", || (apply.value())(part, value));
             }
         }
     }
@@ -284,20 +285,19 @@ impl AnimationChannel {
                 std::array::from_fn(|i| (a[i] + (b[i] - a[i]) * alpha) * scale)
             }
             Interpolation::Custom(bound) => {
-                if !bound.0.owner.is_enabled() {
+                let interpolate = &bound.0.interpolate;
+                let owner = interpolate.owner();
+                if !owner.is_enabled() {
                     return None;
                 }
-                match bound
-                    .0
-                    .owner
-                    .call("animation interpolation", "interpolate", || {
-                        (bound.0.interpolate)(k, alpha, prev, next, scale)
-                    }) {
+                match owner.call("animation interpolation", "interpolate", || {
+                    (interpolate.value())(k, alpha, prev, next, scale)
+                }) {
                     Ok(v) if v.iter().all(|c| c.is_finite()) => v,
                     Ok(v) => {
                         log::warn!(
                             "Sunrise: mod {}: animation interpolation {} returned non-finite vector {v:?}",
-                            bound.0.owner.id(),
+                            owner.id(),
                             bound.0.id
                         );
                         return None;

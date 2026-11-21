@@ -3,7 +3,7 @@
 //! atlas definition.
 use crate::atlas_sources::{ModSources, is_builtin_type};
 use mod_api::{
-    __private::game::{CallbackOwner, SpriteSourceRegistration},
+    __private::game::{CallbackOwner, CallbackValue, SpriteSourceRegistration},
     Answered, Identifier, ResourceReader, SpriteSourceFn, SpriteSourceInput, SpriteSourceOutput,
 };
 use std::{
@@ -13,8 +13,7 @@ use std::{
 use sunrise_core::nbt::Tag;
 
 struct BoundSpriteSource {
-    owner: CallbackOwner,
-    list: Arc<SpriteSourceFn>,
+    list: CallbackValue<Arc<SpriteSourceFn>>,
 }
 
 type SpriteSourceTable = BTreeMap<String, Arc<BoundSpriteSource>>;
@@ -22,26 +21,38 @@ type SpriteSourceTable = BTreeMap<String, Arc<BoundSpriteSource>>;
 static SOURCES: RwLock<SpriteSourceTable> = RwLock::new(BTreeMap::new());
 
 fn bind_into(
-    bound: &mut SpriteSourceTable,
+    table: &RwLock<SpriteSourceTable>,
     sources: Vec<Answered<SpriteSourceRegistration>>,
 ) -> Vec<String> {
     let mut kept = Vec::new();
     let mut seen = BTreeSet::new();
+    // A discarded capture can run mod code on drop; never hold the table lock then.
+    let mut rejected = Vec::new();
+    let mut displaced = Vec::new();
+    let mut bound = table
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     for Answered { answer, mod_id, .. } in sources {
         let id = answer.id;
         let Some(owner) = CallbackOwner::new(mod_id) else {
+            rejected.push(CallbackValue::new(
+                CallbackOwner::for_mod(mod_id),
+                "sprite source",
+                "drop_provider",
+                answer.list,
+            ));
             log::warn!("Sprite source type {id} has no installed owner {mod_id}");
             continue;
         };
         let key = id.to_string();
         let entry = Arc::new(BoundSpriteSource {
-            owner,
-            list: answer.list,
+            list: CallbackValue::new(owner, "sprite source", "drop_provider", answer.list),
         });
         if let Some(earlier) = bound.insert(key.clone(), entry) {
+            let earlier_mod = earlier.list.owner().id();
+            displaced.push(earlier);
             log::warn!(
-                "Sunrise: sprite source type {key} registered by {} is replaced by {mod_id}'s registration",
-                earlier.owner.id()
+                "Sunrise: sprite source type {key} registered by {earlier_mod} is replaced by {mod_id}'s registration"
             );
         } else if is_builtin_type(&key) {
             log::warn!(
@@ -52,6 +63,9 @@ fn bind_into(
             kept.push(key);
         }
     }
+    drop(bound);
+    drop(displaced);
+    drop(rejected);
     kept
 }
 
@@ -61,10 +75,7 @@ fn bind_into(
 /// both mods, and overriding a built-in vanilla source type logs a warning naming the mod.
 /// Returns the unique ids kept in this batch, in first-registration order.
 pub fn register(sources: Vec<Answered<SpriteSourceRegistration>>) -> Vec<String> {
-    let mut bound = SOURCES
-        .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    bind_into(&mut bound, sources)
+    bind_into(&SOURCES, sources)
 }
 
 struct SourceReader<'a> {
@@ -121,15 +132,15 @@ impl ModSources for SourceReader<'_> {
         let _phase =
             mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
         let input = SpriteSourceInput::new(atlas, config, resources.as_ref());
-        match entry
-            .owner
-            .call("sprite source", "sprite_source", || (entry.list)(&input))
-        {
+        let owner = entry.list.owner();
+        match owner.call("sprite source", "sprite_source", || {
+            (entry.list.value())(&input)
+        }) {
             Ok(Ok(outputs)) => outputs,
             Ok(Err(reason)) => {
                 log::warn!(
                     "atlas {atlas}: mod {} sprite source {kind} failed: {reason}",
-                    entry.owner.id()
+                    owner.id()
                 );
                 Vec::new()
             }
@@ -185,7 +196,10 @@ mod tests {
         __private::game::{RegistrationContextNew, take_callback_panic_notices},
         RegistrationContext,
     };
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{
+        Weak,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     fn id(text: &str) -> Identifier {
         Identifier::parse(text).unwrap()
@@ -222,7 +236,23 @@ mod tests {
 
     #[test]
     fn registration_accepts_minecraft_namespace_overrides_builtins_and_last_writer_wins() {
-        struct Earlier;
+        struct PanicOnDrop {
+            table: Weak<RwLock<SpriteSourceTable>>,
+            drops: Arc<AtomicUsize>,
+        }
+        impl Drop for PanicOnDrop {
+            fn drop(&mut self) {
+                self.drops.fetch_add(1, Ordering::Relaxed);
+                let table = self.table.upgrade().unwrap();
+                assert!(table.try_read().is_ok(), "sprite table is still locked");
+                panic!("sprite capture destructor");
+            }
+        }
+        struct Earlier {
+            table: Weak<RwLock<SpriteSourceTable>>,
+            displaced_drops: Arc<AtomicUsize>,
+            rejected_drops: Arc<AtomicUsize>,
+        }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Earlier {
             fn register_sprite_sources(
@@ -230,11 +260,27 @@ mod tests {
                 _: &RegistrationContext,
                 event: &mut mod_api::RegisterSpriteSourcesEvent<'_>,
             ) {
-                event.register(id("srcreg:shared"), |_| {
+                let displaced = PanicOnDrop {
+                    table: self.table.clone(),
+                    drops: Arc::clone(&self.displaced_drops),
+                };
+                event.register(id("srcreg:shared"), move |_| {
+                    let _ = &displaced;
                     Ok(vec![pixels("srcreg:from_earlier", 1, 1, vec![1; 4])])
                 });
                 event.register(id("minecraft:single"), |_| {
                     Ok(vec![pixels("srcreg:single_earlier", 1, 1, vec![2; 4])])
+                });
+                event.register(id("srcreg:unrelated"), |_| {
+                    Ok(vec![pixels("srcreg:unrelated", 1, 1, vec![6; 4])])
+                });
+                let rejected = PanicOnDrop {
+                    table: self.table.clone(),
+                    drops: Arc::clone(&self.rejected_drops),
+                };
+                event.register(id("srcreg:unattributed"), move |_| {
+                    let _ = &rejected;
+                    Ok(Vec::new())
                 });
             }
         }
@@ -258,30 +304,74 @@ mod tests {
             }
         }
 
+        let table = Arc::new(RwLock::new(SpriteSourceTable::new()));
+        let displaced_drops = Arc::new(AtomicUsize::new(0));
+        let rejected_drops = Arc::new(AtomicUsize::new(0));
         let mods: mod_api::Mods = vec![
-            mod_api::ModEntry::new("earlier_src", Box::new(Earlier)),
+            mod_api::ModEntry::new(
+                "earlier_src",
+                Box::new(Earlier {
+                    table: Arc::downgrade(&table),
+                    displaced_drops: Arc::clone(&displaced_drops),
+                    rejected_drops: Arc::clone(&rejected_drops),
+                }),
+            ),
             mod_api::ModEntry::new("later_src", Box::new(Later)),
         ]
         .into();
-        let (table, kept) = mod_platform::testing::with_mods(mods, || {
-            let mut registrations = Vec::new();
-            mod_api::dispatch_register_sprite_sources(
-                &RegistrationContext::new(),
-                &mut registrations,
+        let (kept, notices) = {
+            // Only the shared notice queue needs coordination; the provider table is local.
+            let _notice_lock = crate::mod_model_loaders::PANIC_NOTICE_TEST_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let kept = mod_platform::testing::with_mods(mods, || {
+                let mut registrations = Vec::new();
+                mod_api::dispatch_register_sprite_sources(
+                    &RegistrationContext::new(),
+                    &mut registrations,
+                );
+                registrations
+                    .iter_mut()
+                    .find(|entry| entry.answer.id == id("srcreg:unattributed"))
+                    .unwrap()
+                    .mod_id = "missing_src_owner";
+                bind_into(&table, registrations)
+            });
+            (kept, take_callback_panic_notices())
+        };
+        for (owner, drops) in [
+            ("earlier_src", displaced_drops),
+            ("missing_src_owner", rejected_drops),
+        ] {
+            assert_eq!(drops.load(Ordering::Relaxed), 1);
+            assert!(
+                notices.iter().any(|notice| {
+                    notice.mod_id == owner
+                        && notice.operation == "drop_provider"
+                        && notice.message.contains("sprite capture destructor")
+                }),
+                "expected {owner}'s destructor panic outside the registry lock, got {notices:?}"
             );
-            let mut table = SpriteSourceTable::new();
-            let kept = bind_into(&mut table, registrations);
-            (table, kept)
-        });
+        }
+        let Ok(table) = Arc::try_unwrap(table) else {
+            panic!("unexpected sprite table owner");
+        };
+        let table = table.into_inner().unwrap();
         assert_eq!(
             kept,
-            ["srcreg:shared", "minecraft:single", "minecraft:custom"]
+            [
+                "srcreg:shared",
+                "minecraft:single",
+                "srcreg:unrelated",
+                "minecraft:custom"
+            ]
         );
         let declared = SourceReader::declared(Some(&table));
         assert!(
             declared.is_registered("srcreg:shared")
                 && declared.is_registered("minecraft:single")
                 && declared.is_registered("minecraft:custom")
+                && !declared.is_registered("srcreg:unattributed")
         );
         let source = crate::resource_source::ResourceSource::indexed(
             [
@@ -291,7 +381,8 @@ mod tests {
                         br#"{"sources":[
                             {"type":"srcreg:shared"},
                             {"type":"single","resource":"srctest:item/apple"},
-                            {"type":"minecraft:custom"}
+                            {"type":"minecraft:custom"},
+                            {"type":"srcreg:unrelated"}
                         ]}"#
                         .to_vec(),
                     ),
@@ -312,7 +403,8 @@ mod tests {
             [
                 "srcreg:from_later",
                 "srcreg:mc_custom",
-                "srcreg:single_override"
+                "srcreg:single_override",
+                "srcreg:unrelated"
             ],
             "later registration replaces earlier one and overrides built-in minecraft:single"
         );
@@ -388,9 +480,9 @@ mod tests {
                 &RegistrationContext::new(),
                 &mut registrations,
             );
-            let mut table = SpriteSourceTable::new();
-            let kept = bind_into(&mut table, registrations);
-            (table, kept)
+            let table = RwLock::new(SpriteSourceTable::new());
+            let kept = bind_into(&table, registrations);
+            (table.into_inner().unwrap(), kept)
         });
         assert_eq!(kept, ["srctest:panics", "srctest:flaky", "srctest:healthy"]);
 

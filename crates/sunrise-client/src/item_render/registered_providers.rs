@@ -33,8 +33,7 @@ use sunrise_core::nbt::Tag;
 
 /// One installed decode-time factory paired with the mod owner that registered it.
 pub struct ItemProviderEntry<D: ?Sized> {
-    owner: Arc<CallbackOwner>,
-    decode: Arc<D>,
+    decode: CallbackValue<Arc<D>>,
 }
 
 pub type ItemTintFactories = BTreeMap<String, ItemProviderEntry<ItemTintSourceDecoder>>;
@@ -80,7 +79,8 @@ impl BoundSelectProperty {
                 "item_model_select_property",
                 || {
                     let mut keys = Iterator::filter_map(keys, |(index, key)| {
-                        key.downcast_ref::<SelectCaseKey>().map(|key| (index, key))
+                        key.downcast_ref::<CallbackValue<SelectCaseKey>>()
+                            .map(|key| (index, key.value()))
                     });
                     (self.eval.value())(host, input, &mut keys)
                 },
@@ -188,17 +188,17 @@ fn bind_factories<D: ?Sized>(
     for (mod_id, id, decode) in entries {
         let Some(owner) = CallbackOwner::new(mod_id) else {
             log::warn!("{label} {id} has no installed owner {mod_id}");
+            CallbackOwner::for_mod(mod_id).dispose(label, "drop_decoder", decode);
             continue;
         };
         let key = id.to_string();
         let entry = ItemProviderEntry {
-            owner: Arc::new(owner),
-            decode,
+            decode: CallbackValue::new(owner, label, "drop_decoder", decode),
         };
         if let Some(earlier) = bound.insert(key.clone(), entry) {
             log::warn!(
                 "Sunrise: {label} {key} registered by {} is replaced by {mod_id}'s registration",
-                earlier.owner.id()
+                earlier.decode.owner().id()
             );
         } else if is_builtin(&key) {
             log::warn!(
@@ -333,20 +333,16 @@ where
             format!("{callback_kind} {kind}: its JSON doesn't convert to NBT: {error}")
         })?;
     let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-    match entry.owner.call(callback_kind, "decode", || {
-        (entry.decode)(&config).map(|eval| {
-            CallbackValue::new(
-                (*entry.owner).clone(),
-                callback_kind,
-                "drop_evaluator",
-                eval,
-            )
-        })
+    let owner = entry.decode.owner();
+    // The owner boundary may drop even a successful decode if a phase refusal latched.
+    match owner.call(callback_kind, "decode", || {
+        (entry.decode.value())(&config)
+            .map(|eval| CallbackValue::new(owner.clone(), callback_kind, "drop_evaluator", eval))
     }) {
         Ok(Ok(eval)) => Ok(Some(eval)),
         Ok(Err(reason)) => Err(format!(
             "mod {} {callback_kind} {kind} refused it: {reason}",
-            entry.owner.id()
+            owner.id()
         )),
         Err(error) => Err(format!("{callback_kind} {kind}: {error}")),
     }
@@ -471,10 +467,10 @@ pub fn decode_item_model(
         next_generated: 0,
         transformation: None,
     };
-    match entry.owner.call("item model", "decode", || {
-        (entry.decode)(&config, &mut children).map(|eval| {
-            CallbackValue::new((*entry.owner).clone(), "item model", "drop_evaluator", eval)
-        })
+    let owner = entry.decode.owner();
+    match owner.call("item model", "decode", || {
+        (entry.decode.value())(&config, &mut children)
+            .map(|eval| CallbackValue::new(owner.clone(), "item model", "drop_evaluator", eval))
     }) {
         Ok(Ok(eval)) => Ok(Some(DecodedItemModel {
             model: RegisteredItemModel(Arc::new(BoundItemModel {
@@ -486,7 +482,7 @@ pub fn decode_item_model(
         })),
         Ok(Err(reason)) => Err(format!(
             "mod {} item model {kind} refused it: {reason}",
-            entry.owner.id()
+            owner.id()
         )),
         Err(error) => Err(format!("item model {kind}: {error}")),
     }
@@ -514,42 +510,41 @@ pub fn decode_select_property(
     kind: &str,
     fields: &Map<String, Value>,
 ) -> Result<Option<RegisteredSelectProperty>, String> {
+    const CALLBACK_KIND: &str = "item model select property";
     let Some(entry) = factories.and_then(|table| table.get(kind)) else {
         return Ok(None);
     };
     let config = sunrise_core::json_nbt::json_to_compound(fields)
         .map(Tag::Compound)
         .map_err(|error| {
-            format!("item model select property {kind}: its JSON doesn't convert to NBT: {error}")
+            format!("{CALLBACK_KIND} {kind}: its JSON doesn't convert to NBT: {error}")
         })?;
     let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-    let (decode_case, eval) = match entry
-        .owner
-        .call("item model select property", "decode", || {
-            (entry.decode)(&config).map(|(decode_case, eval)| {
-                (
+    let owner = entry.decode.owner();
+    let (decode_case, eval) = match owner.call(CALLBACK_KIND, "decode", || {
+        (entry.decode.value())(&config).map(|(decode_case, eval)| {
+            (
+                CallbackValue::new(
+                    owner.clone(),
+                    CALLBACK_KIND,
+                    "drop_case_decoder",
                     decode_case,
-                    CallbackValue::new(
-                        (*entry.owner).clone(),
-                        "item model select property",
-                        "drop_evaluator",
-                        eval,
-                    ),
-                )
-            })
-        }) {
+                ),
+                CallbackValue::new(owner.clone(), CALLBACK_KIND, "drop_evaluator", eval),
+            )
+        })
+    }) {
         Ok(Ok(pair)) => pair,
         Ok(Err(reason)) => {
             return Err(format!(
-                "mod {} item model select property {kind} refused it: {reason}",
-                entry.owner.id()
+                "mod {} {CALLBACK_KIND} {kind} refused it: {reason}",
+                owner.id()
             ));
         }
-        Err(error) => return Err(format!("item model select property {kind}: {error}")),
+        Err(error) => return Err(format!("{CALLBACK_KIND} {kind}: {error}")),
     };
-    let owner = Arc::clone(&entry.owner);
+    let compare_owner = owner.clone();
     let kind_owned: Box<str> = kind.into();
-    let case_owner = Arc::clone(&owner);
     let case_kind = kind_owned.clone();
     let bound = BoundSelectProperty {
         kind: kind_owned,
@@ -560,29 +555,36 @@ pub fn decode_select_property(
         move |value| {
             let tag = sunrise_core::json_nbt::json_to_tag(value).map_err(|error| {
                 SelectCaseDecodeError::Mismatch(format!(
-                    "item model select property {case_kind}: case value doesn't convert to NBT: {error}"
+                    "{CALLBACK_KIND} {case_kind}: case value doesn't convert to NBT: {error}"
                 ))
             })?;
             let _phase =
                 mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-            match case_owner.call("item model select property", "decode_case", || {
-                (decode_case)(&tag)
+            let owner = decode_case.owner();
+            match owner.call(CALLBACK_KIND, "decode_case", || {
+                (decode_case.value())(&tag).map(|key| {
+                    CallbackValue::new(owner.clone(), CALLBACK_KIND, "drop_case_key", key)
+                })
             }) {
                 Ok(Ok(key)) => Ok(RegisteredSelectKey::new(key)),
                 Ok(Err(reason)) => Err(SelectCaseDecodeError::Mismatch(format!(
-                    "mod {} item model select property {case_kind} refused case: {reason}",
-                    case_owner.id()
+                    "mod {} {CALLBACK_KIND} {case_kind} refused case: {reason}",
+                    owner.id()
                 ))),
                 Err(error) => Err(SelectCaseDecodeError::Callback(format!(
-                    "item model select property {case_kind}: {error}"
+                    "{CALLBACK_KIND} {case_kind}: {error}"
                 ))),
             }
         },
         move |left, right| {
             let _phase =
                 mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-            owner.call("item model select property", "compare_case", || {
-                left.downcast_ref::<SelectCaseKey>() == right.downcast_ref::<SelectCaseKey>()
+            compare_owner.call(CALLBACK_KIND, "compare_case", || {
+                left.downcast_ref::<CallbackValue<SelectCaseKey>>()
+                    .map(CallbackValue::value)
+                    == right
+                        .downcast_ref::<CallbackValue<SelectCaseKey>>()
+                        .map(CallbackValue::value)
             })
         },
     )))

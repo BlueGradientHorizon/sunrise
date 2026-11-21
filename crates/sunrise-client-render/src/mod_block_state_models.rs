@@ -2,7 +2,7 @@
 //! bound once at start so a resource load invokes each type's provider directly when reading a
 //! blockstate file naming it (`neoforge:definition_type`).
 use mod_api::{
-    __private::game::{BlockStateDefinitionRegistration, CallbackOwner},
+    __private::game::{BlockStateDefinitionRegistration, CallbackOwner, CallbackValue},
     Answered, BlockStateDefinitionFn, BlockStateDefinitionInput, BlockStateModelPick, Identifier,
 };
 use serde_json::Value;
@@ -13,8 +13,7 @@ use std::{
 use sunrise_assets::blockstate::{Variant, bind::Properties};
 
 struct BoundBlockStateModel {
-    owner: CallbackOwner,
-    instantiate: Arc<BlockStateDefinitionFn>,
+    instantiate: CallbackValue<Arc<BlockStateDefinitionFn>>,
 }
 
 pub(crate) struct BlockStateModelTable(BTreeMap<String, BoundBlockStateModel>);
@@ -30,19 +29,28 @@ fn freeze(
         let id = answer.id;
         let Some(owner) = CallbackOwner::new(mod_id) else {
             log::warn!("Block state definition type {id} has no installed owner {mod_id}");
+            CallbackOwner::for_mod(mod_id).dispose(
+                "block state definition",
+                "drop_provider",
+                answer.instantiate,
+            );
             continue;
         };
         let key = id.to_string();
         if let Some(earlier) = bound.insert(
             key.clone(),
             BoundBlockStateModel {
-                owner,
-                instantiate: answer.instantiate,
+                instantiate: CallbackValue::new(
+                    owner,
+                    "block state definition",
+                    "drop_provider",
+                    answer.instantiate,
+                ),
             },
         ) {
             log::warn!(
                 "Sunrise: block state definition type {key} registered by {} is replaced by {mod_id}'s registration",
-                earlier.owner.id()
+                earlier.instantiate.owner().id()
             );
         } else {
             kept.push(key);
@@ -86,16 +94,17 @@ pub(crate) fn instantiate(
         .map_err(|e| format!("definition type {kind}: its JSON doesn't convert to NBT: {e}"))?;
     let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
     let input = BlockStateDefinitionInput::new(&block, &config, states);
-    let picks = match entry.owner.call(
+    let owner = entry.instantiate.owner();
+    let picks = match owner.call(
         "block state definition",
         "instantiate_block_state_definition",
-        || (entry.instantiate)(&input),
+        || (entry.instantiate.value())(&input),
     ) {
         Ok(Ok(picks)) => picks,
         Ok(Err(reason)) => {
             return Err(format!(
                 "mod {} definition type {kind} refused it: {reason}",
-                entry.owner.id()
+                owner.id()
             ));
         }
         Err(error) => {
