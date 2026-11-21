@@ -1,13 +1,16 @@
 #!/bin/sh
-# Installs sunrise-server (docs/server.md) on Linux or macOS: the current Sunrise Nightly for this computer (the
-# only build Sunrise ships; GitHub's latest release while there is none), downloaded from GitHub Releases and
+# Installs sunrise-server (docs/server.md) on Linux or macOS: by default the current Sunrise Nightly for this computer
+# (GitHub's latest release while there is none), or the release --version names, downloaded from GitHub Releases and
 # checked against the release's signed SHA256SUMS when OpenSSL 3 is installed (docs/release-flow.md, "Signed
 # checksums"), else against the SHA-256 GitHub publishes for it. On Linux that is the server build (sunrise-server-linux-x86_64.tar.gz), which needs neither ALSA nor udev.
 #
 #   curl -fsSL https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.sh | sh
-#   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0    (a stable release, whose line updates then follow)
+#   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0
 #   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0 --dir /opt/sunrise --bin /usr/local/bin
-#   sh install.sh --archive sunrise-server-linux-x86_64.tar.gz --version mybuild   (an archive you have)
+#   sh install.sh --archive sunrise-server-linux-x86_64.tar.gz --version mybuild
+#
+# A stable release's tag (26.3-0.1.0) puts the server on that stable line, which `sunrise-server update` then
+# follows. --archive installs an archive you have, such as your own build.
 #
 # It needs curl, tar or unzip, and sha256sum or shasum (and OpenSSL 3 for the signature: macOS's LibreSSL is not
 # enough, and there the GitHub SHA-256 is all that is checked); it never asks for sudo (pick folders you can write).
@@ -44,7 +47,7 @@ while [ $# -gt 0 ]; do
     --dir) [ $# -ge 2 ] || die "--dir needs a folder"; DIR=$2; shift 2 ;;
     --bin) [ $# -ge 2 ] || die "--bin needs a folder"; BIN=$2; shift 2 ;;
     --archive) [ $# -ge 2 ] || die "--archive needs a file"; ARCHIVE=$2; shift 2 ;;
-    -h|--help) sed -n '2,15p' "$0" 2>/dev/null || true; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0" 2>/dev/null || true; exit 0 ;;
     *) die "unknown option $1" ;;
   esac
 done

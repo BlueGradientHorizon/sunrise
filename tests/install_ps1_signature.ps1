@@ -47,7 +47,13 @@ public static class FakeEnvironment {
 "@
 
 # The fakes: the API answers with the case's release, any download with the case's file of that name.
-function Invoke-RestMethod { param($Uri, $Headers) $global:SunriseTestRel.Release }
+# A case that names its tag (OnlyTag) answers only that exact by-tag lookup, as GitHub would.
+function Invoke-RestMethod {
+    param($Uri, $Headers)
+    $Only = $global:SunriseTestRel.OnlyTag
+    if ($Only -and $Uri -cne "https://api.github.com/repos/sunrise-org/sunrise/releases/tags/$Only") { throw "404 $Uri" }
+    $global:SunriseTestRel.Release
+}
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing)
     $Source = Join-Path $global:SunriseTestRel.Files ($Uri -split "/")[-1]
@@ -103,6 +109,7 @@ function Set-Release([string]$Dir, [string]$Tag, [bool]$Sums, [string]$Title = $
     $script:Releases[$Dir] = [pscustomobject]@{ tag_name = $Tag; name = $Title; assets = $Assets }
 }
 $script:Releases = @{}
+$script:OnlyTag = @{}
 
 # install.ps1 with the throwaway public key in place of the release key, and the fake environment.
 function Set-Installer([string]$Dir, [string]$Key) {
@@ -115,7 +122,9 @@ function Set-Installer([string]$Dir, [string]$Key) {
 # Runs the case's install.ps1 with PATH set to Path; returns @{ Ok; Out }.
 # Arguments by name: an array splatted into a script passes "-Version" as a positional value, not the parameter.
 function Invoke-Case([string]$Dir, [string]$Path, [hashtable]$Arguments = @{}) {
-    $global:SunriseTestRel = [pscustomobject]@{ Release = $script:Releases[$Dir]; Files = Join-Path $Dir "files" }
+    $global:SunriseTestRel = [pscustomobject]@{
+        Release = $script:Releases[$Dir]; Files = Join-Path $Dir "files"; OnlyTag = $script:OnlyTag[$Dir]
+    }
     $env:PATH = $Path
     $Ok = $true
     $Out = try {
@@ -164,9 +173,11 @@ try {
     $d = Join-Path $W "title"; New-Release $d "nightly" $Nightly; Set-Release $d "nightly" $true "Nightly"
     $r = Invoke-Case $d $P; Test-Case "Nightly with an unreadable title refused" $false "title doesn't name its date and commit" $r
 
-    # 2. Good signature, a normal tag.
-    $d = Join-Path $W "tag"; New-Release $d "v1.2.3"
-    $r = Invoke-Case $d $P @{ Version = "v1.2.3" }; Test-Case "good signature installs (release tag)" $true "Release signature OK" $r
+    # 2. Good signature, a stable release by its tag: looked up by exactly that tag, installed under it.
+    $d = Join-Path $W "tag"; New-Release $d "26.3-0.1.0"; $script:OnlyTag[$d] = "26.3-0.1.0"
+    $r = Invoke-Case $d $P @{ Version = "26.3-0.1.0" }
+    Test-Case "good signature installs (stable release tag)" $true "Release signature OK" $r
+    Test-That "not installed as 26.3-0.1.0" (Test-Path (Join-Path $d "inst\releases\26.3-0.1.0\sunrise-server.exe"))
 
     # 3. Tampered archive: GitHub's digest is made to agree with the swapped archive, only SHA256SUMS catches it.
     $d = Join-Path $W "arc"; New-Release $d "v1.2.3"

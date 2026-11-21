@@ -1,11 +1,12 @@
-# Installs sunrise-server (docs/server.md) on Windows: the current Sunrise Nightly (the only build Sunrise ships;
-# GitHub's latest release while there is none), downloaded from GitHub Releases and checked against the release's
+# Installs sunrise-server (docs/server.md) on Windows: by default the current Sunrise Nightly (GitHub's latest release
+# while there is none), or the release -Version names, downloaded from GitHub Releases and checked against the release's
 # signed SHA256SUMS when OpenSSL 3 is found (docs/release-flow.md, "Signed checksums"), else against the SHA-256
 # GitHub publishes for it. OpenSSL is looked for on the PATH and in Git for Windows, which ships it.
 #
 #   irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex
-#   & ([scriptblock]::Create((irm .../install.ps1))) -Version 26.3-0.1.0 -Dir D:\Sunrise    (a stable release, whose line
-#   updates then follow)
+#   & ([scriptblock]::Create((irm .../install.ps1))) -Version 26.3-0.1.0 -Dir D:\Sunrise
+#
+# A stable release's tag (26.3-0.1.0) puts the server on that stable line, which `sunrise-server update` then follows.
 #
 # Releases go to <Dir>\releases\<version>, <Dir>\current points at the one in use, and <Dir>\bin (added to
 # your PATH) holds sunrise-server.cmd and sunrise-prepare.cmd. The game files you prepare from your own

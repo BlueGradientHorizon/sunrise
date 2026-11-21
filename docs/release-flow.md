@@ -234,9 +234,9 @@ keep a working build until they update themselves. `.github/release-line.txt` st
   instance stays. Worlds are in the game's folder, never in a version's, so nothing touches them. The "Nightly
   builds" setting is gone. The last week's Nightlies (`nightly-<date>`) and the old releases stay on the Versions
   page.
-- **Servers** (#3331): `sunrise-server update`, `install.sh` and `install.ps1` follow the Nightly the same way. A
-  server installed on a stable release (`install.sh --version 26.3-0.1.0`) follows that release's line instead
-  ([server.md](server.md), section 7).
+- **Servers**: `sunrise-server update`, `install.sh` and `install.ps1` follow the Nightly the same way. A server
+  installed on a stable release (`install.sh --version 26.3-0.1.0`, or `install.ps1 -Version 26.3-0.1.0` on Windows)
+  follows that release's line instead ([server.md](server.md), section 7).
 - **Kira** posts each Nightly in #releases; the bug template asks for the version the game shows.
 - **Everyone gets the reviewers' picks.** A Nightly is main plus the pull requests the trusted reviewers picked
   ([below](#trusted-reviewers-pick-the-nightlys-pull-requests)), so a pick reaches every player with the next

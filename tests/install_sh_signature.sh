@@ -60,7 +60,11 @@ cat > "$W/fake/curl" <<'CURL'
 out=; url=
 while [ $# -gt 0 ]; do case "$1" in -o) out=$2; shift 2 ;; -*) shift ;; *) url=$1; shift ;; esac; done
 case "$url" in
-  https://api.github.com/*) src=$REL/release.json ;;
+  # A case that names its tag (only-tag) answers only that exact by-tag lookup, as GitHub would.
+  https://api.github.com/*)
+    only=https://api.github.com/repos/sunrise-org/sunrise/releases/tags/$(cat "$REL/only-tag" 2>/dev/null)
+    if [ -f "$REL/only-tag" ] && [ "$url" != "$only" ]; then exit 22; fi
+    src=$REL/release.json ;;
   *) src=$REL/files/$(basename "$url") ;;
 esac
 [ -f "$src" ] || exit 22
@@ -117,9 +121,11 @@ run "$d" "$P"; verdict "older Nightly passed off as a newer one refused" 1 "sign
 d=$W/title; make_release "$d" nightly "$NIGHTLY"; with_key "$d"; json "$d" nightly yes "Nightly"
 run "$d" "$P"; verdict "Nightly with an unreadable title refused" 1 "title doesn't name its date and commit" "$d"
 
-# 2. Good signature, a normal tag.
-d=$W/tag; make_release "$d" v1.2.3; with_key "$d"
-run "$d" "$P" --version v1.2.3; verdict "good signature installs (release tag)" 0 "Release signature OK" "$d"
+# 2. Good signature, a stable release by its tag: looked up by exactly that tag, installed under it.
+d=$W/tag; make_release "$d" 26.3-0.1.0; with_key "$d"; echo 26.3-0.1.0 > "$d/only-tag"
+run "$d" "$P" --version 26.3-0.1.0; verdict "good signature installs (stable release tag)" 0 "Release signature OK" "$d"
+[ "$(readlink "$d/inst/current")" = "$d/inst/releases/26.3-0.1.0" ] \
+  || { echo "FAIL current isn't 26.3-0.1.0"; fails=$((fails+1)); }
 
 # 3. Tampered archive: GitHub's digest is made to agree with the swapped archive, only SHA256SUMS catches it.
 d=$W/arc; make_release "$d" v1.2.3; with_key "$d"

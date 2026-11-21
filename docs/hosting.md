@@ -62,7 +62,7 @@ for Windows includes it), else against the SHA-256 GitHub publishes, and never a
 - `sunrise-server` and `sunrise-prepare` in `~/.local/bin` (Windows: added to your PATH);
 - a `game-files` folder for the files you prepare, kept across updates.
 
-Options: `--version <tag>`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version`, `-Dir`). Other systems,
+Options: `--version <tag>`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version <tag>`, `-Dir FOLDER`). Other systems,
 such as Linux on ARM, build from source: `cargo build --release -p sunrise-game --bin sunrise-client -p
 sunrise-server` and keep both programs in one folder.
 
