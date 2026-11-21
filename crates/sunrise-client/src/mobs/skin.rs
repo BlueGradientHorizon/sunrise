@@ -40,7 +40,7 @@ struct StoredPart {
 /// else holds any more are dropped by `begin`.
 #[derive(Default)]
 pub struct SkinModels {
-    stored: FxHashMap<usize, (Arc<Part>, Option<Stored>)>,
+    stored: FxHashMap<usize, (Arc<Part>, Placed)>,
     rotations: Rotations,
     rotation_cache_disabled: bool,
     /// Item models, the same way (`item_render::ItemRenderState::submit_skinned`).
@@ -51,6 +51,32 @@ pub struct SkinModels {
     /// render type's (spiders', endermen's...) as [`SkinJob::FLAT`] draws, and
     /// `entityTranslucent` layers (a horse's markings, a slime's outer cube).
     pub tagged: bool,
+    /// Stands for `render::takes_part` in tests, where no mixin replaces it.
+    #[cfg(test)]
+    pub(super) takes: Option<fn(&str, &str) -> bool>,
+}
+
+/// Where a model is drawn, decided on its first sight.
+enum Placed {
+    /// Posed here.
+    Gpu(Stored),
+    /// On the CPU, where `render::compile_part` runs: a mod takes one of its parts
+    /// (`render::takes_part`).
+    Taken,
+    /// On the CPU: a polygon does not face an axis.
+    Cpu,
+}
+
+/// How [`Skin::route`] says a model is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Route {
+    /// On the GPU.
+    Gpu,
+    /// On the CPU because a mod draws one of its parts itself (`render::takes_part`): the
+    /// mob's other models can stay on the GPU.
+    Taken,
+    /// On the CPU because the GPU path can't pose it: so is the whole mob.
+    Cpu,
 }
 
 /// A stored item model: its quads' vertices in order, by runs of quads that
@@ -164,35 +190,43 @@ impl SkinModels {
         model: &Arc<Part>,
         frame: &mut SkinFrame,
     ) -> Option<(&Stored, &mut Rotations)> {
-        let takes_part: &dyn Fn(&str, &str) -> bool = &super::render::takes_part;
-        self.entry_taking(model, frame, || {
-            super::render::parts_taken_hooked().then_some(takes_part)
-        })
+        self.place(model, frame);
+        match self.stored.get(&(Arc::as_ptr(model) as usize)) {
+            Some((_, Placed::Gpu(stored))) => Some((stored, &mut self.rotations)),
+            _ => None,
+        }
     }
 
-    /// [`SkinModels::entry`], with `takes` asked once, on the model's first sight, for the
-    /// parts mods draw themselves (`render::takes_part` when a mixin replaced it): a model
-    /// with one of them is stored as drawn on the CPU, where `render::compile_part` runs.
-    fn entry_taking<'t>(
-        &mut self,
-        model: &Arc<Part>,
-        frame: &mut SkinFrame,
-        takes: impl FnOnce() -> Option<&'t dyn Fn(&str, &str) -> bool>,
-    ) -> Option<(&Stored, &mut Rotations)> {
+    /// Where `model` is drawn, decided on its first sight and kept. `render::takes_part` is
+    /// asked then, for each of its parts, when a mixin replaced it: a model with a part a mod
+    /// takes is drawn on the CPU, where `render::compile_part` runs. Without a replacement,
+    /// that costs one slot read per new model.
+    fn place(&mut self, model: &Arc<Part>, frame: &mut SkinFrame) -> &Placed {
         let key = Arc::as_ptr(model) as usize;
+        let takes = self.takes();
         let vertices = &mut self.vertices;
-        let (_, stored) = self.stored.entry(key).or_insert_with(|| {
-            if takes().is_some_and(|takes| part_taken(model, takes)) {
-                return (model.clone(), None);
+        let (_, placed) = self.stored.entry(key).or_insert_with(|| {
+            if takes.is_some_and(|takes| part_taken(model, takes)) {
+                return (model.clone(), Placed::Taken);
             }
             // The renderer appends `new_model` to its store in order, so a
             // model's first vertex is the store's size when it is added.
             let before = frame.new_model.len();
             let stored = flatten(model, *vertices, &mut frame.new_model);
             *vertices += (frame.new_model.len() - before) as u32;
-            (model.clone(), stored)
+            (model.clone(), stored.map_or(Placed::Cpu, Placed::Gpu))
         });
-        Some((stored.as_ref()?, &mut self.rotations))
+        placed
+    }
+
+    /// `render::takes_part`, when a mixin replaced it.
+    fn takes(&self) -> Option<fn(&str, &str) -> bool> {
+        #[cfg(test)]
+        if self.takes.is_some() {
+            return self.takes;
+        }
+        super::render::parts_taken_hooked()
+            .then_some(super::render::takes_part as fn(&str, &str) -> bool)
     }
 
     /// An item model's runs, stored on first sight; `None` when it has no
@@ -274,8 +308,8 @@ fn flatten_item(
 
 /// Whether `takes` takes a part of `model` (by its layer and the part's name); never for a
 /// model with no layer.
-fn part_taken(model: &Part, takes: &dyn Fn(&str, &str) -> bool) -> bool {
-    fn walk(part: &Part, layer: &str, takes: &dyn Fn(&str, &str) -> bool) -> bool {
+fn part_taken(model: &Part, takes: fn(&str, &str) -> bool) -> bool {
+    fn walk(part: &Part, layer: &str, takes: fn(&str, &str) -> bool) -> bool {
         takes(layer, &part.name) || part.children.iter().any(|c| walk(c, layer, takes))
     }
     model
@@ -422,9 +456,13 @@ impl<'a> Skin<'a> {
         });
     }
 
-    /// Whether this model can be posed here (stored on first sight).
-    pub fn supports(&mut self, model: &Arc<Part>) -> bool {
-        self.models.entry(model, self.frame).is_some()
+    /// How this model is drawn (decided on its first sight): posed here, or on the CPU.
+    pub fn route(&mut self, model: &Arc<Part>) -> Route {
+        match self.models.place(model, self.frame) {
+            Placed::Gpu(_) => Route::Gpu,
+            Placed::Taken => Route::Taken,
+            Placed::Cpu => Route::Cpu,
+        }
     }
 
     /// `render::draw_scrolled` on the GPU: false (nothing done) when the
@@ -1202,21 +1240,25 @@ mod tests {
     }
 
     /// `takes_part`'s answer is asked once per model, on its first sight: a model with a
-    /// part taken is stored as drawn on the CPU, one without (another layer, or no part
-    /// taken) stays on the GPU, and a model with no layer is never asked about.
+    /// part taken is drawn on the CPU and stores nothing here, one without (another layer, or
+    /// no part taken) is posed here, and a model with no layer is never asked about.
     #[test]
     fn a_model_with_a_taken_part_is_drawn_on_the_cpu() {
+        thread_local! {
+            static ASKED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        }
+        fn takes(layer: &str, part: &str) -> bool {
+            ASKED.with(|asked| asked.set(asked.get() + 1));
+            layer == "minecraft:player#main" && part == "right_arm"
+        }
+        let quad = serde_json::json!({
+            "polygons": [[[0, 0, 0, 0, 0], [0, 16, 0, 0, 1], [0, 16, 16, 1, 1], [0, 0, 16, 1, 0]]],
+            "normals": [[1, 0, 0]]
+        });
         let layer = |key: &str| {
             Arc::new(Part::parse_layer(
                 key,
-                &serde_json::json!({"children": {
-                    "body": {
-                        "polygons": [[[0, 0, 0, 0, 0], [0, 16, 0, 0, 1],
-                                      [0, 16, 16, 1, 1], [0, 0, 16, 1, 0]]],
-                        "normals": [[1, 0, 0]]
-                    },
-                    "right_arm": {}
-                }}),
+                &serde_json::json!({"children": {"body": quad, "right_arm": quad}}),
             ))
         };
         let player = layer("minecraft:player#main");
@@ -1224,34 +1266,34 @@ mod tests {
         let mut unnamed = (*layer("minecraft:player#main")).clone();
         unnamed.layer = None;
         let unnamed = Arc::new(unnamed);
-        let asked = std::cell::Cell::new(0);
-        let takes = |layer: &str, part: &str| {
-            asked.set(asked.get() + 1);
-            layer == "minecraft:player#main" && part == "right_arm"
+        let mut models = SkinModels {
+            takes: Some(takes),
+            ..SkinModels::default()
         };
-        let takes: &dyn Fn(&str, &str) -> bool = &takes;
-        let mut models = SkinModels::default();
         let mut frame = SkinFrame::default();
+        let paint = || Paint {
+            uv: [0.0, 0.0, 1.0, 1.0],
+            scroll: 0.0,
+            color: u32::MAX,
+            light: 0,
+            overlay: 0,
+        };
         for _ in 0..2 {
-            assert!(
-                models
-                    .entry_taking(&player, &mut frame, || Some(takes))
-                    .is_none()
-            );
-            assert!(
-                models
-                    .entry_taking(&zombie, &mut frame, || Some(takes))
-                    .is_some()
-            );
+            let mut skin = Skin::new(&mut models, &mut frame);
+            assert_eq!(skin.route(&player), Route::Taken);
+            assert_eq!(skin.route(&zombie), Route::Gpu);
+            assert!(!skin.draw(&player, glam::Mat4::IDENTITY, &Poses::new(&player), paint()));
+            assert!(skin.draw(&zombie, glam::Mat4::IDENTITY, &Poses::new(&zombie), paint()));
         }
+        // Only the zombie's two quads were stored.
+        assert_eq!(frame.new_model.len(), 8);
         // The player's root and body before its right arm; the zombie's root, body and right
         // arm; once each, not again on the second draw.
-        assert_eq!(asked.get(), 3 + 3);
-        assert!(
-            models
-                .entry_taking(&unnamed, &mut frame, || Some(takes))
-                .is_some()
+        assert_eq!(ASKED.with(std::cell::Cell::get), 3 + 3);
+        assert_eq!(
+            Skin::new(&mut models, &mut frame).route(&unnamed),
+            Route::Gpu
         );
-        assert_eq!(asked.get(), 6);
+        assert_eq!(ASKED.with(std::cell::Cell::get), 6);
     }
 }

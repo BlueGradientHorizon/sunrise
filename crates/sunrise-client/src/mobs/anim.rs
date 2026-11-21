@@ -124,13 +124,15 @@ pub struct Poses {
     skipped: FxHashSet<u64>,
     /// Parts with `visible` cleared: neither they nor their children draw.
     hidden: FxHashSet<u64>,
-    /// A mod's own values per part ([`Poses::set_data`]), keyed like `map`; the engine
-    /// never reads them.
-    data: FxHashMap<u64, [f32; 4]>,
+    /// Mods' own values per part ([`Poses::set_data`]), keyed like `map` and by the value's
+    /// type; the engine never reads them.
+    data: FxHashMap<(u64, std::any::TypeId), PartData>,
     /// Names this content: a fresh number at each change, kept by copies
     /// ([`Poses::version`]).
     version: u64,
 }
+/// A mod's value on a part ([`Poses::set_data`]): shared, not cloned, by a copy of the poses.
+type PartData = std::sync::Arc<dyn std::any::Any + Send + Sync>;
 /// The next [`Poses::version`].
 static NEXT_VERSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 thread_local! {
@@ -265,24 +267,35 @@ impl Poses {
             self.changed();
         }
     }
-    /// Stores four values of a mod's own on the part named `name`, when the model has one:
-    /// the engine never reads them. A mod's mixin on [`setup`] writes, say, a limb's bend
-    /// here, and its replacement of `render::compile_part` reads it back for the part it
-    /// draws. A write changes [`Poses::version`], so a later draw never reuses part
-    /// matrices of the walk before it. `reset` clears the values, `copy_from` copies them.
-    pub fn set_data(&mut self, name: &str, data: [f32; 4]) {
+    /// Stores `value`, a mod's own data of any type, on the part named `name`, when the model
+    /// has one: the engine never reads it. A mod's mixin on [`setup`] writes, say, a limb's
+    /// bend here, and its replacement of `render::compile_part` reads it back for the part it
+    /// draws. One value per part and type: a mod keeps its data in a type of its own, so two
+    /// mods never read each other's. A write changes [`Poses::version`], so a later draw never
+    /// reuses part matrices of the walk before it. `reset` drops the values, `copy_from`
+    /// shares them with the copy.
+    pub fn set_data<T: std::any::Any + Send + Sync>(&mut self, name: &str, value: T) {
         if self.map.contains_key(&key(name)) {
-            self.data.insert(key(name), data);
+            self.data.insert(
+                (key(name), std::any::TypeId::of::<T>()),
+                std::sync::Arc::new(value),
+            );
             self.changed();
         }
     }
-    /// The values [`Poses::set_data`] stored on the part named `name`.
-    pub fn data(&self, name: &str) -> Option<[f32; 4]> {
-        self.data.get(&key(name)).copied()
+    /// The value of type `T` [`Poses::set_data`] stored on the part named `name`.
+    pub fn data<T: std::any::Any + Send + Sync>(&self, name: &str) -> Option<&T> {
+        self.data
+            .get(&(key(name), std::any::TypeId::of::<T>()))
+            .and_then(|value| value.downcast_ref())
     }
-    /// Removes the values [`Poses::set_data`] stored on the part named `name`.
-    pub fn clear_data(&mut self, name: &str) {
-        if self.data.remove(&key(name)).is_some() {
+    /// Removes the value of type `T` [`Poses::set_data`] stored on the part named `name`.
+    pub fn clear_data<T: std::any::Any + Send + Sync>(&mut self, name: &str) {
+        if self
+            .data
+            .remove(&(key(name), std::any::TypeId::of::<T>()))
+            .is_some()
+        {
             self.changed();
         }
     }
@@ -1968,9 +1981,20 @@ mod flight_pose_tests {
 mod part_data_tests {
     use super::*;
 
-    /// A mod's values on a part are a change of the poses: every write gives a new
-    /// `version`, so `Skin::draw` never reuses the part matrices of a walk before it; a copy
-    /// keeps them and the version, and a reset for another draw drops them.
+    /// One mod's data on a part: a bend.
+    #[derive(Debug, PartialEq)]
+    struct Bend {
+        axis: f32,
+        angle: f32,
+    }
+    /// Another mod's, of a type of its own, on the same part.
+    #[derive(Debug, PartialEq)]
+    struct Stretch(Vec<f32>);
+
+    /// Mods' values on a part are a change of the poses: every write gives a new `version`,
+    /// so `Skin::draw` never reuses the part matrices of a walk before it; a copy keeps them
+    /// and the version, and a reset for another draw drops them. Values of two types live
+    /// side by side on one part.
     #[test]
     fn writing_a_parts_data_changes_the_version() {
         let model = Part::parse(
@@ -1979,30 +2003,52 @@ mod part_data_tests {
         );
         let mut poses = Poses::new(&model);
         let start = poses.version();
-        poses.set_data("right_arm", [0.5, 0.0, 0.0, 0.0]);
+        poses.set_data(
+            "right_arm",
+            Bend {
+                axis: 0.0,
+                angle: 0.5,
+            },
+        );
         let set = poses.version();
         assert_ne!(set, start);
-        assert_eq!(poses.data("right_arm"), Some([0.5, 0.0, 0.0, 0.0]));
-        poses.set_data("right_arm", [0.5, 0.0, 0.0, 0.0]);
-        assert_ne!(
-            poses.version(),
-            set,
-            "a rewrite of the same values is still a write"
+        let bend = Bend {
+            axis: 0.0,
+            angle: 0.5,
+        };
+        assert_eq!(poses.data::<Bend>("right_arm"), Some(&bend));
+        poses.set_data("right_arm", Stretch(vec![1.0, 2.0, 3.0, 4.0, 5.0]));
+        assert_ne!(poses.version(), set, "a second type is a write too");
+        assert_eq!(poses.data::<Bend>("right_arm"), Some(&bend));
+        assert_eq!(
+            poses.data::<Stretch>("right_arm").map(|s| s.0.len()),
+            Some(5)
         );
+        assert_eq!(poses.data::<Bend>("left_arm"), None);
         let mut copy = Poses::default();
         copy.copy_from(&poses);
         assert_eq!(copy.version(), poses.version());
-        assert_eq!(copy.data("right_arm"), Some([0.5, 0.0, 0.0, 0.0]));
+        assert_eq!(copy.data::<Bend>("right_arm"), Some(&bend));
         // A part the model lacks has no slot: nothing stored, nothing changed.
         let before = poses.version();
-        poses.set_data("tail", [1.0; 4]);
-        assert_eq!((poses.data("tail"), poses.version()), (None, before));
-        poses.clear_data("left_arm");
+        poses.set_data("tail", Stretch(Vec::new()));
+        assert_eq!(
+            (poses.data::<Stretch>("tail"), poses.version()),
+            (None, before)
+        );
+        poses.clear_data::<Bend>("left_arm");
         assert_eq!(poses.version(), before, "nothing to clear");
-        poses.clear_data("right_arm");
+        poses.clear_data::<Bend>("right_arm");
         assert_ne!(poses.version(), before);
-        assert_eq!(poses.data("right_arm"), None);
+        assert_eq!(poses.data::<Bend>("right_arm"), None);
+        assert!(poses.data::<Stretch>("right_arm").is_some());
+        assert_eq!(
+            copy.data::<Bend>("right_arm"),
+            Some(&bend),
+            "the copy keeps its own"
+        );
         copy.reset(&model);
-        assert_eq!(copy.data("right_arm"), None);
+        assert_eq!(copy.data::<Bend>("right_arm"), None);
+        assert_eq!(copy.data::<Stretch>("right_arm"), None);
     }
 }

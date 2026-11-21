@@ -155,6 +155,14 @@ impl Part {
         part.layer = Some(key.into());
         part
     }
+    /// The direct child named `name` as a model of its own (`PlayerModel.rightArm` drawn alone),
+    /// keeping the layer this tree was baked from: its parts are asked about and drawn as the
+    /// layer's.
+    pub fn detached_child(&self, name: &str) -> Option<Part> {
+        let mut child = self.children.iter().find(|c| c.name == name)?.clone();
+        child.layer.clone_from(&self.layer);
+        Some(child)
+    }
     /// Marks every polygon as drawn by a back-face-culling render type.
     pub(super) fn set_cull_back(&mut self) {
         for poly in &mut self.polygons {

@@ -34,7 +34,10 @@ helper = "src/mixins/render.rs"
 
 # A RETURN on a function whose module declares a `thread_local!` and whose body uses a bare
 # `matches!`, and an expression in a module that brings `Mth` into scope for its method calls
-# (sunrise-org/sunrise#3800). The dedicated server never draws a mob: the build is the check.
+# (sunrise-org/sunrise#3800). It stores the bend the `bend` row below draws on the part's
+# `Poses` (sunrise-org/sunrise#3951). The dedicated server never draws a mob: the build is the
+# check here; `mobs::render::compile_part_tests` runs this helper, `bend` and `takes` from a pose
+# write to the emitted quads.
 [[native.mixin]]
 id = "pose"
 target = "sunrise_client_lib::mobs::anim::setup"
@@ -75,9 +78,8 @@ bindings = [
 ]
 
 # A cancellable HEAD that draws `right_arm` of the player layer in two segments, bent at the elbow
-# by the angle a mod stored on the part's `Poses`, as BendableCuboids replaces `ModelPart.Cube.compile`
-# in Java; any other part goes on to the game's own polygons (sunrise-org/sunrise#3951). The build is
-# the check.
+# by the angle the `pose` row stored on the part's `Poses`; any other part goes on to the game's own
+# polygons (sunrise-org/sunrise#3951).
 [[native.mixin]]
 id = "bend"
 target = "sunrise_client_lib::mobs::render::compile_part"
@@ -91,12 +93,11 @@ bindings = [
     { name = "normals", ty = "ModelNormals", value = "normals" },
     { name = "paint", ty = "Paint", value = "paint" },
     { name = "poses", ty = "&Poses", value = "poses" },
-    { name = "out", ty = "&mut Vec<Vertex>", value = "&mut *out" },
+    { name = "quads", ty = "&mut Quads<'_>", value = "&mut *quads" },
 ]
 
 # A RETURN that takes `right_arm` of the player layer, so the player model is drawn on the CPU,
 # where the `bend` row above runs; every other model stays on the GPU (sunrise-org/sunrise#3951).
-# The build is the check.
 [[native.mixin]]
 id = "takes"
 target = "sunrise_client_lib::mobs::render::takes_part"
