@@ -5,7 +5,7 @@ impl Game<'_> {
     /// Block `block` at `pos` opens its mod menu type `menu` for server
     /// player `player`: set `data` to hand the menu's screen bytes of your
     /// own (a machine's tier, mode or recipes), up to 32 KiB, which the
-    /// client reads with `screen_extra_data` while the screen is open
+    /// client reads from `MenuScreenOpen::extra` during screen construction
     /// (NeoForge's `openMenu` with an extra-data writer). The first mod to
     /// set it wins, so answer only for your blocks. The player's state is not
     /// swapped in. 401.
@@ -27,11 +27,6 @@ impl Game<'_> {
     /// The opener position for the currently shown mod menu, if known.
     pub(in crate::game) fn screen_pos(&self) -> Option<[i32; 3]> {
         self.shown_native_screen()?.menu.pos
-    }
-    /// Borrow the open mod screen's bytes, or an empty slice if no bytes arrived.
-    /// Returns `None` when no mod screen is showing. @API:menu_extra_data@.
-    pub(in crate::game) fn screen_extra_data(&self) -> Option<&[u8]> {
-        Some(self.shown_native_screen()?.menu.extra.as_slice())
     }
     /// The `sunrise:menu_extra` payload the server sent just before its
     /// `OpenScreen`, in the layout its revision query in configuration chose:

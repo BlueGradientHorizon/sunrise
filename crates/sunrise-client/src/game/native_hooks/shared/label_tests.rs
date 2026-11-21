@@ -20,13 +20,14 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                     pos: None,
                     mod_type: None,
                     data: Vec::new(),
-                    extra: Vec::new(),
                 },
+                owner: "test",
                 layout_revision: 0,
                 slot_moves: Default::default(),
                 shown: true,
                 screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
                     width: 176.0,
+                    height: 166.0,
                     own_background: true,
                     ..Default::default()
                 }),

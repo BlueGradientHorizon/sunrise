@@ -1123,7 +1123,6 @@ screens::open_inventory
 screens::preset_editor
 screens::preset_editor_dimensions
 screens::screen_exclusion
-screens::screen_extra_data
 screens::screen_hovered_item
 screens::screen_pos
 screens::screen_slot

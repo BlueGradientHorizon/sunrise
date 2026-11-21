@@ -706,28 +706,36 @@ mod tests {
 
     const PANEL: &str = "test:panel";
 
-    #[derive(Clone)]
     struct Panel {
-        slots: usize,
         opening: Arc<Mutex<Option<(MenuRef, usize)>>>,
-    }
-    #[mod_api::sunrise_part]
-    impl mod_api::MenuPart for Panel {
-        fn screen(
-            &self,
-            _: &dyn mod_api::Host,
-            _: &mut mod_api::ScreenEvent<'_>,
-        ) -> Option<mod_api::MenuScreenLayout> {
-            Some(mod_api::MenuScreenLayout {
-                slots: vec![Some(mod_api::ScreenSlot::default()); self.slots],
-                ..Default::default()
-            })
-        }
     }
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Panel {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.menu_part(PANEL, self.clone());
+            r.register_menu_screen(
+                PANEL,
+                Arc::new(
+                    |_: &dyn mod_api::ClientHost, open: mod_api::MenuScreenOpen<'_>| {
+                        Some(mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                            width: 176.0,
+                            height: 166.0,
+                            slots: (0..open.backing_slots)
+                                .map(|index| {
+                                    Some(mod_api::ScreenSlot {
+                                        position: [
+                                            8.0 + (index % 9) as f32 * 18.0,
+                                            18.0 + (index / 9) as f32 * 18.0,
+                                        ],
+                                        no_item_icon: None,
+                                    })
+                                })
+                                .collect(),
+                            ..Default::default()
+                        }))
+                    },
+                ),
+            )
+            .unwrap();
         }
 
         fn screen_opening(
@@ -750,7 +758,6 @@ mod tests {
     ) {
         let opening = Arc::new(Mutex::new(None));
         let panel = Panel {
-            slots,
             opening: opening.clone(),
         };
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(panel))].into();

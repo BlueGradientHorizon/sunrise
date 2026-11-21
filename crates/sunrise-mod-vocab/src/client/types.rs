@@ -1001,7 +1001,7 @@ impl ColoredLight {
     }
 }
 
-/// Layout for a mod menu type's screen (`screen`): its size, where
+/// Layout for a window's [`crate::MenuScreen`]: its size, where
 /// each of the container's slots is (`Slot.x`, `Slot.y`), and the player
 /// inventory's first row (vanilla's is 84; the hotbar is 58 below it) and
 /// left column, from its top left. The screen does not decide which slots
@@ -1010,9 +1010,9 @@ impl ColoredLight {
 // exhaustive: mods build it with a literal and the game reads every field
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct MenuScreenLayout {
-    /// Vanilla's container screens are 176 wide.
+    /// Positive finite width in GUI pixels. Vanilla's container screens are 176 wide.
     pub width: f32,
-    /// The screen's height in GUI pixels; vanilla's is 166.
+    /// Positive finite height in GUI pixels; vanilla's is 166.
     pub height: f32,
     /// Slot geometry at its original backing index. Every nonexcluded slot
     /// needs geometry; `None` (including an omitted trailing entry) is valid

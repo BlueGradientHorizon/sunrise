@@ -131,7 +131,7 @@ mod generated {
         pub(super) use super::super::Answered;
         pub(super) use super::super::{
             Command, Config, DeclarationError, Dispensed, InteractionResult, MapDecoration,
-            MapInfo, MenuScreenLayout, Zoom,
+            MapInfo, Zoom,
         };
         #[derive(Clone)]
         pub struct FluidModel;

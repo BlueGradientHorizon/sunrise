@@ -17,6 +17,12 @@ pub(super) fn validate_registered(menus: &[&MenuType]) -> Result<(), String> {
             layout,
             mod_api::__private::menu_slot_exclusion_masks(&menu),
         )?;
+        let owner = RecipeBookLayout::declaring_mod(&menu).expect("registered book has an owner");
+        if !mod_api::__private::has_menu_screen_factory(&menu, owner) {
+            return Err(format!(
+                "recipe book menu {menu:?}: mod {owner} must register a menu screen factory"
+            ));
+        }
     }
     Ok(())
 }
@@ -95,6 +101,53 @@ mod tests {
             "{error}"
         );
     }
+    #[test]
+    fn a_bound_menu_needs_its_declaring_mods_factory() {
+        struct Demo(bool);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Demo {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let book = r.recipe_book_type("demo:book").unwrap();
+                r.menu_recipe_book(
+                    "demo:pot",
+                    &book,
+                    "demo:cooking",
+                    RecipeBookLayout::Furnace {
+                        input: 0,
+                        fuel: 1,
+                        result: 2,
+                    },
+                )
+                .unwrap();
+                if self.0 {
+                    r.register_menu_screen(
+                        "demo:pot",
+                        std::sync::Arc::new(
+                            |_: &dyn mod_api::ClientHost, _: mod_api::MenuScreenOpen<'_>| None,
+                        ),
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        for has_factory in [false, true] {
+            let mods: mod_api::Mods =
+                vec![mod_api::ModEntry::new("demo", Box::new(Demo(has_factory)))].into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+                let result = validate_registered(&[&menu()]);
+                if has_factory {
+                    assert!(result.is_ok());
+                } else {
+                    assert_eq!(
+                        result.unwrap_err(),
+                        "recipe book menu \"demo:pot\": mod demo must register a menu screen factory"
+                    );
+                }
+            });
+        }
+    }
+
     #[test]
     fn any_permanent_mask_excluding_a_role_refuses_the_content_menu() {
         let menu = menu();

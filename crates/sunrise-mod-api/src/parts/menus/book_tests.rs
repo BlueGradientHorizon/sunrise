@@ -10,6 +10,12 @@ fn roles() -> crate::RecipeBookLayout {
 fn registration_refuses_unknown_books_duplicate_menus_and_overlapping_roles() {
     let mut registrar = PartRegistrar::new("demo");
     let book = registrar.recipe_book_type("demo:book").unwrap();
+    registrar
+        .register_menu_screen(
+            "demo:pot",
+            Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None),
+        )
+        .unwrap();
     assert!(
         registrar
             .menu_recipe_book("demo:pot", &book, "demo:cooking", roles())

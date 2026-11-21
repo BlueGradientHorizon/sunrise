@@ -4,7 +4,7 @@
 pub trait Hooks {
     /// A left or right (`right`) press at `at` (GUI pixels from the screen's
     /// top left, so outside it too) on the screen of mod menu type `menu`
-    /// (`block` as in `screen`), over no slot: set `button` to a menu button
+    /// (`block` as in `MenuScreenOpen::block`), over no slot: set `button` to a menu button
     /// id when it is on one of yours.
     /// Sunrise sends it to the server (`ContainerButtonClick`,
     /// `menu_button` there) and the press goes no further. The menu type's
@@ -17,7 +17,7 @@ pub trait Hooks {
         out = "button",
         scope = "menu",
         key = "menu",
-        neoforge = "none (see screen)"
+        neoforge = "none"
     )]
     fn screen_click();
 }

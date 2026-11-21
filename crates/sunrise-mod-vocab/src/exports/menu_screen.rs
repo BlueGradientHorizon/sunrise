@@ -1,4 +1,4 @@
-pub use crate::client::menu_screen::MenuScreen;
+pub use crate::client::menu_screen::{MenuScreen, MenuScreenFactory, MenuScreenOpen};
 mod __private {
     pub use crate::client::menu_screen::{menu_screen_layout, menu_screen_layout_mut};
 }

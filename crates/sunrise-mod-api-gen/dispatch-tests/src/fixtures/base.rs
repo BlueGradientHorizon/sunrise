@@ -806,7 +806,6 @@ mod stubs {
     pub(super) struct BlockRim;
     pub(super) struct ColoredLight;
     pub(super) struct PanelEvent;
-    pub(super) struct MenuScreenLayout;
     pub(super) struct ModContainer;
     pub(super) struct MerchantOffer;
     pub(super) struct ModFluidTanks;

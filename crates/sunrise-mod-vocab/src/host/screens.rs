@@ -22,14 +22,6 @@ pub trait ScreensClientHost {
     #[access(ClientSetup)]
     fn screen_pos(&self) -> Option<[i32; 3]>;
     /// Side: client.
-    /// The open mod screen's one-time context from `menu_extra_data` or
-    /// `PlayerRef::open_mod_menu`, borrowed for the duration of the host borrow.
-    /// Returns `None` when no mod screen is showing, and `Some(&[])` when a
-    /// mod screen is showing but no bytes arrived for this opening. Reopening the same
-    /// window id does not reuse the previous bytes. @API:menu_extra_data@.
-    #[access(ClientSetup)]
-    fn screen_extra_data(&self) -> Option<&[u8]>;
-    /// Side: client.
     /// Where the open screen draws outside its `rect`, and where mods draw
     /// over it: the recipe book's panel, the creative tab rows, the active
     /// effects beside the inventory, then whatever `screen_exclusion_areas`
@@ -59,7 +51,7 @@ pub trait ScreensClientHost {
     /// box around it), its highlight, its contents, its empty-slot icon and the recipe book's
     /// ghost items; a hidden one is none of these. A position outside the image is allowed.
     /// The change lasts for this opening; a replacement starts from the declared layout,
-    /// even if it reuses the same window id. Only the mod whose part owns the open screen
+    /// even if it reuses the same window id. Only the mod whose factory made the open screen
     /// moves its slots. A bound recipe book keeps that ownership with its declaring mod.
     /// Nothing is sent and the server's mask does not change:
     /// a locally hidden slot keeps its item and a shift-click may still fill it, as a

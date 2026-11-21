@@ -9,6 +9,54 @@ pub(crate) struct MenuBookDeclaration {
     pub(crate) layout: crate::RecipeBookLayout,
 }
 
+// no wire: frozen registration and panic state, never a window instance.
+/// Engine lookup record for a registered constructor.
+#[derive(Clone)]
+pub(crate) struct MenuScreenRegistration {
+    pub(crate) owner: &'static str,
+    pub(crate) index: usize,
+    pub(crate) factory: Arc<dyn crate::MenuScreenFactory>,
+    pub(crate) panicked: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// Look up the factory for the resolved custom-menu owner or the actual stock opener.
+fn menu_screen_factory(
+    menu: &str,
+    menu_owner: Option<&str>,
+    opener: Option<&str>,
+) -> Option<&'static MenuScreenRegistration> {
+    let rows = installed()?.menu_screen_factories.get(menu)?;
+    let index = match menu_owner {
+        Some(owner) => crate::__private::mod_index(owner)?,
+        None => crate::runtime::content_owner_index(opener?)?,
+    };
+    rows.get(&index)
+}
+
+/// Whether a content menu has a registered factory from the named package.
+pub fn has_menu_screen_factory(menu: &str, owner: &str) -> bool {
+    menu_screen_factory(menu, Some(owner), None).is_some()
+}
+
+/// Build a window's screen. The outer option distinguishes an unregistered factory
+/// from one that declined or was refused. The returned instance is not part of registration.
+pub fn create_menu_screen(
+    host: &dyn crate::ClientHost,
+    open: crate::MenuScreenOpen<'_>,
+    menu_owner: Option<&str>,
+) -> Option<(&'static str, Result<Option<crate::MenuScreen>, String>)> {
+    let registration = menu_screen_factory(open.menu, menu_owner, open.block)?;
+    let screen = crate::callback_owner::call(
+        registration.owner,
+        registration.index,
+        &registration.panicked,
+        "menu screen factory",
+        "menu_screen_factory",
+        || registration.factory.create(host, open),
+    );
+    Some((registration.owner, screen))
+}
+
 impl HookParts {
     pub(crate) fn menu<'k>(
         &self,
@@ -47,16 +95,15 @@ impl HookParts {
     }
 }
 
-/// The hooks a menu type's screen is made of, one part per screen answering them all.
-const SCREEN_HOOKS: [HookId; 4] = [
-    HookId::Screen,
+/// The presentation hooks a menu type's screen can answer.
+const SCREEN_HOOKS: [HookId; 3] = [
     HookId::ScreenDraw,
     HookId::ScreenClick,
     HookId::ScreenTooltip,
 ];
 
-/// Whether `part` answers a screen hook: then it owns the screens it is asked for.
-pub fn lays_out_screen(part: &dyn MenuPart) -> bool {
+/// Whether `part` answers one of the menu screen presentation hooks.
+pub fn presents_menu_screen(part: &dyn MenuPart) -> bool {
     let mut subscribed = part.menu_subscribed().iter().flatten();
     subscribed.any(|&hook| {
         SCREEN_HOOKS
@@ -74,25 +121,6 @@ pub fn screens_shared(menu: &str, a: &str, b: &str) -> bool {
 
 fn vanilla_menu(menu: &str) -> bool {
     menu.starts_with("minecraft:")
-}
-
-/// The mod that bound the menu's recipe book or owns the screen of `menu`
-/// opened as `block`'s menu.
-pub fn menu_screen_owner(menu: &str, block: Option<&str>) -> Option<&'static str> {
-    if let Some(owner) = crate::RecipeBookLayout::declaring_mod(menu) {
-        return Some(owner);
-    }
-    SCREEN_HOOKS
-        .into_iter()
-        .filter(|&hook| has_part_hook(hook))
-        .find_map(|hook| {
-            let parts = parts(hook, "screen owner");
-            parts
-                .for_hook(hook)?
-                .menu_screen(menu, block)
-                .first()
-                .map(|p| p.mod_id)
-        })
 }
 
 /// Whether the Parts attached to the menu type `menu` subscribe to `hook`; the game
@@ -146,6 +174,17 @@ impl dyn Registrar + '_ {
 
 /// Registrar operations for menus.
 pub trait MenusRegistrar {
+    /// Register one client constructor for a namespaced menu type. A custom menu must
+    /// be in your namespace. For a stock menu, the constructor is called only when
+    /// a verified mod block owned by your package opens that menu.
+    /// A duplicate or out-of-scope registration refuses installation, even if its
+    /// error is ignored. A package with a factory cannot declare `side = "server"`.
+    fn register_menu_screen(
+        &mut self,
+        menu: &str,
+        factory: Arc<dyn crate::MenuScreenFactory>,
+    ) -> Result<(), String>;
+
     /// Exclude container backing indices from server pickup and quick-move and
     /// from the client layout. Indices stay in place; the player inventory is unaffected.
     /// The owning mod of a custom `menu` may use `None` for its default or `Some(block)`
@@ -167,9 +206,9 @@ pub trait MenusRegistrar {
     /// The menu remains content-owned; loading checks these roles against its
     /// actual container slots, crafting declaration and every permanent mask
     /// declared with [`Self::menu_slot_exclusions`].
-    /// Attach a `MenuPart` whose `screen` hook supplies geometry on the client
-    /// and sets `MenuScreenLayout::recipe_book` to this `book`. The declaring mod
-    /// owns the screen's callbacks and slot controls; a foreign screen part is refused.
+    /// Register a screen factory for this menu with [`Self::register_menu_screen`].
+    /// Its layout must set `MenuScreenLayout::recipe_book` to this `book`. The
+    /// declaring mod owns the screen's presentation callbacks and slot controls.
     /// This does not turn display candidates into ingredient predicates.
     /// Invalid ownership, unknown books, duplicate menus or malformed roles
     /// refuse installation, even when the caller ignores the error.

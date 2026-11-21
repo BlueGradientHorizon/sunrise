@@ -255,8 +255,7 @@ let screen = mod_api::MenuScreenLayout {
 };
 ```
 
-Set `MenuScreenLayout.recipe_book` to `Some(key.clone())` in the existing `native_screen`
-declaration. Leave it `None` for a screen without a recipe book. The key must
+Set `MenuScreenLayout.recipe_book` to `Some(key.clone())` in the menu's registered screen factory. Leave it `None` for a screen without a recipe book. The key must
 belong to the categories' `target_menu`; a different menu cannot display that
 book. The green book button sits just outside the menu's right edge so it does
 not cover slots chosen by the mod. The open panel uses the normal narrow-window
@@ -356,7 +355,7 @@ persistent input storage instead: for example, six cooking-pot inputs in a 3 by 
 grid. Placement never fills its cooked output or fuel, and preserves those slots.
 An incompatible display or one that does not fit refuses the declaration
 generation rather than truncating ingredients. No permanent slot mask may exclude
-a mapped role. The client obtains geometry from the menu part's `screen` hook at
+a mapped role. The client obtains geometry from the menu's registered screen factory at
 open, just as it does for other mod menus. A bound menu's layout must name the
 registered book and supply finite coordinates for all visible backing slots.
 A layout that disagrees with the mask or extends beyond the backing, supplies

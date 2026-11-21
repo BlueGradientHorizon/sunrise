@@ -42,6 +42,7 @@ pub struct PartRegistrar {
     pub(crate) biome_modifiers: Vec<BiomeModifierDeclaration>,
     pub(crate) biome_regions: Vec<BiomeRegionDeclaration>,
     pub(crate) datapack_registries: Vec<crate::DatapackRegistryDeclaration>,
+    pub(crate) menu_screen_factories: HashMap<String, HashMap<usize, MenuScreenRegistration>>,
     pub(crate) menu_recipe_books: HashMap<String, MenuBookDeclaration>,
     pub(crate) menu_slot_exclusions: HashMap<String, HashMap<String, Box<[u16]>>>,
     /// Loading warnings for each owning mod, in registration order.
@@ -98,6 +99,7 @@ impl PartRegistrar {
     pub(crate) fn new(mod_id: &'static str) -> Self {
         let _ = crate::__private::initialize();
         Self {
+            menu_screen_factories: HashMap::new(),
             menu_recipe_books: HashMap::new(),
             menu_slot_exclusions: HashMap::new(),
             warnings: Vec::new(),
@@ -316,6 +318,7 @@ pub(crate) fn install_registrar(
             regions
         },
         datapack_registries: registrar.datapack_registries,
+        menu_screen_factories: registrar.menu_screen_factories,
         menu_recipe_books: registrar.menu_recipe_books,
         menu_slot_exclusions: registrar.menu_slot_exclusions,
         recipe_book_types: registrar.recipe_book_types,

@@ -24,12 +24,14 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
                     pos: None,
                     mod_type: None,
                     data: Vec::new(),
-                    extra: Vec::new(),
                 },
+                owner: "test",
                 layout_revision: 0,
                 slot_moves: Default::default(),
                 shown: true,
                 screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                    width: 176.0,
+                    height: 166.0,
                     slots: vec![Some(mod_api::ScreenSlot {
                         position: [8.0, 18.0],
                         no_item_icon: Some(icon.into()),
@@ -70,14 +72,13 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
 }
 
 struct IconScreen(Arc<AtomicBool>);
-#[mod_api::sunrise_part]
-impl mod_api::MenuPart for IconScreen {
-    fn screen(
+impl mod_api::MenuScreenFactory for IconScreen {
+    fn create(
         &self,
-        _: &dyn mod_api::Host,
-        _: &mut mod_api::ScreenEvent<'_>,
-    ) -> Option<mod_api::MenuScreenLayout> {
-        Some(mod_api::MenuScreenLayout {
+        _: &dyn mod_api::ClientHost,
+        _: mod_api::MenuScreenOpen<'_>,
+    ) -> Option<mod_api::MenuScreen> {
+        Some(mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
             width: 176.0,
             height: 166.0,
             slots: vec![Some(mod_api::ScreenSlot {
@@ -92,7 +93,7 @@ impl mod_api::MenuPart for IconScreen {
                 ),
             })],
             ..Default::default()
-        })
+        }))
     }
 }
 struct IconMod(Arc<AtomicBool>);
@@ -114,7 +115,11 @@ impl mod_api::Hooks for IconMod {
             &[1, 2, 3, 4, 5, 6, 7, 8],
         )
         .unwrap();
-        r.menu_part("minecraft:generic_9x1", IconScreen(self.0.clone()));
+        r.register_menu_screen(
+            "minecraft:generic_9x1",
+            Arc::new(IconScreen(self.0.clone())),
+        )
+        .unwrap();
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
         event

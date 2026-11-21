@@ -1,7 +1,7 @@
 //! Exports of `crate::parts` items defined in `parts/menus.rs`.
 mod __private {
     pub use crate::parts::{
-        lays_out_screen, menu_listens, menu_screen_owner, menu_slot_exclusion_masks,
-        menu_slot_exclusions, screens_shared,
+        create_menu_screen, has_menu_screen_factory, menu_listens, menu_slot_exclusion_masks,
+        menu_slot_exclusions, presents_menu_screen, screens_shared,
     };
 }

@@ -103,7 +103,7 @@ over the screen override.
 
 ## Moving or hiding a mod screen's slots
 
-A mod screen declares where each slot sits in `MenuScreenLayout::slots`. Keep the original backing indices:
+The [menu screen factory](../world/machine-menu-data.md#the-menus-screen) declares where each slot sits in `MenuScreenLayout::slots`. Keep the original backing indices:
 only [registered slot exclusions](../world/machine-menu-data.md#the-menus-screen) may be `None` or omitted
 at the end of the list. A screen whose layout changes while it is open (tabs, a collapsing panel, a scrolling
 slot grid, Tinkers' station laying its inputs out for the tool
@@ -121,8 +121,8 @@ assert_eq!(host.screen_slot(MENU, 3), Some([62.0, 18.0]));
 ```
 
 `menu` is the menu type whose screen is open, so a call made for another screen refuses, as does one from a mod
-that does not own the open screen. The mod whose screen part lays it out can move its slots. A menu with
-a bound recipe book takes its screen part from the mod that bound the book; several mods' blocks can open
+that does not own the open screen. The mod whose factory built it can move its slots. A menu with
+a bound recipe book takes its factory from the mod that bound the book; several mods' blocks can open
 one vanilla menu type, each with its own mod's screen.
 `slot` is the index into
 `MenuScreenLayout::slots`. A position is GUI pixels from the screen's top-left corner and names the item's top-left

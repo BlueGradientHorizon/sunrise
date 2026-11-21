@@ -39,8 +39,8 @@ pub trait PlayerMenusBackendMut {
     /// block (`ServerPlayer.openMenu(provider, extraDataWriter)`): an item's use, an entity,
     /// a command. The menu replaces the one they had open. Its container slots show empty
     /// and their clicks go to the mods (`native_menu_clicked`), as `open_menu`'s do. `extra`
-    /// (at most 32 KiB) is the one-time context that `screen_extra_data` reads, and `pos`,
-    /// when given, its `screen_pos`. `data` has exactly the menu type's `data_slots` values;
+    /// (at most 32 KiB) is the one-time context in `MenuScreenOpen::extra`. `pos`, when given, is offered
+    /// to the factory and available later through `screen_pos`. `data` has exactly the menu type's `data_slots` values;
     /// the client receives them after the new window opens. The menu's owning mod can change
     /// them with [`MenuRef::set_data_slot`]. The old menu closes on the server as a close does (its
     /// `removed`, `player_container_close`, the cursor stack and crafting grids back to the

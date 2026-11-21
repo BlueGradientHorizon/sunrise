@@ -1,71 +1,82 @@
 use super::*;
-/// A part that lays a screen out.
-struct Layout;
-#[mod_api::sunrise_part]
-impl MenuPart for Layout {
-    fn screen_draw(&self, _: &dyn ClientHost, _: &mut ScreenDrawEvent<'_>) {}
-}
-/// Another, of another kind.
-struct Overlay;
-#[mod_api::sunrise_part]
-impl MenuPart for Overlay {
-    fn screen_draw(&self, _: &dyn ClientHost, _: &mut ScreenDrawEvent<'_>) {}
-}
-/// A part on a menu type that lays out no screen.
-struct Rules;
-#[mod_api::sunrise_part]
-impl MenuPart for Rules {
-    fn menu_still_valid(&self, _: &dyn LoopContext, _: &mut MenuStillValidEvent<'_>) {}
-}
+
 #[test]
-fn a_second_screen_part_for_the_same_screens_is_refused() {
+fn a_second_factory_for_the_same_menu_and_owner_is_refused() {
+    const CUSTOM: &str = "alpha:pack";
+    const STOCK: &str = "minecraft:hopper";
+    let factory = || -> Arc<dyn crate::MenuScreenFactory> {
+        Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
+    };
     let mut registrar = PartRegistrar::new("alpha");
-    let r: &mut dyn Registrar = &mut registrar;
-    r.menu_part("alpha:pack", Layout);
-    r.menu_part("minecraft:hopper", Layout);
-    // One screen part on a mod's menu type, whoever attaches the second.
-    r.menu_part("alpha:pack", Overlay);
-    // A part that lays out no screen sits beside it.
-    r.menu_part("alpha:pack", Rules);
+    assert!(registrar.register_menu_screen(CUSTOM, factory()).is_ok());
+    assert!(registrar.register_menu_screen(STOCK, factory()).is_ok());
+    assert!(
+        registrar
+            .register_menu_screen(CUSTOM, factory())
+            .unwrap_err()
+            .contains("duplicate")
+    );
     registrar.mod_id = "beta";
-    let r: &mut dyn Registrar = &mut registrar;
-    r.menu_part("alpha:pack", Overlay);
-    // A vanilla type takes one per mod: beta's blocks get beta's.
-    r.menu_part("minecraft:hopper", Overlay);
-    registrar.mod_id = "alpha";
-    let r: &mut dyn Registrar = &mut registrar;
-    r.menu_part("minecraft:hopper", Overlay);
-    // Kinds are named by their full type names.
-    let here = concat!(module_path!(), "::");
-    let conflicts = [
-        ("alpha:pack", "alpha", "alpha"),
-        ("alpha:pack", "beta", "alpha"),
-        ("minecraft:hopper", "alpha", "alpha"),
-    ];
-    assert_eq!(registrar.refused.len(), conflicts.len());
-    for (refusal, (menu, rival, owner)) in registrar.refused.iter().zip(conflicts) {
-        for name in [
-            menu,
-            &format!("Overlay of {rival}"),
-            &format!("Layout of {owner}"),
-        ] {
-            assert!(refusal.contains(name), "{refusal} does not name {name}");
+    registrar.mod_index = 1;
+    assert!(
+        registrar
+            .register_menu_screen(CUSTOM, factory())
+            .unwrap_err()
+            .contains("owned")
+    );
+    assert!(registrar.register_menu_screen(STOCK, factory()).is_ok());
+    let error = registrar
+        .register_menu_screen(STOCK, factory())
+        .unwrap_err();
+    assert!(error.contains("duplicate") && error.contains("beta") && error.contains(STOCK));
+    assert_eq!(registrar.menu_screen_factories[CUSTOM].len(), 1);
+    let stock = &registrar.menu_screen_factories[STOCK];
+    assert_eq!((stock[&0].owner, stock[&1].owner), ("alpha", "beta"));
+    assert_eq!(registrar.refused.len(), 3);
+}
+
+#[test]
+fn constructing_or_requiring_a_menu_screen_requires_the_client() {
+    enum ScreenPolicy {
+        Factory,
+        Mask,
+        NoScreen,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ScreenPolicy {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            match self {
+                Self::Factory => r
+                    .register_menu_screen(
+                        "minecraft:hopper",
+                        Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None),
+                    )
+                    .unwrap(),
+                Self::Mask => r
+                    .menu_slot_exclusions("minecraft:hopper", Some("masked:machine"), &[4])
+                    .unwrap(),
+                Self::NoScreen => {}
+            }
         }
     }
-    let owners = |menu: &str| -> Vec<_> {
-        registrar.parts.menus[menu]
-            .iter()
-            .map(|p| (p.mod_id, p.type_name.trim_start_matches(here)))
-            .collect()
-    };
-    assert_eq!(
-        owners("alpha:pack"),
-        [("alpha", "Layout"), ("alpha", "Rules")]
-    );
-    assert_eq!(
-        owners("minecraft:hopper"),
-        [("alpha", "Layout"), ("beta", "Overlay")]
-    );
+    let mods: crate::Mods = vec![
+        ModEntry::new("factory", Box::new(ScreenPolicy::Factory)),
+        ModEntry::new("masked", Box::new(ScreenPolicy::Mask)),
+        ModEntry::new("unrelated", Box::new(ScreenPolicy::NoScreen)),
+    ]
+    .into();
+    crate::testing::with_mods(mods.clone(), || {
+        crate::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        assert_eq!(
+            crate::__private::client_requirement("factory").as_deref(),
+            Some("registers a client menu screen factory")
+        );
+        assert_eq!(
+            crate::__private::client_requirement("masked").as_deref(),
+            Some("excludes menu slots that require a client menu screen")
+        );
+        assert_eq!(crate::__private::client_requirement("unrelated"), None);
+    });
 }
 
 #[test]

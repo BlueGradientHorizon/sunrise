@@ -1375,18 +1375,6 @@ mod tests {
         }
         // What the mods heard, in order.
         static HEARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
-        struct LayoutProbe;
-        #[mod_api::sunrise_part]
-        impl mod_api::MenuPart for LayoutProbe {
-            fn screen(
-                &self,
-                _: &dyn mod_api::Host,
-                _: &mut mod_api::ScreenEvent<'_>,
-            ) -> Option<mod_api::MenuScreenLayout> {
-                HEARD.lock().unwrap().push("layout".to_owned());
-                None
-            }
-        }
         struct Listen {
             bad_mask: bool,
         }
@@ -1396,7 +1384,16 @@ mod tests {
                 if self.bad_mask {
                     r.menu_slot_exclusions(MOD_MENU, None, &[9]).unwrap();
                 }
-                r.menu_part(MOD_MENU, LayoutProbe);
+                r.register_menu_screen(
+                    MOD_MENU,
+                    Arc::new(
+                        |_: &dyn mod_api::ClientHost, _: mod_api::MenuScreenOpen<'_>| {
+                            HEARD.lock().unwrap().push("layout".to_owned());
+                            None
+                        },
+                    ),
+                )
+                .unwrap();
             }
             fn player_container_open(
                 &self,

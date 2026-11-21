@@ -3,7 +3,7 @@
 
 pub trait Hooks {
     /// The tooltip at `at` (GUI pixels from the top left) of the screen of
-    /// mod menu type `menu` (`block` as in `screen`).
+    /// mod menu type `menu` (`block` as in `MenuScreenOpen::block`).
     /// `slot` is the hovered menu index, including player inventory slots,
     /// or `None` outside a mapped slot. On a filled slot, `lines` starts as
     /// the item's tooltip after item tooltip hooks; your final lines replace
@@ -23,7 +23,7 @@ pub trait Hooks {
         out = "lines",
         scope = "menu",
         key = "menu",
-        neoforge = "none (see screen)"
+        neoforge = "none"
     )]
     fn screen_tooltip(
         menu: &str,

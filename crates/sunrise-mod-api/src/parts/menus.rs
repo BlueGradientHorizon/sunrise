@@ -8,6 +8,43 @@ mod book_tests;
 mod screen_tests;
 
 impl MenusRegistrar for PartRegistrar {
+    fn register_menu_screen(
+        &mut self,
+        menu: &str,
+        factory: Arc<dyn crate::MenuScreenFactory>,
+    ) -> Result<(), String> {
+        let result = (|| {
+            if mod_vocab::__private::parts_installation::parts_installed() {
+                return Err("registry is frozen");
+            }
+            let id = crate::Identifier::parse_namespaced(menu)
+                .ok_or("menu must be a namespaced identifier")?;
+            let stock = id.namespace() == "minecraft";
+            if !stock && !owns_namespace(self.mod_id, id.namespace()) {
+                return Err("the custom menu must be owned by the registering mod");
+            }
+            let rows = self.menu_screen_factories.entry(menu.into()).or_default();
+            if (!stock && !rows.is_empty()) || rows.contains_key(&self.mod_index) {
+                return Err("duplicate menu screen factory");
+            }
+            rows.insert(
+                self.mod_index,
+                MenuScreenRegistration {
+                    owner: self.mod_id,
+                    index: self.mod_index,
+                    factory,
+                    panicked: Default::default(),
+                },
+            );
+            Ok(())
+        })();
+        result.map_err(|reason| {
+            let message = format!("mod {} menu {menu:?}: {reason}", self.mod_id);
+            self.refused.push(message.clone());
+            message
+        })
+    }
+
     fn menu_slot_exclusions(
         &mut self,
         menu: &str,
@@ -96,7 +133,7 @@ impl MenusRegistrar for PartRegistrar {
                 .get(menu)
                 .into_iter()
                 .flatten()
-                .find(|other| other.mod_id != self.mod_id && lays_out_screen(&*other.part))
+                .find(|other| other.mod_id != self.mod_id && presents_menu_screen(&*other.part))
             {
                 return Err(format!(
                     "recipe-book screen conflicts with {} of mod {}",
@@ -121,7 +158,7 @@ impl MenusRegistrar for PartRegistrar {
         })
     }
     fn attach_menu_part(&mut self, menu: &str, kind: &'static str, part: Arc<dyn MenuPart>) {
-        if lays_out_screen(&*part) {
+        if presents_menu_screen(&*part) {
             if let Some(book) = self.menu_recipe_books.get(menu)
                 && book.owner != self.mod_id
             {
@@ -131,7 +168,7 @@ impl MenusRegistrar for PartRegistrar {
                 ));
                 return;
             }
-            // One part owns a screen: a second would split its layout, drawing and clicks.
+            // One part answers the presentation hooks: a second would split drawing and input.
             if let Some(other) = self
                 .parts
                 .menus
@@ -139,11 +176,12 @@ impl MenusRegistrar for PartRegistrar {
                 .into_iter()
                 .flatten()
                 .find(|other| {
-                    lays_out_screen(&*other.part) && screens_shared(menu, other.mod_id, self.mod_id)
+                    presents_menu_screen(&*other.part)
+                        && screens_shared(menu, other.mod_id, self.mod_id)
                 })
             {
                 self.refused.push(format!(
-                    "{kind} of {} and {} of {} both lay out menu type {menu}'s screen",
+                    "{kind} of {} and {} of {} both present menu type {menu}'s screen",
                     self.mod_id, other.type_name, other.mod_id
                 ));
                 return;

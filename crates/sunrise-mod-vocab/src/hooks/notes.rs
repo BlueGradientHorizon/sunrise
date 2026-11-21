@@ -1791,7 +1791,7 @@ still go on each event or registrar.
   every stage of a Sunrise shader pack reads as `frame.mods`, so a mod can tell the pack it bundles where and when
   something happened (an explosion's centre and age for a cloud drawn in a post pass).
 
-- Menus of content mods' own menu types (vanilla's `MenuType`): a mod container's `menu` may name a menu type its content mod declares in `data/<id>/sunrise/menu/` with as many slots ([making a content mod](../how-to/content-mods.md#menu-types)). It opens when the block is used, its data slots are the block entity's `data`, and a Sunrise client shows it through the mod's `screen`. Server collect hooks `recipe_sources` and `menu_links` name lent ingredient and linked-slot containers; see the menu-types guide for ordering, caps, skips, write-back and the no-listener tick path.
+- Menus of content mods' own menu types (vanilla's `MenuType`): a mod container's `menu` may name a menu type its content mod declares in `data/<id>/sunrise/menu/` with as many slots ([making a content mod](../how-to/content-mods.md#menu-types)). It opens when the block is used, its data slots are the block entity's `data`, and a Sunrise client shows it through the mod's registered screen factory. Server collect hooks `recipe_sources` and `menu_links` name lent ingredient and linked-slot containers; see the menu-types guide for ordering, caps, skips, write-back and the no-listener tick path.
 
 - `block_highlight(pos, state, partial, canceled)` runs before building the eligible targeted block's selection outline, after hidden-HUD and game-mode restrictions. Set `canceled` to suppress only that outline; default behavior is unchanged otherwise. Position is block coordinates and state is the current block state ID. No entity outlines are affected.
 
@@ -2827,9 +2827,9 @@ registration path.
   the current transaction, rolls back on abort, and uses the normal menu broadcast to viewers.
   `level.set_block` uses the level's normal update path.
 
-- Screens a mod draws for its menu types: a `MenuPart` attached to the menu type (`r.menu_part("mymod:backpack", Backpack)`) answers `screen` on the client, which sets the layout, and `screen_draw` draws it with the mod's own GUI textures (`assets/<namespace>/textures/gui`, drawn with `native_sprite`).
-  The screen goes with the menu type, as a `RegisterMenuScreensEvent` screen does, whatever opened the menu: a block's use or `player_open_mod_menu` from an item's use, an entity or a command. Each hook names the mod block whose menu it is (`block`, `None` without one); on a vanilla type only that block's mod's part hears them.
-  The server skips only the backing slots declared via `r.menu_slot_exclusions(menu, block, indices)`. Layout holes must match that mask; local slot movement and hiding do not change it. A menu bound to a recipe book still gets its geometry from `screen`; return that book in the layout and supply geometry for every mapped slot.
+- Screens a mod draws for its menu types: `r.register_menu_screen(menu, factory)` registers the constructor. It receives `MenuScreenOpen` (including borrowed one-time `extra`) and returns `MenuScreen::new(layout)` once per client opening. `MenuPart::screen_draw` draws it with the mod's GUI textures (`assets/<namespace>/textures/gui`).
+  The factory goes with the menu type, as a `RegisterMenuScreensEvent` constructor does, whatever opened the menu: a block's use or `player_open_mod_menu` from an item, an entity or a command. For a stock menu, only the actual mod block's owner supplies a factory. `block` is `None` without a verified opener.
+  The server skips only the backing slots declared via `r.menu_slot_exclusions(menu, block, indices)`. Layout holes must match that mask; local slot movement and hiding do not change it. A bound recipe book requires a factory from its declaring mod: name the book in the layout and supply geometry for every mapped slot.
 
 - Buttons, tooltips and item icons on mod screens: `screen_click` and `screen_tooltip` (the client), `menu_button`
   (a button press on the server, on the menu type, with an optional backing block entity) and the helpers `native_item`, `native_screen_title`, `LevelRef::block`,

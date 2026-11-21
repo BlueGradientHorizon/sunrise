@@ -64,24 +64,25 @@ impl mod_api::Hooks for BoundBookMod {
                 },
             )
             .unwrap();
-        registrar.menu_part(
-            "bound:menu",
-            BoundBookScreen {
-                book,
-                edit: self.edit.clone(),
-            },
-        );
+        registrar
+            .register_menu_screen(
+                "bound:menu",
+                Arc::new(BoundBookScreen {
+                    book,
+                    edit: self.edit.clone(),
+                }),
+            )
+            .unwrap();
     }
 }
 
-#[mod_api::sunrise_part]
-impl mod_api::MenuPart for BoundBookScreen {
-    fn screen(
+impl mod_api::MenuScreenFactory for BoundBookScreen {
+    fn create(
         &self,
-        _: &dyn mod_api::Host,
-        event: &mut mod_api::ScreenEvent<'_>,
-    ) -> Option<mod_api::MenuScreenLayout> {
-        assert_eq!(event.block, None);
+        _: &dyn mod_api::ClientHost,
+        open: mod_api::MenuScreenOpen<'_>,
+    ) -> Option<mod_api::MenuScreen> {
+        assert_eq!(open.block, None);
         let mut layout = mod_api::MenuScreenLayout {
             width: 176.0,
             height: 166.0,
@@ -106,7 +107,7 @@ impl mod_api::MenuPart for BoundBookScreen {
         if let Some(edit) = *self.edit.lock().unwrap() {
             edit(&mut layout);
         }
-        Some(layout)
+        Some(mod_api::MenuScreen::new(layout))
     }
 }
 fn with_bound_menu_type(test: impl FnOnce()) {
@@ -309,9 +310,9 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                     pos: None,
                     mod_type: None,
                     data: Vec::new(),
-                    extra: Vec::new(),
                 },
                 slot_moves: Default::default(),
+                owner: "geometry",
                 layout_revision: 0,
                 shown: true,
                 screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
@@ -496,9 +497,9 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
                     pos: None,
                     mod_type: None,
                     data: Vec::new(),
-                    extra: Vec::new(),
                 },
                 slot_moves: Default::default(),
+                owner: "geometry",
                 layout_revision: 0,
                 shown: true,
                 screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
@@ -616,9 +617,9 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
                     pos: None,
                     mod_type: None,
                     data: Vec::new(),
-                    extra: Vec::new(),
                 },
                 slot_moves: Default::default(),
+                owner: "geometry",
                 layout_revision: 0,
                 shown: true,
                 screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {

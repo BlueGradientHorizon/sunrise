@@ -957,7 +957,7 @@ impl Game<'_> {
     /// (`data/<id>/sunrise/menu/`) with as many
     /// slots, opens when the block is used (its template must open a menu, as
     /// a chest or a furnace does); another is left out. A mod menu type shows
-    /// on Sunrise clients through the mod's `native_screen` only.
+    /// on Sunrise clients through the mod's registered screen factory.
     pub(in crate::game) fn native_block_entity_container(
         &self,
         block: &str,
@@ -1078,23 +1078,7 @@ impl Game<'_> {
     ) {
         self.fire_map_decorations(map, decorations);
     }
-    /// A menu of mod menu type `menu` opens on this client: set `screen` to
-    /// lay its screen out (`native_screen_draw` draws it), whatever opened
-    /// the menu. `block` is the mod block at the menu's position whose
-    /// container opens this menu type (`menu_opener_block`), none without
-    /// one. Only the part that owns the screen hears its hooks (on a vanilla
-    /// type, the part of the block's mod). The server uses the registered
-    /// backing-slot mask, never the layout hook.
-    pub(in crate::game) fn native_screen(
-        &self,
-        menu: &str,
-        block: Option<&str>,
-        screen: &mut Option<mod_api::MenuScreenLayout>,
-    ) {
-        self.fire_screen(menu, block, screen);
-    }
-    /// Draw the screen of mod menu type `menu` (`block` as in
-    /// `native_screen`) at `origin` (its top left, GUI pixels),
+    /// Draw the open screen of menu type `menu` at `origin` (its top left, GUI pixels),
     /// over a plain panel with its slots' frames and under the items and
     /// labels, from the menu's data slots `data`. Block-backed data is 16-bit
     /// on the wire as in vanilla; blockless mod-menu data preserves full `i32`
@@ -1313,7 +1297,7 @@ impl Game<'_> {
     }
     /// A left or right (`right`) press at `at` (GUI pixels from the screen's
     /// top left, so outside it too) on the screen of mod menu type `menu`
-    /// (`block` as in `native_screen`), over no slot: set `button` to a menu
+    /// over no slot: set `button` to a menu
     /// button id when it is on one of yours.
     /// Sunrise sends it to the server (`ContainerButtonClick`,
     /// `native_menu_button` there) and the press goes no further.
@@ -1328,8 +1312,7 @@ impl Game<'_> {
     ) {
         self.fire_screen_click(menu, block, data, at, right, button);
     }
-    /// The tooltip of mod menu type `menu`'s screen (`block` as in
-    /// `native_screen`) after item tooltip hooks, before its image and
+    /// The open menu screen's tooltip after item tooltip hooks, before its image and
     /// component gathering. `slot` is the hovered menu index, or None outside
     /// a mapped slot. The listener's final lines replace the item's lines.
     pub(in crate::game) fn native_screen_tooltip(

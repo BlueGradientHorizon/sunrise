@@ -10,9 +10,9 @@ pub trait Hooks {
     /// `MenuRef::set_data_slot`. Data is empty until the server's first values
     /// arrive, so read it with `get`. Draw with `event.draw.sprite`,
     /// `event.draw.fill` and `event.draw.text`.
-    /// `block` is the mod block whose menu it is, as in `screen`.
+    /// `block` is the verified opener, as in `MenuScreenOpen::block`.
     /// `pos` is the open menu's block position, as reported by the server
-    /// (or the clicked block for a server without menu-extra support).
+    /// (or the verified clicked opener when no matching payload arrived).
     /// It is `None` for a menu opened without a block position. Read the
     /// client level's current view at this position through the existing
     /// both-sided level reads; it is not an authoritative server snapshot.
@@ -27,7 +27,7 @@ pub trait Hooks {
         contract = "listen",
         scope = "menu",
         key = "menu",
-        neoforge = "none (see screen)"
+        neoforge = "none"
     )]
     fn screen_draw(
         menu: &str,

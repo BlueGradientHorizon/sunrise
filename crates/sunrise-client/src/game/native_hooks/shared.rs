@@ -677,13 +677,14 @@ pub(super) struct OpenNativeScreen {
     pub(super) layout_revision: u64,
     slot_moves: SlotMoves,
     screen: mod_api::MenuScreen,
+    owner: &'static str,
     menu: OpenNativeMenu,
     /// Installed as the window's screen, not merely staged for ScreenOpening.
     shown: bool,
 }
 
 /// The menu the screen presents: where its slots are stored, the opener,
-/// the window's live data, and the bytes supplied when it opened.
+/// and the window's live data.
 struct OpenNativeMenu {
     key: Pos,
     window: i32,
@@ -695,7 +696,6 @@ struct OpenNativeMenu {
     pos: Option<[i32; 3]>,
     mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
     data: Vec<i32>,
-    extra: Vec<u8>,
 }
 
 #[cfg(test)]
@@ -802,6 +802,9 @@ impl Game<'_> {
     }
 }
 
+// A stock menu opened by a mod block has dynamic data, capped by the block-entity API.
+const STOCK_NATIVE_DATA_CAPACITY: usize = 256;
+
 impl OpenNativeScreen {
     fn layout(&self) -> &mod_api::MenuScreenLayout {
         mod_api::__private::menu_screen_layout(&self.screen)
@@ -828,7 +831,10 @@ impl OpenNativeScreen {
         if window != self.menu.window {
             return false;
         }
-        let count = self.menu.mod_type.map_or(256, |kind| kind.data_slots);
+        let count = self
+            .menu
+            .mod_type
+            .map_or(STOCK_NATIVE_DATA_CAPACITY, |kind| kind.data_slots);
         if index < count {
             if self.menu.data.len() <= index {
                 self.menu.data.resize(index + 1, 0);
@@ -2745,9 +2751,8 @@ impl Game<'_> {
     /// owns it: another mod's part on a shared vanilla type moves no slot of it.
     fn owned_native_screen(&self, menu: &str) -> Option<&OpenNativeScreen> {
         let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
-        let owner = || mod_api::__private::menu_screen_owner(&s.menu.name, s.menu.block.as_deref());
         mod_api::content::crash::current_native_mod()
-            .is_none_or(|calling| owner() == Some(calling))
+            .is_none_or(|calling| s.owner == calling)
             .then_some(s)
     }
     /// Moves container slot `slot` of the open screen of menu type `menu` to `pos`
