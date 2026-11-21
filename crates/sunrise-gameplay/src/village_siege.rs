@@ -166,7 +166,7 @@ mod tests {
         blocks::BlockFacts,
         chunk::Chunk,
         join_seq::JoinList,
-        mobs::{Mob, Species},
+        mobs::{Mob, Species, spawn_rules},
         world::World,
     };
     use sunrise_client_core::gamerules::RuleIndex;
