@@ -393,7 +393,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
 
         assert_eq!(entity.set_data_slots(game, vec![23]), Ok(true));
         assert_eq!(entity.set_data_slot(game, 0, 42), Ok(true));
-        assert_eq!(entity.data_slots(game), Some(vec![42]));
+        assert_eq!(entity.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten(), Some(vec![42]));
         assert!(
             game.world.modified.contains(&(0, 0)),
             "successful menu edits mark the chunk even though slots are transient"

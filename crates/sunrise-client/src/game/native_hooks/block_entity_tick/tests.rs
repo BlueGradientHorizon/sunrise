@@ -59,8 +59,8 @@ fn retaking_the_view_checks_the_instance_and_state() {
         let mut scope = BlockEntityTickScope::new(&mut access);
         assert_eq!(scope.with_view(|view| view.data_slots()[0]), Some(23));
         let host = scope.host();
-        let level = subject.level(host).unwrap();
-        let pos = subject.position(host).unwrap();
+        let level = subject.with_view(host, |view| view.level()).unwrap();
+        let pos = subject.with_view(host, |view| view.position()).unwrap();
         let glass = access
             .game
             .pack
@@ -237,13 +237,13 @@ fn ticker_and_handle_setters_dirty_without_explicit_notices() {
         let subject = place_subject(game, KIND);
         game.world.block_log = Some(Vec::new());
         game.tick_mod_block_entity(POS);
-        assert_eq!(subject.data_slots(game).unwrap(), [1]);
+        assert_eq!(subject.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten().unwrap(), [1]);
         assert!(game.world.modified.contains(&CHUNK));
         assert!(game.world.block_log.as_ref().unwrap().is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);
         game.world.modified.clear();
         assert!(subject.set_data_slot(game, 0, 2).unwrap());
-        assert_eq!(subject.data_slots(game).unwrap(), [2]);
+        assert_eq!(subject.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten().unwrap(), [2]);
         assert!(game.world.modified.contains(&CHUNK));
         assert!(game.world.block_log.as_ref().unwrap().is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);
@@ -267,7 +267,7 @@ fn a_registered_type_without_a_tick_part_is_not_woken_or_changed() {
         let subject = place_subject(game, UNSUBSCRIBED);
         game.world.block_entities.sleep(POS);
         game.tick_mod_block_entity(POS);
-        assert_eq!(subject.data_slots(game).unwrap(), [23]);
+        assert_eq!(subject.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten().unwrap(), [23]);
         assert!(game.world.block_entities.is_asleep(&POS));
         assert!(game.world.modified.is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);

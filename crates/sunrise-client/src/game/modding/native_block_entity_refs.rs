@@ -1069,16 +1069,16 @@ mod tests {
                 game.world
                     .block_entities
                     .insert(pos, BlockEntity::Chest(vec![]));
-                assert_eq!(original.data_slots(game), None);
+                assert_eq!(original.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten(), None);
                 tentative = game.block_entity(level, [1, 64, 1]);
                 Err(())
             });
-            assert_eq!(original.data_slots(game), Some(vec![7]));
+            assert_eq!(original.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten(), Some(vec![7]));
             assert_eq!(tentative.unwrap().data(game), None);
             let (lease, taken) = game.world.block_entities.take(&pos).unwrap();
-            assert_eq!(original.data_slots(game), None);
+            assert_eq!(original.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten(), None);
             assert!(game.world.block_entities.put(lease, taken));
-            assert_eq!(original.data_slots(game), Some(vec![7]));
+            assert_eq!(original.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten(), Some(vec![7]));
             game.world.block_entities.remove(&pos);
             game.world.block_entities.insert(pos, holder());
             let replacement = game.block_entity(level, [1, 64, 1]).unwrap();
@@ -1098,7 +1098,7 @@ mod tests {
                 original.item_slot(game, 0),
                 Err(BlockEntityItemError::Stale)
             );
-            assert_eq!(replacement.data_slots(game), Some(vec![]));
+            assert_eq!(replacement.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten(), Some(vec![]));
             assert_eq!(replacement.set_data_slots(game, vec![8]), Ok(true));
             game.world.block_entities.load_chunk(vec![(pos, holder())]);
             assert_eq!(
@@ -1265,7 +1265,7 @@ mod tests {
                 assert_eq!(player.open_menu(game, chest), Err(BlockEntityError::Stale));
                 let replacement = game.block_entity(level, [0, 64, 0]).unwrap();
                 assert_ne!(chest, replacement);
-                assert_eq!(chest.position(game), None);
+                assert_eq!(chest.with_view(game, |view| view.position()), None);
                 let menu = game
                     .lan
                     .as_ref()
@@ -1586,10 +1586,10 @@ mod tests {
             );
             assert_eq!(slot3(game), Some(3));
             assert_eq!(
-                chest.kind(game).and_then(|kind| kind.id(game)),
+                chest.with_view(game, |view| view.kind()).flatten().and_then(|kind| kind.id(game)),
                 Some("minecraft:chest")
             );
-            assert_eq!(chest.position(game), Some([0, 64, 0]));
+            assert_eq!(chest.with_view(game, |view| view.position()), Some([0, 64, 0]));
             assert!(
                 !chest.merge_data(game, compound(stick)).unwrap(),
                 "no change"
