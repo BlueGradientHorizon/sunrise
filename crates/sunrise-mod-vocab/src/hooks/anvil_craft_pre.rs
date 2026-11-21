@@ -11,7 +11,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "AnvilCraftEvent.Pre",
         cancellable = true,
-        version = 2
+        version = 3
     )]
     fn anvil_craft_pre(
         player: u128,

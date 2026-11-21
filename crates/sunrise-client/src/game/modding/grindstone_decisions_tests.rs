@@ -28,6 +28,8 @@ struct Script {
     take_xp: Option<i32>,
     take_new_top: Option<u32>,
     take_new_bottom: Option<u32>,
+    restore_top_once: bool,
+    place_requires_top: bool,
 }
 
 thread_local! {
@@ -108,7 +110,9 @@ impl Hooks for Mod {
         if s.place_unclosed_write {
             write_dirt_unclosed(host);
         }
-        if let Some(count) = s.place_output {
+        if let Some(count) = s.place_output
+            && (!s.place_requires_top || event.inputs.top.is_some())
+        {
             event.edits.output = Some(dirt(count));
         }
         if let Some(xp) = s.place_xp {
@@ -138,7 +142,12 @@ impl Hooks for Mod {
         if s.take_unclosed_write {
             write_dirt_unclosed(host);
         }
-        event.edits.new_top = s.take_new_top.map(dirt);
+        event.edits.new_top =
+            if SCRIPT.with(|script| std::mem::take(&mut script.borrow_mut().restore_top_once)) {
+                Some(dirt(1))
+            } else {
+                s.take_new_top.map(dirt)
+            };
         event.edits.new_bottom = s.take_new_bottom.map(dirt);
         if let Some(xp) = s.take_xp {
             event.edits.xp = xp;
@@ -298,7 +307,7 @@ fn a_place_listener_sets_the_grindstone_result() {
                 ..Script::default()
             });
             click(game, window, 0, 0);
-            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(DISPATCHES.get(), 3);
             assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
             click(game, window, 2, 0);
             assert_eq!(TAKE_XP.get(), Some(5));
@@ -340,7 +349,7 @@ fn a_place_answer_does_not_validate_borrowed_inputs() {
 
             click(game, window, 1, 0);
 
-            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(DISPATCHES.get(), 3);
             assert_eq!(PLACE_TOP_COUNT.get(), Some(2));
             assert_eq!(slot(game, 0), Some(top));
             assert_eq!(slot(game, 1), Some(bottom));
@@ -368,9 +377,9 @@ fn a_cancelled_place_leaves_no_grindstone_result() {
                 ..Script::default()
             });
             click(game, window, 0, 0);
-            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(DISPATCHES.get(), 3);
             assert_eq!(count(&slot(game, 2)), 0);
-            assert_eq!(inventory(game, 20), 2);
+            assert_eq!(inventory(game, 20), 6);
             assert!(game.transactions.is_empty());
         });
     });
@@ -392,7 +401,7 @@ fn negative_place_xp_falls_through_to_vanilla_award() {
                 ..Script::default()
             });
             click(game, window, 0, 0);
-            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(DISPATCHES.get(), 3);
             assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
 
             let events = game.lan_events.len();
@@ -425,7 +434,7 @@ fn invalid_place_output_keeps_vanilla_result() {
                 ..Script::default()
             });
             click(game, window, 0, 0);
-            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(DISPATCHES.get(), 3);
             assert_eq!(slot(game, 2), Some(disenchanted_sword(200)));
             assert!(game.transactions.is_empty());
         });
@@ -540,6 +549,7 @@ fn a_cancelled_take_keeps_the_click_and_listener_writes() {
             assert_eq!(inventory(game, 20), 2);
             assert!(game.orbs.is_empty());
             assert_eq!(game.lan_events.len(), events);
+            assert!(PLACE_OBSERVED.with(|seen| seen.borrow().is_empty()));
             assert!(game.transactions.is_empty());
         });
     });
@@ -767,7 +777,12 @@ fn equal_stack_swap_and_multi_slot_drag_fire_grindstone_place_live() {
             game.lan_guest_packet(12, container_click(window, -999, 2, 5));
             assert_eq!(
                 PLACE_OBSERVED.with(|v| v.borrow().clone()),
-                vec![(Some(1), None), (Some(1), Some(1))]
+                vec![
+                    (Some(1), None),
+                    (Some(1), None),
+                    (Some(1), Some(1)),
+                    (Some(1), Some(1))
+                ]
             );
 
             // Swapping an identical non-stackable sword into slot 0 leaves slot 0 equal
@@ -792,7 +807,7 @@ fn equal_stack_swap_and_multi_slot_drag_fire_grindstone_place_live() {
             assert_eq!(slot(game, 0), Some(sword));
             assert_eq!(
                 PLACE_OBSERVED.with(|v| v.borrow().clone()),
-                vec![(Some(1), Some(1))]
+                vec![(Some(1), Some(1)); 3]
             );
         });
     });
@@ -867,15 +882,77 @@ fn place_only_take_awards_xp_and_event_before_replacing_inputs() {
             seen.lock().unwrap().clear();
 
             // Taking the result without a GrindstoneTake listener must award XP before
-            // clearing slot 0 and slot 1 (so both GrindstonePlace calls observe XP = 7).
+            // clearing slot 0 and slot 1 and sending the final container notification.
             let events = game.lan_events.len();
             click(game, window, 2, 0);
             assert_eq!(
                 *seen.lock().unwrap(),
-                vec![(None, Some(1), 7), (None, None, 7)]
+                vec![(None, Some(1), 7), (None, None, 7), (None, None, 7)]
             );
             assert_eq!(game.lan_events.len(), events + 1);
             assert_eq!(total_orb_xp(game), 7);
         });
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn grindstone_on_take_rebuilds_the_result_before_shift_click_or_throw_all_repeats() {
+    for (button, input) in [(0, 1), (1, 4)] {
+        with_mod(|| {
+            with_guests(|game| {
+                let (window, _) = placed(game);
+                let events = game.lan_events.len();
+                script(Script {
+                    place_output: Some(1),
+                    place_xp: Some(7),
+                    place_requires_top: true,
+                    restore_top_once: true,
+                    ..Script::default()
+                });
+                game.lan_guest_packet(12, container_click(window, 2, button, input));
+
+                assert_eq!(
+                    DISPATCHES.get(),
+                    8,
+                    "two takes, three Place notifications per take"
+                );
+                assert_eq!(
+                    PLACE_OBSERVED.with(|seen| seen.borrow().clone()),
+                    [
+                        (Some(1), None),
+                        (Some(1), None),
+                        (Some(1), None),
+                        (None, None),
+                        (None, None),
+                        (None, None),
+                    ]
+                );
+                assert_eq!(
+                    game.lan_events[events..]
+                        .iter()
+                        .map(|e| e.kind)
+                        .collect::<Vec<_>>(),
+                    [1042, 1042]
+                );
+                assert_eq!(
+                    total_orb_xp(game),
+                    12,
+                    "the awards are 5 then 7 from the rebuilt result"
+                );
+                assert!((0..3).all(|i| slot(game, i).is_none()));
+                if input == 1 {
+                    assert_eq!(inventory(game, 8), 2);
+                } else {
+                    assert_eq!(
+                        game.dropped
+                            .iter()
+                            .map(|drop| drop.stack.count)
+                            .sum::<u32>(),
+                        2
+                    );
+                }
+            });
+        });
+    }
 }

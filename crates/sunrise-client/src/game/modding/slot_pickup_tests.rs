@@ -438,7 +438,7 @@ fn a_refused_quick_move_moves_nothing_and_asks_before_menu_quick_move() {
         assert_eq!(menu.player_item(8).map(|s| s.count), Some(5));
         assert_eq!(
             times(&server_asks, (8, "minecraft:stone", 5)),
-            1,
+            2,
             "{server_asks:?}"
         );
         let from = SLOTS + 21;
@@ -510,7 +510,7 @@ fn a_quick_move_without_menu_quick_move_asks_once() {
         assert_eq!(menu.player_item(8).map(|s| s.count), Some(5));
         assert_eq!(
             times(&server_asks, (8, "minecraft:stone", 5)),
-            1,
+            2,
             "{server_asks:?}"
         );
         let from = SLOTS + 21;
@@ -583,7 +583,7 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
                 vec![(3, stone(5))],
                 stone(3),
                 (3, 0, Input::Pickup),
-                vec![(3, stone5, 1), (3, ("minecraft:stone", 3), 2)],
+                vec![(3, stone5, 1), (3, ("minecraft:stone", 3), 3)],
             ),
             (
                 vec![(SHOWN, stone(5))],

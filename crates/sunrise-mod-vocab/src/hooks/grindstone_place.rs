@@ -4,7 +4,7 @@ pub trait Hooks {
     /// A grindstone at `pos` made its result after its inputs changed, for
     /// the server player `player` (UUID) and `player_entity_id`
     /// (`GrindstoneEvent.OnPlaceItem`, matching NeoForge `CommonHooks.onGrindstoneChange`
-    /// in `GrindstoneMenu.createResult`): `inputs` lends the input stacks and vanilla
+    /// in `GrindstoneMenu.createResult`), including the three input notifications of an accepted take: `inputs` lends the input stacks and vanilla
     /// result. Runs inline without a decided-action transaction or rollback on cancel.
     /// Cancellation is checked before converting `edits.output` and clears slot 2
     /// without rolling back listener writes. Otherwise leave `edits.output` at `None`
@@ -20,7 +20,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "GrindstoneEvent.OnPlaceItem",
         cancellable = true,
-        version = 3
+        version = 4
     )]
     fn grindstone_place(
         player: u128,

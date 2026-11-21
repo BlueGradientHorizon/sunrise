@@ -12,7 +12,9 @@ pub trait Hooks {
     /// the read `Host`: it is a query, so it can neither write nor cancel. Each
     /// live `may_place`, `may_pickup` and `getMaxStackSize` check during a click
     /// asks the parts directly against the current menu slots (matching
-    /// vanilla `AbstractContainerMenu.doClick` and `Slot`).
+    /// vanilla `AbstractContainerMenu.doClick` and `Slot`). Permission and
+    /// capacity are separate checks. During shift-click a later destination
+    /// sees the source remainder and the earlier destinations' updates.
     /// Answer quickly from the question and the read-only Host. On a LAN
     /// host's own click the LAN host is not reachable through the `Host`
     /// (it answers as if no LAN were open).
@@ -45,8 +47,7 @@ pub trait Hooks {
     /// refuses placement gives all of its stack or none. A display-only slot
     /// answers `may_pickup` false and `may_place` false. `may_pickup` arrives
     /// true: the slot's own rule comes first, and a slot it already refuses is
-    /// not asked; then the mods, in the order `may_place` is asked, one ask
-    /// answering both. A shift-click a part answers with `menu_quick_move` is
+    /// not asked. A shift-click a part answers with `menu_quick_move` is
     /// asked the pickup rule before that hook.
     #[hook(
         receiver = "read",
@@ -57,7 +58,7 @@ pub trait Hooks {
         key = "menu",
         host = "read",
         cancellable = false,
-        version = 6,
+        version = 7,
         neoforge = "none (vanilla Slot.mayPlace and mayPickup; NeoForge adds no event or extension for it)"
     )]
     fn menu_slot_rules(

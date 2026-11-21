@@ -8,7 +8,9 @@ pub trait Hooks {
     /// decided-action transaction or click rollback. `edits.xp` starts at the resolved
     /// experience (`>= 0`, from `grindstone_place` or vanilla's pre-rolled award);
     /// non-positive values (`<= 0`) spawn 0 orbs while still firing level event 1042 and
-    /// replacing the inputs. Use `edits.new_top` and `edits.new_bottom` to leave items
+    /// replacing the inputs. Replacing each slot and finally notifying the
+    /// input container each run `grindstone_place`. This completes before
+    /// the click drops its taken stack or checks for another result. Use `edits.new_top` and `edits.new_bottom` to leave items
     /// in the input slots (invalid stacks are logged and ignored as empty slots).
     /// Set `cancelled` to skip experience, level event 1042 and input replacement;
     /// cancel is checked before converting remainders and does not undo the click or
@@ -21,7 +23,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "GrindstoneEvent.OnTakeItem",
         cancellable = true,
-        version = 3
+        version = 4
     )]
     fn grindstone_take(
         player: u128,

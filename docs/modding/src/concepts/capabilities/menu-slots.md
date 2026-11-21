@@ -67,6 +67,8 @@ the player whose menu it is, and `context.pos` locates the block entity the menu
 `MenuContainer::Main` for the menu's own slots, `Grid` (row by row) and `Result` (slot 0) on a
 mod menu type with a crafting grid, and `MenuContainer::Player` for the player's inventory
 (`0..36` inventory, `36..40` armor feet-to-head, `40` offhand, matching vanilla `Inventory`).
+Permission and capacity are separate live queries; after a quick-move transfer, the next
+destination sees the new source remainder as well as the changed destination.
 For example, a machine can use the view to accept only one upgrade card of each kind, or a grid
 slot can check whether a result is waiting to be taken:
 

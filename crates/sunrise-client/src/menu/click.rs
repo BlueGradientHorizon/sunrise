@@ -1,4 +1,5 @@
 //! Local click, cursor, drag and pick-all algorithms.
+use super::equip_movement::MovePass;
 use super::*;
 
 /// One take from a block-backed menu: slot, stack taken and remainder in that slot.
@@ -28,11 +29,25 @@ enum ClickStep {
         previous: Option<ItemStack>,
         checked: bool,
     },
+    StationTransfer {
+        slot: usize,
+        original: ItemStack,
+        source: ItemStack,
+        pass: MovePass,
+    },
     Throw {
         slot: usize,
         amount: u32,
         previous: Option<ItemStack>,
+        repeat: bool,
     },
+    ThrowAfterTake {
+        slot: usize,
+        amount: u32,
+        taken: ItemStack,
+        repeat: bool,
+    },
+    ResultNotifications,
     PickAll {
         next: i32,
         step: i32,
@@ -118,7 +133,8 @@ impl Menu {
         button: i32,
         input: Input,
     ) -> Result<Option<ClickContinuation>, &'static str> {
-        self.click_planned(env, slot_index, button, input)
+        let rest = self.click_planned(env, slot_index, button, input)?;
+        Ok(self.with_result_notifications(rest))
     }
 
     /// Start a `QuickMove` whose initial `Slot.mayPickup` check already succeeded.
@@ -249,15 +265,17 @@ impl Menu {
                         return Ok(None);
                     }
                     for s in self.state.quick_slots.clone() {
+                        if !self.quick_replace(s, carried, env) {
+                            continue;
+                        }
                         let proof = self.equip_placement(env, s, carried);
-                        if self.quick_replace(s, carried, env)
-                            && proof.allowed
+                        if proof.allowed
                             && (self.state.quick_type == 2
                                 || carried.count as usize >= self.state.quick_slots.len())
                             && self.can_drag_to(s)
                         {
                             let have = self.slot(s).map_or(0, |c| c.count);
-                            let max = Self::max_stack(env, &source).min(proof.max);
+                            let max = self.slot_max(env, s, &source);
                             let new_count = quick_craft_count(
                                 self.state.quick_type as u8,
                                 source.count,
@@ -369,17 +387,15 @@ impl Menu {
             } else {
                 self.slot(s).map_or(0, |c| c.count)
             };
-            if button == 1 {
-                return Ok(self.run_click_step(
-                    env,
-                    ClickStep::Throw {
-                        slot: s,
-                        amount,
-                        previous: None,
-                    },
-                ));
-            }
-            self.throw_step(env, s, amount, None);
+            return Ok(self.run_click_step(
+                env,
+                ClickStep::Throw {
+                    slot: s,
+                    amount,
+                    previous: None,
+                    repeat: button == 1,
+                },
+            ));
         } else if input == Input::PickupAll && slot_index >= 0 {
             if !in_range(slot_index) {
                 return Err(OUT_OF_BOUNDS);
@@ -433,7 +449,22 @@ impl Menu {
     }
 
     fn step_pending(&self) -> bool {
-        self.take_pending() || self.result_pending()
+        self.take_pending() || self.result_pending() || self.station_take_pending()
+    }
+
+    fn station_take_pending(&self) -> bool {
+        self.state.track_results
+            && (self.state.anvil_craft.is_some() || self.state.grind_take.is_some())
+    }
+
+    fn with_result_notifications(
+        &self,
+        rest: Option<ClickContinuation>,
+    ) -> Option<ClickContinuation> {
+        rest.or_else(|| {
+            (self.state.more_results > 0)
+                .then_some(ClickContinuation(ClickStep::ResultNotifications))
+        })
     }
 
     fn tracks_take(&self, s: usize) -> bool {
@@ -503,8 +534,8 @@ impl Menu {
                             if self.state.slots[s].role == Role::Hidden {
                                 return true;
                             }
-                            let (may_place, _, max) = self.slot_rules(env, s, stack);
-                            !may_place || stack.count > self.limit_slot_max(s, max)
+                            !self.may_place(env, s, stack)
+                                || stack.count > self.slot_max(env, s, stack)
                         })
                     {
                         outcome.refused.set(true);
@@ -883,14 +914,16 @@ impl Menu {
                 while index < slots.len() {
                     let s = slots[index];
                     index += 1;
+                    if !self.quick_replace(s, &source, env) {
+                        continue;
+                    }
                     let proof = self.equip_placement(env, s, &source);
-                    if self.quick_replace(s, &source, env)
-                        && proof.allowed
+                    if proof.allowed
                         && (quick_type == 2 || source.count as usize >= slots.len())
                         && self.can_drag_to(s)
                     {
                         let have = self.slot(s).map_or(0, |c| c.count);
-                        let max = Self::max_stack(env, &source).min(proof.max);
+                        let max = self.slot_max(env, s, &source);
                         let new_count = quick_craft_count(
                             quick_type as u8,
                             source.count,
@@ -927,34 +960,132 @@ impl Menu {
                 mut previous,
                 mut checked,
             } => {
-                while let Some(now) = self.quick_move_step(env, slot, previous.as_ref(), checked) {
+                loop {
+                    let allowed = match &previous {
+                        None => checked || self.may_pickup(env, slot),
+                        Some(before) => self.slot(slot).is_some_and(|now| same_item(now, before)),
+                    };
+                    if !allowed {
+                        break;
+                    }
+                    // Only station inputs run createResult inside moveItemStackTo. Retain the
+                    // cursor of this pass, distinct from doClick's repeat of quickMoveStack.
+                    if self.state.track_results
+                        && slot > 2
+                        && (self.kind == Kind::Anvil
+                            || self.kind == Kind::Grindstone
+                                && self.state.containers[MAIN].iter().any(Option::is_none))
+                    {
+                        let original = self.slot(slot)?.clone();
+                        return self.run_click_step(
+                            env,
+                            ClickStep::StationTransfer {
+                                slot,
+                                source: original.clone(),
+                                original,
+                                pass: MovePass::new(0, 2, false),
+                            },
+                        );
+                    }
+                    let Some(now) = self.quick_move_noted(env, slot) else {
+                        break;
+                    };
                     checked = false;
                     previous = Some(now);
                     if self.step_pending() {
                         return Some(ClickContinuation(ClickStep::QuickMove {
                             slot,
                             previous,
-                            checked: false,
+                            checked,
                         }));
                     }
+                }
+            }
+            ClickStep::StationTransfer {
+                slot,
+                original,
+                mut source,
+                mut pass,
+            } => {
+                self.resume_station_transfer(env, slot, &mut source, &mut pass);
+                if self.result_pending() {
+                    return Some(ClickContinuation(ClickStep::StationTransfer {
+                        slot,
+                        original,
+                        source,
+                        pass,
+                    }));
+                }
+                if pass.changed {
+                    let previous =
+                        self.finish_quick_move(env, slot, original, source, true, true)?;
+                    return self.run_click_step(
+                        env,
+                        ClickStep::QuickMove {
+                            slot,
+                            previous: Some(previous),
+                            checked: false,
+                        },
+                    );
                 }
             }
             ClickStep::Throw {
                 slot,
                 amount,
                 mut previous,
+                repeat,
+            } => loop {
+                if previous
+                    .as_ref()
+                    .is_some_and(|p| !self.slot(slot).is_some_and(|now| same_item(now, p)))
+                {
+                    break;
+                }
+                let Some(taken) = self.safe_take(env, slot, amount, u32::MAX) else {
+                    break;
+                };
+                if self.station_take_pending() {
+                    return Some(ClickContinuation(ClickStep::ThrowAfterTake {
+                        slot,
+                        amount,
+                        taken,
+                        repeat,
+                    }));
+                }
+                self.drop_stack(&taken, env.items);
+                if !repeat {
+                    break;
+                }
+                previous = Some(taken);
+                if self.step_pending() {
+                    return Some(ClickContinuation(ClickStep::Throw {
+                        slot,
+                        amount,
+                        previous,
+                        repeat,
+                    }));
+                }
+            },
+            ClickStep::ThrowAfterTake {
+                slot,
+                amount,
+                taken,
+                repeat,
             } => {
-                while let Some(now) = self.throw_step(env, slot, amount, previous.as_ref()) {
-                    previous = Some(now);
-                    if self.step_pending() {
-                        return Some(ClickContinuation(ClickStep::Throw {
+                self.drop_stack(&taken, env.items);
+                if repeat {
+                    return self.run_click_step(
+                        env,
+                        ClickStep::Throw {
                             slot,
                             amount,
-                            previous,
-                        }));
-                    }
+                            previous: Some(taken),
+                            repeat,
+                        },
+                    );
                 }
             }
+            ClickStep::ResultNotifications => {}
             ClickStep::PickAll {
                 mut next,
                 step,
@@ -1003,12 +1134,30 @@ impl Menu {
         None
     }
 
+    /// Run any next result calculation from the same slot write, after delivering the prior one.
+    pub fn advance_result_notification(&mut self, env: &Env) -> bool {
+        if self.state.more_results == 0 {
+            return false;
+        }
+        self.state.more_results -= 1;
+        match self.kind {
+            Kind::Anvil => self.anvil_result(env),
+            Kind::Grindstone => self.grindstone_inputs_changed(env),
+            _ => unreachable!("only repair input containers queue results"),
+        }
+        true
+    }
+
     /// Continue the suspended click.
     pub fn resume_click(
         &mut self,
         env: &Env,
         rest: ClickContinuation,
     ) -> Option<ClickContinuation> {
-        self.run_click_step(env, rest.0)
+        if self.advance_result_notification(env) {
+            return Some(rest);
+        }
+        let next = self.run_click_step(env, rest.0);
+        self.with_result_notifications(next)
     }
 }

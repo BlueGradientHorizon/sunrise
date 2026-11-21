@@ -2723,11 +2723,70 @@ mod tests {
                     (None, 2, Input::QuickCraft),
                 ]));
 
-                assert_eq!(*observed.lock().unwrap(), vec![(1, None), (1, Some(1))]);
+                assert_eq!(
+                    *observed.lock().unwrap(),
+                    vec![(1, None), (1, None), (1, None), (1, Some(1)), (1, Some(1))]
+                );
                 let station = game.station.as_ref().unwrap();
                 assert_eq!(station.result, Some(ItemStack::new("minecraft:dirt", 1)));
                 assert_eq!(station.anvil.cost, 3);
                 assert_eq!(game.carried, None);
+            });
+        });
+    }
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_prediction_updates_between_material_consumption_and_left_input_clear() {
+        use super::{ItemStack, Kind, Station};
+        use mod_api::{AnvilUpdateEvent, Flow, Hooks, HostSide, ModEntry};
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::menu::Input;
+
+        struct Observe(Arc<Mutex<Vec<Option<u32>>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Observe {
+            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(event.inputs.right.map(mod_api::ItemStack::count));
+                Flow::Continue
+            }
+        }
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![ModEntry::new(
+            "take-observer",
+            Box::new(Observe(calls.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "AnvilTake").unwrap();
+                game.remote.as_mut().unwrap().menu = Some((1, "minecraft:anvil".into()));
+                let mut station = Station::new(Kind::Anvil, [0; 3]);
+                let repaired = ItemStack::new("minecraft:iron_sword", 1);
+                let mut worn = repaired.clone();
+                worn.damage = 80;
+                station.inputs[0] = Some(worn);
+                station.inputs[1] = Some(ItemStack::new("minecraft:iron_ingot", 2));
+                station.result = Some(repaired.clone());
+                station.anvil.cost = 2;
+                station.anvil.repair_item_count_cost = 2;
+                game.station = Some(station);
+                game.experience.level = 10;
+
+                assert!(game.remote_menu_ops(&[(Some(super::RESULT), 0, Input::Pickup)]));
+                assert_eq!(
+                    *calls.lock().unwrap(),
+                    [None],
+                    "only the intermediate update still has the left input"
+                );
+                let station = game.station.as_ref().unwrap();
+                assert!(station.inputs[..2].iter().all(Option::is_none));
+                assert_eq!(station.result, None);
+                assert_eq!(game.carried, Some(repaired));
             });
         });
     }

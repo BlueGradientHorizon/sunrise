@@ -13,7 +13,8 @@ pub struct CraftingGrid {
     pub cells: Vec<Option<crate::ItemStack>>,
 }
 impl CraftingGrid {
-    /// Validate dimensions and retain an owned snapshot.
+    /// Retain the row-major cells when their count equals the checked area. A zero
+    /// area keeps the supplied dimensions and has no cells.
     pub fn new(
         width: u32,
         height: u32,
@@ -285,8 +286,10 @@ mod tests {
 
     #[test]
     fn crafting_grid_accepts_empty_and_larger_dimensions_and_rejects_mismatches() {
-        let empty = CraftingGrid::new(0, 0, Vec::new()).unwrap();
-        assert_eq!((empty.width, empty.height, empty.cells.len()), (0, 0, 0));
+        for (w, h) in [(0, 0), (0, u32::MAX), (u32::MAX, 0)] {
+            let empty = CraftingGrid::new(w, h, Vec::new()).unwrap();
+            assert_eq!((empty.width, empty.height, empty.cells.len()), (w, h, 0));
+        }
 
         let large = CraftingGrid::new(4, 4, vec![None; 16]).unwrap();
         assert_eq!((large.width, large.height, large.cells.len()), (4, 4, 16));

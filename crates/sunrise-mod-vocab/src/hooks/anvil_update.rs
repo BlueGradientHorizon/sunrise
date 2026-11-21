@@ -11,8 +11,9 @@ pub trait Hooks {
     /// replacement output is logged and ignored (keeping vanilla's output while
     /// still applying the cost edits). `edits.xp_cost` stays signed during
     /// listener dispatch and clamps to `0` when applied (`AnvilMenu.setCost`).
-    /// Both sides: the server's menu and a server's client menu with the local
-    /// player.
+    /// Both sides, including the update after material consumption with the
+    /// left slot still present. On the server that update observes the player
+    /// after `AnvilMenu.onTake` has charged the levels.
     #[hook(
         dispatch = "flat",
         side = "both",
@@ -20,7 +21,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "AnvilUpdateEvent",
         cancellable = true,
-        version = 2
+        version = 3
     )]
     fn anvil_update(
         player: u128,

@@ -82,8 +82,10 @@ fn snapshot_dimensions(
 ) -> Option<CraftingGrid> {
     let width_u32 = u32::try_from(width).ok()?;
     let height_u32 = u32::try_from(height).ok()?;
-    width.checked_mul(height)?;
-    if height > 0 && (size < width || height.checked_mul(size).is_none_or(|n| n > grid.len())) {
+    if width.checked_mul(height)? == 0 {
+        return CraftingGrid::new(width_u32, height_u32, Vec::new()).ok();
+    }
+    if size < width || height.checked_mul(size).is_none_or(|n| n > grid.len()) {
         return None;
     }
     let cells = (0..height)
@@ -298,9 +300,6 @@ impl Recipes {
         let Some(result) = result.filter(|r| r.len() == expected) else {
             return fallback();
         };
-        if height > 0 && (size < width || height.checked_mul(size).is_none_or(|n| n > grid.len())) {
-            return fallback();
-        }
         let mut placed = vec![None; grid.len()];
         for (i, cell) in result.into_iter().enumerate() {
             placed[i / width * size + i % width] = match cell {

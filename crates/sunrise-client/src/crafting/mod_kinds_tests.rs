@@ -418,7 +418,7 @@ impl mod_api::CraftingRecipeKind for SizedKind {
     }
     fn matches(&self, _context: &dyn mod_api::LoopContext, _: &(), grid: CraftingGrid) -> bool {
         match (grid.width, grid.height) {
-            (0, 0) => grid.cells.is_empty(),
+            (0, 0) | (0, u32::MAX) | (u32::MAX, 0) => grid.cells.is_empty(),
             (4, 4) => {
                 grid.cells.len() == 16
                     && grid.cells[15]
@@ -434,7 +434,7 @@ impl mod_api::CraftingRecipeKind for SizedKind {
         _: &(),
         grid: CraftingGrid,
     ) -> Option<mod_api::ItemStack> {
-        let count = if grid.width == 0 { 1 } else { 4 };
+        let count = if grid.cells.is_empty() { 1 } else { 4 };
         mod_api::ItemStack::new(self.output, count)
     }
     fn remaining_items(
@@ -443,7 +443,7 @@ impl mod_api::CraftingRecipeKind for SizedKind {
         _: &(),
         grid: CraftingGrid,
     ) -> Option<Vec<Option<mod_api::ItemStack>>> {
-        if grid.width == 0 && grid.height == 0 {
+        if grid.cells.is_empty() {
             assert!(context.default_remainder(0).is_none());
             return Some(Vec::new());
         }
@@ -484,16 +484,18 @@ fn registered_kind_matches_and_returns_remainders_for_empty_and_4x4_grids() {
             let context = crate::test_resources::server_loop_context();
 
             let empty_grid: Vec<Option<ItemStack>> = Vec::new();
-            let (id, output) = recipes
-                .find_with_dimensions(context, &empty_grid, 0, 0, 0, &|_| None)
-                .unwrap();
-            assert_eq!(id, "test:sized");
-            assert_eq!(output, ItemStack::new("test:output", 1));
-            assert!(
-                recipes
-                    .mod_remainders_rect(context, "test:sized", &empty_grid, 0, 0, 0, &|_| None)
-                    .is_empty()
-            );
+            for (w, h) in [(0, 0), (0, u32::MAX as usize), (u32::MAX as usize, 0)] {
+                let (id, output) = recipes
+                    .find_with_dimensions(context, &empty_grid, w, w, h, &|_| None)
+                    .unwrap();
+                assert_eq!(id, "test:sized");
+                assert_eq!(output, ItemStack::new("test:output", 1));
+                assert!(
+                    recipes
+                        .mod_remainders_rect(context, id, &empty_grid, w, w, h, &|_| None)
+                        .is_empty()
+                );
+            }
 
             let mut large_grid = vec![None; 16];
             large_grid[15] = Some(ItemStack::new("test:input", 1));

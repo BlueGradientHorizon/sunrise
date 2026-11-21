@@ -612,6 +612,7 @@ impl Game<'_> {
             // The AnvilScreen listens while the click is predicted (its slotChanged).
             menu.anvil.seen_input = before[0].clone();
             menu.anvil.screen = true;
+            menu.anvil_hook = true;
         }
         // Clear any createResult flag raised while populating the menu before the click.
         let _ = menu.anvil_created();
@@ -824,6 +825,19 @@ impl Game<'_> {
         }?;
         loop {
             self.deliver_client_anvil_update(menu);
+            if menu.anvil_craft.take().is_some() {
+                menu.record_anvil_charge();
+                menu.anvil_take_material(&Env {
+                    enchantments: self.item_enchantments(),
+                    ..self.menu_env()
+                });
+                self.deliver_client_anvil_update(menu);
+                menu.anvil_take_input(&Env {
+                    enchantments: self.item_enchantments(),
+                    ..self.menu_env()
+                });
+                self.deliver_client_anvil_update(menu);
+            }
             let Some(step) = rest else {
                 break;
             };

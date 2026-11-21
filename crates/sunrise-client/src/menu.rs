@@ -824,6 +824,7 @@ impl Menu {
                 anvil_made: false,
                 grind_made: false,
                 track_results: false,
+                more_results: 0,
                 enchant_changed: false,
                 enchant_button: None,
                 may_build: true,
@@ -1143,17 +1144,7 @@ impl Menu {
         match self.state.kind {
             Kind::Loom => self.loom_changed(env),
             Kind::Stonecutter => self.stone_changed(env),
-            // GrindstoneMenu.createResult.
-            Kind::Grindstone => {
-                self.state.containers[RESULT][0] = crate::stations::grindstone_result(
-                    env.loop_context,
-                    env.enchantments,
-                    env.items,
-                    self.state.containers[MAIN][0].as_ref(),
-                    self.state.containers[MAIN][1].as_ref(),
-                );
-                self.state.grind_made = true;
-            }
+            Kind::Grindstone => self.grindstone_inputs_changed(env),
             Kind::CrafterBlock => self.crafter_result(env),
             Kind::Anvil => {
                 self.anvil_screen_heard(env);
@@ -1227,9 +1218,30 @@ impl Menu {
         }
     }
 
+    /// Notify the grindstone's repair input container (`SimpleContainer.setChanged`).
+    pub fn grindstone_inputs_changed(&mut self, env: &Env) {
+        self.touch();
+        if self.result_pending() {
+            self.state.more_results += 1;
+            return;
+        }
+        self.state.containers[RESULT][0] = crate::stations::grindstone_result(
+            env.loop_context,
+            env.enchantments,
+            env.items,
+            self.state.containers[MAIN][0].as_ref(),
+            self.state.containers[MAIN][1].as_ref(),
+        );
+        self.state.grind_made = true;
+    }
+
     /// `AnvilMenu.createResult`.
     fn anvil_result(&mut self, env: &Env) {
         self.touch();
+        if self.result_pending() {
+            self.state.more_results += 1;
+            return;
+        }
         // createResult compares the name with the input's getHoverName().getString(), which
         // neither side's game resolves with a key only Sunrise gives.
         let hover = self.state.containers[MAIN][0]
@@ -1343,6 +1355,7 @@ impl Menu {
     pub fn grindstone_take_inputs(&mut self, env: &Env, edits: GrindstoneTakeEdits) {
         self.put(env, 0, edits.new_top);
         self.put(env, 1, edits.new_bottom);
+        self.grindstone_inputs_changed(env);
     }
 
     /// `AnvilMenu.setItemName` (`ServerboundRenameItemPacket`): false when
@@ -1852,7 +1865,17 @@ impl Menu {
 
     /// `Slot.getMaxStackSize(stack)`.
     fn slot_max(&self, env: &Env, s: usize, stack: &ItemStack) -> u32 {
-        let max = self.slot_rules(env, s, stack).2;
+        // Capacity does not invoke the separate IItemExtension.canEquip predicate.
+        let max = self
+            .slot_rules(
+                &Env {
+                    can_equip: None,
+                    ..*env
+                },
+                s,
+                stack,
+            )
+            .2;
         self.limit_slot_max(s, max)
     }
 
@@ -1942,6 +1965,10 @@ impl Menu {
             }
         }
         self.put(env, s, stack);
+        if matches!(self.kind, Kind::Anvil | Kind::Grindstone) {
+            // Slot.set calls setChanged after the repair container's setItem.
+            self.slot_changed(env, s);
+        }
     }
 
     /// The `EquipmentSlot` of an `ArmorSlot` or of `InventoryMenu`'s off-hand
@@ -2008,13 +2035,13 @@ impl Menu {
 
     /// `AnvilMenu.onTake`: the levels, the material used up, then the input.
     pub fn anvil_take(&mut self, env: &Env) {
+        self.record_anvil_charge();
         self.anvil_take_material(env);
         self.anvil_take_input(env);
     }
 
-    /// First half of `AnvilMenu.onTake`: charge levels and consume/clear slot 1 (running
-    /// `createResult` with slot 0 still present and the newly computed cost intact).
-    pub fn anvil_take_material(&mut self, env: &Env) {
+    /// Record AnvilMenu.onTake's level cost, before writing either input.
+    pub fn record_anvil_charge(&mut self) {
         self.touch();
         let cost = self.state.data[0];
         if !self.state.creative {
@@ -2026,6 +2053,10 @@ impl Menu {
                 -cost
             ));
         }
+    }
+
+    /// Consume or clear the material, while the left input is still present.
+    pub fn anvil_take_material(&mut self, env: &Env) {
         let repair = self.state.anvil.repair_count;
         if repair > 0 {
             let addition = self.state.containers[MAIN][1]
@@ -2291,13 +2322,14 @@ impl Menu {
     fn move_to(
         &mut self,
         env: &Env,
+        origin: Option<usize>,
         stack: &mut ItemStack,
         start: usize,
         end: usize,
         backwards: bool,
     ) -> bool {
         self.touch();
-        self.move_to_equip_source(env, stack, start, end, backwards)
+        self.move_to_equip_source(env, origin, stack, start, end, backwards)
     }
 
     /// `quickMoveStack` of the menu's kind; the moved stack's original copy
@@ -2305,7 +2337,7 @@ impl Menu {
     fn quick_move(&mut self, env: &Env, index: usize) -> Option<ItemStack> {
         self.touch();
         let mut stack = self.slot(index)?.clone();
-        let mut clicked = stack.clone();
+        let clicked = stack.clone();
         let total = self.state.slots.len();
         let mut check_count = true;
         let mut after_take = false;
@@ -2453,7 +2485,9 @@ impl Menu {
                             }
                         }
                         None => {
-                            if index < 40 && !self.move_to(env, Some(index), &mut stack, 4, 31, false) {
+                            if index < 40
+                                && !self.move_to(env, Some(index), &mut stack, 4, 31, false)
+                            {
                                 return None;
                             }
                         }
@@ -2485,7 +2519,8 @@ impl Menu {
                     if !self.move_to(env, Some(index), &mut stack, 29, 38, false) {
                         return None;
                     }
-                } else if (29..38).contains(&index) && !self.move_to(env, Some(index), &mut stack, 2, 29, false)
+                } else if (29..38).contains(&index)
+                    && !self.move_to(env, Some(index), &mut stack, 2, 29, false)
                 {
                     return None;
                 }
@@ -2540,7 +2575,8 @@ impl Menu {
                     if !self.move_to(env, Some(index), &mut stack, 30, 39, false) {
                         return None;
                     }
-                } else if (30..39).contains(&index) && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
+                } else if (30..39).contains(&index)
+                    && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
                 {
                     return None;
                 }
@@ -2566,7 +2602,9 @@ impl Menu {
                     if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                         return None;
                     }
-                } else if columns == 0 || !self.move_to(env, Some(index), &mut stack, 2, start, false) {
+                } else if columns == 0
+                    || !self.move_to(env, Some(index), &mut stack, 2, start, false)
+                {
                     // Between the inventory and the hotbar: the stack shrinks
                     // in its slot and EMPTY is returned either way.
                     let (main_end, hotbar_end) = (start + 27, start + 36);
@@ -2811,6 +2849,18 @@ impl Menu {
                 }
             }
         }
+        self.finish_quick_move(env, index, clicked, stack, check_count, after_take)
+    }
+
+    fn finish_quick_move(
+        &mut self,
+        env: &Env,
+        index: usize,
+        mut clicked: ItemStack,
+        mut stack: ItemStack,
+        check_count: bool,
+        after_take: bool,
+    ) -> Option<ItemStack> {
         // The stack was edited in place in its slot.
         let slot = self.state.slots[index];
         if stack.count == 0 {
@@ -2931,7 +2981,7 @@ impl Menu {
         }
         for slot in [0usize, 1] {
             if let Some(mut old) = self.state.containers[MAIN][slot].clone() {
-                if !self.move_to(env, &mut old, 3, 39, true) {
+                if !self.move_to(env, None, &mut old, 3, 39, true) {
                     return;
                 }
                 self.state.containers[MAIN][slot] = (old.count > 0).then_some(old);
@@ -3512,7 +3562,7 @@ pub(crate) mod tests {
 
     /// A test `Env` with no vanilla data: the anvil's and grindstone's own
     /// results don't matter where the mods answer.
-    pub(super) fn bare_env(test: impl FnOnce(&Env)) {
+    pub(crate) fn bare_env(test: impl FnOnce(&Env)) {
         bare_env_in(&crate::test_resources::loop_context(LoopSide::Server), test)
     }
 
@@ -3850,7 +3900,15 @@ pub(crate) mod tests {
                     };
                     rest = menu.resume_click(env, step);
                 }
-                assert_eq!(seen, vec![(Some(1), None), (Some(1), Some(1))]);
+                assert_eq!(
+                    seen,
+                    vec![
+                        (Some(1), None),
+                        (Some(1), None),
+                        (Some(1), Some(1)),
+                        (Some(1), Some(1)),
+                    ]
+                );
                 assert_eq!(menu.carried, None);
 
                 // PickAll pulling from slots 0 and 1 yields after each slot is emptied.
@@ -3872,7 +3930,17 @@ pub(crate) mod tests {
                     };
                     rest = menu.resume_click(env, step);
                 }
-                assert_eq!(pick_seen, vec![(None, Some(1)), (None, None)]);
+                assert_eq!(
+                    pick_seen,
+                    vec![
+                        (None, Some(1)),
+                        (None, Some(1)),
+                        (None, Some(1)),
+                        (None, None),
+                        (None, None),
+                        (None, None),
+                    ]
+                );
                 assert_eq!(menu.carried.as_ref().map(|s| s.count), Some(3));
             }
 
@@ -3885,7 +3953,8 @@ pub(crate) mod tests {
             assert!(grind.grindstone_created());
             assert_eq!(grind.slot(0).map(|s| s.count), Some(64));
 
-            // QuickMove filling slot 0 to cap then spilling remainder into slot 1 yields twice.
+            // QuickMove completes the original destination pass after the top-up,
+            // then delivers the three notifications for setting the empty slot.
             let mut anvil = Menu::new(Kind::Anvil);
             anvil.set_slot(env, 0, Some(ItemStack::new("minecraft:stick", 63)));
             anvil.set_slot(env, 3, Some(ItemStack::new("minecraft:stick", 2)));
@@ -3905,7 +3974,15 @@ pub(crate) mod tests {
                 };
                 rest = anvil.resume_click(env, step);
             }
-            assert_eq!(qm_seen, vec![(Some(64), None), (Some(64), Some(1))]);
+            assert_eq!(
+                qm_seen,
+                vec![
+                    (Some(64), None),
+                    (Some(64), Some(1)),
+                    (Some(64), Some(1)),
+                    (Some(64), Some(1)),
+                ]
+            );
         });
     }
 

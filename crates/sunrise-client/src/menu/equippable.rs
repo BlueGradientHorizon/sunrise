@@ -10,7 +10,6 @@ pub(super) const ARMOR_SLOTS: [&str; 4] = ["feet", "legs", "chest", "head"];
 
 pub(super) struct EquipPlacement {
     pub(super) allowed: bool,
-    pub(super) max: u32,
     menu: super::MutationStamp,
     source: Option<crate::mobs::equip::EquipStamp>,
     observed: bool,
@@ -46,18 +45,11 @@ impl Menu {
         let source = observed
             .then(|| crate::mobs::equip::source_stamp(stack))
             .flatten();
-        let (allowed, max) = if self.state.slots[slot].role == super::Role::Hidden {
-            (false, 0)
-        } else {
-            let (place, _, maximum) = self.slot_rules(env, slot, stack);
-            (place, maximum)
-        };
         EquipPlacement {
             menu,
             source,
             observed,
-            allowed,
-            max: self.limit_slot_max(slot, max),
+            allowed: self.may_place(env, slot, stack),
         }
     }
     /// Apply the backing container's bound without asking placement again.

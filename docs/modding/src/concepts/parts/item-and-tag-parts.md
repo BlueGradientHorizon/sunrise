@@ -303,7 +303,8 @@ stacks are not. An invalid replacement is logged and ignored, keeping vanilla's 
 These optional references do not change when listeners edit the answer. `event.edits.xp` starts
 at the resolved experience (`>= 0`, from `grindstone_place` or vanilla's pre-rolled award);
 non-positive values (`<= 0`) spawn 0 orbs while still firing level event 1042 and replacing the
-inputs. Set `event.edits.new_top` or `event.edits.new_bottom` to leave a stack in that slot;
+inputs. The two input writes and the final input-container notification each run
+`grindstone_place` before the click drops the taken stack or checks for a repeat. Set `event.edits.new_top` or `event.edits.new_bottom` to leave a stack in that slot;
 both start at `None` (empty the slot), and an invalid remainder is logged and ignored as an
 empty slot.
 
@@ -313,7 +314,9 @@ panicking listener is caught so it cannot unwind across the turn and leaves vani
 behavior.
 
 After the anvil calculates a result with a left input, `anvil_update` fires live on both
-sides (with no answer cache) and lends `event.inputs`: the left and optional right stacks,
+sides for each result calculation (with no answer cache), including a take consuming material
+while its left input is still present. On the server the take has already charged the player
+at that point. The hook lends `event.inputs`: the left and optional right stacks,
 the optional rename text and vanilla's output and costs. Read those values without cloning;
 they don't change as listeners edit `event.edits`. Leave `edits.output` at
 `StackResult::Keep` to use vanilla's output, use `StackResult::Set(Some(stack))` to replace

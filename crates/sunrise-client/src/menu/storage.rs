@@ -207,6 +207,8 @@ pub struct State {
     /// Suspend multi-slot clicks whenever `createResult` runs so callers can deliver
     /// `anvil_update` / `grindstone_place` live between slot writes.
     pub(super) track_results: bool,
+    /// Further setChanged calls for the same input write, after the current result hook.
+    pub(super) more_results: usize,
     /// The enchanting table's item changed to an enchantable one: the caller
     /// (with a level) fills the costs and clues (`slotsChanged`'s
     /// `access.execute`).
