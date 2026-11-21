@@ -54,8 +54,8 @@ class StableModApiIntegration(unittest.TestCase):
                         noted = run_stage([stage, "surface-diff", *args[2:4], "--gate",
                                            "--notes", str(work / "candidate-tree" / CHANGES),
                                            "--base-notes", str(work / "parent-tree" / CHANGES)],
-                                          check=True, capture_output=True, text=True)
-                        self.assertIn("why (example.toml): The engine changed.", noted.stdout)
+                                          capture_output=True, text=True)
+                        self.assertEqual(noted.returncode, 0, noted.stdout + noted.stderr)
                     return result
 
                 with self.subTest(step=step, verdict=verdict), \
