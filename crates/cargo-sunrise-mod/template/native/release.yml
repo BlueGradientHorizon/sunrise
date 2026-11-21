@@ -7,9 +7,9 @@ on:
 permissions:
   contents: read
 
-# Use the same group for release and rebuild; neither supersedes a running publication.
+# A rebuild must use the same group as the author release tag it updates.
 concurrency:
-  group: sunrise-mod-publication
+  group: sunrise-mod-publication-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
