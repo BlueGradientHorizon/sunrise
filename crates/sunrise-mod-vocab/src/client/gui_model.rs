@@ -59,9 +59,10 @@ pub enum Gui3dError {
     /// The context has no game to draw in (a server, or a drawing surface with none).
     Unavailable,
     /// `at`, `size` or a transform component is not finite, or `size` is not positive, or the
-    /// transform sends a corner of the subject somewhere that is not finite.
+    /// transform sends a corner of the subject somewhere that is not finite. An air stack
+    /// does not use its view.
     NotFinite,
-    /// The item key is unknown or its item is absent from the current registry.
+    /// The item key is unknown or its item is absent from the current registry; air is a no-op.
     UnknownItem,
     /// The model handle is stale or names no model.
     Model(ModelError),

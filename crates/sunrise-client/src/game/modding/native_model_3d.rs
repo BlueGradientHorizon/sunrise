@@ -30,13 +30,15 @@ impl Game<'_> {
         if !self.native_window() {
             return Err(Gui3dError::Unavailable);
         }
-        if !view.is_drawable() {
-            return Err(Gui3dError::NotFinite);
-        }
-        let pose = view_pose(view);
-        if !pose.is_finite() {
-            return Err(Gui3dError::NotFinite);
-        }
+        let pose = || {
+            if !view.is_drawable() {
+                return Err(Gui3dError::NotFinite);
+            }
+            let pose = view_pose(view);
+            pose.is_finite()
+                .then_some(pose)
+                .ok_or(Gui3dError::NotFinite)
+        };
         let (start, blends) = (batch.vertices.len(), batch.blends.len());
         match subject {
             Gui3dSubject::Item(stack) => {
@@ -47,6 +49,7 @@ impl Game<'_> {
                 if item == "minecraft:air" {
                     return Ok(());
                 }
+                let pose = pose()?;
                 if self.res.items().get(item).is_none() {
                     return Err(Gui3dError::UnknownItem);
                 }
@@ -56,7 +59,7 @@ impl Game<'_> {
                     return Err(Gui3dError::NotFinite);
                 }
             }
-            Gui3dSubject::Model(model) => self.draw_model_posed(batch, model, pose)?,
+            Gui3dSubject::Model(model) => self.draw_model_posed(batch, model, pose()?)?,
         }
         // A turn can overflow a corner: draw nothing rather than something broken.
         if !batch.vertices[start..]
@@ -222,7 +225,13 @@ mod tests {
                     .set_components([("minecraft:consumable".into(), invalid.clone())].into())
                     .unwrap();
             }
-            assert_eq!(draw.model_3d(Gui3dSubject::Item(&air), view), Ok(()));
+            let invalid_view = Gui3dView::new([f32::NAN, 30.0], 16.0, IDENTITY_TRANSFORM);
+            let mut turn = IDENTITY_TRANSFORM;
+            turn[0] = 2.0;
+            let overflowing_view = Gui3dView::new([40.0, 30.0], 3.0e38, turn);
+            for view in [view, invalid_view, overflowing_view] {
+                assert_eq!(draw.model_3d(Gui3dSubject::Item(&air), view), Ok(()));
+            }
             assert_eq!(
                 draw.model_3d(Gui3dSubject::Item(&sword), view),
                 Err(Gui3dError::InvalidStack)
