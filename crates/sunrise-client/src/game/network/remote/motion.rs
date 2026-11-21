@@ -253,7 +253,7 @@ impl Game<'_> {
             }
         }
         self.turn_remote_object(id, rotation.map(|(yaw, _)| yaw), on_ground);
-        self.move_remote_text_display(id, position, rotation);
+        self.move_remote_text_display_opt(id, path.is_some().then_some(position), rotation);
         self.turn_remote_projectile(id, rotation);
     }
     /// `handleMoveVehicle`'s `getInterpolation().cancel()` for the mount this

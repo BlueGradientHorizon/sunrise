@@ -575,6 +575,75 @@ impl Game<'_> {
                 });
             }
         }
+        // DisplayRenderer.submit -> EntityRenderer.shouldShowName: only once the
+        // display has a committed render state and sub-state, within 64 blocks.
+        for (&id, display) in &self.text_displays {
+            if !display.has_render_state() {
+                continue;
+            }
+            let Some(name) = display.custom_name() else {
+                continue;
+            };
+            let pos = display.position();
+            if pos.distance_squared(camera) >= 64.0 * 64.0 {
+                continue;
+            }
+            let name_shown = display.custom_name_visible();
+            let mut visible = name_shown;
+            let mut text = None;
+            if hooks {
+                self.native_render_name_tag(
+                    id as u32,
+                    display.kind(),
+                    name_shown,
+                    &mut visible,
+                    &mut text,
+                );
+            }
+            if !visible {
+                continue;
+            }
+            let at = display.render_position(alpha);
+            if let Some(frustum) = frustum
+                && !sunrise_client::text_display::no_culling(
+                    display.data.width,
+                    display.data.height,
+                )
+            {
+                let (lo, hi) = sunrise_client::text_display::culling_box(
+                    at,
+                    display.data.width,
+                    display.data.height,
+                );
+                if !frustum.intersects(
+                    (lo - camera - glam::DVec3::splat(0.5)).as_vec3(),
+                    (hi - camera + glam::DVec3::splat(0.5)).as_vec3(),
+                ) {
+                    continue;
+                }
+            }
+            let team = self.mob_team(id as u32);
+            let shown = match team {
+                Some(t) => t.formatted_name(name.clone()),
+                None => name.clone(),
+            }
+            .resolve_legacy();
+            let shown = text
+                .map(|text| Text::untrusted(text).resolve_legacy())
+                .unwrap_or(shown);
+            let light = self.world.light(
+                at.x.floor() as i32,
+                at.y.floor() as i32,
+                at.z.floor() as i32,
+            );
+            // Display is sized (0, 0): NAME_TAG attachment is (0, 0, 0), lifted 0.5 by submitNameTag.
+            tags.push(NameTag {
+                at: glam::DVec3::new(at.x, at.y + 0.5, at.z),
+                lines: vec![(shown, 0.0)],
+                light,
+                discrete: false,
+            });
+        }
         tags
     }
     /// `SubmitNodeCollection.submitNameTag`: a discrete name is drawn once,

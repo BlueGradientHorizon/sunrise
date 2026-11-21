@@ -15,8 +15,13 @@ use super::Vertex;
 /// (translucent, emissive, eyes and breeze wind entity models). Off, the tag is
 /// ignored and they stay in the first one, in their order.
 /// Sorted still-fluid geometry follows, then the two native world-canvas text materials,
-/// NORMAL and POLYGON_OFFSET. Material storage order is independent of their draw stages.
-const MATERIALS: usize = 17;
+/// NORMAL and POLYGON_OFFSET, the four native terrain model materials, and solid
+/// `POLYGON_OFFSET` text (`SubmitNodeCollection.canRenderAsSolid`). Material storage order
+/// is independent of their draw stages.
+const MATERIALS: usize = 18;
+/// Opaque text in `Font.DisplayMode.POLYGON_OFFSET` (`SubmitNodeCollection.canRenderAsSolid`):
+/// drawn in the solid pass in both classic and OIT modes, pulled toward the camera.
+pub const TEXT_POLYGON_OFFSET_SOLID_OVERLAY: u32 = 47;
 pub const TERRAIN_MODEL_SOLID_OVERLAY: u32 = 42;
 pub const TERRAIN_MODEL_CUTOUT_OVERLAY: u32 = 43;
 pub const TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY: u32 = 44;
@@ -127,6 +132,7 @@ fn material(layer: u32, oit: bool) -> usize {
         TERRAIN_MODEL_CUTOUT_OVERLAY => return 14,
         TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY => return 15,
         TERRAIN_MODEL_TRANSLUCENT_OVERLAY => return 16,
+        TEXT_POLYGON_OFFSET_SOLID_OVERLAY => return 17,
         _ => {}
     }
     if layer & 0xffff == FLUID_OVERLAY {
@@ -237,10 +243,16 @@ impl EntityBatch {
         self.combined.clear();
         self.combined
             .reserve(entity_vertices + additive.len() + hand.len() + see_through.len());
-        for runs in &self.runs[..10] {
-            for &(first, count) in runs {
-                self.combined
-                    .extend_from_slice(&entities[first * 4..(first + count) * 4]);
+        for (kind, runs) in self.runs[..10].iter().enumerate() {
+            // Classic mode sorts `RenderTypes.TEXT_POLYGON_OFFSET` (1) and translucent item
+            // sheets (8) far to near on upload (`VertexSorting.DISTANCE_TO_ORIGIN`).
+            if !oit && matches!(kind, 1 | 8) {
+                append_sorted(&mut self.sort, &mut self.combined, entities, runs);
+            } else {
+                for &(first, count) in runs {
+                    self.combined
+                        .extend_from_slice(&entities[first * 4..(first + count) * 4]);
+                }
             }
         }
         // `RenderTypes.eyes` is blended like the other entities, not added: with
@@ -275,6 +287,11 @@ impl EntityBatch {
         }
         // Native translucent models sort their quads far to near, as `sortOnUpload` does.
         append_sorted(&mut self.sort, &mut self.combined, entities, &self.runs[16]);
+        // Opaque `TEXT_POLYGON_OFFSET` text writes depth in the solid pass and keeps submission order.
+        for &(first, count) in &self.runs[17] {
+            self.combined
+                .extend_from_slice(&entities[first * 4..(first + count) * 4]);
+        }
         if self.moved_additive == 0 {
             self.combined.extend_from_slice(additive);
         } else {
@@ -349,6 +366,7 @@ mod tests {
             0u32,
             SHADOW_OVERLAY,
             TEXT_POLYGON_OFFSET_OVERLAY,
+            TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
             11,
             12,
             OIT_ENTITY,
@@ -500,7 +518,10 @@ mod tests {
             &quad(0, 12.0),
             true,
         );
-        assert_eq!(counts, [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0]);
+        assert_eq!(
+            counts,
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0, 0]
+        );
         let xs: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
         assert_eq!(
             xs,
@@ -573,7 +594,7 @@ mod tests {
         let mut batch = EntityBatch::default();
         assert_eq!(
             batch.update(&entities, &additive, &quad(0, 9.0), &quad(0, 10.0), true),
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0]
+            [1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0, 0]
         );
         let positions: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
         assert_eq!(
@@ -593,6 +614,7 @@ mod tests {
         let mut combined = Vec::with_capacity(entities.len() + additive.len() + hand.len());
         let mut counts = [0; MATERIALS];
         for (i, layer) in [0, 35, 11, 12, 13, 34, 14, 15].into_iter().enumerate() {
+            let start = combined.len();
             for quad in entities.as_chunks::<4>().0 {
                 let material = match quad[0].layer {
                     35 => 35,
@@ -608,6 +630,17 @@ mod tests {
                     combined.extend_from_slice(quad);
                     counts[i] += 1;
                 }
+            }
+            if layer == 35 {
+                let dist = |q: &[Vertex; 4]| {
+                    (0..3)
+                        .map(|axis| ((q[0].pos[axis] + q[2].pos[axis]) * 0.5).powi(2))
+                        .sum::<f32>()
+                };
+                combined[start..]
+                    .as_chunks_mut::<4>()
+                    .0
+                    .sort_by(|a, b| dist(b).total_cmp(&dist(a)));
             }
         }
         combined.extend_from_slice(additive);
@@ -650,10 +683,48 @@ mod tests {
 
     #[test]
     fn a_tier_in_the_high_bits_keeps_the_material() {
-        for layer in [0u32, 11, 12, 15, 32, 33, 35, OIT_ENTITY] {
+        for layer in [
+            0u32,
+            11,
+            12,
+            15,
+            32,
+            33,
+            35,
+            TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
+            OIT_ENTITY,
+        ] {
             for oit in [false, true] {
                 assert_eq!(material(layer | 4 << 16, oit), material(layer, oit));
             }
+        }
+    }
+
+    #[test]
+    fn solid_polygon_offset_text_stays_unsorted_and_outside_oit() {
+        let quad = |layer: u32, z: f32, id: u32| {
+            [Vertex {
+                layer,
+                pos: [0.0, 0.0, z],
+                color: id,
+                ..geometry(1, false)[0]
+            }; 4]
+        };
+        let entities: Vec<Vertex> = [
+            (TEXT_POLYGON_OFFSET_SOLID_OVERLAY, 2.0, 1),
+            (TEXT_POLYGON_OFFSET_SOLID_OVERLAY | OIT_ENTITY, 9.0, 2),
+            (TEXT_POLYGON_OFFSET_SOLID_OVERLAY, 4.0, 3),
+        ]
+        .into_iter()
+        .flat_map(|(layer, z, id)| quad(layer, z, id))
+        .collect();
+        let mut batch = EntityBatch::default();
+        for oit in [false, true] {
+            let counts = batch.update(&entities, &[], &[], &[], oit);
+            assert_eq!(counts[17], 3);
+            assert_eq!(counts[9], 0);
+            let ids: Vec<u32> = batch.combined.iter().step_by(4).map(|v| v.color).collect();
+            assert_eq!(ids, [1, 2, 3]);
         }
     }
 
@@ -680,12 +751,18 @@ mod tests {
         let mut batch = EntityBatch::default();
         // Off: the tag changes nothing, the quads keep their place.
         let counts = batch.update(&entities, &[], &[], &[], false);
-        assert_eq!(counts, [4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            counts,
+            [4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
         assert_eq!(xs, [0.0, 1.0, 2.0, 4.0, 3.0]);
         // On: the tagged quads come last, in order.
         let counts = batch.update(&entities, &[], &[], &[], true);
-        assert_eq!(counts, [2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            counts,
+            [2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
         assert_eq!(xs, [0.0, 2.0, 3.0, 1.0, 4.0]);
     }

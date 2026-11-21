@@ -2,9 +2,10 @@
 use super::Game;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
-    gfx::TEXT_POLYGON_OFFSET_OVERLAY,
+    gfx::{TEXT_POLYGON_OFFSET_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY},
     items::ItemStack,
     mesher::Vertex,
+    text::Text,
     text_display::{self, CachedQuads, TextDisplayData},
 };
 use sunrise_protocol::entity_data::Value;
@@ -34,11 +35,14 @@ impl Shows {
 pub(super) struct RemoteTextDisplay {
     pub data: TextDisplayData,
     shows: Shows,
-    /// `BlockDisplay.DATA_BLOCK_STATE_ID`.
-    block: Option<BlockStateId>,
-    /// `ItemDisplay.DATA_ITEM_STACK` and `DATA_ITEM_DISPLAY_ID`.
-    item: Option<ItemStack>,
-    item_display: u8,
+    /// Pending synced sub-state fields (`BlockDisplay` id 23, `ItemDisplay` ids 23-24).
+    pending_block: Option<BlockStateId>,
+    pending_item: Option<ItemStack>,
+    pending_item_display: u8,
+    /// Committed sub-state updated inside `tick()` only when `dirty` (`updateRenderSubState`).
+    shown_block: Option<BlockStateId>,
+    shown_item: Option<ItemStack>,
+    shown_item_display: u8,
     from: TextDisplayData,
     shown: TextDisplayData,
     position: glam::DVec3,
@@ -47,6 +51,8 @@ pub(super) struct RemoteTextDisplay {
     rotation: [f32; 2],
     old_rotation: [f32; 2],
     target_rotation: [f32; 2],
+    /// `LinearInterpolationHandler` length (raw client synced id 10, unclamped) and steps left.
+    interp_length: i32,
     steps: i32,
     age: i64,
     start: i64,
@@ -54,10 +60,16 @@ pub(super) struct RemoteTextDisplay {
     dirty: bool,
     start_dirty: bool,
     duration_dirty: bool,
-    initialized: bool,
-    /// `Display.lastProgress`: the progress the last frame drew, where a new
-    /// interpolation starts from.
+    /// `Display.renderState != null`: false until the first tick after a render-state sync.
+    render_state_ready: bool,
+    /// `Display.lastProgress`: the progress the last drawn frame evaluated (untouched when culled
+    /// or while `duration <= 0`).
     last_progress: f32,
+    /// `Entity.DATA_SHARED_FLAGS_ID` (id 0): bit 0 = on fire, bit 5 = invisible.
+    shared_flags: u8,
+    /// `Entity.DATA_CUSTOM_NAME` (id 2) and `DATA_CUSTOM_NAME_VISIBLE` (id 3).
+    custom_name: Option<Text>,
+    custom_name_visible: bool,
     /// Local text geometry from the last visited frame; world poses do not
     /// invalidate `TextDisplay.clientDisplayCache` or the glyph vertices.
     lines: Option<CachedQuads>,
@@ -66,20 +78,64 @@ pub(super) struct RemoteTextDisplay {
     pub(super) vehicle: Option<u32>,
 }
 
-/// `Display.RENDER_STATE_IDS` and `TextDisplay.TEXT_RENDER_STATE_IDS`: the
-/// data a render state is built from (not the view range, size or glow).
-fn renders(id: u8) -> bool {
-    matches!(id, 11..=16 | 18 | 19 | 23..=27)
+/// `Display.RENDER_STATE_IDS` and each subclass's render-state synced data IDs (not view range,
+/// width, height, or glow colour).
+fn renders(shows: Shows, id: u8) -> bool {
+    match id {
+        11..=16 | 18 | 19 => true,
+        23..=27 => shows == Shows::Text,
+        _ => false,
+    }
+    || match shows {
+        Shows::Block => id == 23,
+        Shows::Item => matches!(id, 23 | 24),
+        Shows::Text => false,
+    }
+}
+
+/// `Mth.wrapDegrees(float)`.
+fn wrap_degrees(value: f32) -> f32 {
+    let mut f = value % 360.0;
+    if f >= 180.0 {
+        f -= 360.0;
+    }
+    if f < -180.0 {
+        f += 360.0;
+    }
+    f
+}
+
+/// `Mth.rotLerp(float, float, float)`.
+fn rot_lerp(delta: f32, start: f32, end: f32) -> f32 {
+    start + delta * wrap_degrees(end - start)
+}
+
+/// `Entity.setYRot(float)`.
+fn set_y_rot(yaw: f32) -> f32 {
+    if yaw.is_finite() { yaw % 360.0 } else { 0.0 }
+}
+
+/// `Entity.setXRot(float)`.
+fn set_x_rot(pitch: f32) -> f32 {
+    if pitch.is_finite() {
+        pitch.clamp(-90.0, 90.0) % 360.0
+    } else {
+        0.0
+    }
 }
 
 impl RemoteTextDisplay {
     pub fn new(shows: Shows, position: [f64; 3], yaw: f32) -> Self {
+        let yaw = set_y_rot(yaw);
         Self {
             data: Default::default(),
             shows,
-            block: None,
-            item: None,
-            item_display: 0,
+            pending_block: None,
+            pending_item: None,
+            pending_item_display: 0,
+            shown_block: None,
+            shown_item: None,
+            shown_item_display: 0,
             from: Default::default(),
             shown: Default::default(),
             position: position.into(),
@@ -88,18 +144,32 @@ impl RemoteTextDisplay {
             rotation: [yaw, 0.0],
             old_rotation: [yaw, 0.0],
             target_rotation: [yaw, 0.0],
+            interp_length: 0,
             steps: 0,
             age: 0,
-            start: 0,
+            // Display.interpolationStartClientTick starts at Integer.MIN_VALUE so duration > 0
+            // without a start-tick update snaps to progress 1.0.
+            start: i64::from(i32::MIN),
             duration: 0,
-            dirty: true,
+            dirty: false,
             start_dirty: false,
             duration_dirty: false,
-            initialized: false,
+            render_state_ready: false,
             last_progress: 0.0,
+            shared_flags: 0,
+            custom_name: None,
+            custom_name_visible: false,
             lines: None,
             vehicle: None,
         }
+    }
+    /// Sets the initial spawn pitch (`Entity.absSnapTo` / `recreateFromPacket`).
+    pub(super) fn with_pitch(mut self, pitch: f32) -> Self {
+        let pitch = set_x_rot(pitch);
+        self.rotation[1] = pitch;
+        self.old_rotation[1] = pitch;
+        self.target_rotation[1] = pitch;
+        self
     }
     /// Where a passenger of this display sits, this tick and the last
     /// (`Display`'s box is 0 by 0, so its passenger attachment is its feet).
@@ -117,17 +187,45 @@ impl RemoteTextDisplay {
     pub(super) fn position(&self) -> glam::DVec3 {
         self.position
     }
+    pub(super) fn render_position(&self, partial: f64) -> glam::DVec3 {
+        self.previous.lerp(self.position, partial)
+    }
+    pub(super) fn has_render_state(&self) -> bool {
+        self.render_state_ready
+    }
+    pub(super) fn custom_name(&self) -> Option<&Text> {
+        self.custom_name.as_ref()
+    }
+    pub(super) fn custom_name_visible(&self) -> bool {
+        self.custom_name_visible
+    }
+    pub(super) fn kind(&self) -> &'static str {
+        self.shows.kind()
+    }
     fn progress(&self, partial: f32) -> f32 {
         if self.duration <= 0 {
             1.0
         } else {
-            (((self.age - self.start) as f32 + partial) / self.duration as f32).clamp(0.0, 1.0)
+            let elapsed = self.age.saturating_sub(self.start);
+            ((elapsed as f32 + partial) / self.duration as f32).clamp(0.0, 1.0)
         }
+    }
+    /// `Display.calculateInterpolationProgress`: only updates `last_progress` when `duration > 0`.
+    fn calculate_interpolation_progress(&mut self, partial: f32) -> f32 {
+        if self.duration <= 0 {
+            return 1.0;
+        }
+        let progress = self.progress(partial);
+        self.last_progress = progress;
+        progress
     }
     /// The casters this display adds to the shadow pass: its interpolated
     /// shadow radius and strength (`DisplayRenderer.getShadowRadius` and
-    /// `DisplayRenderer.getShadowStrength`), if it has any.
+    /// `DisplayRenderer.getShadowStrength`), suppressed before first tick or when invisible.
     pub(super) fn shadow(&self, partial: f64) -> Option<(glam::DVec3, f32, f32)> {
+        if !self.render_state_ready || self.shared_flags & 0x20 != 0 {
+            return None;
+        }
         sunrise_client::shadows::display_caster(
             self.previous.lerp(self.position, partial),
             &self.from,
@@ -136,27 +234,44 @@ impl RemoteTextDisplay {
         )
     }
     /// The entries after `Display`'s: a block state, or an item with its
-    /// display context (the stack comes converted by the caller).
+    /// display context (the stack comes converted by the caller). Changes defer to `tick()`.
     pub fn show(&mut self, values: &[(u8, i32, Value)], item: Option<Option<ItemStack>>) {
         for (id, _, value) in values {
             match (self.shows, id, value) {
                 (Shows::Block, 23, Value::Id(state)) => {
-                    self.block = Some(BlockStateId(u32::try_from(*state).unwrap_or(0)));
+                    self.pending_block = Some(BlockStateId(u32::try_from(*state).unwrap_or(0)));
+                    self.dirty = true;
                 }
-                (Shows::Item, 24, Value::Byte(context)) => self.item_display = *context as u8,
+                (Shows::Item, 24, Value::Byte(context)) => {
+                    self.pending_item_display = *context as u8;
+                    self.dirty = true;
+                }
                 _ => {}
             }
         }
         if let Some(item) = item
             && self.shows == Shows::Item
         {
-            self.item = item;
+            self.pending_item = item;
+            self.dirty = true;
         }
     }
     pub fn metadata(&mut self, values: &[(u8, i32, Value)]) {
-        self.start_dirty |= values.iter().any(|v| v.0 == 8);
-        self.duration_dirty |= values.iter().any(|v| v.0 == 9);
-        self.dirty |= values.iter().any(|v| renders(v.0));
+        for (id, _, value) in values {
+            match (id, value) {
+                (0, Value::Byte(v)) => self.shared_flags = *v as u8,
+                (2, Value::OptText(Some(tag))) | (2, Value::Text(tag)) => {
+                    self.custom_name = Some(sunrise_client::entity_nbt::name_text(tag));
+                }
+                (2, Value::OptText(None)) => self.custom_name = None,
+                (3, Value::Bool(v)) => self.custom_name_visible = *v,
+                (8, _) => self.start_dirty = true,
+                (9, _) => self.duration_dirty = true,
+                (10, Value::Int(v)) => self.interp_length = *v,
+                (id, _) if renders(self.shows, *id) => self.dirty = true,
+                _ => {}
+            }
+        }
         self.data.apply(values);
     }
     fn tick(&mut self) {
@@ -164,11 +279,17 @@ impl RemoteTextDisplay {
         self.previous = self.position;
         self.old_rotation = self.rotation;
         if self.steps > 0 {
-            self.position += (self.target - self.position) / f64::from(self.steps);
-            for i in 0..2 {
-                self.rotation[i] +=
-                    angle(self.target_rotation[i] - self.rotation[i]) / self.steps as f32;
-            }
+            let alpha = 1.0 / f64::from(self.steps);
+            self.position = self.position.lerp(self.target, alpha);
+            let alpha_f32 = alpha as f32;
+            self.rotation[0] = set_y_rot(rot_lerp(
+                alpha_f32,
+                self.rotation[0],
+                self.target_rotation[0],
+            ));
+            self.rotation[1] = set_x_rot(
+                self.rotation[1] + alpha_f32 * (self.target_rotation[1] - self.rotation[1]),
+            );
             self.steps -= 1;
         }
         if self.start_dirty {
@@ -178,34 +299,68 @@ impl RemoteTextDisplay {
             self.duration = self.data.interpolation_duration;
         }
         if self.dirty {
-            self.from = if self.initialized && self.duration > 0 {
+            self.from = if self.render_state_ready && self.duration > 0 {
                 self.shown.blend(&self.from, self.last_progress)
             } else {
                 self.data.clone()
             };
             self.shown = self.data.clone();
-            self.initialized = true;
+            self.shown_block = self.pending_block;
+            self.shown_item = self.pending_item.clone();
+            self.shown_item_display = self.pending_item_display;
+            self.render_state_ready = true;
         }
         self.dirty = false;
         self.start_dirty = false;
         self.duration_dirty = false;
     }
-    fn move_to(&mut self, position: [f64; 3], rotation: Option<(f32, f32)>) {
-        self.target = position.into();
-        if let Some((yaw, pitch)) = rotation {
-            self.target_rotation = [yaw, pitch];
+    /// `LinearInterpolationHandler.interpolateTo`: 0 snaps immediately, negative is a no-op,
+    /// positive skips resetting remaining steps when the target is unchanged.
+    fn move_to_opt(&mut self, position: Option<[f64; 3]>, rotation: Option<(f32, f32)>) {
+        if self.interp_length == 0 {
+            if let Some(pos) = position {
+                let p = glam::DVec3::from(pos);
+                self.position = p;
+                self.previous = p;
+                self.target = p;
+            }
+            if let Some((yaw, pitch)) = rotation {
+                let rot = [set_y_rot(yaw), set_x_rot(pitch)];
+                self.rotation = rot;
+                self.old_rotation = rot;
+                self.target_rotation = rot;
+            }
+            self.steps = 0;
+            return;
         }
-        self.steps = self.data.teleport_duration.clamp(0, 59);
-        if self.steps == 0 {
-            self.position = self.target;
-            self.previous = self.target;
-            self.rotation = self.target_rotation;
-            self.old_rotation = self.rotation;
+        if self.interp_length < 0 {
+            self.steps = 0;
+            return;
         }
+        let next_pos = position.map(glam::DVec3::from).unwrap_or_else(|| {
+            if self.steps > 0 {
+                self.target
+            } else {
+                self.position
+            }
+        });
+        let next_rot = rotation.map(|(y, p)| [y, p]).unwrap_or_else(|| {
+            if self.steps > 0 {
+                self.target_rotation
+            } else {
+                self.rotation
+            }
+        });
+        if self.steps > 0 && next_pos == self.target && next_rot == self.target_rotation {
+            return;
+        }
+        self.target = next_pos;
+        self.target_rotation = next_rot;
+        self.steps = self.interp_length;
     }
-}
-fn angle(d: f32) -> f32 {
-    (d + 180.0).rem_euclid(360.0) - 180.0
+    fn move_to(&mut self, position: [f64; 3], rotation: Option<(f32, f32)>) {
+        self.move_to_opt(Some(position), rotation);
+    }
 }
 
 impl Game<'_> {
@@ -217,6 +372,16 @@ impl Game<'_> {
     ) {
         if let Some(d) = self.text_displays.get_mut(&id) {
             d.move_to(position, rotation);
+        }
+    }
+    pub(super) fn move_remote_text_display_opt(
+        &mut self,
+        id: i32,
+        position: Option<[f64; 3]>,
+        rotation: Option<(f32, f32)>,
+    ) {
+        if let Some(d) = self.text_displays.get_mut(&id) {
+            d.move_to_opt(position, rotation);
         }
     }
     /// The displays' tick on a client. EntityTickEvent: once for the family,
@@ -257,49 +422,68 @@ impl Game<'_> {
         }
         self.native_tick_post_batch(round);
     }
-    /// The camera's yaw and pitch as `DisplayRenderer` reads them (the
-    /// front view turns around).
+    /// Active render `Camera` yaw and pitch (`DisplayRenderer.extractRenderState`), sharing the
+    /// same camera source of truth as `particle_rotation` (`ThirdPersonFront` already baked in).
     fn display_camera_angles(&self) -> [f32; 2] {
-        if self.camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
-            [self.yaw + 180.0, -self.pitch]
-        } else {
-            [self.yaw, self.pitch]
+        if self.studio.flying() {
+            return [self.studio.freecam.yaw, self.studio.freecam.pitch];
         }
+        let (yaw, pitch) = self
+            .posed_rotation
+            .unwrap_or((self.view.y_rot, self.view.x_rot));
+        [yaw, pitch]
     }
     /// `DisplayRenderer.getBlockLightLevel` and `getSkyLightLevel`: the
-    /// brightness override, else the light at the entity.
+    /// brightness override, else the light at the entity (block light 15 when on fire).
     fn display_light(
         world: &sunrise_client::world::World,
         d: &TextDisplayData,
         position: glam::DVec3,
+        on_fire: bool,
     ) -> u32 {
         if d.brightness == -1 {
-            let world_light = world.light(
+            let mut world_light = world.light(
                 position.x.floor() as i32,
                 position.y.floor() as i32,
                 position.z.floor() as i32,
             );
+            if on_fire {
+                world_light |= 0x0F;
+            }
             sunrise_client::block_entity_render::vertex_light(world_light)
         } else {
             ((d.brightness as u32 >> 20 & 15) * 16) | (((d.brightness as u32 >> 4 & 15) * 16) << 8)
         }
     }
-    /// `Display.shouldRenderAtSqrDistance` and, when width and height are set,
-    /// `EntityRenderer.shouldRender` with `Display.getInterpolatedBoundingBox`
-    /// inflated by 0.5. Width or height 0 is `noCulling`: distance only.
+    /// `Display.shouldRenderAtSqrDistance` (uninterpolated entity position, live `view_range`)
+    /// and, when width and height are non-zero, `EntityRenderer.shouldRender` with
+    /// `Display.getInterpolatedBoundingBox` inflated by 0.5.
     fn display_in_view(
         &self,
         camera: glam::DVec3,
-        origin: glam::DVec3,
+        entity_pos: glam::DVec3,
+        interpolated_pos: glam::DVec3,
         data: &TextDisplayData,
         view_scale: f64,
     ) -> bool {
         let range = f64::from(data.view_range) * 64.0 * view_scale;
-        if text_display::no_culling(data.width, data.height) {
-            return (origin - camera).length_squared() < range * range;
+        if (entity_pos - camera).length_squared() >= range * range {
+            return false;
         }
-        let (lo, hi) = text_display::culling_box(origin, data.width, data.height);
-        self.entity_in_view(camera, origin, range, lo, hi)
+        if text_display::no_culling(data.width, data.height) {
+            return true;
+        }
+        let (mut lo, mut hi) = text_display::culling_box(interpolated_pos, data.width, data.height);
+        lo -= glam::DVec3::splat(0.5);
+        hi += glam::DVec3::splat(0.5);
+        let size = ((hi.x - lo.x) + (hi.y - lo.y) + (hi.z - lo.z)) / 3.0;
+        if !lo.is_finite() || !hi.is_finite() || size == 0.0 {
+            lo = entity_pos - glam::DVec3::splat(2.0);
+            hi = entity_pos + glam::DVec3::splat(2.0);
+        }
+        self.view_frustum
+            .as_ref()
+            .is_none_or(|view| view.intersects((lo - camera).as_vec3(), (hi - camera).as_vec3()))
     }
 
     /// `DisplayRenderer.BlockDisplayRenderer` and `ItemDisplayRenderer`: the
@@ -313,6 +497,7 @@ impl Game<'_> {
     ) {
         let angles = self.display_camera_angles();
         let scale = self.view_scale();
+        let now = std::time::Instant::now();
         let mut displays = std::mem::take(&mut self.text_displays);
         for shows in [Shows::Block, Shows::Item] {
             let kind = if shows == Shows::Block {
@@ -322,25 +507,37 @@ impl Game<'_> {
             };
             self.mark_entity(out.len(), kind);
             for (id, display) in displays.iter_mut().filter(|(_, d)| d.shows == shows) {
-                display.last_progress = display.progress(partial as f32);
-                let d = display.shown.blend(&display.from, display.last_progress);
-                let position = display.previous.lerp(display.position, partial);
-                if !self.display_in_view(camera, position, &d, scale) {
+                if !display.render_state_ready
+                    || !self.entity_section_visible(display.position, now)
+                {
                     continue;
                 }
-                let rotation = std::array::from_fn(|i| {
-                    display.old_rotation[i]
-                        + angle(display.rotation[i] - display.old_rotation[i]) * partial as f32
-                });
+                let position = display.previous.lerp(display.position, partial);
+                if !self.display_in_view(camera, display.position, position, &display.data, scale) {
+                    continue;
+                }
+                let progress = display.calculate_interpolation_progress(partial as f32);
+                let d = display.shown.blend(&display.from, progress);
+                let partial_f32 = partial as f32;
+                let rotation = [
+                    rot_lerp(partial_f32, display.old_rotation[0], display.rotation[0]),
+                    display.old_rotation[1]
+                        + (display.rotation[1] - display.old_rotation[1]) * partial_f32,
+                ];
                 let matrix = glam::Mat4::from_translation((position - camera).as_vec3())
                     * d.matrix(rotation, angles);
                 if !matrix.is_finite() {
                     continue;
                 }
-                let light = Self::display_light(&self.world, &d, position);
-                if let Some(state) = display.block {
+                let light = Self::display_light(
+                    &self.world,
+                    &d,
+                    position,
+                    display.shared_flags & 0x01 != 0,
+                );
+                if let Some(state) = display.shown_block {
                     // BlockModelResolver.update: model seed 42.
-                    self.block_model_vertices(state, 42, matrix, light, true, out);
+                    self.block_display_model_vertices(state, 42, matrix, light, out);
                     // CompositeBlockModel.update: the special model of a chest,
                     // head, banner and the like comes on top of the block model.
                     if self
@@ -355,8 +552,8 @@ impl Game<'_> {
                             ((((light & 0xFF) / 16) << 4) | (((light >> 8) & 0xFF) / 16)) as u8;
                         self.special_block_model(state, matrix, packed, out);
                     }
-                } else if let Some(stack) = &display.item {
-                    let context = match display.item_display {
+                } else if let Some(stack) = &display.shown_item {
+                    let context = match display.shown_item_display {
                         1 => DisplayContext::ThirdPersonLeftHand,
                         2 => DisplayContext::ThirdPersonRightHand,
                         3 => DisplayContext::FirstPersonLeftHand,
@@ -390,20 +587,36 @@ impl Game<'_> {
         let angles = self.display_camera_angles();
         let scale = self.view_scale();
         let background = self.settings.text_background(0.25);
+        let now = std::time::Instant::now();
+        let mut inline_profiles = Vec::new();
+        let mut st_verts = Vec::new();
+        let mut st_submits: Vec<(f32, usize, std::ops::Range<usize>)> = Vec::new();
         let mut displays = std::mem::take(&mut self.text_displays);
-        for display in displays.values_mut().filter(|d| d.shows == Shows::Text) {
-            display.last_progress = display.progress(partial as f32);
-            let d = display.shown.blend(&display.from, display.last_progress);
+        for (order, display) in displays
+            .values_mut()
+            .filter(|d| d.shows == Shows::Text)
+            .enumerate()
+        {
+            if !display.render_state_ready || !self.entity_section_visible(display.position, now) {
+                continue;
+            }
             let position = display.previous.lerp(display.position, partial);
-            if d.text.is_empty() || !self.display_in_view(camera, position, &d, scale) {
+            if !self.display_in_view(camera, display.position, position, &display.data, scale) {
                 // Out of view: its glyphs stay cached for when it comes back.
                 continue;
             }
+            let progress = display.calculate_interpolation_progress(partial as f32);
+            let d = display.shown.blend(&display.from, progress);
+            if d.text.is_empty() {
+                continue;
+            }
             let cached = display.lines.take();
-            let rotation = std::array::from_fn(|i| {
-                display.old_rotation[i]
-                    + angle(display.rotation[i] - display.old_rotation[i]) * partial as f32
-            });
+            let partial_f32 = partial as f32;
+            let rotation = [
+                rot_lerp(partial_f32, display.old_rotation[0], display.rotation[0]),
+                display.old_rotation[1]
+                    + (display.rotation[1] - display.old_rotation[1]) * partial_f32,
+            ];
             let mut cached = cached
                 .filter(|c| {
                     c.matches(
@@ -414,37 +627,33 @@ impl Game<'_> {
                     )
                 })
                 .unwrap_or_else(|| CachedQuads::new(&self.gui.atlas, &d, background));
-            // A visited display keeps its geometry even when its transformed
-            // bounds miss the frustum; rebuilding just to reject it costs more.
             self.map_patches.append(&mut cached.batch.patches);
+            inline_profiles.append(&mut cached.batch.inline_profiles);
             let cached = display.lines.insert(cached);
             let matrix = glam::Mat4::from_translation((position - camera).as_vec3())
                 * d.matrix(rotation, angles)
                 * cached.lines.pose();
-            if !matrix.is_finite() {
+            if !matrix.is_finite() || cached.batch.vertices.is_empty() {
                 continue;
             }
-            if text_display::no_culling(d.width, d.height) {
-                let (lo, hi) = cached.transformed_bounds(matrix);
-                if cached.batch.vertices.is_empty()
-                    || self
-                        .view_frustum
-                        .as_ref()
-                        .is_some_and(|v| !v.intersects(lo, hi))
-                {
-                    continue;
-                }
-            }
             let batch = &cached.batch;
-            let light = Self::display_light(&self.world, &d, position);
-            // Font.DisplayMode: SEE_THROUGH over everything, else POLYGON_OFFSET.
+            let light =
+                Self::display_light(&self.world, &d, position, display.shared_flags & 0x01 != 0);
+            // Font.DisplayMode: SEE_THROUGH sorts per submit; POLYGON_OFFSET splits opaque text
+            // (`canRenderAsSolid`) from backgrounds and translucent text.
             let through = d.flags & 2 != 0;
-            let (out, layer) = if through {
-                (&mut *see_through, 2)
-            } else {
-                (&mut *normal, TEXT_POLYGON_OFFSET_OVERLAY)
-            };
-            for quad in batch.vertices.as_chunks::<6>().0 {
+            let solid_text = d.opacity == -1;
+            let st_start = st_verts.len();
+            let out = if through { &mut st_verts } else { &mut *normal };
+            for (quad_idx, quad) in batch.vertices.as_chunks::<6>().0.iter().enumerate() {
+                let is_bg = quad_idx * 6 < cached.bg_vertices;
+                let layer = if through {
+                    2
+                } else if !is_bg && solid_text {
+                    TEXT_POLYGON_OFFSET_SOLID_OVERLAY
+                } else {
+                    TEXT_POLYGON_OFFSET_OVERLAY
+                };
                 for i in text_display::CORNERS {
                     let v = quad[i];
                     let point =
@@ -461,9 +670,22 @@ impl Game<'_> {
                     });
                 }
             }
+            if through {
+                let dist_sq = matrix.w_axis.truncate().length_squared();
+                st_submits.push((dist_sq, order, st_start..st_verts.len()));
+            }
             self.text_display_vertices += batch.vertices.len() / 6 * 4;
         }
+        if !st_submits.is_empty() {
+            st_submits.sort_unstable_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+            for (_, _, range) in st_submits {
+                see_through.extend_from_slice(&st_verts[range]);
+            }
+        }
         self.text_displays = displays;
+        if !inline_profiles.is_empty() {
+            self.resolve_inline_profiles(&inline_profiles);
+        }
     }
 }
 
@@ -593,6 +815,7 @@ mod tests {
     #[test]
     fn metadata_and_position_interpolation_keep_their_separate_clocks() {
         let mut d = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+        d.metadata(&[(11, 0, Value::Floats(vec![0.0, 0.0, 0.0]))]);
         d.tick();
         d.metadata(&[
             (8, 1, Value::Int(0)),

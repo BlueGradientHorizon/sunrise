@@ -2468,6 +2468,70 @@ impl Game<'_> {
     /// The seed vanilla picks a block state model's weighted alternatives with outside the
     /// world (`BlockModelResolver.MODEL_SEED`).
     pub(super) const BLOCK_MODEL_SEED: i64 = 42;
+    /// `BlockModelRenderState` / `BlockDisplayRenderer`: baked block-state faces with back-face
+    /// culling (`SHADED_CULL_W`), translucent sheet routing (`TRANSLUCENT_ITEM_OVERLAY`), and
+    /// block-state light emission (`BlockState.getLightEmission`).
+    pub(super) fn block_display_model_vertices(
+        &self,
+        state: BlockStateId,
+        seed: i64,
+        m: glam::Mat4,
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) {
+        let Ok(models) = self.pack.render.model_catalog.collect_seeded(state, seed) else {
+            return;
+        };
+        let state_emission = u32::from(self.res.facts().get(state).emission) * 16;
+        let tint = self.default_block_tint(state);
+        let mut normals = sunrise_client::item_render::FaceNormals::new(m);
+        for (_, model) in models {
+            for face in &model.faces {
+                let Some(name) = self.pack.layer_names.get(&face.layer) else {
+                    continue;
+                };
+                let Some(sprite) = self.gui.atlas.sprites.get(name) else {
+                    continue;
+                };
+                let quad = PreparedModelFace::new(&face.quad, *sprite);
+                let mut color = u32::MAX;
+                if let Some(t) = tint(quad.tint_index) {
+                    color = sunrise_client::hud_layout::multiply(
+                        color,
+                        sunrise_client::mobs::render::abgr(t),
+                    );
+                }
+                let n = normals
+                    .face(quad.facing)
+                    .to_array()
+                    .map(|v| (v.clamp(-1.0, 1.0) * 127.0) as i8);
+                let normal = [n[0], n[1], n[2], sunrise_client::mesher::SHADED_CULL_W];
+                let emission = state_emission.max(u32::from(quad.light_emission) * 16);
+                let quad_light = (light & 0xFF) | (light >> 8 & 0xFF).max(emission) << 8;
+                let translucent = face.translucent
+                    || self.gui.atlas.translucent.contains(name)
+                    || face.quad.render_type == Some(sunrise_assets::bake::RenderType::Translucent);
+                let layer = if translucent {
+                    sunrise_client::gfx::TRANSLUCENT_ITEM_OVERLAY
+                } else {
+                    0
+                };
+                for k in 0..4 {
+                    out.push(Vertex {
+                        normal,
+                        pos: m
+                            .transform_point3(glam::Vec3::from_array(quad.positions[k]))
+                            .to_array(),
+                        uv: quad.uv[k],
+                        layer,
+                        color,
+                        light: quad_light,
+                        glint_uv: [0.0, 0.0],
+                    });
+                }
+            }
+        }
+    }
     /// Baked block-state faces with default block tints and terrain shade or diffuse lighting.
     pub(super) fn block_model_vertices(
         &self,

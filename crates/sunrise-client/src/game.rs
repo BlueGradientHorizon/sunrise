@@ -3853,7 +3853,7 @@ struct Game<'a> {
     /// Map textures waiting for the next HUD batch to upload them.
     map_patches: Vec<sunrise_client::font::Patch>,
     name_tag_layouts: names::NameTagLayouts,
-    text_displays: std::collections::HashMap<i32, text_displays::RemoteTextDisplay>,
+    text_displays: indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>,
     interactions: std::collections::HashMap<i32, interactions::RemoteInteraction>,
     /// The fence knots a server tracks to this client, by entity id, at their
     /// block (`LeashFenceKnotEntity`).

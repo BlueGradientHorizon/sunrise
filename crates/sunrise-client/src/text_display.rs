@@ -72,26 +72,75 @@ impl Default for TextDisplayData {
     }
 }
 
+/// `org.joml.Quaternionf.slerp(Quaternionfc, float, Quaternionf)` without unit-length assertion.
+fn joml_slerp(from: [f32; 4], to: [f32; 4], alpha: f32) -> [f32; 4] {
+    let cosom = from[0] * to[0] + (from[1] * to[1] + (from[2] * to[2] + from[3] * to[3]));
+    let abs_cosom = cosom.abs();
+    let (scale0, mut scale1) = if 1.0 - abs_cosom > 1.0e-6 {
+        let sin_sqr = 1.0 - abs_cosom * abs_cosom;
+        let sinom = 1.0 / (f64::from(sin_sqr).sqrt() as f32);
+        let omega = f64::from(sin_sqr * sinom).atan2(f64::from(abs_cosom)) as f32;
+        (
+            crate::camera::joml::sin((1.0 - alpha) * omega) * sinom,
+            crate::camera::joml::sin(alpha * omega) * sinom,
+        )
+    } else {
+        (1.0 - alpha, alpha)
+    };
+    if cosom < 0.0 {
+        scale1 = -scale1;
+    }
+    std::array::from_fn(|i| scale0 * from[i] + scale1 * to[i])
+}
+
+/// `org.joml.Matrix4f.mulAffine(Matrix4fc, Matrix4f)` in JOML's unfused order.
+fn joml_mul_affine(a: &crate::camera::joml::Mat4, b: &crate::camera::joml::Mat4) -> glam::Mat4 {
+    let g = |m: &crate::camera::joml::Mat4, c: usize, r: usize| m.m[c * 4 + r];
+    let mut out = [0.0f32; 16];
+    for col in 0..3 {
+        for row in 0..3 {
+            out[col * 4 + row] = g(a, 0, row) * g(b, col, 0)
+                + (g(a, 1, row) * g(b, col, 1) + g(a, 2, row) * g(b, col, 2));
+        }
+    }
+    for row in 0..3 {
+        out[12 + row] = g(a, 0, row) * g(b, 3, 0)
+            + (g(a, 1, row) * g(b, 3, 1) + (g(a, 2, row) * g(b, 3, 2) + g(a, 3, row)));
+    }
+    out[15] = 1.0;
+    glam::Mat4::from_cols_array(&out)
+}
+
 impl TextDisplayData {
     /// DisplayRenderer's billboard orientation followed by Transformation's T*L*S*R.
     pub fn matrix(&self, entity: [f32; 2], camera: [f32; 2]) -> glam::Mat4 {
+        use crate::camera::joml::{Mat4, Quat};
+        const DEG_TO_RAD: f32 = 0.017_453_292;
         let [yaw, pitch] = match self.billboard {
             1 => [camera[0] - 180.0, entity[1]],
             2 => [entity[0], -camera[1]],
             3 => [camera[0] - 180.0, -camera[1]],
             _ => entity,
         };
-        let orientation = glam::Quat::from_euler(
-            glam::EulerRot::YXZ,
-            -yaw * 0.017_453_292,
-            pitch * 0.017_453_292,
-            0.0,
+        let orientation = Quat::rotation_yxz(-DEG_TO_RAD * yaw, DEG_TO_RAD * pitch, 0.0);
+        let mut ori = Mat4::IDENTITY;
+        ori.rotation(orientation);
+        let mut tx = Mat4::IDENTITY;
+        tx.translation(
+            self.translation[0],
+            self.translation[1],
+            self.translation[2],
         );
-        glam::Mat4::from_quat(orientation)
-            * glam::Mat4::from_translation(self.translation.into())
-            * glam::Mat4::from_quat(glam::Quat::from_array(self.left_rotation))
-            * glam::Mat4::from_scale(self.scale.into())
-            * glam::Mat4::from_quat(glam::Quat::from_array(self.right_rotation))
+        let quat = |q: [f32; 4]| Quat {
+            x: q[0],
+            y: q[1],
+            z: q[2],
+            w: q[3],
+        };
+        tx.rotate(quat(self.left_rotation));
+        tx.scale(self.scale[0], self.scale[1], self.scale[2]);
+        tx.rotate(quat(self.right_rotation));
+        joml_mul_affine(&ori, &tx)
     }
 
     pub fn blend(&self, from: &Self, t: f32) -> Self {
@@ -101,12 +150,16 @@ impl TextDisplayData {
                 from.translation[i] + t * (self.translation[i] - from.translation[i]);
             out.scale[i] = from.scale[i] + t * (self.scale[i] - from.scale[i]);
         }
-        out.left_rotation = glam::Quat::from_array(from.left_rotation)
-            .slerp(glam::Quat::from_array(self.left_rotation), t)
-            .to_array();
-        out.right_rotation = glam::Quat::from_array(from.right_rotation)
-            .slerp(glam::Quat::from_array(self.right_rotation), t)
-            .to_array();
+        out.left_rotation = if t >= 1.0 {
+            self.left_rotation
+        } else {
+            joml_slerp(from.left_rotation, self.left_rotation, t)
+        };
+        out.right_rotation = if t >= 1.0 {
+            self.right_rotation
+        } else {
+            joml_slerp(from.right_rotation, self.right_rotation, t)
+        };
         // Display$LinearFloatInterpolator: Mth.lerp(t, previous, current).
         out.shadow_radius = from.shadow_radius + t * (self.shadow_radius - from.shadow_radius);
         out.shadow_strength =
@@ -132,13 +185,16 @@ pub fn no_culling(width: f32, height: f32) -> bool {
 
 /// `Display.updateCulling` / `getInterpolatedBoundingBox` at an interpolated
 /// origin: the AABB from `(x − width/2, y, z − width/2)` to
-/// `(x + width/2, y + height, z + width/2)`.
+/// `(x + width/2, y + height, z + width/2)`, normalized like `new AABB(...)`.
 pub fn culling_box(origin: glam::DVec3, width: f32, height: f32) -> (glam::DVec3, glam::DVec3) {
     let half = f64::from(width) * 0.5;
     let tall = f64::from(height);
+    let (x0, x1) = (origin.x - half, origin.x + half);
+    let (y0, y1) = (origin.y, origin.y + tall);
+    let (z0, z1) = (origin.z - half, origin.z + half);
     (
-        glam::DVec3::new(origin.x - half, origin.y, origin.z - half),
-        glam::DVec3::new(origin.x + half, origin.y + tall, origin.z + half),
+        glam::DVec3::new(x0.min(x1), y0.min(y1), z0.min(z1)),
+        glam::DVec3::new(x0.max(x1), y0.max(y1), z0.max(z1)),
     )
 }
 
@@ -424,6 +480,8 @@ pub struct CachedQuads {
     animated: bool,
     pub lines: Lines,
     pub batch: crate::hud::HudBatch,
+    /// Prefix vertex count in `batch.vertices` belonging to `StandaloneBackground` (0 or 6).
+    pub bg_vertices: usize,
     bounds: (glam::Vec3, glam::Vec3),
 }
 
@@ -447,7 +505,7 @@ impl CachedQuads {
     pub fn new(atlas: &crate::hud::HudAtlas, d: &TextDisplayData, background: u32) -> Self {
         let lines = Lines::split(&atlas.font, &d.text, d.line_width);
         let mut batch = crate::hud::HudBatch::scratch([1, 1]);
-        draw(&mut batch, atlas, d, &lines, background);
+        let bg_vertices = draw_inner(&mut batch, atlas, d, &lines, background);
         let mut lo = glam::Vec3::splat(f32::INFINITY);
         let mut hi = glam::Vec3::splat(f32::NEG_INFINITY);
         for v in &batch.vertices {
@@ -476,6 +534,7 @@ impl CachedQuads {
             animated,
             lines,
             batch,
+            bg_vertices,
             bounds: (lo, hi),
         }
     }
@@ -521,6 +580,16 @@ pub fn draw(
     lines: &Lines,
     default_background: u32,
 ) {
+    draw_inner(batch, atlas, d, lines, default_background);
+}
+
+fn draw_inner(
+    batch: &mut crate::hud::HudBatch,
+    atlas: &crate::hud::HudAtlas,
+    d: &TextDisplayData,
+    lines: &Lines,
+    default_background: u32,
+) -> usize {
     use crate::hud::rgba;
     let (width, height) = (lines.width, lines.height());
     let bg = if d.flags & 4 != 0 {
@@ -528,6 +597,7 @@ pub fn draw(
     } else {
         d.background as u32
     };
+    let mut bg_vertices = 0;
     if bg != 0 {
         let start = batch.vertices.len();
         batch.fill(
@@ -547,6 +617,7 @@ pub fn draw(
         for v in &mut batch.vertices[start..] {
             v.depth = -0.01;
         }
+        bg_vertices = batch.vertices.len() - start;
     }
     let align = d.align();
     for (i, (line, line_width)) in lines.lines.iter().enumerate() {
@@ -564,6 +635,7 @@ pub fn draw(
             d.flags & 1 != 0,
         );
     }
+    bg_vertices
 }
 
 #[cfg(test)]

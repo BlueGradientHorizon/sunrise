@@ -8346,6 +8346,7 @@ impl Game<'_> {
                 viewer: self.player_team(),
                 skinning: self.skinning(),
                 listened: self.mob_render_listened(),
+                now: std::time::Instant::now(),
             },
         }
     }
