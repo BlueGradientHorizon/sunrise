@@ -21,7 +21,7 @@ pub trait Hooks {
     /// order, including this window's player at its own slot rather than after the mobs.
     #[hook(
         side = "client",
-        version = 3,
+        version = 4,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderLivingEvent.Pre",

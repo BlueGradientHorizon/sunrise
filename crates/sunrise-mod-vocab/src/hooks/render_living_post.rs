@@ -17,7 +17,7 @@ pub trait Hooks {
     /// before the next entity's hooks begin, in level join order including this window's player.
     #[hook(
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         neoforge = "RenderLivingEvent.Post",
         cancellable = false

@@ -14,7 +14,7 @@ pub trait Hooks {
     /// this player's living hooks at its slot in level join order, for local and remote players alike.
     #[hook(
         side = "client",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderPlayerEvent.Pre",

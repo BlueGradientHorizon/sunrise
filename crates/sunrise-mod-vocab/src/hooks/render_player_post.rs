@@ -10,7 +10,7 @@ pub trait Hooks {
     /// this player's pair finishes at its slot in level join order, before hooks for the next body.
     #[hook(
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         neoforge = "RenderPlayerEvent.Post",
         cancellable = false
