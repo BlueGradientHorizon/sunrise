@@ -1,0 +1,56 @@
+ids = [
+    "type:AudioStreamState.Unplaced",
+    "type:SpecFault.StereoPositioned",
+    "method:AudioStreamSource::push",
+    "method:AudioStreamSource::set_placement",
+    "handle:AudioStreamRef::push",
+    "handle:AudioStreamRef::set_placement",
+]
+why = """
+Align mod audio streams with vanilla 26.3 and NeoForge by removing engine-invented stream modes, refusals \
+and lifecycle states:
+- Single pull-based `AudioStream` API matching NeoForge `SoundInstance.getStream`: removed the separate \
+push-ring mode (`AudioStreamRef::push`, `AudioStreamSource::push`, `AUDIO_STREAM_RING_MAX_MS`).
+- Pull EOF semantics matching vanilla `Channel.pumpBuffers` and `ChannelAccess.scheduleTick`: \
+`AudioStream::read` returns `usize` where `0` signals EOF (draining queued frames before stopping) rather \
+than retrying dry reads on every device callback.
+- Volume clamping matching vanilla `SoundEngine.calculateVolume` (`Mth.clamp(volume, 0.0F, 1.0F)`): finite \
+volumes outside `0.0..=1.0` are clamped instead of refused; only `NaN` is refused (`SpecFault::Volume` / \
+`set_volume` returning `false`).
+- Sample rate validation: removed `AUDIO_STREAM_RATE_MIN` and `AUDIO_STREAM_RATE_MAX`; any positive sample \
+rate (`> 0` Hz) is accepted (`SpecFault::Rate` fires only for `0`).
+- Position validation matching vanilla `Channel.setSelfPosition`: removed the 30-million-block coordinate \
+cap; any finite `At([x, y, z])` coordinate is accepted.
+- Stereo playback matching OpenAL multi-channel direct playback: removed `SpecFault::StereoPositioned` so \
+stereo streams accept any valid placement and play un-spatialized without panning or distance attenuation.
+- Entity-bound and level lifecycle matching vanilla `EntityBoundSoundInstance.<init>`, \
+`EntityBoundSoundInstance.tick`, and `Minecraft.updateLevelInEngines` -> `SoundEngine.stopAll`: removed \
+`AudioStreamState::Unplaced`; `StreamPlacement::Entity` is resolved eagerly at open and `set_placement`, \
+entity streams stop when their entity becomes untracked or removed, and all streams stop on level leave, \
+dimension change or sound engine stop/reload.
+- Stream pool and worker admission caps (`AUDIO_STREAMS_PER_MOD`, `AUDIO_STREAMS_TOTAL`) remain as generous \
+starvation guards that return errors to the calling mod and log a warning naming the mod when hit."""
+migrate = """
+- Remove `AudioStreamRef::push`, `AudioStreamSource::push`, `ClientHost::open_push_audio_stream` and \
+`AUDIO_STREAM_RING_MAX_MS`. Open every stream with `host.open_audio_stream(&spec, Box::new(source))`; \
+bridge async or network producers through a mod-owned nonblocking buffer drained inside `AudioStream::read`.
+- Change `AudioStream::read(&mut self, pcm: &mut [i16])` to return `usize` instead of `AudioRead`: return \
+`0` for EOF (draining queued frames before stopping) and return `n > 0` without writing to the zeroed \
+`pcm` slice for temporary silence.
+- Update `stream.set_placement(&placement)` calls to `stream.set_placement(host, &placement)` passing \
+`&dyn ClientHost` so `StreamPlacement::Entity` is resolved eagerly. In custom `AudioStreamSource` \
+implementations (such as tests), update `fn set_placement(&self, placement: &StreamPlacement, entity_pos: Option<[f64; 3]>) -> bool` \
+and remove `fn push`.
+- Remove `AudioStreamState::Unplaced` and `SpecFault::StereoPositioned` match arms; `AudioStreamState` is \
+now only `Playing` or `Stopped`.
+- Remove imports of `AUDIO_STREAM_RATE_MIN` and `AUDIO_STREAM_RATE_MAX`; any `rate > 0` is accepted and \
+`SpecFault::Rate` reports only `rate == 0`.
+- Finite volumes outside `0.0..=1.0` are now clamped to `0.0..=1.0` instead of returning \
+`SpecFault::Volume` or `false` from `set_volume`; only `NaN` is refused.
+- Finite `At([x, y, z])` coordinates past 30 million blocks are now accepted, and stereo streams accept \
+`At` and `Entity` placements (playing un-spatialized).
+- Ensure an `Entity` is currently tracked before opening or calling `set_placement` with \
+`StreamPlacement::Entity(entity)` (otherwise open returns `SpecFault::Position` and `set_placement` \
+returns `false`). Streams now stop instead of becoming `Unplaced` when their entity is removed/untracked \
+or when the client leaves the level, changes dimensions, or reloads/stops sound; reopen a new stream when \
+playback should resume."""
