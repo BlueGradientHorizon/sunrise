@@ -1104,7 +1104,7 @@ pub(super) fn emit<'a>(
             Some(owner) => format!("super::entered_owned(HookId::{hook_id}, \"{name}\", {owner})"),
             None if filtered_subscribers => {
                 format!(
-                    "super::entered_matching(HookId::{hook_id}, \"{name}\", {allow_subscriber})"
+                    "super::runtime::entered_matching(HookId::{hook_id}, \"{name}\", {allow_subscriber})"
                 )
             }
             None if answered || hook.collect_validator.is_some() => {

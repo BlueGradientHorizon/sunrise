@@ -191,19 +191,6 @@ fn receives_cancelled(hook: HookId) -> bool {
 fn entered(hook_id: HookId, hook: &'static str) -> impl Iterator<Item = &'static dyn Hooks> {
     entered_with_id(hook_id, hook).map(|(_, hooks)| hooks)
 }
-fn entered_matching<'a>(
-    hook_id: HookId,
-    hook: &'static str,
-    mut allow: impl FnMut(&str) -> bool + 'a,
-) -> impl Iterator<Item = &'static dyn Hooks> + 'a {
-    listening(hook_id).filter_map(move |(_, entry)| {
-        if !allow(entry.id) {
-            return None;
-        }
-        let ((), hooks) = enter_listener(entry, hook);
-        Some(hooks)
-    })
-}
 fn entered_with_id(
     hook_id: HookId,
     hook: &'static str,
