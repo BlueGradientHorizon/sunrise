@@ -58,10 +58,6 @@ impl Game<'_> {
         &self,
         stack: &PackStack,
     ) -> Result<PreparedServerReload, ReloadStageError> {
-        let _reload = self
-            .mod_phase
-            .reloading()
-            .expect("server reload on its owning thread");
         sunrise_client::mod_content::check_jars(
             &self.options.resources,
             &sunrise_client::logging::game_home().join("jars"),
@@ -98,10 +94,6 @@ impl Game<'_> {
         &mut self,
         prepared: PreparedServerReload,
     ) -> PreparedServerReload {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server apply on its owning thread");
         let mut vanilla = Vec::new();
         apply_listeners(prepared.steps, "server_reload_apply", |store| {
             vanilla.push(PreparedStep::Vanilla(store))
@@ -117,10 +109,6 @@ impl Game<'_> {
         prepared: PreparedServerReload,
         stack: &PackStack,
     ) {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server apply on its owning thread");
         apply_listeners(prepared.steps, "server_reload_apply", |store| {
             self.admit_store(*store, stack);
         });

@@ -7,9 +7,11 @@ pub trait Hooks {
     /// `Client` and `Common` configs), by a dedicated server when it starts
     /// (`Common` and `Server`) and by a server before each world it opens
     /// (`Server`); a game reads only its own kinds, so push them all every
-    /// time. Runs in Config: settings reads and the scoped ConfigFiles service
-    /// are available; world handles and transactions panic naming the phase. A file outside `config/`, or one already registered, is skipped.
+    /// time. Receives a [`ConfigContext`] with settings reads and the scoped
+    /// `ConfigFiles` service. A file outside `config/`, or one already registered, is skipped.
     #[hook(
+        receiver = "associated",
+        context = "config",
         dispatch = "flat",
         side = "both",
         contract = "collect",
@@ -21,10 +23,12 @@ pub trait Hooks {
     /// says whose, which file and its text, which the mod parses (TOML by
     /// convention). Every mod hears every config, so check `mod_id`. Fired
     /// where the config's kind loads (`register_configs`), a `Server`
-    /// one before `server_about_to_start`. Config allows settings reads
-    /// and the scoped ConfigFiles service, not world handles or transactions. Client and Common load once on their
-    /// owning side, Server once per world.
+    /// one before `server_about_to_start`. Receives a [`ConfigContext`] with
+    /// settings reads and the scoped `ConfigFiles` service. Client and Common
+    /// load once on their owning side, Server once per world.
     #[hook(
+        receiver = "associated",
+        context = "config",
         dispatch = "flat",
         side = "both",
         contract = "listen",
@@ -36,7 +40,7 @@ pub trait Hooks {
     /// its new text. The game looks at the files' modification times once a
     /// second, on the window and on the server's tick; a file saved with the
     /// same text, removed or unreadable fires nothing and keeps its last
-    /// text. Polling does not change the current phase.
+    /// text.
     #[hook(
         dispatch = "flat",
         side = "both",
@@ -48,7 +52,7 @@ pub trait Hooks {
     /// A `Server` config is dropped as its server stops
     /// (`ModConfigEvent.Unloading`), after `server_stopping`; the next
     /// world reads it again. `Client` and `Common` configs stay until the
-    /// game quits. This notification leaves the World phase unchanged.
+    /// game quits.
     #[hook(
         dispatch = "flat",
         side = "server",

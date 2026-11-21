@@ -9,6 +9,6 @@ impl Game<'_> {
         &self,
         listeners: &mut dyn ServerReloadListeners,
     ) {
-        self.fire_add_server_reload_listeners(listeners);
+        Self::fire_add_server_reload_listeners(self, listeners);
     }
 }

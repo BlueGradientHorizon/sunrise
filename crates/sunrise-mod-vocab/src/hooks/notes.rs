@@ -2086,7 +2086,11 @@ impl ServerReloadListener for MachineData {
 struct MyMod(Arc<MachineData>);
 #[mod_api::sunrise_mod]
 impl Hooks for MyMod {
-    fn add_server_reload_listeners(&self, _host: &dyn Host, event: &mut AddServerReloadListenersEvent<'_>) {
+    fn add_server_reload_listeners(
+        &self,
+        _context: &dyn ReloadContext,
+        event: &mut AddServerReloadListenersEvent<'_>,
+    ) {
         event.listeners.add_listener(
             Identifier::parse("my_mod:machines").unwrap(),
             FileToIdConverter::json("machines").unwrap(),
@@ -2167,7 +2171,11 @@ impl ClientReloadListener for Theme {
 struct MyMod(Arc<Theme>);
 #[mod_api::sunrise_mod]
 impl Hooks for MyMod {
-    fn add_client_reload_listeners(&self, _host: &dyn ClientHost, event: &mut AddClientReloadListenersEvent<'_>) {
+    fn add_client_reload_listeners(
+        &self,
+        _context: &dyn ClientReloadHost,
+        event: &mut AddClientReloadListenersEvent<'_>,
+    ) {
         event.listeners.add_listener(
             Identifier::parse("my_mod:theme").unwrap(),
             FileToIdConverter::json("ui").unwrap(),

@@ -627,8 +627,6 @@ mod tests {
                 } else if block == "minecraft:glass" {
                     assert_eq!(Some((distance, velocity)), ice_travel);
                     // LevelRef asks the material at glass's position even without an entity.
-                    let _phase =
-                        mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                     assert_eq!(
                         level.friction(
                             game,
@@ -706,7 +704,6 @@ mod tests {
             let registry = game.pack.assets.registry;
             let lime = registry.default_state("minecraft:lime_wool").unwrap();
             let level = game.level_ref(game.native_lifecycle.epoch().unwrap(), game.dim.key());
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             calls.store(0, Ordering::SeqCst);
             // Each nested ask names another entity id, so no query repeats: only the bound stops
             // the chain. The innermost part is refused and answers 0.5, which every part above passes on.
@@ -832,7 +829,6 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             let registry = game.pack.assets.registry;
             let state = registry.default_state(PANEL).unwrap();
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             assert_eq!(
                 game.level_set_block(level, [3, 64, 3], state, BlockUpdateFlags::NONE),
                 Ok(true)

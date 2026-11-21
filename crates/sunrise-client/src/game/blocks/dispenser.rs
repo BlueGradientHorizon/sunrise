@@ -1858,11 +1858,8 @@ impl Game<'_> {
                 LevelSound::new(name, [at.x, at.y, at.z], 1.0, 1.0).in_source(SoundSource::Blocks)
             };
             match m.species() {
-                // A refused part shears nothing: no shear event, and the dispenser does not succeed.
                 _ if let Some((part, _)) = part => {
-                    if self.part_shear(i, part, None, &shears).is_err() {
-                        continue;
-                    }
+                    self.part_shear(i, part, None, &shears);
                 }
                 Species::SulfurCube if sulfur_cube::has_body(m) => {
                     // SulfurCube.shear: the swallowed block comes out at the

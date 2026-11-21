@@ -2381,13 +2381,7 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let id = Identifier::parse("minecraft:block/grass_block").unwrap();
             let model = game.render_assets().model(&id).unwrap();
-            for phase in [
-                mod_api::__private::ModPhase::Setup,
-                mod_api::__private::ModPhase::Reloading,
-            ] {
-                let _scope = mod_api::__private::PhaseOwner::scope(phase);
-                assert_eq!(game.render_assets().model(&id), Ok(model));
-            }
+            assert_eq!(game.render_assets().model(&id), Ok(model));
             assert_eq!(
                 game.render_assets()
                     .model(&Identifier::parse("mymod:block/absent").unwrap()),

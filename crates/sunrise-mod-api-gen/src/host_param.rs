@@ -80,6 +80,10 @@ pub(super) fn context_param(hook: &Hook) -> Option<HostParam> {
             PhaseContext::Loop => "&dyn LoopContext",
             PhaseContext::Worldgen => "&dyn WorldgenHost",
             PhaseContext::ChunkDisk => "&dyn ChunkDiskHost",
+            PhaseContext::Config => "&dyn ConfigContext",
+            PhaseContext::Reload => "&dyn ReloadContext",
+            PhaseContext::ClientReload => "&dyn ClientReloadHost",
+            PhaseContext::ClientSetup => "&mut dyn ClientSetupContext",
         }
         .into(),
         call: "context",
@@ -93,6 +97,10 @@ pub(super) fn phase_engine_type(phase: PhaseContext) -> &'static str {
         PhaseContext::Loop => "&sunrise_world::native_load_context::LoopContext",
         PhaseContext::Worldgen => "&mod_api::OwningWorldgen<'_>",
         PhaseContext::ChunkDisk => "&mod_api::OwningChunkDisk<'_>",
+        PhaseContext::Config => "&dyn mod_api::ConfigContext",
+        PhaseContext::Reload => "&dyn mod_api::ReloadContext",
+        PhaseContext::ClientReload => "&dyn mod_api::ClientReloadHost",
+        PhaseContext::ClientSetup => "&mut dyn mod_api::ClientSetupContext",
     }
 }
 
@@ -165,6 +173,10 @@ mod tests {
             (PhaseContext::Loop, "&dyn LoopContext"),
             (PhaseContext::Worldgen, "&dyn WorldgenHost"),
             (PhaseContext::ChunkDisk, "&dyn ChunkDiskHost"),
+            (PhaseContext::Config, "&dyn ConfigContext"),
+            (PhaseContext::Reload, "&dyn ReloadContext"),
+            (PhaseContext::ClientReload, "&dyn ClientReloadHost"),
+            (PhaseContext::ClientSetup, "&mut dyn ClientSetupContext"),
         ] {
             let hook = Hook {
                 context: Some(kind),

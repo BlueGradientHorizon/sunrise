@@ -714,8 +714,6 @@ mod pearl_hit_tests {
         let mods: mod_api::Mods = vec![ModEntry::new("hear", Box::new(Hear(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _phase =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                 let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
                 dragon.id = 225009;
                 game.dragon.replace(dragon);

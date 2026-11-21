@@ -1,7 +1,7 @@
 //! Main-hand input captured by an item behavior, and the client host's view raycast.
 use super::{Game, Screen, api_values::TryIntoApi};
 use mod_api::{
-    __private::{client_item_use, contain_outside_world, mod_index_on},
+    __private::{client_item_use, mod_index_on},
     ClientHost, ClientItemUseBehavior, ItemStack,
     content::crash::{ModCall, enter_native_mod},
 };
@@ -172,8 +172,6 @@ impl Game<'_> {
             hook: phase,
             part: Some("ClientItemUseBehavior"),
         });
-        if let Err(refusal) = contain_outside_world(|| invoke(self)) {
-            refusal.report();
-        }
+        invoke(self);
     }
 }

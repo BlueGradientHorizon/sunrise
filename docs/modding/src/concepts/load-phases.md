@@ -16,9 +16,9 @@ Each owning thread progresses through `Packages → Registration → Setup → C
 | --- | --- |
 | Packages | Package discovery; no game Host operations. |
 | Registration | Declarations through `RegistrationContext`, with its mod-list, registry and settings reads; no Host. |
-| Setup | Client setup reads, published asset/data queries and registry/settings/mod-list reads; no world handles or transactions. |
-| Config | Settings reads and the mod-scoped `ConfigFiles` service; no world handles, transactions or other game operations. |
-| Reloading | Published asset/data queries, registry facts, settings and mod-list reads, listener registration, and `DataLoadContext` callbacks; no world handles or transactions. |
+| Setup | `ClientSetupContext`: client setup reads, published asset/data queries, and registry/settings/mod-list reads; no world handles or transactions. |
+| Config | `ConfigContext`: settings reads and the mod-scoped `ConfigFiles` service; no world handles, transactions or other game operations. |
+| Reloading | `ReloadContext` (server/shared data reload and tag/data-map/component notices), `ClientReloadHost` (client reload listener registration and client resource reload completion), and `DataLoadContext` callbacks: published asset/data queries, registry facts, settings and mod-list reads; no world handles or transactions. |
 | World | The owning game's side-typed `ServerHost` or `ClientHost`. |
 
 `RegistrationContext::instance_dir()` reads the instance directory captured before
@@ -59,7 +59,6 @@ duplicates before freezing the component registry.
 
 Scoped registration events are borrowed only for the listener call. Their registration methods
 add entries in dispatch order without letting a listener read, edit or remove earlier registrations.
-If the phase gate refuses a listener, its additions are discarded and earlier registrations stand.
 
 A callback registered on the event cannot borrow the event or the context. Capture owned inputs
 for its `Send + Sync + 'static` closure. A model layer supplier runs once at the startup freeze;
@@ -85,10 +84,9 @@ selection is cleared and saved during initialization, but its options screen ope
 completes. A title-screen callback is already in World: world-handle constructors can return `None`,
 rather than being forbidden in Setup. A dedicated
 server loads Common once before its first world; Server configs load and unload per world.
-A second world does not repeat registration or client setup. Config loading can read settings and
-use the scoped `ConfigFiles` service to read or save its own config files. World handles,
-transactions and other game operations panic with `Config` in the diagnostic.
-Config file polling is not a phase transition, and Server config unloading leaves the World phase.
+A second world does not repeat registration or client setup. Config hooks (`register_configs` and
+`config_loading`) receive `&dyn ConfigContext`, which exposes settings reads and the scoped
+`ConfigFiles` service; world handles, transactions and other game operations are absent at compile time.
 
 Attribute bounds are registration data too. `Registrar::widen_attribute_bounds` asks, from a both-side package's
 `register`, join the attribute catalog once when it grows: after the attributes mods declare with
@@ -98,17 +96,16 @@ the union of every mod's asks, so the result does not depend on the dispatch ord
 
 ## Reloading
 
-Every data or asset reload enters `Reloading`, including listener registration, prepare, apply and
-the reload completion notice. Initial loads can nest in Setup; runtime reloads nest in World.
-Returning, including after a failed prepare, restores the entering phase. Published asset/data
-queries read the published generation, not pending prepare output: completion callbacks can
-refresh sprite and recipe caches after apply, including on first world open, without gaining world
-handles or transactions. Their rustdoc names their load-phase availability. Server listener
-registration retains `&dyn Host`, restricted to these published facts, registry facts, settings and
-mod-list queries. Callbacks that take `DataLoadContext` use its restricted reads. Neither permits
-opening a world handle or transaction. The first client registration and prepare run on the loader
-thread; later registration runs on the render thread, prepare on its worker, and apply on the owning
-game thread.
+Data and asset reload hooks receive phase-scoped contexts instead of a full `Host`:
+`add_server_reload_listeners`, `tags_updated`, `data_maps_updated` and `default_components_bound`
+receive `&dyn ReloadContext`, while `add_client_reload_listeners` and `client_resources_reloaded`
+receive `&dyn ClientReloadHost` (which extends `ReloadContext` with published client render assets,
+sprites and instance groups). Published asset/data queries read the published generation, not
+pending prepare output: completion callbacks can refresh sprite and recipe caches after apply,
+including on first world open, without gaining world handles or transactions. Callbacks that take
+`DataLoadContext` use its restricted reads. Neither permits opening a world handle or transaction.
+The first client registration and prepare run on the loader thread; later registration runs on the
+render thread, prepare on its worker, and apply on the owning game thread.
 
 ## Load contexts
 
@@ -164,8 +161,10 @@ validate membership before activating a snapshot.
 On clients, generic reads never fall back to prepared server-only datapack files:
 built-ins and the connection's currently synchronized registries are the entire view.
 
-The game alone advances phases. An illegal or wrong-thread advance is refused before dispatch;
-a forbidden mod call panics naming the phase, rather than returning a `Result`.
+Phase boundaries are enforced at compile time by the context trait passed to each hook:
+registration hooks take `RegistrationContext`, config hooks take `ConfigContext`, server/shared
+reload hooks take `ReloadContext`, client reload hooks take `ClientReloadHost`, and client setup
+takes `ClientSetupContext`.
 There is no separate common-setup, load-complete or intermod event: registration and the first server
 reload cover common setup, client setup is `client_setup`, dedicated setup is `server_about_to_start`,
 and dependencies express intermod ordering. Load complete is the edge after initial Config and before

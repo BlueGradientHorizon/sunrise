@@ -541,24 +541,26 @@ mod tests {
         ) {
             return;
         }
-        fn files(host: &HostSide) -> &'static dyn ConfigFiles {
-            match host {
-                HostSide::Server(host) => host.config_files(),
-                HostSide::Client(host) => host.config_files(),
-            }
-        }
         struct Proof;
         #[mod_api::__subscriptions]
         impl Hooks for Proof {
-            fn register_configs(&self, _: HostSide, event: &mut RegisterConfigsEvent<'_>) {
+            fn register_configs(
+                &self,
+                _: &dyn mod_api::ConfigContext,
+                event: &mut RegisterConfigsEvent<'_>,
+            ) {
                 event.configs.push(mod_api::Config::new(
                     "proof",
                     mod_api::ConfigKind::Common,
                     "count = 0\n",
                 ));
             }
-            fn config_loading(&self, host: HostSide, event: &mut ConfigLoadingEvent<'_>) {
-                let files = files(&host);
+            fn config_loading(
+                &self,
+                context: &dyn mod_api::ConfigContext,
+                event: &mut ConfigLoadingEvent<'_>,
+            ) {
+                let files = context.config_files();
                 heard().push(format!("loading {}", event.config.text.trim()));
                 files
                     .write(&path("proof-common.toml"), b"count = 1\n")

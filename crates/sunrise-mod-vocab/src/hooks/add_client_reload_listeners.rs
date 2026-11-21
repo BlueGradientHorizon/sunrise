@@ -11,12 +11,12 @@ pub trait Hooks {
     /// parsed state, all applies after all prepares, before
     /// `client_resources_reloaded`. A listener that returns an error
     /// aborts the reload and keeps every listener's previous assets.
-    /// Client-side, in Reloading nested in Setup initially and World later.
-    /// Later registration is on the render thread, prepare on the loader,
-    /// and apply on the owning game thread; completion restores the entering
-    /// phase. Startup's empty Host grants no extra access.
+    /// Client-side, taking a [`ClientReloadHost`]. Later registration is on
+    /// the render thread, prepare on the loader, and apply on the owning game
+    /// thread. Startup's empty context grants no extra access.
     #[hook(
-        receiver = "read",
+        receiver = "associated",
+        context = "client_reload",
         dispatch = "flat",
         side = "client",
         contract = "listen",

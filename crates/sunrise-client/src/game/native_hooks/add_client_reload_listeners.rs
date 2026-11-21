@@ -17,6 +17,6 @@ impl Game<'_> {
         &self,
         listeners: &mut dyn ClientReloadListeners,
     ) {
-        self.fire_add_client_reload_listeners(listeners);
+        Self::fire_add_client_reload_listeners(self, listeners);
     }
 }

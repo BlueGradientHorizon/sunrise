@@ -35,7 +35,7 @@ impl mod_api::Hooks for Declare {
 fn with_types(test: impl FnOnce()) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
     // A general type is declared only while the registration phase is current.
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_api::__private::RegistrationGuard::open();
     let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
     mod_platform::testing::with_mods(declare().into(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();

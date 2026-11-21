@@ -1,5 +1,390 @@
-//! Restricted views for registration and data loading.
+//! Restricted views for registration, data loading, configuration, reload, and client setup.
 use std::{collections::BTreeMap, sync::Arc};
+
+/// Fallback empty [`crate::ConfigFiles`] service returned by default context implementations.
+struct EmptyConfigFiles;
+
+impl crate::ConfigFiles for EmptyConfigFiles {
+    fn read(&self, _: &crate::ConfigPath) -> Result<Vec<u8>, crate::ConfigFileError> {
+        Err(crate::ConfigFileError::NoCallingMod)
+    }
+    fn write(&self, _: &crate::ConfigPath, _: &[u8]) -> Result<(), crate::ConfigFileError> {
+        Err(crate::ConfigFileError::NoCallingMod)
+    }
+    fn list(
+        &self,
+        _: &crate::ConfigPath,
+        _: Option<&str>,
+        _: u32,
+    ) -> Result<Vec<crate::ConfigEntry>, crate::ConfigFileError> {
+        Err(crate::ConfigFileError::NoCallingMod)
+    }
+    fn stat(
+        &self,
+        _: &crate::ConfigPath,
+    ) -> Result<Option<crate::ConfigStat>, crate::ConfigFileError> {
+        Err(crate::ConfigFileError::NoCallingMod)
+    }
+    fn remove(&self, _: &crate::ConfigPath) -> Result<bool, crate::ConfigFileError> {
+        Err(crate::ConfigFileError::NoCallingMod)
+    }
+}
+
+const EMPTY_CONFIG_FILES: EmptyConfigFiles = EmptyConfigFiles;
+
+/// Read-only context for configuration hooks (`register_configs`, `config_loading`).
+///
+/// Exposes only mod settings and the calling mod's `config/` files so configuration hooks
+/// cannot reach world, level, entity, or client rendering state at compile time.
+pub trait ConfigContext {
+    /// A mod's registered setting `key`. Returns `None` for another mod's id or an
+    /// unregistered key.
+    fn setting(&self, _mod_id: &str, _key: &str) -> Option<String> {
+        None
+    }
+    /// The calling mod's own files in the game's `config/` folder.
+    fn config_files(&self) -> &'static dyn crate::ConfigFiles {
+        &EMPTY_CONFIG_FILES
+    }
+}
+
+/// Phase-scoped read-only context for data-reload hooks (`add_server_reload_listeners`,
+/// `data_maps_updated`, `default_components_bound`, `tags_updated`).
+///
+/// Exposes process metadata, completed registries, tags, recipes, data maps, and published
+/// data resources without world, level, entity, or mutation access.
+pub trait ReloadContext:
+    crate::prelude::BlockStatesHost
+    + crate::prelude::KeysHost
+    + crate::prelude::TagsHost
+    + crate::prelude::TextHost
+    + crate::prelude::RecipesHost
+    + crate::prelude::RecipePropertiesHost
+    + crate::prelude::ResourcesHost
+    + crate::prelude::MathHost
+    + crate::prelude::PayloadTokensHost
+    + crate::prelude::PayloadDropsHost
+{
+    /// Physical process, not the logical side of this hook.
+    fn dist(&self) -> crate::Dist {
+        crate::Dist::DedicatedServer
+    }
+    /// Exact Minecraft version supported by this process.
+    fn game_version(&self) -> &'static str {
+        ""
+    }
+    /// The engine's `DataVersion` written into level data and chunks.
+    fn server_data_version(&self) -> i32 {
+        0
+    }
+    /// Sunrise version printed in crash reports.
+    fn sunrise_version(&self) -> &'static str {
+        ""
+    }
+    /// Whether the player left mod `mod_id` enabled.
+    fn on(&self, _mod_id: &str) -> bool {
+        false
+    }
+    /// A mod's registered setting `key`.
+    fn setting(&self, _mod_id: &str, _key: &str) -> Option<String> {
+        None
+    }
+    /// Startup opt-in for test-only content.
+    fn game_tests_enabled(&self) -> bool {
+        false
+    }
+    /// Whether mod `id` is loaded in this process.
+    fn is_loaded(&self, _id: &str) -> bool {
+        false
+    }
+    /// Cooldown group id for `stack`.
+    fn item_cooldown_group(&self, _stack: &crate::ItemStack) -> String {
+        String::new()
+    }
+    /// Default max stack size of `item`.
+    fn max_stack_size(&self, _item: crate::ItemKey) -> Option<u32> {
+        None
+    }
+    /// Default durability of `item`.
+    fn max_damage(&self, _item: crate::ItemKey) -> Option<u32> {
+        None
+    }
+    /// Resolve an item identifier to its process-local key.
+    fn item_key(&self, _id: &crate::Identifier) -> Option<crate::ItemKey> {
+        None
+    }
+    /// Item `item`'s default value of component `component`.
+    fn item_default_component(
+        &self,
+        _item: crate::ItemKey,
+        _component: &str,
+    ) -> Option<crate::Tag> {
+        None
+    }
+    /// `ItemStack.getHoverName()` as a text component.
+    fn hover_name(&self, _stack: &crate::ItemStack) -> Result<crate::Text, crate::TextFormError> {
+        Err(crate::TextFormError::Unavailable)
+    }
+    /// Item `item`'s cooking-fuel burn time in ticks.
+    fn item_burn_time(&self, _item: crate::ItemKey) -> Option<i32> {
+        None
+    }
+    /// Item `item`'s chance to raise a composter's level.
+    fn item_compost_chance(&self, _item: crate::ItemKey) -> Option<f32> {
+        None
+    }
+    /// Whether `entity_type` is in entity-type tag `tag`.
+    fn entity_type_in_tag(&self, _entity_type: &str, _tag: &str) -> bool {
+        false
+    }
+    /// Published NBT value of `entry` in `registry`'s data map `map`.
+    fn data_map_value(
+        &self,
+        _registry: &str,
+        _entry: &str,
+        _map: &str,
+    ) -> Result<Option<&crate::Tag>, crate::DataMapError> {
+        Err(crate::DataMapError::Unavailable)
+    }
+    /// Published NBT entries of data map `map` in `registry`, sorted by entry ID.
+    fn data_map_entries(
+        &self,
+        _registry: &str,
+        _map: &str,
+    ) -> Result<&[(String, crate::Tag)], crate::DataMapError> {
+        Err(crate::DataMapError::Unavailable)
+    }
+    /// Pin the exact id of an installed game-event slot.
+    fn game_event_key_id(
+        &self,
+        _key: crate::GameEventKey,
+    ) -> Result<crate::RegistryName, crate::GameEventKeyError> {
+        Err(crate::GameEventKeyError::Unavailable)
+    }
+    /// Borrow the canonical block id for `key`.
+    fn block_key_id(&self, _key: crate::BlockKey) -> Option<&str> {
+        None
+    }
+    /// Borrow the canonical item id for `key`.
+    fn item_key_id(&self, _key: crate::ItemKey) -> Option<&str> {
+        None
+    }
+    /// Numeric item registry id for `key`.
+    fn item_registry_id(&self, _key: crate::ItemKey) -> Option<u32> {
+        None
+    }
+    /// Borrow the canonical effect id for `key`.
+    fn effect_key_id(&self, _key: crate::EffectKey) -> Option<&str> {
+        None
+    }
+    /// Registered `MobEffect.getCategory()` for `key`.
+    fn effect_category(&self, _key: crate::EffectKey) -> Option<crate::EffectCategory> {
+        None
+    }
+    /// Borrow the canonical fluid id for `key`.
+    fn fluid_key_id(&self, _key: crate::FluidKey) -> Option<&str> {
+        None
+    }
+    /// Borrow the canonical block-entity-type id for `key`.
+    fn block_entity_type_key_id(&self, _key: crate::BlockEntityTypeKey) -> Option<&str> {
+        None
+    }
+    /// Pin the canonical entity-type id for `key`.
+    fn entity_type_key_id(&self, _key: crate::EntityTypeKey) -> Option<crate::RegistryName> {
+        None
+    }
+    /// Pin the canonical menu-type id for `key`.
+    fn menu_key_id(&self, _key: crate::MenuKey) -> Option<crate::RegistryName> {
+        None
+    }
+    /// Pin the canonical enchantment id for `key`.
+    fn enchantment_key_id(&self, _key: crate::EnchantmentKey) -> Option<crate::RegistryName> {
+        None
+    }
+    /// Borrow the canonical biome id for `key`.
+    fn biome_key_id(&self, _key: crate::BiomeKey) -> Result<&str, crate::BiomeKeyError> {
+        Err(crate::BiomeKeyError::Unavailable)
+    }
+    /// Borrow the canonical dimension id for `key`.
+    fn dimension_key_id(&self, _key: crate::DimensionKey) -> Option<&str> {
+        None
+    }
+    /// Exact load-time item key membership for a component-independent `ingredient`.
+    fn recipe_ingredient_item_keys(
+        &self,
+        _ingredient: &crate::Ingredient,
+    ) -> Result<Arc<[crate::ItemKey]>, crate::IngredientKeysError> {
+        Err(crate::IngredientKeysError::UnknownItem)
+    }
+}
+
+/// Fallback empty client render-assets / instance-groups service returned by default
+/// [`ClientReloadHost`] implementations (such as startup reload registration before a game exists).
+struct EmptyClientReloadServices;
+
+impl crate::RenderAssets for EmptyClientReloadServices {
+    fn model(&self, _: &crate::Identifier) -> Result<crate::ModelRef, crate::ModelError> {
+        Err(crate::ModelError::UnknownModel)
+    }
+    fn render_pipeline(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::RenderPipelineRef, crate::RenderPipelineError> {
+        Err(crate::RenderPipelineError::Unknown)
+    }
+    fn animation(&self, _: &crate::Identifier) -> Option<crate::AnimationHolder> {
+        None
+    }
+    fn block_state_model(
+        &self,
+        _: crate::BlockState,
+    ) -> Result<crate::ModelRef, crate::ModelError> {
+        Err(crate::ModelError::UnknownModel)
+    }
+    fn block_state_models(
+        &self,
+        _: crate::BlockState,
+    ) -> Result<crate::BakedModelKeys<'_>, crate::ModelError> {
+        Err(crate::ModelError::UnknownModel)
+    }
+    fn baked_model(
+        &self,
+        _: crate::BakedModelKey,
+    ) -> Result<crate::BakedModelView<'_>, crate::ModelError> {
+        Err(crate::ModelError::UnknownModel)
+    }
+}
+
+impl crate::InstanceGroups for EmptyClientReloadServices {
+    fn create_group(
+        &self,
+        _: crate::ModelRef,
+        _: u32,
+    ) -> Result<crate::InstanceGroupRef, crate::GroupError> {
+        Err(crate::GroupError::Stale)
+    }
+}
+
+const EMPTY_CLIENT_RELOAD_SERVICES: EmptyClientReloadServices = EmptyClientReloadServices;
+
+/// Phase-scoped read-only host for client resource reload hooks
+/// (`add_client_reload_listeners`, `client_resources_reloaded`).
+///
+/// Named `ClientReloadHost` rather than `ClientReloadContext` because [`crate::ClientReloadContext`]
+/// is the per-listener asset file reader passed to `ClientReloadListener::prepare`.
+pub trait ClientReloadHost: ReloadContext + crate::prelude::ItemParticlesClientHost {
+    /// Published client render assets: standalone models, render pipelines, animations,
+    /// and baked block-state models.
+    fn render_assets(&self) -> &dyn crate::RenderAssets {
+        &EMPTY_CLIENT_RELOAD_SERVICES
+    }
+    /// Persistent model instance groups.
+    fn instance_groups(&self) -> &dyn crate::InstanceGroups {
+        &EMPTY_CLIENT_RELOAD_SERVICES
+    }
+    /// Atomically overwrite retained model copies in `group`.
+    fn instance_group_write(
+        &self,
+        _group: crate::InstanceGroupRef,
+        _first: u32,
+        _instances: &[crate::ModelInstance],
+    ) -> Result<(), crate::GroupError> {
+        Err(crate::GroupError::Stale)
+    }
+    /// Set the drawn length of `group`.
+    fn instance_group_set_len(
+        &self,
+        _group: crate::InstanceGroupRef,
+        _len: u32,
+    ) -> Result<(), crate::GroupError> {
+        Err(crate::GroupError::Stale)
+    }
+    /// Replace the transform of `group`.
+    fn instance_group_set_transform(
+        &self,
+        _group: crate::InstanceGroupRef,
+        _transform: [f32; 12],
+    ) -> Result<(), crate::GroupError> {
+        Err(crate::GroupError::Stale)
+    }
+    /// Retire retained model copies in `group`.
+    fn instance_group_destroy(
+        &self,
+        _group: crate::InstanceGroupRef,
+    ) -> Result<(), crate::GroupError> {
+        Err(crate::GroupError::Stale)
+    }
+    /// Whether `stack`'s resolved model uses block lighting in `context`.
+    fn item_uses_block_light(
+        &self,
+        _stack: &crate::ItemStack,
+        _context: crate::ItemDisplayContext,
+    ) -> bool {
+        false
+    }
+    /// Resolved block sprites for each requested block state.
+    fn block_sprites(&self, blocks: &[crate::BlockState]) -> Vec<Option<crate::BlockSprites>> {
+        vec![None; blocks.len()]
+    }
+    /// Resolved block-atlas sprites for each requested texture name.
+    fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<crate::SpriteRef>> {
+        vec![None; textures.len()]
+    }
+    /// GUI atlas region for `sprite`.
+    fn gui_sprite(&self, _sprite: &crate::Identifier) -> Option<crate::AtlasRegion> {
+        None
+    }
+    /// Monotonic version of the published block-sprites table.
+    fn block_sprites_version(&self) -> u64 {
+        0
+    }
+}
+
+/// Phase-scoped context for `Hooks::client_setup`.
+///
+/// Extends [`ClientReloadHost`] with client setup services (options, key mappings, audio,
+/// text measurement, translations, client registries, config files) without exposing
+/// world-only level, entity, or gameplay mutation methods.
+pub trait ClientSetupContext:
+    ClientReloadHost
+    + crate::prelude::AudioClientHost
+    + crate::prelude::ClientInputClientHost
+    + crate::prelude::ClientNarratorClientHost
+    + crate::prelude::ClientOptionsClientHost
+    + crate::prelude::ClientTextClientHost
+    + crate::prelude::DrawClientHost
+    + crate::prelude::PayloadsClientHost
+    + crate::prelude::ScoreboardClientHost
+{
+    /// The calling mod's own files in the game's `config/` folder.
+    fn config_files(&self) -> &'static dyn crate::ConfigFiles {
+        &EMPTY_CONFIG_FILES
+    }
+    /// The calling mod's bulk files in `sunrise-mod-data/<mod id>/`.
+    fn data_files(&self) -> &'static dyn crate::ConfigFiles {
+        &EMPTY_CONFIG_FILES
+    }
+    /// Translate a language key in the client's current language.
+    fn translate(&self, _key: &str) -> Option<String> {
+        None
+    }
+    /// Registered enchantments, in registry order.
+    fn enchantments(&self) -> Vec<crate::EnchantmentInfo> {
+        Vec::new()
+    }
+    /// Registered potions, in registry order.
+    fn potions(&self) -> Vec<crate::PotionInfo> {
+        Vec::new()
+    }
+    /// `Enchantment.getMinCost(level)` for `id`.
+    fn enchantment_min_cost(&self, _id: &str, _level: u32) -> Option<i32> {
+        None
+    }
+    /// Whether enchantment `id` supports `item`.
+    fn enchantment_supports(&self, _id: &str, _item: crate::ItemKey) -> bool {
+        false
+    }
+}
 
 /// The owning boundary that starts a data load, as reported by [`DataLoadContext::origin`].
 // no wire: identifies the owner of a local data load.

@@ -61,6 +61,14 @@ pub enum PhaseContext {
     Worldgen,
     /// A chunk disk job, with no live world authority.
     ChunkDisk,
+    /// A configuration registration or loading hook.
+    Config,
+    /// A server or shared data-reload hook.
+    Reload,
+    /// A client resource-reload hook.
+    ClientReload,
+    /// The client setup hook after initial resources load.
+    ClientSetup,
 }
 
 /// How a game hook borrows its receiver. Free dispatchers have no game receiver.

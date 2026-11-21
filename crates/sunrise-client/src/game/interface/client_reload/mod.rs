@@ -14,7 +14,7 @@ use super::Game;
 use super::packs::reload_files;
 use mod_api::{
     __private::reload::{PreparedStep, ReloadStageError, apply_listeners, prepare_listeners},
-    ClientHost, ClientReloadContext, ClientReloadListener, HookId, Host,
+    ClientReloadContext, ClientReloadHost, ClientReloadListener, HookId, ReloadContext,
 };
 use sunrise_client::datapack::DataPack;
 
@@ -22,41 +22,33 @@ use sunrise_client::datapack::DataPack;
 /// listener's prepared apply.
 pub(super) type PreparedClientReload = PreparedStep<()>;
 
-/// The registration host of the first load: no game exists yet, so it reads
-/// nothing — a host read during registration panics, as its contract forbids
-/// one. The reload itself reads through the game's host.
-pub(super) struct StartupClientHost;
-impl Host for StartupClientHost {}
-mod_api::impl_host_areas!(StartupClientHost);
-impl ClientHost for StartupClientHost {}
-mod_api::impl_client_host_areas!(StartupClientHost, except(audio));
-// A startup reload opens no audio stream.
-impl mod_api::prelude::AudioClientHost for StartupClientHost {
-    fn open_audio_stream(
-        &self,
-        _: &mod_api::StreamSpec,
-        _: Box<dyn mod_api::AudioStream>,
-    ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {
-        Err(mod_api::AudioRefusal::Unavailable)
-    }
-
-    fn open_push_audio_stream(
-        &self,
-        _: &mod_api::StreamSpec,
-    ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {
-        Err(mod_api::AudioRefusal::Unavailable)
+/// The registration context of the first load: no game exists yet, so
+/// [`ClientReloadHost`] defaults answer empty/unavailable while listeners
+/// register. Later reloads pass `&Game` directly.
+pub(super) struct StartupReloadContext;
+impl mod_api::prelude::BlockStatesHost for StartupReloadContext {}
+impl mod_api::prelude::KeysHost for StartupReloadContext {}
+impl mod_api::prelude::TagsHost for StartupReloadContext {}
+impl mod_api::prelude::TextHost for StartupReloadContext {}
+impl mod_api::prelude::RecipesHost for StartupReloadContext {}
+impl mod_api::prelude::RecipePropertiesHost for StartupReloadContext {}
+impl mod_api::prelude::ResourcesHost for StartupReloadContext {}
+impl mod_api::prelude::MathHost for StartupReloadContext {}
+impl mod_api::prelude::PayloadTokensHost for StartupReloadContext {}
+impl mod_api::prelude::PayloadDropsHost for StartupReloadContext {}
+impl mod_api::prelude::ItemParticlesClientHost for StartupReloadContext {
+    fn item_particle_options(&self, _: &mod_api::ItemStack) -> Option<mod_api::ParticleOptions> {
+        None
     }
 }
+impl ReloadContext for StartupReloadContext {}
+impl ClientReloadHost for StartupReloadContext {}
 
 impl Game<'_> {
     /// Registers a later reload's client listeners through the game
     /// (`native_add_client_reload_listeners`), gated on the hook being
     /// listened to.
     pub(super) fn register_client_reload_listeners(&self) -> mod_api::ClientListenerRegistry {
-        let _reload = self
-            .mod_phase
-            .reloading()
-            .expect("client listener registration on its owning thread");
         let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
         if mod_api::__private::listened(HookId::AddClientReloadListeners) {
             self.native_add_client_reload_listeners(&mut listeners);
@@ -66,13 +58,11 @@ impl Game<'_> {
 }
 
 /// Registers the first load's client listeners: no game exists yet, so
-/// [`StartupClientHost`] stands in, before any resources are loaded.
+/// [`StartupReloadContext`] stands in, before any resources are loaded.
 pub(super) fn register_startup_client_reload_listeners() -> mod_api::ClientListenerRegistry {
-    let phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
-    let _reload = phase.reloading().expect("initial client registration");
     let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
     if mod_api::__private::listened(HookId::AddClientReloadListeners) {
-        mod_api::dispatch_add_client_reload_listeners(&StartupClientHost, &mut listeners);
+        mod_api::dispatch_add_client_reload_listeners(&StartupReloadContext, &mut listeners);
     }
     listeners
 }
@@ -83,10 +73,7 @@ pub(super) fn register_startup_client_reload_listeners() -> mod_api::ClientListe
 pub(super) fn stage_client_reload(
     root: &sunrise_assets::resource_source::ResourceSource,
     listeners: mod_api::ClientListenerRegistry,
-    entering: mod_api::__private::ModPhase,
 ) -> Result<Vec<PreparedClientReload>, ReloadStageError> {
-    let phase = mod_api::__private::PhaseOwner::scope(entering);
-    let _reload = phase.reloading().expect("client listener prepare");
     let pack = DataPack::from_source("vanilla".into(), root.clone());
     let ordered = listeners.finish().map_err(ReloadStageError::Order)?;
     prepare_listeners(
@@ -101,12 +88,6 @@ pub(super) fn stage_client_reload(
 /// Applies the prepared listeners in order on the game-owning thread, after
 /// the rest of the staged pack is published and before the
 /// resources-reloaded notice.
-pub(super) fn apply_client_reload(
-    phase: &mod_api::__private::PhaseOwner,
-    prepared: Vec<PreparedClientReload>,
-) {
-    let _reload = phase
-        .reloading()
-        .expect("client apply on its owning thread");
+pub(super) fn apply_client_reload(prepared: Vec<PreparedClientReload>) {
     apply_listeners(prepared, "client_reload_apply", |()| {});
 }

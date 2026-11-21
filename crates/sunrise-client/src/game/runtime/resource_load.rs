@@ -921,7 +921,6 @@ pub(super) fn load_resources_for_mods(
         match client_reload::stage_client_reload(
             resolved.source(),
             client_reload::register_startup_client_reload_listeners(),
-            mod_api::__private::ModPhase::Setup,
         ) {
             Ok(steps) => steps,
             Err(error) => {

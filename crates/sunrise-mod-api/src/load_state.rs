@@ -237,13 +237,13 @@ mod tests {
                 assert!(crate::registration_open());
                 self.calls.lock().unwrap().push(("register", self.id));
             }
-            fn config_loading(&self, _: HostSide<'_>, _: &mut ConfigLoadingEvent<'_>) {
+            fn config_loading(&self, _: &dyn ConfigContext, _: &mut ConfigLoadingEvent<'_>) {
                 assert!(!crate::registration_open());
                 self.calls.lock().unwrap().push(("config", self.id));
             }
             fn add_server_reload_listeners(
                 &self,
-                _: &dyn Host,
+                _: &dyn ReloadContext,
                 _: &mut AddServerReloadListenersEvent<'_>,
             ) {
                 assert!(!crate::registration_open());
@@ -253,8 +253,8 @@ mod tests {
         struct Server;
         impl Host for Server {}
         mod_api::impl_host_areas!(Server);
-        impl ServerHost for Server {}
-        mod_api::impl_server_host_areas!(Server);
+        impl ConfigContext for Server {}
+        impl ReloadContext for Server {}
         // The loader supplies a dependency-resolved slice; dispatch must retain it.
         let order = [1, 0, 2];
         let calls = Arc::new(Mutex::new(Vec::new()));
@@ -281,10 +281,10 @@ mod tests {
         )
         .unwrap();
         assert!(!crate::registration_open());
-        let mut host = Server;
+        let host = Server;
         for _world in 0..2 {
             dispatch_config_loading(
-                HostSide::Server(&mut host),
+                &host,
                 &crate::__private::built::ConfigFile {
                     mod_id: "lib".into(),
                     kind: ConfigKind::Server,

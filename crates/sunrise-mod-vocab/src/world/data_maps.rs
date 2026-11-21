@@ -93,6 +93,11 @@ mod entry {
         const REGISTRY: &'static str;
         /// The entry's full registry id.
         fn id<'a>(&self, backend: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError>;
+        /// The entry's full registry id during a reload hook.
+        fn id_in_reload<'a>(
+            &self,
+            context: &'a dyn crate::ReloadContext,
+        ) -> Result<EntryName<'a>, DataMapError>;
     }
 }
 
@@ -104,6 +109,12 @@ macro_rules! typed_entries {
             const REGISTRY: &'static str = $registry;
             fn id<'a>(&self, backend: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError> {
                 backend.$id(*self).into_result()
+            }
+            fn id_in_reload<'a>(
+                &self,
+                context: &'a dyn crate::ReloadContext,
+            ) -> Result<EntryName<'a>, DataMapError> {
+                context.$id(*self).into_result()
             }
         }
         impl $key {
@@ -175,6 +186,18 @@ impl entry::Entry for BiomeKey {
                 crate::BiomeKeyError::WrongGeneration => DataMapError::InvalidKey,
             })
     }
+    fn id_in_reload<'a>(
+        &self,
+        context: &'a dyn crate::ReloadContext,
+    ) -> Result<EntryName<'a>, DataMapError> {
+        context
+            .biome_key_id(*self)
+            .map(EntryName::Borrowed)
+            .map_err(|error| match error {
+                crate::BiomeKeyError::Unavailable => DataMapError::Unavailable,
+                crate::BiomeKeyError::WrongGeneration => DataMapError::InvalidKey,
+            })
+    }
 }
 impl BiomeKey {
     /// Read this biome's data as for [`ItemKey::data`]. Expired or foreign tokens
@@ -191,6 +214,12 @@ impl DataMapEntry for ProfessionKey {}
 impl entry::Entry for ProfessionKey {
     const REGISTRY: &'static str = "minecraft:villager_profession";
     fn id<'a>(&self, _: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError> {
+        Ok(EntryName::Owned(self.0.to_string()))
+    }
+    fn id_in_reload<'a>(
+        &self,
+        _: &'a dyn crate::ReloadContext,
+    ) -> Result<EntryName<'a>, DataMapError> {
         Ok(EntryName::Owned(self.0.to_string()))
     }
 }
@@ -275,6 +304,23 @@ pub fn data_map_entries<'host>(
 ) -> Result<&'host [(String, Tag)], DataMapError> {
     let backend = crate::backend_of(host).ok_or_else(DataMapError::no_backend)?;
     backend.data_map_entries(registry, map)
+}
+
+impl dyn crate::ReloadContext + '_ {
+    /// Entry `entry`'s decoded value in data map `map`, for reload hooks such as
+    /// `data_maps_updated`.
+    pub fn data_map<M: DataMap>(
+        &self,
+        entry: &M::Entry,
+        map: &M,
+    ) -> Result<Option<M::Value>, DataMapError> {
+        let id = entry::Entry::id_in_reload(entry, self)?;
+        let registry = <M::Entry as entry::Entry>::REGISTRY;
+        match self.data_map_value(registry, id.as_str(), map.id())? {
+            Some(value) => map.decode(value).map(Some).ok_or(DataMapError::Undecodable),
+            None => Ok(None),
+        }
+    }
 }
 
 #[cfg(test)]

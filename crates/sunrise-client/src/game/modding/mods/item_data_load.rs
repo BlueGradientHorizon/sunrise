@@ -63,12 +63,7 @@ pub(in super::super) fn load_item_data(
     role: ExecutionRole,
     owning_load: OwningLoad,
 ) -> sunrise_client::Result<ItemData> {
-    let phase = mod_api::__private::PhaseOwner::scope(if role.is_client() {
-        mod_api::__private::ModPhase::Setup
-    } else {
-        mod_api::__private::ModPhase::World
-    });
-    let _reload = phase.reloading()?;
+    let _ = role;
     let inputs = LoadInputs::new(builtin_registry_names(root)?, Game::mod_data_root());
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(root)?;
     let ids: Vec<_> = if role.is_logical_server() {

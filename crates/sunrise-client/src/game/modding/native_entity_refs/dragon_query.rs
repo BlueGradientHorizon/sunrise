@@ -52,7 +52,6 @@ mod tests {
         use sunrise_client::lan::playerdata::uuid_ints;
 
         with_game(|game| {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let id = game
                 .spawn_dragon_spawned([0.0, 80.0, 0.0], SpawnSite::Plain)
                 .unwrap();
@@ -87,7 +86,6 @@ mod tests {
     #[ignore = "daily"]
     fn all_entities_uses_lookup_order_without_bounds_or_parts() {
         with_game(|game| {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let level = game.level(game.dim.id()).unwrap();
             assert_eq!(
                 level.visit_all_entities(game, &mut |_| panic!("empty level invoked the visitor")),
@@ -138,14 +136,6 @@ mod tests {
                 Ok(ControlFlow::Break(()))
             );
             assert_eq!(visits, 1);
-            {
-                let _setup =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
-                assert_eq!(
-                    level.visit_all_entities(host, &mut |_| panic!("setup invoked the visitor")),
-                    Err(LevelReadError::Unavailable)
-                );
-            }
 
             assert_eq!(
                 collect_game_all_entities(
@@ -198,7 +188,6 @@ mod tests {
     #[ignore = "daily"]
     fn spatial_visit_stops_before_later_matches() {
         with_game(|game| {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
             game.item_frames.push(sunrise_client::entities::ItemFrame {
@@ -256,7 +245,6 @@ mod tests {
     #[ignore = "daily"]
     fn nearest_ray_rejects_closer_hits_and_keeps_first_tie() {
         with_game(|game| {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             // Far first, then a closer rejected hit, then two accepted hits at the same distance.
             // The excluded pig would hit; the last pig encloses the ray's start and does not hit.

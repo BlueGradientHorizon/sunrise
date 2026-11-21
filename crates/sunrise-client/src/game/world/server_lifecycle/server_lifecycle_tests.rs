@@ -34,7 +34,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
     impl Hooks for Log {
         fn register_configs(
             &self,
-            _: mod_api::HostSide,
+            _: &dyn mod_api::ConfigContext,
             e: &mut mod_api::RegisterConfigsEvent<'_>,
         ) {
             if self.1.config_unloading.load(Ordering::Relaxed) {

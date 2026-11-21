@@ -6,15 +6,11 @@ include!("position_load_tests.rs");
 mod transient_entities {
     use super::*;
     use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
-    use mod_api::{
-        __private::{ModPhase, PhaseOwner},
-        EntityRef, LevelWriteError,
-    };
+    use mod_api::EntityRef;
 
     fn with_server(test: impl FnOnce(&mut Game<'_>)) {
         mod_platform::testing::with_mods(Default::default(), || {
             with_game(|game| {
-                let _world = PhaseOwner::scope(ModPhase::World);
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -135,13 +131,6 @@ mod transient_entities {
             bind_local_player(game, 100, 25);
             let player = game.entity(100).unwrap();
             assert_eq!(player.set_persistent(game, false), Ok(false));
-            {
-                let _setup = PhaseOwner::scope(ModPhase::Setup);
-                assert_eq!(
-                    display.set_persistent(game, false),
-                    Err(LevelWriteError::Unavailable)
-                );
-            }
             game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
             assert_eq!(display.set_persistent(game, false), Ok(false));
             game.options.execution_role =
