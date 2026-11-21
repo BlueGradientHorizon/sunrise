@@ -8745,7 +8745,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
     use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
     use sunrise_client::{
         chunk::block_entity::BlockEntity,
-        mobs::spawner::{SpawnDataExt, Spawner, SpawnerExt},
+        mobs::spawner::{SpawnDataExt, SpawnerExt},
     };
     use sunrise_core::nbt::Tag;
     peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
@@ -8784,7 +8784,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
             game.lan_acting_permission = Some(if op { 2 } else { 0 });
             game.world
                 .block_entities
-                .insert(key, BlockEntity::Spawner(Box::new(Spawner::default())));
+                .insert(key, BlockEntity::Spawner(Box::default()));
             game.inventory[game.selected] = Some(egg.clone());
             assert!(game.use_spawn_egg(&egg).unwrap());
             assert!(game.held().is_none());
