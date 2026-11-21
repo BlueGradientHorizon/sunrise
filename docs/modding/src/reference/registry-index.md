@@ -67,7 +67,7 @@ entry leaves out.
 | `dependencies` | A mod or native mod's [manifest dependencies](../concepts/dependencies.md): `{ id, version, optional, side }`, sorted by `id`. `version` is a SemVer range rendered as text. `optional` is omitted unless true; `side` is omitted unless limited to `client` or `server`. The publisher omits this field when a mod has no dependencies. An explicit `[]` asserts that the manifest has none. Never add this field to `mods/<id>.toml`. |
 | `requires` | A modpack's exact pins: `{ id, version, sha256 }`, each a version in this index with that hash. These are not mod dependencies. |
 | `file` | A plain name with the kind's extension (`.smod`, `.spack`, `.zip`, `.sshader`), an `https://` URL (the registry's release `https://github.com/sunrise-org/sunrise-mods/releases/download/<id>-<version>/<name>`, or an asset of the project's own repository, `https://github.com/<owner>/<repo>/releases/download/<tag>/<name>`: the launcher accepts exactly these shapes), the size (at most 64 MiB), the lowercase hex SHA-256, and the `.minisig` text when the project has a key. |
-| `revoked` | Files taken down: one file by `sha256`, or every version of `id` without it. The launcher refuses to install them and turns installed copies off with the reason. |
+| `revoked` | Files taken down: one file by `sha256`, or every version of `id` without it. The launcher refuses to install them and turns installed copies off with the reason. A takedown of every version also stops listing the project's Nightly source; one by `sha256` leaves it. |
 
 Readers ignore fields they don't know, so an optional field can be added to schema 1. Renaming or removing a field, or
 changing what one means, makes schema 2.
@@ -320,13 +320,14 @@ A version can declare `sunrise = "26.3-0.1.0"`: the tag is the Minecraft version
 a hyphen, and Sunrise's `X.Y.Z` without prerelease or build metadata. This field is optional during migration.
 `registry check`, `registry review` and `registry build` accept `--releases <file>`: a JSON array of objects with
 `tag` and `commit` (40 hex digits, published as lowercase), one per stable release. A declared tag must be in the
-list, and a row that declares one is refused when no file is given; a row without `sunrise` needs none. When package
+list (a reader of an index that lists releases leaves out a version naming another), and a row that declares one is refused when no file is given; a row without `sunrise` needs none. When package
 files are checked, a native package's `[native] sunrise` pin must match the named commit. Once a version is listed
 with `sunrise`, `registry review` refuses changing or removing it. The workflow supplies the file; the tool does not
 discover releases itself.
 
 An entry with neither versions nor a Nightly source publishes nothing and keeps its id; its id, kind and owners are
-still checked.
+still checked. A project with only a Nightly source may leave out its icon and screenshots; the ones it has are
+kept in the registry like any other project's.
 
 A `[[versions]]` row with `sunrise` must set `file` to the author's release asset, for example
 `https://github.com/you/example/releases/download/v0.1.0/example-0.1.0.smod`. Use the project's own
