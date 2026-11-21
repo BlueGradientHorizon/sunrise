@@ -225,9 +225,11 @@ class StableModApiTests(unittest.TestCase):
                     mock.patch.object(nightly.subprocess, "run",
                                       side_effect=self.judge(SURFACE, export, "identical" if export is SURFACE
                                                              else "additive")):
+                self.notes.write_text("Existing notes.\n")
                 if error:
                     with self.assertRaisesRegex(SystemExit, error):
                         nightly.stable_mod_api(HEAD, tag, self.notes)
+                    self.assertEqual(self.notes.read_text(), "Existing notes.\n")
                 else:
                     nightly.stable_mod_api(HEAD, tag, self.notes)
 
