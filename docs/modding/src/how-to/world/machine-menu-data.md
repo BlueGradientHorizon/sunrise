@@ -35,8 +35,9 @@ holder in the server level in place.
 
 After sizing, call `entity.set_data_slot(host, index, value)` for scalar updates.
 This method does not resize: an absent index returns `Ok(false)`. Both methods use the
-same silent storage write target and journal. Successful writes mark the chunk unsaved without sending a block
-update or a neighbor notice; call `set_changed` explicitly if needed. Transactions retain their
+same silent storage write target and journal. Because menu data is transient and not
+serialized, writes do not mark the chunk unsaved, send a block update, or emit a
+neighbor notice; call `set_changed` explicitly when persisted state changes. Transactions retain their
 ordinary behavior; an aborted outer transaction restores the vector that existed
 before its first write, including writes committed by children. The normal menu
 broadcast delivers committed changes to viewers. To draw those values on the client, see
@@ -71,8 +72,12 @@ its container; acquire a new handle for the replacement.
 `BlockEntityPart::block_entity_tick` receives a `BlockEntityTickEvent<'_>` and no
 separate Host argument. Its `subject` lends the live row. Use the view for the
 machine's own data, saved fields and internal slots. Derive owned values from the
-view before taking the Host for other objects. A second loan checks that the same
-entity is still loaded in the same level and block state; it returns `None` on loss.
+view before taking the Host for other objects. Each `with_view` loan checks that
+the same entity instance is still loaded in the same level (same generation) and
+that the live block at `pos` is still valid for the block entity's type
+(`BlockEntityType.isValid`). In-place block-state updates to another valid state
+keep the loan valid and expose the updated live `BlockState` through `view.state()`;
+removal, replacement, or an invalid block returns `None`.
 
 ```rust,ignore
 fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
@@ -87,13 +92,19 @@ fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
 ```
 
 `item_slot` lends a read-only stack; call `to_owned` only if you need it after
-releasing the view. `set_nbt` edits a saved field without reloading the entity.
-Successful edits mark the chunk unsaved once per loan, and the normal menu sync
-still runs. No edit sends a block update or a neighbor notice automatically.
-If a neighbor write must commit with the subject edit, use `tick.transaction` and
-return `Err` if reacquiring the subject or checking its inputs fails. A read-only
-or no-op loan does not copy storage or mark the chunk unsaved. A type with no
-subscriber skips the tick entirely; pending load notices still come first.
+releasing the view. `set_nbt` edits a saved field without reloading the entity:
+`"Items"` is reserved only on container-backed block entities whose block declares
+engine-managed item slots (`item_slots() > 0`); on slotless block entities
+(`item_slots() == 0`), `set_nbt("Items", ...)` writes or removes the NBT field
+directly and clears any disk-decoded fallback item slots.
+Ticker-view writes do not automatically mark the chunk unsaved, send a block
+update, or notify neighbors—call `set_changed` explicitly through `tick.host()`
+when persisted state changes (matching vanilla `BlockEntity.setChanged` /
+`AbstractFurnaceBlockEntity.serverTick`). Normal menu sync still runs for transient
+data slots. If a neighbor write must commit with the subject edit, use
+`tick.transaction` and return `Err` if reacquiring the subject or checking its
+inputs fails. A read-only or no-op loan does not copy or journal storage. A type
+with no subscriber skips the tick entirely; pending load notices still come first.
 
 ## One-shot client effects
 

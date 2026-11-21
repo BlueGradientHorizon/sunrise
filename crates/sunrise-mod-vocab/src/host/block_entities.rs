@@ -193,11 +193,11 @@ pub trait BlockEntitiesBackendMut {
         shapes: Option<BlockEntityShapes>,
     ) -> Result<bool, BlockEntityShapesError>;
     /// Side: server.
-    /// Set a mod block entity's menu data slot in place, joining the current transaction.
-    /// A successful write marks the chunk unsaved, but these slots are not serialized;
-    /// keep persistent values in the block entity's NBT. This issues no notification;
-    /// call set_changed explicitly if needed.
-    /// Ok(false) for a vanilla entity, invalid slot or no change. Does not resize slots.
+    /// Set a mod block entity's transient menu data slot in place, joining the current
+    /// transaction. These slots are not serialized, and writing them does not mark the
+    /// chunk unsaved or issue any notification; keep persistent values in the block
+    /// entity's NBT and call `set_changed` explicitly when persisted state changes.
+    /// `Ok(false)` for a vanilla entity, invalid slot or no change. Does not resize slots.
     #[access(WorldOnly)]
     fn block_entity_set_data_slot(
         &mut self,
@@ -206,9 +206,11 @@ pub trait BlockEntitiesBackendMut {
         value: i32,
     ) -> Result<bool, BlockEntityError>;
     /// Side: server.
-    /// Sizes a mod block entity's transient menu data explicitly, with the same save mark,
-    /// journal and lack of notification as scalar data-slot writes.
-    /// Removed, replaced or reloaded holders return BlockEntityDataError::Stale.
+    /// Sizes a mod block entity's transient menu data explicitly, with no 256-slot cap,
+    /// joining the current transaction. Writing transient menu data does not mark the
+    /// chunk unsaved or issue any notification; call `set_changed` explicitly when
+    /// persisted state changes. Removed, replaced or reloaded holders return
+    /// `BlockEntityDataError::Stale`.
     #[access(WorldOnly)]
     fn block_entity_set_data_slots(
         &mut self,
