@@ -15,8 +15,9 @@ On `dyn LevelRandomHost`, `dyn HitHost` or `dyn LevelWriteHost`, replace \
 `let mut rng = host.random()?; let roll = rng.next_int_bound(bound); host.set_random(rng);` \
 with `let roll = host.with_random(|rng| rng.next_int_bound(bound))?;`. \
 If your mod chooses the seed, it must own the generator: use `LegacyRandomSource::new(seed)` \
-and import `RandomSource` to draw from it. Do not try to replace or reseed the level's stream, \
-and do not rely on panic/unwind or transaction abort rolling back `Level.random` draws. \
+and import `RandomSource` to draw from it. Do not try to replace or reseed the level's stream. \
+Behavior only (`handle:LevelRef::with_random` and `handle:LevelRandomHost::with_random`): \
+keep the same calls, but treat their draws as final even if the closure panics or a transaction aborts. \
 If you implement a restricted host, replace its `random` and `set_random` methods with \
 `fn lend_random(&mut self, draw: RandomDraw<'_>)`. Lend its stream directly with `draw.run(&mut self.rng)`, \
 or omit `lend_random` to decline every draw.\
