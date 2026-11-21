@@ -9092,3 +9092,7 @@ mod breeding_heart_tests;
 #[cfg(test)]
 #[path = "frame_projectile_tests.rs"]
 mod frame_projectile_tests;
+
+#[cfg(test)]
+#[path = "projectile_targets_tests.rs"]
+mod projectile_targets_tests;

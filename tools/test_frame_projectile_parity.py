@@ -35,6 +35,7 @@ def ops():
 
     for rule in ['spawn_mobs', 'advance_time', 'advance_weather', 'mob_griefing']:
         run(f'/gamerule {rule} false', record=False)
+    run('/gamerule entity_drops true', record=False)
     run('/fill 0 209 0 15 209 15 minecraft:stone', 256)
     run('/fill 8 210 0 8 212 15 minecraft:stone', 48)
     run('/execute if loaded 7 210 6', 1)
@@ -56,9 +57,74 @@ def ops():
     return out
 
 
+def non_mob_target_ops():
+    out = []
+
+    def run(text, expected=None, record=True):
+        out.append(cmd(text, record=record, expect_result=expected))
+
+    for rule in ['spawn_mobs', 'advance_time', 'advance_weather', 'mob_griefing']:
+        run(f'/gamerule {rule} false', record=False)
+    run('/gamerule entity_drops true', record=False)
+    run('/kill @e[type=!minecraft:player]', record=False)
+    run('/fill 0 209 0 15 209 15 minecraft:stone', record=False)
+    run('/fill 0 210 0 15 215 15 minecraft:air', record=False)
+    run('/fill 11 210 0 11 213 15 minecraft:stone', record=False)
+    # Wall at x=8 for painting and glow item frame lanes (z=2, 4).
+    run('/fill 8 210 1 8 212 5 minecraft:stone', record=False)
+    # Fence post at (7, 210, 12) for the tied leash knot.
+    run('/setblock 7 210 12 minecraft:oak_fence', record=False)
+    # Wall targets: painting (z=2) hit by snowball, glow frame (z=4) hit by egg.
+    run('/summon minecraft:painting 7.5 210.5 2.5 {block_pos:[I;7,210,2],facing:1b,variant:"minecraft:kebab",Tags:["t_paint"]}', 1)
+    run('/summon minecraft:glow_item_frame 7.5 210.5 4.5 {Facing:4b,Tags:["t_glow"],Item:{id:"minecraft:diamond",count:1}}', 1)
+    # Armor stands: normal (z=6) by arrow, marker (z=8) by arrow, nogravity (z=10) by wind_charge.
+    run('/summon minecraft:armor_stand 7.5 210.0 6.5 {Tags:["t_stand"]}', 1)
+    run('/summon minecraft:armor_stand 7.5 210.0 8.5 {Marker:1b,Tags:["t_marker"]}', 1)
+    run('/summon minecraft:armor_stand 7.5 210.0 10.5 {NoGravity:1b,Tags:["t_nograv"]}', 1)
+    # Natural tied leash knot (z=12) by arrow, falling sand (z=14) by arrow.
+    run('/summon minecraft:pig 7.5 210.0 13.5 {NoAI:1b,Silent:1b,leash:[I;7,210,12],Tags:["t_pig"]}', 1)
+    out.append({'op': 'tick', 'n': 1})
+    run('/summon minecraft:falling_block 7.5 211.0 14.5 {BlockState:"minecraft:sand",Time:1,Motion:[0.0d,0.0d,0.0d],Tags:["t_fb"]}', 1)
+    # Fire projectiles east from x=5.5.
+    run('/summon minecraft:snowball 5.5 210.5 2.5 {Motion:[1.0d,0.0d,0.0d],Tags:["p_paint"]}', 1)
+    run('/summon minecraft:egg 5.5 210.5 4.5 {Motion:[1.0d,0.0d,0.0d],Tags:["p_glow"]}', 1)
+    run('/summon minecraft:arrow 5.5 210.5 6.5 {Motion:[1.0d,0.0d,0.0d],Tags:["p_stand"]}', 1)
+    run('/summon minecraft:arrow 5.5 210.5 8.5 {Motion:[1.0d,0.0d,0.0d],Tags:["p_marker"]}', 1)
+    run('/summon minecraft:wind_charge 5.5 210.5 10.5 {acceleration_power:0.0d,Motion:[1.0d,0.0d,0.0d],Tags:["p_nograv"]}', 1)
+    run('/summon minecraft:arrow 5.5 210.6 12.5 {Motion:[1.0d,0.0d,0.0d],Tags:["p_knot"]}', 1)
+    run('/summon minecraft:arrow 5.5 211.3 14.5 {Motion:[1.0d,0.0d,0.0d],Tags:["p_fb"]}', 1)
+    out.append({'op': 'tick', 'n': 10})
+    # Check each target and its projectile outcome.
+    run('/execute if entity @e[tag=t_paint]')
+    run('/execute if entity @e[type=minecraft:item,x=5,y=209,z=1,dx=4,dy=3,dz=2,nbt={Item:{id:"minecraft:painting"}}]')
+    run('/execute if entity @e[tag=t_glow]')
+    run('/data get entity @e[tag=t_glow,limit=1] Item.id')
+    run('/execute if entity @e[type=minecraft:item,x=5,y=209,z=3,dx=4,dy=3,dz=2,nbt={Item:{id:"minecraft:diamond"}}]')
+    run('/execute if entity @e[tag=t_stand]')
+    run('/execute if entity @e[tag=p_stand]')
+    run('/execute if entity @e[type=minecraft:item,x=5,y=209,z=5,dx=4,dy=3,dz=2,nbt={Item:{id:"minecraft:armor_stand"}}]')
+    run('/execute if entity @e[tag=t_marker]')
+    # Marker arrow flew past x=7.5 to the backstop at x=11 (or floor past x=8).
+    run('/execute if entity @e[tag=p_marker,x=8,y=209,z=8,dx=4,dy=4,dz=1]')
+    # Wind charge passed straight through NoGravity stand and burst on backstop, leaving stand alive.
+    run('/execute if entity @e[tag=t_nograv]')
+    run('/execute if entity @e[tag=p_nograv]')
+    # Tied leash knot broke and dropped the pig's lead.
+    run('/execute if entity @e[type=minecraft:leash_knot,x=6,y=209,z=11,dx=3,dy=3,dz=3]')
+    run('/execute if entity @e[tag=p_knot]')
+    run('/execute if entity @e[type=minecraft:item,x=5,y=209,z=11,dx=5,dy=3,dz=4,nbt={Item:{id:"minecraft:lead"}}]')
+    # Falling block deflected the arrow back (x < 7.2) and still landed as sand.
+    run('/execute if entity @e[tag=p_fb,x=4,y=209,z=14,dx=3.2,dy=4,dz=1]')
+    run('/execute if block 7 210 14 minecraft:sand')
+    return out
+
+
 if __name__ == '__main__':
-    driver.corpus_module.groups = lambda: [('setup', driver.corpus_module.group_setup()),
-                                           ('arrows against item frames', ops())]
+    driver.corpus_module.groups = lambda: [
+        ('setup', driver.corpus_module.group_setup()),
+        ('arrows against item frames', ops()),
+        ('projectiles against non-mob pickable targets', non_mob_target_ops()),
+    ]
     if '--work-dir' not in sys.argv:
         sys.argv += ['--work-dir', str(Path(__file__).resolve().parents[1] / '.local/frame-projectile-parity')]
     driver.main()
