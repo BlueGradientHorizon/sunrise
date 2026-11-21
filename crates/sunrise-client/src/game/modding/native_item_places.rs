@@ -2374,7 +2374,7 @@ pub(super) mod tests {
             let entity = host.entity(500).unwrap();
             let items = entity.capability(host, &ENTITY_ITEMS, ()).unwrap();
             game.native_lifecycle.begin_close();
-            game.native_lifecycle.world_close_final();
+            game.native_lifecycle.retire();
             assert!(entity.capability(game, &ENTITY_ITEMS, ()).is_none());
             let host: &mut dyn ServerHost = game;
             let sticks =

@@ -642,7 +642,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(id, PassageId::from_raw(i + 2));
             }
             game.passages.held.insert(PassageId::from_raw(1), doorway());
-            game.native_lifecycle_world_failed("test failure");
+            game.native_lifecycle_world_closed();
             assert!(game.passages.levels.is_empty() && game.passages.index.is_empty());
             assert!(game.passages.dirty.is_empty() && game.passages.held.is_empty());
         });

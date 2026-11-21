@@ -1708,9 +1708,14 @@ impl Game<'_> {
 
     /// Every level still open closes with the server, however it ends
     /// (`MinecraftServer.stopServer`'s `level.close()` loop), in vanilla's
-    /// order of its levels: the Overworld, the Nether, the End.
+    /// order of its levels: the Overworld, the Nether, the End, followed by
+    /// any runtime dimensions still open.
     pub(super) fn native_levels_closing(&mut self) {
         for dim in Dim::all() {
+            self.native_level_closed(dim);
+        }
+        let extra = self.levels.heard_open.clone();
+        for dim in extra {
             self.native_level_closed(dim);
         }
     }
