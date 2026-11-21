@@ -54,7 +54,8 @@ fallback. At server startup every configured level (including datapack dimension
 selects the initial world spawn before the other levels open. `create_spawn_position` runs there
 for normal fresh worlds; the Debug preset uses its fixed spawn without that hook. The remaining
 levels follow the `LEVEL_STEM` registry traversal; mods must not assume a particular order among
-them. `host.levels().list_levels()`, saves and shutdown use that creation order. A player's saved
+them. `host.levels().list_levels()`, ticks of eligible levels, saves and shutdown use that
+creation order. A player's saved
 dimension does not add to the registry. The server then validates and activates their saved
 tickets and waits for the ticketed chunks before `server_started`, even if no player visits those levels.
 
@@ -65,8 +66,10 @@ world without creating or overwriting the owner's player file.
 
 On the client, resolve the level in `client_level_load` with `host.level(event.dimension)` before it
 is installed. Its chunks arrive later, but it can already read the datapack registries synchronized
-by its server. On replacement, `client_level_unload` follows for the retiring level: its handle,
-loaded chunks and available synchronized registries still resolve until that callback finishes.
+by its server for that configuration. On dimension replacement, `client_level_unload` follows
+for the retiring level: its handle, loaded chunks and available synchronized registries still
+resolve until that callback finishes. On reconfiguration, Unload reads the retiring configuration
+and the next Load reads the new one, even if the new registry set arrived before Unload ran.
 The new level's handle remains valid when that level is installed.
 
 Success means queue admission, not apply completion. Apply failures are logged with the

@@ -20,8 +20,9 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
     };
     use mod_api::{
         BlockState, ClientHost, ClientLevelLoadEvent, ClientLevelUnloadEvent, DatapackCandidate,
-        DatapackField, DatapackFieldKind, DatapackRegistrySet, DatapackRegistrySync, DatapackValue,
-        Hooks, LevelRef, ModEntry, Registrar, RegistrationContext,
+        DatapackField, DatapackFieldKind, DatapackReadError, DatapackRegistrySet,
+        DatapackRegistrySync, DatapackValue, Hooks, LevelRef, ModEntry, Registrar,
+        RegistrationContext,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_client::{
@@ -29,7 +30,10 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
         level_loading::Reason,
         net::{Event, ingress},
     };
-    use sunrise_protocol::packets::play::SpawnInfo;
+    use sunrise_protocol::packets::{
+        configuration::CustomPayload,
+        play::{Clientbound, SpawnInfo},
+    };
 
     struct Notice {
         kind: &'static str,
@@ -116,26 +120,31 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 };
                 let _server = logged_client(game);
                 let declarations = mod_api::__private::datapack_registry_declarations();
-                let candidate = DatapackCandidate::build(
-                    declarations,
-                    &[(
-                        "data/addon/levels/spell/fire.json".into(),
-                        vec![("fixture".into(), br#"{"power":17}"#.to_vec())],
-                    )],
-                )
-                .unwrap();
-                let snapshot = DatapackRegistrySet::first(candidate, 900)
-                    .snapshot(declarations, |_| true)
-                    .encode()
-                    .unwrap();
-                for chunk in datapack_net::chunks(&snapshot).unwrap() {
-                    game.remote
-                        .as_mut()
-                        .unwrap()
-                        .datapacks
-                        .accept_chunk(&chunk)
-                        .unwrap();
-                }
+                let candidate = |power| {
+                    DatapackCandidate::build(
+                        declarations,
+                        &[(
+                            "data/addon/levels/spell/fire.json".into(),
+                            vec![(
+                                "fixture".into(),
+                                format!(r#"{{"power":{power}}}"#).into_bytes(),
+                            )],
+                        )],
+                    )
+                    .unwrap()
+                };
+                let encode = |set: &DatapackRegistrySet| {
+                    set.snapshot(declarations, |_| true).encode().unwrap()
+                };
+                let receiver = |set: &DatapackRegistrySet| {
+                    let mut receiver = datapack_net::Receiver::default();
+                    for chunk in datapack_net::chunks(&encode(set)).unwrap() {
+                        receiver.accept_chunk(&chunk).unwrap();
+                    }
+                    receiver
+                };
+                game.remote.as_mut().unwrap().datapacks =
+                    receiver(&DatapackRegistrySet::first(candidate(17), 900));
                 game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
                 let overworld = game.level(&login.dimension).unwrap();
                 game.world
@@ -162,7 +171,50 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                     None,
                     "a synchronized registry does not revive a stale level handle"
                 );
+                let old_entry = nether
+                    .datapack_handle(game, "levels:spell", "addon:fire")
+                    .unwrap();
+                let next_set = DatapackRegistrySet::first(candidate(29), 901);
                 let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
+                tx.send(Event::Reconfiguring).unwrap();
+                // The next configuration has already accepted all its registry fragments
+                // and queued the handoff before the game can unload the retiring level.
+                tx.send(Event::Reconfigured {
+                    registries: game.remote.as_ref().unwrap().registries.clone(),
+                    datapacks: receiver(&next_set),
+                })
+                .unwrap();
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .backlog
+                    .extend(rx.take_turn().into_iter().map(|receipt| {
+                        let (event, credit) = receipt.into_parts();
+                        Received::Event(event, credit)
+                    }));
+                game.poll_remote_events(true).unwrap();
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                let next = game.level(&login.dimension).unwrap();
+                assert_eq!(nether.datapack_entries(game, "levels:spell"), None);
+                assert_eq!(
+                    next.datapack_read(game, &old_entry, &mut |_| unreachable!()),
+                    Err(DatapackReadError::WrongSession),
+                );
+                let next_entry = next
+                    .datapack_handle(game, "levels:spell", "addon:fire")
+                    .unwrap();
+                let reloaded = next_set.reload(candidate(31)).unwrap();
+                for data in datapack_net::chunks(&encode(&reloaded)).unwrap() {
+                    game.apply_packet(Clientbound::CustomPayload(CustomPayload {
+                        channel: datapack_net::CHANNEL.into(),
+                        data,
+                    }))
+                    .unwrap();
+                }
+                assert_eq!(
+                    next.datapack_read(game, &next_entry, &mut |_| unreachable!()),
+                    Err(DatapackReadError::StaleGeneration),
+                );
                 tx.send(Event::Reconfiguring).unwrap();
                 let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
                 game.remote
@@ -198,6 +250,8 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
             ("unload", "minecraft:overworld"),
             ("load", "minecraft:overworld"),
             ("unload", "minecraft:overworld"),
+            ("load", "minecraft:overworld"),
+            ("unload", "minecraft:overworld"),
         ]
     );
     assert_eq!(log[0].level, log[2].level);
@@ -205,9 +259,20 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
     assert_ne!(log[0].level.epoch(), log[1].level.epoch());
     assert!(log[0].block.is_none() && log[1].block.is_none());
     assert_eq!(
-        [log[0].power, log[1].power, log[2].power],
-        [Some(17); 3],
-        "the negotiated registry is readable during both Loads and the replacement's Unload"
+        log.iter().map(|notice| notice.power).collect::<Vec<_>>(),
+        [
+            Some(17),
+            Some(17),
+            Some(17),
+            Some(17),
+            Some(29),
+            Some(31),
+            None,
+            None,
+            None,
+            None,
+        ],
+        "retiring levels see their own configuration and the new level sees its handoff and reload"
     );
     assert!(
         log[2].block.is_some(),

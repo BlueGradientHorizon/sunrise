@@ -13,6 +13,9 @@ pub(super) struct WorldRequest {
     /// The account the world opens under, for an integrated server
     /// (`IntegratedServer.getSingleplayerProfile`): its name and UUID.
     owner: Option<(String, u128)>,
+    /// A fixture's effective registry traversal, before shape projection.
+    #[cfg(test)]
+    pub(super) stem_order: Option<&'static [&'static str]>,
 }
 
 pub(super) struct PreparedWorld {
@@ -109,6 +112,8 @@ impl WorldRequest {
             create: create.cloned(),
             rule_registry,
             owner: None,
+            #[cfg(test)]
+            stem_order: None,
         })
     }
 
@@ -138,6 +143,8 @@ impl WorldRequest {
             create,
             rule_registry,
             owner,
+            #[cfg(test)]
+            stem_order,
         } = self;
         let name = name.as_deref();
         sunrise_client::biome::Biomes::forget_missing_warnings();
@@ -292,7 +299,13 @@ impl WorldRequest {
             &level.enabled_features,
             &pack.additional_data,
         );
-        let (shapes, configured_levels) = level_shapes(&mut overrides, &options.resources, &level);
+        let (shapes, configured_levels) = level_shapes(
+            &mut overrides,
+            &options.resources,
+            &level,
+            #[cfg(test)]
+            stem_order,
+        );
         // The bounded registry-loader leaf slice: fail world preparation before streaming,
         // rather than letting the flat-generator fallback swallow a selected pack's codec error.
         overrides.validate_fill_layers(pack.assets.registry)?;
@@ -681,13 +694,29 @@ fn level_shapes(
     overrides: &mut sunrise_world::worldgen::overrides::WorldgenOverrides,
     resources: &std::path::Path,
     level: &Level,
+    #[cfg(test)] stem_order: Option<&[&str]>,
 ) -> (sunrise_client::chunk::LevelShapes, Vec<Dim>) {
     if let Some(generator) = &level.generator {
         generator.merge_dimensions(overrides);
     } else {
         overrides.include_implicit_level_stems();
     }
-    let (shapes, stems) = shapes_of(overrides, overrides.level_stems());
+    let stems = overrides.level_stems();
+    #[cfg(test)]
+    let (shapes, stems) = match stem_order {
+        Some(order) => {
+            assert_eq!(order.len(), overrides.level_stems().count());
+            shapes_of(
+                overrides,
+                order
+                    .iter()
+                    .map(|id| overrides.level_stems().find(|(key, _)| key == id).unwrap()),
+            )
+        }
+        None => shapes_of(overrides, stems),
+    };
+    #[cfg(not(test))]
+    let (shapes, stems) = shapes_of(overrides, stems);
     Dim::set_extra(shapes.extra.iter().map(|level| level.id));
     set_level_sea_levels(
         overrides,
@@ -1554,6 +1583,7 @@ mod tests {
         with_game(|game| {
             let request = WorldRequest {
                 owner: None,
+                stem_order: None,
                 save_root: dir.clone(),
                 folder: "test".into(),
                 name: Some("test".into()),
@@ -2013,6 +2043,7 @@ mod tests {
                     with_game_role(root.clone(), role, |game| {
                         let request = WorldRequest {
                             owner: None,
+                            stem_order: None,
                             save_root: world.clone(),
                             folder: "world".into(),
                             name: Some("Region fixture".into()),
@@ -2138,6 +2169,7 @@ mod unused_feature_startup_tests {
                 creative: false,
                 create: None,
                 owner: None,
+                stem_order: None,
                 rule_registry: Level::default().rule_registry,
             };
             let result = request.prepare(
@@ -2253,6 +2285,7 @@ mod unused_feature_preservation_tests {
             creative: false,
             create: None,
             owner: None,
+            stem_order: None,
             rule_registry: Level::default().rule_registry,
         };
         assert!(

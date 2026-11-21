@@ -459,8 +459,8 @@ pub(super) struct TickTiming {
 pub(super) struct Levels {
     pub(super) parked: HashMap<Dim, Parked>,
     /// Loaded server levels in creation order (`MinecraftServer.levels`'s
-    /// insertion-ordered `LinkedHashMap`), so saving and shutdown iterate them
-    /// in vanilla's level order regardless of which level is swapped into `Game`.
+    /// insertion-ordered `LinkedHashMap`), shared by tick, save, close and Host
+    /// enumeration regardless of which level is swapped into `Game`.
     order: Vec<Dim>,
     /// Whether the level held in `Game`'s own fields has been closed by server
     /// shutdown (`close_loaded_levels_for_stop`).
@@ -1565,28 +1565,27 @@ impl Game<'_> {
         None
     }
 
-    /// The levels this server tick runs, in `MinecraftServer.levels` order
-    /// (the Overworld, the Nether, the End): every level with a player in
-    /// it, forced chunks or a `/pregen` task, or the Overworld while idle.
+    /// The loaded levels this server tick runs, in `MinecraftServer.levels`
+    /// creation order. A level with no work can be skipped; the Overworld
+    /// supplies the idle pass when none qualify.
     pub(super) fn levels_to_tick(&self) -> Vec<Dim> {
         let guests = self
             .lan
             .as_ref()
             .map_or(&[][..], |h| h.hub.guests.as_slice());
-        let mut dims: Vec<Dim> = Dim::all()
-            .into_iter()
-            .filter(|d| {
-                // `/forceload`ed chunks, or a native mod's tickets.
-                let held = |s: &Streaming| !s.forced.is_empty();
-                let forced = if *d == self.dim {
-                    held(&self.streaming)
-                } else {
-                    self.levels
-                        .parked
-                        .get(d)
-                        .is_some_and(|p| held(&p.streaming))
-                };
-                guests.iter().any(|g| g.dimension == d.id() && g.participates_in_player_simulation())
+        let mut dims = self.loaded_level_order();
+        dims.retain(|d| {
+            // `/forceload`ed chunks, or a native mod's tickets.
+            let held = |s: &Streaming| !s.forced.is_empty();
+            let forced = if *d == self.dim {
+                held(&self.streaming)
+            } else {
+                self.levels
+                    .parked
+                    .get(d)
+                    .is_some_and(|p| held(&p.streaming))
+            };
+            guests.iter().any(|g| g.dimension == d.id() && g.participates_in_player_simulation())
                     // A viewer count not yet told to 0 (`tick_mod_container_viewers`).
                     || self.mod_container_viewers.keys().any(|(k, _)| *k == d.id())
                     || self.player_bed_levels().any(|b| b == *d)
@@ -1602,8 +1601,7 @@ impl Game<'_> {
                     || !self.portal_tickets_in(*d).is_empty()
                     // So does a viewed `Ticking` area (#3716), for its chunks only.
                     || self.viewed_level(*d) == Some(true)
-            })
-            .collect();
+        });
         if dims.is_empty() {
             dims.push(Dim::Overworld);
         }

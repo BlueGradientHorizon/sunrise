@@ -11,13 +11,15 @@ pub trait LevelDatapacksBackend {
     /// session last loaded them. On a client these are the entries the server sent at join and
     /// after each reload; a declared registry omitted from the snapshot is empty. An empty
     /// list means the registry has no entries. `None` means the level or registry is
-    /// unavailable. The entering level in `client_level_load` and the retiring level in
-    /// `client_level_unload` can read the synchronized set when available. Reads nothing from disk.
+    /// unavailable. In `client_level_load` the entering level reads its own configuration;
+    /// in `client_level_unload` the retiring level still reads its old configuration even if the
+    /// next has already arrived. Reads nothing from disk.
     #[access(WorldOnly)]
     fn level_datapack_entries(&self, level: LevelRef, registry: &str) -> Option<Vec<String>>;
     /// Side: both.
-    /// A handle to `entry` of `registry` at the published generation (on a client, the one its
-    /// server last sent). A handle kept across a reload fails its next read with
+    /// A handle to `entry` of `registry` at the level's published generation, including the
+    /// entering or retiring level in a client level callback. On a client this is the latest
+    /// set adopted for that level's configuration. A handle kept across a reload fails its next read with
     /// [`DatapackReadError::StaleGeneration`]; one from another session fails with
     /// [`DatapackReadError::WrongSession`]. An unknown registry, a stale or parked level, or no
     /// published set returns [`DatapackReadError::UnknownRegistry`]; a missing entry in the
@@ -39,7 +41,9 @@ pub trait LevelDatapacksBackend {
     /// and look them up again, or clone only the fields you need as an owned snapshot.
     ///
     /// After finding the level's published set, the read checks the handle's session, then
-    /// generation, then the registry and entry. An unavailable set, unknown registry or
+    /// generation, then the registry and entry. The retiring client `LevelRef` stops resolving
+    /// after Unload, and entry handles from that configuration cannot name entries in the next one.
+    /// An unavailable set, unknown registry or
     /// missing entry is refused as in [`LevelRef::datapack_handle`]. A host without a backend
     /// returns [`DatapackReadError::Unavailable`]. No error calls `visit`.
     #[access(WorldOnly)]

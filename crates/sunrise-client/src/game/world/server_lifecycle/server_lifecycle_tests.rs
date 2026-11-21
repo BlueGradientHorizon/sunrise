@@ -535,7 +535,7 @@ fn dedicated_port_bind_failure_emits_only_stopped_without_touching_world() {
 }
 
 /// The real world-open path promotes the Overworld, initializes its spawn, then
-/// walks the resolved stems. Later saves and closes reuse that creation order.
+/// walks the resolved stems. Tick, save, close and Host enumeration reuse that order.
 #[test]
 #[ignore = "daily"]
 fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
@@ -633,36 +633,17 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
                 )
                 .unwrap();
                 request.save_root = root.path().to_path_buf();
-                let mut prepared = game.prepare_world_and_rules(request).unwrap();
-                assert!(prepared.level.world_spawn.is_none());
-                let mut ids: Vec<_> = prepared
-                    .configured_levels
-                    .iter()
-                    .map(|dim| dim.id())
-                    .collect();
-                ids.sort_unstable();
-                assert_eq!(
-                    ids,
-                    [
-                        "minecraft:overworld",
-                        "minecraft:the_end",
-                        "minecraft:the_nether",
-                        "test:first",
-                        "test:last"
-                    ]
-                );
-                // Supply a traversal whose custom stems are not in filename order and whose
-                // built-ins are not a tail. The game promotes only the Overworld.
-                prepared.configured_levels = [
+                // Supply the effective registry's traversal before the normal prepare path
+                // projects its shapes. This is not a claim about Java's hash-bucket order.
+                request.stem_order = Some(&[
                     "test:last",
                     "minecraft:the_nether",
                     "minecraft:overworld",
                     "test:first",
                     "minecraft:the_end",
-                ]
-                .into_iter()
-                .map(Dim::from_id)
-                .collect();
+                ]);
+                let prepared = game.prepare_world_and_rules(request).unwrap();
+                assert!(prepared.level.world_spawn.is_none());
                 let order = [
                     "minecraft:overworld",
                     "test:last",
@@ -691,6 +672,20 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
                         &order[..=i]
                     );
                 }
+                // Set work on a mix of built-in and custom levels, including ones
+                // whose registry order crosses the built-in and filename order.
+                for id in order {
+                    game.enter_level(Dim::from_id(id)).unwrap();
+                    game.streaming.forced.insert((0, 0));
+                }
+                assert_eq!(
+                    game.levels_to_tick()
+                        .into_iter()
+                        .map(Dim::id)
+                        .collect::<Vec<_>>(),
+                    order
+                );
+                game.enter_level(Dim::Nether).unwrap();
                 game.save_game().unwrap();
                 assert_eq!(game.dim, Dim::Nether);
                 game.close_loaded_levels_for_stop();
