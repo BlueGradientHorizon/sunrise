@@ -1,11 +1,64 @@
-//! Breathing for native mods: `LivingEntity.baseTick`'s air supply, the part
-//! that raises or lowers it. A player (`motion/environment.rs`) and a mob
-//! (`mobs/ai.rs`) work out what vanilla does this tick, `breathe` lets the
-//! mods change it (`native_living_breathe`, NeoForge's `LivingBreatheEvent`),
-//! and the caller applies the answer. Servers only: the callers keep it off a
-//! client's prediction.
+//! Shared `LivingEntity.baseTick` air supply logic and native mod hooks.
+//! Players (`motion/environment.rs`), mobs (`mobs/ai.rs`) and armor stands
+//! (`game/entities/armor_stands.rs`) decide breathing from [`AirState`] and
+//! `#minecraft:can_breathe_under_water`, let mods alter it via [`breathe`]
+//! (`native_living_breathe`, NeoForge's `LivingBreatheEvent`), and apply the
+//! result with [`drown`]. Servers only: callers keep it off client prediction.
 
+use std::collections::{HashMap, HashSet};
 use sunrise_world::native_load_context::LoopContext;
+
+/// Entity type tag checked by `LivingEntity.canBreatheUnderwater`.
+pub const CAN_BREATHE_UNDER_WATER: &str = "minecraft:can_breathe_under_water";
+
+/// Default `LivingEntity.canBreatheUnderwater`: membership in `#minecraft:can_breathe_under_water`.
+pub fn can_breathe_under_water(kind: &str, entity_tags: &HashMap<String, HashSet<String>>) -> bool {
+    entity_tags
+        .get(CAN_BREATHE_UNDER_WATER)
+        .is_some_and(|members| members.contains(kind))
+}
+
+/// Inputs to `LivingEntity.baseTick`'s generic air decision.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AirState {
+    pub eye_in_water: bool,
+    pub in_bubble_column: bool,
+    pub can_breathe_under_water: bool,
+    pub water_breathing: bool,
+    pub breath_of_the_nautilus: bool,
+    pub immune: bool,
+}
+
+impl AirState {
+    /// Whether the entity's eyes are in water outside a bubble column.
+    pub const fn submerged(self) -> bool {
+        self.eye_in_water && !self.in_bubble_column
+    }
+
+    /// Whether vanilla `LivingEntity.baseTick` takes the drowning branch this tick.
+    pub const fn drowns(self) -> bool {
+        self.submerged()
+            && !self.can_breathe_under_water
+            && !self.water_breathing
+            && !self.breath_of_the_nautilus
+            && !self.immune
+    }
+
+    /// Whether Breath of the Nautilus holds air steady under water without refilling.
+    pub const fn held(self) -> bool {
+        self.submerged() && self.breath_of_the_nautilus && !self.water_breathing
+    }
+
+    /// Vanilla's [`Breath`] for this tick given `consume` (`decreaseAirSupply`) and `refill` (`increaseAirSupply`).
+    pub const fn vanilla_breath(self, consume: i32, refill: i32) -> Breath {
+        let drowns = self.drowns();
+        Breath {
+            can_breathe: !drowns,
+            consume,
+            refill: if drowns || self.held() { 0 } else { refill },
+        }
+    }
+}
 
 /// One tick of breathing: whether the entity can breathe, how much air it
 /// loses when it cannot and how much it gains when it can.

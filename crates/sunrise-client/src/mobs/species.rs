@@ -1569,21 +1569,8 @@ impl Def {
                     | S::ZombieNautilus
             ),
             undead,
-            // `#can_breathe_under_water`. Not the dolphin: it holds its breath
-            // (4800 ticks) and surfaces for air; nor the iron golem, which keeps
-            // its air through its own `decreaseAirSupply` (`ai.rs`).
-            breathes_water: (aquatic && s != S::Dolphin)
-                || undead
-                || matches!(
-                    s,
-                    S::Axolotl
-                        | S::Frog
-                        | S::Turtle
-                        | S::Guardian
-                        | S::ElderGuardian
-                        | S::CopperGolem
-                        | S::Nautilus
-                ),
+            // EntityTypeTags.CAN_BREATHE_UNDER_WATER, resolved at load (`mobs.rs`).
+            breathes_water: false,
             // WaterAnimal.handleAirSupply: it dries out on land; Nautilus's
             // does the same. Dolphin.handleAirSupply is empty, so a dolphin
             // takes LivingEntity.baseTick's air like a land mob.

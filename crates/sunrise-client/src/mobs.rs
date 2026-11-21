@@ -494,6 +494,8 @@ impl MobTypes {
             flags.powder_snow_walkable = entity_type_tags
                 .get("minecraft:powder_snow_walkable_mobs")
                 .is_some_and(|members| members.contains(&id));
+            flags.breathes_water =
+                crate::breathing::can_breathe_under_water(&id, &entity_type_tags);
             let passenger_attachments =
                 riders::parse_passenger_attachments(&t["passenger_attachments"]);
             out.insert(

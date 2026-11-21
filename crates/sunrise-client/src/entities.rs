@@ -1787,7 +1787,7 @@ pub struct ArmorStand {
     pub on_ground: bool,
     /// `LivingEntity.hurtTime`, counted down each tick.
     pub hurt_time: i32,
-    /// `Entity.airSupply`: refilled by 4 a tick up to 300 out of water.
+    /// `Entity.airSupply`: refilled by 4 a tick up to 300 while it can breathe.
     pub air: i32,
     /// Shared flag 7, `FallFlying`: a stand cannot glide, so its first tick
     /// clears it.

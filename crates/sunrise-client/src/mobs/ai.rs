@@ -22,7 +22,7 @@ use super::{
     undead,
 };
 use crate::blocks::Fluid;
-use crate::breathing::{Breath, breathe, drown, own_air};
+use crate::breathing::{AirState, breathe, drown, own_air};
 use crate::health::DamageLevel;
 use sunrise_core::{
     geometry::{Aabb, Axis, ShapeOp, Vec3, VoxelShape},
@@ -1941,11 +1941,10 @@ fn extinguish_if_wet(m: &mut Mob, w: &MobWorld, was_on_fire: bool, events: &mut 
     }
 }
 
-/// `LivingEntity.canBreatheUnderWater`: the `can_breathe_under_water` tag, which
-/// `MobType.flags.breathes_water` holds, and the two overrides — a baby happy ghast
-/// and a sulfur cube with a block in its body breathe under water too.
-fn can_breathe_under_water(m: &Mob) -> bool {
-    m.kind.flags.breathes_water
+/// `LivingEntity.canBreatheUnderWater`: `#minecraft:can_breathe_under_water`,
+/// plus the two subclass overrides (baby happy ghast and sulfur cube with a body block).
+fn can_breathe_under_water(m: &Mob, w: &MobWorld) -> bool {
+    crate::breathing::can_breathe_under_water(&m.kind.id, &w.data.entity_tags)
         || m.species() == Species::HappyGhast && m.is_baby()
         || m.species() == Species::SulfurCube && crate::mobs::sulfur_cube::has_body(m)
 }
@@ -2083,31 +2082,30 @@ fn base_tick(
             // LivingEntity.baseTick / MobEffectUtil: bubble columns and breathing
             // effects protect submerged mobs. Nautilus alone holds air rather
             // than refilling it; Water Breathing or Conduit Power still refill.
-            let submerged = m.fluids.eye_in_water
+            let in_bubble_column = m.fluids.eye_in_water
                 && w.block_name(
                     m.position.x.floor() as i32,
                     m.eye_y().floor() as i32,
                     m.position.z.floor() as i32,
-                ) != "minecraft:bubble_column";
-            let water_breathing = m.has_effect("minecraft:water_breathing")
-                || m.has_effect("minecraft:conduit_power");
-            let nautilus = m.has_effect("minecraft:breath_of_the_nautilus");
-            let drowns = submerged && !can_breathe_under_water(m) && !water_breathing && !nautilus;
-            let held = submerged && nautilus && !water_breathing;
-            let max = m.max_air_supply();
-            let vanilla = Breath {
-                can_breathe: !drowns,
-                consume: if keeps_its_air(m) { 0 } else { 1 },
-                // `increaseAirSupply`: four a tick, except the dolphin's own, which
-                // hands back the whole 4800 maximum however little air it has.
-                refill: if drowns || held {
-                    0
-                } else if m.species() == Species::Dolphin {
-                    max.saturating_sub(m.air)
-                } else {
-                    4
-                },
+                ) == "minecraft:bubble_column";
+            let state = AirState {
+                eye_in_water: m.fluids.eye_in_water,
+                in_bubble_column,
+                can_breathe_under_water: can_breathe_under_water(m, w),
+                water_breathing: m.has_effect("minecraft:water_breathing")
+                    || m.has_effect("minecraft:conduit_power"),
+                breath_of_the_nautilus: m.has_effect("minecraft:breath_of_the_nautilus"),
+                immune: false,
             };
+            let max = m.max_air_supply();
+            let consume = if keeps_its_air(m) { 0 } else { 1 };
+            // `increaseAirSupply`: 4 a tick, except a dolphin refills straight to 4800.
+            let refill = if m.species() == Species::Dolphin {
+                max.saturating_sub(m.air)
+            } else {
+                4
+            };
+            let vanilla = state.vanilla_breath(consume, refill);
             let breath = breathe(w.loop_context, m.id, &m.kind.id, vanilla);
             if let Some(drowning) = drown(
                 w.loop_context,

@@ -18,6 +18,7 @@ pub struct Flags {
     /// EntityTypeTags.BURN_IN_DAYLIGHT
     pub burns_in_day: bool,
     pub undead: bool,
+    /// EntityTypeTags.CAN_BREATHE_UNDER_WATER, resolved at load.
     pub breathes_water: bool,
     /// Drowns out of water (fish, squid, dolphins after their air runs out).
     pub needs_water: bool,

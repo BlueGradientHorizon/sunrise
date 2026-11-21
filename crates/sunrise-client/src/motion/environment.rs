@@ -1,6 +1,6 @@
 //! Player liquid travel and environmental damage over the shared fluid state.
 use super::*;
-use crate::breathing::{Breath, breathe, drown};
+use crate::breathing::{AirState, breathe, drown};
 use sunrise_core::random::RandomSource;
 use sunrise_world::{
     fluid::FluidKind,
@@ -72,15 +72,16 @@ impl MotionWorld<'_, '_, '_> {
                 .registry
                 .state(self.block(eye))
                 .is_some_and(|state| state.name == "minecraft:bubble_column");
-            let submerged = self.player.is_eye_in_fluid(WATER) && !bubble_column;
-            let drowns = submerged
-                && !self.player.status.water_breathing
-                && !self.player.status.breath_of_the_nautilus
-                && !self.player.invulnerable
-                && !self.player.spectator;
-            let vanilla = if drowns {
-                // decreaseAirSupply's getAttribute: the instance exists from now
-                // on, even unmodified.
+            let state = AirState {
+                eye_in_water: self.player.is_eye_in_fluid(WATER),
+                in_bubble_column: bubble_column,
+                can_breathe_under_water: false,
+                water_breathing: self.player.status.water_breathing,
+                breath_of_the_nautilus: self.player.status.breath_of_the_nautilus,
+                immune: self.player.invulnerable || self.player.spectator,
+            };
+            let consume = if state.drowns() {
+                // decreaseAirSupply's getAttribute: the instance exists from now on, even unmodified.
                 let key = self.player.attributes.key("minecraft:oxygen_bonus");
                 self.player
                     .attributes
@@ -92,22 +93,11 @@ impl MotionWorld<'_, '_, '_> {
                     .max(f64::from(self.player.respiration));
                 let sparing =
                     oxygen > 0.0 && self.scene.random.next_double() >= 1.0 / (oxygen + 1.0);
-                Breath {
-                    can_breathe: false,
-                    consume: i32::from(!sparing),
-                    refill: 0,
-                }
+                i32::from(!sparing)
             } else {
-                // The nautilus' breath keeps a submerged player's air as it is.
-                let held = submerged
-                    && self.player.status.breath_of_the_nautilus
-                    && !self.player.status.water_breathing;
-                Breath {
-                    can_breathe: true,
-                    consume: 1,
-                    refill: if held { 0 } else { 4 },
-                }
+                1
             };
+            let vanilla = state.vanilla_breath(consume, 4);
             // LivingBreatheEvent, on the server's copy of the player only.
             let breath = breathe(
                 self.loop_context,
