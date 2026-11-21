@@ -458,6 +458,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::game::entity::Entity as _;
     use mod_api::EntityRef;
     use sunrise_core::geometry::{Aabb, Vec3};
 
