@@ -76,7 +76,7 @@ Bee.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mo
 Bee.registerGoals	port	crates/sunrise-client/src/mobs/bee.rs::register
 Bee.addAdditionalSaveData	inline	crates/sunrise-client/src/mobs/bee.rs::to_nbt	hive_pos, flower_pos, the nectar and sting state, and NeutralMob's anger_end_time and angry_at (the target's UUID)
 Bee.readAdditionalSaveData	inline	crates/sunrise-client/src/mobs/bee.rs::from_nbt	the same; angry_at is the player's UUID or a mob the level may not have loaded (Who::Mob(0))
-Bee.spawnFluidParticle	port	crates/sunrise-client/src/mobs/ambient.rs::client_particles	the nectar drip
+Bee.spawnFluidParticle	port	crates/sunrise-client-gameplay/src/mob_ambient.rs::client_particles	the nectar drip
 Bee.updateRollAmount	inline	crates/sunrise-client/src/mobs/bee.rs::tick
 Bee.isHiveNearFire	port	crates/sunrise-client/src/mobs/bee.rs::hive_near_fire
 Bee.doesHiveHaveSpace	inline	crates/sunrise-client/src/mobs/bee.rs::hives_with_space	the beehive's full() filter
@@ -150,7 +150,7 @@ MushroomCow.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mo
 MushroomCow.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_mob	bowl (plain or suspicious stew), shears and the brown flower branch
 MushroomCow.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	Type and stew_effects, written only while it holds any
 MushroomCow.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_from_nbt	Type, red when missing; stew_effects decoded like the component's list
-MushroomCow.getEffectsFromItemStack	port	crates/sunrise-items/src/flowers.rs::stew_effect	the flower block's one entry, floor(seconds * 20)
+MushroomCow.getEffectsFromItemStack	port	crates/sunrise-items/src/items.rs::Items::suspicious_stew_effects	the flower block's one entry, floor(seconds * 20)
 MushroomCow.get	port	crates/sunrise-client/src/mobs/finalize.rs::species_variant_component	the variant component, red (0) or brown (1)
 MushroomCow.applyImplicitComponent	port	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	an egg's mooshroom/variant sets the colour
 MushroomCow.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	see getOffspringVariant

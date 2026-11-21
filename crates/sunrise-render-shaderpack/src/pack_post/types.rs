@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use glam::DVec3;
-use sunrise_shaders::{BUFFERS, Group};
+use sunrise_shaders::{BUFFERS, Group, SHADOW_COLORS};
 
 use crate::pack_entities::{PROGRAMS, PackEntities};
 use crate::pack_sky::PackSky;
@@ -200,13 +200,16 @@ impl Entities {
     }
 }
 
-/// What an image binds: a buffer (`colorimgN`, the side its sampler reads) or one of the pack's.
+/// What an image binds: a buffer (`colorimgN`, or `shadowcolorimgN` for shadowcolor N: the side
+/// its sampler reads) or one of the pack's.
 #[derive(Clone, Copy, PartialEq)]
 pub enum Image {
     Color(usize),
+    ShadowColor(usize),
     Custom(usize),
     /// The copy of a buffer or a pack image taken before a dispatch, which its loads read.
     ColorBefore(usize),
+    ShadowColorBefore(usize),
     CustomBefore(usize),
     /// An image no `image.*` gives: its stand-in of the declared format and dimension
     /// (`pack_images::StandIn`).
@@ -241,7 +244,42 @@ pub fn image_buffers(images: &[(u32, Image)]) -> u16 {
         .fold(0, |m, b| m | 1 << b)
 }
 
-/// The format of the sink of passes that write only images.
+/// The shadowcolor buffers of `images`, as masks: those bound as themselves, and those read as
+/// copies taken before a dispatch.
+pub fn shadow_images(images: &[(u32, Image)]) -> (u16, u16) {
+    images.iter().fold((0, 0), |(own, before), i| match i.1 {
+        Image::ShadowColor(n) => (own | 1 << n, before),
+        Image::ShadowColorBefore(n) => (own, before | 1 << n),
+        _ => (own, before),
+    })
+}
+
+/// The shadowcolor buffers a pass of `group` copies first: those it samples (`reads` in the
+/// shadow programs, `shadow_reads` in any) and binds as images, and those whose copy its loads
+/// read.
+pub fn shadow_copies(group: Group, reads: u16, shadow_reads: u16, images: &[(u32, Image)]) -> u16 {
+    let sampled = shadow_reads | if group.shadow() { reads } else { 0 };
+    let (own, before) = shadow_images(images);
+    own & sampled | before
+}
+
+/// The shadowcolor buffer image `name` binds and its format, while the shadow pass runs (its
+/// buffers have the formats `shadow`). Only the two names spec 5.2 gives: `shadowcolorimg01` or
+/// `shadowcolorimg2` is no buffer.
+pub fn shadow_image(
+    name: &str,
+    shadow: Option<&[wgpu::TextureFormat; SHADOW_COLORS]>,
+) -> Option<(usize, wgpu::TextureFormat)> {
+    let n = match name {
+        "shadowcolorimg0" => 0,
+        "shadowcolorimg1" => 1,
+        _ => return None,
+    };
+    shadow.map(|f| (n, f[n]))
+}
+
+/// The format of the sink of passes that write only images (a shadowcomp program's is
+/// `ShadowTargets::sink`).
 pub const SINK: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 
 /// What packs use of the device beyond drawing. OpenGL ES and older drivers lack some of it: a
@@ -359,7 +397,7 @@ pub struct Pass {
     pub depth_linear: [f32; 4],
     /// Buffers sampled, for the bind group cache key.
     pub reads: u16,
-    /// shadowcolor buffers sampled by a program of the other buffers.
+    /// shadowcolor buffers sampled by a program of the other buffers, or bound as images.
     pub shadow_reads: u16,
     /// Buffers written.
     pub written: u16,
@@ -376,7 +414,7 @@ pub struct Pass {
     /// Reads `mc_Entity`'s table (`PackPost::block_ids`).
     pub ids: bool,
     /// Bind groups by the sides read (bits 0–15), the buffers whose mip chain is current (bits
-    /// 16–31) and the shadowcolor sides read (bits 32–33).
+    /// 16–31) and the shadowcolor sides read or bound as images (bits 32 on).
     pub groups: HashMap<u64, wgpu::BindGroup>,
     /// The same for End portal draws, with `end_portal.png` bound as the atlas.
     pub portal_groups: HashMap<u64, wgpu::BindGroup>,
@@ -387,6 +425,8 @@ pub struct Pass {
     /// Buffers both sampled and bound as images: sampled from a copy taken first, as wgpu binds
     /// a texture one way per pass.
     pub copies: u16,
+    /// The same for shadowcolor buffers, and those whose copy a dispatch's loads read.
+    pub shadow_copies: u16,
     /// Compute programs dispatched before this pass.
     pub compute: Vec<Pass>,
     /// Writes no buffer, only images: draws into `Targets::sink`.

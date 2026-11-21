@@ -1384,7 +1384,7 @@ fn ai_and_finish_tick(
     if m.no_ai {
         update_fall_flying(m, w, events);
         reset_effect_fall_distance(m);
-        // Mob.aiStep still runs without AI: undead burn, endermites age.
+        // Mob.aiStep still runs without AI: tagged mobs can burn, endermites age.
         burn_undead(m, w, events);
         if m.species() == Species::Endermite {
             super::hostile::endermite_lifetime(m);
@@ -1398,6 +1398,10 @@ fn ai_and_finish_tick(
             && !super::llama::is_llama(m.species());
         if horse {
             super::equine::tail_tick(m);
+        }
+        // Guardian.aiStep keeps the air and flops on land before its super.aiStep.
+        if matches!(m.species(), Species::Guardian | Species::ElderGuardian) {
+            super::guardian::ai_step(m, w, events);
         }
         // LivingEntity.aiStep: without AI there is no serverAiStep and no
         // travel, but the motion below 0.003 is still dropped, the block
@@ -1416,8 +1420,16 @@ fn ai_and_finish_tick(
             super::allay::passive_heal(m, w.loop_context);
             super::allay::update_duplication_cooldown(m);
         }
-        if horse {
+        // AbstractHorse.aiStep and Camel.tick (a camel's, through the equine step), Bee.aiStep's
+        // countdowns and WanderingTrader.aiStep's maybeDespawn: none of them asks for AI.
+        if horse || super::camel::is_camel(m.species()) {
             super::equine::ai_step(m, w, events);
+        }
+        if m.species() == Species::Bee {
+            super::bee::ai_step(m, w);
+        }
+        if m.species() == Species::WanderingTrader {
+            super::trader::ai_step(m, w);
         }
         // LivingEntity.aiStep ends in the water's hurt with or without AI;
         // a NoAI enderman's or shulker's hurts still teleport it (hurtServer).
@@ -2241,7 +2253,7 @@ fn base_tick(
         super::undead::drowned_update_swimming(m, w);
     }
     let fire = crate::motion::environment::fire_contact(w.world, w.registry, m.bounds());
-    let lava = m.fluids.in_lava;
+    let lava = m.fluids.in_lava || touches_lava_cauldron(m, w);
     let contact_at = m.position;
     if fire > 0.0 {
         m.ticks_frozen = 0;
@@ -2421,7 +2433,7 @@ fn base_tick_after_air(
     } else {
         (
             crate::motion::environment::fire_contact(w.world, w.registry, m.bounds()),
-            touches_lava(m, w),
+            touches_lava(m, w) || touches_lava_cauldron(m, w),
         )
     };
     block_contact_damage(m, w, level, fire, lava);
@@ -2457,10 +2469,12 @@ fn freeze_tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &
     }
     let can_freeze = can_freeze(m, w);
     if in_snow && can_freeze {
-        m.ticks_frozen =
-            (m.ticks_frozen + 1).min(crate::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
+        m.ticks_frozen = m
+            .ticks_frozen
+            .wrapping_add(1)
+            .min(crate::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
     } else {
-        m.ticks_frozen = (m.ticks_frozen - 2).max(0);
+        m.ticks_frozen = m.ticks_frozen.wrapping_sub(2).max(0);
     }
     if m.age.is_multiple_of(40) && m.is_fully_frozen() && can_freeze {
         m.damage(level, 1.0, Damage::of(DamageKind::Freeze));
@@ -2479,6 +2493,35 @@ fn touches_lava(m: &Mob, w: &MobWorld) -> bool {
         for y in min.y.floor() as i32..=max.y.floor() as i32 {
             for z in min.z.floor() as i32..=max.z.floor() as i32 {
                 if &*w.facts.get(w.world.block(x, y, z)).name == "minecraft:lava" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+/// `LavaCauldronBlock.entityInside` (LAVA_IGNITE, then `lavaHurt`, as lava's own) for a mob
+/// whose box meets `getEntityInsideCollisionShape`'s `FILLED_SHAPE`: the cauldron's own shape
+/// and its lava, `Block.column(12, 4, 15)`. A mob standing on the rim is not inside.
+fn touches_lava_cauldron(m: &Mob, w: &MobWorld) -> bool {
+    let b = m.bounds().deflate(Vec3::new(1e-5, 1e-5, 1e-5));
+    let (min, max) = (b.min_position(), b.max_position());
+    for x in min.x.floor() as i32..=max.x.floor() as i32 {
+        for y in min.y.floor() as i32..=max.y.floor() as i32 {
+            for z in min.z.floor() as i32..=max.z.floor() as i32 {
+                let state = w.world.block(x, y, z);
+                if &*w.facts.get(state).name != "minecraft:lava_cauldron" {
+                    continue;
+                }
+                let at = Vec3::new(f64::from(x), f64::from(y), f64::from(z));
+                let lava = Aabb::new(
+                    Vec3::new(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
+                    Vec3::new(14.0 / 16.0, 15.0 / 16.0, 14.0 / 16.0),
+                );
+                let shell = w.collision.static_shape(state).ok().flatten();
+                if lava.move_by(at).intersects(b)
+                    || shell.is_some_and(|s| s.boxes().iter().any(|c| c.move_by(at).intersects(b)))
+                {
                     return true;
                 }
             }
@@ -2996,8 +3039,8 @@ fn push_entities(
     }
     super::world::give_push_targets(targets);
 }
-/// `Mob.aiStep` -> `Mob.burnUndead`: undead burn in daylight. It runs with
-/// or without AI (`NoAI` only skips `serverAiStep`).
+/// `Mob.aiStep` -> `Mob.burnUndead`: mobs in `minecraft:burn_in_daylight`
+/// can burn in daylight even with `NoAI`.
 fn burn_undead(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if m.kind.flags.burns_in_day && m.alive() && sun_burn_tick(m, w) {
         if m.item_by_slot(m.sun_protection_slot()).is_some() {
@@ -3547,7 +3590,7 @@ fn check_despawn(m: &mut Mob, w: &MobWorld) -> bool {
         _ => {}
     }
     // Mob.checkDespawn discards disallowed types even when persistent or NoAI.
-    if w.difficulty.effective == 0.0 && !super::spawn_rules::allowed_in_peaceful(m.species()) {
+    if w.difficulty.effective == 0.0 && !m.kind.allowed_in_peaceful() {
         return false;
     }
     let Some(p) = w.nearest_player else {
@@ -6446,6 +6489,33 @@ mod burn_and_rose_tests {
         }
     }
 
+    /// `LavaCauldronBlock.entityInside`: a pig in a lava cauldron is set alight and takes lava's
+    /// 4, as a cooking chicken farm needs; one standing on the rim is not inside (#455).
+    #[test]
+    #[ignore = "daily"]
+    fn a_mob_in_a_lava_cauldron_burns() {
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            build_with("minecraft:lava_cauldron"),
+            |w, types| {
+                for (y, hurt) in [(64.25, true), (65.0, false)] {
+                    let kind = Arc::new(types.types["minecraft:pig"].clone());
+                    let mut m = Mob::new(1, kind, Vec3::new(0.5, y, 0.5), 0.0);
+                    register(&mut m);
+                    m.no_ai = true;
+                    m.no_gravity = true;
+                    let start = m.health;
+                    let (mut lr, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                    assert!(tick(&mut m, w, &mut lr.level(), &mut events));
+                    let expected = if hurt { start - 4.0 } else { start };
+                    assert_eq!(m.health, expected, "at y {y}");
+                    assert_eq!(m.fire_ticks > 0, hurt, "at y {y}");
+                }
+            },
+        );
+        assert!(ran, "vanilla data is missing");
+    }
+
     fn golem(types: &crate::mobs::MobTypes) -> Mob {
         let kind = Arc::new(types.types["minecraft:iron_golem"].clone());
         let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
@@ -7013,6 +7083,146 @@ mod allay_healing_tests {
         if !ran {
             eprintln!("Prepared mob data unavailable; Allay tick coverage did not run");
         }
+    }
+}
+
+#[cfg(test)]
+mod noai_species_step_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    /// `Bee.aiStep`, `WanderingTrader.aiStep`, `Guardian.aiStep` and `Camel.tick` run without
+    /// AI: one tick counts a NoAI bee's `CannotEnterHiveTicks` and a trader's `DespawnDelay`
+    /// down, flops a guardian on land, and stands a camel sitting in water up (vanilla 26.3,
+    /// #2658).
+    #[test]
+    #[ignore = "daily"]
+    fn noai_mobs_still_run_their_own_ai_step() {
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            |world, registry| {
+                for cx in 0..2 {
+                    world
+                        .chunks
+                        .insert((cx, 0), Arc::new(crate::chunk::Chunk::empty(cx, 0)));
+                }
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                let water = registry.default_state("minecraft:water").unwrap();
+                for x in 0..32 {
+                    for z in 0..16 {
+                        world.set(x, 63, z, stone).unwrap();
+                    }
+                }
+                world.set(24, 64, 8, water).unwrap();
+            },
+            |w, types| {
+                let mob = |id: &str, x: f64| {
+                    let kind = Arc::new(types.types[id].clone());
+                    let mut m = Mob::new(1, kind, Vec3::new(x, 64.0, 8.5), 0.0);
+                    m.no_ai = true;
+                    m.persistent = true;
+                    m.on_ground = true;
+                    m
+                };
+                let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                let mut bee = mob("minecraft:bee", 2.5);
+                super::super::bee::st(&mut bee).stay_out_of_hive = 20;
+                assert!(tick(&mut bee, w, &mut level.level(), &mut events));
+                assert_eq!(super::super::bee::get(&bee).unwrap().stay_out_of_hive, 19);
+
+                let mut trader = mob("minecraft:wandering_trader", 8.5);
+                trader.extra.ints[5] = 20;
+                assert!(tick(&mut trader, w, &mut level.level(), &mut events));
+                assert_eq!(trader.extra.ints[5], 19);
+
+                let mut guardian = mob("minecraft:guardian", 14.5);
+                assert!(tick(&mut guardian, w, &mut level.level(), &mut events));
+                assert_eq!(guardian.velocity.y, 0.5);
+                assert!(!guardian.on_ground);
+
+                let mut camel = mob("minecraft:camel", 24.5);
+                camel.extra.camel_sitting = true;
+                assert!(tick(&mut camel, w, &mut level.level(), &mut events));
+                assert!(camel.fluids.in_water);
+                assert!(!super::super::camel::sitting(&camel));
+            },
+        );
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// A saved NoAI bee with an extreme hive and anger deadline ticks without overflowing.
+    #[test]
+    #[ignore = "daily"]
+    fn a_saved_noai_bee_with_extreme_hive_and_anger_ticks() {
+        use sunrise_core::nbt::Tag;
+        let ran = crate::mobs::world::with_test_world(&[], |w, types| {
+            let kind = Arc::new(types.types["minecraft:bee"].clone());
+            let fresh = Mob::new(1, kind.clone(), Vec3::new(2.5, 64.0, 8.5), 0.0);
+            let mut saved = crate::entity_nbt::mob_to_nbt(
+                &fresh,
+                [1, 2, 3, 4],
+                None,
+                None,
+                |_| None,
+                &Default::default(),
+            );
+            let Tag::Compound(map) = &mut saved else {
+                panic!("a mob saves a compound");
+            };
+            map.insert("NoAI".into(), Tag::Byte(1));
+            map.insert(
+                "hive_pos".into(),
+                Tag::IntArray(vec![i32::MIN, 64, i32::MIN]),
+            );
+            map.insert("anger_end_time".into(), Tag::Long(i64::MAX));
+            let mob_types = std::collections::HashMap::from([(kind.id.clone(), kind)]);
+            let mut bee = crate::entity_nbt::mob_from_nbt(&saved, &mob_types, 1, None).unwrap();
+            assert!(bee.no_ai);
+            bee.age = 19;
+            let mut w = w.clone();
+            w.game_time = -1;
+            assert!(super::super::bee::angry(&bee, &w));
+            let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+            assert!(tick(&mut bee, &w, &mut level.level(), &mut events));
+            let b = super::super::bee::get(&bee).unwrap();
+            assert_eq!(b.hive, None, "a hive 2^31 blocks away is too far");
+            assert_eq!(b.anger_end, i64::MAX);
+        });
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// A saved `TicksFrozen` at an int extreme thaws with Java's wrapping `Math.max(0, ticks - 2)`.
+    #[test]
+    #[ignore = "daily"]
+    fn a_saved_noai_bee_with_extreme_ticks_frozen_thaws_like_vanilla() {
+        use sunrise_core::nbt::Tag;
+        let ran = crate::mobs::world::with_test_world(&[], |w, types| {
+            let kind = Arc::new(types.types["minecraft:bee"].clone());
+            let mob_types = std::collections::HashMap::from([(kind.id.clone(), kind.clone())]);
+            for (saved_ticks, thawed) in [(i32::MIN, i32::MAX - 1), (i32::MAX, i32::MAX - 2)] {
+                let fresh = Mob::new(1, kind.clone(), Vec3::new(2.5, 64.0, 8.5), 0.0);
+                let mut saved = crate::entity_nbt::mob_to_nbt(
+                    &fresh,
+                    [1, 2, 3, 4],
+                    None,
+                    None,
+                    |_| None,
+                    &Default::default(),
+                );
+                let Tag::Compound(map) = &mut saved else {
+                    panic!("a mob saves a compound");
+                };
+                map.insert("NoAI".into(), Tag::Byte(1));
+                map.insert("TicksFrozen".into(), Tag::Int(saved_ticks));
+                let mut bee = crate::entity_nbt::mob_from_nbt(&saved, &mob_types, 1, None).unwrap();
+                assert!(bee.no_ai);
+                assert_eq!(bee.ticks_frozen, saved_ticks);
+                let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                tick(&mut bee, w, &mut level.level(), &mut events);
+                assert_eq!(bee.ticks_frozen, thawed);
+            }
+        });
+        assert!(ran, "vanilla data is missing");
     }
 }
 

@@ -65,7 +65,9 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
 - `check <file>` runs what the registry runs: the file's size and SHA-256, its manifest and content, and a signature
   with `--key <public key> --signature <file>.minisig`. It reads `.smod`, `.spack`, resource pack `.zip`
   and `.sshader` files.
-- `registry build|review|check|list|release|page` is the registry repository's CI ([the registry index](../reference/registry-index.md)).
+- `registry build|review|check|list|release|releases|page` supports the registry repository's CI
+  ([the registry index](../reference/registry-index.md)). `registry releases --out releases.json` discovers stable
+  release tags and commits. The workflow verifies the signed SDK separately.
 - `use-jar <path>` records and caches an original Java jar as an external asset/data source, without copying it into the mod
   ([Java jars as external assets](#java-jars-as-external-assets)).
 
@@ -267,6 +269,14 @@ Pick-block takes the block's item by default. `"pick_item": "<item id>"` names a
 `block_item`: vanilla's `getCloneItemStack`, which lets a mature crop pick its seed while `Block.asItem` stays what it
 is (air for `"item": false`). It is an item of the mod or a vanilla one, and the load fails naming the block when no
 such item exists. A sign's wall form picks its sign's item through `wall_block`, so it declares no `pick_item`.
+
+`"suspicious_stew_effects": [{"id": "minecraft:night_vision", "duration": 100}]` makes the block a suspicious stew
+source. Entries are applied in order; duration is in ticks and defaults to 160 when omitted. An unknown mob effect is
+reported when content loads. Native `Block` declarations give the same list as `(effect ID, duration in ticks)` pairs.
+Food & Drinks and Search show one stew for each distinct list, and feeding the block's item to a brown mooshroom
+lets you milk it into that stew. The item must place the block: neither `block_item` nor `pick_item` makes an item
+place it. This does not add a crafting recipe. To craft the stew, supply a `minecraft:crafting_shapeless` recipe with
+the block's item, a bowl and two `#minecraft:mushrooms`, and set `minecraft:suspicious_stew_effects` on the result.
 
 `push_reaction` sets vanilla's `BlockBehaviour.Properties.pushReaction` to `"PUSH_PULL"`, `"PUSH"`, `"POPPED"`, `"IMMOVEABLE"`, or `"IGNORE_ENTITY"`.
 
@@ -866,6 +876,12 @@ admission errors name the file. Radius 0 disables its shadow. Radius follows `mi
 baby age scaling and the template's extra baby factors; cube sizes, pufferfish and dragon retain
 their renderer rules. The usual visibility, 32-block radius cap and distance fade still apply.
 
+A living type can set `allowed_in_peaceful` to `false` to prevent summons and spawns
+in Peaceful and to have existing mobs of that type despawn there. Its spawn egg
+shows the disabled-in-Peaceful line. Set it to `true` to allow the type in Peaceful
+without changing the template's other spawn rules or AI. If omitted, the type
+inherits its template's setting. Thrown types cannot set this key.
+
 A living type copies a mob, the way NeoForge's `EntityType.Builder.of(Zombie::new, ...)` makes a type of a vanilla
 class: `minecraft:zombie`, `minecraft:skeleton`, `minecraft:drowned`, `minecraft:villager`,
 `minecraft:wandering_trader`, or one of the tameable mobs
@@ -999,6 +1015,10 @@ template's, with `template` added and its attributes in place of the template's.
 a client mod registers a renderer for it ([entity renderers](client/entity-renderers.md)); the content declaration
 inherits the template's goals.
 
+Daylight burning follows the type's own id, not its template. To make a type burn in sunlight,
+add its id to `data/minecraft/tags/entity_type/burn_in_daylight.json`. Leaving it out does not
+make it immune to ordinary fire.
+
 #### Block entity containers
 
 A code mod declares a block entity's `ModContainer` with `Registrar::block_container`. The
@@ -1007,7 +1027,10 @@ Per-slot `insert_rules` provide static admission, with missing entries treated a
 
 For state-dependent admission, implement `BlockEntityPart::can_place_item`
 (vanilla's `Container.canPlaceItem`). Its `CanPlaceItemEvent` gives the server part the block
-entity's saved data and current slots, the queried slot index and the offered stack. Returning
+entity's own `pos` and current block `state`, its saved data and slots, the queried slot index,
+and the offered stack. Parts shared by several blocks can branch on `state.block()`. To filter
+by a property without a Host in this query, resolve matching `BlockState` values in a hook with
+block metadata and keep them for comparison here. Returning
 `Some(true)` or `Some(false)` replaces the declared rule for that slot; `None` keeps it. Face
 and input-slot rules and stack limits still apply. Hoppers and hopper minecarts, droppers,
 default `ITEMS` and `STORAGE` insertion, and nonempty offers from `/loot insert` and
@@ -1026,12 +1049,26 @@ clicks and quick-move still use the declared rules and `menu_slot_rules` (vanill
 #### Menu types
 
 A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(1 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
+(0 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
 from (`results`, as a furnace's result slot):
 
 ```json
 { "slots": 9, "data_slots": 2, "results": [7, 8], "inputs": [0, 1] }
 ```
+
+A status or control screen that has no item slots at all can omit the player inventory group too:
+
+```json
+{ "slots": 0, "player_inventory": false, "data_slots": 2 }
+```
+
+`player_inventory` defaults to `true`. Result, crafting, linked-slot and recipe-book mappings name declared
+container slots, never the optional player group. A mapping to an absent slot is refused at load.
+
+For blockless opens, an optional `owned_slots` array declares [transient menu storage](../concepts/capabilities/menu-slots.md#menu-owned-slots).
+It must contain exactly `slots` entries, each the maximum stack size (1–99) of that slot.
+Types declaring `owned_slots` are blockless-only and cannot declare `results` or `crafting`.
+A block container cannot bind an owned-slot type as its menu.
 
 The optional menu `inputs` list marks machine feeds, including fuel, as `Input`
 in [`MenuRef::slot_kinds`](../concepts/capabilities/menu-slots.md). Indices start at zero and
@@ -1042,10 +1079,11 @@ a slot accepts or how clicks and item transfers work.
 
 It is the menu type `<id>:<name>`, with its network id after vanilla's. A mod block's container opens it when its
 `menu` names it with as many slots ([native mods](native-mods.md), `r.block_container(&block, container)`). The menu holds
-its slots, then the player's 36. A shift-click from the inventory goes to the first slots with room, never a result
+its slots, then the player's 36 if `player_inventory` is on. A shift-click from the inventory goes to the first slots with room, never a result
 slot, and one on the container goes to the inventory, as a chest's does. `results` fence players only: hoppers follow the
-block entity container's faces and insertion rules, not the menu's `inputs` list. The data slots are the block entity's `data`
-(16-bit on the network, as vanilla's), all sent when it opens, then each change. A Sunrise client shows it through the
+block entity container's faces and insertion rules, not the menu's `inputs` list. A block-backed menu syncs the block entity's
+`data` (16-bit on the network, as vanilla's). A [blockless menu](world/machine-menu-data.md#blockless-status-menus)
+gets its initial data from its opener and syncs subsequent signed `i32` changes without reopening. A Sunrise client shows it through the
 mod's own screen (`screen`); without one it closes again. `player.open_mod_menu` can open the same type without a
 block, and a registered recipe-book screen applies to either opening. Clients join a server only with the same mods' menu
 types, as with its blocks, and a client that isn't Sunrise's is never sent one: the block opens nothing for it. Its

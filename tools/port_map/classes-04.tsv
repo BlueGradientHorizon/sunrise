@@ -71,7 +71,7 @@ StonecutterBlock.useWithoutItem	port	crates/sunrise-world/src/level/interact.rs:
 SugarCaneBlock.randomTick	port	crates/sunrise-world/src/level/tick.rs::Sim::random_tick_block	growth arm of the random tick
 SugarCaneBlock.tick	port	crates/sunrise-world/src/level/tick.rs::Sim::tick_block
 SugarCaneBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class
-SuspiciousEffectHolder.tryGet	port	crates/sunrise-items/src/flowers.rs::stew_effect	the item's block is looked up in the flower table
+SuspiciousEffectHolder.tryGet	port	crates/sunrise-items/src/items.rs::Items::suspicious_stew_effects	the placing BlockItem's block supplies the effects
 TallSeagrassBlock.canSurvive	port	crates/sunrise-world/src/level/survive.rs::Sim::can_survive_class
 TallSeagrassBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class
 TallSeagrassBlock.mayPlaceOn	port	crates/sunrise-world/src/level/survive.rs::Sim::may_place_on

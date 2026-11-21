@@ -107,7 +107,9 @@ LISTED = re.compile(r"^(\S+): test$")
 # A daily row's TARGET: the library, or one binary or integration test (cargo's --bin NAME, --test NAME).
 DAILY_TARGET = re.compile(r"^(?:lib|(?:bin|test):[\w-]+)$")
 # Why a test is a daily test (CONTRIBUTING.md "CI tiers"): slower than 2 s, or what it needs.
-DAILY_REASONS = ("slow", "game-boot", "resources", "child-process", "network", "windows")
+DAILY_REASONS = ("slow", "game-boot", "resources", "child-process", "network", "windows", "own-sdk")
+# A test that needs the daily head's SDK in book-quickstart.yml, not a previous Nightly.
+OWN_SDK_REASON = "own-sdk"
 # A daily reason for a test whose target compiles only on Windows (`#![cfg(windows)]`): no Linux shard or `daily-rows`
 # leg selects or expects it, and the Windows job of windows-runtime-leases.yml runs it (--windows-rows).
 WINDOWS_REASON = "windows"
@@ -272,13 +274,13 @@ def known_failures():
 
 def daily_rows():
     """The rows marked `daily` that the shards run: tests moved out of verify that the daily run must run and pass.
-    A Windows-only test runs in the Windows job rather than a Linux shard."""
+    Windows-only and own-SDK tests run in their respective jobs rather than a Linux shard."""
     return [row for row in listed_entries() if row.mark == "daily" and not kept_out(row)]
 
 
 def kept_out(row):
-    """Whether no Linux shard or `daily-rows` leg runs this daily row: another job does (`windows`)."""
-    return row.reason == WINDOWS_REASON
+    """Whether this daily row runs in another job, not a Linux shard or the daily-rows leg."""
+    return row.reason in {WINDOWS_REASON, OWN_SDK_REASON}
 
 
 def windows_rows():
@@ -855,6 +857,8 @@ def listed_result_records(line, expected, max_name_length):
 WORKSPACE_TEST_BUILD = ["cargo", "test", "--profile", "test", "--workspace", "--lib", "--bins", "--tests", "--no-run"]
 # The client-lib rows build at opt-level 3 (run()), which the workspace build does not.
 OWN_BUILD = {"sunrise-client-lib"}
+# Each test thread's stack (RUST_MIN_STACK), the one the parity harnesses give the same game fixtures.
+TEST_THREAD_STACK = 16 * 1024 * 1024
 
 
 def built_test_binaries():
@@ -929,6 +933,8 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
         for key in ("SUNRISE_LAUNCHER_TRASH", "SUNRISE_LAUNCHER_CLIPBOARD", "SUNRISE_LAUNCHER_DESKTOP"):
             homes[key] = Path(scratch) / key.lower()
         env = lab.game_env(**homes)
+        # A fixture holds a server Game by value, which the server thread gets a guest stack for: not libtest's 2 MiB.
+        env["RUST_MIN_STACK"] = str(TEST_THREAD_STACK)
         if package == "sunrise-client-lib":
             # Worldgen must meet its real-time deadlines without disabling test assertions.
             env["CARGO_PROFILE_TEST_OPT_LEVEL"] = "3"
@@ -1193,7 +1199,7 @@ def main(shards, report=None):
                 if listed == package and in_leg(test, number, count) and not os.environ.get(variable):
                     print(f"{package} {safe_identity(test)}: refused, needs {variable}; run by the parity harness")
                     skip.append(test)
-            # The daily rows another job runs (`windows`) never run here.
+            # The daily rows another job runs never run here.
             skip += [row.test for row in listed_entries() if row.mark == "daily" and kept_out(row)
                      and row.package == package and in_leg(row.test, number, count)]
             if package == "sunrise-client" and count == 2:

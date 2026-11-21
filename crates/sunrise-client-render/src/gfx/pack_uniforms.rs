@@ -46,6 +46,8 @@ fn view<'a>(frame: &'a Frame<'_>, lights: bool) -> UniformFrameView<'a> {
         darkness: frame.darkness,
         dynamic_lights: if lights { frame.dynamic_lights } else { &[] },
         entities: if lights { frame.entities } else { &[] },
+        // The shadow light reads no bolt position.
+        lightning_bolt: None,
     }
 }
 

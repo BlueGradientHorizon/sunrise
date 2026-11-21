@@ -1131,7 +1131,14 @@ impl Game<'_> {
         let result = sunrise_client::recipe_book::Settings::knowledge_book_recipes(
             index, &mut hand, infinite,
         );
+        let depleted = hand
+            .is_none()
+            .then(|| self.stack_in(slot).cloned())
+            .flatten();
         *self.stack_in_mut(slot) = hand;
+        if let Some(original) = depleted {
+            self.player_item_destroyed(&original, self.item_slot_hand(slot));
+        }
         match result {
             Ok(recipes) => {
                 self.award_recipes(&recipes);

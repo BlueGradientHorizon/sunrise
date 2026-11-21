@@ -797,6 +797,17 @@ impl PackPost {
                 }
             }
         }
+        if let Some(shadow) = &self.shadow_targets {
+            for n in (0..SHADOW_COLORS).filter(|n| pass.shadow_copies & 1 << n != 0) {
+                if let (Some(main), Some(copy)) = (shadow.color(n, false), &shadow.scratch[n]) {
+                    encoder.copy_texture_to_texture(
+                        main.texture().as_image_copy(),
+                        copy.texture().as_image_copy(),
+                        main.texture().size(),
+                    );
+                }
+            }
+        }
         let fog = self.uniforms.fog();
         // Our block members first (`hz_target`, `hz_fog_color`, `hz_fog`, `hz_depth_linear`),
         // then the pack's.
@@ -844,6 +855,7 @@ impl PackPost {
         let key = u64::from(main & pass.reads)
             | u64::from(current) << 16
             | u64::from(shadow_main & pass.shadow_reads) << 32;
+        let shadow_scratch = |i: usize| shadow.and_then(|t| t.scratch[i].as_ref());
         let group = pass.groups.entry(key).or_insert_with(|| {
             let mut entries = vec![wgpu::BindGroupEntry {
                 binding: 0,
@@ -854,6 +866,12 @@ impl PackPost {
                     shadow.and_then(|t| t.color[i].as_ref()).map(|c| &c[side])
                 };
                 let texture = match s.source {
+                    Source::Color(i) if shadow_space && pass.shadow_copies & 1 << i != 0 => {
+                        shadow_scratch(i).unwrap_or(&self.dummy)
+                    }
+                    Source::ShadowColor(i) if pass.shadow_copies & 1 << i != 0 => {
+                        shadow_scratch(i).unwrap_or(&self.dummy)
+                    }
                     Source::Color(i) if shadow_space => {
                         shadow_color(i, usize::from(key & 1 << i != 0)).unwrap_or(&self.dummy)
                     }
@@ -991,7 +1009,11 @@ impl PackPost {
                         targets.color[i].as_ref().map_or(&self.dummy, |t| &t[side])
                     }
                     Image::Custom(k) => self.images[k].view.as_ref().unwrap_or(&self.dummy),
+                    Image::ShadowColor(i) => shadow
+                        .and_then(|t| t.color[i].as_ref())
+                        .map_or(&self.dummy, |c| &c[usize::from(key & 1 << (32 + i) != 0)]),
                     Image::ColorBefore(i) => targets.scratch[i].as_ref().unwrap_or(&self.dummy),
+                    Image::ShadowColorBefore(i) => shadow_scratch(i).unwrap_or(&self.dummy),
                     Image::CustomBefore(k) => self.images[k].before.as_ref().unwrap_or(&self.dummy),
                     Image::StandIn(format, dimension) => {
                         pack_images::stand_in(&self.stand_ins, format, dimension)
@@ -2104,11 +2126,22 @@ impl PackPost {
             .as_ref()
             .is_some_and(|entities| entities.geometry.draws.iter().any(|draw| draw.shadow));
         // Custom images are cleared each frame (`pack_images::clear`) before the
-        // shadow pass writes them, so a pack with any redraws it too.
+        // shadow pass writes them, so a pack with any redraws it too. A pass after the shadow
+        // pass that binds a shadowcolor buffer as an image may change it, so the map kept isn't
+        // the shadow pass's any more. And a shadow program writing a buffer that isn't cleared
+        // every frame builds on the frame before (an accumulating `shadowcomp` dispatch): the
+        // same inputs give another result. The pack's storage buffers (`bufferObject.*`) are
+        // never cleared and aren't in the key, so a shadow program that binds them, reading or
+        // writing, is never kept either.
         let cache_hit = !has_shadow_entities
             && self.images.is_empty()
+            && self.shadow_images_outside == 0
+            && !self.shadow_buffers
             && self.shadow_cache.key == Some(cache_key)
-            && self.shadow_targets.is_some();
+            && self
+                .shadow_targets
+                .as_ref()
+                .is_some_and(|t| self.shadow_writes & t.kept() == 0);
         if cache_hit {
             // The targets still hold this map (and `main`, the A/B side
             // `shadowcomp` left current).
@@ -2130,6 +2163,7 @@ impl PackPost {
             return;
         };
         t.begin_frame();
+        t.clear_images(encoder, self.shadow_pass_images);
         let size = [t.size; 2];
         self.draw_terrain(
             device,
@@ -2166,6 +2200,14 @@ impl PackPost {
             let t = self.shadow_targets.as_ref().expect("shadow pass");
             let mut attachments: SmallVec<[Option<wgpu::RenderPassColorAttachment>; BUFFERS]> =
                 SmallVec::new();
+            // A program that writes only images draws into the sink, which keeps nothing.
+            if pass.sink {
+                let ops = wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Discard,
+                };
+                attachments.push(t.sink.as_ref().and_then(|v| attach(v, ops)));
+            }
             for &(location, buffer) in &pass.writes {
                 let l = location as usize;
                 if attachments.len() <= l {
@@ -2281,7 +2323,9 @@ impl PackPost {
                 self.entities
                     .iter()
                     .flat_map(|entities| entities.shadow.iter().flatten()),
-            );
+            )
+            // Their compute stages read uniforms of their own.
+            .flat_map(|p| std::iter::once(p).chain(&p.compute));
         for pass in passes {
             pass.name.hash(&mut hasher);
             for (index, ty, offset) in &pass.uniforms {

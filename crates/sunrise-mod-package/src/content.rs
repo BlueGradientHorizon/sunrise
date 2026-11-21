@@ -582,7 +582,34 @@ struct BlockFile {
     pick_item: Option<String>,
     #[serde(default)]
     components: BTreeMap<String, serde_json::Value>,
+    suspicious_stew_effects: Option<Vec<StewEffect>>,
 }
+
+/// One entry of a block's suspicious stew effect list, in the item component's JSON form.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, Deserialize)]
+pub struct StewEffect {
+    pub id: String,
+    /// Duration in ticks. Omitted or invalid durations use 160.
+    #[serde(
+        default = "stew_duration",
+        deserialize_with = "deserialize_stew_duration"
+    )]
+    pub duration: i32,
+}
+
+fn stew_duration() -> i32 {
+    160
+}
+
+fn deserialize_stew_duration<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<i32, D::Error> {
+    Ok(serde_json::Value::deserialize(deserializer)?
+        .as_i64()
+        .and_then(|duration| i32::try_from(duration).ok())
+        .unwrap_or_else(stew_duration))
+}
+
 fn yes() -> bool {
     true
 }
@@ -664,6 +691,8 @@ pub struct Block {
     pub pick_item: Option<String>,
     /// Its item's component patch, as an [`Item`]'s.
     pub components: BTreeMap<String, serde_json::Value>,
+    /// Ordered effects supplied by this block, independent of its item's components.
+    pub suspicious_stew_effects: Option<Vec<StewEffect>>,
     /// A connecting block (template `minecraft:chorus_plant`, a `PipeBlock`
     /// without the chorus plant's rules): the block tag, without `#`, whose
     /// blocks it joins besides itself (a cable's machines).
@@ -974,19 +1003,27 @@ pub struct BlockEntityType {
 /// a menu type the mod adds (vanilla's `MenuType`, NeoForge's
 /// `IMenuTypeExtension.create`): its container's slot count, the
 /// `ContainerData` count its menu syncs, and its take-only slots
-/// (`FurnaceResultSlot.mayPlace`). The slots come first in the menu, then the
-/// player's 36, and a mod screen (`native_screen`) places them.
+/// (`FurnaceResultSlot.mayPlace`). The container slots come first, then the
+/// player's 36 if included. A mod screen (`native_screen`) places them.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct MenuType {
     /// `<mod id>:<path>`.
     #[serde(skip)]
     pub id: String,
-    /// 1 to [`MAX_MENU_SLOTS`].
+    /// 0 to [`MAX_MENU_SLOTS`].
     pub slots: u16,
+    /// Append the 36 player inventory slots (default: true).
+    #[serde(default = "yes")]
+    pub player_inventory: bool,
     /// 0 to [`MAX_MENU_SLOTS`].
     #[serde(default)]
     pub data_slots: u16,
+    /// Per-slot maxima for transient slots when the menu is opened with no backing block.
+    /// When present, supplies one maximum (1–99) for each container slot. Cannot be combined
+    /// with take-only `results` or a `crafting` layout.
+    #[serde(default)]
+    pub owned_slots: Option<Vec<u8>>,
     /// slots a player takes from but never puts into, each below `slots`.
     #[serde(default)]
     pub results: Vec<u16>,
@@ -1500,6 +1537,7 @@ impl Content {
                 block_item: file.block_item,
                 pick_item: file.pick_item,
                 components: file.components,
+                suspicious_stew_effects: file.suspicious_stew_effects,
                 connects_to: file
                     .connects_to
                     .map(|t| t.trim_start_matches('#').to_owned()),
@@ -1671,13 +1709,7 @@ impl Content {
                 self.entity_types.push(EntityType { id: kind, ..file });
                 continue;
             }
-            if !file.attributes.is_empty() {
-                return Err(format!(
-                    "{name}: only a living type has attributes (its template is {})",
-                    file.template
-                ));
-            }
-            file.validate_thrown_attachments_and_sounds(&name)?;
+            file.validate_thrown_overrides(&name)?;
             let Some(item) = &file.item else {
                 return Err(format!(
                     "{name}: a thrown type names the item that throws it"
@@ -1704,80 +1736,96 @@ impl Content {
             self.entity_types.push(EntityType { id: kind, ..file });
         }
         for (menu, name) in menus {
+            let bytes = reader.read(&name)?;
+            let source = format!("{name} ({menu})");
             let file: MenuType =
-                serde_json::from_slice(&reader.read(&name)?).map_err(|e| format!("{name}: {e}"))?;
-            if !(1..=MAX_MENU_SLOTS).contains(&file.slots) || file.data_slots > MAX_MENU_SLOTS {
+                serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
+            if file.slots > MAX_MENU_SLOTS || file.data_slots > MAX_MENU_SLOTS {
                 return Err(format!(
-                    "{name}: slots is 1 to {MAX_MENU_SLOTS}, data_slots 0 to {MAX_MENU_SLOTS}"
+                    "{source}: slots ({}) and data_slots ({}) are each 0 to {MAX_MENU_SLOTS}",
+                    file.slots, file.data_slots
+                ));
+            }
+            if let Some(limits) = &file.owned_slots
+                && (limits.len() != usize::from(file.slots)
+                    || limits.iter().any(|limit| !(1..=99).contains(limit)))
+            {
+                return Err(format!(
+                    "{name} ({menu}): owned_slots must give one maximum in 1..=99 per container slot"
+                ));
+            }
+            if file.owned_slots.is_some() && (!file.results.is_empty() || file.crafting.is_some()) {
+                return Err(format!(
+                    "{source}: owned_slots cannot be combined with results or crafting"
                 ));
             }
             let mut seen = BTreeSet::new();
             for &r in &file.results {
                 if r >= file.slots {
                     return Err(format!(
-                        "{name}: result {r} is past the last slot, {}",
-                        file.slots - 1
+                        "{source}: result slot {r} is outside the {} container slots",
+                        file.slots
                     ));
                 }
                 if !seen.insert(r) {
-                    return Err(format!("{name}: result {r} is listed twice"));
+                    return Err(format!("{source}: result {r} is listed twice"));
                 }
             }
             for &input in &file.inputs {
                 if input >= file.slots {
                     return Err(format!(
-                        "{name}: input {input} is past the last slot, {}",
-                        file.slots - 1
+                        "{source}: input {input} is outside the {} container slots",
+                        file.slots
                     ));
                 }
                 if !seen.insert(input) {
                     return Err(format!(
-                        "{name}: input {input} is listed twice or is a result"
+                        "{source}: input {input} is listed twice or is a result"
                     ));
                 }
             }
             if let Some(c) = file.crafting {
                 let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
                 if !matches!(c.size, 2 | 3) {
-                    return Err(format!("{name}: crafting size is 2 or 3"));
+                    return Err(format!("{source}: crafting size is 2 or 3"));
                 }
                 if end > u32::from(file.slots) || c.result >= file.slots {
                     return Err(format!(
-                        "{name}: the crafting grid and result are slots below {}",
-                        file.slots
+                        "{source}: crafting grid {}..{end} and result slot {} must be within the {} container slots",
+                        c.grid, c.result, file.slots
                     ));
                 }
                 if (u32::from(c.grid)..end).contains(&u32::from(c.result)) {
-                    return Err(format!("{name}: the crafting result is in its grid"));
+                    return Err(format!("{source}: the crafting result is in its grid"));
                 }
                 let is_crafting_slot =
                     |&s: &u16| s == c.result || (u32::from(c.grid)..end).contains(&u32::from(s));
                 if file.results.iter().any(is_crafting_slot) {
                     return Err(format!(
-                        "{name}: results lists a crafting slot (the result is take-only already)"
+                        "{source}: results lists a crafting slot (the result is take-only already)"
                     ));
                 }
                 if file.inputs.iter().any(is_crafting_slot) {
-                    return Err(format!("{name}: inputs lists a crafting slot"));
+                    return Err(format!("{source}: inputs lists a crafting slot"));
                 }
             }
             if let Some(l) = file.links {
                 let linked = l.range();
                 if l.count == 0 || linked.end > u32::from(file.slots) {
                     return Err(format!(
-                        "{name}: links are 1 or more slots below {}",
+                        "{source}: linked slots {linked:?} must be nonempty and within the {} container slots",
                         file.slots
                     ));
                 }
                 if file.results.iter().any(|&r| linked.contains(&u32::from(r))) {
-                    return Err(format!("{name}: results lists a linked slot"));
+                    return Err(format!("{source}: results lists a linked slot"));
                 }
                 if let Some(c) = file.crafting {
                     let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
                     if linked.contains(&u32::from(c.result))
                         || (u32::from(c.grid)..end).any(|s| linked.contains(&s))
                     {
-                        return Err(format!("{name}: links overlap the crafting slots"));
+                        return Err(format!("{source}: links overlap the crafting slots"));
                     }
                 }
             }
@@ -2606,6 +2654,7 @@ capabilities = ["registries"]
                 block_item: None,
                 pick_item: None,
                 components: BTreeMap::new(),
+                suspicious_stew_effects: None,
                 connects_to: None,
                 thickness: None,
                 wood_type: None,
@@ -2793,6 +2842,41 @@ capabilities = ["registries"]
     }
 
     #[test]
+    fn menu_owned_slots_require_one_valid_stack_limit_per_slot() {
+        let path = "data/ruby/sunrise/menu/filter.json";
+        let menu = br#"{"slots":2,"owned_slots":[1,32]}"#;
+        let content = smod("menu-owned", MANIFEST_TEXT, &[(path, menu)]).unwrap();
+        assert_eq!(
+            content.menu_types[0].owned_slots.as_deref(),
+            Some(&[1, 32][..])
+        );
+
+        for (case, limits) in [
+            ("too-short", "[1]"),
+            ("too-long", "[1,2,3]"),
+            ("zero", "[0,2]"),
+            ("oversized", "[1,100]"),
+        ] {
+            let menu = format!(r#"{{"slots":2,"owned_slots":{limits}}}"#);
+            let error = smod(case, MANIFEST_TEXT, &[(path, menu.as_bytes())]).unwrap_err();
+            assert!(error.contains("owned_slots"), "{case}: {error}");
+        }
+    }
+
+    #[test]
+    fn menu_owned_slots_reject_take_only_and_crafting_results() {
+        let path = "data/ruby/sunrise/menu/filter.json";
+        for (case, result) in [
+            ("take-only", r#""results":[4]"#),
+            ("crafting", r#""crafting":{"grid":0,"size":2,"result":4}"#),
+        ] {
+            let menu = format!(r#"{{"slots":5,"owned_slots":[1,1,1,1,1],{result}}}"#);
+            let error = smod(case, MANIFEST_TEXT, &[(path, menu.as_bytes())]).unwrap_err();
+            assert!(error.contains("ruby:filter"), "{case}: {error}");
+        }
+    }
+
+    #[test]
     fn menu_types_take_slots_data_slots_and_roles() {
         let files: &[(&str, &[u8])] = &[
             (
@@ -2800,6 +2884,10 @@ capabilities = ["registries"]
                 br#"{"slots": 9, "data_slots": 2, "results": [7, 8], "inputs": [0, 6]}"#,
             ),
             ("data/ruby/sunrise/menu/bag.json", br#"{"slots": 4}"#),
+            (
+                "data/ruby/sunrise/menu/status.json",
+                br#"{"slots": 0, "player_inventory": false, "data_slots": 2}"#,
+            ),
             (
                 "data/ruby/sunrise/menu/station.json",
                 br#"{"slots": 16, "results": [11], "inputs": [15], "crafting": {"grid": 1, "result": 0}, "links": {"from": 12, "count": 4}}"#,
@@ -2813,6 +2901,7 @@ capabilities = ["registries"]
                 (
                     m.id.as_str(),
                     m.slots,
+                    m.player_inventory,
                     m.data_slots,
                     m.results.as_slice(),
                     m.inputs.as_slice(),
@@ -2822,15 +2911,21 @@ capabilities = ["registries"]
         assert_eq!(
             menus,
             [
-                ("ruby:bag", 4, 0, &[][..], &[][..]),
-                ("ruby:press", 9, 2, &[7, 8][..], &[0, 6][..]),
-                ("ruby:station", 16, 0, &[11][..], &[15][..])
+                ("ruby:bag", 4, true, 0, &[][..], &[][..]),
+                ("ruby:press", 9, true, 2, &[7, 8][..], &[0, 6][..]),
+                ("ruby:station", 16, true, 0, &[11][..], &[15][..]),
+                ("ruby:status", 0, false, 2, &[][..], &[][..]),
             ]
         );
         let links: Vec<_> = content.menu_types.iter().map(|m| m.links).collect();
         assert_eq!(
             links,
-            [None, None, Some(super::MenuLinks { from: 12, count: 4 })]
+            [
+                None,
+                None,
+                Some(super::MenuLinks { from: 12, count: 4 }),
+                None
+            ]
         );
         let crafting: Vec<_> = content.menu_types.iter().map(|m| m.crafting).collect();
         assert_eq!(
@@ -2842,88 +2937,96 @@ capabilities = ["registries"]
                     grid: 1,
                     size: 3,
                     result: 0
-                })
+                }),
+                None,
             ]
         );
-        for (case, file, why) in [
-            ("menu-empty", r#"{"slots": 0}"#, "slots is 1 to 256"),
-            ("menu-large", r#"{"slots": 257}"#, "slots is 1 to 256"),
+        for (case, file, details) in [
+            ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
             (
                 "menu-data",
                 r#"{"slots": 1, "data_slots": 257}"#,
-                "data_slots 0 to 256",
+                &["257"][..],
             ),
             (
                 "menu-result",
-                r#"{"slots": 3, "results": [3]}"#,
-                "result 3 is past the last slot, 2",
+                r#"{"slots": 0, "results": [0]}"#,
+                &["result slot 0"][..],
+            ),
+            (
+                "menu-input",
+                r#"{"slots": 0, "inputs": [0]}"#,
+                &["input 0"][..],
             ),
             (
                 "menu-twice",
                 r#"{"slots": 3, "results": [1, 1]}"#,
-                "result 1 is listed twice",
+                &["result 1"][..],
             ),
-            ("menu-key", r#"{"slots": 3, "rows": 1}"#, "unknown field"),
+            ("menu-key", r#"{"slots": 3, "rows": 1}"#, &["rows"][..]),
             (
                 "craft-size",
                 r#"{"slots": 20, "crafting": {"grid": 0, "size": 4, "result": 19}}"#,
-                "crafting size is 2 or 3",
+                &[],
             ),
             (
                 "craft-past",
                 r#"{"slots": 9, "crafting": {"grid": 1, "result": 0}}"#,
-                "grid and result are slots below 9",
+                &["1..10", "result slot 0"],
             ),
             (
                 "craft-result-past",
-                r#"{"slots": 9, "crafting": {"grid": 0, "size": 2, "result": 9}}"#,
-                "grid and result are slots below 9",
+                r#"{"slots": 0, "crafting": {"grid": 0, "size": 2, "result": 4}}"#,
+                &["0..4", "result slot 4"],
             ),
             (
                 "craft-overlap",
                 r#"{"slots": 10, "crafting": {"grid": 0, "result": 4}}"#,
-                "the crafting result is in its grid",
+                &[],
             ),
             (
                 "craft-results",
                 r#"{"slots": 10, "results": [2], "crafting": {"grid": 0, "result": 9}}"#,
-                "results lists a crafting slot",
+                &[],
             ),
             (
                 "craft-key",
                 r#"{"slots": 10, "crafting": {"grid": 0, "result": 9, "width": 3}}"#,
-                "unknown field",
+                &["width"],
             ),
             (
                 "links-past",
-                r#"{"slots": 10, "links": {"from": 8, "count": 3}}"#,
-                "links are 1 or more slots below 10",
+                r#"{"slots": 0, "links": {"from": 0, "count": 1}}"#,
+                &["0..1"],
             ),
             (
                 "links-empty",
                 r#"{"slots": 10, "links": {"from": 2, "count": 0}}"#,
-                "links are 1 or more slots below 10",
+                &["2..2"],
             ),
             (
                 "links-results",
                 r#"{"slots": 10, "results": [5], "links": {"from": 4, "count": 2}}"#,
-                "results lists a linked slot",
+                &[],
             ),
             (
                 "links-grid",
                 r#"{"slots": 20, "crafting": {"grid": 1, "result": 0}, "links": {"from": 9, "count": 4}}"#,
-                "links overlap the crafting slots",
+                &[],
             ),
             (
                 "links-key",
                 r#"{"slots": 10, "links": {"from": 2, "count": 2, "rows": 1}}"#,
-                "unknown field",
+                &["rows"],
             ),
-            ("menu-missing", r#"{"data_slots": 1}"#, "missing field"),
+            ("menu-missing", r#"{"data_slots": 1}"#, &["slots"]),
         ] {
             let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/menu/a.json", file.as_bytes())];
-            let e = smod(case, MANIFEST_TEXT, files).unwrap_err();
-            assert!(e.contains(why), "{case}: {e}");
+            let error = smod(case, MANIFEST_TEXT, files).unwrap_err();
+            assert!(error.contains("ruby:a"), "{case}: {error}");
+            for detail in details {
+                assert!(error.contains(detail), "{case}: {error}");
+            }
         }
     }
 

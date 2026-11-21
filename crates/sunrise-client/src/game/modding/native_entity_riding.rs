@@ -171,7 +171,7 @@ impl Game<'_> {
     /// Whether any object rides the entity, even one without a handle.
     pub(super) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
         Some(match self.riding_read(entity)? {
-            RidingRead::Server(_) => !self.seated_passengers(entity.id()).is_empty(),
+            RidingRead::Server(_) => self.has_seated_passengers(entity.id()),
             RidingRead::Client(remote) => remote.has_passengers(entity.id()),
         })
     }
@@ -539,7 +539,7 @@ impl Game<'_> {
                     _ => {}
                 }
                 self.riding = Some(vehicle_id);
-                self.seat_acting_player(vehicle_id);
+                self.seat_player(vehicle_id);
                 self.trigger_player("minecraft:started_riding");
             }
             Target::Mob(id) => {
@@ -667,9 +667,12 @@ impl Game<'_> {
                     .iter()
                     .position(|b| b.id == id)
                     .ok_or(R::NoEntity)?;
-                if self.boat_passengers(id) >= self.boats[index].max_passengers()
-                    || (!force && !self.boat_has_room(index))
-                {
+                let full = if force {
+                    self.seated_passenger_count(id) >= self.boats[index].max_passengers()
+                } else {
+                    !self.boat_has_room(index)
+                };
+                if full {
                     return Err(R::Full);
                 }
             }
@@ -677,10 +680,7 @@ impl Game<'_> {
                 if !self.carts.iter().any(|cart| cart.id == id) {
                     return Err(R::NoEntity);
                 }
-                if self.riding == Some(id)
-                    || self.ridden_by_guest(id)
-                    || !self.seated_passengers(id).is_empty()
-                {
+                if self.has_seated_passengers(id) {
                     return Err(R::Full);
                 }
             }
@@ -770,6 +770,45 @@ impl Game<'_> {
         {
             self.set_general_mount(id, None);
             self.release_removed_vehicle(vehicle);
+        }
+    }
+
+    /// `Entity.setRemoved`: stop each direct passenger in list order, not
+    /// the reverse order of `ejectPassengers`. A callback can move a later
+    /// passenger, so check each edge again before asking it to stop riding.
+    pub(super) fn dismount_removed_passengers(&mut self, vehicle: u32, y: f64) {
+        let passengers = self.seated_passengers(vehicle);
+        let own = self
+            .player
+            .as_ref()
+            .filter(|_| self.lan_acting.is_none())
+            .map(|player| player.entity_id as u32);
+        // An own-player edge that has no seat entry still needs to dismount.
+        if let Some(own) = own
+            && self.riding == Some(vehicle)
+            && !passengers
+                .iter()
+                .any(|&(_, id, player)| player && id == own)
+        {
+            self.stop_riding_from_removed_vehicle(vehicle, y);
+        }
+        for (_, id, player) in passengers {
+            if player {
+                let target = if own == Some(id) {
+                    Some(Target::Player)
+                } else {
+                    self.player_vehicle(id)
+                };
+                if let Some(target) = target
+                    && self.native_vehicle_id(target) == Some(vehicle)
+                {
+                    self.for_player(target, |g| g.stop_riding_from_removed_vehicle(vehicle, y));
+                }
+            } else if self.native_vehicle_id(Target::Mob(id)) == Some(vehicle) {
+                self.dismount_mob_from_removed_vehicle(id, y);
+            } else if self.native_vehicle_id(Target::General(id)) == Some(vehicle) {
+                self.dismount_general(id, vehicle);
+            }
         }
     }
 

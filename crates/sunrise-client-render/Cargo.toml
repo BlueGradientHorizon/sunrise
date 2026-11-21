@@ -13,7 +13,7 @@ sunrise-hooks = { path = "../sunrise-hooks" }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab" }
 sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
-# The GUI atlas's pixels, kept compressed once uploaded (hud.rs `pack_pixels`).
+# The GUI atlas's pixels, kept compressed once uploaded (hud/atlas.rs `pack_pixels`).
 lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-encode", "safe-decode", "checked-decode"] }
 sunrise-assets = { path = "../sunrise-assets" }
 sunrise-client-core = { path = "../sunrise-client-core" }
@@ -26,7 +26,7 @@ sunrise-java-properties = { path = "../sunrise-java-properties" }
 sunrise-mod-package = { path = "../sunrise-mod-package" }
 # The narrator option's status and whether the narrator is there (Options.narrator).
 sunrise-narrator = { path = "../sunrise-narrator" }
-# OptiFine-format pack files: random entity textures (hud.rs), connected textures
+# OptiFine-format pack files: random entity textures (hud/atlas.rs), connected textures
 # (connected.rs) and custom item texture rules (cit.rs).
 sunrise-connected = { path = "../sunrise-connected" }
 sunrise-optifine = { path = "../sunrise-optifine" }

@@ -105,6 +105,11 @@ fn frame_view<'a>(frame: &'a Frame) -> UniformFrameView<'a> {
         darkness: frame.darkness,
         dynamic_lights: frame.dynamic_lights,
         entities: frame.entities,
+        lightning_bolt: frame
+            .lightning
+            .bolts
+            .last()
+            .map(|bolt| glam::DVec3::from_array(bolt.at)),
     }
 }
 
@@ -248,6 +253,9 @@ mod celestial_blend_tests;
 
 #[cfg(test)]
 mod higher_shadowcolor_tests;
+
+#[cfg(test)]
+mod shadowcolor_image_tests;
 
 #[cfg(test)]
 mod single_side_tests;

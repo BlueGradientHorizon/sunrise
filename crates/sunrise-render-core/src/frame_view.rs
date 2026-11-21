@@ -39,6 +39,9 @@ pub struct UniformFrameView<'a> {
     pub darkness: (f32, f32),
     pub dynamic_lights: &'a [[f32; 4]],
     pub entities: &'a [crate::entity::EntityVertex],
+    /// The last bolt of the frame's lightning draw list, where it struck, for
+    /// `lightningBoltPosition`; `None` when no bolt is drawn.
+    pub lightning_bolt: Option<DVec3>,
 }
 
 /// Maximum number of dynamic lights supported in shader passes.
