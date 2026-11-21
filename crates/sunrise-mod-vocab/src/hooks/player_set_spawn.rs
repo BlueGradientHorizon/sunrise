@@ -8,7 +8,7 @@ pub trait Hooks {
     /// respawn block was found (`pos` is none for a player with no point). A respawn block
     /// that is gone makes no call. `pos` is the block position and `dimension` its level;
     /// `forced` is `/spawnpoint`'s flag. Set `cancel` and the point stays as it was (the
-    /// respawned player is left with none). `player_entity_id` is the server's entity id for
+    /// respawned player keeps whatever point a clone listener set, if any). `player_entity_id` is the server's entity id for
     /// the player. Server-side.
     #[hook(
         dispatch = "api_carrier",

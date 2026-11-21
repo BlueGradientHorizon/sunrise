@@ -2,3 +2,4 @@ sunrise-client game::original_player::tests::clone_removes_menus_and_retires_old
 sunrise-client game::original_player::tests::unsubscribed_end_return_copies_only_serializable_attachments lib daily resources
 sunrise-client game::original_player::tests::failed_transaction_rolls_back_both_original_and_replacement_attachments lib daily resources
 sunrise-client game::original_player::tests::direct_respawn_clones_in_the_resolved_level_not_the_callers_level lib daily resources
+sunrise-client game::original_player::tests::respawn_copies_only_committed_attachment_state lib daily resources

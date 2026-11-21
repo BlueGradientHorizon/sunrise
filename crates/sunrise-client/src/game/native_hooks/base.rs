@@ -3514,12 +3514,14 @@ impl Game<'_> {
     ) {
         self.fire_player_respawn_position(call);
     }
-    /// `player` (`name`) respawned (NeoForge's `PlayerRespawnEvent`): at the
-    /// end of `PlayerList.respawn`, once they are placed and their health,
-    /// food and experience reset, with their state swapped in. Once for each
-    /// death that ends in a respawn, on a server; not for the End-exit one.
-    pub(in crate::game) fn native_player_respawned(&mut self, player: u128, name: &str) {
-        self.fire_player_respawned(player, name);
+    /// NeoForge's `PlayerRespawnEvent`, after `PlayerList.respawn` placed the new player.
+    pub(in crate::game) fn native_player_respawned(
+        &mut self,
+        player: u128,
+        name: &str,
+        end_conquered: bool,
+    ) {
+        self.fire_player_respawned(player, name, end_conquered);
     }
     /// A player was saved to the world's store (NeoForge's
     /// `PlayerEvent.SaveToFile`, `PlayerList.save`): when they leave or the

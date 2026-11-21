@@ -2518,6 +2518,12 @@ impl Hub {
                         .update(i, |g| g.inbox.push_back(InboxItem::Packet(packet, credit)));
                     continue;
                 }
+                // A player whose body was removed still controls the respawn button.
+                S::ClientCommand(c) if c.action == 0 && self.guests[i].respawning => {
+                    self.guests
+                        .update(i, |g| g.inbox.push_back(InboxItem::Packet(packet, credit)));
+                    continue;
+                }
                 _ => {}
             }
             credits.extend(credit);
@@ -2694,7 +2700,7 @@ impl Hub {
         if std::env::var_os("SUNRISE_NET_DEBUG").is_some() {
             log::info!("[lan] {} left: {reason}", g.name);
         }
-        if !g.placed {
+        if !g.joined() {
             return g;
         }
         // `PlayerList.remove`: the entities it tracked stop (`removePairing`). The stops stay
@@ -4819,6 +4825,27 @@ impl Hub {
         crate::item_sync::from_network(s, &self.sync.builtin, &self.sync.dynamic)
     }
 
+    /// ServerLevel.removePlayerImmediately: remove the old body and its pairs, not
+    /// the connection or the tab-list entry. `respawn` places the new body later.
+    pub fn remove_player_for_respawn(&mut self, i: usize) {
+        let id = self.guests.update(i, |g| {
+            g.stop_riding();
+            g.placed = false;
+            g.respawning = true;
+            g.pending_move = None;
+            super::chunk_watch::unwatch_all(&mut self.chunk_watches, g);
+            for id in g.tracker.ids() {
+                g.send(&C::RemoveEntities(play::RemoveEntities { ids: vec![id] }));
+            }
+            g.tracker.clear();
+            g.sent_chunks.clear();
+            g.chunk_queue.clear();
+            g.viewed.forget_views();
+            g.entity_id
+        });
+        self.respawned(id);
+    }
+
     /// ServerLevel.removePlayerImmediately, then addRespawnedPlayer: the other players
     /// lose the dead player's entity (ServerEntity.removePairing) and are sent the
     /// respawned one as a new entity at the next tick. Their clients would otherwise keep
@@ -4841,16 +4868,6 @@ impl Hub {
         );
     }
 
-    /// `ChunkMap.removeEntity`: stop watching every chunk of `i`'s current level.
-    /// Idempotent once drained, so callers that assign a replacement player's
-    /// destination dimension before `respawn` or `change_level` still record
-    /// unwatch events against the level being left.
-    pub fn unwatch_guest_chunks(&mut self, i: usize) {
-        self.guests.update(i, |g| {
-            super::chunk_watch::unwatch_all(&mut self.chunk_watches, g);
-        });
-    }
-
     /// PlayerList.respawn: back to `at` with a fresh start. The vanilla client waits on its
     /// level loading screen from the Respawn packet until the level info's "level chunks load
     /// start" event and the chunk under the player, so the packets follow vanilla's order.
@@ -4866,36 +4883,15 @@ impl Hub {
     ) {
         let info = self.spawn_info(i, 0, ctx.sea_level);
         self.close_container_for(i);
-        let id = self.guests.update(i, |g| {
-            // The old player leaves its level with its chunks (ChunkMap.removeEntity).
-            super::chunk_watch::unwatch_all(&mut self.chunk_watches, g);
-            // PlayerList.respawn: into the level in place (the respawn level).
-            g.dimension = self.config.dimension.clone();
+        self.guests.update(i, |g| {
             // A new player: a mod's collision exclusions were the dead one's (#3717).
             g.collision_exclusions.clear();
             // restartClientLoadTimerAfterRespawn: the client loads a whole new level before it
             // reports it loaded.
             g.load_timeout = super::guest::CLIENT_LOADED_TIMEOUT;
             g.loading = true;
-            // ServerLevel.removePlayerImmediately: the dead player's
-            // Entity.setRemoved (KILLED) stops its riding; the new player rides
-            // nothing.
-            g.stop_riding();
-            // ServerLevel.removePlayerImmediately: every entity paired with the dead player is
-            // removed (ServerEntity.removePairing, one packet each). Its chunks are dropped
-            // without ForgetLevelChunk (PlayerChunkSender.dropChunk skips dead players): the
-            // client keeps them and they are all sent again.
-            for id in g.tracker.ids() {
-                g.send(&C::RemoveEntities(play::RemoveEntities { ids: vec![id] }));
-            }
-            g.tracker.clear();
-            g.sent_chunks.clear();
-            g.chunk_queue.clear();
-            g.viewed.forget_views();
-            g.entity_id
-        });
-        self.respawned(id);
-        self.guests.update(i, |g| {
+            g.sent_health = None;
+            g.sent_health_data = false;
             g.sent_pose = crate::pose::Pose::Standing;
             // ServerPlayer.restoreFrom: the game mode again (onUpdateAbilities).
             g.send(&g.abilities_packet());
@@ -4939,6 +4935,9 @@ impl Hub {
         self.send_permission_level(i);
         // ServerLevel.addRespawnedPlayer: the chunk tracking starts again at the player.
         self.guests.update(i, |g| {
+            g.placed = true;
+            g.respawning = false;
+            g.placed_at = self.ticks;
             let (cx, cz) = g.chunk();
             g.send(&C::SetChunkCacheCenter(play::SetChunkCacheCenter {
                 x: cx,

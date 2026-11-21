@@ -93,24 +93,6 @@ pub(super) struct OpenTransactions {
 }
 
 impl OpenTransactions {
-    pub(super) fn open_tokens(&self) -> Vec<u64> {
-        self.levels.iter().map(|level| level.token).collect()
-    }
-
-    /// Move checkpoints off the UUID before that UUID starts naming a new attachment owner.
-    pub(super) fn take_original_attachment_journal(
-        &mut self,
-        uuid: u128,
-    ) -> Vec<(u64, Attachments)> {
-        self.levels
-            .iter_mut()
-            .filter_map(|level| {
-                let kept = level.attachments.remove(&Holder::Player(uuid))?;
-                Some((level.token, kept.contents))
-            })
-            .collect()
-    }
-
     pub(super) fn push_retained_original(
         &mut self,
         slot: std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>,
@@ -510,6 +492,9 @@ pub(super) enum After {
     Drop([i32; 3], ItemStack),
     /// `Player.drop(stack, false)` by the player with this UUID: what no longer fits.
     PlayerDrop(u128, ItemStack),
+    /// A respawn replaces the holder behind the player's UUID. Do not install a new
+    /// attachment generation or copy tentative data until the old generation is committed.
+    PlayerRespawn(u32),
     /// `/give`'s pickup sound for the player with this UUID, in the level that was in place
     /// when the stack was accepted (a command run for a borrowed player swaps it in).
     GivePickup(u128, super::Dim),
@@ -1192,14 +1177,11 @@ impl Game<'_> {
         } else {
             None
         };
-        // The fresh player will publish at placement, not on a clone callback's first write.
-        // An outer abort after placement must restore contents without retiring that publication.
-        let cloning = matches!(holder, Holder::Player(uuid) if self.player_state.cloning_players.contains(&uuid));
         let Ok(kept) = self
             .attachment_slot(holder, mod_api::AttachmentAccess::Existing)
             .map(|map| KeptAttachments {
                 contents: map.clone(),
-                indexed: cloning || entity_bound.unwrap_or_else(|| map.has_index_binding()),
+                indexed: entity_bound.unwrap_or_else(|| map.has_index_binding()),
             })
         else {
             return;
@@ -1540,6 +1522,7 @@ impl Game<'_> {
     }
     fn run_after(&mut self, after: After) {
         match after {
+            After::PlayerRespawn(conn) => self.commit_player_respawn(conn),
             After::Trade(effect) => self.commit_merchant_effect(*effect),
             After::Payload(payload) => payload.publish(),
             After::Packet(packet, body) => self.publish_mod_held(packet, body),

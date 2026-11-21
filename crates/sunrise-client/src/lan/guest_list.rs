@@ -40,6 +40,10 @@ impl GuestList {
             guest.residency.retire();
             return false;
         }
+        if guest.respawning {
+            guest.residency.retire();
+            return false;
+        }
         let uuid = crate::lan::playerdata::uuid_ints(guest.uuid);
         let source = crate::join_seq::residency::Source::Guest(guest.conn);
         if guest.residency.identity().is_some_and(|identity| {
@@ -72,6 +76,7 @@ impl GuestList {
             .as_ref()
             .map(|(_, key)| key(&self.rows[index].dimension));
         let released = self.rows[index].released;
+        let respawning = self.rows[index].respawning;
         let edit = Edit {
             list: self,
             index,
@@ -79,6 +84,7 @@ impl GuestList {
             registration,
             dimension,
             released,
+            respawning,
         };
         update(&mut edit.list.rows[index])
     }
@@ -381,6 +387,7 @@ struct Edit<'a> {
     registration: Option<sunrise_mod_runtime::attachments::AttachmentRegistration>,
     dimension: Option<mod_api::DimensionKey>,
     released: bool,
+    respawning: bool,
 }
 fn index_fields(guest: &Guest) -> (u32, u128, i32, bool) {
     (
@@ -424,6 +431,7 @@ impl Drop for Edit<'_> {
         if identity_changed
             || dimension != self.dimension
             || self.list.rows[self.index].released != self.released
+            || self.list.rows[self.index].respawning != self.respawning
         {
             self.list.bind_guest(self.index);
         }

@@ -901,12 +901,14 @@ impl Game<'_> {
                 self.lan_acting_entity?,
             ));
         }
-        if let Some(guest) = self.lan.as_ref().and_then(|host| {
-            host.hub.guests.simulation_iter().find(|guest| {
-                guest.placed
-                    && guest.participates_online()
-                    && guest.uuid == uuid
-                    && !self.lan_guest_swaps.contains(&guest.conn)
+        if let Some(guest) = self.cloning_guest(uuid).or_else(|| {
+            self.lan.as_ref().and_then(|host| {
+                host.hub.guests.simulation_iter().find(|guest| {
+                    guest.placed
+                        && guest.participates_online()
+                        && guest.uuid == uuid
+                        && !self.lan_guest_swaps.contains(&guest.conn)
+                })
             })
         }) {
             return Some((PlayerRead::Guest(guest), guest.entity_id as u32));
@@ -1226,14 +1228,23 @@ impl Game<'_> {
         ))
     }
 
-    /// A connected player's record, including one displaced by a nested turn.
+    /// A connected player's record, including a body removed for respawn or displaced by a turn.
     pub(super) fn online_player_record(&self, player: PlayerRef) -> Option<&Guest> {
         (self.native_lifecycle.epoch()? == player.entity().epoch()).then_some(())?;
-        self.lan
-            .as_ref()?
-            .hub
-            .online_players()
-            .find(|g| g.uuid == player.uuid() && g.entity_id as u32 == player.entity().id())
+        let guests = &self.lan.as_ref()?.hub.guests;
+        let guest = guests.get(guests.identity_index(player.uuid(), player.entity().id())?)?;
+        (guest.joined() && guest.participates_online()).then_some(guest)
+    }
+
+    pub(super) fn cloning_guest(&self, uuid: u128) -> Option<&Guest> {
+        let &(_, conn, _) = self
+            .player_state
+            .cloning_players
+            .iter()
+            .rev()
+            .find(|&&(player, _, _)| player == uuid)?;
+        self.command_guest(conn)
+            .filter(|_| !self.lan_guest_swaps.contains(&conn))
     }
 
     /// The stable name of a connected or acting player. None for a stale or
@@ -1957,7 +1968,8 @@ impl Game<'_> {
     }
 
     fn native_player_holder(&self, uuid: u128) -> Option<&Guest> {
-        self.lan.as_ref()?.hub.holder_guest(uuid, self.dim.id())
+        self.cloning_guest(uuid)
+            .or_else(|| self.lan.as_ref()?.hub.holder_guest(uuid, self.dim.id()))
     }
 
     /// Resolve a UUID-based item place in the acting state or a parked guest's own record.

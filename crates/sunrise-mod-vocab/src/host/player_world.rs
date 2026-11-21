@@ -85,14 +85,14 @@ pub trait PlayerWorldBackendMut {
     /// Respawns a dead player as their client's Respawn button does
     /// (`ServerGamePacketListenerImpl.handleClientCommand`'s `PERFORM_RESPAWN`, then
     /// `PlayerList.respawn`): at their respawn point, else the world spawn, with
-    /// `player_respawned` heard. Call outside any player's hook. A successful request may
+    /// `player_respawned` heard. Call outside any player's hook. A request takes effect only on root transaction commit and may
     /// wait for the destination chunks before the player is alive again. Each refusal is named by
     /// `RespawnRefusal`, checked in this order: `Client`, `InPlayerHook` (a player's state is
     /// swapped in; call it from `server_tick`), `Stale` (no player on this server behind the
     /// handle), `NoConnection` (a fake player, or the world's own player in a single-player
     /// world) and `Alive` (health above 0 and the game not won: the Respawn button
     /// ignores exactly that player; one who has won the game and is watching the End poem is
-    /// respawned even alive, on the server's next tick, as the button does).
+    /// respawned even alive, as the button does).
     #[access(WorldOnly)]
     fn player_respawn(&mut self, player: PlayerRef) -> Result<(), RespawnRefusal>;
 }

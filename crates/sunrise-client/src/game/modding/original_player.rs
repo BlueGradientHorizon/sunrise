@@ -13,7 +13,7 @@ use sunrise_items::items::ItemStack;
 #[derive(Default)]
 pub(super) struct PlayerState {
     pub(super) attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
-    pub(super) cloning_players: Vec<u128>,
+    pub(super) cloning_players: Vec<(u128, u32, u32)>,
 }
 
 /// Retained original-player attachment storage tied to `Game::transactions` so mutations,
@@ -31,11 +31,6 @@ impl OriginalAttachmentSlot {
             active_frames: Vec::new(),
             journal: Vec::new(),
         }
-    }
-
-    fn inherit_journal(&mut self, frames: Vec<u64>, journal: Vec<(u64, Attachments)>) {
-        self.active_frames = frames;
-        self.journal = journal;
     }
 
     pub(in crate::game) fn open_frame(&mut self, token: u64) {
@@ -235,16 +230,21 @@ impl OriginalPlayerAccess for RetainedOriginalPlayer {
 }
 
 impl Game<'_> {
-    /// Retire the old player's bulk rows and stop watching its source chunks before cloning.
-    pub(super) fn retire_cloning_player(&mut self, conn: u32) {
-        if let Some(host) = self.lan.as_mut()
-            && let Some(i) = host.hub.guests.connection_index(conn)
-        {
-            host.hub.unwatch_guest_chunks(i);
-            if let Some(map) = host.hub.guests.attachments_mut(conn) {
-                map.retire();
-                map.unbind_index();
-            }
+    /// Make the callback's player addressable without publishing it in a level's player list
+    /// or entity table. This also covers construction and the post-clone set-spawn event.
+    pub(super) fn with_cloning_player<R>(
+        &mut self,
+        conn: u32,
+        run: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
+        let guest = self.command_guest(conn)?;
+        let identity = (guest.uuid, conn, guest.entity_id as u32);
+        self.player_state.cloning_players.push(identity);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(self)));
+        self.player_state.cloning_players.pop();
+        match result {
+            Ok(result) => Some(result),
+            Err(panic) => std::panic::resume_unwind(panic),
         }
     }
 
@@ -272,7 +272,10 @@ impl Game<'_> {
         }) else {
             return false;
         };
-        self.retire_cloning_player(conn);
+        debug_assert!(
+            self.transactions.is_empty(),
+            "respawn must not replace an open journal's player"
+        );
         let Some(map) = self
             .lan
             .as_mut()
@@ -281,7 +284,6 @@ impl Game<'_> {
             return false;
         };
         let previous = std::mem::take(&mut **map);
-        let original_journal = self.transactions.take_original_attachment_journal(uuid);
         let replacement = previous.copy_for_clone(was_death);
         let mut original = self.retain_original_player(conn, previous);
         // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
@@ -295,37 +297,27 @@ impl Game<'_> {
                 **map = replacement;
             }
         }
-        if let Some(original) = &mut original {
-            original
-                .attachments
-                .slot
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .inherit_journal(self.transactions.open_tokens(), original_journal);
-            self.transactions
-                .push_retained_original(Arc::clone(&original.attachments.slot));
-        }
-        self.player_state.cloning_players.push(uuid);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.reinitialize_server_player(uuid, conn);
+        self.with_cloning_player(conn, |game| {
+            game.reinitialize_server_player(uuid, conn);
             if let Some(original) = &mut original {
-                self.native_player_clone(
-                    uuid,
-                    &name,
-                    was_death,
-                    mod_api::OriginalPlayer::new(original),
-                );
+                game.transactions
+                    .push_retained_original(Arc::clone(&original.attachments.slot));
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    game.native_player_clone(
+                        uuid,
+                        &name,
+                        was_death,
+                        mod_api::OriginalPlayer::new(original),
+                    );
+                }));
+                game.transactions.pop_retained_original();
+                if let Err(panic) = result {
+                    std::panic::resume_unwind(panic);
+                }
             }
-            after_clone(self);
-        }));
-        self.player_state.cloning_players.pop();
-        if original.is_some() {
-            self.transactions.pop_retained_original();
-        }
-        if let Err(panic) = result {
-            std::panic::resume_unwind(panic);
-        }
-        true
+            after_clone(game);
+        })
+        .is_some()
     }
 
     /// `ServerPlayer.restoreFrom`: retain the old player's state before replacing any data.
@@ -477,6 +469,16 @@ mod tests {
                 Dim::Overworld.id()
             );
             assert_ne!(original_level, replacement_level);
+            assert_eq!(replacement.entity().position(host), Some([0.0; 3]));
+            let _ = replacement_level
+                .visit_online_players(host, &mut |found| {
+                    assert_ne!(
+                        found, replacement,
+                        "replacement is not resident during clone"
+                    );
+                    core::ops::ControlFlow::Continue(())
+                })
+                .unwrap();
             let replacement_data = replacement.persistent_data(host).unwrap();
             assert_eq!(replacement_data.get(&outside), None);
             assert_eq!(replacement_data.get(&persisted), Some(&persisted_value));
@@ -684,8 +686,7 @@ mod tests {
                 } else {
                     let play = host.play.entry(12).or_default();
                     play.won_game = true;
-                    play.respawn_requested = true;
-                    game.handle_server_portal(12);
+                    game.guest_respawn(12);
                 }
                 assert_eq!(*heard.lock().unwrap(), 1);
                 assert_eq!(*observer_heard.lock().unwrap(), 1);
@@ -876,7 +877,6 @@ mod tests {
                             guest.carried = Some(ItemStack::new("minecraft:apple", 2));
                         });
                         if death {
-                            let txn = game.transaction_open();
                             game.guest_respawn(12);
                             let mut drops: Vec<_> = game
                                 .dropped
@@ -892,7 +892,6 @@ mod tests {
                                     ("minecraft:stick".to_owned(), 3)
                                 ]
                             );
-                            game.transaction_close(&txn, false);
                             assert_eq!(
                                 VALUE.has(game, Holder::Player(12)),
                                 Ok(false),
@@ -904,9 +903,14 @@ mod tests {
                             assert!(game.lan.as_ref().unwrap().play[&12].won_game);
                             assert_eq!(*closed.lock().unwrap(), 1, "menu closes at credits entry");
                             assert_eq!(*cloned.lock().unwrap(), 0);
-                            let player = game.player(12).unwrap();
-                            player.respawn(game).unwrap();
-                            game.handle_server_portal(12);
+                            let guest = game.command_guest(12).unwrap();
+                            assert!(!guest.placed && guest.respawning);
+                            let before = guest.motion.as_ref().map(|m| m.health.tick_count);
+                            game.tick_guests();
+                            let guest = game.command_guest(12).unwrap();
+                            assert_eq!(guest.motion.as_ref().map(|m| m.health.tick_count), before);
+                            assert!(!game.lan.as_ref().unwrap().hub.here(guest));
+                            game.guest_respawn(12);
                         }
                         let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
                         assert_eq!(
@@ -1068,8 +1072,7 @@ mod tests {
                     RETAINED.set(attachments, Holder::Level, 17).unwrap();
                     let play = host.play.entry(12).or_default();
                     play.won_game = true;
-                    play.respawn_requested = true;
-                    game.handle_server_portal(12);
+                    game.guest_respawn(12);
 
                     let host: &mut dyn ServerHost = game;
                     assert_eq!(VALUE.has(host, Holder::Player(12)), Ok(false));
@@ -1085,6 +1088,72 @@ mod tests {
                     assert_eq!(RETAINED.get(host, Holder::Player(12)), Ok(17));
                 });
             });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn respawn_copies_only_committed_attachment_state() {
+        struct Declare;
+        #[mod_api::__subscriptions]
+        impl Hooks for Declare {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                r.register_attachment_type("clone:retained", false).unwrap();
+            }
+        }
+        struct Observe(Arc<Mutex<Vec<i32>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Observe {
+            fn player_clone(&self, _: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
+                self.0.lock().unwrap().push(
+                    event
+                        .original
+                        .existing_attachment(&RETAINED)
+                        .unwrap()
+                        .unwrap(),
+                );
+            }
+        }
+        crate::game::native_entity_refs::tests::run_with_game_stack(|| {
+            for subscribe in [false, true] {
+                let seen = Arc::new(Mutex::new(Vec::new()));
+                let mut mods = vec![mod_api::ModEntry::new("clone", Box::new(Declare))];
+                if subscribe {
+                    mods.push(mod_api::ModEntry::new(
+                        "observe",
+                        Box::new(Observe(seen.clone())),
+                    ));
+                }
+                mod_platform::testing::with_mods(mods.into(), || {
+                    with_guests(|game| {
+                        game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                            g.spawn = Some([3.5, 64.0, 5.5]);
+                            g.dead = true;
+                            g.health = 0.0;
+                        });
+                        let holder = Holder::Player(12);
+                        RETAINED.set(game, holder, 17).unwrap();
+                        let txn = game.transaction_open();
+                        RETAINED.set(game, holder, 23).unwrap();
+                        game.guest_respawn(12);
+                        assert!(game.command_guest(12).unwrap().dead);
+                        game.transaction_close(&txn, false);
+                        assert!(game.command_guest(12).unwrap().dead);
+                        assert_eq!(RETAINED.get(game, holder), Ok(17));
+                        assert!(seen.lock().unwrap().is_empty());
+                        let txn = game.transaction_open();
+                        RETAINED.set(game, holder, 29).unwrap();
+                        game.guest_respawn(12);
+                        game.transaction_close(&txn, true);
+                        assert!(!game.command_guest(12).unwrap().dead);
+                        assert_eq!(RETAINED.get(game, holder), Ok(29));
+                        assert_eq!(
+                            &*seen.lock().unwrap(),
+                            if subscribe { &[29][..] } else { &[] }
+                        );
+                    });
+                });
+            }
         });
     }
 

@@ -99,7 +99,20 @@ impl Game<'_> {
         let sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value } =
             self.server_resident_entity(entity.id())
         else {
-            return None;
+            // A lifecycle event lends the body without admitting it to the level.
+            let &(_, conn, _) = self
+                .player_state
+                .cloning_players
+                .iter()
+                .rev()
+                .find(|&&(_, _, id)| id == entity.id())?;
+            return if self.lan_acting == Some(conn) {
+                Some(Target::Player)
+            } else if self.lan_guest_swaps.contains(&conn) {
+                None
+            } else {
+                Some(Target::Guest(conn))
+            };
         };
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.

@@ -74,10 +74,6 @@ pub(super) struct Trip {
     /// A respawn at this point outside the Overworld, resolved through its
     /// block on arrival.
     respawn: Option<RespawnConfig>,
-    /// Whether that point's block is used up (`findRespawnAndUseSpawnBlock`'s
-    /// `consumeSpawnBlock`): a death does, the credits and an End portal
-    /// leave it as it is.
-    consume: bool,
     /// A PlayerList.respawn that has not placed or copied the replacement yet.
     player_clone: Option<CloneTrip>,
     /// A respawn at the world spawn, moved onto a free column within the
@@ -302,7 +298,6 @@ impl Game<'_> {
             vehicle: None,
             gateway: None,
             respawn: None,
-            consume: false,
             player_clone: None,
             world_spawn: false,
             finder: None,
@@ -690,26 +685,6 @@ impl Game<'_> {
         {
             self.portals.player.set_inside(pos, PLAYER_DELAY);
         }
-        // `ServerPlayer.showEndCredits`: the player stays out of the world while the
-        // poem rolls, then PERFORM_RESPAWN takes it to its respawn point.
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        if host.play.get(&conn).is_some_and(|play| play.won_game) {
-            // PERFORM_RESPAWN is one request, not a portal retry on every tick.
-            let requested = self
-                .lan
-                .as_mut()
-                .and_then(|h| h.play.get_mut(&conn))
-                .is_some_and(|play| std::mem::take(&mut play.respawn_requested));
-            if requested {
-                let (target, _) = self.end_departure(conn);
-                if self.server_player_travel_allowed(conn, target, TravelCause::EndPortal) {
-                    self.queue_player_clone(conn, false);
-                }
-            }
-            return;
-        }
         let (end_portal, gateway) = self.inside_end_portals(at, WIDTH, HEIGHT);
         if end_portal && !riding {
             // EndPortalBlock.entityInside: the first exit from the End shows the credits.
@@ -999,7 +974,6 @@ impl Game<'_> {
             vehicle,
             gateway: None,
             respawn: None,
-            consume: false,
             player_clone: None,
             world_spawn: false,
             missing: None,
@@ -1061,7 +1035,6 @@ impl Game<'_> {
             vehicle: None,
             gateway: None,
             respawn: config,
-            consume: was_death,
             player_clone: Some(CloneTrip {
                 was_death,
                 waiting_for: None,
@@ -1147,33 +1120,11 @@ impl Game<'_> {
                 pitch,
             };
             self.enter_level(trip.source)?;
-            if was_death {
-                self.remove_old_player_for_clone(trip.conn, true);
-            }
-            let decision = self.respawn_position(trip.conn, found, trip.missing);
+            self.remove_old_player_for_clone(trip.conn, was_death);
+            let decision = self.respawn_position(trip.conn, found, trip.missing, !was_death);
             let (to, copy) = decision.map_or((found, trip.missing.is_none()), |d| (d.to, d.copy));
             self.enter_level(to.dim)?;
             self.place_cloned_player(trip.conn, to, was_death, copy, trip.missing.is_some());
-            if copy
-                && was_death
-                && let Some(config) = trip.respawn
-            {
-                // PlayerList.respawn plays the deplete sound at the saved point's level.
-                self.enter_level(config.dim)?;
-                if self.is_anchor(
-                    self.world
-                        .block(config.pos[0], config.pos[1], config.pos[2]),
-                ) {
-                    self.audio.play(
-                        "minecraft:block.respawn_anchor.deplete",
-                        Some(config.pos.map(f64::from)),
-                        1.0,
-                        1.0,
-                    );
-                }
-                self.enter_level(to.dim)?;
-            }
-            self.tell_mods_changed_dimension(trip.conn, Some(trip.source), to.dim);
             Ok(None)
         })();
         if let Err(e) = self.enter_level(before) {
@@ -1188,54 +1139,10 @@ impl Game<'_> {
         }
     }
 
-    /// `findRespawnAndUseSpawnBlock` for the player in place, at its point
-    /// in the level in place: where it stands up, facing the anchor (with
-    /// the deplete sound, `PlayerList.respawn`'s, when the block is used up)
-    /// or the bed; else the point is forgotten, and the caller tells the
-    /// player (`Hub::missing_respawn_block`).
-    pub(super) fn resolve_server_respawn(
-        &mut self,
-        config: RespawnConfig,
-        consume: bool,
-    ) -> Option<(Vec3, f32, f32)> {
-        let [x, y, z] = config.pos;
-        let anchor = self.is_anchor(self.world.block(x, y, z));
-        match self.find_respawn_and_use(config, consume) {
-            Ok(Some((at, yaw, pitch))) => {
-                if consume && anchor {
-                    // PlayerList.respawn: the deplete sound has no `forced`
-                    // test, so a point `/spawnpoint` kept plays it too; a
-                    // return from the End credits keeps all data and skips it.
-                    let [x, y, z] = config.pos.map(f64::from);
-                    self.audio.play(
-                        "minecraft:block.respawn_anchor.deplete",
-                        Some([x, y, z]),
-                        1.0,
-                        1.0,
-                    );
-                }
-                // PlayerList.respawn: the block was found, so the new player
-                // copies the respawn point (`copyRespawnPosition`). A cancel
-                // leaves it with none.
-                if self.spawn_point_change(config.dim, Some(config.pos), config.forced) {
-                    self.respawn_config = None;
-                }
-                Some((at, yaw, pitch))
-            }
-            Ok(None) | Err(_) => {
-                // The block is gone: `PlayerList.respawn` skips
-                // `copyRespawnPosition`, so the new player has no point and
-                // no `setRespawnPosition` call is made.
-                self.respawn_config = None;
-                None
-            }
-        }
-    }
-
     /// TeleportTransition.createDefault and missingRespawnBlock: the player
     /// waits at the world spawn for its chunks, then PlayerSpawnFinder puts
     /// it on a free column within the respawn radius.
-    pub(super) fn world_spawn_trip(&mut self, conn: u32, missing: Option<RespawnConfig>) {
+    pub(super) fn world_spawn_trip(&mut self, conn: u32) {
         let Some([x, y, z]) = self.level.world_spawn else {
             return;
         };
@@ -1251,10 +1158,9 @@ impl Game<'_> {
             vehicle: None,
             gateway: None,
             respawn: None,
-            consume: false,
             player_clone: None,
             world_spawn: true,
-            missing,
+            missing: None,
             finder: None,
             placed: false,
             hold: false,
@@ -1264,7 +1170,7 @@ impl Game<'_> {
 
     /// TeleportTransition.missingRespawnBlock: the world spawn, in its level
     /// (MinecraftServer.findRespawnDimension).
-    fn respawn_at_world_spawn(&mut self, conn: u32, missing: RespawnConfig) {
+    fn respawn_at_world_spawn(&mut self, conn: u32) {
         let at = self.level.world_spawn.map_or(
             self.spawn.map_or([0.5, 80.0, 0.5], |s| [s.x, s.y, s.z]),
             |[x, y, z]| [f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5],
@@ -1278,7 +1184,7 @@ impl Game<'_> {
             vehicle: None,
         });
         self.run_level_teleports();
-        self.world_spawn_trip(conn, Some(missing));
+        self.world_spawn_trip(conn);
     }
 
     /// `TheEndGatewayBlockEntity.getPortalPosition` and the teleport within
@@ -1313,7 +1219,6 @@ impl Game<'_> {
             vehicle: None,
             gateway: Some(job),
             respawn: None,
-            consume: false,
             player_clone: None,
             world_spawn: false,
             missing: None,
@@ -1376,20 +1281,24 @@ impl Game<'_> {
             };
             let yaw = host.hub.guests[i].yaw;
             let (position, yaw) = if let Some(config) = trip.respawn {
-                let (conn, consume) = (trip.conn, trip.consume);
-                let found = self.as_guest(conn, |g| g.resolve_server_respawn(config, consume));
-                match found {
-                    Some(Some((at, yaw, pitch))) => {
+                // A later End portal exit teleports this same player. It neither consumes
+                // the block nor copies, clears, or fires mods about a respawn config.
+                match self.find_respawn_and_use(config, false) {
+                    Ok(Some((at, yaw, pitch))) => {
                         if let Some(host) = self.lan.as_mut() {
                             host.hub.guests.update(i, |guest| guest.pitch = pitch);
                         }
                         (at, yaw)
                     }
-                    _ => {
+                    Err(e) => {
+                        log::error!("could not resolve End portal destination: {e}");
+                        continue;
+                    }
+                    Ok(None) => {
                         if let Some(host) = self.lan.as_mut() {
                             host.hub.missing_respawn_block(trip.conn);
                         }
-                        self.respawn_at_world_spawn(trip.conn, config);
+                        self.respawn_at_world_spawn(trip.conn);
                         // The move to the world spawn ends the player's move
                         // from the level they left.
                         if let Some(left) = trip.left
@@ -1413,29 +1322,6 @@ impl Game<'_> {
                         }) =>
                     {
                         self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
-                        // PlayerRespawnPositionEvent: the column is the point.
-                        let pitch = self.lan.as_ref().map_or(0.0, |h| h.hub.guests[i].pitch);
-                        let found = Respawn {
-                            dim: trip.dim,
-                            at,
-                            yaw,
-                            pitch,
-                        };
-                        if let Some(d) = self.respawn_position(trip.conn, found, trip.missing) {
-                            self.apply_respawn_copy(trip.conn, &d, trip.missing);
-                            if d.moved && d.to.dim != trip.dim {
-                                self.respawn_into_other_level(trip.conn, d.to);
-                            } else if d.moved
-                                && let Some(host) = self.lan.as_mut()
-                            {
-                                host.hub.guests.update(i, |g| {
-                                    (g.yaw, g.pitch) = (d.to.yaw, d.to.pitch);
-                                    g.new_body(true);
-                                });
-                                host.hub
-                                    .teleport(i, Some([d.to.at.x, d.to.at.y, d.to.at.z]));
-                            }
-                        }
                         continue;
                     }
                     Ok(at) => (at, yaw),
@@ -1497,32 +1383,6 @@ impl Game<'_> {
                     _ => (trip.target, yaw),
                 }
             };
-            // PlayerRespawnPositionEvent: a deferred respawn's point is found.
-            let mut pitch = None;
-            let (position, yaw) = if trip.respawn.is_some() || trip.world_spawn {
-                let pitch_now = self.lan.as_ref().map_or(0.0, |h| h.hub.guests[i].pitch);
-                let found = Respawn {
-                    dim: trip.dim,
-                    at: position,
-                    yaw,
-                    pitch: pitch_now,
-                };
-                match self.respawn_position(trip.conn, found, trip.missing) {
-                    Some(d) => {
-                        self.apply_respawn_copy(trip.conn, &d, trip.missing);
-                        if d.to.dim != trip.dim {
-                            self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
-                            self.respawn_into_other_level(trip.conn, d.to);
-                            continue;
-                        }
-                        pitch = Some(d.to.pitch);
-                        (d.to.at, d.to.yaw)
-                    }
-                    None => (position, yaw),
-                }
-            } else {
-                (position, yaw)
-            };
             // The vehicle the player rode comes with it, and waits for it
             // where it arrives (`Entity.teleportCrossDimension` carries the
             // passengers).
@@ -1538,9 +1398,6 @@ impl Game<'_> {
             }
             host.hub.guests.update(i, |g| {
                 g.yaw = yaw;
-                if let Some(pitch) = pitch {
-                    g.pitch = pitch;
-                }
                 // A new body at the exit: no fall distance or motion carried over,
                 // but the player's attributes (ServerPlayer.teleport keeps the entity).
                 if !trip.hold {
@@ -1733,7 +1590,6 @@ impl Game<'_> {
                 vehicle: None,
                 gateway: None,
                 respawn: None,
-                consume: false,
                 player_clone: None,
                 world_spawn: false,
                 missing: None,
@@ -2403,11 +2259,17 @@ mod credits_respawn_tests {
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_client::lan::{
-        Joined, NetConfig, PlayerSender,
-        guest::{Guest, SPECTATOR},
+        Joined, NetConfig, Out, PlayerSender,
+        guest::{Guest, InboxItem, SPECTATOR},
         hub::HubConfig,
     };
-    use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_protocol::{
+        buf::Reader,
+        packets::{
+            configuration::ClientInformation,
+            play::{self, Clientbound as C, Serverbound as S},
+        },
+    };
 
     /// `ServerGamePacketListenerImpl.handleClientCommand(PERFORM_RESPAWN)` for a
     /// player who won the game: `restartClientLoadTimerAfterRespawn`, so the
@@ -2484,7 +2346,7 @@ mod credits_respawn_tests {
             },
         )
         .unwrap();
-        let (tx, _rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel();
         let mut guest = Guest::new(
             Joined {
                 conn: 2,
@@ -2520,14 +2382,49 @@ mod credits_respawn_tests {
         guest.load_timeout = 0;
         let mut host = game.lan.take().unwrap();
         host.hub.guests.push(guest);
-        let play = host.play.entry(2).or_default();
-        play.won_game = true;
-        play.respawn_requested = true;
+        host.hub.guests.update(0, |g| {
+            g.health = 13.0;
+            g.food = 9;
+            g.saturation = 2.0;
+        });
+        host.hub.sync_guest_after_tick(2);
+        assert!(host.hub.guests[0].sent_health.is_some());
         assert!(host.hub.guests[0].client_loaded());
+        rx.try_iter().for_each(drop);
 
         game.lan = Some(host);
-        game.handle_server_portal(2);
-        let host = game.lan.take().unwrap();
+        game.remove_old_player_for_clone(2, false);
+        let host = game.lan.as_mut().unwrap();
+        host.play.entry(2).or_default().won_game = true;
+        host.hub.guests.update(0, |g| {
+            g.inbox.push_back(InboxItem::Packet(
+                S::ClientCommand(play::ClientCommand { action: 0 }),
+                None,
+            ));
+        });
+        game.tick_lan_packets();
+        let mut host = game.lan.take().unwrap();
+        host.hub.sync_guest_after_tick(2);
+        let delivered: Vec<_> = rx
+            .try_iter()
+            .flat_map(|out| match out {
+                Out::Packet(body) => vec![body],
+                Out::Packets(bodies) => bodies,
+                Out::Disconnect(_) => Vec::new(),
+            })
+            .filter_map(|body| {
+                let mut reader = Reader::new(&body);
+                C::decode(reader.varint().ok()?, reader.rest()).ok()
+            })
+            .collect();
+        assert!(delivered.iter().any(|packet| matches!(packet,
+            C::SetHealth(health) if (health.health, health.food, health.saturation) == (13.0, 9, 2.0)
+        )));
+        assert!(
+            delivered
+                .iter()
+                .any(|packet| matches!(packet, C::SetEntityData(data) if data.id == 2))
+        );
         assert!(!host.play[&2].won_game, "the credits are over");
         let guest = &host.hub.guests[0];
         assert_eq!(guest.load_timeout, 60);
@@ -2633,11 +2530,15 @@ mod credits_respawn_tests {
         use sunrise_client::chunk::Chunk;
         let mut resources = None;
         let (mut game, scratch) = server_with_a_nether_anchor(&mut resources);
-        let play = game.lan.as_mut().unwrap().play.entry(2).or_default();
-        play.won_game = true;
-        play.respawn_requested = true;
-
-        game.handle_server_portal(2);
+        game.remove_old_player_for_clone(2, false);
+        game.lan
+            .as_mut()
+            .unwrap()
+            .play
+            .entry(2)
+            .or_default()
+            .won_game = true;
+        game.guest_respawn(2);
         assert_eq!(
             game.lan.as_ref().unwrap().hub.guests[0].dimension,
             "minecraft:overworld",

@@ -1090,6 +1090,9 @@ impl<'a> Game<'a> {
             }))
     }
     fn local_level_player(&self) -> Option<LevelPlayer> {
+        if !self.local_player_in_level() {
+            return None;
+        }
         self.player_view().map(|p| LevelPlayer {
             uuid: sunrise_client::lan::playerdata::ints_uuid(p.uuid),
             position: p.position,
@@ -1107,11 +1110,18 @@ impl<'a> Game<'a> {
         &'s self,
         dimension: &'s str,
     ) -> impl Iterator<Item = u128> + 's {
-        let local = (dimension == self.dim.id() && self.player.is_some() && !self.lan_acting_fake)
+        let local = (dimension == self.dim.id() && self.local_player_in_level())
             .then(|| sunrise_client::lan::playerdata::ints_uuid(self.acting_uuid()));
         local
             .into_iter()
             .chain(self.guests_placed_in(dimension).map(|g| g.uuid))
+    }
+    fn local_player_in_level(&self) -> bool {
+        self.player.is_some()
+            && !self.lan_acting_fake
+            && self
+                .lan_acting
+                .is_none_or(|conn| self.command_guest(conn).is_some_and(|g| g.placed))
     }
     /// The guests in the level in place, past the acting one: `player_view`
     /// already reads that guest's live body, and its record lags behind it.
