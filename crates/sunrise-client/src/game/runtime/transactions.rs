@@ -286,9 +286,8 @@ pub(super) struct Level {
     /// Each entity's, player's, chunk's and the level's attachment map before this transaction
     /// first reached it (a block entity's is kept with it).
     attachments: HashMap<Holder, KeptAttachments>,
-    /// Held once this transaction reaches an attachment map, until it closes: the save
-    /// admission gate (`passes_settled`) refuses a save while a map may hold tentative
-    /// values, which only the root commit makes saveable.
+    /// Held while an attachment map or bulk-edited chunk holds tentative storage. The save
+    /// admission gate (`passes_settled`) refuses a save until the transaction settles.
     save_gate: Option<sunrise_client::join_seq::visibility::PassLease>,
     /// Each chunk's unsaved mark and save queue entry before this transaction first reached an
     /// attachment map in it: an abort puts them back, so a chunk only a tentative write marked
@@ -1549,6 +1548,9 @@ impl Game<'_> {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
+        level
+            .save_gate
+            .get_or_insert_with(sunrise_client::join_seq::visibility::PassLease::enter);
         level.bulk_replay_holders.remove(&pos);
         level
             .blocks
