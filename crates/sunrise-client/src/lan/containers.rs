@@ -2,7 +2,7 @@
 //! level events, animations and block containers with their clicks.
 use super::{
     hub::Hub,
-    menu::{self, Menu, NativeMenuEvent, Rules, Slots, View},
+    menu::{self, ContainerRuleData, Menu, NativeMenuEvent, Rules, Slots, View},
 };
 use crate::{
     containers::{BlockEntity, ModContainerInsertRule},
@@ -67,6 +67,7 @@ pub(super) fn captured_sound_range(sound: &crate::audio::CapturedSound) -> f64 {
 /// A container click read from the world and not yet run (`Hub::prepare_click`).
 pub struct PreparedClick {
     i: usize,
+    player_edit: Option<menu::ClickPlayer>,
     in_menu: bool,
     source: Option<Slots>,
     shulker: bool,
@@ -776,100 +777,75 @@ impl Hub {
             return None;
         }
         let source = self.guests[i].menu.as_ref().map(|m| m.slots);
-        let shulker_box = self
-            .sync
-            .builtin
-            .get("minecraft:menu")
-            .and_then(|m| m.id("minecraft:shulker_box"));
-        let shulker = in_menu
-            && shulker_box.is_some()
-            && self.guests[i].menu.as_ref().map(|m| m.kind) == shulker_box;
-        let (drag, hidden, items, container_limits, container_insert_rules) =
-            self.guests.update(i, |guest| {
-                let drag = if in_menu {
-                    guest.menu.as_mut().and_then(|m| m.drag.take())
-                } else {
-                    guest.drag.take()
-                };
-                let hidden = guest
-                    .menu
-                    .as_ref()
-                    .filter(|_| in_menu)
-                    .map_or_else(Vec::new, |m| m.hidden.clone());
-                let items = source.and_then(|s| s.read(world, guest));
-                if in_menu && items.is_none() {
-                    return None;
-                }
-                let container_limits = source
-                    .map(|source| source.stack_limits(world, items.as_ref().map_or(0, Vec::len)))
-                    .unwrap_or_default();
-                let mut container_insert_rules = source
-                    .map(|source| {
-                        source.container_insert_rules(world, items.as_ref().map_or(0, Vec::len))
-                    })
-                    .unwrap_or_default();
-                if let Some(range) = guest
-                    .menu
-                    .as_ref()
-                    .filter(|_| in_menu)
-                    .and_then(Menu::linked_slot_range)
-                {
-                    for slot in range {
-                        if let Some(rule) = container_insert_rules.get_mut(slot) {
-                            *rule = ModContainerInsertRule::Any;
-                        }
-                    }
-                }
-                Some((
-                    drag,
-                    hidden,
-                    items,
-                    container_limits,
-                    container_insert_rules,
-                ))
-            })?;
+        let (drag, items, rules) = self.guests.update(i, |guest| {
+            let drag = if in_menu {
+                guest.menu.as_mut().and_then(|m| m.drag.take())
+            } else {
+                guest.drag.take()
+            };
+            let items = source.and_then(|s| s.read(world, guest));
+            if in_menu && items.is_none() {
+                return None;
+            }
+            let size = items.as_ref().map_or(0, Vec::len);
+            let rules = guest.menu.as_ref().filter(|_| in_menu).map_or_else(
+                || ContainerRuleData {
+                    shulker: false,
+                    limits: source
+                        .map(|source| source.stack_limits(world, size))
+                        .unwrap_or_default(),
+                    insert_rules: source
+                        .map(|source| source.container_insert_rules(world, size))
+                        .unwrap_or_default(),
+                    hidden: Vec::new(),
+                },
+                |open| open.container_rule_data(world, size),
+            );
+            Some((drag, items, rules))
+        })?;
         Some(PreparedClick {
             i,
+            player_edit: None,
             in_menu,
             source,
-            shulker,
+            shulker: rules.shulker,
             drag,
-            hidden,
+            hidden: rules.hidden,
             items,
-            container_limits,
-            container_insert_rules,
+            container_limits: rules.limits,
+            container_insert_rules: rules.insert_rules,
         })
     }
 
-    /// The second step: the click itself, on the guest and the container's slots the first step
-    /// read. It takes no world and no game, so the caller may lend the menu code anything that
-    /// does not alias the hub. Returns the stacks thrown out and the slots that changed.
+    /// The second step: click on the working slots while the Host can still read the live
+    /// guest. `finish_click` commits these edits and tells the client what changed.
     pub fn run_click(
-        &mut self,
+        &self,
         prepared: &mut PreparedClick,
         p: &play::ContainerClick,
         rules: &dyn Rules,
     ) -> (Vec<ItemStack>, Vec<usize>) {
-        let loop_context = &self.loop_context;
-        self.guests.update(prepared.i, |guest| {
-            let mut view = View {
-                guest,
+        let guest = &self.guests[prepared.i];
+        let mut edit = menu::ClickPlayer::read(guest);
+        let outcome = menu::click(
+            &mut View {
+                guest: &mut edit,
+                open: guest.menu.as_ref(),
                 container: prepared.items.as_deref_mut(),
                 shulker: prepared.shulker,
-                container_limits: std::mem::take(&mut prepared.container_limits),
+                container_limits: prepared.container_limits.clone(),
                 hidden: &prepared.hidden,
-                loop_context,
+                loop_context: &self.loop_context,
                 slot_snapshot: Default::default(),
-            };
-            menu::click(
-                &mut view,
-                &mut prepared.drag,
-                i32::from(p.slot),
-                i32::from(p.button),
-                p.input,
-                rules,
-            )
-        })
+            },
+            &mut prepared.drag,
+            i32::from(p.slot),
+            i32::from(p.button),
+            p.input,
+            rules,
+        );
+        prepared.player_edit = Some(edit);
+        outcome
     }
 
     /// The cursor and the stack in menu slot `slot` of guest `conn`'s open menu, as a click on it
@@ -890,68 +866,39 @@ impl Hub {
     /// The pickup click `p` as `item_stacked_on_other` is asked about it, on the container the
     /// first step read: the stacks it finds. `None` for a click that never asks.
     pub fn stacked_click(
-        &mut self,
+        &self,
         prepared: &mut PreparedClick,
         p: &play::ContainerClick,
     ) -> Option<crate::menu::StackedClick> {
         if p.input != menu::input::PICKUP {
             return None;
         }
-        let loop_context = &self.loop_context;
-        self.guests.update(prepared.i, |guest| {
-            View {
-                guest,
-                container: prepared.items.as_deref_mut(),
-                shulker: prepared.shulker,
-                container_limits: Vec::new(),
-                hidden: &prepared.hidden,
-                loop_context,
-                slot_snapshot: Default::default(),
-            }
-            .stacked_click(i32::from(p.slot), i32::from(p.button))
-        })
+        let guest = &self.guests[prepared.i];
+        View {
+            guest: &mut menu::ClickPlayer::read(guest),
+            open: guest.menu.as_ref(),
+            container: prepared.items.as_deref_mut(),
+            shulker: prepared.shulker,
+            container_limits: Vec::new(),
+            hidden: &prepared.hidden,
+            loop_context: &self.loop_context,
+            slot_snapshot: Default::default(),
+        }
+        .stacked_click(i32::from(p.slot), i32::from(p.button))
     }
 
-    /// Run the click `p` on the prepared state to see what it would ask of `rules`, then put
-    /// everything it touched back: the guest's slots and cursor, the container's slots and the
-    /// drag. Only what `rules` kept of the asks remains.
+    /// Run the click `p` on the prepared state to see what it would ask of `rules`. Keep only
+    /// the answers, not the tentative edits to the guest, the container, or the drag.
     pub fn plan_click(
-        &mut self,
+        &self,
         prepared: &mut PreparedClick,
         p: &play::ContainerClick,
         rules: &dyn Rules,
     ) {
-        let loop_context = &self.loop_context;
-        self.guests.update(prepared.i, |guest| {
-            let kept = (
-                guest.inventory.clone(),
-                guest.armor.clone(),
-                guest.offhand.clone(),
-                guest.carried.clone(),
-                guest.craft_grid.clone(),
-                guest.craft_result.clone(),
-            );
-            let (items, drag) = (prepared.items.clone(), prepared.drag.clone());
-            let _ = menu::click(
-                &mut View {
-                    guest,
-                    container: prepared.items.as_deref_mut(),
-                    shulker: prepared.shulker,
-                    container_limits: prepared.container_limits.clone(),
-                    hidden: &prepared.hidden,
-                    loop_context,
-                    slot_snapshot: Default::default(),
-                },
-                &mut prepared.drag,
-                i32::from(p.slot),
-                i32::from(p.button),
-                p.input,
-                rules,
-            );
-            (guest.inventory, guest.armor, guest.offhand) = (kept.0, kept.1, kept.2);
-            (guest.carried, guest.craft_grid, guest.craft_result) = (kept.3, kept.4, kept.5);
-            (prepared.items, prepared.drag) = (items, drag);
-        });
+        let (items, drag) = (prepared.items.clone(), prepared.drag.clone());
+        let _ = self.run_click(prepared, p, rules);
+        (prepared.items, prepared.drag) = (items, drag);
+        prepared.player_edit = None;
     }
 
     /// The last step: the container's slots back into the world, the unfinished drag back on the
@@ -965,6 +912,7 @@ impl Hub {
     ) -> Vec<ItemStack> {
         let PreparedClick {
             i,
+            player_edit,
             in_menu,
             source,
             drag,
@@ -972,6 +920,14 @@ impl Hub {
             ..
         } = prepared;
         self.guests.update(i, |guest| {
+            if let Some(edit) = player_edit {
+                guest.inventory = edit.inventory;
+                guest.armor = edit.armor;
+                guest.offhand = edit.offhand;
+                guest.carried = edit.carried;
+                guest.craft_grid = edit.craft_grid;
+                guest.craft_result = edit.craft_result;
+            }
             if let (Some(source), Some(items)) = (source, items) {
                 source.write(world, guest, items);
             }

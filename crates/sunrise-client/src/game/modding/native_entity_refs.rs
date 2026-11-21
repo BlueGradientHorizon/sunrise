@@ -3,8 +3,8 @@
 //! entity id into an `EntityRef`, and each `native_entity_*` helper reads the
 //! entity a handle names. They read where the world is simulated: on a client,
 //! with no world open, or for a handle of an earlier open, they return `None`,
-//! except the reads marked side `both` (`entity`, `level`, `entity_position`,
-//! `entity_rotation`, `entity_velocity`), which on a client answer from its own
+//! except the reads marked side `both` (`entity`, `level`, `with_entity_view`,
+//! `entity_velocity`), which on a client answer from its own
 //! copy: the local player and the entities the server told it of, in the level
 //! it shows. The entities are those of the level in place (the one a hook runs
 //! in) and the server's players, whatever their level.
@@ -21,13 +21,19 @@ use super::{
     Game,
     commands::Target,
     entity::{Entity as _, entity_lists_of, for_each_entity},
+    entity_residency::{ResidentRow, ResolvedResident},
+    player_residency::SpecializedSource,
     remote::Remote,
     transactions::After,
 };
 use core::ops::ControlFlow;
 use mod_api::{
     BlockFace, BlockShapeKind, BlockUpdateFlags, ClipBlock, ClipFluid, ClipHit, DimensionKey,
-    EntityRayHit, EntityRef, LevelReadError, LevelRef, NeighbourUpdate,
+    EntityRayHit, EntityRef, EntityTypeKey, EntityView, LevelReadError, LevelRef, NeighbourUpdate,
+};
+use sunrise_client::join_seq::residency::{
+    Kind,
+    table::{EntityLookup, Location},
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
@@ -74,6 +80,60 @@ fn clip_entity_ray(
     ))
 }
 
+/// A validated read projection computed once from the entity's exact resident owner.
+/// The residency table has already released its borrow before a view is lent, and getters
+/// never rescan entity lists by `Target` id.
+// no wire: borrows projected entity identity for a read scope.
+pub(super) struct NativeEntityView<'g> {
+    position: Option<[f64; 3]>,
+    rotation: Option<[f32; 2]>,
+    kind: Option<&'g str>,
+    class: EntityViewClass,
+}
+
+// no wire: membership classification retained by an in-process entity read view.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EntityViewClass {
+    Current,
+    CurrentLevelMob,
+    ParkedMob,
+    WriterOnly,
+}
+
+impl NativeEntityView<'_> {
+    /// Current-world entity membership (`Host::entity`), excluding identity-only and writer-only views.
+    pub(super) fn is_current(&self) -> bool {
+        matches!(
+            self.class,
+            EntityViewClass::Current | EntityViewClass::CurrentLevelMob
+        )
+    }
+
+    pub(super) fn is_parked_mob(&self) -> bool {
+        self.class == EntityViewClass::ParkedMob
+    }
+
+    /// The same narrowing as `Game::mob`, over the source already selected for this view.
+    pub(super) fn is_level_mob(&self) -> bool {
+        self.class == EntityViewClass::CurrentLevelMob
+    }
+}
+
+impl EntityView for NativeEntityView<'_> {
+    fn position(&self) -> Option<[f64; 3]> {
+        self.position
+    }
+
+    fn rotation(&self) -> Option<[f32; 2]> {
+        self.rotation
+    }
+
+    fn kind(&self) -> Option<EntityTypeKey> {
+        self.kind
+            .and_then(mod_api::__private::resolved_entity_type_key)
+    }
+}
+
 impl Game<'_> {
     /// The logged-in window and network id for an entity handle in its current world.
     pub(super) fn native_client_entity_context(&self, entity: EntityRef) -> Option<(&Remote, i32)> {
@@ -88,24 +148,35 @@ impl Game<'_> {
         remote.tracked_entity(id)
     }
 
-    /// What a handle names now, or None for a stale or foreign one.
-    pub(super) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
+    fn native_server_resident(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(Location, ResolvedResident<'_>)> {
         if self.held_out.contains(&entity.id())
-            || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
         {
             return None;
         }
-        let sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value } =
-            self.server_resident_entity(entity.id())
-        else {
-            return None;
-        };
+        match self.server_resident_lookup(entity.id()) {
+            EntityLookup::Found { location, value } => Some((location, value)),
+            EntityLookup::Missing | EntityLookup::Taken => None,
+        }
+    }
+
+    fn current_native_entity(&self, location: Location, target: Target) -> bool {
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
-        (matches!(value, Target::Player | Target::Guest(_))
-            || location.owner.dimension == self.dim.key())
-        .then_some(value)
+        target.is_player() || location.owner.dimension == self.dim.key()
+    }
+
+    /// What a handle names now, or None for a stale or foreign one.
+    pub(super) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
+        if !self.is_logical_server() {
+            return None;
+        }
+        let (location, resident) = self.native_server_resident(entity)?;
+        self.current_native_entity(location, resident.target)
+            .then_some(resident.target)
     }
     /// What a handle names on a client: the local player, or an entity the
     /// server told this client of (`ClientLevel.getEntity`, whose entities are
@@ -113,18 +184,40 @@ impl Game<'_> {
     /// login, or for an entity the client doesn't have.
     pub(super) fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
         let (remote, id) = self.native_client_entity_context(entity)?;
+        self.native_client_entity_source(remote, id)
+            .map(|(target, _)| target)
+    }
+
+    fn native_client_entity_source(
+        &self,
+        remote: &Remote,
+        id: i32,
+    ) -> Option<(Target, Option<Location>)> {
         if id == remote.entity_id {
-            return self.player.as_ref().map(|_| Target::Player);
+            return self.player.as_ref().map(|_| (Target::Player, None));
         }
         // The server tracks the dragon alone; its parts are the client's own copies of it.
-        if let Some(part) = self.level_dragon_part(entity.id()) {
-            return Some(part);
+        let resident = self.server_resident_entity(id as u32);
+        if let EntityLookup::Found {
+            location,
+            value: part @ Target::DragonPart(_),
+        } = resident
+            && location.owner.dimension == self.dim.key()
+        {
+            return Some((part, Some(location)));
         }
         remote.tracked(id)?;
-        match self.level_entity(id)? {
-            Target::Mob(mob) if !self.mobs.iter().any(|m| m.id == mob && !m.removed) => None,
-            target => Some(target),
+        if let EntityLookup::Found { location, value } = resident
+            && location.owner.dimension == self.dim.key()
+            && !matches!(
+                location.owner.kind,
+                Kind::Player | Kind::Hook | Kind::DragonPart
+            )
+        {
+            return Some((value, Some(location)));
         }
+        self.shown_remote_general(id)
+            .map(|_| (Target::General(id as u32), None))
     }
     /// What a handle names for a read that works on both sides: the server's
     /// entity (`native_entity_target`) or, on a client, its own copy of it.
@@ -921,32 +1014,259 @@ impl Game<'_> {
         })
     }
 
-    /// The entity's position (`Entity.position`): its feet, the middle of
-    /// its box for a painting or an item frame.
-    pub(super) fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        if self.native_lifecycle.epoch() == Some(entity.epoch())
-            && let Some((id, position)) = self.native_lifecycle.entity_sections.write_position
-            && id == entity.id()
-        {
-            return Some(position);
-        }
-        match self.native_entity_read_target(entity) {
-            Some(target) => self.target_position(target),
-            None => self
-                .native_client_tracked(entity)
-                .map(|(_, position)| position),
+    pub(super) fn with_entity_view(
+        &self,
+        entity: EntityRef,
+        read: &mut dyn FnMut(&dyn EntityView),
+    ) {
+        if let Some(view) = self.resolve_entity_view(entity) {
+            read(&view);
         }
     }
-    /// The block the entity's position is in (`Entity.blockPosition`). API
-    /// 373.
-    pub(super) fn entity_block_position(&self, entity: EntityRef) -> Option<[i32; 3]> {
-        self.entity_position(entity)
-            .map(|p| p.map(|v| v.floor() as i32))
+
+    /// Read the fields from the validated row itself, not by looking up its join a second time.
+    fn project_resident_entity<'read>(
+        &self,
+        row: ResidentRow<'read>,
+        class: EntityViewClass,
+    ) -> NativeEntityView<'read> {
+        let (position, rotation, kind) = match row {
+            ResidentRow::Specialized(SpecializedSource::Player(player)) => (
+                [player.position.x, player.position.y, player.position.z],
+                [self.yaw, self.pitch],
+                "minecraft:player",
+            ),
+            ResidentRow::Specialized(SpecializedSource::Guest(guest)) => {
+                (guest.position, [guest.yaw, guest.pitch], "minecraft:player")
+            }
+            ResidentRow::Specialized(SpecializedSource::Hook(hook)) => {
+                let p = hook.position;
+                ([p.x, p.y, p.z], [0.0; 2], "minecraft:fishing_bobber")
+            }
+            ResidentRow::Mob(mob) => (
+                [mob.position.x, mob.position.y, mob.position.z],
+                [mob.yaw, mob.head_pitch],
+                mob.kind.id.as_str(),
+            ),
+            ResidentRow::Item(item) => (
+                [item.position.x, item.position.y, item.position.z],
+                [0.0; 2],
+                "minecraft:item",
+            ),
+            ResidentRow::Orb(orb) => (
+                [orb.position.x, orb.position.y, orb.position.z],
+                [0.0; 2],
+                "minecraft:experience_orb",
+            ),
+            ResidentRow::Projectile(proj) => (
+                [proj.position.x, proj.position.y, proj.position.z],
+                [0.0; 2],
+                proj.entity_type(),
+            ),
+            ResidentRow::Stand(stand) => (
+                [stand.position.x, stand.position.y, stand.position.z],
+                [stand.yaw, 0.0],
+                "minecraft:armor_stand",
+            ),
+            ResidentRow::Frame(frame) => {
+                let (lo, hi) = frame.bounds();
+                (
+                    [
+                        (lo[0] + hi[0]) / 2.0,
+                        (lo[1] + hi[1]) / 2.0,
+                        (lo[2] + hi[2]) / 2.0,
+                    ],
+                    [0.0; 2],
+                    if frame.glow {
+                        "minecraft:glow_item_frame"
+                    } else {
+                        "minecraft:item_frame"
+                    },
+                )
+            }
+            ResidentRow::Painting(painting) => {
+                let (lo, hi) = painting.bounds();
+                (
+                    [
+                        (lo[0] + hi[0]) / 2.0,
+                        (lo[1] + hi[1]) / 2.0,
+                        (lo[2] + hi[2]) / 2.0,
+                    ],
+                    [0.0; 2],
+                    "minecraft:painting",
+                )
+            }
+            ResidentRow::Boat(boat) => (
+                [boat.position.x, boat.position.y, boat.position.z],
+                [boat.yaw, boat.pitch],
+                boat.entity_type_name(),
+            ),
+            ResidentRow::Cart(cart) => (
+                [cart.position.x, cart.position.y, cart.position.z],
+                [cart.yaw, cart.pitch],
+                cart.kind.id(),
+            ),
+            ResidentRow::Other(other) => (
+                [other.position.x, other.position.y, other.position.z],
+                [other.yaw, other.pitch],
+                other.kind.as_str(),
+            ),
+            ResidentRow::Fangs(fangs) => (fangs.pos, [fangs.yaw, 0.0], "minecraft:evoker_fangs"),
+            ResidentRow::Crystal(crystal) => (
+                [crystal.position.x, crystal.position.y, crystal.position.z],
+                [0.0; 2],
+                "minecraft:end_crystal",
+            ),
+            ResidentRow::Dragon(dragon) => (
+                [dragon.position.x, dragon.position.y, dragon.position.z],
+                [0.0; 2],
+                "minecraft:ender_dragon",
+            ),
+            ResidentRow::DragonPart(_, part) => {
+                ([part.x, part.y, part.z], [0.0; 2], "minecraft:ender_dragon")
+            }
+            ResidentRow::Tnt(tnt) => (
+                [tnt.position.x, tnt.position.y, tnt.position.z],
+                [0.0; 2],
+                "minecraft:tnt",
+            ),
+            ResidentRow::Cushion(cushion) => (
+                [cushion.position.x, cushion.position.y, cushion.position.z],
+                [0.0; 2],
+                "minecraft:cushion",
+            ),
+            ResidentRow::Knot(knot) => {
+                let p = sunrise_client::mobs::leash::knot_state(knot.fence).position;
+                ([p.x, p.y, p.z], [0.0; 2], "minecraft:leash_knot")
+            }
+            ResidentRow::Falling(falling) => (
+                [falling.position.x, falling.position.y, falling.position.z],
+                [0.0; 2],
+                "minecraft:falling_block",
+            ),
+            ResidentRow::Rocket(rocket) => (
+                [rocket.position.x, rocket.position.y, rocket.position.z],
+                [0.0; 2],
+                "minecraft:firework_rocket",
+            ),
+            ResidentRow::Trident(trident) => (
+                [trident.position.x, trident.position.y, trident.position.z],
+                [0.0; 2],
+                "minecraft:trident",
+            ),
+            ResidentRow::Spawner(spawner) => {
+                (spawner.position, [0.0; 2], "minecraft:ominous_item_spawner")
+            }
+            ResidentRow::Cloud(cloud) => (cloud.at, [0.0; 2], "minecraft:area_effect_cloud"),
+            ResidentRow::General(row) => (
+                [row.position.x, row.position.y, row.position.z],
+                row.rotation,
+                super::general::general_type_catalog().key(row.type_slot),
+            ),
+        };
+        NativeEntityView {
+            position: Some(position),
+            rotation: Some(rotation),
+            kind: Some(kind),
+            class,
+        }
     }
-    /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0
-    /// for the kinds that don't turn. API 373.
-    pub(super) fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]> {
-        Some(self.target_rotation(self.native_entity_read_target(entity)?))
+
+    pub(super) fn resolve_entity_view(&self, entity: EntityRef) -> Option<NativeEntityView<'_>> {
+        let write_position = self
+            .native_lifecycle
+            .entity_sections
+            .write_position
+            .filter(|(id, _)| {
+                *id == entity.id() && self.native_lifecycle.epoch() == Some(entity.epoch())
+            })
+            .map(|(_, position)| position);
+        let view = if self.is_logical_server() {
+            let view = self
+                .native_server_resident(entity)
+                .and_then(|(location, value)| {
+                    if self.current_native_entity(location, value.target) {
+                        let class = if matches!(location.owner.kind, Kind::Mob | Kind::Dragon) {
+                            EntityViewClass::CurrentLevelMob
+                        } else {
+                            EntityViewClass::Current
+                        };
+                        Some(self.project_resident_entity(value.row, class))
+                    } else if let ResidentRow::Mob(mob) = value.row {
+                        Some(NativeEntityView {
+                            position: None,
+                            rotation: None,
+                            kind: Some(mob.kind.id.as_str()),
+                            class: EntityViewClass::ParkedMob,
+                        })
+                    } else {
+                        None
+                    }
+                });
+            view.or_else(|| {
+                self.native_client_tracked(entity)
+                    .map(|(kind, position)| NativeEntityView {
+                        position: Some(position),
+                        rotation: None,
+                        kind: Some(kind),
+                        class: EntityViewClass::Current,
+                    })
+            })
+        } else {
+            self.native_client_entity_context(entity)
+                .and_then(|(remote, id)| {
+                    let class = EntityViewClass::Current;
+                    if id == remote.entity_id
+                        && let Some(player) = self.player.as_ref()
+                    {
+                        return Some(self.project_resident_entity(
+                            ResidentRow::Specialized(SpecializedSource::Player(player)),
+                            class,
+                        ));
+                    }
+                    let tracked = remote.tracked(id);
+                    if id != remote.entity_id
+                        && let EntityLookup::Found { location, value } =
+                            self.server_resident_lookup(id as u32)
+                        && location.owner.dimension == self.dim.key()
+                        && match location.owner.kind {
+                            Kind::DragonPart => true, // The client makes these from the tracked dragon.
+                            Kind::Player | Kind::Hook => false,
+                            _ => tracked.is_some(),
+                        }
+                    {
+                        return Some(self.project_resident_entity(value.row, class));
+                    }
+                    // A general row shadows the protocol record, including before its first
+                    // attachment snapshot makes it visible. Do not re-open either record.
+                    if let Some(row) = remote.general.rows.get(&id) {
+                        return row.shown.then(|| NativeEntityView {
+                            position: Some(row.position),
+                            rotation: (id != remote.entity_id && tracked.is_some())
+                                .then_some(row.rotation),
+                            kind: Some(row.kind()),
+                            class,
+                        });
+                    }
+                    tracked.map(|(kind, position)| NativeEntityView {
+                        position: Some(position),
+                        rotation: None,
+                        kind: Some(kind),
+                        class,
+                    })
+                })
+        };
+        if let Some(mut view) = view {
+            view.position = write_position.or(view.position);
+            Some(view)
+        } else {
+            write_position.map(|position| NativeEntityView {
+                position: Some(position),
+                rotation: None,
+                kind: None,
+                class: EntityViewClass::WriterOnly,
+            })
+        }
     }
 
     pub(super) fn native_client_general(
@@ -956,44 +1276,32 @@ impl Game<'_> {
         let (remote, id) = self.native_client_entity_context(entity)?;
         remote.general.shown(id)
     }
-    /// The entity's type (`Entity.getType`): `minecraft:zombie`. API
-    /// 373.
-    pub(super) fn entity_kind(&self, entity: EntityRef) -> Option<mod_api::EntityTypeKey> {
-        match self.native_entity_read_target(entity) {
-            Some(target) => self.native_entity_kind_key(target),
-            None => {
-                if self.native_lifecycle.epoch() == Some(entity.epoch())
-                    && let Some((_, mob)) = self.mob_in_other_level(entity.id())
-                {
-                    return mod_api::__private::resolved_entity_type_key(&mob.kind.id);
-                }
-                mod_api::__private::resolved_entity_type_key(self.native_client_tracked(entity)?.0)
-            }
-        }
-    }
     /// A mob of this game that is resident in a loaded level other than the
     /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
-    /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
-    /// answer from there. None on a client or for anything else.
+    /// its type, UUID and level reads answer from there. None on a client or for anything else.
     pub(super) fn mob_in_other_level(&self, id: u32) -> Option<(super::Dim, &super::Mob)> {
-        use sunrise_client::join_seq::residency::table::EntityLookup;
         if !self.is_logical_server() {
             return None;
         }
         let EntityLookup::Found {
             location,
-            value: Target::Mob(_),
-        } = self.server_resident_entity(id)
+            value:
+                ResolvedResident {
+                    row: ResidentRow::Mob(mob),
+                    ..
+                },
+        } = self.server_resident_lookup(id)
         else {
             return None;
         };
-        let (dim, parked) = self
-            .levels
-            .parked
-            .iter()
-            .find(|(dim, _)| dim.key() == location.owner.dimension)?;
-        let mob = parked.mobs.get(parked.mobs.locate(location.join)?)?;
-        Some((*dim, mob))
+        let dim = match location.owner.dimension {
+            key if key == self.dim.key() => return None,
+            DimensionKey::OVERWORLD => super::Dim::Overworld,
+            DimensionKey::NETHER => super::Dim::Nether,
+            DimensionKey::END => super::Dim::End,
+            key => super::Dim::Extra(key),
+        };
+        Some((dim, mob))
     }
     /// The entity's UUID (`Entity.getUUID`), the one it is saved with; an
     /// entity that has none yet gets it now, as a new vanilla entity does.
@@ -2666,30 +2974,36 @@ pub(super) mod tests {
             let chunk = game.chunk(level, [-2, 3]).unwrap();
             assert_eq!(chunk.pos(), [-2, 3]);
             assert_eq!(chunk.level(), level);
-            assert!(chunk.loaded(game));
-            assert_eq!(chunk.status(game), Some(ChunkStatus::Full));
+            assert!(chunk.with_view(game, |view| view.loaded()).unwrap_or(false));
+            assert_eq!(
+                chunk.with_view(game, |view| view.status()).flatten(),
+                Some(ChunkStatus::Full)
+            );
             assert!(game.chunk(level, [99, 99]).is_none());
             assert!(
                 game.enter_command_level(super::super::Dim::Nether)
                     .is_some()
             );
-            assert_eq!(chunk.status(game), Some(ChunkStatus::Full));
+            assert_eq!(
+                chunk.with_view(game, |view| view.status()).flatten(),
+                Some(ChunkStatus::Full)
+            );
             assert_eq!(game.chunk(level, [-2, 3]), Some(chunk));
             assert!(
                 game.enter_command_level(super::super::Dim::Overworld)
                     .is_some()
             );
             game.world.chunks.remove(&(-2, 3));
-            assert!(!chunk.loaded(game));
-            assert_eq!(chunk.status(game), None);
+            assert!(!chunk.with_view(game, |view| view.loaded()).unwrap_or(false));
+            assert_eq!(chunk.with_view(game, |view| view.status()).flatten(), None);
             game.world
                 .chunks
                 .insert((-2, 3), Arc::new(Chunk::empty(-2, 3)));
             game.native_lifecycle
                 .begin_open(Authority::IntegratedServer);
             assert!(game.chunk(level, [-2, 3]).is_none());
-            assert!(!chunk.loaded(game));
-            assert_eq!(chunk.status(game), None);
+            assert!(!chunk.with_view(game, |view| view.loaded()).unwrap_or(false));
+            assert_eq!(chunk.with_view(game, |view| view.status()).flatten(), None);
         });
     }
 
@@ -2964,6 +3278,13 @@ pub(super) mod tests {
                 .hub
                 .update_guest(12, |guest| guest.motion = None)
                 .unwrap();
+            player
+                .with_view(game, |view| {
+                    assert_eq!(view.food(), None, "the guest has no body");
+                    assert_eq!(view.can_eat(false), None);
+                    assert_eq!(view.can_eat(true), Some(true));
+                })
+                .unwrap();
             // Body and saddle are stored on a guest like on a mob.
             let living = game.living(player.fields().entity).unwrap();
             let saddle = ItemStack::new("minecraft:saddle", 1);
@@ -2997,16 +3318,24 @@ pub(super) mod tests {
             assert!(!game.player_set_game_mode(player, GameMode::Survival));
             assert_eq!(game.player_previous_game_mode(player), Some(None));
             assert!(game.player_set_game_mode(player, GameMode::Creative));
-            assert_eq!(game.player_game_mode(player), Some(GameMode::Creative));
             assert_eq!(
                 game.player_previous_game_mode(player),
                 Some(Some(GameMode::Survival))
             );
-            let abilities = game.player_abilities(player).unwrap();
-            assert!(abilities.invulnerable && abilities.may_fly && abilities.instabuild);
+            player
+                .with_view(game, |view| {
+                    assert_eq!(view.game_mode(), Some(GameMode::Creative));
+                    let abilities = view.abilities().unwrap();
+                    assert!(abilities.invulnerable && abilities.may_fly && abilities.instabuild);
+                })
+                .unwrap();
             assert!(game.player_set_game_mode(player, GameMode::Survival));
-            assert_eq!(game.player_game_mode(player), Some(GameMode::Survival));
-            let abilities = game.player_abilities(player).unwrap();
+            let abilities = player
+                .with_view(game, |view| {
+                    assert_eq!(view.game_mode(), Some(GameMode::Survival));
+                    view.abilities().unwrap()
+                })
+                .unwrap();
             assert!(!abilities.invulnerable && !abilities.may_fly && !abilities.instabuild);
             // A write sticks, is refused for a speed that is not a number, and a
             // mode change sets the flags again (the speeds stay).
@@ -3015,14 +3344,24 @@ pub(super) mod tests {
             written.walk_speed = 0.2;
             written.fly_speed = 0.1;
             assert!(game.player_set_abilities(player, written));
-            assert_eq!(game.player_abilities(player), Some(written));
-            assert_eq!(game.player_may_build(player), Some(false));
+            player
+                .with_view(game, |view| {
+                    assert_eq!(view.abilities(), Some(written));
+                    assert!(!view.may_build());
+                })
+                .unwrap();
             let mut bad = written;
             bad.walk_speed = f32::NAN;
             assert!(!game.player_set_abilities(player, bad));
-            assert_eq!(game.player_abilities(player), Some(written));
+            assert_eq!(
+                player.with_view(game, |view| view.abilities()).flatten(),
+                Some(written)
+            );
             assert!(game.player_set_game_mode(player, GameMode::Creative));
-            let abilities = game.player_abilities(player).unwrap();
+            let abilities = player
+                .with_view(game, |view| view.abilities())
+                .flatten()
+                .unwrap();
             assert!(abilities.may_build && abilities.instabuild && abilities.may_fly);
             assert_eq!((abilities.walk_speed, abilities.fly_speed), (0.2, 0.1));
             assert!(game.player_set_game_mode(player, GameMode::Survival));
@@ -3040,7 +3379,10 @@ pub(super) mod tests {
                 let player = game.player(12).unwrap();
                 let entity = game.entity(12).unwrap();
                 assert_eq!(player.fields().entity, entity);
-                assert_eq!(entity.position(game), Some([3.0, 64.0, 5.0]));
+                assert_eq!(
+                    entity.with_view(game, |view| view.position()).flatten(),
+                    Some([3.0, 64.0, 5.0])
+                );
                 assert_eq!(entity.uuid(game), Some(12));
                 let living = game.living(entity).unwrap();
                 assert_eq!(
@@ -3062,13 +3404,22 @@ pub(super) mod tests {
                     f64::from(0.25f32)
                 );
                 // In the player's own turn the write reaches the body as well.
-                let mut a = game.player_abilities(player).unwrap();
+                let mut a = player
+                    .with_view(game, |view| view.abilities())
+                    .flatten()
+                    .unwrap();
                 a.may_fly = true;
                 a.walk_speed = 0.3;
                 assert!(game.player_set_abilities(player, a));
-                assert_eq!(game.player_abilities(player), Some(a));
+                assert_eq!(
+                    player.with_view(game, |view| view.abilities()).flatten(),
+                    Some(a)
+                );
                 assert!(game.player.as_ref().unwrap().may_fly);
-                assert_eq!(other.position(game), Some([3.0, 64.0, 5.0]));
+                assert_eq!(
+                    other.with_view(game, |view| view.position()).flatten(),
+                    Some([3.0, 64.0, 5.0])
+                );
                 assert!(game.living(other).is_some());
             })
             .unwrap();
@@ -3089,7 +3440,10 @@ pub(super) mod tests {
                     game.player_previous_game_mode(player),
                     Some(Some(GameMode::Survival))
                 );
-                let mut a = game.player_abilities(player).unwrap();
+                let mut a = player
+                    .with_view(game, |view| view.abilities())
+                    .flatten()
+                    .unwrap();
                 assert!(a.instabuild && a.may_fly);
                 a.fly_speed = 0.4;
                 a.walk_speed = 0.3;
@@ -3112,10 +3466,17 @@ pub(super) mod tests {
             let swap = game.enter_guest(12).unwrap();
             assert!(game.entity(12).is_some());
             let other = game.entity(13).unwrap();
-            assert_eq!(other.position(game), Some([3.0, 64.0, 5.0]));
+            assert_eq!(
+                other.with_view(game, |view| view.position()).flatten(),
+                Some([3.0, 64.0, 5.0])
+            );
             assert_eq!(other.uuid(game), Some(13));
             assert_eq!(
-                other.kind(game).and_then(|kind| kind.id(game)).as_deref(),
+                other
+                    .with_view(game, |view| view.kind())
+                    .flatten()
+                    .and_then(|kind| kind.id(game))
+                    .as_deref(),
                 Some("minecraft:player")
             );
             let living = game.living(other).unwrap();
@@ -3127,13 +3488,22 @@ pub(super) mod tests {
             );
             let player = game.player(13).unwrap();
             assert_eq!(player.fields().entity, other);
-            assert_eq!(player.game_mode(game), Some(GameMode::Survival));
+            assert_eq!(
+                player.with_view(game, |view| view.game_mode()).flatten(),
+                Some(GameMode::Survival)
+            );
             assert!(game.player_set_game_mode(player, GameMode::Creative));
-            assert_eq!(player.game_mode(game), Some(GameMode::Creative));
+            assert_eq!(
+                player.with_view(game, |view| view.game_mode()).flatten(),
+                Some(GameMode::Creative)
+            );
             assert_eq!(game.lan_acting, Some(12));
             let acting = game.player(12).unwrap();
             assert!(game.player_set_game_mode(acting, GameMode::Adventure));
-            assert_eq!(game.player_game_mode(acting), Some(GameMode::Adventure));
+            assert_eq!(
+                acting.with_view(game, |view| view.game_mode()).flatten(),
+                Some(GameMode::Adventure)
+            );
             let nested = game.enter_guest(13).unwrap();
             assert!(game.enter_guest(12).is_none());
             assert_eq!(game.lan_acting, Some(13));
@@ -3227,9 +3597,14 @@ pub(super) mod tests {
             let found =
                 collect_game_entities_in(game, level, [0.0, 0.0, -1.0], [0.8, 1.0, 1.0]).unwrap();
             assert_eq!(found.len(), 1);
-            assert_eq!(game.entity_position(found[0]), Some([1.0, 0.0, 0.0]));
             assert_eq!(
-                game.entity_kind(found[0])
+                found[0].with_view(game, |view| view.position()).flatten(),
+                Some([1.0, 0.0, 0.0])
+            );
+            assert_eq!(
+                found[0]
+                    .with_view(game, |view| view.kind())
+                    .flatten()
                     .and_then(|kind| kind.id(game))
                     .as_deref(),
                 Some("minecraft:armor_stand")
@@ -3400,15 +3775,21 @@ pub(super) mod tests {
             assert!(game.fake_player(level, 1, "real").is_none());
             assert_eq!(game.player_is_fake(made), Some(true));
             assert!(game.player(1234).is_none());
-            let mut abilities = game.player_abilities(made).unwrap();
+            let mut abilities = made
+                .with_view(game, |view| view.abilities())
+                .flatten()
+                .unwrap();
             abilities.may_fly = true;
             assert!(game.player_set_abilities(made, abilities));
-            assert!(game.player_abilities(made).unwrap().may_fly);
             assert!(game.player_set_food_level(made, 10));
             assert!(game.player_feed(made, 3, 0.0));
-            assert_eq!(game.player_food(made).unwrap().level, 13);
             assert!(game.player_set_experience_levels(made, 7));
-            assert_eq!(game.player_experience(made).unwrap().level, 7);
+            made.with_view(game, |view| {
+                assert!(view.abilities().unwrap().may_fly);
+                assert_eq!(view.food().unwrap().level, 13);
+                assert_eq!(view.experience().level, 7);
+            })
+            .unwrap();
             assert!(game.player_set_item_cooldown(made, "minecraft:stone", 20));
             assert_eq!(
                 game.player_has_item_cooldown(made, "minecraft:stone"),
@@ -3554,8 +3935,14 @@ pub(super) mod tests {
             assert_eq!(game.fake_player(nether, 2345, "parked"), Some(nether_actor));
             assert!(game.player_set_experience_levels(nether_actor, 8));
             assert!(game.player_set_experience_levels(overworld_actor, 3));
-            assert_eq!(game.player_experience(nether_actor).unwrap().level, 8);
-            assert_eq!(game.player_experience(overworld_actor).unwrap().level, 3);
+            assert_eq!(
+                nether_actor.with_view(game, |view| view.experience().level),
+                Some(8)
+            );
+            assert_eq!(
+                overworld_actor.with_view(game, |view| view.experience().level),
+                Some(3)
+            );
             assert!(
                 game.enter_command_level(super::super::Dim::Overworld)
                     .is_some()

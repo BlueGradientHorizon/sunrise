@@ -65,7 +65,9 @@ impl Game<'_> {
             let Some(entity) = self.block_entity(level, [pos.0, pos.1, pos.2]) else {
                 continue;
             };
-            let Some(id) = self.block_entity_kind(entity) else {
+            let mut id = None;
+            self.with_block_entity_view(entity, &mut |view| id = view.kind());
+            let Some(id) = id else {
                 continue;
             };
             self.native_block_entity_on_load(mod_api::__private::BlockEntityOnLoadCall {

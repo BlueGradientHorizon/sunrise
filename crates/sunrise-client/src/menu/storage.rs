@@ -107,6 +107,7 @@ pub struct State {
     pub(super) containers: [Vec<Option<ItemStack>>; 4],
     pub(super) grid_size: usize,
     pub(super) container_limits: Vec<Option<u32>>,
+    pub(super) container_insert_rules: Vec<crate::containers::ModContainerInsertRule>,
     pub carried: Option<ItemStack>,
     pub data: Vec<i32>,
     pub creative: bool,

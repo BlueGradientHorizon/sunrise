@@ -1,9 +1,12 @@
 # Declaring a machine's menu data
 
 A mod block entity has two different kinds of storage: external item access uses
-transactional Parts, while the machine's own ticker uses its resident view. Outside the ticker,
-use a `BlockEntityRef` and the Host to read or write internal slots and menu data. Menu data is transient:
-creation and loading both start with an empty data vector, even when the saved
+transactional Parts, while the machine's own ticker uses its resident `BlockEntityView`.
+Outside the ticker, use a `BlockEntityRef` and the Host: call `entity.with_view(host, |view| …)`
+to resolve the handle once and borrow the same concrete `BlockEntityView` read-only (`kind()`,
+`position()`, `level()`, `id()`, `state()`, `data_slots()`, `nbt()`, `item_slots()` and
+`item_slot(slot)`), and use the handle's write methods for internal slots and menu data. Menu data
+is transient: creation and loading both start with an empty data vector, even when the saved
 payload contains the machine's progress.
 
 ## State-aware creation
@@ -70,10 +73,15 @@ its container; acquire a new handle for the replacement.
 ## Borrow the ticking machine
 
 `BlockEntityPart::block_entity_tick` receives a `BlockEntityTickEvent<'_>` and no
-separate Host argument. Its `subject` lends the live row. Use the view for the
-machine's own data, saved fields and internal slots. Derive owned values from the
-view before taking the Host for other objects. A second loan checks that the same
-entity is still loaded in the same level and block state; it returns `None` on loss.
+separate Host argument. Its `subject` lends a mutable `BlockEntityView` over the live row,
+the same concrete view type that `BlockEntityRef::with_view` lends read-only. Use the view for the
+machine's own metadata (`kind()`, `position()`, `level()`, `id()`), block `state()`, transient
+`data_slots()`, saved `nbt()` fields and internal slots. Because vanilla and mod block entities
+share one `BlockEntityView`, `state()`, `data_slots()` and `nbt()` return `Option` (`Some` for a
+resident mod block entity, `None` for vanilla block entities or views where that field is
+unavailable). Derive owned values from the view before taking the Host for other objects. A second
+loan checks that the same entity is still loaded in the same level and block state; it returns
+`None` on loss.
 
 ```rust,ignore
 fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
@@ -122,8 +130,10 @@ until sent again: put a counter in them to tell one effect from the next.
 
 A `BlockEntityRef` names one live entity, not every entity later placed at its position. Removal,
 replacement and chunk reload invalidate it; reacquire with `host.block_entity(level, position)`.
-In-place data edits and temporary tick storage preserve identity. Option reads return `None` for
-stale handles; writes return their error's `Stale` variant, never writing to a replacement.
+In-place data edits and temporary tick storage preserve identity. `entity.with_view(host, |view| …)`
+resolves the handle once and lends a read-only `BlockEntityView`; it returns `None` without calling
+the closure for a stale or unavailable handle. Writes return their error's `Stale` variant, never
+writing to a replacement.
 `set_lock`, `set_name`, `merge_data`, `replace_data`, `set_changed` and `set_data_slot`
 return `Result<bool, BlockEntityError>`: handle `Err(BlockEntityError::Stale)` by dropping
 or reacquiring the handle. `Ok(false)` means unchanged data or an unsupported operation,
@@ -242,7 +252,7 @@ impl mod_api::Hooks for MyMod {
     // longer reads: its hum stops.
     fn client_tick_post(&self, host: &mut dyn mod_api::ClientHost, _: &mut mod_api::ClientTickPostEvent) {
         HUMS.lock().unwrap().retain(|machine, sound| {
-            let here = machine.position(&*host).is_some();
+            let here = machine.with_view(&*host, |_| ()).is_some();
             if !here {
                 sound.stop(&*host);
             }

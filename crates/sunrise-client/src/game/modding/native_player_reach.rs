@@ -2,7 +2,7 @@
 //! and whether the player may fly (NeoForge's `IPlayerExtension.mayFly`).
 //! A client applies the same rules to its local player and the target's displayed box.
 use super::Game;
-use mod_api::{EntityReach, EntityRef, EquipmentSlot, LivingRef, PlayerRef};
+use mod_api::{EntityReach, EntityRef, EquipmentSlot, LivingRef, PlayerRef, PlayerView};
 use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_> {
@@ -34,7 +34,7 @@ impl Game<'_> {
             EntityReach::Interact => within(3.0),
             EntityReach::Container => within(4.0),
             EntityReach::Attack => {
-                let creative = self.player_is_creative(player)?;
+                let creative = self.player_view(player)?.is_creative();
                 let held = self
                     .living_equipment_stack(living, EquipmentSlot::MainHand)
                     .map(|stack| stack.base());
@@ -48,7 +48,7 @@ impl Game<'_> {
     /// Sunrise has no creative-flight attribute yet, so this is the `mayfly` ability. None for a
     /// stale or unavailable player.
     pub(super) fn player_may_fly(&self, player: PlayerRef) -> Option<bool> {
-        Some(self.player_abilities(player)?.may_fly)
+        Some(self.player_view(player)?.abilities()?.may_fly)
     }
 }
 
@@ -222,7 +222,10 @@ mod tests {
             assert_eq!(reach(game, nether, EntityReach::Interact), None);
 
             assert_eq!(game.player_may_fly(player), Some(false));
-            let mut abilities = game.player_abilities(player).unwrap();
+            let mut abilities = player
+                .with_view(game, |view| view.abilities())
+                .flatten()
+                .unwrap();
             abilities.may_fly = true;
             assert!(game.player_set_abilities(player, abilities));
             assert_eq!(game.player_may_fly(player), Some(true));

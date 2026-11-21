@@ -214,6 +214,20 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
             host.hub.guests.update(0, |guest| {
                 guest.carried = Some(ItemStack::new("minecraft:stone", 8))
             });
+            let menu = game
+                .player_container_menu(game.player(12).unwrap())
+                .unwrap();
+            let offered = crate::game::api_values::TryIntoApi::try_into_api(&ItemStack::new(
+                "minecraft:stone",
+                8,
+            ))
+            .unwrap();
+            reset(None, false);
+            assert_eq!(
+                menu.with_view(game, |view| view.slot_holds(0, &offered)),
+                Some(Some(64))
+            );
+            assert_eq!(SAW_GUEST.with(|saw| saw.borrow().clone()), [true]);
             reset(None, false);
             game.lan_guest_packet(
                 12,
@@ -228,10 +242,8 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
                 }),
             );
             let lan = asked();
-            // The hub's click ran with the LAN host lifted out of the game, and is back. The
-            // `Host` read meanwhile answered as if no LAN were open: the guest is not found.
-            assert!(game.lan.is_some());
-            assert_eq!(SAW_GUEST.with(|saw| saw.borrow().clone()), [false]);
+            // Planning the Hub click sees the same live guest as the menu view.
+            assert_eq!(SAW_GUEST.with(|saw| saw.borrow().clone()), [true]);
             assert!(game.player(12).is_some());
             // The local click of the same state asks the same, in the same order.
             reset(None, false);

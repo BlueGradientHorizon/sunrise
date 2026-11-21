@@ -53,14 +53,13 @@ The server reads its owning load; the client reads local preload sets before its
 `UpdateRecipes`, then the authoritative server generation. A packet replaces the entire
 generation, including an empty one. Closing a screen or changing dimension retains it;
 disconnecting discards it. Reads allocate nothing and do not rescan recipes or registries.
-A client without this mod predicts vanilla here; the server corrects it.
-
-Parts that read `context.setting(..)` or `side()` have no counterpart on the Host.
+For a declared mod menu the client cannot infer the backing container's insertion rules from
+its screen layout. It sends clicks unpredicted and uses the slots and cursor the server sends back.
 
 ### Who and where: the slot's context
 
-A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext` the game
-fills the same way on the server and on the client's prediction. `context.player` is the UUID of
+A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext` built from
+what the planning side knows about the live opening. `context.player` is the UUID of
 the player whose menu it is, `context.pos` the block entity the menu belongs to
 (`ContainerLevelAccess`), and `context.slots` a read-only copy of the menu's own containers'
 slots as they stand while the click plans, without the player's inventory. The containers are
@@ -96,12 +95,16 @@ fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut mod_api::MenuSlo
 `player` is None where no player is known and `pos` None for a menu that is not a block's (one
 opened with no block by `player_open_mod_menu`, a vehicle's); a slot that cannot cross to the API
 shows empty, and `slot` reads nothing for `MenuContainer::Player` or past a container's end. The
-context is built once per click plan, and only for a menu type a part answers: vanilla menus and
-types with no listening part never pay for it, and the asks of one click share one copy.
+context is built only for a menu type a Part answers. A Hub click and a menu view can both read
+the acting guest through the Host. Native windows can have a chest or mod layout but implement their
+own clicks: `MenuView::slot_holds` and `slot_gives` return `None` there rather than guessing.
+A place-backed native click still uses its transactional item places. For a linked block slot,
+`slot_backing` and `ItemPlace::MenuSlot` address the connected container; an unbound link has no backing.
+
 ## Slots that keep what they show
 
 On a mod menu type, `menu_slot_rules` also answers `Slot.mayPickup` in `event.may_pickup`. It arrives true and
-is asked with the stack the slot holds, on the server and in client prediction alike. A slot that only shows
+is asked with the stack the slot holds, on the server or in modeled client prediction. A slot that only shows
 something, such as a cooking pot's preview of its result, refuses both rules: nothing can be taken from it and
 nothing put in it.
 
@@ -131,11 +134,11 @@ offhand swap that takes the slot's item, a throw (a refusal drops nothing), and 
 spread, a creative clone, putting a stack into an empty slot and a click outside the window never ask it; a drag
 that ends on a single slot is a pickup click on that slot. A refused click leaves the slot and the cursor as they
 were, and the server sends back the slots and cursor a client predicted otherwise. A slot that refuses placement
-gives up all of its stack or none of it. The slot's own rule comes first, and one ask answers `may_place` and
-`may_pickup` together. Vanilla menu types keep their slots' own `mayPickup`, and a shift-click a part answers
-with `menu_quick_move` is asked the pickup rule before that hook. A click asks once for each slot and stack: the
-take, the all-or-nothing check and a shift-click the parts leave to the game reuse that answer, so the server and
-the client's prediction ask the same number of times.
+gives up all of its stack or none of it. In version 6 the slot's own `may_place` includes backing admission.
+A Part can close an admitted slot but cannot reopen one the backing refuses; a quick-move top-up that the
+backing already refuses does not ask the Part. The same ask answers `may_place` and `may_pickup`. Vanilla menu
+types keep their own `mayPickup`. A shift-click asks pickup before `menu_quick_move` and reuses the answer
+if the Part leaves the move to the engine and the slot, stack and base rules are unchanged.
 
 ## Taking from a slot
 
@@ -233,12 +236,21 @@ callback has no `Host`.
 
 ## Reading and clicking
 
-Client hooks can read the local player's menu with `host.local_player()?.container_menu(host)`,
-including the inventory when no container is open. `MenuRef::slot_count`, `slot` and `carried`
-read on either side; `slot` and `carried` return an outer `None` when the handle or slot is
-unavailable and `Some(None)` for an empty slot. Each read checks the world epoch and menu generation,
-so a handle cannot read a replacement, reopened or respawned menu. These methods do not click or
-change slots.
+Client hooks can get the local player's menu with `host.local_player()?.container_menu(host)`,
+including the inventory when no container is open. On either side, group related reads in
+`menu.with_view(host, |view| …)`. It checks the world epoch and menu generation once; a stale
+handle or unavailable host returns `None` without calling the closure. For example:
+
+```rust,ignore
+let snapshot = menu.with_view(host, |view| (view.slot_count(), view.slot(0), view.carried()));
+```
+
+`view.slot` and `view.carried` return owned stacks: `Some(None)` is empty, and `None` means the
+slot does not exist or the stack could not be read. `view.slot_count()` is `None` for an unknown
+client layout, which can still have a cursor. On the server, `view.container_id()` includes id 0
+for inventory, and `view.kind()` is `None` for inventory or `Some(name)` for a known registry menu
+type. The name is borrowed: copy it inside the closure if you need to keep it. Reads do not click
+or change slots. Do any writes after the scope ends; a write resolves the handle again.
 
 Server hooks can also read the acting player's supported menu through
 `player.container_menu(host)`. Inventory, equipment, cursor and ender contents come from
@@ -247,7 +259,7 @@ menu kinds, permanent exclusions and stale-generation checks still apply.
 
 Mutable client hooks can submit a vanilla click with
 `menu.click(host, &[mod_api::MenuClick::QuickMove { slot }])`. The slot is the same menu-order
-index used by `slot`, not a hotbar index or a GUI slot id. For example:
+index used by `MenuView::slot`, not a hotbar index or a GUI slot id. For example:
 
 ```rust,ignore
 {{#include ../../../examples/src/lib.rs:menu_quick_move}}
@@ -276,16 +288,18 @@ buttons don't take; the server's menu decides what it does, and the inventory me
 ## Writing slot storage
 
 `ItemPlace::MenuSlot { menu, slot }` is slot `slot` of a player's open menu, a `MenuRef` (`player.container_menu(host)`). NeoForge 26.3's `ItemAccess` reaches a player's inventory slot (`forPlayerSlot`) and cursor
-(`forPlayerCursor`), not a menu's slot. It is the storage the slot shows, named by `menu.slot_backing(host, slot)`
+(`forPlayerCursor`), not a menu's slot. It is the storage the slot shows, named by `view.slot_backing(slot)` in a menu read scope
 (`MenuSlotBacking`), and a write goes to that storage through its own handler, so it is kept once by the transaction
 and the storage's rules hold: the player's inventory, armour and off hand by their
 [`ENTITY_ITEMS`](entity-items.md) index, a chest's or a furnace's slot through its `ITEMS` handler, a chest minecart's
 or a chested mount's through its `ENTITY_ITEMS`, and the player's ender chest, inventory crafting grid and a mod's chest
 menu (`open_menu`, reached with `host.menu(uuid, window)`), kept by the game. The slot's own rules come first, as a click has them:
-`menu.slot_holds(host, slot, &stack)` is how many of a stack it holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`: a
-furnace's fuel slot one bucket, an armour slot one piece that fits it, a shulker box's slot no shulker box, a result
-slot none), and `menu.slot_gives(host, slot)` whether it gives up what it holds (`Slot.mayPickup`: bound armour stays
-on outside creative). An insert fills that slot alone, and what doesn't fit stays out. A crafting grid a transaction
+`view.slot_holds(slot, &stack)` uses the same placement and capacity rules as a click (`Slot.mayPlace` and
+`Slot.getMaxStackSize(ItemStack)`). It includes the offered stack's component maximum, so a chest slot holds only
+one of a stack patched to a maximum of one. A block-backed mod menu also enforces the backing container's declared
+insert rule, including on shift-click. An armour slot holds one item if it fits, including an item part's
+`can_equip` decision for that player. `view.slot_gives(slot)` says whether the slot gives up what it holds
+(`Slot.mayPickup`: bound armour stays on outside creative). An insert fills that slot alone, and what doesn't fit stays out. A crafting grid a transaction
 changed has its result made again at the outermost commit, once for each player however many writes it took
 (`InventoryMenu.slotsChanged`, with `prepare_item_craft`); the result slot takes nothing and gives nothing,
 since taking it is a craft. A menu closed, replaced or reopened since the `MenuRef` was made, or one whose player left,
@@ -366,7 +380,7 @@ slots with `player.back_mod_menu_slots(host, window, places)`, one `MenuSlotPlac
 - `MenuSlotPlace::EntityItems { entity, slot }`: slot `slot` of `entity`'s `ENTITY_ITEMS` handler, as a mod's provider
   answers it.
 
-From then on `MenuRef::slot_backing` names the slot `MenuSlotBacking::Place(place)`. A pickup or shift-click on the
+From then on `MenuView::slot_backing` names the slot `MenuSlotBacking::Place(place)`. A pickup or shift-click on the
 menu, and an `ItemPlace::MenuSlot` write, go through that storage's own handler in one transaction, so an aborted
 transaction leaves it as it was. The client sees ordinary synced slots; there is no new packet. Nothing runs per tick:
 the slots are mirrored after each click on the menu and after each `ItemPlace` write to the player's places (their hand,
@@ -429,8 +443,11 @@ crafting grid). A dry run, the viewer's check, must move nothing. Vanilla menu t
 world and a LAN host's own player get the same contract: the game is the server there and asks the part of the
 player's open block menu before its own grid transfer, on the same thread.
 
-`menu.slot_kinds(host)` is a client read in menu index order, with exactly
-`slot_count` entries. It describes the client's layout and content declaration,
+`menu.with_client_view(host, |view| view.slot_kinds())` reads client slot roles in menu index order,
+with exactly `slot_count` entries when both are known. The outer result refuses an unavailable phase
+or backend; `Ok(None)` means the menu did not resolve. The view itself can resolve even when its
+screen is not visible. To treat all unavailable cases as `None`, use `.ok().flatten().flatten()`.
+The roles describe the client's layout and content declaration,
 not the server's backing or acceptance rules. `Player(index)` uses hotbar 0–8,
 main 9–35, armour 36–39 (feet to head), off hand 40. Container equipment is
 `Equipment`. General storage, including unmarked linked slots, is `Storage`.

@@ -1,5 +1,5 @@
 //! One storage-family dispatch for the server's residency journal.
-use super::{Game, commands::Target};
+use super::{Game, commands::Target, player_residency::SpecializedSource};
 use mod_api::DimensionKey;
 use sunrise_client::join_seq::{
     Joined,
@@ -43,30 +43,65 @@ macro_rules! resident_owners {
     ($then:ident, $this:ident, $($projectiles:ident).+, $($knots:ident).+, $($general:ident).+) => {
         $then! {
             ($this, $($projectiles).+)
-            Mob => Mob: mobs,
-            Item => Item: dropped,
-            Orb => Orb: orbs,
-            Stand => Stand: armor_stands,
-            Frame => Frame: item_frames,
-            Painting => Painting: paintings,
-            Boat => Boat: boats,
-            Cart => Cart: carts,
-            Other => Other: others,
-            Fangs => Fangs: fangs.list,
-            Crystal => Crystal: crystals,
-            Tnt => Tnt: tnts,
-            Cushion => Cushion: cushions,
-            Knot => Knot: $($knots).+,
-            Falling => Falling: falling,
-            Rocket => Rocket: rockets,
-            Trident => Trident: tridents,
-            Spawner => Spawner: ominous_spawners,
-            Cloud => Cloud: breath_clouds,
-            General => General: $($general).+,
+            Mob(sunrise_client::mobs::Mob) => mobs,
+            Item(sunrise_client::entities::ItemEntity) => dropped,
+            Orb(sunrise_client::entities::ExperienceOrb) => orbs,
+            Stand(sunrise_client::entities::ArmorStand) => armor_stands,
+            Frame(sunrise_client::entities::ItemFrame) => item_frames,
+            Painting(sunrise_client::entities::Painting) => paintings,
+            Boat($crate::game::boats::Boat) => boats,
+            Cart($crate::game::minecarts::Minecart) => carts,
+            Other($crate::game::commands::OtherEntity) => others,
+            Fangs($crate::game::fangs::Fangs) => fangs.list,
+            Crystal($crate::game::dragon::Crystal) => crystals,
+            Tnt($crate::game::tnt::PrimedTnt) => tnts,
+            Cushion(sunrise_client::entities::Cushion) => cushions,
+            Knot($crate::game::leads::Knot) => $($knots).+,
+            Falling($crate::game::FallingBlock) => falling,
+            Rocket($crate::game::fireworks::Rocket) => rockets,
+            Trident($crate::game::trident::ThrownTrident) => tridents,
+            Spawner($crate::game::ominous_item_spawner::OminousItemSpawner) => ominous_spawners,
+            Cloud($crate::game::dragon::Breath) => breath_clouds,
+            General($crate::game::general::GeneralRow) => $($general).+,
         }
     };
 }
 pub(crate) use resident_owners;
+
+macro_rules! define_resident_rows {
+    (($this:ident, $($projectiles:ident).+) $($kind:ident($ty:ty) => $($field:ident).+,)*) => {
+        /// The row already selected and checked by the residency lookup.
+        pub(super) enum ResidentRow<'a> {
+            $($kind(&'a $ty),)*
+            Projectile(&'a sunrise_client::projectiles::Projectile),
+            Dragon(&'a super::dragon::Dragon),
+            DragonPart(&'a super::dragon::Dragon, sunrise_core::geometry::Vec3),
+            Specialized(SpecializedSource<'a>),
+        }
+    };
+}
+resident_owners!(
+    define_resident_rows,
+    self,
+    creatures.projectiles,
+    resident_entities.knots,
+    resident_entities.general.rows
+);
+
+pub(super) struct ResolvedResident<'a> {
+    pub target: Target,
+    pub visible: bool,
+    pub row: ResidentRow<'a>,
+}
+
+impl ResolvedResident<'_> {
+    pub(super) fn target_source(source: SourceEntity<Self>) -> SourceEntity<(Target, bool)> {
+        SourceEntity {
+            id: source.id,
+            value: (source.value.target, source.value.visible),
+        }
+    }
+}
 
 macro_rules! resident_visible {
     (Mob, $entity:expr) => {
@@ -164,7 +199,7 @@ macro_rules! resident_lifetime_slot {
 pub(crate) use resident_lifetime_slot;
 
 macro_rules! define_resident_access {
-    (($this:ident, $($projectiles:ident).+) $($kind:ident => $target:ident: $($field:ident).+,)*) => {
+    (($this:ident, $($projectiles:ident).+) $($kind:ident($ty:ty) => $($field:ident).+,)*) => {
         pub(super) fn bind_resident_owners(&mut $this, journal: &Journal, dimension: DimensionKey, track_saved_uuids: bool) {
             if track_saved_uuids {
                 $this.persist.uuids.bind(journal, dimension);
@@ -199,53 +234,49 @@ macro_rules! define_resident_access {
                 Kind::Player | Kind::Hook => SlotAccess::UnsupportedKind(at.owner.kind),
             }
         }
-        pub(super) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
-            let source = match at.owner.kind {
+        fn locate_resident_attachment_row(&$this, at: Location) -> Option<SourceEntity<$crate::game::entity_residency::ResolvedResident<'_>>> {
+            use $crate::game::entity_residency::{ResidentRow, ResolvedResident};
+            let (id, target, visible, row) = match at.owner.kind {
                 $(Kind::$kind => {
                     let index = $this$(.$field)+.locate(at.join)?;
                     let entity = &$this$(.$field)+[index];
-                    let visible = $crate::game::entity_residency::resident_visible!($kind, entity);
                     let id = entity.id;
-                    Some(SourceEntity { id, value: (Target::$target(id), visible) })
+                    (id, Target::$kind(id), $crate::game::entity_residency::resident_visible!($kind, entity), ResidentRow::$kind(entity))
                 })*
                 Kind::Projectile => {
                     let index = $this$(.$projectiles)+.locate(at.join)?;
-                    let id = $this$(.$projectiles)+[index].id;
-                    Some(SourceEntity { id, value: (Target::Projectile(id), true) })
+                    let proj = &$this$(.$projectiles)+[index];
+                    (proj.id, Target::Projectile(proj.id), true, ResidentRow::Projectile(proj))
                 }
                 Kind::Dragon => {
                     $this.dragon.locate(at.join)?;
-                    let id = $this.dragon.as_ref()?.id;
-                    Some(SourceEntity { id, value: (Target::Dragon(id), true) })
+                    let dragon = $this.dragon.as_ref()?;
+                    (dragon.id, Target::Dragon(dragon.id), true, ResidentRow::Dragon(dragon))
                 }
                 Kind::DragonPart => {
                     let sunrise_client::join_seq::residency::Source::DragonPart(offset) = at.source else { return None; };
                     $this.dragon.locate(at.join)?;
                     let dragon = $this.dragon.as_ref()?;
                     if dragon.id == 0 { return None; }
-                    dragon.parts.get(usize::from(offset))?;
+                    let part = dragon.parts.get(usize::from(offset))?;
                     let id = dragon.id.checked_add(u32::from(offset) + 1)?;
-                    let visible = true;
-                    Some(SourceEntity { id, value: (Target::DragonPart(id), visible) })
+                    (id, Target::DragonPart(id), true, ResidentRow::DragonPart(dragon, part.0))
                 }
-                Kind::Player | Kind::Hook => None,
+                Kind::Player | Kind::Hook => return None,
             };
-            source
+            Some(SourceEntity { id, value: ResolvedResident { target, visible, row } })
         }
-        pub(super) fn locate_resident_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
-            let source = $this.locate_resident_attachment_owner(at).map(|mut source| {
-                if let Target::DragonPart(_) = source.value.0 {
-                    source.value.1 &= $this.dragon.as_ref().is_some_and(|dragon| !$this.persist.removals.contains(&Target::Dragon(dragon.id)));
-                }
-                source
-            });
+        pub(super) fn locate_resident_row(&$this, at: Location) -> Option<SourceEntity<$crate::game::entity_residency::ResolvedResident<'_>>> {
+            use $crate::game::entity_residency::ResidentRow;
+            let mut source = $this.locate_resident_attachment_row(at)?;
             // Logical visibility is not physical absence: filtering here would
             // incorrectly evict reversible conversion rows or report Taken.
-            source.map(|mut source| {
-                source.value.1 &= !$this.persist.removals.contains(&source.value.0);
-                source.value.1 &= !$this.persist.destroying_vehicles.contains(&source.value.0);
-                source
-            })
+            if let ResidentRow::DragonPart(dragon, _) = &source.value.row {
+                source.value.visible &= !$this.persist.removals.contains(&Target::Dragon(dragon.id));
+            }
+            source.value.visible &= !$this.persist.removals.contains(&source.value.target);
+            source.value.visible &= !$this.persist.destroying_vehicles.contains(&source.value.target);
+            Some(source)
         }
     };
 }
@@ -259,6 +290,22 @@ impl Game<'_> {
         resident_entities.knots,
         resident_entities.general.rows
     );
+
+    pub(super) fn locate_resident_attachment_owner(
+        &self,
+        at: Location,
+    ) -> Option<SourceEntity<(Target, bool)>> {
+        self.locate_resident_attachment_row(at)
+            .map(ResolvedResident::target_source)
+    }
+
+    pub(super) fn locate_resident_owner(
+        &self,
+        at: Location,
+    ) -> Option<SourceEntity<(Target, bool)>> {
+        self.locate_resident_row(at)
+            .map(ResolvedResident::target_source)
+    }
 }
 
 #[cfg(test)]

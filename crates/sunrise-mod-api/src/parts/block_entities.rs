@@ -286,7 +286,8 @@ pub mod tests {
             if let Some((level, pos)) = event
                 .subject
                 .with_view(|entity| {
-                    (entity.data_slots() == [1]).then(|| (entity.level(), entity.position()))
+                    (entity.data_slots() == Some(&[1][..]))
+                        .then(|| (entity.level(), entity.position()))
                 })
                 .flatten()
             {

@@ -624,7 +624,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
 
 - `host.entity(id)` and `host.level(dimension)`: the local player or an entity the server told the client of, and the
   one level the client shows. `host.living(entity)` is the local player only.
-- `entity.position(host)`, `rotation(host)` and `velocity(host)`: the client's copy, interpolated as it draws it.
+- `entity.with_view(host, |view| …)` lends the client's own entity position and kind; a client that keeps
+  the entity's body can also read its rotation. `entity.velocity(host)` remains a separate read.
 - `entity.name(host)`: the synced custom name or type name, and a player's profile name, from either side's host.
 - `level.block_state(host, pos)`, `block`, `block_property` and `is_loaded`: blocks of the chunks the client holds.
   A chunk it doesn't hold reads as unloaded; no read loads one.
@@ -639,24 +640,24 @@ handle, an entity the client doesn't track and a level it doesn't show:
   Read item, count and damage inside `read`. Use `stack.project()` only for components or to retain an owned stack;
   a failed projection does not mean the slot was empty. An unavailable player returns `None` without calling `read`;
   on a client only the local player's inventory is available.
-- For the local player, its own state as the server sent it (`LocalPlayer`): `player.game_mode(host)`, `is_creative`,
-  `is_spectator` and `may_build` (the game mode of the login, respawn and `ClientboundGameEvent` packets); `food`
-  (level and saturation from `ClientboundSetHealth`; the client keeps no exhaustion, so it reads 0), `needs_food`,
-  `has_enough_food` and `can_eat`; `abilities` (what the game mode gives, then `ClientboundPlayerAbilities`' flags and
-  speeds); `selected_slot` (the hotbar slot held); `experience` (`ClientboundSetExperience`) and
-  `xp_needed_for_next_level`. Another player reads `None` there: the client is not sent their state.
+- `player.with_view(host, |view| …)` lends the local player's own state (`LocalPlayer`) for related reads:
+  `view.game_mode()`, `is_creative()`, `is_spectator()` and `may_build()` (login, respawn and `ClientboundGameEvent`);
+  `food()` (level and saturation from `ClientboundSetHealth`; exhaustion reads 0), `needs_food()`, `has_enough_food()`
+  and `can_eat(always)`; `abilities()` (mode plus `ClientboundPlayerAbilities`, with flying predicted locally);
+  `experience()` (`ClientboundSetExperience`) and `xp_needed_for_next_level()`. It skips the callback for
+  other players, whose state the client does not receive. `player.selected_slot(host)` stays a separate read.
 - The local player's open menu: `host.local_player()` then `player.container_menu(host)` makes a `MenuRef` for the menu
-  the client has open (the player's own inventory when none is), and `menu.slot_count(host)`, `slot(host, index)` and
-  `carried(host)` read it as the server's `ClientboundContainerSetSlot` and `SetCursorItem` packets left it. Indexes are
-  the menu's own slot order (the same `slot_backing` names), not network slot ids. Another player's menu is `None`, and
-  so are `container_id` and `kind` on a client (server reads). A slot reads `Some(None)` when empty and the outer `None`
-  when it doesn't exist or the menu is unavailable; a menu type the client has no slot map for reads `None` throughout
-  rather than guessed contents. A handle goes stale, and reads `None`, when its menu is closed or replaced (a reused
-  window id included), on a respawn, a dimension change or a logout, and after a reconnect. Nothing here sends a packet
-  or changes the menu.
+  the client has open (the player's own inventory when none is). Use `menu.with_view(host, |view| …)` to read its
+  `slot_count()`, `slot(index)` and `carried()` together after server synchronization and local prediction. Indexes are
+  the menu's own slot order, not indices in the backing container. Another player's menu is `None`; `container_id()`
+  and `kind()` only have server answers. A slot reads `Some(None)` when empty and `None` when it doesn't exist or can't
+  be projected. An unknown client layout has no count or indexed stacks, but can still have a cursor. The callback
+  is skipped when its menu is closed or replaced (a reused window id included), on respawn, dimension change, logout
+  and reconnect. Nothing here sends a packet or changes the menu.
 
-- `entity.position(host)`, `block_position`, `rotation` (yaw and pitch), `kind` (`minecraft:zombie`), `uuid` (`&mut`:
-  an entity with no UUID yet gets its own) and `level` read the entity.
+- `entity.with_view(host, |view| …)` resolves the entity once for `view.position()`, `block_position()`, `rotation()` (yaw
+  and pitch in degrees) and `kind()` (a type key). An unavailable entity skips the callback; a resolved view can still
+  lack fields. `uuid` (`&mut`: assigns a UUID if needed) and `level` remain separate handle operations.
 - `level.block_state(host, pos)` returns a typed `BlockState` without allocating a state string. For text such as
   `minecraft:oak_stairs[facing=east,…]`, pass the ID to `host.block_state_string(id)`. `block` (the name alone),
   `block_property(host, pos, key)`, `is_loaded`, `height` (lowest `y` and height), `game_time` and `day_time` read any
@@ -984,7 +985,7 @@ still runs once before either outcome; tool enchantments and vanilla random orde
 `level.set_break_progress(host, breaker, pos, stage)` shows stages 0..9 or clears the crack otherwise;
 a machine uses a stable negative breaker id.
 
-A helper whose catalog entry names a `receiver` (`entity`, `level`, `block_entity`) is called on that handle (for example `entity.position(host)`), rather than as an ID-based `Host` method.
+A helper whose catalog entry names a `receiver` (`entity`, `level`, `block_entity`) is called on that handle (for example `entity.velocity(host)`), rather than as an ID-based `Host` method.
 
 ### Client menu input
 
@@ -1392,7 +1393,7 @@ Look blocks up once and keep what you need (a few words a block for your own sha
 
 ### Menu slot rules
 
-`menu_slot_rules` asks the registered vanilla or mod menu's scoped `MenuPart` whether a slot takes a stack, whether it gives up what it holds and how many it holds, on both client prediction and server. Mount inventories use `sunrise:mount_inventory`; unregistered player inventory and creative picker menus do not dispatch. `slot` is the backing container index. The slot's own answers arrive first; the final maximum is clamped to 1–99 and the item's stack limit. Rules also apply to quick-move top-ups. The hook takes the read-only `Host` (it is a query: it cannot write or cancel). A click asks once for each slot and stack it consults while it plans the click, and its answers stay in what it planned: nothing asks again to validate or apply. On a LAN host's own click the game is lent to the click with the LAN host lifted out of it, so what the `Host` reads of LAN players answers as if no LAN were open. `may_pickup` (`Slot.mayPickup`) arrives true and is read only on a registered mod menu type, for its own slots and the player's inventory slots in it, asked with the stack the slot holds; a vanilla menu type keeps its slots' own answer. The slot's own rule comes first (a slot it refuses is not asked), and one ask answers `may_place` and `may_pickup` together. It is asked by a pickup click on a slot that holds an item (after `item_stacked_on_other`, before any take, merge or exchange), by quick move once on the clicked slot before the move (moving into a slot asks only `may_place`), by a hotbar or offhand swap that takes the slot's item (with both stacks present `may_place` must hold too), by throw inside the take (a refusal drops nothing and stops the repeat), by pick-all (which gathers when the clicked slot is empty or refuses, and skips each source that refuses) and by every take the menu makes. A drag spread, a creative clone, an insertion into an empty slot and a click outside the window never ask it; a drag that ends on one slot is a pickup click on it. A refusal leaves the slot and the cursor as they were, and the server corrects the slots and cursor the client predicted otherwise. A slot that refuses placement gives all of its stack or none. A display-only slot (a recipe preview) answers both `may_pickup` and `may_place` false. A shift-click a part answers with `menu_quick_move` is asked the pickup rule first, as vanilla asks it before the menu's `quickMoveStack`.
+`menu_slot_rules` asks the registered vanilla or mod menu's scoped `MenuPart` whether a slot takes a stack, whether it gives up what it holds and how many it holds, on the server and in modeled client prediction. Mount inventories use `sunrise:mount_inventory`; unregistered player inventory and creative picker menus do not dispatch. `slot` is the backing container index. The slot's own answers arrive first; the final maximum is clamped to 1–99 and the item's stack limit. Incoming placement includes backing admission; a Part cannot reopen a backing refusal, and a top-up that the backing refuses is not dispatched. A menu with unknown server backing sends clicks unpredicted. The hook takes the read-only `Host` (it is a query: it cannot write or cancel). A click asks once for each slot and stack it consults while it plans the click, and its answers stay in what it planned: nothing asks again to validate or apply. A Hub slot rule can read the same live guest through the Host as a menu view. `may_pickup` (`Slot.mayPickup`) arrives true and is read only on a registered mod menu type, for its own slots and the player's inventory slots in it, asked with the stack the slot holds; a vanilla menu type keeps its slots' own answer. The slot's own rule comes first (a slot it refuses is not asked), and one ask answers `may_place` and `may_pickup` together. It is asked by a pickup click on a slot that holds an item (after `item_stacked_on_other`, before any take, merge or exchange), by quick move once on the clicked slot before the move (moving into a slot asks only `may_place`), by a hotbar or offhand swap that takes the slot's item (with both stacks present `may_place` must hold too), by throw inside the take (a refusal drops nothing and stops the repeat), by pick-all (which gathers when the clicked slot is empty or refuses, and skips each source that refuses) and by every take the menu makes. A drag spread, a creative clone, an insertion into an empty slot and a click outside the window never ask it; a drag that ends on one slot is a pickup click on it. A refusal leaves the slot and the cursor as they were, and the server corrects the slots and cursor the client predicted otherwise. A slot that refuses placement gives all of its stack or none. A display-only slot (a recipe preview) answers both `may_pickup` and `may_place` false. A shift-click a part answers with `menu_quick_move` is asked the pickup rule first, as vanilla asks it before the menu's `quickMoveStack`.
 
 The hook runs during clicks, drags and shift-clicks with the read-only `Host` on server and client prediction; answer from the stack and host alone, and fast. Parts that read `context.setting(..)` or `side()` have no counterpart on the Host.
 
@@ -1798,7 +1799,7 @@ still go on each event or registrar.
 
 - `native_item_burn_time(item)` answers the item's cooking-fuel burn time in ticks (`FuelValues.burnDuration`: its `cooking_fuel` component, the data pack's context int provider resolved), None where it is no fuel. `native_item_compost_chance(item)` answers the chance the item raises a composter's level (its `compostable` component's layers provider resolved; the `compostables` data map), None where it is not compostable. A mod cannot resolve either from the item's default component, which holds only the provider's name. Client-side, API next.
 - `native_screen_hovered_item()` answers the id of the item in the slot under the pointer on the open container screen (`AbstractContainerScreen.getHoveredSlot()`'s stack), None over no slot, an empty one, or with no window. A recipe viewer reads it for its look-up keys. Client-side, API next.
-- `menu.slot_boxes(host)` (`menu_slot_boxes`) answers the open inventory screen's slot rectangles (`[x, y, width, height]`, GUI pixels) in menu slot order: `AbstractContainerScreen.leftPos`/`topPos` plus each `Slot.x`/`Slot.y`, 16 by 16, so a mod that highlights or searches slots in `screen_render_post` draws where vanilla's own slot highlight does. `None` entries are slots the screen does not show; the whole answer is `None` for a stale menu, another screen, or an inventory covered by the recipe book. Client-side.
+- `menu.with_client_view(host, |view| view.slot_boxes())` reads the open inventory screen's slot rectangles (`[x, y, width, height]`, GUI pixels) in menu slot order: `AbstractContainerScreen.leftPos`/`topPos` plus each `Slot.x`/`Slot.y`, 16 by 16, so a mod that highlights or searches slots in `screen_render_post` draws where vanilla's own slot highlight does. `None` entries are slots the screen does not show; the view's answer is `None` for another screen or an inventory covered by the recipe book. The scope does not call the closure for a stale menu. Client-side.
 
 - `modify_default_components(context, item, components)`, in `sunrise-world`'s `item_defaults.rs`: an item's default
   components in `items.json`'s form, for any item, vanilla's included (NeoForge's `ModifyDefaultComponentsEvent`). Insert
@@ -2333,7 +2334,7 @@ registration path.
   Answer only for your own blocks and leave the answer empty otherwise; the level is read-only. It is asked on both sides,
   including the client's placement prediction, with a typed `LevelSide`: answer from the state and level alone.
 
-- A server player's game mode about to change: `Hooks::player_game_mode_changed` receives a `PlayerGameModeChangedEvent` before the change (NeoForge's `PlayerChangeGameModeEvent`) for the `/gamemode` command, the F3+F4 switcher and a hardcore world's respawn into spectator, once for each change to a different mode, on a server; not for the default mode a player joins with. Its `from` and `to` are `GameMode` values, the same type used by command parsing and `PlayerRef::game_mode`, `set_game_mode` and `previous_game_mode`. Write `*event.to` to redirect the change, or return `Flow::Cancel` to keep the old mode; numeric ids are only for network and save boundaries.
+- A server player's game mode about to change: `Hooks::player_game_mode_changed` receives a `PlayerGameModeChangedEvent` before the change (NeoForge's `PlayerChangeGameModeEvent`) for the `/gamemode` command, the F3+F4 switcher and a hardcore world's respawn into spectator, once for each change to a different mode, on a server; not for the default mode a player joins with. Its `from` and `to` are `GameMode` values, the same type used by command parsing, `PlayerView::game_mode`, `PlayerRef::set_game_mode` and `PlayerRef::previous_game_mode`. Write `*event.to` to redirect the change, or return `Flow::Cancel` to keep the old mode; numeric ids are only for network and save boundaries.
 
 - The server's difficulty changed, from one of `peaceful`, `easy`, `normal`, `hard` to another, through `difficulty_changed` (NeoForge's `DifficultyChangeEvent`). It is vanilla's `MinecraftServer.setDifficulty`, which `/difficulty`, a dedicated server's management and a test environment's difficulty all go through, and it is told only when the difficulty is another one. It only hears: the change has already happened.
 

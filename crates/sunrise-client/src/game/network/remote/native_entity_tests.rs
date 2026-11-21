@@ -115,13 +115,20 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     .unwrap();
     let me = game.entity(7).expect("the own player");
     assert_eq!(
-        game.entity_kind(me)
+        me.with_view(&game, |view| view.kind())
+            .flatten()
             .and_then(|kind| kind.id(&game))
             .as_deref(),
         Some("minecraft:player")
     );
-    assert_eq!(game.entity_position(me), Some([0.5, 65.0, 0.5]));
-    assert_eq!(game.entity_rotation(me), Some([45.0, 10.0]));
+    assert_eq!(
+        me.with_view(&game, |view| view.position()).flatten(),
+        Some([0.5, 65.0, 0.5])
+    );
+    assert_eq!(
+        me.with_view(&game, |view| view.rotation()).flatten(),
+        Some([45.0, 10.0])
+    );
     // The profile the login named (the net thread's `Joined`).
     game.remote.as_mut().unwrap().profile_name = "Steve".into();
     assert_eq!(
@@ -145,14 +152,27 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     .unwrap();
     let stand = game.entity(20).expect("the stand is tracked");
     assert_eq!(
-        game.entity_kind(stand)
+        stand
+            .with_view(&game, |view| view.kind())
+            .flatten()
             .and_then(|kind| kind.id(&game))
             .as_deref(),
         Some("minecraft:armor_stand")
     );
-    assert_eq!(game.entity_position(stand), Some([1.5, 64.0, 2.5]));
-    assert_eq!(game.entity_block_position(stand), Some([1, 64, 2]));
-    assert_eq!(game.entity_rotation(stand), Some([90.0, 0.0]));
+    assert_eq!(
+        stand.with_view(&game, |view| view.position()).flatten(),
+        Some([1.5, 64.0, 2.5])
+    );
+    assert_eq!(
+        stand
+            .with_view(&game, |view| view.block_position())
+            .flatten(),
+        Some([1, 64, 2])
+    );
+    assert_eq!(
+        stand.with_view(&game, |view| view.rotation()).flatten(),
+        Some([90.0, 0.0])
+    );
     assert_eq!(game.entity_uuid(stand), Some(uuid));
     assert_eq!(
         stand.name(&game as &dyn mod_api::ClientHost).as_deref(),
@@ -183,19 +203,29 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
         .unwrap();
     let display = game.entity(21).expect("the display is tracked");
     assert_eq!(
-        game.entity_kind(display)
+        display
+            .with_view(&game, |view| view.kind())
+            .flatten()
             .and_then(|kind| kind.id(&game))
             .as_deref(),
         Some("minecraft:text_display")
     );
-    assert_eq!(game.entity_position(display), Some([4.0, 70.0, -3.0]));
+    assert_eq!(
+        display.with_view(&game, |view| view.position()).flatten(),
+        Some([4.0, 70.0, -3.0])
+    );
     assert_eq!(game.entity_uuid(display), Some(5));
     assert_eq!(game.entity(99), None);
 
     // Before the chest opens, the player's inventory menu is current.
     let player = game.local_player().unwrap();
     let inventory = game.player_container_menu(player).unwrap();
-    assert_eq!(game.menu_slot_count(inventory), Some(46));
+    assert_eq!(
+        inventory
+            .with_view(&game, |view| view.slot_count())
+            .flatten(),
+        Some(46)
+    );
     // A chest the server opened, by its slot numbers: the chest's 9,
     // then the inventory's 27, then the hotbar's 9.
     game.handle_packet(C::OpenScreen(play::OpenScreen {
@@ -222,20 +252,43 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     let menu = game
         .player_container_menu(player)
         .expect("a server menu is open");
-    assert_eq!(game.menu_slot_count(inventory), None);
-    assert_eq!(game.menu_slot_count(menu), Some(45));
-    let gem = game
-        .menu_slot(menu, 0)
+    assert_eq!(
+        inventory
+            .with_view(&game, |view| view.slot_count())
+            .flatten(),
+        None
+    );
+    assert_eq!(
+        menu.with_view(&game, |view| view.slot_count()).flatten(),
+        Some(45)
+    );
+    let gem = menu
+        .with_view(&game, |view| view.slot(0))
+        .flatten()
         .flatten()
         .expect("the chest's first slot");
-    assert_eq!((&*gem.item, gem.count), ("minecraft:diamond", 2));
-    assert_eq!(gem.custom_name().as_deref(), Some("Gem"));
-    assert_eq!(game.menu_slot(menu, 1), Some(None));
-    let stone = game
-        .menu_slot(menu, 36)
+    assert_eq!(
+        (gem.item().id(&game), gem.count()),
+        (Some("minecraft:diamond"), 2)
+    );
+    assert_eq!(
+        gem.components()
+            .and_then(|patch| patch.as_nbt().get(&"minecraft:custom_name".into())),
+        Some(&Tag::String("Gem".into()))
+    );
+    assert_eq!(
+        menu.with_view(&game, |view| view.slot(1)).flatten(),
+        Some(None)
+    );
+    let stone = menu
+        .with_view(&game, |view| view.slot(36))
+        .flatten()
         .flatten()
         .expect("the hotbar's first slot");
-    assert_eq!((&*stone.item, stone.count), ("minecraft:stone", 5));
+    assert_eq!(
+        (stone.item().id(&game), stone.count()),
+        (Some("minecraft:stone"), 5)
+    );
     // The hotbar's first slot is the player's inventory slot 0.
     assert_eq!(game.inventory[0].as_ref().map(|s| s.count), Some(5));
 
@@ -285,8 +338,11 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
         keep: 0,
     }))
     .unwrap();
-    assert_eq!(game.entity_position(stand), None);
-    assert_eq!(game.entity_kind(display), None);
+    assert_eq!(
+        stand.with_view(&game, |view| view.position()).flatten(),
+        None
+    );
+    assert_eq!(display.with_view(&game, |view| view.kind()).flatten(), None);
 }
 
 /// #8589: the server sends entity event 42 (the raid sweat) for a villager;

@@ -94,10 +94,11 @@ impl Game<'_> {
                 .iter()
                 .find(|c| c.id == id)
                 .map(|c| [c.position.x, c.position.y, c.position.z]),
-            Target::DragonPart(id) => self.resident_dragon_part(id).map(|(d, i)| {
-                let p = d.parts[i].0;
-                [p.x, p.y, p.z]
-            }),
+            Target::DragonPart(id) => {
+                let (dragon, index) = self.resident_dragon_part(id)?;
+                let p = dragon.parts[index].0;
+                Some([p.x, p.y, p.z])
+            }
             Target::Tnt(id) => self
                 .tnts
                 .iter()
@@ -114,10 +115,11 @@ impl Game<'_> {
                 .find(|r| r.id == id)
                 .map(|r| [r.position.x, r.position.y, r.position.z]),
             Target::Cloud(id) => self.breath_clouds.iter().find(|c| c.id == id).map(|c| c.at),
-            Target::Hook(id) => self.fishing_hook_by_id(id).map(|(h, _)| {
-                let p = h.position;
-                [p.x, p.y, p.z]
-            }),
+            Target::Hook(id) => {
+                let (hook, _) = self.fishing_hook_by_id(id)?;
+                let p = hook.position;
+                Some([p.x, p.y, p.z])
+            }
             Target::Trident(id) => self
                 .tridents
                 .iter()
@@ -129,10 +131,11 @@ impl Game<'_> {
                 .iter()
                 .find(|s| s.id == id)
                 .map(|s| s.position),
-            Target::Knot(id) => self.natural_knot(id).map(|fence| {
+            Target::Knot(id) => {
+                let fence = self.natural_knot(id)?;
                 let p = sunrise_client::mobs::leash::knot_state(fence).position;
-                [p.x, p.y, p.z]
-            }),
+                Some([p.x, p.y, p.z])
+            }
             Target::General(id) => self
                 .resident_entities
                 .general

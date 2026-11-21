@@ -178,7 +178,7 @@ For example, filter the ray using a shared read from the same client host:
 
 ```rust,ignore
 let hit = level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut |hit| {
-    hit.entity.kind(host) == Some(wanted_kind)
+    hit.entity.with_view(host, |view| view.kind()).flatten() == Some(wanted_kind)
 })?;
 ```
 
@@ -233,7 +233,7 @@ These read the local player as the client sees it. They take no mod-controlled n
   It is false for an empty stack or one with no model.
 - Reach comes from the interaction-range attributes with the server's and equipment's
   modifiers. Menu slot numbers are `Slot.index`, the position in the menu's slot list
-  that `menu_slot` and `menu_slot_count` take; `menu_slot_backing` gives the index in the backing container.
+  that `MenuView::slot` takes; `MenuView::slot_backing` gives the server's index in the backing container.
 
 ## Combat targeting
 

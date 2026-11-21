@@ -1,6 +1,7 @@
 //! A client's `LevelRef::brightness`, `EntityRef::set_sprinting` and the server's
 //! `tick_rate_is_frozen`.
 
+use super::api_values::TryIntoApi;
 use super::native_entity_refs::tests::with_game;
 use super::native_guest_turn_tests::with_guests;
 use super::{Game, execution_role::ExecutionRole};
@@ -193,22 +194,50 @@ fn a_client_reads_only_its_own_menu() {
             game.inventory[0] = Some(stack.clone());
             game.carried = Some(stack.clone());
             let inventory = game.player_container_menu(player).unwrap();
-            assert_eq!(game.menu_slot_count(inventory), Some(46));
-            assert_eq!(game.menu_slot(inventory, 36), Some(Some(stack.clone())));
-            assert_eq!(game.menu_carried(inventory), Some(Some(stack.clone())));
+            assert_eq!(
+                inventory
+                    .with_view(game, |view| view.slot_count())
+                    .flatten(),
+                Some(46)
+            );
+            assert_eq!(
+                inventory.with_view(game, |view| view.slot(36)).flatten(),
+                Some(Some(stack.try_into_api().unwrap()))
+            );
+            assert_eq!(
+                inventory.with_view(game, |view| view.carried()).flatten(),
+                Some(Some(stack.try_into_api().unwrap()))
+            );
             game.remote
                 .as_mut()
                 .unwrap()
                 .menu
                 .set(Some((1, "minecraft:generic_9x3".into())));
             let open = game.player_container_menu(player).unwrap();
-            assert_eq!(game.menu_slot_count(open), Some(63));
-            assert_eq!(game.menu_slot(open, 54), Some(Some(stack)));
-            assert_eq!(game.menu_slot_count(inventory), None);
-            game.remote.as_mut().unwrap().menu.set(None);
-            assert_eq!(game.menu_slot_count(open), None);
             assert_eq!(
-                game.menu_slot_count(game.player_container_menu(player).unwrap()),
+                open.with_view(game, |view| view.slot_count()).flatten(),
+                Some(63)
+            );
+            assert_eq!(
+                open.with_view(game, |view| view.slot(54)).flatten(),
+                Some(Some(stack.try_into_api().unwrap()))
+            );
+            assert_eq!(
+                inventory
+                    .with_view(game, |view| view.slot_count())
+                    .flatten(),
+                None
+            );
+            game.remote.as_mut().unwrap().menu.set(None);
+            assert_eq!(
+                open.with_view(game, |view| view.slot_count()).flatten(),
+                None
+            );
+            assert_eq!(
+                game.player_container_menu(player)
+                    .unwrap()
+                    .with_view(game, |view| view.slot_count())
+                    .flatten(),
                 Some(46)
             );
         });
@@ -262,22 +291,40 @@ fn client_merchant_offers_follow_the_open_menu() {
             let current_menu =
                 |host: &dyn ClientHost| host.local_player().unwrap().container_menu(host).unwrap();
             let inventory = current_menu(game);
-            assert_eq!(inventory.merchant_offers(game), Ok(None));
+            assert_eq!(
+                inventory
+                    .with_client_view(game, |view| view.merchant_offers())
+                    .and_then(|scope| scope.transpose())
+                    .map(Option::flatten),
+                Ok(None)
+            );
 
             let window = 3;
             game.remote_open_merchant(window, String::new(), Text::literal("Merchant"));
             let menu = current_menu(game);
-            assert_eq!(menu.merchant_offers(game), Ok(Some(vec![])));
+            assert_eq!(
+                menu.with_client_view(game, |view| view.merchant_offers())
+                    .and_then(|scope| scope.transpose())
+                    .map(Option::flatten),
+                Ok(Some(vec![]))
+            );
             let player = menu.fields().player;
             let foreign = mod_api::__private::game::menu_ref(
                 mod_api::__private::game::player_ref(player.entity(), 99),
                 window,
                 menu.fields().generation,
             );
-            assert_eq!(foreign.merchant_offers(game), Ok(None));
+            let mut called = false;
+            assert_eq!(foreign.with_client_view(game, |_| called = true), Ok(None));
+            assert!(!called);
             {
                 let _phase = PhaseOwner::scope(ModPhase::Reloading);
-                assert_eq!(menu.merchant_offers(game), Err(LevelReadError::Unavailable));
+                assert_eq!(
+                    menu.with_client_view(game, |_| called = true),
+                    Err(LevelReadError::Unavailable)
+                );
+                assert_eq!(menu.with_view(game, |_| called = true), None);
+                assert!(!called);
             }
 
             let discounted_book = play::NetOffer {
@@ -310,7 +357,12 @@ fn client_merchant_offers_follow_the_open_menu() {
                 can_restock: true,
             }))
             .unwrap();
-            let offers = menu.merchant_offers(game).unwrap().unwrap();
+            let offers = menu
+                .with_client_view(game, |view| view.merchant_offers())
+                .and_then(|scope| scope.transpose())
+                .map(Option::flatten)
+                .unwrap()
+                .unwrap();
             let [book, exhausted] = offers.as_slice() else {
                 panic!("expected both synchronized offers");
             };
@@ -345,10 +397,27 @@ fn client_merchant_offers_follow_the_open_menu() {
             // The server may reuse the window id, but not the handle's generation.
             game.remote_open_merchant(window, String::new(), Text::literal("Merchant"));
             let replacement = current_menu(game);
-            assert_eq!(menu.merchant_offers(game), Ok(None));
-            assert_eq!(replacement.merchant_offers(game), Ok(Some(vec![])));
+            assert_eq!(
+                menu.with_client_view(game, |view| view.merchant_offers())
+                    .and_then(|scope| scope.transpose())
+                    .map(Option::flatten),
+                Ok(None)
+            );
+            assert_eq!(
+                replacement
+                    .with_client_view(game, |view| view.merchant_offers())
+                    .and_then(|scope| scope.transpose())
+                    .map(Option::flatten),
+                Ok(Some(vec![]))
+            );
             game.remote_close_local();
-            assert_eq!(replacement.merchant_offers(game), Ok(None));
+            assert_eq!(
+                replacement
+                    .with_client_view(game, |view| view.merchant_offers())
+                    .and_then(|scope| scope.transpose())
+                    .map(Option::flatten),
+                Ok(None)
+            );
         });
     });
 }
@@ -447,7 +516,10 @@ fn client_abilities_follow_predicted_flying_between_packets() {
             let local = game.local_player().unwrap();
             for flying in [true, false] {
                 game.player.as_mut().unwrap().flying = flying;
-                let abilities = local.abilities(&*game as &dyn mod_api::ClientHost).unwrap();
+                let abilities = local
+                    .with_view(&*game as &dyn mod_api::ClientHost, |view| view.abilities())
+                    .flatten()
+                    .unwrap();
                 assert_eq!(abilities.flying, flying);
                 assert!(abilities.may_fly);
                 assert!(!abilities.invulnerable);

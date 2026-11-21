@@ -91,23 +91,28 @@ pub(super) fn machine_menu(
     entity: &BlockEntity,
     mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
 ) -> Option<(Kind, Vec<Option<ItemStack>>)> {
+    let kind = machine_menu_kind(entity, mod_type)?;
+    let mut items = entity.slots().to_vec();
+    if let Kind::Mod(t) = kind {
+        items.resize(t.slots, None);
+    }
+    Some((kind, items))
+}
+
+/// The slot rules model of a block menu, without copying its container's stacks.
+pub(super) fn machine_menu_kind(
+    entity: &BlockEntity,
+    mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
+) -> Option<Kind> {
     Some(match entity {
-        BlockEntity::Furnace(f) => {
-            let recipe = match f.kind.recipe_type() {
-                "minecraft:blasting" => "blasting",
-                "minecraft:smoking" => "smoking",
-                _ => "smelting",
-            };
-            (Kind::Furnace(recipe), f.items.to_vec())
-        }
-        BlockEntity::Brewing(b) => (Kind::Brewing, b.items.to_vec()),
-        BlockEntity::Crafter(c) => (Kind::CrafterBlock, c.items.to_vec()),
-        BlockEntity::Mod(m) => {
-            let t = mod_type?;
-            let mut items = m.items.clone();
-            items.resize(t.slots, None);
-            (Kind::Mod(t), items)
-        }
+        BlockEntity::Furnace(f) => Kind::Furnace(match f.kind.recipe_type() {
+            "minecraft:blasting" => "blasting",
+            "minecraft:smoking" => "smoking",
+            _ => "smelting",
+        }),
+        BlockEntity::Brewing(_) => Kind::Brewing,
+        BlockEntity::Crafter(_) => Kind::CrafterBlock,
+        BlockEntity::Mod(_) => Kind::Mod(mod_type?),
         _ => return None,
     })
 }
@@ -206,6 +211,23 @@ impl Game<'_> {
         }
     }
 
+    /// The guest's rule subject and item-part dispatcher, for clicks and menu reads alike.
+    pub(super) fn guest_menu_env<'read>(
+        &'read self,
+        guest: &'read Guest,
+        limited_crafting: bool,
+        can_equip: &'read dyn sunrise_client::mobs::equip::CanEquip,
+    ) -> Env<'read> {
+        Env {
+            player: Some(guest.uuid),
+            player_entity_id: Some(guest.entity_id),
+            limited_crafting,
+            can_equip: Some(can_equip),
+            known_recipes: Some(&guest.recipe_book),
+            ..self.menu_env()
+        }
+    }
+
     /// Runs `op` on the guest's menu with their inventory copied in and back.
     pub(super) fn guest_menu_op<R>(
         &mut self,
@@ -267,32 +289,25 @@ impl Game<'_> {
         let host = self.lan.as_ref()?;
         // `ArmorSlot.mayPlace` asks the parts with the game as `Host`: the menu is the guest's own.
         let parts = self.menu_can_equip();
-        let env = Env {
-            crafting_remainder: Some(self),
-            player: Some(host.hub.guests[gi].uuid),
-            player_entity_id: Some(host.hub.guests[gi].entity_id),
-            loop_context: &self.loop_context,
-            maps: maps.as_ref().map(|m| m as &dyn sunrise_client::menu::Maps),
-            limited_crafting: host.hub.limited_crafting,
-            can_equip: Some(&parts),
-            known_recipes: Some(&host.hub.guests[gi].recipe_book),
-            ..self.menu_env()
-        };
-        let env = Env {
-            slot_rules: rules.or(env.slot_rules),
-            stacked,
-            ..env
-        };
-        let limits = host.hub.guests[gi]
-            .menu
-            .as_ref()
-            .map(|opened| opened.slots.stack_limits(&self.world, opened.size))
-            .unwrap_or_default();
-        menu.set_container_limits(limits);
+        let mut env = self.guest_menu_env(&host.hub.guests[gi], host.hub.limited_crafting, &parts);
+        env.maps = maps.as_ref().map(|m| m as &dyn sunrise_client::menu::Maps);
+        env.slot_rules = rules.or(env.slot_rules);
+        env.stacked = stacked;
+        let opened = host.hub.guests[gi].menu.as_ref();
+        menu.set_container_limits(
+            opened
+                .map(|opened| opened.slots.stack_limits(&self.world, opened.size))
+                .unwrap_or_default(),
+        );
+        if matches!(menu.kind(), Kind::Mod(_)) {
+            menu.set_container_insert_rules(
+                opened
+                    .map(|opened| opened.live_container_insert_rules(&self.world, opened.size))
+                    .unwrap_or_default(),
+            );
+        }
         menu.set_block_pos(
-            host.hub.guests[gi]
-                .menu
-                .as_ref()
+            opened
                 .and_then(|opened| opened.pos)
                 .map(|(x, y, z)| [x, y, z]),
         );
@@ -635,8 +650,13 @@ impl Game<'_> {
                             .filter_map(|k| after.get_mut(k).map(Option::take))
                             .collect();
                     }
-                    for (slot, stack) in m.items.iter_mut().zip(after) {
-                        *slot = stack;
+                    for (index, (slot, stack)) in m.items.iter_mut().zip(after).enumerate() {
+                        if !linked
+                            .as_ref()
+                            .is_some_and(|(links, _)| links.slots().contains(&index))
+                        {
+                            *slot = stack;
+                        }
                     }
                 }
                 // CrafterBlockEntity.setItem: filling a disabled slot enables it.

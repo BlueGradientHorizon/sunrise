@@ -320,8 +320,8 @@ pub enum MenuContainer {
     Player,
 }
 /// Who and where a `menu_slot_rules` ask is about: the menu's player, its block entity and
-/// its own containers' slots. The game fills it the same way on the server and on the client's
-/// prediction, once per click plan; mods read it.
+/// its own containers' slots, built once while the click plans. Client prediction uses only
+/// synchronized data; if the opening's backing rules are unknown it sends the click unpredicted.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]

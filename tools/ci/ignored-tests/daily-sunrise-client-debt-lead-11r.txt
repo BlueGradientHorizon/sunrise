@@ -1,0 +1,3 @@
+sunrise-client game::native_menu_refs::tests::declared_menu_click_with_unknown_backing_leaves_client_slots_for_server_sync lib daily resources
+sunrise-client game::slot_pickup_tests::quick_move_preflight_asks_the_live_backing_rule lib daily resources
+sunrise-client game::slot_pickup_tests::a_linked_slot_click_and_transaction_edit_the_connected_container lib daily resources

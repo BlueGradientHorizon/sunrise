@@ -1,5 +1,9 @@
 //! Specialized authoritative owners that are not homogeneous entity lists.
-use super::{Game, commands::Target};
+use super::{
+    Game,
+    commands::Target,
+    entity_residency::{ResidentRow, ResolvedResident},
+};
 
 pub(super) enum SpecializedSource<'a> {
     Player(&'a sunrise_client::motion::PlayerMotion),
@@ -13,16 +17,6 @@ use sunrise_client::join_seq::{
         table::{Location, SourceEntity},
     },
 };
-
-impl SpecializedSource<'_> {
-    fn id(&self) -> u32 {
-        match self {
-            Self::Player(player) => player.entity_id as u32,
-            Self::Guest(guest) => guest.entity_id as u32,
-            Self::Hook(hook) => hook.id(),
-        }
-    }
-}
 
 impl Game<'_> {
     pub(super) fn current_player_resident_location(&self) -> Option<Location> {
@@ -224,8 +218,8 @@ impl Game<'_> {
     pub(super) fn specialized_resident_source(
         &self,
         at: Location,
-    ) -> Option<SourceEntity<(SpecializedSource<'_>, Target)>> {
-        let (source, id, target) = match (at.owner.kind, at.source) {
+    ) -> Option<SourceEntity<(SpecializedSource<'_>, Target, bool)>> {
+        let (source, id, target, body_present) = match (at.owner.kind, at.source) {
             (Kind::Player, Source::LocalPlayer) => {
                 if self.lan_acting.is_some()
                     || self.resident_entities.local_player.location() != Some(at)
@@ -242,6 +236,7 @@ impl Game<'_> {
                     SpecializedSource::Player(player),
                     player.entity_id as u32,
                     Target::Player,
+                    true,
                 )
             }
             (Kind::Player, Source::Guest(conn)) => {
@@ -259,6 +254,7 @@ impl Game<'_> {
                         SpecializedSource::Player(player),
                         guest.entity_id as u32,
                         Target::Player,
+                        guest.body_present(),
                     )
                 } else {
                     if self.lan_guest_swaps.contains(&conn) {
@@ -268,6 +264,7 @@ impl Game<'_> {
                         SpecializedSource::Guest(guest),
                         guest.entity_id as u32,
                         Target::Guest(conn),
+                        guest.body_present(),
                     )
                 }
             }
@@ -313,13 +310,14 @@ impl Game<'_> {
                     SpecializedSource::Hook(hook),
                     hook.id(),
                     Target::Hook(hook.id()),
+                    true,
                 )
             }
             _ => return None,
         };
         Some(SourceEntity {
             id,
-            value: (source, target),
+            value: (source, target, body_present),
         })
     }
 
@@ -368,14 +366,24 @@ impl Game<'_> {
         &self,
         at: Location,
     ) -> Option<SourceEntity<(Target, bool)>> {
+        self.locate_specialized_resident_row(at)
+            .map(ResolvedResident::target_source)
+    }
+
+    pub(super) fn locate_specialized_resident_row(
+        &self,
+        at: Location,
+    ) -> Option<SourceEntity<ResolvedResident<'_>>> {
         let source = self.specialized_resident_source(at)?;
-        let (_, target) = source.value;
+        let (row, target, body_present) = source.value;
         Some(SourceEntity {
-            id: source.value.0.id(),
-            value: (
+            id: source.id,
+            value: ResolvedResident {
                 target,
-                self.resident_source_target_visible(at.owner.dimension, target),
-            ),
+                visible: body_present
+                    && self.resident_target_not_removed(at.owner.dimension, target),
+                row: ResidentRow::Specialized(row),
+            },
         })
     }
 }

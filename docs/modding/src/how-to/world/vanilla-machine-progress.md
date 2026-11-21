@@ -11,7 +11,7 @@ gives each cooking recipe's time.
 `BlockEntity.saveWithoutMetadata` writes it, the tag `/data get block` shows. It is read on the server, from
 the live block entity, so it is current to the tick. `None` for an unloaded chunk, a block without a block
 entity, and a block entity taken out for its own tick (only that block entity's tick can't read it).
-`entity.kind(host)` tells which machine it is: `minecraft:furnace`, `minecraft:blast_furnace`,
+`entity.with_view(host, |view| view.kind()).flatten()` tells which machine it is: `minecraft:furnace`, `minecraft:blast_furnace`,
 `minecraft:smoker` or `minecraft:brewing_stand`.
 
 A furnace, blast furnace or smoker (`AbstractFurnaceBlockEntity`) saves these ints:

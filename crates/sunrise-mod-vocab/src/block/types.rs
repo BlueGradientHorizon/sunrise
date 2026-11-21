@@ -183,13 +183,36 @@ pub enum SupportType {
 /// One block entity in an open level, identified by its lifecycle generation.
 /// Removal, replacement or chunk reload invalidates the handle, even at the same
 /// position. In-place data edits and temporary tick take/put preserve identity.
-/// Stale handles read as `None`; Result-returning methods report `Stale`.
+/// Use [`Self::with_view`] to resolve once and read related fields through a read-only
+/// [`BlockEntityView`]. Stale handles read as `None`; Result-returning methods report `Stale`.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct BlockEntityRef {
     pub(crate) level: LevelRef,
     pub(crate) position: [i32; 3],
     pub(crate) generation: u64,
+}
+
+impl BlockEntityRef {
+    /// Resolve this block entity once and lend a read-only [`BlockEntityView`] to `read`.
+    /// Returns `None` without calling `read` if the handle is stale or the block entity is
+    /// unavailable (such as while taken out for a detached callback). Retain the handle or
+    /// owned values, not the view, and resolve again after mutation or reentry.
+    pub fn with_view<R>(
+        self,
+        host: &dyn Host,
+        read: impl FnOnce(&BlockEntityView<'_>) -> R,
+    ) -> Option<R> {
+        let backend = backend_of(host)?;
+        let mut read = Some(read);
+        let mut result = None;
+        backend.with_block_entity_view(self, &mut |view| {
+            if let Some(read) = read.take() {
+                result = Some(read(view));
+            }
+        });
+        result
+    }
 }
 
 /// Why a block-entity operation could not resolve its target.

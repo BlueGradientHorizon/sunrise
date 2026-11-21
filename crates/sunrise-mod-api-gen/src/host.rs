@@ -10,10 +10,7 @@ use std::fmt::Write as _;
 /// disjoint live mob loans. Players are read from the game's backend; other
 /// entity reads not supported by the scoped context remain typed refusals.
 pub(super) const GOAL_VIEW_READS: &[&str] = &[
-    "entity_position",
-    "entity_block_position",
     "entity_velocity",
-    "entity_rotation",
     "entity_head_yaw",
     "entity_body_yaw",
     "entity_bounding_box",
@@ -21,7 +18,6 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "entity_eye_position",
     "entity_distance_to_sqr",
     "entity_on_ground",
-    "entity_kind",
     "living_health",
     "living_max_health",
     "living_alive",
@@ -641,9 +637,11 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                     let call = format!(
                         "<Game<'_> as mod_api::prelude::{area_trait}>::{name}(self.game{tail})"
                     );
+                    if name == "with_entity_view" {
+                        writeln!(code, "{sig} {{ if mod_api::__private::access_allowed({name:?}, mod_api::__private::LoadAccess::WorldOnly) {{ crate::game::equip_host::EquipHost::{name}(self{tail}); }} }}").unwrap();
+                        continue;
+                    }
                     let cached = match name.as_str() {
-                        "entity_kind" => Some(("entity", "self.row.kind")),
-                        "entity_position" => Some(("entity", "self.row.position")),
                         "living" => Some((
                             "entity",
                             "self.row.living.then_some(LivingRef::new(entity))",
@@ -983,10 +981,18 @@ fn signature_args(sig: &syn::Signature, name: &str) -> Result<String, String> {
         .join(", "))
 }
 
-/// How a read answers where there is no backend to ask: its typed refusal, or `None` where only
-/// a `String` forwards.
-fn refusal(sig: &syn::Signature, name: &str) -> Result<Option<&'static str>, String> {
-    let syn::ReturnType::Type(_, ty) = &sig.output else {
+/// How a read answers where there is no backend to ask: its typed refusal, an explicit
+/// no-op for optional loans, or `None` where only a `String` forwards.
+fn refusal(entry: &Entry) -> Result<Option<&'static str>, String> {
+    let name = &entry.name;
+    let syn::ReturnType::Type(_, ty) = &entry.sig.output else {
+        if entry
+            .attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("decline_unavailable"))
+        {
+            return Ok(Some("()"));
+        }
         return Err(format!("{name}: a backend read returns a value"));
     };
     let syn::Type::Path(path) = &**ty else {
@@ -1011,7 +1017,7 @@ fn refusal(sig: &syn::Signature, name: &str) -> Result<Option<&'static str>, Str
     })
 }
 
-/// `entity_position(entity)` on a backend is also `EntityRef::position(self, host)`: the handle
+/// `entity_velocity(entity)` on a backend is also `EntityRef::velocity(self, host)`: the handle
 /// a method is of, when its first argument is one and its name starts with the handle's.
 /// `#[manual_handle]` opts out only from this inherent wrapper, not backend routing.
 fn handle_method(
@@ -1234,9 +1240,16 @@ fn goal_view(
             entry.name.as_str(),
             signature_args(&entry.sig, &entry.name)?,
         );
-        let refusal = refusal(&entry.sig, name)?;
+        let refusal = refusal(entry)?;
         let mut sig = entry.sig.clone();
         sig.ident = syn::parse_str(name).map_err(|e| format!("{name}: {e}"))?;
+        if name == "with_entity_view" {
+            impls.add(
+                area.trait_name(*tier),
+                format!("{} {{ if mod_api::__private::access_allowed({name:?}, mod_api::__private::LoadAccess::WorldOnly) {{ super::GoalCx::{name}(self, {args}); }} }}\n", sig.to_token_stream()),
+            );
+            continue;
+        }
         // Entity data answers the tick's view; everything else forwards to the real backend the
         // view carries.
         let entity_data = matches!(
@@ -1251,15 +1264,19 @@ fn goal_view(
         );
         // How a forwarded read answers a host without a backend: the typed refusal, or the empty
         // string of a metadata read.
+        let forward = format!(
+            "mod_api::__private::backend_read(self.game_host(), |backend| backend.{name}({args}))"
+        );
         let forwarded = match refusal {
-            Some("None") => ".flatten()".to_string(),
+            Some("()") => format!("let _ = {forward};"),
+            Some("None") => format!("{forward}.flatten()"),
             // A `Result` read's no-backend answer is its error type's own `NoBackend` value,
             // wrapped back in the `Err`.
             Some(refusal) if refusal.starts_with("Err(") => {
-                ".unwrap_or_else(|| Err(mod_api::NoBackend::no_backend()))".to_string()
+                format!("{forward}.unwrap_or_else(|| Err(mod_api::NoBackend::no_backend()))")
             }
-            Some(refusal) => format!(".unwrap_or({refusal})"),
-            None => ".unwrap_or_default()".to_string(),
+            Some(refusal) => format!("{forward}.unwrap_or({refusal})"),
+            None => format!("{forward}.unwrap_or_default()"),
         };
         let body = if GOAL_VIEW_READS.contains(&name) {
             format!("self.r_{name}({args})")
@@ -1269,7 +1286,10 @@ fn goal_view(
                     "{name}: the goal view cannot refuse its return type"
                 ));
             };
-            if args.is_empty() {
+            if refusal == "()" {
+                // A live loan has nothing to do when the tick only has a snapshot.
+                String::new()
+            } else if args.is_empty() {
                 refusal.to_string()
             } else if args.contains(',') {
                 format!("let _ = ({args}); {refusal}")
@@ -1277,11 +1297,8 @@ fn goal_view(
                 format!("let _ = {args}; {refusal}")
             }
         } else {
-            // The read names data the tick leaves in place, so the real backend answers it:
-            // `backend_read` holds the `None` a host without one answers.
-            format!(
-                "mod_api::__private::backend_read(self.host, |backend| backend.{name}({args})){forwarded}"
-            )
+            // The read names data the tick leaves in place, so the real backend answers it.
+            forwarded.clone()
         };
         // Entities that remain in Game can use its ordinary backend. For a
         // multi-entity query all handle arguments must be present there: the
@@ -1316,9 +1333,13 @@ fn goal_view(
                 .map(|entity| format!("self.is_game_entity({entity})"))
                 .collect::<Vec<_>>()
                 .join(" && ");
-            format!(
-                "if {all_available} {{ return mod_api::__private::backend_read(self.host, |backend| backend.{name}({args})){forwarded}; }} {body}"
-            )
+            if body.is_empty() {
+                format!("if {all_available} {{ {forwarded} }}")
+            } else if refusal == Some("()") {
+                format!("if {all_available} {{ {forwarded} }} else {{ {body} }}")
+            } else {
+                format!("if {all_available} {{ return {forwarded}; }} {body}")
+            }
         } else {
             body
         };
@@ -1352,7 +1373,7 @@ fn goal_view(
         let body = if GOAL_VIEW_LOOKUPS.contains(&name) {
             format!("self.lookup_{name}({args})")
         } else {
-            format!("self.host.{name}({args})")
+            format!("self.game_host().{name}({args})")
         };
         impls.add(
             area.trait_name(Tier::Host),
@@ -1496,15 +1517,15 @@ mod tests {
     fn a_method_is_a_handles_when_it_takes_one_first_and_is_named_for_it() {
         let handles = handles("pub struct EntityRef; pub struct LevelRef; pub struct BlockKey;");
         let read = entry(
-            "/// Where it is.\nfn entity_position(&self, entity: EntityRef, scale: f64) -> Option<[f64; 3]>;",
+            "/// How fast it moves.\nfn entity_velocity(&self, entity: EntityRef, scale: f64) -> Option<[f64; 3]>;",
         );
         let (handle, code) = handle_method(&read, Tier::Backend, &handles)
             .unwrap()
             .unwrap();
         assert_eq!(handle, "EntityRef");
-        assert!(code.starts_with("/// Where it is.\n"));
-        assert!(code.contains("pub fn position (self , host : & dyn Host , scale : f64)"));
-        assert!(code.contains("backend_of(host)?.entity_position(self, scale)"));
+        assert!(code.starts_with("/// How fast it moves.\n"));
+        assert!(code.contains("pub fn velocity (self , host : & dyn Host , scale : f64)"));
+        assert!(code.contains("backend_of(host)?.entity_velocity(self, scale)"));
         // A client read borrows the client host, a write the mutable one of its side.
         let (_, client) = handle_method(&read, Tier::ClientBackend, &handles)
             .unwrap()

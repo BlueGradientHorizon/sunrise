@@ -54,7 +54,9 @@ impl Log {
                         .sum::<u32>()
                 })
                 .unwrap_or_default(),
-            xp: player.experience(host).map_or(0, |xp| xp.total),
+            xp: player
+                .with_view(host, |view| view.experience().total)
+                .unwrap_or(0),
             cooldown,
         });
     }

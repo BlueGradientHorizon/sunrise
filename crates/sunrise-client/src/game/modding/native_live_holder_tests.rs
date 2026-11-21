@@ -20,7 +20,10 @@ impl BlockEntityPart for Ticker {
             let host = event.subject.host();
             let level = host.level("minecraft:overworld").unwrap();
             let sink = host.block_entity(level, [0, 63, 0]).unwrap();
-            let value = sink.data_slots(host).unwrap()[0];
+            let value = sink
+                .with_view(host, |view| view.data_slots().map(<[i32]>::to_vec))
+                .flatten()
+                .unwrap()[0];
             let result: Result<(), ()> = host.transaction(|host, _| {
                 assert!(sink.set_data_slot(host, 0, value + 1).unwrap());
                 Ok(())
@@ -166,7 +169,12 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = mod_holder(game);
             let pos = (1, 64, 1);
-            assert_eq!(entity.data_slots(game), Some(vec![]));
+            assert_eq!(
+                entity
+                    .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                    .flatten(),
+                Some(vec![])
+            );
             assert!(
                 !entity.set_data_slot(game, 0, 1).unwrap(),
                 "scalar writes cannot declare slots"
@@ -188,7 +196,12 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
                 game.world.modified.is_empty(),
                 "no-op sends no Changed notice"
             );
-            assert_eq!(entity.data_slots(game), Some(vec![0]));
+            assert_eq!(
+                entity
+                    .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                    .flatten(),
+                Some(vec![0])
+            );
             let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, _| {
                 assert_eq!(entity.set_data_slots(host, vec![30, 40]), Ok(true));
                 host.transaction(|host, _| {
@@ -198,11 +211,19 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
                 Err(())
             });
             assert_eq!(aborted, Err(()));
-            assert_eq!(entity.data_slots(game), Some(vec![0]));
+            assert_eq!(
+                entity
+                    .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                    .flatten(),
+                Some(vec![0])
+            );
             assert!(game.transactions.is_empty());
             assert_eq!(entity.set_data_slots(game, vec![0; 256]), Ok(true));
             assert!(entity.set_data_slot(game, 255, 7).unwrap());
-            let before = entity.data_slots(game).unwrap();
+            let before = entity
+                .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                .flatten()
+                .unwrap();
             let before_revision = revision(game);
             game.world.modified.clear();
             assert_eq!(
@@ -212,7 +233,12 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
                     limit: 256
                 })
             );
-            assert_eq!(entity.data_slots(game), Some(before));
+            assert_eq!(
+                entity
+                    .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                    .flatten(),
+                Some(before)
+            );
             assert_eq!(revision(game), before_revision);
             assert!(
                 game.world.modified.is_empty(),
@@ -233,7 +259,9 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
             assert_eq!(loaded_pos, pos);
             game.world.block_entities.insert(loaded_pos, loaded);
             assert_eq!(
-                entity.data_slots(game),
+                entity
+                    .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                    .flatten(),
                 None,
                 "old identity stays stale after load"
             );
@@ -241,13 +269,20 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
                 .block_entity(game.level("minecraft:overworld").unwrap(), [1, 64, 1])
                 .unwrap();
             assert_eq!(
-                entity.data_slots(game),
+                entity
+                    .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                    .flatten(),
                 Some(vec![]),
                 "menu data is transient, not saved NBT"
             );
             assert_eq!(entity.set_data_slots(game, vec![0]), Ok(true));
             assert!(entity.set_data_slot(game, 0, 1).unwrap());
-            assert_eq!(entity.data_slots(game), Some(vec![1]));
+            assert_eq!(
+                entity
+                    .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                    .flatten(),
+                Some(vec![1])
+            );
         });
     });
 }
@@ -287,7 +322,7 @@ impl BlockEntityPart for BothPaths {
     }
     fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
         event.subject.with_view(|mut entity| {
-            let mut data = entity.data_slots().to_vec();
+            let mut data = entity.data_slots().unwrap().to_vec();
             data.push(1);
             entity.set_data_slots(&data).unwrap();
         });

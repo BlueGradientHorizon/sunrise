@@ -1,37 +1,40 @@
 //! Read-only chunk facts that never request residency.
-use super::Game;
-use mod_api::{BlockKey, ChunkRef};
+use mod_api::{BlockKey, ChunkStatus, ChunkView};
+use sunrise_client::chunk::Chunk;
 use sunrise_core::random::{RandomSource, slime_chunk_random};
 
-impl Game<'_> {
-    pub(super) fn chunk_is_slime_chunk(&self, chunk: ChunkRef) -> Option<bool> {
-        let seed = self.level_seed(chunk.level())?;
-        let [x, z] = chunk.pos();
-        // Reuse the same world-bound validation as handles for unloaded chunks.
-        self.level_chunk_ref(chunk.level(), [x, z])?;
+// no wire: borrows the resident column, if any, for a read scope.
+pub(super) struct NativeChunkView<'a> {
+    pub(super) column: Option<&'a Chunk>,
+    pub(super) pos: [i32; 2],
+    pub(super) seed: i64,
+    pub(super) in_world: bool,
+}
+
+impl ChunkView for NativeChunkView<'_> {
+    fn loaded(&self) -> bool {
+        self.column.is_some()
+    }
+
+    fn status(&self) -> Option<ChunkStatus> {
+        self.loaded().then_some(ChunkStatus::Full)
+    }
+
+    fn is_slime_chunk(&self) -> Option<bool> {
+        if !self.in_world {
+            return None;
+        }
+        let [x, z] = self.pos;
         Some(
-            slime_chunk_random(x, z, seed, 987_234_911)
+            slime_chunk_random(x, z, self.seed, 987_234_911)
                 .next_int_bound(10)
                 .unwrap_or(1)
                 == 0,
         )
     }
 
-    /// The sections of a loaded chunk whose palette may hold a state of `block` (`maybeHas`),
-    /// by section Y, bottom up.
-    pub(super) fn chunk_sections_with_block(
-        &self,
-        chunk: ChunkRef,
-        block: BlockKey,
-    ) -> Option<Vec<i32>> {
-        if !self.is_logical_server() {
-            return None;
-        }
-        let [x, z] = chunk.pos();
-        let column = self
-            .native_level_world(chunk.level())?
-            .chunks
-            .get(&(x, z))?;
+    fn sections_with_block(&self, block: BlockKey) -> Option<Vec<i32>> {
+        let column = self.column?;
         let states = super::api_values::block_state::current().ok()?;
         let of_block = |id: u32| {
             states
@@ -78,12 +81,32 @@ mod tests {
                 .insert((3, 4), std::sync::Arc::new(column));
             let level = game.level("minecraft:overworld").unwrap();
             let chunk = level.chunk_ref(game, [3, 4]).unwrap();
-            assert_eq!(chunk.sections_with_block(game, ore), Some(vec![-2, 1]));
-            assert_eq!(chunk.sections_with_block(game, emerald), Some(vec![]));
+            assert_eq!(
+                chunk
+                    .with_view(game, |view| view.sections_with_block(ore))
+                    .flatten(),
+                Some(vec![-2, 1])
+            );
+            assert_eq!(
+                chunk
+                    .with_view(game, |view| view.sections_with_block(emerald))
+                    .flatten(),
+                Some(vec![])
+            );
             let unloaded = level.chunk_ref(game, [90_000, 90_000]).unwrap();
-            assert_eq!(unloaded.sections_with_block(game, ore), None);
+            assert_eq!(
+                unloaded
+                    .with_view(game, |view| view.sections_with_block(ore))
+                    .flatten(),
+                None
+            );
             game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            assert_eq!(chunk.sections_with_block(game, ore), None);
+            assert_eq!(
+                chunk
+                    .with_view(game, |view| view.sections_with_block(ore))
+                    .flatten(),
+                None
+            );
         });
     }
 
@@ -105,34 +128,130 @@ mod tests {
                 ([100_000, -100_000], true),
             ] {
                 let chunk = level.chunk_ref(game, pos).unwrap();
-                assert_eq!(chunk.is_slime_chunk(game), Some(expected));
-                assert_eq!(chunk.is_slime_chunk(game), Some(expected));
+                assert_eq!(
+                    chunk
+                        .with_view(game, |view| view.is_slime_chunk())
+                        .flatten(),
+                    Some(expected)
+                );
+                assert_eq!(
+                    chunk
+                        .with_view(game, |view| view.is_slime_chunk())
+                        .flatten(),
+                    Some(expected)
+                );
             }
             assert_eq!(game.world.chunks.len(), before);
             assert!(!game.world.chunks.contains_key(&far));
             let invalid = ChunkRef::new(level, [i32::MAX, 0]);
-            assert_eq!(invalid.is_slime_chunk(game), None);
+            assert_eq!(
+                invalid
+                    .with_view(game, |view| view.is_slime_chunk())
+                    .flatten(),
+                None
+            );
             let unopened = LevelRef::new(level.epoch(), DimensionKey::NETHER);
-            assert_eq!(ChunkRef::new(unopened, [0, 0]).is_slime_chunk(game), None);
+            assert_eq!(
+                ChunkRef::new(unopened, [0, 0])
+                    .with_view(game, |view| view.is_slime_chunk())
+                    .flatten(),
+                None
+            );
             game.enter_level(crate::game::Dim::Nether).unwrap();
             let nether = game.level("minecraft:the_nether").unwrap();
             game.level.seed = 0;
             let parked = ChunkRef::new(level, [-17, 29]);
-            assert_eq!(parked.is_slime_chunk(game), Some(false));
+            assert_eq!(
+                parked
+                    .with_view(game, |view| view.is_slime_chunk())
+                    .flatten(),
+                Some(false)
+            );
             let active = ChunkRef::new(nether, [100_000, -100_000]);
             assert!(!game.world.chunks.contains_key(&far));
-            assert_eq!(active.is_slime_chunk(game), Some(true));
+            assert_eq!(
+                active
+                    .with_view(game, |view| view.is_slime_chunk())
+                    .flatten(),
+                Some(true)
+            );
             assert!(!game.world.chunks.contains_key(&far));
             // These handles are still current: refusal must be due to client role.
             game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            assert_eq!(active.is_slime_chunk(game), None);
-            assert_eq!(parked.is_slime_chunk(game), None);
+            assert_eq!(
+                active
+                    .with_view(game, |view| view.is_slime_chunk())
+                    .flatten(),
+                None
+            );
+            assert_eq!(
+                parked
+                    .with_view(game, |view| view.is_slime_chunk())
+                    .flatten(),
+                None
+            );
             game.options.execution_role =
                 crate::game::execution_role::ExecutionRole::IntegratedServer;
             game.native_lifecycle
                 .begin_open(Authority::IntegratedServer);
-            assert_eq!(ChunkRef::new(level, [0, 0]).is_slime_chunk(game), None);
-            assert_eq!(active.is_slime_chunk(game), None);
+            assert_eq!(
+                ChunkRef::new(level, [0, 0])
+                    .with_view(game, |view| view.is_slime_chunk())
+                    .flatten(),
+                None
+            );
+            assert_eq!(
+                active
+                    .with_view(game, |view| view.is_slime_chunk())
+                    .flatten(),
+                None
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn resident_boundary_column_lends_view_without_slime_query() {
+        use mod_api::ChunkStatus;
+        with_game(|game| {
+            let ore = mod_api::__private::block_key("minecraft:diamond_ore").unwrap();
+            let ore_id = super::super::api_values::default_state(ore).unwrap().0;
+            let boundary_pos = [1_875_000, 0];
+            let mut column = sunrise_client::chunk::Chunk::empty(boundary_pos[0], boundary_pos[1]);
+            std::sync::Arc::make_mut(&mut column.sections[2]).set(0, ore_id);
+            game.world.chunks.insert(
+                (boundary_pos[0], boundary_pos[1]),
+                std::sync::Arc::new(column),
+            );
+
+            let level = game.level("minecraft:overworld").unwrap();
+            // Nonresident handle creation keeps the 30 million block bound.
+            assert_eq!(level.chunk_ref(game, boundary_pos), None);
+            let loaded = level.loaded_chunks(game).unwrap();
+            let boundary = loaded
+                .into_iter()
+                .find(|chunk| chunk.pos() == boundary_pos)
+                .expect("resident boundary column listed by loaded_chunks");
+
+            assert_eq!(
+                boundary.with_view(game, |view| (
+                    view.loaded(),
+                    view.status(),
+                    view.sections_with_block(ore),
+                    view.is_slime_chunk(),
+                )),
+                Some((true, Some(ChunkStatus::Full), Some(vec![-2]), None))
+            );
+
+            // An unloaded column outside the world bound still lends no view.
+            let unloaded_outside = ChunkRef::new(level, [1_875_000, 1]);
+            assert_eq!(unloaded_outside.with_view(game, |view| view.loaded()), None);
+
+            // Once unloaded, the boundary column no longer lends a view either.
+            game.world
+                .chunks
+                .remove(&(boundary_pos[0], boundary_pos[1]));
+            assert_eq!(boundary.with_view(game, |view| view.loaded()), None);
         });
     }
 }

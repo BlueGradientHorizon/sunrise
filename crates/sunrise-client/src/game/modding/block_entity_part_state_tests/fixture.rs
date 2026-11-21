@@ -44,7 +44,7 @@ impl BlockEntityPart for Counter {
     fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
         let (entity, mode) = event
             .subject
-            .with_view(|entity| (entity.handle(), entity.data_slots()[0]))
+            .with_view(|entity| (entity.handle(), entity.data_slots().unwrap()[0]))
             .unwrap();
         let host = event.subject.host();
         match mode {

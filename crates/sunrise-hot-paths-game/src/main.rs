@@ -65,10 +65,13 @@ impl BlockEntityPart for Progress {
         let handle = std::hint::black_box(hot_paths_next_block_entity());
         if self.handle {
             let host = event.subject.host();
-            let level = handle.level(host).unwrap();
-            let pos = handle.position(host).unwrap();
+            let (level, pos, progress) = handle
+                .with_view(host, |view| {
+                    (view.level(), view.position(), view.data_slots().unwrap()[0])
+                })
+                .unwrap();
             let state = level.block_state(host, pos).unwrap();
-            let value = next_progress(state, handle.data_slots(host).unwrap()[0]);
+            let value = next_progress(state, progress);
             if self.write {
                 assert!(handle.set_data_slot(host, 0, value).unwrap());
             }
@@ -77,7 +80,7 @@ impl BlockEntityPart for Progress {
             event
                 .subject
                 .with_view(|mut view| {
-                    let value = next_progress(view.state(), view.data_slots()[0]);
+                    let value = next_progress(view.state().unwrap(), view.data_slots().unwrap()[0]);
                     if self.write {
                         assert!(view.set_data_slot(0, value));
                     }

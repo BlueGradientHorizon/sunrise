@@ -86,7 +86,7 @@ impl Game<'_> {
                 Some(*player)
             }
             ItemPlace::PlayerCursor { menu } => self
-                .menu_carried(*menu)
+                .resolve_server_menu(*menu)
                 .map(|_| menu.fields().player.uuid()),
             _ => None,
         }
@@ -311,12 +311,12 @@ impl Game<'_> {
                 }
             }
             ItemPlace::PlayerCursor { menu } => {
-                let guest = self.native_menu_guest(*menu)?;
-                if self.lan_acting == Some(guest.conn) {
+                let view = self.resolve_server_menu(*menu)?;
+                if view.is_acting() {
                     self.native_live_acting_body()?;
-                    self.carried.as_ref()
-                } else if !guest.dead {
-                    guest.carried.as_ref()
+                    view.carried_stack().as_ref()
+                } else if !view.guest_dead() {
+                    view.carried_stack().as_ref()
                 } else {
                     None
                 }
@@ -493,13 +493,24 @@ impl Game<'_> {
             _ => return Err(CraftedByError::NotHeld),
         };
         let player = menu.fields().player;
-        let handler_stack = if slot.is_some_and(|slot| {
-            matches!(
-                self.menu_slot_backing(menu, slot),
-                Some(MenuSlotBacking::Place(_))
-            )
-        }) {
-            // The handler owns this stack, not the slot's display mirror.
+        let (handler_owned, engine_stack) = {
+            let view = self
+                .resolve_server_menu(menu)
+                .ok_or(CraftedByError::NotHeld)?;
+            match slot {
+                Some(slot) => {
+                    let backing = view.slot_backing(slot).ok_or(CraftedByError::NotHeld)?;
+                    if matches!(backing, MenuSlotBacking::Place(_)) {
+                        (true, None)
+                    } else {
+                        (false, view.slot_stack(slot, backing).flatten())
+                    }
+                }
+                None => (false, view.carried_stack().clone()),
+            }
+        };
+        // Call a handler only after releasing the view; the display mirror does not own the item.
+        let handler_stack = if handler_owned {
             Some(
                 place
                     .with_stack(self, |stack| stack.project())
@@ -512,14 +523,10 @@ impl Game<'_> {
         let mut held = if let Some(stack) = &handler_stack {
             super::api_values::stack_value(stack).map_err(|_| CraftedByError::Unavailable)?
         } else {
-            // Read engine storage directly: its API snapshot omits the transient directive.
-            match slot {
-                Some(slot) => self.menu_slot(menu, slot),
-                None => self.menu_carried(menu),
-            }
-            .flatten()
-            .filter(|stack| stack.count > 0 && stack.item.as_ref() != "minecraft:air")
-            .ok_or(CraftedByError::NotHeld)?
+            // Keep the engine stack: an API snapshot omits the transient post-processing directive.
+            engine_stack
+                .filter(|stack| stack.count > 0 && stack.item.as_ref() != "minecraft:air")
+                .ok_or(CraftedByError::NotHeld)?
         };
         let item = held.item.clone();
         if held.item.as_ref() == "minecraft:filled_map"
@@ -617,11 +624,14 @@ impl Game<'_> {
         let mut rest = stack.clone();
         if let ItemPlace::MenuSlot { menu, slot } = place {
             // The slot alone: what doesn't fit stays out.
-            if self.native_menu_storage(*menu, *slot).is_none() {
+            let Some((target, _)) = self
+                .resolve_server_menu(*menu)
+                .and_then(|view| view.storage(*slot))
+            else {
                 return 0;
-            }
+            };
             self.journal_menus(menu.fields().player);
-            if let Some(held) = self.native_menu_storage(*menu, *slot) {
+            if let Some(held) = self.menu_storage_mut(target) {
                 fill(held, &mut rest);
             }
             return stack.count - rest.count;
@@ -749,7 +759,10 @@ impl Game<'_> {
             ..held.clone()
         };
         if let ItemPlace::MenuSlot { menu, slot } = place {
-            let Some(held) = self.native_menu_storage(*menu, *slot) else {
+            let Some((target, held)) = self
+                .resolve_server_menu(*menu)
+                .and_then(|view| view.storage(*slot))
+            else {
                 return 0;
             };
             let took = taken(held.as_ref());
@@ -757,7 +770,7 @@ impl Game<'_> {
                 return 0;
             }
             self.journal_menus(menu.fields().player);
-            if let Some(held) = self.native_menu_storage(*menu, *slot) {
+            if let Some(held) = self.menu_storage_mut(target) {
                 *held = held.as_ref().map(|h| left(h, took)).filter(|h| h.count > 0);
             }
             return took;
@@ -2546,9 +2559,10 @@ pub(super) mod tests {
             let cursor = menu.cursor();
             let slot = ItemPlace::MenuSlot { menu, slot: 36 };
             let held_ids = |game: &Game<'_>| {
+                let view = game.resolve_server_menu(menu).unwrap();
                 [
-                    game.menu_carried(menu).flatten().as_ref().and_then(map_id),
-                    game.menu_slot(menu, 36).flatten().as_ref().and_then(map_id),
+                    view.carried_stack().as_ref().and_then(map_id),
+                    view.shown_stack(36).flatten().as_ref().and_then(map_id),
                 ]
             };
             let saved_counter = || {
@@ -2565,7 +2579,12 @@ pub(super) mod tests {
             assert_eq!(held_ids(game), [Some(source + 1), Some(source + 2)]);
 
             // A held map derived from the parent's pending copy can find the new map.
-            let mut derived = game.menu_carried(menu).flatten().unwrap();
+            let mut derived = game
+                .resolve_server_menu(menu)
+                .unwrap()
+                .carried_stack()
+                .clone()
+                .unwrap();
             derived.data_mut().map_post_processing = Some(0);
             let maps = game.level_maps([&derived]);
             Menu::map_crafted(Some(&maps), &mut derived);
@@ -2597,8 +2616,9 @@ pub(super) mod tests {
             game.save_maps();
             assert_eq!(saved_counter(), Tag::Int(source));
             assert_eq!(game.peek_map_id(), source + 1);
-            assert_eq!(game.menu_carried(menu).flatten(), Some(map(1)));
-            assert_eq!(game.menu_slot(menu, 36).flatten(), Some(map(0)));
+            let view = game.resolve_server_menu(menu).unwrap();
+            assert_eq!(view.carried_stack(), &Some(map(1)));
+            assert_eq!(view.shown_stack(36).flatten(), Some(map(0)));
             for id in [source + 1, source + 2, source + 3] {
                 assert!(game.map(id).is_none());
                 assert!(!maps_dir.join(format!("{id}.dat")).exists());
@@ -2999,7 +3019,7 @@ pub(super) mod tests {
             let committed = host.transaction(|host, tx| {
                 assert_eq!(grid.insert(host, tx, &log, 1), 1);
                 // Not yet: the result is made once, at the commit.
-                Ok::<_, ()>(menu.slot(host, 0))
+                Ok::<_, ()>(menu.with_view(host, |view| view.slot(0)).flatten())
             });
             assert_eq!(committed, Ok(Some(None)));
             assert_eq!(
@@ -3091,11 +3111,27 @@ pub(super) mod tests {
             let bucket = ItemStack::new("minecraft:bucket", 1)
                 .try_into_api()
                 .unwrap();
-            assert_eq!(menu.slot_holds(host, 1, &bucket), Some(1));
-            assert_eq!(menu.slot_holds(host, 2, &bucket), Some(0));
+            assert_eq!(
+                menu.with_view(host, |view| view.slot_holds(1, &bucket))
+                    .flatten(),
+                Some(1)
+            );
+            assert_eq!(
+                menu.with_view(host, |view| view.slot_holds(2, &bucket))
+                    .flatten(),
+                Some(0)
+            );
             // The hotbar's last slot is plain; past it there is no slot.
-            assert_eq!(menu.slot_holds(host, 38, &bucket), Some(16));
-            assert_eq!(menu.slot_holds(host, 39, &bucket), None);
+            assert_eq!(
+                menu.with_view(host, |view| view.slot_holds(38, &bucket))
+                    .flatten(),
+                Some(16)
+            );
+            assert_eq!(
+                menu.with_view(host, |view| view.slot_holds(39, &bucket))
+                    .flatten(),
+                None
+            );
         });
     }
 
@@ -3113,7 +3149,7 @@ pub(super) mod tests {
                 let value = Some(ItemStack::new("minecraft:stick", 1));
                 hub.guests.update(0, |guest| guest.carried = value);
             }
-            assert_eq!(stale.carried(game), None);
+            assert_eq!(stale.with_view(game, |view| view.carried()).flatten(), None);
             assert_eq!(write(game, &stale.cursor(), "minecraft:stick", -1, true), 0);
             assert_eq!(write(game, &stale.cursor(), "minecraft:stick", 1, true), 0);
             let host: &mut dyn ServerHost = game;
@@ -3149,7 +3185,7 @@ pub(super) mod tests {
                 assert!(child.is_err());
                 assert_eq!((grid.amount(host), other.amount(host)), (1, 0));
                 assert_eq!(grid.insert(host, tx, &log, 1), 1);
-                Ok::<_, ()>(menu.slot(host, 0))
+                Ok::<_, ()>(menu.with_view(host, |view| view.slot(0)).flatten())
             });
             assert_eq!(committed, Ok(Some(None)));
             // Two logs in one slot: one craft's planks; the child's second log never landed.
@@ -3378,7 +3414,10 @@ pub(super) mod tests {
             let host: &mut dyn ServerHost = game;
             let cart = host.entity(500).unwrap();
             assert_eq!(
-                cart.kind(host).and_then(|kind| kind.id(host)).as_deref(),
+                cart.with_view(host, |view| view.kind())
+                    .flatten()
+                    .and_then(|kind| kind.id(host))
+                    .as_deref(),
                 Some("minecraft:chest_minecart")
             );
             let items = cart.capability(host, &ENTITY_ITEMS, ()).unwrap();

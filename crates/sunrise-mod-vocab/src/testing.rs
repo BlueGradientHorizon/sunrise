@@ -330,11 +330,11 @@ impl Host for FakeHost {
 }
 impl crate::prelude::BlockEntitiesHost for FakeHost {
     fn block_entity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef> {
-        self.level.standing(level, pos)?;
+        let (generation, _) = self.level.standing_entry(level, pos)?;
         Some(BlockEntityRef {
             level,
             position: pos,
-            generation: 0,
+            generation,
         })
     }
 }
@@ -492,10 +492,40 @@ impl crate::prelude::LevelTickingBackend for FakeHost {
         level == self.level.level()
     }
 }
+// no wire: a view lent by an in-process test backend.
+struct FakeBlockEntityRead {
+    id: &'static str,
+    kind: Option<BlockEntityTypeKey>,
+}
+
+impl crate::ResidentBlockEntityRead for FakeBlockEntityRead {
+    fn id(&self) -> &str {
+        self.id
+    }
+    fn kind(&self) -> Option<BlockEntityTypeKey> {
+        self.kind
+    }
+}
+
 impl crate::prelude::BlockEntitiesBackend for FakeHost {
-    fn block_entity_kind(&self, entity: BlockEntityRef) -> Option<BlockEntityTypeKey> {
-        let standing = self.level.standing(entity.level, entity.position)?;
-        standing.kind().cloned()
+    fn with_block_entity_view(
+        &self,
+        entity: BlockEntityRef,
+        read: &mut dyn for<'a> FnMut(&crate::BlockEntityView<'a>),
+    ) {
+        let Some((generation, standing)) = self.level.standing_entry(entity.level, entity.position)
+        else {
+            return;
+        };
+        if generation != entity.generation {
+            return;
+        }
+        let kind = standing.kind().copied();
+        let id = kind
+            .and_then(crate::content::registry_keys::block_entity_type_name)
+            .unwrap_or("");
+        let view = FakeBlockEntityRead { id, kind };
+        read(&crate::BlockEntityView::read_only(entity, &view));
     }
 }
 impl crate::prelude::ItemsBackend for FakeHost {
@@ -617,15 +647,35 @@ impl crate::prelude::FluidsEnergyBackend for FakeHost {
             .map_or(0, |energy| energy.capacity)
     }
 }
-impl crate::prelude::EntityIdentityBackend for FakeHost {
-    fn entity_kind(&self, entity: EntityRef) -> Option<crate::EntityTypeKey> {
-        let kind = if self.players.by_entity(entity.id()).is_some() {
-            "minecraft:player"
-        } else {
-            &self.level.entity_at(entity.id())?.kind
-        };
-        crate::content::registry_keys::resolved_entity_type_key(kind)
+// no wire: a view lent by an in-process test backend.
+struct FakeEntityView<'a>(&'a str);
+
+impl crate::EntityView for FakeEntityView<'_> {
+    fn position(&self) -> Option<[f64; 3]> {
+        None
     }
+    fn rotation(&self) -> Option<[f32; 2]> {
+        None
+    }
+    fn kind(&self) -> Option<crate::EntityTypeKey> {
+        crate::content::registry_keys::resolved_entity_type_key(self.0)
+    }
+}
+
+impl crate::prelude::EntityPositionBackend for FakeHost {
+    fn with_entity_view(&self, entity: EntityRef, read: &mut dyn FnMut(&dyn crate::EntityView)) {
+        if entity.epoch() != WorldEpoch::new(FAKE_EPOCH) {
+            return;
+        }
+        if self.players.by_entity(entity.id()).is_some() {
+            read(&FakeEntityView("minecraft:player"));
+        } else if let Some(entity) = self.level.entity_at(entity.id()) {
+            read(&FakeEntityView(&entity.kind));
+        }
+    }
+}
+
+impl crate::prelude::EntityIdentityBackend for FakeHost {
     fn entity_level(&self, entity: EntityRef) -> Option<LevelRef> {
         if let Some((_, player)) = self.players.by_entity(entity.id()) {
             return Some(player.level);
@@ -695,6 +745,7 @@ crate::impl_backend_areas!(
     except(
         block_entities,
         entity_identity,
+        entity_position,
         fluids_energy,
         items,
         keys,

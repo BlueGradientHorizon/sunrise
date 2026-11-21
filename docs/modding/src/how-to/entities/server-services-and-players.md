@@ -115,6 +115,26 @@ this order: `Client`, `InPlayerHook` (a player's state is swapped in), `Stale` (
 handle), `NoConnection` (a fake player, or the world's own player in a single-player world, which respawns through its
 own screen) and `Alive` (health above 0 and the game not won: the case the button ignores; a player who has won the game and is watching the End poem is respawned even alive, on the next server tick, as the button does).
 
+## Reading a live player
+
+Group related mode, ability, food and experience reads in one `player.with_view(host, |view| …)`
+call. The handle resolves once; the view is read-only and only lives inside the callback.
+Return copies of the values you need before writing to the player.
+
+```rust,ignore
+let state = player.with_view(host, |view| (view.game_mode(), view.may_build(), view.experience()));
+```
+
+`with_view` returns `None` without calling the closure for a stale, offline or displaced player,
+or when the host cannot lend a live player. A goal host needs the live player behind the tick's
+view; seeing the player in the goal's snapshot alone is not enough. Inside the closure,
+`game_mode()` and `abilities()` can be unavailable, and `food()`, `needs_food()` and
+`has_enough_food()` require a body. `can_eat(always)` needs abilities but can answer without
+food data if the player is invulnerable or the food is always edible.
+
+Connection reads and settings, including offline visibility, are separate. So are inventory
+reads, the experience pickup cooldown and all writes.
+
 ## Player rules and sleep
 
 Reads accept `Host`; writes accept `ServerHost`.
@@ -183,13 +203,16 @@ paused level.
 
 ## Finding blocks in a chunk
 
-`chunk.sections_with_block(host, block)` names the sections of a loaded chunk whose block palette may hold any
+`chunk.with_view(host, |view| view.sections_with_block(block)).flatten()` names the sections of a loaded chunk whose block palette may hold any
 state of `block`, as section Y coordinates (block Y `>> 4`) from the bottom up, without reading their blocks
 (`PalettedContainer.maybeHas`). Read the blocks of the sections it names to find the ones that stand there: a
 palette keeps a state no block uses any more, and a section of more distinct states than a palette holds is
 named whenever the block exists. A mod that points at the nearest block of a kind asks it on `chunk_load` for
-blocks placed before it tracked them. `None` for a stale handle, on a client, or for a chunk that isn't
-loaded; it loads nothing.
+blocks placed before it tracked them. `chunk.with_view` resolves the chunk once and also exposes `loaded()`,
+`status()` and `is_slime_chunk()`; it returns `None` without calling the closure for a stale handle, on a client,
+or for an unloaded chunk outside world bounds. A resident boundary column still lends a view for `loaded()`,
+`status()` and `sections_with_block`, with `is_slime_chunk()` returning `None`; an unloaded in-world chunk lends a
+view with `sections_with_block` returning `None` without loading anything.
 
 ## World mutation: chunks, blocks shown and placed as a player
 
@@ -277,11 +300,11 @@ wait for the outermost commit.
 
 ## The client's open menu
 
-`Host::player_container_menu(player)` reads on both sides. On a client it returns only the
-local player's supported open menu, or the inventory menu when none is open; every other
-player returns `None`. `MenuRef::slot_count`, `slot` and `carried` read the client's view:
-server slot updates plus local prediction, not server authority. A menu ref becomes stale
-when that menu closes or another opens. The server retains its supported-menu restrictions.
+`player.container_menu(host)` reads on both sides. On a client it returns only the local
+player's supported open menu, or the inventory menu when none is open. `menu.with_view(host, |view| …)`
+resolves that handle once for `view.slot_count()`, `view.slot(index)` and `view.carried()`. The
+client sees server slot updates plus local prediction, not server authority. The callback is not
+called when the menu closes or is replaced. The server retains its supported-menu restrictions.
 
 ## Local player reads on a client
 
@@ -300,8 +323,10 @@ kept body:
 Client reads are views, not server authority. Inventory access here is read-only;
 inventory and movement writes still require a server host.
 
-The local player's `abilities` read takes `flying` from current client prediction;
-the other flags and speeds stay as supplied by the last abilities packet.
+`player.with_view` lends only the local player on a client. Its `view.abilities()` takes
+`flying` from current client prediction; the other synchronized flags and speeds stay
+as supplied by the last abilities packet. The view's food and experience reflect the local
+copy of the server's updates, not another player's state.
 
 ## A panic in a player's turn
 

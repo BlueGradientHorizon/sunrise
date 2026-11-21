@@ -84,7 +84,7 @@ impl Menu {
                 }
                 // Empty destinations belong only to the insertion pass. Do not ask their
                 // placement rule with a different top-up maximum first.
-                if !self.has_item(dest) {
+                if !self.has_item(dest) || !self.container_allows(dest, stack) {
                     continue;
                 }
                 // A mod menu's result (unless a mod's hook opens it) and a

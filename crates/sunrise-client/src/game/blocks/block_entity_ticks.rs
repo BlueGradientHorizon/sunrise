@@ -1620,7 +1620,7 @@ mod own_block_entity_tests {
         }
         fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
             event.subject.with_view(|mut entity| {
-                let mut data = entity.data_slots().to_vec();
+                let mut data = entity.data_slots().unwrap().to_vec();
                 data.push(mark(self.0));
                 entity.set_data_slots(&data).unwrap();
             });

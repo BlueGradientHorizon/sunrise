@@ -1306,7 +1306,7 @@ fn a_spectators_container_click_is_taken_back() {
         fn enchantments(&self) -> &sunrise_client::enchant::Enchantments {
             unreachable!("a spectator's click never reaches the menu")
         }
-        fn max_stack(&self, _: &str) -> u32 {
+        fn max_stack(&self, _: &ItemStack) -> u32 {
             64
         }
     }
@@ -1467,7 +1467,7 @@ fn a_click_past_the_menu_is_ignored() {
         fn enchantments(&self) -> &sunrise_client::enchant::Enchantments {
             unreachable!("a click past the menu never reaches it")
         }
-        fn max_stack(&self, _: &str) -> u32 {
+        fn max_stack(&self, _: &ItemStack) -> u32 {
             64
         }
     }

@@ -41,7 +41,13 @@ pub const ENTITY_ITEMS: EntityCapabilityKey<dyn ResourceHandler<ItemResource>> =
     EntityCapabilityKey {
         name: "sunrise:entity_items",
         default: Some(|host, entity, ()| {
-            if !builtin_player_inventory_type(entity.kind(host)?.id(host)?.as_str()) {
+            if !builtin_player_inventory_type(
+                entity
+                    .with_view(host, |view| view.kind())
+                    .flatten()?
+                    .id(host)?
+                    .as_str(),
+            ) {
                 if let Some(size) = backend_of(host)?.entity_container_size(entity.id()) {
                     return Some(Box::new(ContainerItems { entity, size }));
                 }
@@ -111,7 +117,7 @@ impl EntityRef {
         let table = host.capability_providers();
         let kind = table
             .provided(ProvidedBy::Entity, key.name)
-            .then(|| self.kind(host)?.id(host))
+            .then(|| self.with_view(host, |view| view.kind()).flatten()?.id(host))
             .flatten();
         crate::answered(
             crate::ask_providers(
@@ -264,7 +270,11 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
             // one of it (`ArmorSlot.getMaxStackSize`).
             Some(slot)
                 if resource.is_some_and(|item| {
-                    let name = self.entity.kind(host).and_then(|kind| kind.id(host));
+                    let name = self
+                        .entity
+                        .with_view(host, |view| view.kind())
+                        .flatten()
+                        .and_then(|kind| kind.id(host));
                     !equips(host, item, slot, name.as_deref().unwrap_or_default())
                 }) =>
             {
