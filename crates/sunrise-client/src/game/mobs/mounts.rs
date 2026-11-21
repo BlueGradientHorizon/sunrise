@@ -657,6 +657,14 @@ impl Game<'_> {
             self.dismount_mob(rider);
         }
     }
+    /// This player's index in `vehicle`'s `getPassengers`, 0 when it is not listed.
+    fn own_passenger_index(&self, vehicle: u32) -> usize {
+        let own = self.riding_player().map(|(id, _)| id);
+        self.seated_passengers(vehicle)
+            .iter()
+            .position(|&(_, id, player)| player && Some(id) == own)
+            .unwrap_or(0)
+    }
     /// `positionRider`: the player sits on the mount after it moves.
     pub(super) fn position_rider(&mut self) {
         let Some(i) = self.mount_index() else {
@@ -676,11 +684,14 @@ impl Game<'_> {
             seat_of(m, sunrise_client::mobs::riders::type_attachment(m))
         };
         if m.species() == Species::HappyGhast {
-            // The attachment of the player's seat on the harnessed back.
-            let seat = self.remote.as_ref().map_or(0, |r| r.passenger_index);
+            // The attachment of the player's place in `getPassengers`, in the ghast's own dimensions.
+            let seat = self
+                .remote
+                .as_ref()
+                .map_or_else(|| self.own_passenger_index(m.id), |r| r.passenger_index);
             at = seat_of(
                 m,
-                sunrise_client::mobs::riders::happy_ghast_attachment(seat),
+                sunrise_client::mobs::riders::passenger_attachment_at(m, seat),
             );
         }
         // AbstractHorse.getPassengerAttachmentPoint: the rider slides back and

@@ -183,7 +183,7 @@ impl Game<'_> {
             let (lo, hi) = p.bounds();
             return Some((lo, hi, centre(p.pos)));
         }
-        let row = self.resident_entities.general.row(id)?;
+        let row = self.general_row(id)?;
         let (lo, hi) = corners(super::entity::Entity::bounds(row));
         Some((lo, hi, at(row.position)))
     }

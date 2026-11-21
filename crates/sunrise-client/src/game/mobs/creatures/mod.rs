@@ -20,8 +20,7 @@ mod mob_conversion;
 mod mob_dispatch_panic_tests;
 mod player_loot_entity;
 mod projectile_targets;
-mod projectile_world;
-pub(super) use projectile_world::ProjWorld;
+pub(super) use sunrise_gameplay::projectile_world::ProjWorld;
 mod pufferfish_player;
 mod residency;
 #[cfg(test)]
@@ -49,7 +48,6 @@ use sunrise_client::{
     Result,
     arrows::EntityHit,
     blocks::Fluid,
-    collisions::SceneCollisions,
     crafting::Recipes,
     graphics::EntityCullingMode,
     health::{Attack, HealthEvent, HurtSource, Hurting, Knock},
@@ -63,11 +61,11 @@ use sunrise_client::{
         spawning::{self, BiomeFacts},
     },
     particles::{ParticleOptions, ParticleType},
-    projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld, clip_including_border},
+    projectiles::{Hit, Projectile, ProjectileKind},
 };
 use sunrise_client_render::render_geometry::EntitySpan;
 use sunrise_core::{
-    geometry::{Aabb, Direction, Vec3, traverse_blocks, trig::Mth},
+    geometry::{Aabb, Direction, Vec3, trig::Mth},
     position::BlockPos,
     random::RandomSource,
 };
@@ -264,8 +262,8 @@ pub(super) struct Creatures {
     pub trader: super::wandering_trader::Spawner,
     /// When each player last put a parrot on a shoulder (`timeEntitySatOnShoulder`).
     pub shoulder_time: std::collections::HashMap<[i32; 4], i64>,
-    /// The cat spawner's countdown (`CatSpawner.nextTick`).
-    pub cat_tick: i32,
+    /// The cat spawner (`CatSpawner`): its countdown.
+    pub cat: super::cat_spawner::CatSpawner,
     /// Each level's custom spawners, built when its first tick asks (game/mobs/custom_spawners.rs).
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
@@ -8106,7 +8104,7 @@ impl Game<'_> {
                 && self.cull_entity_camera_bounds(lo, hi)
                 && let Some((mark, _)) = skinned
             {
-                if self.pack_shadow_casters.0 {
+                if self.occlusion.shadow_casters.0 {
                     let mut frame = self.skin_frame.borrow_mut();
                     let end = frame.vertices as usize;
                     sunrise_client::gfx::pack_draw::EntitySpan::hide(
@@ -8164,12 +8162,13 @@ impl Game<'_> {
         // keep the existing exact mesh-culling path.
         if self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
             && self
-                .async_occlusion_culler
+                .occlusion
+                .async_culler
                 .as_ref()
                 .is_some_and(|culler| culler.camera_is_stationary())
             && self.settings.sunrise.entity_culling_precheck != 0
             && self.mobs.len() >= self.settings.sunrise.entity_culling_precheck as usize
-            && !self.pack_shadow_casters.0
+            && !self.occlusion.shadow_casters.0
             && mod_api::__private::mods().is_empty()
         {
             self.mob_geometry_inner::<true>(camera, alpha, out);
