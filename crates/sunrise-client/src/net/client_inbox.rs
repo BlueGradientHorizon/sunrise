@@ -1,9 +1,12 @@
 //! The client thread's ordered ingress, shared by its packet processor and executor.
 use super::{Event, ingress};
 use std::{
-    cell::Cell,
-    marker::PhantomData,
-    sync::{Arc, Mutex},
+    cell::RefCell,
+    collections::HashMap,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use sunrise_mod_runtime::byte_channel::{self, message_overhead};
 
@@ -15,8 +18,9 @@ type ReceiveWindow = Mutex<Option<usize>>;
 pub struct ClientInbox {
     sender: Arc<byte_channel::Sender<QueuedEvent>>,
     receiver: Option<byte_channel::Receiver<QueuedEvent>>,
-    // As with the other ingress consumers, only one actor owns receiving turns.
-    _single: PhantomData<Cell<()>>,
+    // All executors issued to one mod share its session failure state. Only the receiving
+    // actor issues executors; the handles themselves may submit from any thread.
+    executor_panics: RefCell<HashMap<&'static str, Arc<AtomicBool>>>,
 }
 
 /// A physical connection's producer and receive window, independent of the FIFO's lifetime.
@@ -64,7 +68,7 @@ impl Default for ClientInbox {
         Self {
             sender: Arc::new(sender),
             receiver: Some(receiver),
-            _single: PhantomData,
+            executor_panics: RefCell::default(),
         }
     }
 }
@@ -98,16 +102,30 @@ impl ClientInbox {
 
     pub fn executor(&self, owner: &'static str) -> Option<mod_api::ClientExecutor> {
         self.receiver.as_ref()?;
+        let panicked = self
+            .executor_panics
+            .borrow_mut()
+            .entry(owner)
+            .or_default()
+            .clone();
+        if panicked.load(Ordering::Acquire) {
+            return None;
+        }
         let sender = self.sender.clone();
         Some(mod_api::ClientExecutor::new(move |run| {
-            let _ = sender.send_uncharged(QueuedEvent {
-                serial: None,
-                event: Event::ClientTask(ClientTask {
-                    owner,
-                    run: Some(run),
-                }),
-                credit: None,
-            });
+            let task = ClientTask {
+                owner,
+                run: Some(run),
+                panicked: panicked.clone(),
+            };
+            // A publication racing a panic is checked again when it reaches the drain.
+            if !task.is_disabled() {
+                let _ = sender.send_uncharged(QueuedEvent {
+                    serial: None,
+                    event: Event::ClientTask(task),
+                    credit: None,
+                });
+            }
         }))
     }
 
@@ -128,10 +146,19 @@ type Task = Box<dyn FnOnce(&mut dyn mod_api::ClientHost) + Send>;
 pub struct ClientTask {
     pub owner: &'static str,
     run: Option<Task>,
+    panicked: Arc<AtomicBool>,
 }
 
 impl ClientTask {
-    pub fn run(mut self, host: &mut dyn mod_api::ClientHost) {
+    pub fn is_disabled(&self) -> bool {
+        self.panicked.load(Ordering::Acquire)
+    }
+
+    pub fn disable_owner(&self) {
+        self.panicked.store(true, Ordering::Release);
+    }
+
+    pub fn run(&mut self, host: &mut dyn mod_api::ClientHost) {
         if let Some(run) = self.run.take() {
             run(host);
         }

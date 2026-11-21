@@ -24,8 +24,11 @@ impl ClientExecutor {
     /// packet handling. If any packet work is deferred, executor tasks wait too.
     /// Move owned data into the task, not the caller's host or payload context.
     /// Quitting drops tasks that have not run.
-    /// A panic ends that task and is logged with the mod's name; an error toast goes
-    /// through `toast_add`. Later tasks, including those from the same mod, still run.
+    /// Stream placements made by a task publish only after it returns successfully.
+    /// A panic is logged with the mod's name and its error toast goes through `toast_add`.
+    /// It disables this mod's executor for the rest of the client session: pending tasks
+    /// for this mod are skipped and retained executors discard new tasks. Other mods'
+    /// tasks still run. A phase refusal is reported without disabling the executor.
     pub fn execute(&self, task: Box<dyn FnOnce(&mut dyn ClientHost) + Send>) {
         (self.0)(task);
     }

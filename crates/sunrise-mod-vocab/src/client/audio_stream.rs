@@ -268,21 +268,25 @@ impl AudioStreamRef {
     }
     /// Moves the stream to [`StreamPlacement::Flat`] (at the listener, with no panning or
     /// distance fade). Callable from any thread without a [`ClientHost`] and never waits on the
-    /// mixer. False once the stream has stopped.
+    /// mixer. False once the stream has stopped. Inside a [`ClientExecutor`](crate::ClientExecutor)
+    /// task, the placement only publishes after the task returns successfully.
     pub fn set_flat(&self) -> bool {
         self.source.set_placement(&StreamPlacement::Flat, None)
     }
     /// Moves the stream to [`StreamPlacement::At(at)`]. Callable from any thread without a
     /// [`ClientHost`] and never waits on the mixer. False, changing nothing, when any coordinate
     /// is not finite or once the stream has stopped. Stereo streams accept any finite position
-    /// and play un-spatialized.
+    /// and play un-spatialized. Inside a [`ClientExecutor`](crate::ClientExecutor) task,
+    /// the placement only publishes after the task returns successfully.
     pub fn set_position(&self, at: [f64; 3]) -> bool {
         self.source.set_placement(&StreamPlacement::At(at), None)
     }
     /// Moves the stream to follow `entity` on the client thread, resolving its position eagerly
     /// through `host`. False, changing nothing, when the client does not currently track
     /// `entity`, its position is not finite, or once the stream has stopped. Stereo streams
-    /// accept any tracked entity and play un-spatialized.
+    /// accept any tracked entity and play un-spatialized. In an executor task, `true`
+    /// accepts the placement for publication after the task returns successfully. If
+    /// the stream stops before publication, the client reports the refusal in the log.
     ///
     /// In `client_setup`, use `if let Some(executor) = host.client_executor()` to obtain a
     /// [`ClientExecutor`](crate::ClientExecutor), then clone it into a network-thread

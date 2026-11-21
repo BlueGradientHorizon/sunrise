@@ -15,9 +15,12 @@ use mod_api::{
     AudioStreamState, EntityRef, SpecFault, StreamPlacement, StreamSpec,
 };
 use pull::{Demand, PullJob, Worker};
-use std::sync::{
-    Arc, Mutex, MutexGuard,
-    atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering::*, fence},
+use std::{
+    cell::RefCell,
+    sync::{
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering::*, fence},
+    },
 };
 
 /// Internal capacity of the worker-to-callback PCM ring, in milliseconds at the source rate.
@@ -260,6 +263,47 @@ fn check_placement(
     ))
 }
 
+struct PlacementEdit {
+    control: Arc<Control>,
+    placement: Held,
+    view: View,
+}
+
+thread_local! {
+    static TASK_PLACEMENTS: RefCell<Option<Vec<PlacementEdit>>> = const { RefCell::new(None) };
+}
+
+/// Run one client executor task with stream placements unpublished until it succeeds.
+/// Unlike undoing a live placement, this never exposes the failed task to the mixer.
+pub fn stage_stream_placements<T, E>(
+    owner: &str,
+    run: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    struct Restore(Option<Vec<PlacementEdit>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            TASK_PLACEMENTS.replace(self.0.take());
+        }
+    }
+    let scope = Restore(TASK_PLACEMENTS.replace(Some(Vec::new())));
+    let result = run();
+    let pending = TASK_PLACEMENTS.take().expect("client task placement scope");
+    drop(scope);
+    if result.is_ok() {
+        for PlacementEdit {
+            control,
+            placement,
+            view,
+        } in pending
+        {
+            if !control.place(control.lock(), placement, view) {
+                log::warn!("Mod {owner}: client executor stream placement refused: stream stopped");
+            }
+        }
+    }
+    result
+}
+
 /// A mod's end of a stream: what `AudioStreamRef` calls. Dropping it stops the stream.
 pub(super) struct StreamHandle {
     control: Arc<Control>,
@@ -271,6 +315,23 @@ impl AudioStreamSource for StreamHandle {
         let Ok((placement, view)) = check_placement(placement, entity_pos) else {
             return false;
         };
+        let staged = TASK_PLACEMENTS.try_with(|pending| {
+            let mut pending = pending.borrow_mut();
+            let pending = pending.as_mut()?;
+            let _held = c.lock();
+            let open = !c.closed.load(Acquire);
+            if open {
+                pending.push(PlacementEdit {
+                    control: self.control.clone(),
+                    placement,
+                    view,
+                });
+            }
+            Some(open)
+        });
+        if let Ok(Some(open)) = staged {
+            return open;
+        }
         c.place(c.lock(), placement, view)
     }
     fn set_volume(&self, volume: f32) -> bool {

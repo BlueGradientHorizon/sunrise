@@ -5,8 +5,9 @@ Call `host.disconnect(reason)` through `ClientHost` to leave the joined server o
 ## Moving work to the client thread
 
 In `client_setup`, get the `ClientExecutor` and clone it into a network handler or another
-worker. Handle `None`: hosts with limited access, such as the client-side
-`entity_entering_section` host, cannot issue an executor, and neither can a closing client.
+worker. Handle `None`: restricted hosts such as the client-side `entity_entering_section`
+host cannot issue an executor, and neither can a closing client or a client in which this mod's
+executor already panicked.
 
 ```rust,ignore
 // In client_setup:
@@ -21,9 +22,12 @@ payload work first, then runs executor tasks in submission order with a live
 `&mut dyn ClientHost`. The packet phase includes packets and queued payload work published
 while earlier packets are being handled, even when a task was submitted first. If any packet
 work is deferred, executor tasks wait for the packet phase to finish. When the client starts
-quitting, including from the title screen, pending and new tasks are dropped. A panic ends only that task
-and is logged with the mod's name. The error toast goes through `toast_add`, so listeners may
-edit or cancel it without suppressing the log.
+quitting, including from the title screen, pending and new tasks are dropped. Stream placement
+changes made inside a task are published only after it returns successfully. A panic is logged
+with the mod's name and disables its executor for the rest of the client session: already queued
+tasks for the same mod are skipped and retained executors discard later submissions. Other mods'
+tasks still run. A phase refusal is reported but does not disable the executor. The error toast
+goes through `toast_add`, so listeners may edit or cancel it without suppressing the log.
 
 The executor belongs to the client application, not to a connection or level. Keep using
 `IPayloadContext::enqueue_work` if the work needs the payload's original epoch, player, reply or

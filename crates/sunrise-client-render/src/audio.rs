@@ -6,6 +6,8 @@
 //! and attenuated, multi-channel buffers (stereo music and records) played
 //! direct as OpenAL does.
 mod streams;
+pub use streams::stage_stream_placements;
+
 use crate::Result;
 use crate::sound_engine::{
     Attenuation, Backend, Bound, ChannelId, InstanceId, PlayResult, SoundEngine, SoundInstance,

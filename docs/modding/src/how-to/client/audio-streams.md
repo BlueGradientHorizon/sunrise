@@ -118,7 +118,10 @@ worker_executor.execute(Box::new(move |host| {
 
 `set_entity` checks tracking when the task runs, after the packet phase. It returns `false`
 if a packet removed the entity or moved the client to another level, even if that packet was
-published during packet handling after the task was submitted.
+published during packet handling after the task was submitted. A task's accepted placements
+(`set_entity`, `set_flat`, `set_position`) do not reach the mixer until the task returns
+successfully. A panic discards them. If another thread stops the stream before a placement
+can publish, the client logs the refusal.
 
 ## Threading
 

@@ -9,9 +9,9 @@ the same ingress but runs them only after the packet phase. Packets and queued p
 published during packet handling are part of that phase, even when a task was submitted first. \
 If packet work is deferred, all pending tasks wait. Each task gets a live host, even after a \
 disconnect. `TitleScreen`'s Quit button calls `Minecraft.stop`; Sunrise closes its task receiver at the \
-start of quitting, including from the live title screen. Like `BlockableEventLoop.doRunTask` for \
-recoverable errors, a panic ends only that task and logs the mod's name. Its error toast passes \
-through `toast_add` before queuing, as NeoForge's `ToastAddEvent` does in `ToastManager.addToast`."""
+start of quitting, including from the live title screen. Panic reporting uses a named log and an \
+error toast admitted by `toast_add`, as NeoForge's `ToastAddEvent` does in `ToastManager.addToast`. \
+The session failure behavior is described in the executor panic isolation change note."""
 migrate = """
 Existing payload handlers need no change. In `client_setup`, use `let Some(executor) = \
 host.client_executor() else { return; };` and clone it into workers. Restricted hosts such as the \

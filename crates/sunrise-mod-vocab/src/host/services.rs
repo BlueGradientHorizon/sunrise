@@ -30,8 +30,9 @@ pub trait ServicesServerHost {
 pub trait ServicesClientHost {
     /// The calling mod's handle for submitting work to the client thread from any thread.
     /// Obtain it in `client_setup` and clone it into workers that cannot borrow a host.
-    /// Returns `None` when the client loop is unavailable or closing, and on restricted
-    /// hosts such as the client-side `entity_entering_section` callback.
+    /// Returns `None` when the client loop is unavailable or closing, on restricted hosts
+    /// such as the client-side `entity_entering_section` callback, or after a task from
+    /// the calling mod panicked in this client session.
     #[access(ClientSetup)]
     fn client_executor(&self) -> Option<ClientExecutor>;
     /// Persistent model groups.
