@@ -32,6 +32,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+/// Stack reserved by workers that run gameplay or native mod code.
+pub const GAME_THREAD_STACK_BYTES: usize = 136 * 1024 * 1024;
+
 /// The worker threads the machine offers this process: `available_parallelism`'s
 /// answer (its share of the cores — CPU affinity, a container's quota), resolved
 /// once, since it doesn't change under a run and asking again on a later path
@@ -100,7 +103,7 @@ pub fn par_chunks_mut_with<T: Send>(
         let threads: Vec<_> = (0..helpers)
             .filter_map(|_| {
                 std::thread::Builder::new()
-                    .stack_size(136 * 1024 * 1024)
+                    .stack_size(crate::GAME_THREAD_STACK_BYTES)
                     .spawn_scoped(scope, work)
                     .ok()
             })

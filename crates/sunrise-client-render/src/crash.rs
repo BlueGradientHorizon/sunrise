@@ -390,7 +390,7 @@ fn mod_lines(headers: bool) -> Vec<(String, String)> {
         .collect();
     // A thread that doesn't start drops `send`: every line then reads as an error.
     let _ = std::thread::Builder::new()
-        .stack_size(136 * 1024 * 1024)
+        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .name("Crash report lines".into())
         .spawn(move || {
             for (owner, line) in asked {

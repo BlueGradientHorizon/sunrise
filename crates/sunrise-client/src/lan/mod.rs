@@ -849,7 +849,7 @@ impl Lan {
         let shared = self.shared.clone();
         // Mod configuration payload handlers run on this thread.
         std::thread::Builder::new()
-            .stack_size(136 * 1024 * 1024)
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
             .name("sunrise-local-conn".into())
             .spawn(move || {
                 if let Err(e) = conn::serve_local(server, shared)
@@ -1073,7 +1073,7 @@ fn accept_loop(listener: TcpListener, shared: Arc<Shared>, stop: &AtomicBool) {
                 shared.wait(&counted, &stream);
                 // Mod configuration payload handlers run on this thread.
                 let _ = std::thread::Builder::new()
-                    .stack_size(136 * 1024 * 1024)
+                    .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
                     .name("sunrise-lan-conn".into())
                     .spawn(move || {
                         WAITING.set(Some(counted.2));

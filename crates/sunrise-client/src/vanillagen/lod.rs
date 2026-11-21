@@ -84,7 +84,7 @@ impl Builder {
         background: bool,
     ) -> thread::JoinHandle<()> {
         std::thread::Builder::new()
-            .stack_size(136 * 1024 * 1024)
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
             .name("Far decoration".into())
             .spawn(move || {
                 if background {

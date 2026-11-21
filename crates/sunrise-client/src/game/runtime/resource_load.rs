@@ -95,7 +95,7 @@ pub(super) fn named_scope<'scope, T: Send + 'scope>(
     #[cfg(test)]
     let f = move || inherited(&());
     std::thread::Builder::new()
-        .stack_size(136 * 1024 * 1024)
+        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         // Linux keeps 15 bytes of a thread name: a short prefix keeps them apart
         // ("sunrise-load-core" and "sunrise-load-collision" would both read
         // "sunrise-load-co").
@@ -818,7 +818,7 @@ pub(super) fn load_resources_for_mods(
         let rest_progress = progress.clone();
         let progress = progress.clone();
         let handle = std::thread::Builder::new()
-            .stack_size(136 * 1024 * 1024)
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
             .name("world-rest-loader".into())
             .spawn(move || {
                 let _step = startup::step("rest");
@@ -954,7 +954,7 @@ pub(super) fn write_prepared_files(root: PathBuf) {
         return;
     }
     let spawned = std::thread::Builder::new()
-        .stack_size(136 * 1024 * 1024)
+        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .name("Prepared data file".into())
         .spawn(move || {
             sunrise_threads::idle_current();

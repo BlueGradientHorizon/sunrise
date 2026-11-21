@@ -449,7 +449,7 @@ pub(in crate::game) fn preload_sync_data(item_data: &Arc<ItemData>) -> Option<Sy
     let item_data = Arc::clone(item_data);
     // Loading recipes asks mods' ingredient and recipe property set hooks.
     std::thread::Builder::new()
-        .stack_size(136 * 1024 * 1024)
+        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .name("Server data preload".into())
         .spawn(move || {
             let none = sunrise_world::loot::PackOverlay::NONE;

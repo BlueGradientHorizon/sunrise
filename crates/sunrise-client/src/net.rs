@@ -371,7 +371,7 @@ impl Session {
         let (address_owned, name_owned) = (address.to_owned(), name.to_owned());
         // Mod payload handlers run on this thread (the client's network root).
         let thread = std::thread::Builder::new()
-            .stack_size(136 * 1024 * 1024)
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
             .name("sunrise-net".into())
             .spawn(move || {
                 sunrise_threads::favour_current();

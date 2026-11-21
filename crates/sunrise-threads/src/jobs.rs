@@ -207,7 +207,7 @@ impl Pool {
     pub fn with_idle_release(threads: usize, name: &str, idle_release: Duration) -> Self {
         Self::with_spawner(threads, idle_release, |worker, i| {
             std::thread::Builder::new()
-                .stack_size(136 * 1024 * 1024)
+                .stack_size(crate::GAME_THREAD_STACK_BYTES)
                 .name(format!("{name}-{i}"))
                 .spawn(move || {
                     crate::behind_server();

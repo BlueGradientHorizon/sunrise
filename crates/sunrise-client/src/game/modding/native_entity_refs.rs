@@ -1231,7 +1231,8 @@ mod ray_tests {
 pub(super) mod tests {
     /// Run `test` on a game-sized stack, preserving libtest's thread name and panic payload.
     pub(in crate::game) fn run_with_game_stack(test: impl FnOnce() + Send + 'static) {
-        let mut worker = std::thread::Builder::new().stack_size(136 * 1024 * 1024);
+        let mut worker =
+            std::thread::Builder::new().stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES);
         if let Some(name) = std::thread::current().name() {
             worker = worker.name(name.to_owned());
         }

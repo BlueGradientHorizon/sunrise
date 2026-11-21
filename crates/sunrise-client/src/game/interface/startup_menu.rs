@@ -404,7 +404,7 @@ pub(super) fn spawn_loader(
     let world = launch_world(options).map(str::to_owned);
     let progress = progress.clone();
     let handle = std::thread::Builder::new()
-        .stack_size(136 * 1024 * 1024)
+        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .name("resource-loader".into())
         .spawn(move || {
             let mut pack_error = None;

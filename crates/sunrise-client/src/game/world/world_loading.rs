@@ -382,7 +382,7 @@ impl WorldLoader {
         upgrade: Arc<sunrise_world::datafix::progress::UpgradeProgress>,
     ) -> Result<Self> {
         let handle = std::thread::Builder::new()
-            .stack_size(136 * 1024 * 1024)
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
             .name("World initialization".into())
             .spawn(move || {
                 request
@@ -440,7 +440,7 @@ pub(super) fn preload_world_data(
             let resources = resources.to_owned();
             let data_source = data_source.clone();
             let spawned = std::thread::Builder::new()
-                .stack_size(136 * 1024 * 1024)
+                .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
                 .name("World data preload".into())
                 .spawn(move || {
                     sunrise_threads::behind_server();
@@ -503,7 +503,7 @@ pub(super) fn preload_launch_world(
     let data_source = data_source.clone();
     let additional = additional.to_vec();
     let spawned = std::thread::Builder::new()
-        .stack_size(136 * 1024 * 1024)
+        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .name("World data preload".into())
         .spawn(move || {
             // Not behind the server: the world's opening waits for it.

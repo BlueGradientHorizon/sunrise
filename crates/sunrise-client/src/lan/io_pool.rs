@@ -355,7 +355,7 @@ fn start(threads: usize) -> std::io::Result<Pool> {
         let mine = worker.clone();
         // Mod payload handlers run on these threads (the server's network root).
         std::thread::Builder::new()
-            .stack_size(136 * 1024 * 1024)
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
             .name(format!("sunrise-net-{n}"))
             .spawn(move || run(poll, &mine))?;
         workers.push(worker);

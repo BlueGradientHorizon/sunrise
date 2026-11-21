@@ -811,7 +811,7 @@ impl VanillaTerrain {
         const LATEST: u64 = 60_000;
         let terrain = Arc::downgrade(self);
         let spawned = std::thread::Builder::new()
-            .stack_size(136 * 1024 * 1024)
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
             .name("Ring search".into())
             .spawn(move || {
                 sunrise_threads::idle_current();

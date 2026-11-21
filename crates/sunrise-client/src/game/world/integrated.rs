@@ -53,7 +53,7 @@ pub(super) const NO_ANSWER: &str =
 /// The minimum stack for the integrated server, which holds its `Game` by value
 /// and runs every tick on it.
 fn server_thread_stack_floor() -> usize {
-    136 * 1024 * 1024
+    sunrise_threads::GAME_THREAD_STACK_BYTES
 }
 
 /// The server thread's stack size: [`server_thread_stack_floor`], or what `RUST_MIN_STACK` asks for
