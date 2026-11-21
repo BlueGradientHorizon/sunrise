@@ -4597,22 +4597,6 @@ impl Game<'_> {
         self.native_text(batch, text, at, argb, shadow);
         batch.scale_since(start, at[0], at[1], scale, scale);
     }
-    /// The saved key and modifiers for an owner-bound registration, or its declared default.
-    pub(in crate::game) fn mod_key(
-        &self,
-        mod_id: &str,
-        name: &str,
-    ) -> Option<(String, ClientModifiers)> {
-        let (_, registration) = mod_api::__private::key_mappings()
-            .iter()
-            .find(|(owner, mapping)| *owner == mod_id && mapping.id == name)?;
-        let (key, modifiers) = self.settings.mods.binding(
-            mod_id,
-            name,
-            (&registration.key, registration.modifiers.bits),
-        );
-        Some((key, ClientModifiers::new(modifiers)))
-    }
     /// The instance (game) folder, which its players share: `saves/`,
     /// `resourcepacks/`, `shaderpacks/` and `sunrise-mods/` are in it, and the
     /// title's screens create worlds and read packs there. A world's own

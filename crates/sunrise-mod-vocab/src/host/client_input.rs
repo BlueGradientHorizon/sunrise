@@ -17,46 +17,13 @@ pub trait ClientInputClientHost {
     #[access(ClientSetup)]
     fn cursor(&self) -> [f32; 2];
     /// Side: client.
-    /// The saved key and modifiers for an owner-bound registration, or its declared default.
+    /// Resolve `owner`'s registered mapping `id` once after registration, usually in `client_setup`.
+    /// Keep the handle for subsequent calls; save the owner and id, not the handle. Other mods'
+    /// mappings can be resolved and read, but only the owner can rebind or reset them.
+    /// Returns [`ModKeyRefusal::NotRegistered`] for an unknown owner or id and
+    /// [`ModKeyRefusal::Unavailable`] when there is no client backend in this host or phase.
     #[access(ClientSetup)]
-    fn mod_key(&self, mod_id: &str, name: &str) -> Option<(String, ClientModifiers)>;
-    /// Side: client.
-    /// Binds mod `mod_id`'s registered mapping `name` to `key` (`key.keyboard.z`,
-    /// `key.mouse.left`, `key.keyboard.unknown` for none) with `modifiers` held, as the player
-    /// binding it in Controls does (`KeyMapping.setKey` with NeoForge's
-    /// `setKeyModifierAndCode`, then `Options.save`): the mapping answers to the new key from the
-    /// next input, and the binding is saved to `sunrise-mods.txt`. A modifier key bound on its own
-    /// is the key, not a modifier held with itself, as Controls stores it. Each refusal changes
-    /// nothing and is named by `ModKeyRefusal`: `NotRegistered`, `NotOwner` (a native mod asked
-    /// for another mod's mapping), `UnknownKey`, `UnknownModifiers` and `Unavailable`.
-    #[access(ClientSetup)]
-    fn set_mod_key(
-        &mut self,
-        mod_id: &str,
-        name: &str,
-        key: &str,
-        modifiers: ClientModifiers,
-    ) -> Result<(), ModKeyRefusal>;
-    /// Side: client.
-    /// Gives mod `mod_id`'s registered mapping `name` its declared default key and modifiers
-    /// back, as Controls' Reset does (`KeyMapping.setToDefault`), and saves `sunrise-mods.txt`.
-    /// Refusals as for `set_mod_key`, without `UnknownKey` and `UnknownModifiers`.
-    #[access(ClientSetup)]
-    fn reset_mod_key(&mut self, mod_id: &str, name: &str) -> Result<(), ModKeyRefusal>;
-    /// Side: client.
-    /// Whether mod `mod_id`'s registered mapping `id` is held (`KeyMapping.isDown`): its key or
-    /// mouse button is down and its conflict context and modifiers are active. False for an
-    /// unregistered id.
-    #[access(ClientSetup)]
-    fn is_down(&self, mod_id: &str, id: &str) -> bool;
-    /// Side: client.
-    /// Takes one click off mod `mod_id`'s registered mapping `id` (`KeyMapping.consumeClick`):
-    /// true when it had one. A press, each auto-repeat while its key is held, and a mouse press
-    /// add one, with no screen open and its conflict context and modifiers active, from the
-    /// window or the control socket alike; a screen opening drops them all. False for an
-    /// unregistered id.
-    #[access(ClientSetup)]
-    fn consume_click(&mut self, mod_id: &str, id: &str) -> bool;
+    fn mod_key_mapping(&self, owner: &str, id: &str) -> Result<ModKeyMappingRef, ModKeyRefusal>;
     /// Side: client.
     /// Playing, with nothing over the world: keys and zoom apply.
     #[access(ClientSetup)]
@@ -95,7 +62,7 @@ pub trait ClientInputClientHost {
     fn set_clipboard_text(&self, text: &str) -> bool;
 }
 
-/// The live client reads behind [`VanillaKeyMappingRef`].
+/// The live client reads behind [`VanillaKeyMappingRef`] and [`ModKeyMappingRef`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
@@ -139,9 +106,33 @@ pub trait ClientInputClientBackend {
         &self,
         mapping: VanillaKeyMappingRef,
     ) -> Result<Text, MappingError>;
+    /// Side: client.
+    /// Lends the current binding name and returns its saved or default modifiers. The name is
+    /// borrowed for the host borrow. A replaced client or roster returns [`ModKeyRefusal::Stale`];
+    /// an unavailable backend or phase returns [`ModKeyRefusal::Unavailable`].
+    #[access(ClientSetup)]
+    fn mod_key_mapping_binding(
+        &self,
+        mapping: ModKeyMappingRef,
+    ) -> Result<(&str, ClientModifiers), ModKeyRefusal>;
+    /// Side: client.
+    /// Whether the mapping is held (`KeyMapping.isDown`): its key or mouse button is down,
+    /// no screen or overlay is open, and its context and modifiers are active.
+    /// Refusals are as for [`ModKeyMappingRef::binding`].
+    #[access(ClientSetup)]
+    fn mod_key_mapping_is_down(&self, mapping: ModKeyMappingRef) -> Result<bool, ModKeyRefusal>;
+    /// Side: client.
+    /// Builds the current Controls label on demand, with the bound modifiers in Controls order.
+    /// Returns [`MappingError::Stale`] for a replaced client or roster, [`MappingError::Unavailable`]
+    /// for an unavailable backend or phase, or [`MappingError::Label`] for an invalid component.
+    #[access(ClientSetup)]
+    fn mod_key_mapping_translated_key_message(
+        &self,
+        mapping: ModKeyMappingRef,
+    ) -> Result<Text, MappingError>;
 }
 
-/// The live client writes behind [`VanillaKeyMappingRef`].
+/// The live client writes behind [`VanillaKeyMappingRef`] and [`ModKeyMappingRef`].
 // hidden: a handle's backend, reached through `ClientBackendMut`; mods call the handle, never this trait
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
@@ -191,4 +182,39 @@ pub trait ClientInputClientBackendMut {
         &mut self,
         mapping: VanillaKeyMappingRef,
     ) -> Result<(), MappingError>;
+    /// Side: client.
+    /// Takes one pending click (`KeyMapping.consumeClick`), returning `false` if none remain.
+    /// A press, each auto-repeat while held, and a mouse press add a click with no screen open
+    /// and the mapping's context and modifiers active. Window and control-socket input count
+    /// alike. Opening a screen or overlay drops all pending clicks.
+    /// Refusals are as for [`ModKeyMappingRef::binding`].
+    #[access(ClientSetup)]
+    fn mod_key_mapping_consume_click(
+        &mut self,
+        mapping: ModKeyMappingRef,
+    ) -> Result<bool, ModKeyRefusal>;
+    /// Side: client.
+    /// Binds the mapping to `key` (`key.keyboard.z`, `key.mouse.left`, or `key.keyboard.unknown`
+    /// for none) with shift, control and alt modifiers, as Controls does. A modifier bound to
+    /// itself is the key, not a modifier held with itself. The new binding answers from the next
+    /// input and is saved to `sunrise-mods.txt`.
+    /// Only the owning mod can change it. In addition to the refusals of
+    /// [`ModKeyMappingRef::binding`], returns [`ModKeyRefusal::NotOwner`],
+    /// [`ModKeyRefusal::UnknownKey`] or [`ModKeyRefusal::UnknownModifiers`]. No refusal changes it.
+    #[access(ClientSetup)]
+    fn mod_key_mapping_set_binding(
+        &mut self,
+        mapping: ModKeyMappingRef,
+        key: &str,
+        modifiers: ClientModifiers,
+    ) -> Result<(), ModKeyRefusal>;
+    /// Side: client.
+    /// Restores the declared default key and modifiers as Controls' Reset does and saves
+    /// `sunrise-mods.txt`. Refusals are as for [`ModKeyMappingRef::set_binding`], except this
+    /// operation has no key or modifier arguments to validate.
+    #[access(ClientSetup)]
+    fn mod_key_mapping_reset_binding(
+        &mut self,
+        mapping: ModKeyMappingRef,
+    ) -> Result<(), ModKeyRefusal>;
 }

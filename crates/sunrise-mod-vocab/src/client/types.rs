@@ -78,7 +78,20 @@ pub struct VanillaKeyMappingRef {
     pub(super) slot: usize,
 }
 
-/// Why resolving or using a vanilla key mapping was refused.
+/// A resolved mod key mapping in the current client's registration roster.
+///
+/// Resolve it with `ClientHost::mod_key_mapping` after registration, usually in `client_setup`.
+/// Rebinding, resetting and changing screens do not invalidate it. If the client or its ordered
+/// registration roster is replaced, resolve again. Persist the owner and id, not this handle.
+// no wire: process-local registered key mapping handle
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ModKeyMappingRef {
+    pub(super) registry_generation: std::num::NonZeroU64,
+    pub(super) slot: usize,
+}
+
+/// Why resolving or using a vanilla key mapping, or reading a translated mod key label, was refused.
 // no wire: refusal of a process-local client mapping operation
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]

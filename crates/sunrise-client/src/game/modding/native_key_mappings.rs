@@ -4,9 +4,16 @@
 //! window and the control socket's `mouse`.
 use super::Game;
 use super::key_codes::{gameplay_has_keyboard, glfw_modifiers};
-use mod_api::KeyConflictContext;
-use sunrise_client::keymapping::{KeyAction, MappingContext, ModBinding};
+use mod_api::{ClientModifiers, KeyConflictContext, MappingError, ModKeyMappingRef, ModKeyRefusal};
+use sunrise_client::keymapping::{KeyAction, MappingContext, ModBinding, ModKeySlot, ModKeys};
+use sunrise_client::mod_list::{ALT, CONTROL, SHIFT};
+use sunrise_client::text::Text;
 use winit::{event::MouseButton, keyboard::KeyCode};
+
+fn mod_key_slot(mapping: ModKeyMappingRef) -> ModKeySlot {
+    let (generation, index) = mod_api::__private::mod_key_mapping_parts(mapping);
+    ModKeySlot::from_parts(generation, index)
+}
 
 impl Game<'_> {
     /// Binds the mods' mappings to the player's keys (`sunrise-mods.txt`) or their declared
@@ -38,27 +45,64 @@ impl Game<'_> {
                 }
             }));
     }
-    /// Binds mod `mod_id`'s mapping `name` to `key` with `modifiers`, as Controls binds it
-    /// (`OptionsUi::bind_key`): the mappings are bound again and the settings saved.
-    pub(super) fn set_mod_key(
+    pub(in crate::game) fn mod_key_mapping(
+        &self,
+        owner: &str,
+        id: &str,
+    ) -> Result<ModKeyMappingRef, ModKeyRefusal> {
+        if !self.options.execution_role.is_client() {
+            return Err(ModKeyRefusal::Unavailable);
+        }
+        let slot = self
+            .native_input
+            .mappings
+            .resolve(owner, id)
+            .ok_or(ModKeyRefusal::NotRegistered)?;
+        let (generation, index) = slot.parts();
+        Ok(mod_api::__private::mod_key_mapping_ref(generation, index))
+    }
+
+    pub(in crate::game) fn mod_key_mapping_binding(
+        &self,
+        mapping: ModKeyMappingRef,
+    ) -> Result<(&str, ClientModifiers), ModKeyRefusal> {
+        let row = self
+            .native_input
+            .mappings
+            .get(mod_key_slot(mapping))
+            .ok_or(ModKeyRefusal::Stale)?;
+        let (key, modifiers) = row.binding();
+        Ok((key, ClientModifiers::new(modifiers)))
+    }
+
+    pub(in crate::game) fn mod_key_mapping_translated_key_message(
+        &self,
+        mapping: ModKeyMappingRef,
+    ) -> Result<Text, MappingError> {
+        let row = self
+            .native_input
+            .mappings
+            .get(mod_key_slot(mapping))
+            .ok_or(MappingError::Stale)?;
+        let (key, modifiers) = row.binding();
+        Ok(sunrise_client::options_ui::binding_text(key, modifiers))
+    }
+
+    /// Binds the mapping to `key` with `modifiers`, as Controls does (`OptionsUi::bind_key`):
+    /// the mappings are bound again and the settings saved.
+    pub(in crate::game) fn mod_key_mapping_set_binding(
         &mut self,
-        mod_id: &str,
-        name: &str,
+        mapping: ModKeyMappingRef,
         key: &str,
-        modifiers: mod_api::ClientModifiers,
-    ) -> Result<(), mod_api::ModKeyRefusal> {
-        use mod_api::ModKeyRefusal;
-        self.own_mod_mapping(mod_id, name)?;
+        modifiers: ClientModifiers,
+    ) -> Result<(), ModKeyRefusal> {
+        let (owner, id) = Self::own_mod_mapping(&self.native_input.mappings, mapping)?;
         let known = key == "key.keyboard.unknown"
             || sunrise_client::keybinds::key_code(key).is_some()
             || sunrise_client::keybinds::mouse_button(key).is_some();
         if !known {
             return Err(ModKeyRefusal::UnknownKey);
         }
-        // Shift 1, control 2, alt 4 (`mod_list::SHIFT`, `CONTROL`, `ALT`).
-        const SHIFT: u32 = 1;
-        const CONTROL: u32 = 2;
-        const ALT: u32 = 4;
         if modifiers.bits & !(SHIFT | CONTROL | ALT) != 0 {
             return Err(ModKeyRefusal::UnknownModifiers);
         }
@@ -71,32 +115,33 @@ impl Game<'_> {
         };
         self.settings
             .mods
-            .set_binding(mod_id, name, key, modifiers.bits & !own);
+            .set_binding(owner, id, key, modifiers.bits & !own);
         self.mod_keys_changed();
         Ok(())
     }
-    /// Gives mod `mod_id`'s mapping `name` its declared default back, as Controls' Reset does.
-    pub(super) fn reset_mod_key(
+    /// Gives the mapping its declared default back, as Controls' Reset does.
+    pub(in crate::game) fn mod_key_mapping_reset_binding(
         &mut self,
-        mod_id: &str,
-        name: &str,
-    ) -> Result<(), mod_api::ModKeyRefusal> {
-        self.own_mod_mapping(mod_id, name)?;
-        self.settings.mods.reset_binding(mod_id, name);
+        mapping: ModKeyMappingRef,
+    ) -> Result<(), ModKeyRefusal> {
+        let (owner, id) = Self::own_mod_mapping(&self.native_input.mappings, mapping)?;
+        self.settings.mods.reset_binding(owner, id);
         self.mod_keys_changed();
         Ok(())
     }
-    /// `mod_id`'s registered mapping `name`, asked for by that mod: a native mod running reaches
-    /// only its own mappings.
-    fn own_mod_mapping(&self, mod_id: &str, name: &str) -> Result<(), mod_api::ModKeyRefusal> {
-        if mod_api::content::crash::current_native_mod().is_some_and(|running| running != mod_id) {
-            return Err(mod_api::ModKeyRefusal::NotOwner);
+    /// Resolve the current row before checking the caller: a native mod can only write its own.
+    fn own_mod_mapping(
+        mappings: &ModKeys,
+        mapping: ModKeyMappingRef,
+    ) -> Result<(&str, &str), ModKeyRefusal> {
+        let (owner, id) = mappings
+            .get(mod_key_slot(mapping))
+            .ok_or(ModKeyRefusal::Stale)?
+            .identity();
+        if mod_api::content::crash::current_native_mod().is_some_and(|running| running != owner) {
+            return Err(ModKeyRefusal::NotOwner);
         }
-        mod_api::__private::key_mappings()
-            .iter()
-            .any(|(owner, mapping)| *owner == mod_id && mapping.id == name)
-            .then_some(())
-            .ok_or(mod_api::ModKeyRefusal::NotRegistered)
+        Ok((owner, id))
     }
     /// After a mod changed a binding: the mappings answer to it from the next input, and the
     /// settings are saved as Controls saves them.
@@ -188,22 +233,31 @@ impl Game<'_> {
     }
     /// `KeyMapping.isDown`: held, while its conflict context and modifiers are active. Nothing is
     /// down behind a screen, which released them all.
-    pub(in crate::game) fn is_down(&self, mod_id: &str, id: &str) -> bool {
-        let mappings = &self.native_input.mappings;
-        !self.mod_mappings_screen_open()
-            && mappings
-                .resolve(mod_id, id)
-                .and_then(|slot| mappings.is_down(slot, glfw_modifiers(self.modifiers), false))
-                .unwrap_or(false)
+    pub(in crate::game) fn mod_key_mapping_is_down(
+        &self,
+        mapping: ModKeyMappingRef,
+    ) -> Result<bool, ModKeyRefusal> {
+        let screen_open = self.mod_mappings_screen_open();
+        self.native_input
+            .mappings
+            .is_down(
+                mod_key_slot(mapping),
+                glfw_modifiers(self.modifiers),
+                screen_open,
+            )
+            .map(|down| !screen_open && down)
+            .ok_or(ModKeyRefusal::Stale)
     }
     /// `KeyMapping.consumeClick`. Behind a screen there is none: the screen released them all.
-    pub(in crate::game) fn consume_click(&mut self, mod_id: &str, id: &str) -> bool {
+    pub(in crate::game) fn mod_key_mapping_consume_click(
+        &mut self,
+        mapping: ModKeyMappingRef,
+    ) -> Result<bool, ModKeyRefusal> {
         let screen_open = self.mod_mappings_screen_open();
-        let mappings = &mut self.native_input.mappings;
-        mappings
-            .resolve(mod_id, id)
-            .and_then(|slot| mappings.consume_click(slot, screen_open))
-            .unwrap_or(false)
+        self.native_input
+            .mappings
+            .consume_click(mod_key_slot(mapping), screen_open)
+            .ok_or(ModKeyRefusal::Stale)
     }
 }
 
@@ -230,9 +284,7 @@ mod tests {
                     modifiers: 0,
                     context: sunrise_client::keymapping::MappingContext::InGame,
                 }]);
-            let pending =
-                mod_api::prelude::ClientInputClientHost::mod_key_mapping(game, "test", "pending")
-                    .unwrap();
+            let pending = game.mod_key_mapping("test", "pending").unwrap();
             game.native_input.mappings.input(
                 "key.keyboard.k",
                 sunrise_client::keymapping::KeyAction::Press,

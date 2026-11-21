@@ -93,17 +93,12 @@ boss_bars::boss_bars
 boss_bars::create_boss_bar
 client_input::claim_items
 client_input::clipboard_text
-client_input::consume_click
 client_input::cursor
-client_input::is_down
 client_input::millis
-client_input::mod_key
 client_input::modifiers
 client_input::playing
 client_input::poll
-client_input::reset_mod_key
 client_input::set_clipboard_text
-client_input::set_mod_key
 client_narrator::narrate
 client_options::audio_options
 client_options::chat_options

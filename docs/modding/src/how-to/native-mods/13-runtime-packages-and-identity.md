@@ -16,20 +16,29 @@ hook factories do not supply identity.
 | Content-only mods | These use the working directory, player toggles and explicit `--dev-mod` paths. A content package cannot shadow a compiled mod's id. |
 | Display metadata | The mod list and crash details include code-only mods from the embedded inventory. Display names and descriptions come from validated manifests. |
 
-Declare Controls bindings through `Registrar::register_key_mapping`, and read one on the client with
-`ClientHost::is_down(mod_id, id)` (held) and `ClientHost::consume_click(mod_id, id)` (takes one press off its
-count, as `KeyMapping.consumeClick`). Each press, auto-repeat and mouse press counts while no screen is open and
-the mapping's conflict context and modifiers are active; a screen opening drops the count. A key or mouse
-button sent through the control socket counts as the window's does, and a key fires `input_key` once per press,
-repeat and release, as the window's.
+Declare Controls bindings through `Registrar::register_key_mapping`. In `client_setup`, resolve each
+one with `host.mod_key_mapping(owner, id)` and retain the `ModKeyMappingRef` for later callbacks.
+`mapping.binding(host)` lends the current key name for the host borrow and returns its modifiers;
+`mapping.translated_key_message(host)` builds its current Controls label when you need to display it.
 
-A mod's own screen can change its bindings as the player does in Controls:
-`ClientHost::set_mod_key(mod_id, id, key, modifiers)` binds the mapping to a key or mouse button name
-(`key.keyboard.x`, `key.mouse.left`, `key.keyboard.unknown` for none) with shift (1), control (2) and alt (4),
-and `ClientHost::reset_mod_key(mod_id, id)` gives it its declared default back. The mapping answers to the new
-key from the next input and the binding is saved to `sunrise-mods.txt`; `ClientHost::mod_key` reads it. A
-native mod changes only its own mappings. Each refusal is a `ModKeyRefusal` (`NotRegistered`, `NotOwner`,
-`UnknownKey`, `UnknownModifiers`, `Unavailable`) and changes nothing.
+Use `mapping.is_down(host)` for held state and `mapping.consume_click(host)` to take one pending click
+(`KeyMapping.consumeClick`). Each press, auto-repeat and mouse press counts while no screen is open and
+the mapping's conflict context and modifiers are active. Opening a screen or overlay drops the count.
+Control-socket input counts like window input, and a key fires `input_key` once per press, repeat and release.
+
+A mod's own screen can change its bindings as the player does in Controls. Call
+`mapping.set_binding(host, key, modifiers)` with a key or mouse button name (`key.keyboard.x`,
+`key.mouse.left`, `key.keyboard.unknown` for none) and shift (1), control (2) or alt (4).
+`mapping.reset_binding(host)` restores the declared default. Changes take effect from the next input
+and are saved to `sunrise-mods.txt`. You can read another mod's binding, but attempts to set or reset it
+return `ModKeyRefusal::NotOwner`, even with a valid handle. An invalid key or modifier word returns
+`UnknownKey` or `UnknownModifiers` without changing anything.
+
+An unknown owner or id returns `ModKeyRefusal::NotRegistered` when resolving. A replaced client or
+registration roster makes a retained handle return `Stale`; resolve it again in the new client or roster.
+Rebinding and resetting alone do not make it stale. Save the owner and id, not the handle. `Unavailable`
+means the host or phase has no client input access. The label call reports `Stale` and `Unavailable`
+through `MappingError` and can also return `MappingError::Label` if the text cannot be converted.
 
 `native-mods.json` is provenance and rebuild status, not game identity, authentication, announcements
 or startup input. The launcher retains it for build/status displays. The separate `sunrise-server`

@@ -20,10 +20,30 @@ ids = [
     "handle:VanillaKeyMappingRef::translated_key_message",
     "handle:VanillaKeyMappingRef::set_down",
     "handle:VanillaKeyMappingRef::click",
+    "type:ModKeyMappingRef",
+    "type:ModKeyRefusal",
+    "type:ModKeyRefusal.Stale",
+    "type:ModKeyRefusal.Unavailable",
+    "method:prelude::ClientInputClientHost::mod_key",
+    "method:prelude::ClientInputClientHost::is_down",
+    "method:prelude::ClientInputClientHost::consume_click",
+    "method:prelude::ClientInputClientHost::set_mod_key",
+    "method:prelude::ClientInputClientHost::reset_mod_key",
+    "method:prelude::ClientInputClientHost::mod_key_mapping",
+    "handle:ModKeyMappingRef::binding",
+    "handle:ModKeyMappingRef::is_down",
+    "handle:ModKeyMappingRef::translated_key_message",
+    "handle:ModKeyMappingRef::consume_click",
+    "handle:ModKeyMappingRef::set_binding",
+    "handle:ModKeyMappingRef::reset_binding",
 ]
-why = "A mod resolves a vanilla mapping once, then uses the handle to read live state and to hold or click a gameplay mapping without another name lookup. Reads no longer hash a binding or build a label snapshot: the label is built only on request. Handles cannot read or change another client's input. MappingError is a local refusal, not a Wire value."
+why = "Resolve vanilla and mod key mappings once, then use retained handles for live reads and writes without repeated name lookups. A binding name is borrowed, not copied or hashed, and its Controls label is built only when requested. A stale handle cannot touch another client or registration roster. Registered key rebinding still checks the current caller's ownership and saves by name. MappingError is a local refusal, not a Wire value."
 migrate = """
 Resolve `let jump = host.vanilla_key_mapping("key.jump")?;` during `client_setup` (import `mod_api::prelude::*`) and store the `VanillaKeyMappingRef` for later callbacks. Replace `host.mapping(name)?.map(|m| m.down)` with `jump.is_down(host)` and `host.mapping(name)?.map(|m| m.label)` with `jump.translated_key_message(host)`. Handle `MappingError::Label(error)` instead of a bare `TextFormError` from the label read. Replace `host.mapping_state(name)` with separate `jump.is_down(host)` and `jump.binding(host)` calls. The latter lends the actual binding name for the host borrow; compare it directly, or copy the name if you need it after the callback. No hash is returned. Replace `host.mapping_physical_down(name)` with `jump.physical_down(host)`; this gives `Ok(bool)`, where unbound is `Ok(false)`, or a `MappingError`. Unknown names now return `Unknown { key }` at resolution. Known mappings without tracked logical held state return `NoLogicalState` from `is_down`. Resolve again if a handle reports `Stale` on a new client. Persist canonical names, not the handle or a `MappingError`; if you need to send a refusal, define your own Wire record for the facts you need. An unavailable backend or phase returns `Unavailable`.
 
 Replace `host.set_mapping_down(name, down)` with `mapping.set_down(host, down)` and `host.click_mapping(name)` with `mapping.click(host)`, using the handle resolved once for `name`. Write in the world phase with a player present. Outside that phase, handle `MappingError::Unavailable` instead of an unwind; without a player, handle `NoWorld`. Other categories can resolve but writes still return `NotGameplay { key }`, and `key.pickItem` still returns `ClickOnly { key }` from `set_down`; use `click` for it. Both writes return `Stale` for a handle from another client and leave the live mapping unchanged.
+
+For registered mod mappings, call `let zoom = host.mod_key_mapping("mymod", "zoom")?;` during `client_setup` and keep the `ModKeyMappingRef`. Replace `host.mod_key(owner, id)` with `zoom.binding(host)`: it returns `Ok((&str, ClientModifiers))`, with the name borrowed for the host borrow. Replace `host.is_down(owner, id)` with `zoom.is_down(host)` and `host.consume_click(owner, id)` with `zoom.consume_click(host)`; both now return `Result<bool, ModKeyRefusal>`. Replace `host.set_mod_key(owner, id, key, modifiers)` with `zoom.set_binding(host, key, modifiers)` and `host.reset_mod_key(owner, id)` with `zoom.reset_binding(host)`. Only the owner may set or reset a binding; invalid arguments still return `UnknownKey` or `UnknownModifiers` without changing anything. To display the live bound key and modifiers as Controls shows them, use `zoom.translated_key_message(host)`; it returns `MappingError::Label` if conversion fails.
+
+Handle `ModKeyRefusal::NotRegistered` at resolution instead of an operation (or an old `None` or `false`). `Stale` means the client or ordered registration roster changed; resolve again, but do not resolve again for a rebind or reset. `Unavailable` means the host or phase does not offer client mapping access. The label read reports the last two cases via `MappingError`. Persist the owner and id, not the handle.
 """
