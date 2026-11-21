@@ -118,6 +118,56 @@ fn quad_iteration_reports_the_remaining_count_and_reads_both_ends() {
 }
 
 #[test]
+fn quad_iteration_skips_without_fetching_the_skipped_quads() {
+    use std::sync::Mutex;
+
+    struct RecordingGeometry {
+        model: BakedModel,
+        fetched: Mutex<Vec<usize>>,
+    }
+
+    impl BakedQuadSource for RecordingGeometry {
+        fn len(&self) -> usize {
+            self.model.len()
+        }
+
+        fn quad(&self, index: usize) -> Option<BakedQuad<'_>> {
+            self.fetched.lock().unwrap().push(index);
+            self.model.quad(index)
+        }
+    }
+
+    let geometry = RecordingGeometry {
+        model: BakedModel {
+            ambient_occlusion: true,
+            particle: None,
+            faces: (0..7)
+                .map(|_| {
+                    BakedFace::new(
+                        quad(FaceDirection::Up, None, "fixture:block/stone"),
+                        0,
+                        false,
+                        false,
+                        None,
+                    )
+                })
+                .collect(),
+            cube: None,
+        },
+        fetched: Mutex::new(Vec::new()),
+    };
+    let mut quads = built::baked_model_view(true, None, &geometry).quads();
+
+    assert!(quads.nth(2).is_some());
+    assert_eq!(geometry.fetched.lock().unwrap().as_slice(), &[2]);
+    assert_eq!(quads.len(), 4);
+
+    assert!(quads.nth_back(1).is_some());
+    assert_eq!(geometry.fetched.lock().unwrap().as_slice(), &[2, 5]);
+    assert_eq!(quads.len(), 2);
+}
+
+#[test]
 fn quad_count_and_unequal_lengths_do_not_read_geometry() {
     struct UnreadGeometry(usize);
     impl BakedQuadSource for UnreadGeometry {
