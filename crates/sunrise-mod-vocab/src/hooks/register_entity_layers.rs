@@ -60,9 +60,10 @@ fn register_entity_layers(
 }
 ```
 
-The event tells what renderers this load built: `entity_types()` lists every entity type with a renderer,
-`is_living(type)` says whether it is a living entity's, `player_models()` lists `Wide` and `Slim`, and
-`has_mod_renderer(type)` whether a mod registered the type's renderer. No renderer object crosses the API.
+The event tells what renderers this load built: `entity_types()` borrows the sorted slice of every entity
+type with a renderer, `is_living(type)` says whether it is a living entity's, `player_models()` borrows
+the `[Wide, Slim]` slice, and `has_mod_renderer(type)` whether a mod registered the type's renderer. No
+renderer object crosses the API.
 
 A layer attaches only to a living renderer, a mod's own included: `add` refuses a target that is no entity
 type, a type whose renderer isn't a living one (a boat, a display, a projectile), `minecraft:player`,
@@ -75,15 +76,17 @@ frame (at its feet, turned with its body, as `render_living_pre` draws). `entity
 and `entity.pitch` the head's. `model` lends the final body hierarchy for the callback, including for
 nonhumanoids, or `None` if no body pose was produced (such as after a successful replacement
 renderer). Read a named part or follow the hierarchy and compose its parent transforms to attach
-geometry. A layer that returns an `Err` or panics is logged once with the error
-and asked no more until the next resource load adds it again; what it drew that frame is dropped. The layers draw on the mobs (vanilla's and the content mods'
+geometry. A layer that returns an `Err` rolls back what it drew that frame, logs a warning, and stays
+active for later draws while the other layers still run. A layer that panics rolls back what it drew that
+frame and disables only that layer for the rest of the session (including across reloads), with an error
+log and an in-game error toast naming the mod. The layers draw on the mobs (vanilla's and the content mods'
 living types) and the players; the armour stand and the ender dragon take them once their own draws run
 layers, in a follow-up of #860, which lifts their refusal."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 4,
+        version = 5,
         contract = "listen",
         context = "registration",
         neoforge = "EntityRenderersEvent.AddLayers"

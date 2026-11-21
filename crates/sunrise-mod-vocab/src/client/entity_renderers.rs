@@ -141,10 +141,13 @@ pub trait EntityRenderer: Send + Sync + 'static {
     /// the partial tick, the game time and the entity's light. Asked once a frame for each entity
     /// of the type in view; a general entity is drawn only after its first synced attachment
     /// generation is published. What this method draws replaces the type's own drawing. A frame
-    /// is drawn afresh: `draw.keep()` does nothing here. `Ok(())` keeps what it drew. On an `Err` or
-    /// panic, what it drew this frame is dropped, the error is logged once, and the renderer
-    /// is asked no more until the next resource load resolves it again. Until then its type
-    /// draws as it would without a registered renderer.
+    /// is drawn afresh: `draw.keep()` does nothing here. `Ok(())` keeps what it drew. On an `Err`,
+    /// what it drew this frame is rolled back, the error is logged as a warning, that draw falls
+    /// back to what the type would draw without a registered renderer, and the renderer stays
+    /// active for later draws. On a panic, what it drew this frame is rolled back and only this
+    /// renderer is disabled for the rest of the session (including across reloads), with an error
+    /// log and an in-game error toast naming the mod; until the session ends its type draws as it
+    /// would without a registered renderer.
     fn submit(
         &self,
         entity: &EntityRenderState,
@@ -167,18 +170,23 @@ pub trait EntityRenderers {
 #[derive(Default)]
 // exhaustive: its field is private; the game builds it
 pub struct EntityRendererRegistry {
-    renderers: BTreeMap<String, Arc<dyn EntityRenderer>>,
+    renderers: BTreeMap<String, (Option<&'static str>, Arc<dyn EntityRenderer>)>,
 }
 
 impl EntityRenderers for EntityRendererRegistry {
     fn register(&mut self, entity_type: String, renderer: Arc<dyn EntityRenderer>) {
-        self.renderers.insert(entity_type, renderer);
+        let owner = crate::content::crash::current_native_mod();
+        self.renderers.insert(entity_type, (owner, renderer));
     }
 }
 
 impl EntityRendererRegistry {
-    /// Each type's renderer, the last registration for a type winning.
-    pub fn into_renderers(self) -> BTreeMap<String, Arc<dyn EntityRenderer>> {
+    /// Each type's winning `(Option<&'static str>, Arc<dyn EntityRenderer>)` pair, the last
+    /// registration for a type winning. The optional string is the owning mod's ID, or `None` for
+    /// a registration made outside a mod call.
+    pub fn into_renderers(
+        self,
+    ) -> BTreeMap<String, (Option<&'static str>, Arc<dyn EntityRenderer>)> {
         self.renderers
     }
 }
@@ -229,8 +237,10 @@ mod tests {
             attachments: None,
         };
         let (mut bolt, mut dart) = (Light::default(), Light::default());
-        renderers["mymod:bolt"].submit(&state, &mut bolt).unwrap();
-        renderers["mymod:dart"].submit(&state, &mut dart).unwrap();
+        assert_eq!(renderers["mymod:bolt"].0, None);
+        assert_eq!(renderers["mymod:dart"].0, None);
+        renderers["mymod:bolt"].1.submit(&state, &mut bolt).unwrap();
+        renderers["mymod:dart"].1.submit(&state, &mut dart).unwrap();
         assert_eq!((bolt.0, dart.0), (3, 2));
     }
 }

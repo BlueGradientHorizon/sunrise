@@ -3,7 +3,7 @@
 //! by its type's renderer at the frame's interpolated pose, with its synced attachments; a renderer that fails is dropped until resources reload; a type
 //! with no renderer draws nothing.
 use super::Game;
-use super::native_entity_renderers::EntityRendererTable;
+use super::native_entity_renderers::{EntityRendererTable, RegisteredEntityRenderer};
 use crate::game::general::GeneralTypeCatalog;
 use mod_api::{
     AttachmentCodec, AttachmentError, AttachmentType, BlockEntityDrawContext, EntityRenderState,
@@ -56,9 +56,9 @@ fn a_general_types_renderer_resolves_to_its_slot_and_a_type_without_one_is_named
     let catalog =
         GeneralTypeCatalog::freeze(&[declaration("test:missile"), declaration("test:plain")])
             .unwrap();
-    let registered: BTreeMap<String, Arc<dyn EntityRenderer>> = [(
+    let registered: BTreeMap<String, RegisteredEntityRenderer> = [(
         "test:missile".to_owned(),
-        Arc::new(Blank) as Arc<dyn EntityRenderer>,
+        RegisteredEntityRenderer::new(Arc::new(Blank), None),
     )]
     .into();
     let (table, unknown) =
@@ -503,25 +503,38 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
     );
 }
 
-/// A panicking renderer draws nothing and is asked no more until a reload resolves it again; a
-/// type with no renderer draws nothing, and neither stops the others.
+/// A panicking renderer rolls back its draw, stays disabled for the session (including across a
+/// resource reload), and queues an error toast naming the mod; a type with no renderer draws
+/// nothing, and neither stops the other renderers from the same mod.
 #[test]
 #[ignore = "daily"]
-fn a_failing_renderer_is_dropped_until_reload_and_a_type_without_one_draws_nothing() {
+fn a_panicking_renderer_stays_disabled_across_reload_and_a_type_without_one_draws_nothing() {
     in_scene(
-        "a_failing_renderer_is_dropped_until_reload_and_a_type_without_one_draws_nothing",
+        "a_panicking_renderer_stays_disabled_across_reload_and_a_type_without_one_draws_nothing",
         |game, scene| {
-            for _ in 0..2 {
-                assert_eq!(frame(game, 1.0).len(), 4, "the missile alone");
-                assert_eq!(scene.bomb.calls.load(Ordering::Relaxed), 1);
-            }
+            let _ = mod_api::__private::game::take_callback_panic_notices();
+            assert_eq!(frame(game, 1.0).len(), 4, "the missile alone");
+            assert_eq!(scene.bomb.calls.load(Ordering::Relaxed), 1);
+            let notices = mod_api::__private::game::take_callback_panic_notices();
+            assert!(
+                notices.iter().any(|n| n.mod_id == "test"
+                    && n.kind == "entity renderer"
+                    && n.operation == "EntityRenderer::submit"),
+                "panicking renderer queues a panic notice naming its mod: {notices:?}"
+            );
+
+            assert_eq!(frame(game, 1.0).len(), 4, "the missile alone on next frame");
+            assert_eq!(scene.bomb.calls.load(Ordering::Relaxed), 1);
+            assert!(mod_api::__private::game::take_callback_panic_notices().is_empty());
+
             super::model_baking_completed_tests::reload(game);
             assert_eq!(frame(game, 1.0).len(), 4);
             assert_eq!(
                 scene.bomb.calls.load(Ordering::Relaxed),
-                2,
-                "asked again after it"
+                1,
+                "stays disabled across resource reload for the rest of the session"
             );
+            assert!(mod_api::__private::game::take_callback_panic_notices().is_empty());
             // The reload kept the rows.
             assert_eq!(game.remote.as_ref().unwrap().general.rows.len(), 3);
         },

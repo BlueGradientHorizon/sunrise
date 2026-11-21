@@ -8,18 +8,18 @@
 use super::{
     Game,
     entity_type_rows::EntityTypeRows,
-    native_entity_renderers::Resolved,
+    native_entity_renderers::RegisteredEntityRenderer,
     native_mob_draw::{entity_render_state, mob_pose},
 };
 use glam::DVec3;
 use mod_api::{
-    __private::game::RegistrationContextNew, EntityLayers, EntityRenderLayer, EntityRenderer,
-    FrameModel, LayerTarget, PlayerModel, RegistrationContext,
+    __private::game::{CallbackOwner, RegistrationContextNew},
+    EntityLayers, EntityRenderLayer, FrameModel, LayerTarget, PlayerModel, RegistrationContext,
 };
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{
-        Arc, PoisonError, RwLock,
+        Arc, LazyLock, Mutex, PoisonError, RwLock,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -32,8 +32,54 @@ use sunrise_client::{
 /// The player's entity type: its renderers are the player models', so its layers go to those.
 const PLAYER: &str = "minecraft:player";
 
+/// The player models, each with a renderer of its own.
+const PLAYER_MODELS: [PlayerModel; 2] = [PlayerModel::Wide, PlayerModel::Slim];
+
+/// One registered entity layer and its session callback owner (if added by a mod).
+pub(in crate::game) struct RegisteredLayer {
+    pub(super) layer: Arc<dyn EntityRenderLayer>,
+    pub(super) owner: Option<CallbackOwner>,
+}
+
+impl RegisteredLayer {
+    pub(super) fn new(layer: Arc<dyn EntityRenderLayer>, owner: Option<CallbackOwner>) -> Self {
+        Self { layer, owner }
+    }
+
+    pub(in crate::game) fn is_enabled(&self) -> bool {
+        self.owner.as_ref().is_none_or(CallbackOwner::is_enabled)
+    }
+}
+
 /// One target's layers, in the order they were added.
-pub(in crate::game) type Layers = Arc<[Resolved<dyn EntityRenderLayer>]>;
+pub(in crate::game) type Layers = Arc<[RegisteredLayer]>;
+
+/// What target a retained layer owner belongs to, for keeping session poison state across reloads.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum LayerOwnerTarget {
+    Entity(String),
+    Player(PlayerModel),
+}
+
+type LayerOwnerKey = (&'static str, LayerOwnerTarget, usize);
+
+/// Session callback owners for entity layers, keyed by `(mod_id, target, per-mod-target ordinal)`.
+/// Keeping these across resource reloads ensures a panicking layer stays disabled for the session
+/// while sibling layers of the same mod and other mods stay active.
+static LAYER_OWNERS: LazyLock<Mutex<HashMap<LayerOwnerKey, CallbackOwner>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn session_layer_owner(
+    mod_id: &'static str,
+    target: LayerOwnerTarget,
+    ordinal: usize,
+) -> CallbackOwner {
+    let mut owners = LAYER_OWNERS.lock().unwrap_or_else(PoisonError::into_inner);
+    owners
+        .entry((mod_id, target, ordinal))
+        .or_insert_with(|| CallbackOwner::for_mod(mod_id))
+        .clone()
+}
 
 /// Whether the last load resolved any layer: a frame checks only this when none was added.
 static ANY: AtomicBool = AtomicBool::new(false);
@@ -45,28 +91,40 @@ static TABLE: RwLock<Option<LayerTable>> = RwLock::new(None);
 /// what this load's renderers are, and the layers added to each target.
 pub(super) struct LayerRegistration<'a> {
     rows: &'a EntityTypeRows,
-    mod_renderers: &'a BTreeMap<String, Arc<dyn EntityRenderer>>,
+    mod_renderers: &'a BTreeMap<String, RegisteredEntityRenderer>,
     /// Whether a living type draws where layers run (as a mob).
     routed: &'a dyn Fn(&str) -> bool,
-    entity: BTreeMap<String, Vec<Arc<dyn EntityRenderLayer>>>,
-    wide: Vec<Arc<dyn EntityRenderLayer>>,
-    slim: Vec<Arc<dyn EntityRenderLayer>>,
+    owner_counts: HashMap<(&'static str, LayerOwnerTarget), usize>,
+    entity: BTreeMap<String, Vec<RegisteredLayer>>,
+    wide: Vec<RegisteredLayer>,
+    slim: Vec<RegisteredLayer>,
 }
 
 impl<'a> LayerRegistration<'a> {
     pub(super) fn new(
         rows: &'a EntityTypeRows,
-        mod_renderers: &'a BTreeMap<String, Arc<dyn EntityRenderer>>,
+        mod_renderers: &'a BTreeMap<String, RegisteredEntityRenderer>,
         routed: &'a dyn Fn(&str) -> bool,
     ) -> Self {
         Self {
             rows,
             mod_renderers,
             routed,
+            owner_counts: HashMap::new(),
             entity: BTreeMap::new(),
             wide: Vec::new(),
             slim: Vec::new(),
         }
+    }
+
+    fn next_owner(&mut self, target: LayerOwnerTarget) -> Option<CallbackOwner> {
+        let mod_id = mod_api::content::crash::current_native_mod()?;
+        let ordinal = self
+            .owner_counts
+            .entry((mod_id, target.clone()))
+            .and_modify(|count| *count += 1)
+            .or_insert(0);
+        Some(session_layer_owner(mod_id, target, *ordinal))
     }
 
     /// Why `id` can't take a layer; none for a living entity type.
@@ -86,21 +144,16 @@ impl<'a> LayerRegistration<'a> {
 }
 
 impl EntityLayers for LayerRegistration<'_> {
-    fn entity_types(&self) -> Vec<String> {
-        self.rows
-            .ids
-            .iter()
-            .filter(|id| *id != PLAYER)
-            .cloned()
-            .collect()
+    fn entity_types(&self) -> &[String] {
+        &self.rows.non_player_ids
     }
 
     fn is_living(&self, entity_type: &str) -> bool {
         entity_type != PLAYER && self.rows.is_living(entity_type)
     }
 
-    fn player_models(&self) -> Vec<PlayerModel> {
-        vec![PlayerModel::Wide, PlayerModel::Slim]
+    fn player_models(&self) -> &[PlayerModel] {
+        &PLAYER_MODELS
     }
 
     fn has_mod_renderer(&self, entity_type: &str) -> bool {
@@ -113,15 +166,25 @@ impl EntityLayers for LayerRegistration<'_> {
         layer: Arc<dyn EntityRenderLayer>,
     ) -> Result<(), String> {
         match target {
-            LayerTarget::Player(PlayerModel::Wide) => self.wide.push(layer),
-            LayerTarget::Player(PlayerModel::Slim) => self.slim.push(layer),
+            LayerTarget::Player(PlayerModel::Wide) => {
+                let owner = self.next_owner(LayerOwnerTarget::Player(PlayerModel::Wide));
+                self.wide.push(RegisteredLayer::new(layer, owner));
+            }
+            LayerTarget::Player(PlayerModel::Slim) => {
+                let owner = self.next_owner(LayerOwnerTarget::Player(PlayerModel::Slim));
+                self.slim.push(RegisteredLayer::new(layer, owner));
+            }
             LayerTarget::Entity(id) => {
                 if let Some(why) = self.refusal(&id) {
                     let why = format!("the entity layer for {id} is refused: {why}");
                     log::warn!("Sunrise: {why}");
                     return Err(why);
                 }
-                self.entity.entry(id).or_default().push(layer);
+                let owner = self.next_owner(LayerOwnerTarget::Entity(id.clone()));
+                self.entity
+                    .entry(id)
+                    .or_default()
+                    .push(RegisteredLayer::new(layer, owner));
             }
         }
         Ok(())
@@ -144,8 +207,8 @@ impl LayerTable {
         registration: LayerRegistration<'_>,
         mob_types: &HashMap<String, Arc<MobType>>,
     ) -> Self {
-        let resolved = |layers: Vec<Arc<dyn EntityRenderLayer>>| -> Option<Layers> {
-            (!layers.is_empty()).then(|| layers.into_iter().map(Resolved::new).collect())
+        let resolved = |layers: Vec<RegisteredLayer>| -> Option<Layers> {
+            (!layers.is_empty()).then(|| Arc::from(layers))
         };
         let mobs = registration
             .entity
@@ -186,7 +249,11 @@ impl Game<'_> {
             return None;
         }
         let table = TABLE.read().unwrap_or_else(PoisonError::into_inner);
-        table.as_ref()?.of(mob).cloned()
+        table
+            .as_ref()?
+            .of(mob)
+            .filter(|layers| layers.iter().any(RegisteredLayer::is_enabled))
+            .cloned()
     }
 
     /// Asks the mods for their layers on the renderers this load built (`rows` its entity types,
@@ -194,7 +261,7 @@ impl Game<'_> {
     pub(super) fn resolve_entity_layers(
         &self,
         rows: &EntityTypeRows,
-        mod_renderers: &BTreeMap<String, Arc<dyn EntityRenderer>>,
+        mod_renderers: &BTreeMap<String, RegisteredEntityRenderer>,
     ) {
         let mob_types = self.res.mob_types();
         let routed = |id: &str| mob_types.contains_key(id);
@@ -231,7 +298,9 @@ impl Game<'_> {
         let block = [feet.x, feet.y, feet.z].map(|c| c.floor() as i32);
         for layer in layers.iter() {
             self.guarded_entity_draw(
-                &layer.failed,
+                layer.owner.as_ref(),
+                "entity layer",
+                "EntityRenderLayer::submit",
                 partial,
                 &mob.kind.id,
                 block,
@@ -239,7 +308,7 @@ impl Game<'_> {
                 light,
                 None,
                 out,
-                |draw| layer.inner.submit(&entity, model, draw),
+                |draw| layer.layer.submit(&entity, model, draw),
             );
         }
     }
