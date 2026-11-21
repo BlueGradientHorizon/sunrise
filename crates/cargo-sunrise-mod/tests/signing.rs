@@ -6,8 +6,29 @@ use std::{
 
 fn tool(project: &Path) -> Command {
     let mut tool = Command::new(env!("CARGO_BIN_EXE_cargo-sunrise-mod"));
-    tool.current_dir(project);
+    tool.current_dir(project)
+        .env("XDG_DATA_HOME", project.parent().unwrap().join("data"))
+        .env("LOCALAPPDATA", project.parent().unwrap().join("data"))
+        .env("HOME", project.parent().unwrap().join("home"));
     tool
+}
+
+const MANIFEST: &str = "id = 'signing_test'\nname = 'Signing test'\nversion = '1.0.0'\n";
+
+fn project(temp: &tempfile::TempDir) -> std::path::PathBuf {
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    fs::write(project.join("sunrise-mod.toml"), MANIFEST).unwrap();
+    project
+}
+
+fn default_keys(temp: &tempfile::TempDir) -> std::path::PathBuf {
+    let base = if cfg!(target_os = "macos") {
+        "home/Library/Application Support"
+    } else {
+        "data"
+    };
+    temp.path().join(base).join("sunrise-mod/keys/signing_test")
 }
 
 fn success(output: Output) -> String {
@@ -23,7 +44,8 @@ fn success(output: Output) -> String {
 #[ignore = "daily"]
 fn keygen_writes_registry_key_and_refuses_to_replace_either_file() {
     let temp = tempfile::tempdir().unwrap();
-    let project = temp.path();
+    let project_dir = project(&temp);
+    let project = project_dir.as_path();
     let public = success(
         tool(project)
             .args(["keygen", "--no-password"])
@@ -32,8 +54,8 @@ fn keygen_writes_registry_key_and_refuses_to_replace_either_file() {
     );
     let key = public.trim();
     minisign_verify::PublicKey::from_base64(key).unwrap();
-    let secret_file = project.join(".sunrise/signing.key");
-    let public_file = project.join(".sunrise/signing.pub");
+    let secret_file = default_keys(&temp).join("signing.key");
+    let public_file = default_keys(&temp).join("signing.pub");
     let secret = fs::read(&secret_file).unwrap();
     assert_eq!(
         fs::read_to_string(&public_file).unwrap().lines().last(),
@@ -42,6 +64,14 @@ fn keygen_writes_registry_key_and_refuses_to_replace_either_file() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(default_keys(&temp))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
         assert_eq!(
             fs::metadata(&secret_file).unwrap().permissions().mode() & 0o077,
             0
@@ -56,18 +86,60 @@ fn keygen_writes_registry_key_and_refuses_to_replace_either_file() {
     assert!(refused.stdout.is_empty());
     assert!(fs::read(&secret_file).unwrap() == secret);
 
-    fs::create_dir(project.join("other")).unwrap();
-    fs::write(project.join("other/signing.pub"), b"keep me").unwrap();
+    fs::create_dir(project.join(".sunrise")).unwrap();
+    fs::write(project.join(".sunrise/signing.pub"), b"keep me").unwrap();
     let refused = tool(project)
-        .args(["keygen", "--no-password", "--out", "other"])
+        .args(["keygen", "--no-password", "--out", ".sunrise"])
         .output()
         .unwrap();
     assert!(!refused.status.success());
     assert_eq!(
-        fs::read(project.join("other/signing.pub")).unwrap(),
+        fs::read(project.join(".sunrise/signing.pub")).unwrap(),
         b"keep me"
     );
-    assert!(!project.join("other/signing.key").exists());
+    assert!(!project.join(".sunrise/signing.key").exists());
+}
+
+#[test]
+#[ignore = "daily"]
+fn keygen_rejects_destinations_inside_package_inputs() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = project(&temp);
+    for path in [".", "assets/signing_test/.sunrise"] {
+        // No terminal: the path must be refused before the passphrase prompt.
+        let output = tool(&project)
+            .args(["keygen", "--out", path])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("inside the mod's package inputs")
+        );
+        assert!(!project.join(path).join("signing.key").exists());
+    }
+}
+
+#[test]
+fn packing_refuses_copied_minisign_private_keys_but_allows_the_public_key() {
+    use sunrise_mod_package::Package;
+    let pair = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+    let public = pair.pk.to_box().unwrap().into_string();
+    let raw = pair.sk.to_bytes();
+    let text = pair
+        .sk
+        .to_box(Some("renamed fixture"))
+        .unwrap()
+        .into_string()
+        .replace('\n', "\r\n");
+    let path = "assets/signing_test/.sunrise/renamed.txt";
+    for secret in [text.as_bytes(), &raw] {
+        let error = Package::write_files(MANIFEST, &[(path, secret)]).unwrap_err();
+        assert_eq!(
+            error,
+            format!("{path}: a Minisign private key cannot be packaged")
+        );
+    }
+    Package::write_files(MANIFEST, &[(path, public.as_bytes())]).unwrap();
 }
 
 const KEY_ENV: &str = "SUNRISE_MOD_SIGNING_KEY";
@@ -77,7 +149,8 @@ const PASSPHRASE_ENV: &str = "SUNRISE_MOD_SIGNING_PASSPHRASE";
 #[ignore = "daily"]
 fn the_registry_verifies_the_detached_signature_of_the_exact_file() {
     let temp = tempfile::tempdir().unwrap();
-    let project = temp.path();
+    let project_dir = project(&temp);
+    let project = project_dir.as_path();
     let public = success(
         tool(project)
             .args(["keygen", "--no-password"])
@@ -87,7 +160,7 @@ fn the_registry_verifies_the_detached_signature_of_the_exact_file() {
     let key = minisign_verify::PublicKey::from_base64(public.trim()).unwrap();
     let wrong = success(
         tool(project)
-            .args(["keygen", "--no-password", "--out", "other"])
+            .args(["keygen", "--no-password", "--out", ".sunrise"])
             .output()
             .unwrap(),
     );
@@ -115,8 +188,8 @@ fn the_registry_verifies_the_detached_signature_of_the_exact_file() {
         first
     );
 
-    let secret = fs::read_to_string(project.join(".sunrise/signing.key")).unwrap();
-    fs::remove_file(project.join(".sunrise/signing.key")).unwrap();
+    let secret = fs::read_to_string(default_keys(&temp).join("signing.key")).unwrap();
+    fs::remove_file(default_keys(&temp).join("signing.key")).unwrap();
     fs::write(project.join("build.tar.xz"), bytes).unwrap();
     let output = tool(project)
         .args(["sign", "build.tar.xz", "--key-env"])
@@ -151,7 +224,8 @@ fn the_registry_verifies_the_detached_signature_of_the_exact_file() {
 #[ignore = "daily"]
 fn ci_unlocks_an_encrypted_key_only_with_its_explicit_passphrase() {
     let temp = tempfile::tempdir().unwrap();
-    let project = temp.path();
+    let project_dir = project(&temp);
+    let project = project_dir.as_path();
     let passphrase = "fixture passphrase";
     let pair = minisign::KeyPair::generate_encrypted_keypair(Some(passphrase.into())).unwrap();
     let secret = pair.sk.to_box(None).unwrap().into_string();

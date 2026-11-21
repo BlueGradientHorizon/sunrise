@@ -5,7 +5,12 @@ use crate::{
     release,
 };
 use minisign::{KeyPair, PublicKey, SecretKey};
-use std::{env, fs, io, io::Write, path::Path};
+use std::{
+    env, fs, io,
+    io::Write,
+    path::{Component, Path, PathBuf},
+};
+use sunrise_mod_package::manifest::{MANIFEST, Manifest, NOT_PACKAGED};
 
 const KEY_NAME: &str = "signing.key";
 const PUBLIC_NAME: &str = "signing.pub";
@@ -15,10 +20,14 @@ const KEY_LIMIT: u64 = 16 << 10;
 
 pub(crate) fn keygen(args: &[String]) -> Result<(), String> {
     let mut options = Options::new("keygen", args, &["--out"]);
-    let out = options.value("--out")?.unwrap_or(".sunrise");
+    let out = options.value("--out")?;
     let no_password = options.switch("--no-password");
     options.finish()?;
-    let out = release::output_dir(Path::new(out))?;
+    let path = match out {
+        Some(path) => PathBuf::from(path),
+        None => default_key_directory()?,
+    };
+    let out = key_directory(&path)?;
     let secret = out.join(KEY_NAME);
     let public = out.join(PUBLIC_NAME);
     require_absent(&secret)?;
@@ -47,7 +56,13 @@ pub(crate) fn keygen(args: &[String]) -> Result<(), String> {
         .pk
         .to_box()
         .map_err(|_| "could not encode the new public key")?;
-    fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+    let mut directories = fs::DirBuilder::new();
+    directories.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut directories, 0o700);
+    directories
+        .create(&out)
+        .map_err(|e| format!("{}: {e}", out.display()))?;
     write_new(&secret, &secret_box.to_bytes())?;
     write_new(&public, &public_box.to_bytes())
         .map_err(|e| format!("{e}; the private key was saved at {}", secret.display()))?;
@@ -58,6 +73,50 @@ pub(crate) fn keygen(args: &[String]) -> Result<(), String> {
     );
     println!("{}", pair.pk.to_base64());
     Ok(())
+}
+
+fn default_key_directory() -> Result<PathBuf, String> {
+    let text = fs::read_to_string(MANIFEST)
+        .map_err(|e| format!("{MANIFEST}: {e}; run in the mod project or give an explicit path"))?;
+    let id = Manifest::parse(&text)?.id;
+    Ok(crate::dev::data_dir()?.join("keys").join(id))
+}
+
+/// A signing key must be outside any mod's input tree or in a top-level excluded directory.
+fn key_directory(path: &Path) -> Result<PathBuf, String> {
+    let absolute = std::path::absolute(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut out = PathBuf::new();
+    for part in absolute.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            _ => out.push(part.as_os_str()),
+        }
+    }
+    let out = release::output_dir(&out)?;
+    for project in out.ancestors() {
+        let manifest = project.join(MANIFEST);
+        match fs::symlink_metadata(&manifest) {
+            Ok(_) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("{}: {e}", manifest.display())),
+        }
+        let relative = out.strip_prefix(project).expect("ancestor of output");
+        let excluded = relative.components().next().is_some_and(|part| {
+            part.as_os_str()
+                .to_str()
+                .is_some_and(|name| NOT_PACKAGED.contains(&name))
+        });
+        if !excluded {
+            return Err(format!(
+                "{} is inside the mod's package inputs: use .sunrise/ or a folder outside the project",
+                out.display()
+            ));
+        }
+    }
+    Ok(out)
 }
 
 pub(crate) fn sign(args: &[String]) -> Result<(), String> {
@@ -101,8 +160,11 @@ pub(crate) fn sign(args: &[String]) -> Result<(), String> {
             )
         })?
     } else {
-        let key_path = Path::new(key_file.unwrap_or(".sunrise/signing.key"));
-        let text = String::from_utf8(bounded::read_bytes(key_path, KEY_LIMIT, Symlinks::Refuse)?)
+        let key_path = match key_file {
+            Some(path) => PathBuf::from(path),
+            None => default_key_directory()?.join(KEY_NAME),
+        };
+        let text = String::from_utf8(bounded::read_bytes(&key_path, KEY_LIMIT, Symlinks::Refuse)?)
             .map_err(|_| format!("{}: expected Minisign key text", key_path.display()))?;
         let boxed = text.into();
         if no_password {

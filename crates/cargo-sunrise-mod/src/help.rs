@@ -56,13 +56,13 @@ const COMMANDS: &[Command] = &[
         name: "keygen",
         everyday: false,
         usage: "keygen [--out <dir>] [--no-password]",
-        summary: "Makes a Minisign key pair in .sunrise/ (or --out) and prints the public key. The private key is encrypted unless --no-password is given. Never overwrites either key.",
+        summary: "Makes a Minisign key pair in the mod’s per-user key folder (or --out) and prints the public key. The private key is encrypted unless --no-password is given. Never overwrites either key.",
     },
     Command {
         name: "sign",
         everyday: false,
         usage: "sign <file> [--key <private key path>] [--no-password] | sign <file> --key-env",
-        summary: "Writes the detached .minisig beside <file> without replacing it. Uses .sunrise/signing.key unless --key is given; --key-env reads SUNRISE_MOD_SIGNING_KEY and optional SUNRISE_MOD_SIGNING_PASSPHRASE without prompting.",
+        summary: "Writes the detached .minisig beside <file> without replacing it. Uses the current mod’s per-user signing key unless --key is given; --key-env reads SUNRISE_MOD_SIGNING_KEY and optional SUNRISE_MOD_SIGNING_PASSPHRASE without prompting.",
     },
     Command {
         name: "internals",
