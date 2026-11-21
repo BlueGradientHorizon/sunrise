@@ -2114,16 +2114,20 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn revision_two_blockless_menu_sends_data_above_255() {
+    fn revision_two_blockless_menu_syncs_only_encodable_indices() {
         use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
 
-        const INDEX: u16 = 256;
+        const LAST: usize = u16::MAX as usize;
+        const OVERFLOW: usize = LAST + 1;
+        const FIRST_VALUE: i32 = 123_456;
+        const LAST_VALUE: i32 = -80_000;
+        const OVERFLOW_VALUE: i32 = 456_789;
         sunrise_client::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
                 "status_package".into(),
                 0,
-                usize::from(INDEX) + 1,
+                OVERFLOW + 1,
                 Vec::new(),
                 Vec::new(),
                 None,
@@ -2140,9 +2144,10 @@ mod tests {
                         .guests
                         .update(0, |g| g.sender.menu_extra_rev = 2);
                     let player = game.player(123).unwrap();
-                    let index = usize::from(INDEX);
-                    let mut data = vec![0; index + 1];
-                    data[index] = -80_000;
+                    let mut data = vec![0; OVERFLOW + 1];
+                    data[0] = FIRST_VALUE;
+                    data[LAST] = LAST_VALUE;
+                    data[OVERFLOW] = OVERFLOW_VALUE;
                     let window = player
                         .open_mod_menu(
                             game,
@@ -2163,16 +2168,22 @@ mod tests {
                             _ => None,
                         })
                     };
-                    let snapshot = updates().collect::<Vec<_>>();
-                    assert_eq!(snapshot.len(), index + 1);
-                    assert_eq!(
-                        snapshot[index],
-                        DataSlot {
+                    let assert_snapshot = |route, last_value| {
+                        let expected = (0..=u16::MAX).map(|index| DataSlot {
                             window,
-                            index: INDEX,
-                            value: -80_000,
-                        }
-                    );
+                            index,
+                            value: match index {
+                                0 => FIRST_VALUE,
+                                u16::MAX => last_value,
+                                _ => 0,
+                            },
+                        });
+                        assert!(
+                            updates().eq(expected),
+                            "incorrect revision-2 snapshot on {route}"
+                        );
+                    };
+                    assert_snapshot("open", LAST_VALUE);
                     let _guard = mod_api::content::crash::enter_native_mod(
                         mod_api::content::crash::ModCall {
                             id: "status_package",
@@ -2183,16 +2194,45 @@ mod tests {
                     let menu = player.container_menu(game).unwrap();
                     let host: &mut dyn ServerHost = game;
                     let committed: Result<(), ()> = host.transaction(|host, _| {
-                        assert_eq!(menu.set_data_slot(host, index, i32::MAX), Ok(true));
+                        assert_eq!(menu.set_data_slot(host, LAST, i32::MAX), Ok(true));
                         assert!(sent(&rx).is_empty());
                         Ok(())
                     });
                     assert_eq!(committed, Ok(()));
                     assert!(updates().eq([DataSlot {
                         window,
-                        index: INDEX,
+                        index: u16::MAX,
                         value: i32::MAX,
                     }]));
+                    let committed: Result<(), ()> = host.transaction(|host, _| {
+                        assert_eq!(menu.set_data_slot(host, OVERFLOW, i32::MIN), Ok(true));
+                        assert!(sent(&rx).is_empty());
+                        Ok(())
+                    });
+                    assert_eq!(committed, Ok(()));
+                    assert!(sent(&rx).is_empty(), "unencodable index sent a delta");
+
+                    let hub = &mut game.lan.as_mut().unwrap().hub;
+                    let open = hub.guests[0].menu.as_ref().unwrap();
+                    assert_eq!(open.blockless_data[OVERFLOW], i32::MIN);
+                    hub.resend_menu(1, window, &game.world);
+                    assert_snapshot("explicit resend", i32::MAX);
+                    let state = hub.guests[0].menu.as_ref().unwrap().state;
+                    hub.inventory_clicked(
+                        1,
+                        &play::ContainerClick {
+                            container: window,
+                            state: (state - 1) & 0x7FFF,
+                            slot: -999,
+                            button: 0,
+                            input: sunrise_client::lan::menu::input::PICKUP,
+                            changed: vec![],
+                            carried: None,
+                        },
+                        &game.world,
+                        &[],
+                    );
+                    assert_snapshot("stale click", i32::MAX);
                 })
             },
         );

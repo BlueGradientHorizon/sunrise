@@ -71,7 +71,9 @@ its container; acquire a new handle for the replacement.
 ## Borrow the ticking machine
 
 `BlockEntityPart::block_entity_tick` receives a `BlockEntityTickEvent<'_>` and no
-separate Host argument. It runs only if the block currently supports that entity type.
+separate Host argument. It runs only if the block currently supports that entity type. If a resident
+ticker finds an incompatible block, the game warns once and skips the tick. The next valid tick clears
+the warning so a later mismatch is reported again.
 Its `subject` lends the live row. Use the view for the machine's own data,
 saved fields and internal slots. Derive owned values from the view before taking
 the Host for other objects. Each `with_view` loan checks that

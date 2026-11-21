@@ -4,7 +4,8 @@
 pub trait Hooks {
     /// A server tick of a resident mod block entity of your registered `kind`.
     /// The game skips the callback if the current block does not support that
-    /// entity type, as in `LevelChunk.BoundTickingBlockEntity.tick`.
+    /// entity type, as in `LevelChunk.BoundTickingBlockEntity.tick`. The first
+    /// invalid visit logs a warning; a valid tick clears it for the next episode.
     /// `event.subject.with_view` lends its live storage. To reach the level or
     /// another object, return from the loan and call `event.subject.host()`.
     /// Ask for another loan afterwards; it returns `None` if the level, chunk

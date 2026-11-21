@@ -17,28 +17,32 @@ use sunrise_items::items::Items;
 mod tests;
 
 impl Game<'_> {
-    /// The tick of the resident mod block entity at `pos`.
-    pub(in crate::game) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) {
+    /// `LevelChunk.BoundTickingBlockEntity.tick` for a resident mod block entity.
+    /// Returns whether the ticker was dispatched, so skipped rows have no after-slot.
+    pub(in crate::game) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) -> bool {
         let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
-            return;
+            return false;
         };
         let Some(kind) = entity.tick_kind() else {
-            return;
+            return false;
+        };
+        let Some(generation) = self.world.block_entities.generation(&pos) else {
+            return false;
         };
         let live_state = self.world.block(pos.0, pos.1, pos.2);
         let block = &self.res.facts().get(live_state).name;
         if !valid_tick_subject(block, entity) {
-            log::warn!(
-                "Block entity {} at {pos:?} cannot tick on {block}",
-                entity.id()
-            );
-            return;
+            if let Some(id) = self
+                .world
+                .block_entities
+                .record_invalid_mod_tick(pos, generation)
+            {
+                log::warn!("Block entity {id} at {pos:?} cannot tick on {block}");
+            }
+            return false;
         }
         let Some(level) = self.level(self.dim.id()) else {
-            return;
-        };
-        let Some(generation) = self.world.block_entities.generation(&pos) else {
-            return;
+            return false;
         };
         let subject =
             mod_api::__private::game::block_entity_ref(level, [pos.0, pos.1, pos.2], generation);
@@ -47,6 +51,10 @@ impl Game<'_> {
             subject,
         };
         Self::native_block_entity_tick(kind, BlockEntityTickScope::new(&mut access));
+        self.world
+            .block_entities
+            .clear_ticker_warning(pos, generation);
+        true
     }
 
     /// Dispatch the one resident server ticker; the scope owns access to the Host.

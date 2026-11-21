@@ -78,6 +78,13 @@ pub enum Ticking {
     Idle,
 }
 
+struct LiveTicker {
+    slot: u32,
+    /// `BoundTickingBlockEntity.loggedInvalidBlockState`, scoped to the current
+    /// occupant because a replacement can reuse the slot. Not an eligibility flag.
+    warned_generation: Option<u64>,
+}
+
 #[derive(Default)]
 pub struct BlockEntities {
     map: HashMap<Pos, BlockEntity>,
@@ -98,7 +105,7 @@ pub struct BlockEntities {
     /// `Level.blockEntityTickers`: positions and the slot each was given.
     tickers: Arc<Vec<(Pos, u32)>>,
     /// `LevelChunk.tickersInLevel`: the live slot of each ticking position.
-    live: FxHashMap<Pos, u32>,
+    live: FxHashMap<Pos, LiveTicker>,
     /// Positions that may need a slot, in the order vanilla would have made
     /// it (`pendingBlockEntityTickers`), each with a token; decided at the
     /// next promotion from the block state then.
@@ -1116,7 +1123,13 @@ impl BlockEntities {
                 continue;
             }
             let slot = self.next();
-            self.live.insert(pos, slot);
+            self.live.insert(
+                pos,
+                LiveTicker {
+                    slot,
+                    warned_generation: None,
+                },
+            );
             Arc::make_mut(&mut self.tickers).push((pos, slot));
         }
         for pos in std::mem::take(&mut self.replaced) {
@@ -1131,7 +1144,7 @@ impl BlockEntities {
         self.freed = false;
         let (live, map) = (&mut self.live, &self.map);
         Arc::make_mut(&mut self.tickers).retain(|(p, slot)| {
-            let mine = live.get(p) == Some(slot);
+            let mine = live.get(p).is_some_and(|ticker| ticker.slot == *slot);
             if mine && !map.contains_key(p) {
                 live.remove(p);
             }
@@ -1145,7 +1158,30 @@ impl BlockEntities {
     }
     /// Whether a slot from `tickers` still ticks.
     pub fn is_live(&self, (pos, slot): (Pos, u32)) -> bool {
-        self.live.get(&pos) == Some(&slot) && self.map.contains_key(&pos)
+        self.live
+            .get(&pos)
+            .is_some_and(|ticker| ticker.slot == slot)
+            && self.map.contains_key(&pos)
+    }
+    /// Record an invalid visit of the bound mod ticker. Returns the type name on
+    /// the first such visit so the caller can log the incompatible block state.
+    pub fn record_invalid_mod_tick(&mut self, pos: Pos, generation: u64) -> Option<&str> {
+        let ticker = self.live.get_mut(&pos)?;
+        if ticker.warned_generation.replace(generation) == Some(generation) {
+            return None;
+        }
+        match self.map.get(&pos)? {
+            BlockEntity::Mod(entity) => Some(entity.id()),
+            _ => None,
+        }
+    }
+    /// A valid tick completed; don't clear a warning made by a replacement instance.
+    pub fn clear_ticker_warning(&mut self, pos: Pos, generation: u64) {
+        if let Some(ticker) = self.live.get_mut(&pos)
+            && ticker.warned_generation == Some(generation)
+        {
+            ticker.warned_generation = None;
+        }
     }
     /// Frees the slot at `pos` (the block entity stays).
     pub fn forget(&mut self, pos: &Pos) {

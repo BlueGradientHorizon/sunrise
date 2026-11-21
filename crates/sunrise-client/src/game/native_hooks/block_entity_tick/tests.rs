@@ -52,6 +52,17 @@ fn access<'a, 'g>(game: &'a mut Game<'g>, subject: BlockEntityRef) -> TickAccess
     TickAccess { game, subject }
 }
 
+fn enable_block_ticks(game: &mut Game<'_>) {
+    game.player = Some(
+        sunrise_client::motion::PlayerMotion::new(
+            game.motion,
+            sunrise_core::geometry::Vec3::new(8.5, 65.0, 8.5),
+        )
+        .unwrap(),
+    );
+    game.update_chunk_tickets();
+}
+
 #[test]
 #[ignore = "daily"]
 fn retaking_the_view_checks_the_instance_and_state() {
@@ -59,7 +70,23 @@ fn retaking_the_view_checks_the_instance_and_state() {
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_RETAKE", &["run"]) {
         return;
     }
-    with_ticker(|game, _| {
+    with_ticker(|game, effects| {
+        // Enter through the real dispatched Part, then change the block through its Host.
+        game.options.dedicated = Some(Vec::new());
+        place_subject(game, KIND);
+        enable_block_ticks(game);
+        *effects.retake.lock().unwrap() = Retake::Requested;
+        game.tick_block_entities_with(&mut ()).unwrap();
+        assert_eq!(
+            *effects.retake.lock().unwrap(),
+            Retake::Observed {
+                before: 23,
+                after: None,
+            }
+        );
+
+        // Raw writes can also leave the row present on an incompatible block, and
+        // replacing it at the same position must not resurrect the original loan.
         let subject = place_subject(game, KIND);
         let unlit = game.world.block(POS.0, POS.1, POS.2);
         let lit = crate::game::native_hooks::with_property(
@@ -207,12 +234,24 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
     });
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+enum Retake {
+    #[default]
+    Off,
+    Requested,
+    Observed {
+        before: i32,
+        after: Option<i32>,
+    },
+}
+
 #[derive(Clone, Default)]
 struct Effects {
     notices: Arc<AtomicU32>,
     ticks: Arc<AtomicU32>,
     loaded_items: Arc<Mutex<Option<Tag>>>,
     saved_items: Arc<Mutex<Option<Tag>>>,
+    retake: Arc<Mutex<Retake>>,
 }
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Effects {
@@ -226,7 +265,24 @@ impl BlockEntityPart for Effects {
 
     fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
         self.ticks.fetch_add(1, Ordering::Relaxed);
-        let _ = event.subject.with_view(|mut view| view.set_data_slot(0, 1));
+        if *self.retake.lock().unwrap() == Retake::Requested {
+            let (handle, before) = event
+                .subject
+                .with_view(|view| (view.handle(), view.data_slots()[0]))
+                .unwrap();
+            let host = event.subject.host();
+            let level = handle.level(host).unwrap();
+            let pos = handle.position(host).unwrap();
+            let glass = host.block_state_id("minecraft:glass").unwrap();
+            assert_eq!(
+                level.set_block(host, pos, glass, mod_api::BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+            let after = event.subject.with_view(|view| view.data_slots()[0]);
+            *self.retake.lock().unwrap() = Retake::Observed { before, after };
+        } else {
+            let _ = event.subject.with_view(|mut view| view.set_data_slot(0, 1));
+        }
     }
 
     fn block_entity_load_additional(
@@ -326,6 +382,16 @@ fn an_invalid_resident_block_entity_is_not_dispatched() {
         }
     }
 
+    #[derive(Default)]
+    struct ObserveAfter {
+        visited: Vec<Pos>,
+    }
+    impl BlockEntityTickSlot for ObserveAfter {
+        fn after(&mut self, tick: &mut BlockEntityTick<'_, '_>) {
+            self.visited.push(tick.pos);
+        }
+    }
+
     const NAME: &str = "game::native_hooks::block_entity_tick::tests::an_invalid_resident_block_entity_is_not_dispatched";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_INVALID_TICK", &["run"]) {
         return;
@@ -339,27 +405,79 @@ fn an_invalid_resident_block_entity_is_not_dispatched() {
             .registry
             .default_state("minecraft:glass")
             .unwrap();
-        game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
-                game.motion,
-                sunrise_core::geometry::Vec3::new(8.5, 65.0, 8.5),
-            )
-            .unwrap(),
+        enable_block_ticks(game);
+        let mut slots = (
+            Invalidate {
+                glass,
+                visited: false,
+            },
+            ObserveAfter::default(),
         );
-        game.update_chunk_tickets();
-        let mut slot = Invalidate {
-            glass,
-            visited: false,
-        };
-        game.tick_block_entities_with(&mut slot).unwrap();
-        assert!(slot.visited);
+        game.tick_block_entities_with(&mut slots).unwrap();
+        assert!(slots.0.visited);
+        assert!(slots.1.visited.is_empty());
         assert_eq!(effects.ticks.load(Ordering::Relaxed), 0);
         assert_eq!(subject.data_slots(game).unwrap(), [23]);
 
         game.world.set(POS.0, POS.1, POS.2, valid).unwrap();
-        game.tick_mod_block_entity(POS);
+        game.tick_block_entities_with(&mut slots.1).unwrap();
+        assert_eq!(slots.1.visited, [POS]);
         assert_eq!(effects.ticks.load(Ordering::Relaxed), 1);
         assert_eq!(subject.data_slots(game).unwrap(), [1]);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn invalid_resident_ticker_warns_once_until_a_valid_tick() {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::invalid_resident_ticker_warns_once_until_a_valid_tick";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_TICK_WARNING", &["run"]) {
+        return;
+    }
+
+    struct Capture;
+    static WARNINGS: AtomicU32 = AtomicU32::new(0);
+    impl log::Log for Capture {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() == log::Level::Warn
+                && metadata
+                    .target()
+                    .ends_with("::native_hooks::block_entity_tick")
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            if self.enabled(record.metadata()) {
+                WARNINGS.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        fn flush(&self) {}
+    }
+    log::set_logger(&Capture).unwrap();
+    log::set_max_level(log::LevelFilter::Warn);
+
+    with_ticker(|game, effects| {
+        place_subject(game, KIND);
+        enable_block_ticks(game);
+        let valid = game.world.block(POS.0, POS.1, POS.2);
+        let glass = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:glass")
+            .unwrap();
+        // Bind the valid ticker before leaving an incompatible block under it.
+        game.tick_block_entities_with(&mut ()).unwrap();
+        for (state, warnings, ticks) in [
+            (glass, 1, 1),
+            (glass, 1, 1),
+            (valid, 1, 2),
+            (glass, 2, 2),
+            (glass, 2, 2),
+        ] {
+            game.world.set(POS.0, POS.1, POS.2, state).unwrap();
+            game.tick_block_entities_with(&mut ()).unwrap();
+            assert_eq!(WARNINGS.load(Ordering::Relaxed), warnings);
+            assert_eq!(effects.ticks.load(Ordering::Relaxed), ticks);
+        }
     });
 }
 

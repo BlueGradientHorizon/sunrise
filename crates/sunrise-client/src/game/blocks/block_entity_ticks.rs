@@ -210,14 +210,15 @@ pub(crate) trait BlockEntityTickSlot {
     /// Just before the visited block entity ticks. [`LoopFlow::Skip`] leaves it out this tick;
     /// [`LoopFlow::Stop`] ends the pass (what follows the loop, such as shulker box lids, still runs).
     /// After [`LoopFlow::Continue`] from every slot the loop looks again: when the visited block
-    /// entity was removed, or replaced by one of another [`TickedKind`] or a mod's of another type,
-    /// it does not tick and no slot's [`Self::after`] is called for it.
+    /// entity was removed, replaced by one of another [`TickedKind`] or a mod's of another type,
+    /// or a mod block entity is now on an incompatible block, it does not tick and no slot's
+    /// [`Self::after`] is called for it.
     #[inline(always)]
     fn before(&mut self, tick: &mut BlockEntityTick<'_, '_>) -> LoopFlow {
         let _ = tick;
         LoopFlow::Continue
     }
-    /// Just after the visited block entity ticked; not called for one a slot skipped.
+    /// Just after the visited block entity ticked; not called if its tick was skipped.
     #[inline(always)]
     fn after(&mut self, tick: &mut BlockEntityTick<'_, '_>) {
         let _ = tick;
@@ -428,7 +429,11 @@ impl Game<'_> {
                 TickedKind::DaylightDetector => this.tick_daylight_detector(pos),
                 TickedKind::EndGateway => this.tick_end_gateway(pos),
                 TickedKind::Campfire => this.tick_campfire(pos)?,
-                TickedKind::Mod => this.tick_mod_block_entity(pos),
+                TickedKind::Mod => {
+                    if !this.tick_mod_block_entity(pos) {
+                        continue;
+                    }
+                }
                 TickedKind::PotentSulfur => {
                     this.tick_potent_sulfur(pos)?;
                     // A window that simulates the world itself is its own
