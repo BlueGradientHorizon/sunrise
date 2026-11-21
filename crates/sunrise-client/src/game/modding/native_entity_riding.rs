@@ -539,7 +539,7 @@ impl Game<'_> {
                     _ => {}
                 }
                 self.riding = Some(vehicle_id);
-                self.seat_acting_player(vehicle_id);
+                self.seat_player(vehicle_id);
                 self.trigger_player("minecraft:started_riding");
             }
             Target::Mob(id) => {

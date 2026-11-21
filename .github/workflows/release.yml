@@ -13,8 +13,9 @@ name: release
 # publishes it under the `nightly` tag and channel. RELEASES_PAUSED=1 (repository variable) stops it; so does an
 # open issue labelled release-blocker, forced runs too (nightly-build.yml checks again before publishing). One
 # Nightly build at a time, at most 12 a day (release-now and force=true pass the cap). No `vX.Y.Z` game release is
-# made any more. Only a run on main with dry_run false publishes; a snapshot's dry run builds the SDK and the game
-# (a `nightly build` dry run, throwaway key) and publishes nothing.
+# made any more. Only a run on main (or nightly/26.3, for a nightly) with dry_run false publishes; a snapshot's dry run
+# builds the SDK and the game (a `nightly build` dry run, throwaway key) and publishes nothing.
+# Once nightly/26.3 exists a nightly builds its head there; a stable release is `nightly build` kind=stable (docs/release-flow.md).
 #   gh workflow run release --ref <branch> -f kind=nightly            # dry run: checks and decides, starts nothing
 #   gh workflow run release -f kind=nightly -f dry_run=false          # on main: the Nightly of daily-green
 #   gh workflow run release -f kind=nightly -f dry_run=false -f commit=<sha> -f exception="owner <date>: <why>"
@@ -39,6 +40,10 @@ on:
         description: The daily run's call for its daily-green commit (no batch-size or age rule)
         type: boolean
         default: false
+      daily_run:
+        description: The calling daily run (<run id>/<attempt>), whose own green job is the evidence though it has not completed
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       kind:
@@ -77,7 +82,7 @@ concurrency:
   # In the shared group, a release queued behind it replaced it as the pending run and GitHub cancelled it (#2779's
   # dry run, 2026-10-27).
   # Snapshots queue among themselves, never ahead of or behind a nightly.
-  group: game-release${{ inputs.kind == 'snapshot' && '-snapshot' || '' }}${{ (inputs.dry_run || github.ref != 'refs/heads/main') && '-dry-run' || '' }}
+  group: game-release${{ inputs.kind == 'snapshot' && '-snapshot' || '' }}${{ (inputs.dry_run || !contains(fromJSON('["refs/heads/main", "refs/heads/nightly/26.3"]'), github.ref)) && '-dry-run' || '' }}
   cancel-in-progress: false
 jobs:
   decide:
@@ -93,14 +98,19 @@ jobs:
       head: ${{ steps.decide.outputs.head }}
       tag: ${{ steps.decide.outputs.tag }}
       urgent: ${{ steps.decide.outputs.urgent }}
-      dry_run: ${{ steps.mode.outputs.dry_run }}
+      # Exactly authorize's `publish`; every write reads it, so a missing output starts and publishes nothing.
+      publish: ${{ steps.mode.outputs.publish }}
+      dry_run: ${{ steps.mode.outputs.publish == 'true' && 'false' || 'true' }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: mode
-        # A dry run never publishes; a run off main is always one, whatever its input says.
-        run: echo "dry_run=${{ inputs.dry_run || github.ref != 'refs/heads/main' }}" >> "$GITHUB_OUTPUT"
+        # A dry run never publishes; only release_train.py's exact check of repository, event, ref and kind lets a run publish.
+        env:
+          KIND: ${{ inputs.kind }}
+          DRY_INPUT: ${{ inputs.dry_run }}
+        run: python3 tools/release_train.py authorize --publish-kind "$KIND" --dry-run "$DRY_INPUT"
       - id: decide
         shell: bash
         env:
@@ -112,17 +122,20 @@ jobs:
           FORCE: ${{ inputs.force && 'yes' || '' }}
           DAILY: ${{ inputs.daily && 'yes' || '' }}
           EXCEPTION: ${{ inputs.exception }}
+          DAILY_RUN: ${{ inputs.daily_run }}
           # A publishing run (not a dry run, on main) runs its commit's gate again if the next push cancelled it.
-          GATE_RERUN: ${{ steps.mode.outputs.dry_run == 'false' && '1' || '' }}
+          GATE_RERUN: ${{ steps.mode.outputs.publish == 'true' && '1' || '' }}
+          # A publishing run's ref, which must publish this kind (release_train.py PUBLISHES).
+          REF: ${{ steps.mode.outputs.publish == 'true' && github.ref || '' }}
         run: |
-          python3 tools/release_train.py decide --kind game --channel "$KIND" ${HEAD_SHA:+--head "$HEAD_SHA"} ${FORCE:+--force} ${DAILY:+--daily} ${EXCEPTION:+--exception "$EXCEPTION"} | tee decision.json
+          python3 tools/release_train.py decide --kind game --channel "$KIND" ${REF:+--ref "$REF"} ${HEAD_SHA:+--head "$HEAD_SHA"} ${FORCE:+--force} ${DAILY:+--daily} ${EXCEPTION:+--exception "$EXCEPTION"} ${DAILY_RUN:+--daily-run "$DAILY_RUN"} | tee decision.json
           echo "### $KIND: $(jq -r '.reason' decision.json)" >> "$GITHUB_STEP_SUMMARY"
 
   nightly:
     # The Nightly is the release: nightly-build.yml builds the decided commit plus the reviewers' picks, signs it for
     # the Nightly channel and publishes it once its smoke test passed and no release-blocker is open.
     needs: decide
-    if: inputs.kind == 'nightly' && needs.decide.outputs.release == 'true' && needs.decide.outputs.dry_run != 'true'
+    if: inputs.kind == 'nightly' && needs.decide.outputs.release == 'true' && needs.decide.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -133,10 +146,16 @@ jobs:
           HEAD_SHA: ${{ needs.decide.outputs.head }}
           URGENT: ${{ needs.decide.outputs.urgent }}
           EXCEPTION: ${{ inputs.exception }}
+          DAILY_RUN: ${{ inputs.daily_run }}
         run: |
-          gh workflow run nightly-build.yml --repo "$GITHUB_REPOSITORY" --ref main -f base="$HEAD_SHA" -f urgent="$URGENT" \
-            -f exception="$EXCEPTION"
-          echo "### Started \`nightly build\` on ${HEAD_SHA:0:9}" >> "$GITHUB_STEP_SUMMARY"
+          # On nightly/26.3 once an owner created it, its own workflow copy; on main before. A failed lookup stops.
+          refs=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/nightly/26.3) \
+            || { echo "::error::could not look nightly/26.3 up"; exit 1; }
+          # The returned name, exactly: a pattern also matches a longer ref ending in it.
+          ref=main; if awk '$2 == "refs/heads/nightly/26.3" { found = 1 } END { exit !found }' <<< "$refs"; then ref=nightly/26.3; fi
+          gh workflow run nightly-build.yml --repo "$GITHUB_REPOSITORY" --ref "$ref" -f base="$HEAD_SHA" -f urgent="$URGENT" \
+            -f exception="$EXCEPTION" -f daily_run="$DAILY_RUN"
+          echo "### Started \`nightly build\` on $ref for ${HEAD_SHA:0:9}" >> "$GITHUB_STEP_SUMMARY"
 
   # A snapshot: the commit's SDK, built in this run by prebuilt-game-build.yml's legs and signed and published as
   # sdk-<sha> by sdk-publish.yml from their artifacts (a dry run: throwaway key, nothing published), then the game,
@@ -157,7 +176,7 @@ jobs:
     uses: ./.github/workflows/sdk-publish.yml
     with:
       commit: ${{ needs.decide.outputs.head }}
-      publish: ${{ needs.decide.outputs.dry_run != 'true' }}
+      publish: ${{ needs.decide.outputs.publish == 'true' }}
     secrets: inherit
 
   snapshot:

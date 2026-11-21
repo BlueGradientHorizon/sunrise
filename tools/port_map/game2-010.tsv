@@ -45,7 +45,7 @@ EnchantmentHelper.onHitBlock	port	crates/sunrise-client/src/game/items/trident.r
 EnchantmentHelper.modifyDurabilityToRepairFromXp	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::mending	Mending's repair with XP
 EnchantmentHelper.getFishingLuckBonus	port	crates/sunrise-client/src/game/items/fishing.rs::Game::use_fishing_rod	Luck of the Sea read when the rod is cast
 EnchantmentHelper.getFishingTimeReduction	port	crates/sunrise-client/src/game/items/fishing.rs::Game::use_fishing_rod	Lure ticks read at cast; used by catching_fish
-EnchantmentHelper.getTridentReturnToOwnerAcceleration	port	crates/sunrise-client/src/game/items/trident.rs::ThrownTrident::loyalty_pull	Loyalty level pull and acceleration
+EnchantmentHelper.getTridentReturnToOwnerAcceleration	port	crates/sunrise-gameplay/src/trident.rs::ThrownTrident::loyalty_pull	Loyalty level pull and acceleration
 EnchantmentHelper.modifyCrossbowChargingTime	port	crates/sunrise-client/src/game/items/crossbow.rs::Game::charge_ticks	Quick Charge: 1.25 s minus 0.25 s per level
 EnchantmentHelper.getTridentSpinAttackStrength	inline	crates/sunrise-client/src/game/items/trident.rs::Game::release_trident	Riptide's strength 1.5 + 0.75 per level above the first, folded into the release
 EnchantmentHelper.hasTag	port	crates/sunrise-items/src/enchant.rs::Enchantments::in_tag	per enchantment id; callers loop over the stack

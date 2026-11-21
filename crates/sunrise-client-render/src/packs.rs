@@ -2963,4 +2963,32 @@ mod tests {
         );
         let _ = fs::remove_dir_all(base);
     }
+
+    /// A pack's filter that hides a vanilla GUI sprite leaves a row's check box drawing the
+    /// missing texture, as vanilla does, while the sprites it left alone still draw.
+    #[test]
+    fn a_gui_sprite_a_pack_filters_out_draws_the_missing_texture() {
+        use crate::graphics_style::{checkbox, drew_rect, drew_sprite, write_widget_resources};
+        use crate::resource_source::ResourceSource;
+        let base = tempfile::tempdir().unwrap();
+        write_widget_resources(base.path());
+        let pack_dir = tempfile::tempdir().unwrap();
+        let mut pack = Pack::mod_layer("filter".into(), Source::Dir(pack_dir.path().to_owned()));
+        pack.filter = filter_of(&serde_json::json!({"filter":{"block":[
+            {"namespace":"minecraft","path":"textures/gui/sprites/widget/checkbox\\.png"}]}}));
+        let source = resources(ResourceSource::directory(base.path().to_owned()), &[pack]).unwrap();
+        let atlas = crate::hud::HudAtlas::build(&source).unwrap();
+        crate::hud::take_gui_sprite_misses();
+        let mut off = crate::hud::HudBatch::scratch([640, 480]);
+        checkbox(&mut off, &atlas, 100.0, 0.0, false, (false, true));
+        assert_eq!(crate::hud::take_gui_sprite_misses(), ["widget/checkbox"]);
+        let missing = &atlas.sprites[crate::hud::MISSING_SPRITE];
+        assert!(
+            drew_rect(&off, missing, None),
+            "the missing texture in its place"
+        );
+        let mut on = crate::hud::HudBatch::scratch([640, 480]);
+        checkbox(&mut on, &atlas, 100.0, 0.0, true, (false, true));
+        assert!(drew_sprite(&on, &atlas, "widget/checkbox_selected"));
+    }
 }
