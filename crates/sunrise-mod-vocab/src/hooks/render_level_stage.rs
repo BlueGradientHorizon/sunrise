@@ -33,7 +33,8 @@ weather stages. Nothing is dropped, and the order between stages is kept."#]
         side = "client",
         contract = "listen",
         neoforge = "RenderLevelStageEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn render_level_stage(
         stage: mod_api::RenderLevelStage,

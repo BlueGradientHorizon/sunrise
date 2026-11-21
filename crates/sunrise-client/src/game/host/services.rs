@@ -154,12 +154,16 @@ impl RenderAssets for Game<'_> {
         );
         self.pack.render.baked_model(key)
     }
-    fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
+    fn render_pipeline(
+        &self,
+        id: &Identifier,
+        kind: PipelineKind,
+    ) -> Result<RenderPipelineRef, RenderPipelineError> {
         mod_api::__private::check_access(
             "render_pipeline",
             mod_api::__private::LoadAccess::PublishedResources,
         );
-        self.pack.render.render_pipeline(id)
+        self.pack.render.render_pipeline(id, kind)
     }
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
         mod_api::__private::check_access(

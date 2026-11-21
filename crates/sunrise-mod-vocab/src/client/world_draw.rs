@@ -3,7 +3,7 @@
 /// Whether world geometry is hidden by nearer world surfaces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client world-draw depth mode.
 pub enum WorldDepth {
     /// Test against the world's depth, without writing depth.
     Tested,
@@ -14,7 +14,7 @@ pub enum WorldDepth {
 /// A world-space line, colored with 0xAARRGGBB and measured in screen pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client world-draw primitive.
 pub struct WorldLine {
     /// Starting position in blocks, before camera subtraction.
     pub from: [f64; 3],
@@ -44,7 +44,7 @@ impl WorldLine {
 /// top right as seen from the front; alpha blends without writing depth.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client world-draw primitive.
 pub struct WorldQuad {
     /// Four world-space corners in blocks, before camera subtraction.
     pub corners: [[f64; 3]; 4],
@@ -67,13 +67,13 @@ impl WorldQuad {
 /// Why a whole geometry batch was refused; nothing from that batch was appended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: refusal of a local client world-draw submission.
 pub enum DrawError {
     /// A coordinate or width is not finite, or a camera-relative coordinate overflows f32.
     NonFinite,
     /// A finite line width is zero or negative.
     InvalidWidth,
-    /// The batch would exceed this view's setup-time capacity.
+    /// The batch would exceed this view's fixed line capacity.
     CapacityExceeded,
     /// A label's text is deeper than 512 component nodes (`MAX_TEXT_DEPTH`).
     TextTooDeep,
@@ -84,7 +84,7 @@ pub enum DrawError {
 /// How [`WorldDrawContext::name_tag`](crate::WorldDrawContext::name_tag) draws a label.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client name-tag draw options.
 pub struct NameTagOptions {
     /// Draw it as vanilla draws a name that is not sneaking: opaque text in the world and a
     /// faded copy over everything, walls included. Off, it is drawn once as a sneaking name:
@@ -142,7 +142,7 @@ impl NameTagOptions {
 /// `RenderLevelStageEvent` stages Sunrise draws, in the order the frame reaches them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client world render stage selector.
 pub enum RenderLevelStage {
     /// After the sky, sun, moon and stars, before any terrain (`AfterSky`): behind
     /// everything else the world draws, for backdrops and atmosphere.
@@ -174,7 +174,7 @@ impl RenderLevelStage {
 /// This initial view does not expose NeoForge's full level state or visible sections.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client frame view extracted for world drawing.
 pub struct WorldRenderView {
     /// Camera origin in world-space blocks. Subtraction precedes f32 conversion.
     pub camera: [f64; 3],
@@ -194,22 +194,22 @@ impl WorldRenderView {
     }
 }
 
-/// Queued primitive counts and fixed capacities, shared across both depth modes.
+/// Queued primitive counts and remaining fixed capacities, shared across both depth modes.
 ///
-/// `instances_capacity` is the per-view budget of 16,384 model copies. It is reserved
-/// when the view's storage is created and is never grown during submission.
+/// `quads` counts all queued plain, pipeline, and label quads with no fixed per-view cap (GPU
+/// buffers grow dynamically). `line_capacity` and `instances_capacity` report the remaining
+/// fixed caps: `instances_capacity` is the per-view budget of 16,384 model copies, reserved
+/// when the view's storage is created and never grown during submission.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client per-view world-draw usage counters.
 pub struct WorldDrawUsage {
     /// Lines queued for this view after near-plane clipping.
     pub lines: u32,
     /// Maximum lines per view.
     pub line_capacity: u32,
-    /// Quads queued for this view.
+    /// All queued plain, pipeline, and label quads for this view (no fixed per-view cap).
     pub quads: u32,
-    /// Maximum quads per view.
-    pub quad_capacity: u32,
     /// Model copies accepted for this view. Culled copies are not included.
     /// A call may pass at most [`instances_capacity`](Self::instances_capacity)
     /// copies; that bound is applied before culling.
@@ -218,12 +218,11 @@ pub struct WorldDrawUsage {
     pub instances_capacity: u32,
 }
 impl WorldDrawUsage {
-    /// Describe the current usage and setup-time limits.
+    /// Describe the current usage and remaining fixed limits.
     pub fn new(
         lines: u32,
         line_capacity: u32,
         quads: u32,
-        quad_capacity: u32,
         instances_used: u32,
         instances_capacity: u32,
     ) -> Self {
@@ -231,7 +230,6 @@ impl WorldDrawUsage {
             lines,
             line_capacity,
             quads,
-            quad_capacity,
             instances_used,
             instances_capacity,
         }

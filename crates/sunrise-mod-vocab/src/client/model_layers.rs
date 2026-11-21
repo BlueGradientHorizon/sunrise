@@ -17,7 +17,7 @@ use sunrise_core::geometry::Direction;
 /// texels, with its texture unchanged: a hat or an armour layer over a head.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client model box deformation, baked in-process.
 pub struct CubeDeformation {
     /// Growth on the x axis, in texels.
     pub grow_x: f32,
@@ -61,7 +61,7 @@ impl CubeDeformation {
 /// then y, then x, as `ModelPart.translateAndRotate` turns it) and its scale.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client model part pose, used in-process.
 pub struct PartPose {
     /// Position on the x axis, in texels.
     pub x: f32,
@@ -149,7 +149,7 @@ impl PartPose {
 /// One box of a part (`CubeDefinition`), as a [`CubeListBuilder`] adds it.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client model cube definition, baked in-process.
 pub struct CubeDefinition {
     /// Its corner at the least x, y and z, in texels from the part's pivot.
     pub origin: [f32; 3],
@@ -368,6 +368,7 @@ struct PartNode {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 #[serde(try_from = "MeshDefinitionData")]
 // exhaustive: private fields; use the builder to create the tree
+// no wire: local client model mesh definition, serialized via JSON when needed.
 pub struct MeshDefinition {
     parts: Vec<PartNode>,
 }
@@ -473,7 +474,7 @@ impl MeshDefinition {
 /// `LayerDefinition`: a mesh and the size of the texture its boxes are on.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client model layer definition, baked at startup.
 pub struct LayerDefinition {
     /// The model mesh to bake.
     pub mesh: MeshDefinition,
@@ -502,10 +503,14 @@ impl LayerDefinition {
 
 impl RegisterLayerDefinitionsEvent<'_> {
     /// Register a supplier for a model layer ID such as `mymod:golem#main`.
-    /// The first valid registration of an ID wins. Malformed IDs, IDs in `minecraft`,
-    /// duplicates and registrations from a phase-refused listener never call their supplier.
-    /// An accepted supplier runs once at client startup to build the frozen definition, not
-    /// when the layer is baked or resources are reloaded. Capture owned data in the supplier.
+    /// Write the model `Identifier` before the first `#` in its full `namespace:path` form,
+    /// as in `ModelLayerLocation`. Either half may be empty. The suffix after `#` is unrestricted. Duplicate mod registrations for an ID overwrite earlier
+    /// suppliers (last-writer-wins) before freeze. Malformed IDs, collisions with existing
+    /// vanilla layer definitions, or an unavailable vanilla layer table fail startup freeze before
+    /// any supplier runs or the layer table publishes; overwritten suppliers and registrations
+    /// from a phase-refused listener never call their supplier. Each winning supplier runs once at
+    /// client startup to build the frozen definition, not when the layer is baked or resources are
+    /// reloaded. Capture owned data in the supplier.
     pub fn register(
         &mut self,
         id: impl Into<String>,
@@ -532,7 +537,7 @@ pub struct LayerDefinitionRegistration {
 /// frame, and where it falls on the texture, 0 to 1 across it.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client baked model vertex.
 pub struct ModelVertex {
     /// The vertex position, in texels.
     pub pos: [f32; 3],
@@ -553,7 +558,7 @@ impl ModelVertex {
 /// part's frame.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client baked model polygon.
 pub struct ModelPolygon {
     /// The four corners in winding order.
     pub vertices: [ModelVertex; 4],
@@ -571,12 +576,9 @@ impl ModelPolygon {
 /// `ModelPart`: a baked part, its children by name, and the pose a mod sets
 /// each frame before drawing it (`setupAnim`), from the pose it was baked
 /// with (`reset_pose`).
-///
-/// Wire uses JSON with at most 32 nested containers; named children consume
-/// object, list and tuple levels. Encoding preflights children before serialization.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 #[non_exhaustive]
-// no wire: handwritten JSON-backed Wire preflights recursive children before serde.
+// no wire: local client model tree, baked and posed in-process rather than sent as a binary wire payload.
 pub struct ModelPart {
     /// Where it sits in its parent, in texels.
     pub x: f32,

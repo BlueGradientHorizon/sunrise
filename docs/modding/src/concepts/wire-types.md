@@ -10,7 +10,10 @@ Every field of a derived type must also implement `Wire`.
 Hook events are native callback records, not binary messages. If you need to send data from
 an event, copy the fields you intend to send into your own `Wire` payload type. The same applies to
 [loader metadata](load-phases.md) such as `PackageInfo`, `DataLoadOrigin` and `LoopSide`: read it locally,
-then select the facts you need for your protocol. Keep issued packet-hold and chunk-ticket controller
+then select the facts you need for your protocol. Local client drawing, render-pipeline, input, audio,
+screen, options, recipe-panel, and pose/model/animation values are likewise in-process only rather than
+`Wire`; load model and animation assets through JSON and copy only the fields you intend to synchronize
+into your own `Wire` payload struct. Keep issued packet-hold and chunk-ticket controller
 handles in the process that issued them; use a ticket controller's namespaced `id()` when you need to
 record its name.
 
@@ -47,11 +50,10 @@ Ordinary Wire keeps the NBT `Tag` limit of **512** containers and the `Text` lim
 **512** nested components. Build `Text` directly; ordinary Wire validates it and
 uses a private node-table encoding. `Text` is not admitted to typed payloads.
 
-JSON-backed `serde_json::Value`, JSON maps and `ModelPart` also refuse beyond
+JSON-backed `serde_json::Value` and JSON maps also refuse beyond
 32 JSON containers. Their encoders preflight the in-memory tree iteratively
 before serde recursion; their decoders scan the JSON's nesting outside quoted
-strings before parsing. A model part's JSON includes object, children-list and
-named-child-tuple containers, so one part can consume several JSON levels.
+strings before parsing.
 
 Hand-written recursive `Wire` implementations must enforce their own stack contract; the
 reader cannot police code outside its codec.

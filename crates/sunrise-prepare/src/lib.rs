@@ -24,9 +24,9 @@ mod sounds;
 mod survival;
 mod worker;
 
-pub use check::{check, missing_extras, STAMP};
+pub use check::{STAMP, check, missing_extras};
 pub use files::clone_or_copy;
-pub use sounds::{add_assets, fonts, languages, packs, panorama, sounds, BUILT_IN_PACKS};
+pub use sounds::{BUILT_IN_PACKS, add_assets, fonts, languages, packs, panorama, sounds};
 
 use pyjson::Value;
 use sha2::Digest;
@@ -44,7 +44,7 @@ pub type Log<'a> = &'a dyn Fn(&str);
 pub type Progress<'a> = &'a dyn Fn(f32);
 
 /// The stages of `steps`, each opened by `Run::stage`: what the fraction counts.
-const STAGES: u32 = 19;
+const STAGES: u32 = 20;
 
 /// The exporter bundle side, and the worker index that runs it (a Prism install has no server
 /// jar, so the client jar is the server side; the sides still compile and run separately).
@@ -61,7 +61,7 @@ pub const SCHEMA: i64 = 7;
 /// the preparer and fails when the output is not the one output-versions.txt gives this number
 /// (`python3 tools/prepare_output.py check`). The launcher reads this line from the version
 /// folder's sources: keep it on one line, as it is.
-pub const OUTPUT_VERSION: u32 = 5;
+pub const OUTPUT_VERSION: u32 = 6;
 
 pub struct Options {
     /// The version folder (a release folder, or a checkout): research-lock.json, the exporters'
@@ -1095,6 +1095,19 @@ fn steps(
             &[],
             "entity-model-export.log",
         )?;
+        // The two built-in render pipeline locations registries, for mod registration.
+        run.stage();
+        let render_pipelines = single(
+            "render pipelines",
+            "render-pipelines.json",
+            &["VanillaRenderPipelineExporter.java"],
+            "render_pipeline_exporters_sha256",
+            "client_sha256",
+            "render-pipelines/classes",
+            "512M",
+            &[],
+            "render-pipeline-export.log",
+        )?;
         // Mob AI and animation facts: per-state path types, spawn placements and the
         // client's keyframe animation definitions (needs the client jar).
         run.stage();
@@ -1134,6 +1147,7 @@ fn steps(
         }
         Ok(vec![
             ("entity_model_exporters_sha256", entity_models),
+            ("render_pipeline_exporters_sha256", render_pipelines),
             ("mob_data_exporters_sha256", mob_data),
         ])
     });
@@ -1280,6 +1294,10 @@ fn steps(
         (
             "entity_model_exporters_sha256".into(),
             entry("entity_model_exporters_sha256"),
+        ),
+        (
+            "render_pipeline_exporters_sha256".into(),
+            entry("render_pipeline_exporters_sha256"),
         ),
         (
             "creative_exporters_sha256".into(),
@@ -1749,10 +1767,12 @@ mod tests {
                 read(&reports.join(name)).unwrap()
             );
         }
-        assert!(read_json(&root.join("items.json"))
-            .unwrap()
-            .get("minecraft:stone")
-            .is_some());
+        assert!(
+            read_json(&root.join("items.json"))
+                .unwrap()
+                .get("minecraft:stone")
+                .is_some()
+        );
         assert!(root.join("biome-parameters/overworld.json").is_file());
         for name in ["registries.json", "commands.json", "items.json"] {
             fs::remove_file(root.join(name)).unwrap();

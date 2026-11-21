@@ -285,7 +285,6 @@ fn ordinary_only_wire_forms_refuse_registration_before_a_channel_exists() {
     let mut payloads = (&mut registrar as &mut dyn Registrar).payload_handlers();
     let mut view = payloads.registrar("1");
     let ids = [
-        refused::<crate::ModelPart>(&mut view, "test:model"),
         refused::<crate::Text>(&mut view, "test:text"),
         refused::<Option<&'static str>>(&mut view, "test:interned"),
         refused::<Option<serde_json::Value>>(&mut view, "test:json"),

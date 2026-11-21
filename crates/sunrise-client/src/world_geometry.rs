@@ -1,11 +1,11 @@
-//! Fixed-capacity output for a view's custom geometry; the GPU consumer owns drawing.
+//! Per-view output for custom geometry; the GPU consumer owns drawing.
 use crate::gfx::mod_pipelines::{self, PipelineRun, PipelineVertex};
 use crate::gfx::world_primitives::{Batch, DEFAULT_CAPACITY as CAPACITY, STAGES};
 use crate::{gizmos, mesher::Vertex};
 use glam::{DVec3, Mat4, Vec3, Vec4};
 use mod_api::{
-    DrawError, InstanceError, ModelInstance, PipelineDrawError, PipelineQuad, RenderLevelStage,
-    WorldDepth, WorldDrawUsage, WorldLine, WorldQuad,
+    DrawError, InstanceError, ModelInstance, PipelineQuad, RenderLevelStage, WorldDepth,
+    WorldDrawUsage, WorldLine, WorldQuad,
 };
 
 /// Copies of resolved models accepted for one view. Reserved once, never grown in a frame.
@@ -50,11 +50,11 @@ pub struct WorldGeometry {
     lines: [Vec<[f32; 8]>; 2],
     quads: [Vec<Vertex>; 2],
     /// Quads drawn by mod pipelines, 4 vertices each, and the runs that share a pipeline and
-    /// a stage. They count against the quad capacity.
+    /// a stage. They count toward `usage().quads`.
     pipeline_quads: Vec<PipelineVertex>,
     pipeline_runs: Vec<PipelineRun>,
     /// Labels (`name_tag`), 4 vertices a quad: drawn with the world's name tags, then their
-    /// see-through copies. They count against the quad capacity.
+    /// see-through copies. They count toward `usage().quads`.
     labels: [Vec<Vertex>; 2],
     /// Each label's span of `labels[0]` and its squared distance from the camera, so the
     /// translucent name tags draw far to near ([`Self::sort_labels`]).
@@ -140,7 +140,7 @@ impl WorldGeometry {
     pub fn camera(&self) -> [f64; 3] {
         self.camera
     }
-    /// The current counts and setup-time limits across both depth modes.
+    /// The current counts and remaining fixed limits across both depth modes.
     pub fn usage(&self) -> WorldDrawUsage {
         WorldDrawUsage::new(
             self.lines.iter().map(|v| v.len() as u32).sum(),
@@ -148,7 +148,6 @@ impl WorldGeometry {
             self.quads.iter().map(|v| v.len() as u32 / 4).sum::<u32>()
                 + self.pipeline_quads.len() as u32 / 4
                 + self.labels.iter().map(|v| v.len() as u32 / 4).sum::<u32>(),
-            CAPACITY,
             self.accepted_models,
             INSTANCE_CAPACITY,
         )
@@ -279,11 +278,8 @@ impl WorldGeometry {
         }
         Ok(())
     }
-    /// Append an entire quad batch or leave the output unchanged.
+    /// Append an entire quad batch or leave the output unchanged on non-finite coordinates.
     pub fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
-        if quads.len() > (CAPACITY - self.usage().quads) as usize {
-            return Err(DrawError::CapacityExceeded);
-        }
         self.validate_positions(quads.iter().flat_map(|q| q.corners))?;
         for q in quads {
             let color = crate::world_primitives::vertex_color(q.color, 255);
@@ -306,18 +302,9 @@ impl WorldGeometry {
         self.validate_positions(std::iter::once(at))
     }
     /// Append one label's quads, laid out by the caller (`world` drawn with the name tags,
-    /// `see_through` over everything), or leave the output unchanged. `distance_sq` is the
-    /// label's squared distance from the camera, by which the name tags are sorted.
-    pub fn label(
-        &mut self,
-        distance_sq: f64,
-        world: &[Vertex],
-        see_through: &[Vertex],
-    ) -> Result<(), DrawError> {
-        let quads = (world.len() + see_through.len()) / 4;
-        if quads > (CAPACITY - self.usage().quads) as usize {
-            return Err(DrawError::CapacityExceeded);
-        }
+    /// `see_through` over everything). `distance_sq` is the label's squared distance from the
+    /// camera, by which the name tags are sorted.
+    pub fn label(&mut self, distance_sq: f64, world: &[Vertex], see_through: &[Vertex]) {
         if !world.is_empty() {
             let start = self.labels[0].len() as u32;
             self.label_runs.push(LabelRun {
@@ -328,7 +315,6 @@ impl WorldGeometry {
         }
         self.labels[0].extend_from_slice(world);
         self.labels[1].extend_from_slice(see_through);
-        Ok(())
     }
     /// Orders the labels drawn with the name tags far to near, as vanilla sorts its translucent
     /// name tags (`NameTagFeatureRenderer`): equally far ones keep their submission order.
@@ -356,31 +342,22 @@ impl WorldGeometry {
     pub fn labels(&self) -> [&[Vertex]; 2] {
         [&self.labels[0], &self.labels[1]]
     }
-    /// Append an entire batch of quads drawn by the mod pipeline in `slot`, or leave the
-    /// output unchanged. The caller has resolved the handle; quads that follow the last ones
-    /// with the same pipeline and stage join their run.
-    pub fn pipeline_quads(
-        &mut self,
-        slot: u32,
-        quads: &[PipelineQuad],
-    ) -> Result<(), PipelineDrawError> {
-        if quads.len() > (CAPACITY - self.usage().quads) as usize {
-            return Err(PipelineDrawError::CapacityExceeded);
-        }
-        self.validate_positions(quads.iter().flat_map(|q| q.corners))
-            .map_err(|_| PipelineDrawError::NonFinite)?;
-        if quads
-            .iter()
-            .flat_map(|q| q.uv)
-            .flatten()
-            .any(|c| !c.is_finite())
-        {
-            return Err(PipelineDrawError::NonFinite);
-        }
-        if quads.is_empty() {
-            return Ok(());
-        }
+    /// Append valid quads drawn by the mod pipeline in `slot`. The caller has resolved the
+    /// handle; quads with any non-finite corner, camera-relative `f32` coordinate, or UV are
+    /// skipped individually without rejecting valid quads in the same slice. Accepted quads
+    /// that follow the last ones with the same pipeline and stage join their run.
+    pub fn pipeline_quads(&mut self, slot: u32, quads: &[PipelineQuad]) {
+        let mut pushed = 0u32;
         for q in quads {
+            let corners_finite = q.corners.iter().all(|corner| {
+                corner
+                    .iter()
+                    .zip(self.camera)
+                    .all(|(&p, cam)| p.is_finite() && ((p - cam) as f32).is_finite())
+            });
+            if !corners_finite || q.uv.iter().flatten().any(|c| !c.is_finite()) {
+                continue;
+            }
             let color = crate::world_primitives::vertex_color(q.color, 255);
             self.pipeline_quads
                 .extend((0..4).map(|corner| PipelineVertex {
@@ -388,17 +365,20 @@ impl WorldGeometry {
                     uv: q.uv[corner],
                     color,
                 }));
+            pushed += 1;
         }
-        let (stage, count) = (self.stage as u32, quads.len() as u32);
+        if pushed == 0 {
+            return;
+        }
+        let stage = self.stage as u32;
         match self.pipeline_runs.last_mut() {
-            Some(run) if run.slot == slot && run.stage == stage => run.quads += count,
+            Some(run) if run.slot == slot && run.stage == stage => run.quads += pushed,
             _ => self.pipeline_runs.push(PipelineRun {
                 slot,
                 stage,
-                quads: count,
+                quads: pushed,
             }),
         }
-        Ok(())
     }
     /// Borrow the existing renderer's batch, with no copying or frame allocation. The frame's
     /// builder names the pipeline set the queued slots belong to.
@@ -611,14 +591,15 @@ mod tests {
         through.depth = WorldDepth::ThroughWalls;
         draw.lines(&vec![through; CAPACITY as usize - 1]).unwrap();
         assert_eq!(draw.lines(&[line]), Err(DrawError::CapacityExceeded));
-        draw.quads(&vec![quad; CAPACITY as usize - 1]).unwrap();
-        assert_eq!(draw.quads(&[quad]), Err(DrawError::CapacityExceeded));
+        draw.quads(&vec![quad; CAPACITY as usize]).unwrap();
+        assert_eq!(draw.usage().quads, CAPACITY + 1);
         let capacities = (
             draw.lines.each_ref().map(Vec::capacity),
             draw.quads.each_ref().map(Vec::capacity),
         );
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         assert!(draw.batch().is_empty());
+        assert_eq!(draw.usage().quads, 0);
         assert_eq!(
             capacities,
             (
@@ -629,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn pipeline_quads_are_atomic_share_the_quad_capacity_and_run_by_pipeline_and_stage() {
+    fn pipeline_quads_skip_non_finite_grow_past_initial_capacity_and_run_by_pipeline_and_stage() {
         use RenderLevelStage::*;
         let mut draw = WorldGeometry::default();
         draw.reset([30_000_000.0, 20.0, 0.0], Mat4::IDENTITY, [0.5, 0.5]);
@@ -645,15 +626,15 @@ mod tests {
             0x80402010,
         );
         draw.begin_stage(AfterSky);
-        draw.pipeline_quads(4, &[quad, quad]).unwrap();
+        draw.pipeline_quads(4, &[quad, quad]);
         // The same pipeline at the same stage joins the run; another pipeline starts one, and
         // so does the first pipeline again after it, to keep the order submitted.
-        draw.pipeline_quads(4, &[quad]).unwrap();
-        draw.pipeline_quads(1, &[quad]).unwrap();
-        draw.pipeline_quads(4, &[quad]).unwrap();
+        draw.pipeline_quads(4, &[quad]);
+        draw.pipeline_quads(1, &[quad]);
+        draw.pipeline_quads(4, &[quad]);
         draw.begin_stage(AfterWeather);
-        draw.pipeline_quads(4, &[quad]).unwrap();
-        draw.pipeline_quads(4, &[]).unwrap();
+        draw.pipeline_quads(4, &[quad]);
+        draw.pipeline_quads(4, &[]);
 
         let pipelines = draw.batch().pipelines;
         let run = |slot, stage, quads| PipelineRun { slot, stage, quads };
@@ -672,44 +653,30 @@ mod tests {
         assert_eq!(corner.color.to_le_bytes(), [0x40, 0x20, 0x10, 0x80]);
         assert!(!draw.batch().is_empty());
 
-        // A fault anywhere refuses the whole batch.
+        // Non-finite quads are skipped individually without rejecting valid quads in the slice.
         let mut bad_corner = quad;
         bad_corner.corners[3][1] = f64::NAN;
         let mut bad_uv = quad;
         bad_uv.uv[1][0] = f32::INFINITY;
-        for bad in [bad_corner, bad_uv] {
-            assert_eq!(
-                draw.pipeline_quads(4, &[quad, bad]),
-                Err(PipelineDrawError::NonFinite)
-            );
-        }
+        let mut overflow_corner = quad;
+        overflow_corner.corners[0][0] = f64::MAX;
+        draw.pipeline_quads(4, &[bad_corner, bad_uv, overflow_corner]);
         assert_eq!(draw.usage().quads, 6);
+        draw.pipeline_quads(4, &[quad, bad_corner, bad_uv, quad]);
+        assert_eq!(draw.usage().quads, 8);
+        assert_eq!(draw.batch().pipelines.vertices.len(), 32);
+        assert_eq!(draw.batch().pipelines.runs.last(), Some(&run(4, 3, 3)));
 
-        // One capacity for plain and pipeline quads.
-        let plain = WorldQuad::new(quad.corners, !0, WorldDepth::Tested);
-        draw.quads(&vec![plain; CAPACITY as usize - 7]).unwrap();
+        // Pipeline quads grow past the initial capacity with no fixed cap.
+        draw.pipeline_quads(4, &vec![quad; CAPACITY as usize]);
+        assert_eq!(draw.usage().quads, CAPACITY + 8);
         assert_eq!(
-            draw.pipeline_quads(4, &[quad, quad]),
-            Err(PipelineDrawError::CapacityExceeded)
-        );
-        draw.pipeline_quads(4, &[quad]).unwrap();
-        assert_eq!(draw.quads(&[plain]), Err(DrawError::CapacityExceeded));
-        assert_eq!(draw.usage().quads, CAPACITY);
-
-        let capacity = (
-            draw.pipeline_quads.capacity(),
-            draw.pipeline_runs.capacity(),
+            draw.batch().pipelines.vertices.len(),
+            (CAPACITY as usize + 8) * 4
         );
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         assert!(draw.batch().is_empty());
-        assert_eq!(
-            capacity,
-            (
-                draw.pipeline_quads.capacity(),
-                draw.pipeline_runs.capacity()
-            ),
-            "a view's pipeline quads never grow the storage reserved at setup"
-        );
+        assert_eq!(draw.usage().quads, 0);
     }
 
     struct NearX;
@@ -928,7 +895,7 @@ mod tests {
     }
 
     #[test]
-    fn labels_share_the_quad_capacity_atomically_and_reset_per_view() {
+    fn labels_count_toward_quads_grow_past_initial_capacity_and_reset_per_view() {
         let mut draw = WorldGeometry::default();
         draw.reset([30_000_000.0, 20.0, 0.0], Mat4::IDENTITY, [0.5, 0.5]);
         assert_eq!(draw.check_label([30_000_000.5, 70.0, 0.5]), Ok(()));
@@ -941,24 +908,18 @@ mod tests {
         }
         let quad = [<Vertex as bytemuck::Zeroable>::zeroed(); 4];
         // One glyph in the world, and its see-through copy on a backdrop: three quads.
-        draw.label(1.0, &quad, &[quad, quad].concat()).unwrap();
+        draw.label(1.0, &quad, &[quad, quad].concat());
         assert_eq!(draw.usage().quads, 3);
         assert_eq!(draw.labels().map(<[Vertex]>::len), [4, 8]);
         let world = WorldQuad::new([[30_000_000.0, 20.0, -1.0]; 4], !0, WorldDepth::Tested);
-        draw.quads(&vec![world; CAPACITY as usize - 4]).unwrap();
-        // One quad left: a label of two is refused whole, one of one fits.
-        assert_eq!(
-            draw.label(1.0, &quad, &quad),
-            Err(DrawError::CapacityExceeded)
-        );
-        assert_eq!(draw.labels().map(<[Vertex]>::len), [4, 8]);
-        draw.label(1.0, &[], &quad).unwrap();
-        assert_eq!(draw.usage().quads, CAPACITY);
-        assert_eq!(draw.quads(&[world]), Err(DrawError::CapacityExceeded));
-        let capacities = draw.labels.each_ref().map(Vec::capacity);
+        draw.quads(&vec![world; CAPACITY as usize]).unwrap();
+        // Labels submitted past CAPACITY plain quads still succeed and count toward usage().quads.
+        draw.label(1.0, &quad, &quad);
+        assert_eq!(draw.labels().map(<[Vertex]>::len), [8, 12]);
+        assert_eq!(draw.usage().quads, CAPACITY + 5);
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         assert_eq!(draw.labels().map(<[Vertex]>::len), [0, 0]);
-        assert_eq!(draw.labels.each_ref().map(Vec::capacity), capacities);
+        assert_eq!(draw.usage().quads, 0);
     }
 
     #[test]
@@ -979,11 +940,10 @@ mod tests {
                 .map(|v| v.color)
                 .collect()
         };
-        draw.label(4.0, &quad(1), &[]).unwrap();
-        draw.label(16.0, &[quad(2), quad(2)].concat(), &quad(9))
-            .unwrap();
-        draw.label(4.0, &quad(3), &[]).unwrap();
-        draw.label(1.0, &quad(4), &[]).unwrap();
+        draw.label(4.0, &quad(1), &[]);
+        draw.label(16.0, &[quad(2), quad(2)].concat(), &quad(9));
+        draw.label(4.0, &quad(3), &[]);
+        draw.label(1.0, &quad(4), &[]);
         draw.sort_labels();
         assert_eq!(colors(&draw), [2, 2, 1, 3, 4]);
         assert_eq!(
@@ -992,7 +952,7 @@ mod tests {
             "see-through copies are not reordered"
         );
         // Sorted runs stay sorted when labels are added and sorted again.
-        draw.label(9.0, &quad(5), &[]).unwrap();
+        draw.label(9.0, &quad(5), &[]);
         draw.sort_labels();
         assert_eq!(colors(&draw), [2, 2, 5, 1, 3, 4]);
         assert_eq!(draw.usage().quads, 7);

@@ -62,8 +62,12 @@ fn register_render_pipelines(
 scaled by its alpha. `WorldDepth::Tested` hides the quads behind nearer world surfaces, and
 `ThroughWalls` draws them over everything. No pipeline writes depth.
 
-The id must be in a namespace your mod owns. There is no per-mod pipeline count cap. A registration
-with an unowned namespace or a duplicate id is logged with the mod's id and dropped.
+Any valid `Identifier` is accepted, and there is no per-mod pipeline count cap. Collisions are
+checked separately for required and optional pipelines against both vanilla's built-in pipelines
+and earlier mod registrations of the same kind: a same-kind collision fails startup registration,
+while a required and an optional registration may share an id and are resolved separately via
+`PipelineKind`. If startup reports missing or invalid `render-pipelines.json`, prepare the client
+resources again.
 
 ### Required or optional
 
@@ -118,7 +122,10 @@ not translate:
 ```rust,ignore
 fn client_setup(&self, host: &dyn ClientHost, _event: &mut ClientSetupEvent<'_>) {
     let id = Identifier::parse("example:glow").unwrap();
-    *self.glow.lock().unwrap() = host.render_assets().render_pipeline(&id).ok();
+    *self.glow.lock().unwrap() = host
+        .render_assets()
+        .render_pipeline(&id, PipelineKind::Required)
+        .ok();
 }
 
 fn submit_custom_geometry(&self, _host: &dyn ClientHost, event: &mut SubmitCustomGeometryEvent<'_>) {
@@ -139,11 +146,8 @@ reload answers `Stale`.
 | `RenderPipelineError::Unknown` | No mod registered that id. |
 | `RenderPipelineError::Invalid` | The pipeline is optional and its shader file is missing, was refused or was rejected by the GPU. The log has a line `render pipeline <id> from mod <owner> refused: <file>: <reason>`, with the file's line number for a syntax or type error, or `render pipeline <id> from mod <owner> refused by the GPU: <reason>`. |
 | `RenderPipelineError::Stale` | The handle is from before a resource reload. |
-| `PipelineDrawError::NonFinite` | A corner or texture coordinate is not finite, or a camera-relative coordinate overflows `f32`. |
-| `PipelineDrawError::CapacityExceeded` | The view's 4,096 quads, shared with `WorldDrawContext::quads`, are used up. |
 
-A refused batch draws nothing. An `Invalid` pipeline never stops the game from starting; a required
-pipeline that cannot be built does.
+`pipeline_quads` returns `PipelineDrawError::Pipeline(...)` when the handle is invalid or stale, drawing nothing for that call. Any quad with a non-finite corner, camera-relative `f32` overflow, or non-finite texture coordinate is ignored while the valid quads in the batch still draw, and quad storage grows dynamically into the GPU buffers without a 4,096 cap. An `Invalid` pipeline never stops the game from starting; a required pipeline that cannot be built does.
 
 ## What a pipeline draws, and when
 
@@ -165,10 +169,7 @@ event.register(
 
 `PipelineTexture::Sprite(id)` names a sprite of the block or item atlas by its texture id:
 `example:block/charge` is `assets/example/textures/block/charge.png` as the `minecraft:blocks`
-atlas holds it, `minecraft:item/diamond` an item sprite. An animated sprite animates. A pipeline
-always samples a rectangle of the atlas, never a texture of its own. A texture file of your mod's
-own, packed into the runtime atlas's slot pool (#4438) and drawn the same way, follows once that
-pool exists.
+atlas holds it, `minecraft:item/diamond` an item sprite. An animated sprite animates.
 
 The shader then has one more function:
 
@@ -194,7 +195,7 @@ cause and resolves to `Invalid`:
 | --- | --- |
 | `NoSuchSprite` | Neither the block nor the item atlas has the sprite (`… refused by the GPU: its texture sprite <name>: NoSuchSprite: …`) |
 | `NotASpriteKey` | The id names a file (a `textures/` path or a `.png` name), not a sprite key |
-| `NoSuchTextureFile`, `OverCap`, `Undecodable`, `NoSlot` | Texture files, once the slot pool exists: missing, over 1024 x 1024, not an image, or no slot within the mod's budget of 16 images and 4 MiB |
+| `NoSuchTextureFile`, `Undecodable` | File-backed textures: missing texture file, or a file that cannot be decoded as an image |
 
 A pipeline without `.textured(…)` has no `pipeline_texture`: its file is refused with a note
 naming `RenderPipeline::textured`.

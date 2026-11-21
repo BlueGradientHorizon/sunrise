@@ -12,12 +12,16 @@ pub trait Hooks {
 `EntityRenderersEvent.RegisterLayerDefinitions`. It receives a `RegistrationContext` once at
 client startup. Call `event.register(id, supplier)` to stage a supplier that builds a
 `LayerDefinition`. Dedicated and integrated server roles do not fire this client event.
-IDs have the form `<namespace>:<path>#<layer>`; malformed IDs and the `minecraft` namespace
-are logged and dropped. The first valid registration for an ID wins.
+IDs have the form `<namespace>:<path>#<layer>`. Write the model `Identifier` in its full
+`namespace:path` form even when a half is empty; `<layer>` is any suffix after the first `#`. Any valid ID that does not collide
+with an existing vanilla layer definition is accepted; duplicate mod registrations for the same ID
+overwrite earlier suppliers (last-writer-wins) before freeze. Malformed IDs, collisions with
+existing vanilla layer definitions, or an unavailable/invalid vanilla `entity-models.json` key
+table fail startup freeze before any supplier runs or the layer table publishes.
 
-The game calls accepted suppliers in registration order when assembling the frozen layer table.
-Duplicates never run, even if the first supplier for that ID fails. A supplier that is disabled,
-refuses or panics leaves no definition. Bakes and resource reloads do not call suppliers again.
+The game calls each winning supplier once when assembling the frozen layer table. Overwritten
+suppliers never run. A supplier that is disabled, refuses or panics leaves no definition. Bakes
+and resource reloads do not call suppliers again.
 
 A `LayerDefinition` holds a `MeshDefinition` of named parts whose `CubeListBuilder` boxes sit
 at a `PartPose`, on a texture of the given size. Texture offsets, mirroring and
@@ -48,7 +52,7 @@ The sprite is the entity texture ID and the tint is `0xRRGGBB`."#]
         answered_by = "mod",
         registration_append = "custom",
         neoforge = "EntityRenderersEvent.RegisterLayerDefinitions",
-        version = 2
+        version = 3
     )]
     fn register_layer_definitions(layers: &mut Vec<Answered<LayerDefinitionRegistration>>);
 }

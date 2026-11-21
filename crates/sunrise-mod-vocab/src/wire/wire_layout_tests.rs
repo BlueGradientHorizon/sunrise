@@ -206,7 +206,6 @@ fn handle_records_have_declared_field_bytes() {
         (43u64, 11u32),
     );
     fields(InstanceGroupRef::from_parts(37, 9).unwrap(), (37u64, 9u32));
-    fields(RenderPipelineRef::from_parts(41, 5).unwrap(), (41u64, 5u32));
     fields(AttachmentHolder::Entity(entity), (0u32, entity));
     fields(AttachmentHolder::Player(player), (1u32, player));
     fields(
@@ -559,7 +558,6 @@ fn newtype_widths_and_unit_enum_tags_match_their_encodings() {
     fields(crate::UnresolvedFluid(0x100000003), (0x100000003u64,));
     fields(WorldEpoch::new(47), (47u64,));
     fields(TickId::new(19), (19u64,));
-    fields(SoundRef { id: 71 }, (71u64,));
     fields(crate::__private::biome_id(11), (11u32,));
     fields(crate::__private::mod_color_resolver(13), (13u32,));
     fields(BlockUpdateFlags(17), (17u32,));
