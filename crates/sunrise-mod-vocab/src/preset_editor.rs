@@ -155,6 +155,7 @@ impl RegisterPresetEditorsEvent<'_> {
 
 /// A staged preset editor factory; dispatch attributes it to the registering mod.
 // no wire: retained process-local preset editor factory callback.
+// hidden: retained registration staging belongs to the game
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct PresetEditorFactoryRegistration {
@@ -165,6 +166,7 @@ pub struct PresetEditorFactoryRegistration {
 }
 
 /// Construct a [`PresetEditorContext`] for one factory invocation (engine only).
+// hidden: the game owns the state borrowed by the factory
 #[doc(hidden)]
 pub fn new_preset_editor_context<'a>(
     preset: &'a Identifier,
@@ -179,6 +181,7 @@ pub fn new_preset_editor_context<'a>(
 }
 
 /// Construct a [`PresetEditorDraft`] for one editor callback invocation (engine only).
+// hidden: the game owns the state borrowed by the editor
 #[doc(hidden)]
 pub fn new_preset_editor_draft<'a>(
     preset: &'a Identifier,

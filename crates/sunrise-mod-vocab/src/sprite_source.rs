@@ -61,7 +61,7 @@ pub enum SpriteSourceOutput {
 /// Borrowed input passed to a registered atlas sprite source provider when an atlas definition is
 /// listed (`SpriteSource.run`).
 // no wire: borrowed sprite source decode input.
-// exhaustive: the game constructs this view; mods only read it.
+#[non_exhaustive]
 pub struct SpriteSourceInput<'a> {
     /// The atlas being listed (`minecraft:blocks`, `minecraft:items`, `minecraft:gui`, or an atlas
     /// registered with `register_texture_atlases`).
@@ -71,6 +71,18 @@ pub struct SpriteSourceInput<'a> {
     /// Read-only access to the load's selected resource packs (`ResourceManager`), valid for this
     /// call only.
     pub resources: &'a dyn ResourceReader,
+}
+
+impl<'a> SpriteSourceInput<'a> {
+    // hidden: the game supplies this read-only callback input
+    #[doc(hidden)]
+    pub fn new(atlas: &'a Identifier, config: &'a Tag, resources: &'a dyn ResourceReader) -> Self {
+        Self {
+            atlas,
+            config,
+            resources,
+        }
+    }
 }
 
 /// A retained atlas sprite source provider callback bound at `register_sprite_sources`.
@@ -103,6 +115,7 @@ impl RegisterSpriteSourcesEvent<'_> {
 
 /// A staged atlas sprite source provider; dispatch attributes it to the registering mod.
 // no wire: retained process-local sprite source provider callback.
+// hidden: retained registration staging belongs to the game
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct SpriteSourceRegistration {

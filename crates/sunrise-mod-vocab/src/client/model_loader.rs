@@ -51,7 +51,7 @@ pub struct ModelLoaderQuad {
 
 /// Borrowed input passed to a registered model loader callback when a model is baked.
 // no wire: borrowed model loader bake input.
-// exhaustive: the game constructs this view; mods only read it.
+#[non_exhaustive]
 pub struct ModelLoaderInput<'a> {
     /// The model's identifier (`mymod:block/pillar`).
     pub model: &'a str,
@@ -60,6 +60,18 @@ pub struct ModelLoaderInput<'a> {
     /// Resolved cuboid texture slots (`slot -> sprite identifier`), including inherited slots.
     /// [`ModelLoaderSchema::Custom`] does not decode texture slots from its own JSON.
     pub textures: &'a BTreeMap<String, String>,
+}
+
+impl<'a> ModelLoaderInput<'a> {
+    // hidden: the game supplies this read-only callback input
+    #[doc(hidden)]
+    pub fn new(model: &'a str, config: &'a str, textures: &'a BTreeMap<String, String>) -> Self {
+        Self {
+            model,
+            config,
+            textures,
+        }
+    }
 }
 
 /// A retained model loader bake callback bound at `register_model_loaders`.
@@ -91,6 +103,7 @@ impl RegisterModelLoadersEvent<'_> {
 
 /// A staged model loader callback; dispatch attributes it to the registering mod.
 // no wire: retained process-local model loader callback.
+// hidden: retained registration staging belongs to the game
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct ModelLoaderRegistration {

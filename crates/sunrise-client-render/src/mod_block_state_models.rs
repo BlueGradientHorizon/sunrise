@@ -100,11 +100,7 @@ pub fn instantiate(
     let config = sunrise_core::json_nbt::json_to_tag(config)
         .map_err(|e| format!("definition type {kind}: its JSON doesn't convert to NBT: {e}"))?;
     let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-    let input = BlockStateDefinitionInput {
-        block: &block,
-        config: &config,
-        states,
-    };
+    let input = BlockStateDefinitionInput::new(&block, &config, states);
     let picks = match entry.owner.call(
         "block state definition",
         "instantiate_block_state_definition",

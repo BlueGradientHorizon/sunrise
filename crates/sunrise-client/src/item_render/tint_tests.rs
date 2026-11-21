@@ -46,10 +46,7 @@ impl ItemEnv for BoundTintEnv {
         let Some(snapshot) = ItemStack::new(item_key(0), stack.count.max(0) as u32) else {
             return -1;
         };
-        let input = ItemTintInput {
-            stack: &snapshot,
-            bundle_selected: stack.bundle_selected,
-        };
+        let input = ItemTintInput::new(&snapshot, stack.bundle_selected);
         bound
             .owner
             .call("item tint source", "item_tint_source", || {

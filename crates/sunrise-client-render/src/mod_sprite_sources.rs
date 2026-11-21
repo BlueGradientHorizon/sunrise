@@ -138,11 +138,7 @@ impl ModSources for Registered {
         };
         let _phase =
             mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-        let input = SpriteSourceInput {
-            atlas,
-            config,
-            resources: resources.as_ref(),
-        };
+        let input = SpriteSourceInput::new(atlas, config, resources.as_ref());
         match entry
             .owner
             .call("sprite source", "sprite_source", || (entry.list)(&input))

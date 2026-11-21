@@ -66,8 +66,8 @@ pub struct ItemModelLevel {
 /// `RangeSelectItemModelProperty.get`, `SelectItemModelProperty.get`): display context, living
 /// holder, client level, and draw seed.
 #[derive(Clone, Debug, PartialEq)]
-// exhaustive: the game constructs this view; mods only read it
 // no wire: in-process draw context passed to bound item model providers.
+#[non_exhaustive]
 pub struct ItemModelContext {
     /// Where the item is drawn (a screen, a hand, the ground, a frame, the head).
     pub display: ItemDisplayContext,
@@ -77,6 +77,24 @@ pub struct ItemModelContext {
     pub level: Option<ItemModelLevel>,
     /// The draw's random seed.
     pub seed: i32,
+}
+
+impl ItemModelContext {
+    // hidden: the game supplies this read-only callback input
+    #[doc(hidden)]
+    pub fn new(
+        display: ItemDisplayContext,
+        owner: Option<ItemModelOwner>,
+        level: Option<ItemModelLevel>,
+        seed: i32,
+    ) -> Self {
+        Self {
+            display,
+            owner,
+            level,
+            seed,
+        }
+    }
 }
 
 /// Whose display transform a layer of a model node draws under (`ItemTransform` of

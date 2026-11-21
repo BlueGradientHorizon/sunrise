@@ -86,12 +86,7 @@ fn model_callbacks_receive_owned_counts_and_the_exact_runtime_selection() {
         let range_eval = (range_props[0].answer.decode)(&config).unwrap();
         let (select_case_decode, select_eval) = (select_props[0].answer.decode)(&config).unwrap();
         let tint_eval = (tint_sources[0].answer.decode)(&config).unwrap();
-        let context = ItemModelContext {
-            display: ItemDisplayContext::Gui,
-            owner: None,
-            level: None,
-            seed: 0,
-        };
+        let context = ItemModelContext::new(ItemDisplayContext::Gui, None, None, 0);
         let when = select_case_decode(&crate::Tag::String("3:2".into())).unwrap();
         for (selected, boolean, number, case, tint) in [
             (3, true, 1.5, Some(7), 0xff03_0002),
@@ -106,20 +101,13 @@ fn model_callbacks_receive_owned_counts_and_the_exact_runtime_selection() {
                 &mut value,
             );
             assert_eq!(value, boolean);
-            let prop_input = ItemModelPropertyInput {
-                stack: &stack,
-                bundle_selected: selected,
-                context: &context,
-            };
+            let prop_input = ItemModelPropertyInput::new(&stack, selected, &context);
             assert_eq!(range_eval(&NoClient, &prop_input), number);
             assert_eq!(
                 select_eval(&NoClient, &prop_input, &mut std::iter::once((7, &when))),
                 case
             );
-            let tint_input = ItemTintInput {
-                stack: &stack,
-                bundle_selected: selected,
-            };
+            let tint_input = ItemTintInput::new(&stack, selected);
             assert_eq!(tint_eval(&NoClient, &tint_input), tint);
         }
     });

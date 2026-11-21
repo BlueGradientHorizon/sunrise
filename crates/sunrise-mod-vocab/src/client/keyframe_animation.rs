@@ -114,6 +114,7 @@ impl PartialEq for BoundInterpolation {
 impl Eq for BoundInterpolation {}
 
 /// Bind a registered animation target to its owning mod's callbacks.
+// hidden: pairs the staged engine callback with its owner
 #[doc(hidden)]
 pub fn bind_animation_target(
     id: Identifier,
@@ -130,6 +131,7 @@ pub fn bind_animation_target(
 }
 
 /// Bind a registered animation interpolation to its owning mod's callback.
+// hidden: pairs the staged engine callback with its owner
 #[doc(hidden)]
 pub fn bind_animation_interpolation(
     id: Identifier,
@@ -144,6 +146,7 @@ pub fn bind_animation_interpolation(
 }
 
 /// Invoke a bound animation target's parse-time vector converter with panic containment.
+// hidden: converts a decoded animation channel for the game
 #[doc(hidden)]
 pub fn convert_animation_target(
     target: &BoundAnimationTarget,
@@ -512,6 +515,7 @@ impl AnimationState {
 /// A staged custom animation target or interpolation callback; dispatch attributes it to the
 /// registering mod.
 // no wire: retained process-local animation target/interpolation callback.
+// hidden: retained registration staging belongs to the game
 #[doc(hidden)]
 #[non_exhaustive]
 pub enum JsonAnimationTypeRegistration {

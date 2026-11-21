@@ -64,11 +64,7 @@ fn freeze(
                 let _phase = mod_api::__private::PhaseOwner::scope(
                     mod_api::__private::ModPhase::Registration,
                 );
-                let input = ModelLoaderInput {
-                    model,
-                    config,
-                    textures,
-                };
+                let input = ModelLoaderInput::new(model, config, textures);
                 let quads = owner
                     .call("model loader", "bake_model_loader", || {
                         (answer.bake)(&input)

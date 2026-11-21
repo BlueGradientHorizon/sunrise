@@ -10,12 +10,23 @@ use std::sync::Arc;
 
 /// Borrowed input passed to a bound item tint source callback (`ItemTintSource.calculate`).
 // no wire: borrowed per-stack item tint evaluation input.
-// exhaustive: the game constructs this view; mods only read it.
+#[non_exhaustive]
 pub struct ItemTintInput<'a> {
     /// Owned snapshot of the stack being resolved (including nested bundle items).
     pub stack: &'a ItemStack,
     /// Runtime bundle selection index (`BundleContents.selectedItem`), or `-1` when none.
     pub bundle_selected: i32,
+}
+
+impl<'a> ItemTintInput<'a> {
+    // hidden: the game supplies this read-only callback input
+    #[doc(hidden)]
+    pub fn new(stack: &'a ItemStack, bundle_selected: i32) -> Self {
+        Self {
+            stack,
+            bundle_selected,
+        }
+    }
 }
 
 /// A bound item tint source instance produced at item definition decode time and invoked per stack.
@@ -30,6 +41,7 @@ pub type ItemTintSourceDecoder =
 
 /// A staged item tint source decoder; dispatch attributes it to the registering mod.
 // no wire: retained process-local item tint source decoder registration.
+// hidden: retained registration staging belongs to the game
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct ItemTintSourceRegistration {
@@ -69,7 +81,7 @@ impl RegisterItemTintSourcesEvent<'_> {
 
 /// Borrowed input passed to a bound item model callback (`ItemModel.update`).
 // no wire: borrowed per-stack item model update input.
-// exhaustive: the game constructs this view; mods only read it.
+#[non_exhaustive]
 pub struct ItemModelUpdateInput<'a> {
     /// Owned snapshot of the stack being resolved (including nested bundle items).
     pub stack: &'a ItemStack,
@@ -77,6 +89,18 @@ pub struct ItemModelUpdateInput<'a> {
     pub bundle_selected: i32,
     /// Display context, living holder, client level, and draw seed.
     pub context: &'a ItemModelContext,
+}
+
+impl<'a> ItemModelUpdateInput<'a> {
+    // hidden: the game supplies this read-only callback input
+    #[doc(hidden)]
+    pub fn new(stack: &'a ItemStack, bundle_selected: i32, context: &'a ItemModelContext) -> Self {
+        Self {
+            stack,
+            bundle_selected,
+            context,
+        }
+    }
 }
 
 /// A bound item model instance produced at item definition decode time and invoked per stack to
@@ -116,6 +140,7 @@ pub struct ItemModelConfig<'a> {
     fields: &'a serde_json::Map<String, serde_json::Value>,
 }
 
+// hidden: the game supplies the config borrowed by the decoder
 #[doc(hidden)]
 pub fn new_item_model_config(
     fields: &serde_json::Map<String, serde_json::Value>,
@@ -149,6 +174,7 @@ pub type ItemModelDecoder = dyn Fn(&ItemModelConfig<'_>, &mut dyn ItemModelChild
 
 /// A staged item model decoder; dispatch attributes it to the registering mod.
 // no wire: retained process-local item model decoder registration.
+// hidden: retained registration staging belongs to the game
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct ItemModelRegistration {
@@ -196,7 +222,7 @@ impl RegisterItemModelsEvent<'_> {
 /// Borrowed input passed to bound range-select and select item model property callbacks
 /// (`RangeSelectItemModelProperty.get`, `SelectItemModelProperty.get`).
 // no wire: borrowed per-stack item model property evaluation input.
-// exhaustive: the game constructs this view; mods only read it.
+#[non_exhaustive]
 pub struct ItemModelPropertyInput<'a> {
     /// Owned snapshot of the stack being resolved (including nested bundle items).
     pub stack: &'a ItemStack,
@@ -204,6 +230,18 @@ pub struct ItemModelPropertyInput<'a> {
     pub bundle_selected: i32,
     /// Display context, living holder, client level, and draw seed.
     pub context: &'a ItemModelContext,
+}
+
+impl<'a> ItemModelPropertyInput<'a> {
+    // hidden: the game supplies this read-only callback input
+    #[doc(hidden)]
+    pub fn new(stack: &'a ItemStack, bundle_selected: i32, context: &'a ItemModelContext) -> Self {
+        Self {
+            stack,
+            bundle_selected,
+            context,
+        }
+    }
 }
 
 /// A bound numeric `range_dispatch` property instance produced at item definition decode time and
@@ -221,6 +259,7 @@ pub type RangeSelectPropertyDecoder =
 
 /// A staged numeric item model property decoder; dispatch attributes it to the registering mod.
 // no wire: retained process-local range select item model property registration.
+// hidden: retained registration staging belongs to the game
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct RangeSelectPropertyRegistration {
@@ -281,6 +320,7 @@ impl<T: Eq + std::fmt::Debug + Send + Sync + 'static> SelectCaseKeyOps for T {
 /// per-stack result.
 // no wire: retained process-local select item model case key.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct SelectCaseKey(Arc<dyn SelectCaseKeyOps>);
 
 impl SelectCaseKey {
@@ -327,6 +367,7 @@ pub type SelectPropertyDecoder =
 
 /// A staged categorical item model property decoder; dispatch attributes it to the registering mod.
 // no wire: retained process-local select item model property registration.
+// hidden: retained registration staging belongs to the game
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct SelectPropertyRegistration {

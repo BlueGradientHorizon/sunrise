@@ -801,10 +801,7 @@ mod tests {
                 panic!("expected model leaf");
             };
             let stack = ItemStack::new(item_key(0), 1).unwrap();
-            let input = ItemTintInput {
-                stack: &stack,
-                bundle_selected: -1,
-            };
+            let input = ItemTintInput::new(&stack, -1);
             let host = FakeHost::new();
             let colors: Vec<u32> = leaf
                 .tints
@@ -977,17 +974,9 @@ mod tests {
             ) {
                 let bound = model.0.downcast_ref::<BoundItemModel>().unwrap();
                 let stack = ItemStack::new(item_key(0), 1).unwrap();
-                let ctx = mod_api::ItemModelContext {
-                    display: mod_api::ItemDisplayContext::Gui,
-                    owner: None,
-                    level: None,
-                    seed: 0,
-                };
-                let input = mod_api::ItemModelUpdateInput {
-                    stack: &stack,
-                    bundle_selected: -1,
-                    context: &ctx,
-                };
+                let ctx =
+                    mod_api::ItemModelContext::new(mod_api::ItemDisplayContext::Gui, None, None, 0);
+                let input = mod_api::ItemModelUpdateInput::new(&stack, -1, &ctx);
                 let mut layers = Vec::new();
                 (bound.eval)(&FakeHost::new(), &input, &mut layers);
                 out.extend(layers.into_iter().map(|layer| ModelChoice {
@@ -1065,17 +1054,9 @@ mod tests {
         ) -> Option<usize> {
             let bound = property.payload.downcast_ref::<BoundSelectProperty>()?;
             let api_stack = ItemStack::new(item_key(0), stack.count as u32).unwrap();
-            let ctx = mod_api::ItemModelContext {
-                display: mod_api::ItemDisplayContext::Gui,
-                owner: None,
-                level: None,
-                seed: 0,
-            };
-            let input = mod_api::ItemModelPropertyInput {
-                stack: &api_stack,
-                bundle_selected: -1,
-                context: &ctx,
-            };
+            let ctx =
+                mod_api::ItemModelContext::new(mod_api::ItemDisplayContext::Gui, None, None, 0);
+            let input = mod_api::ItemModelPropertyInput::new(&api_stack, -1, &ctx);
             bound.select(&FakeHost::new(), &input, keys)
         }
     }

@@ -79,12 +79,12 @@ impl item_render::ItemDrawEnv for Env<'_, '_> {
 
 fn item_model_context(ctx: &sunrise_assets::item_model::Context<'_>) -> mod_api::ItemModelContext {
     let Ok(display) = ctx.display.try_into_api();
-    mod_api::ItemModelContext {
+    mod_api::ItemModelContext::new(
         display,
-        owner: ctx.owner.and_then(|owner| owner.try_into_api().ok()),
-        level: ctx.level.and_then(|level| level.try_into_api().ok()),
-        seed: ctx.seed,
-    }
+        ctx.owner.and_then(|owner| owner.try_into_api().ok()),
+        ctx.level.and_then(|level| level.try_into_api().ok()),
+        ctx.seed,
+    )
 }
 
 impl ItemEnv for Env<'_, '_> {
@@ -120,11 +120,8 @@ impl ItemEnv for Env<'_, '_> {
             return 0.0;
         };
         let context = item_model_context(ctx);
-        let input = mod_api::ItemModelPropertyInput {
-            stack: &snapshot,
-            bundle_selected: stack.bundle_selected,
-            context: &context,
-        };
+        let input =
+            mod_api::ItemModelPropertyInput::new(&snapshot, stack.bundle_selected, &context);
         bound
             .owner
             .call(
@@ -154,11 +151,8 @@ impl ItemEnv for Env<'_, '_> {
             return None;
         };
         let context = item_model_context(ctx);
-        let input = mod_api::ItemModelPropertyInput {
-            stack: &snapshot,
-            bundle_selected: stack.bundle_selected,
-            context: &context,
-        };
+        let input =
+            mod_api::ItemModelPropertyInput::new(&snapshot, stack.bundle_selected, &context);
         bound.select(self.game, &input, keys)
     }
     fn item_tint_source(&self, source: &RegisteredTintSource, stack: &StackView) -> i32 {
@@ -171,10 +165,7 @@ impl ItemEnv for Env<'_, '_> {
         let Ok(snapshot) = stack.try_into_api() else {
             return -1;
         };
-        let input = mod_api::ItemTintInput {
-            stack: &snapshot,
-            bundle_selected: stack.bundle_selected,
-        };
+        let input = mod_api::ItemTintInput::new(&snapshot, stack.bundle_selected);
         bound
             .owner
             .call("item tint source", "item_tint_source", || {
@@ -199,11 +190,7 @@ impl ItemEnv for Env<'_, '_> {
             return;
         };
         let context = item_model_context(ctx);
-        let input = mod_api::ItemModelUpdateInput {
-            stack: &snapshot,
-            bundle_selected: stack.bundle_selected,
-            context: &context,
-        };
+        let input = mod_api::ItemModelUpdateInput::new(&snapshot, stack.bundle_selected, &context);
         let mut layers = Vec::new();
         if bound
             .owner

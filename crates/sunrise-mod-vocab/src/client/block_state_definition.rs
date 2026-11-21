@@ -34,7 +34,7 @@ pub enum BlockStateModelPick {
 /// Borrowed input passed to a registered block-state definition provider when a blockstate file is
 /// read.
 // no wire: borrowed block-state definition instantiation input.
-// exhaustive: the game constructs this view; mods only read it.
+#[non_exhaustive]
 pub struct BlockStateDefinitionInput<'a> {
     /// The block the blockstate file belongs to.
     pub block: &'a Identifier,
@@ -42,6 +42,22 @@ pub struct BlockStateDefinitionInput<'a> {
     pub config: &'a Tag,
     /// The block's states in registry order, each as its property names and values.
     pub states: &'a [BTreeMap<String, String>],
+}
+
+impl<'a> BlockStateDefinitionInput<'a> {
+    // hidden: the game supplies this read-only callback input
+    #[doc(hidden)]
+    pub fn new(
+        block: &'a Identifier,
+        config: &'a Tag,
+        states: &'a [BTreeMap<String, String>],
+    ) -> Self {
+        Self {
+            block,
+            config,
+            states,
+        }
+    }
 }
 
 /// A retained block-state definition provider callback bound at `register_block_state_models`.
@@ -74,6 +90,7 @@ impl RegisterBlockStateModelsEvent<'_> {
 
 /// A staged block-state definition provider; dispatch attributes it to the registering mod.
 // no wire: retained process-local block-state definition provider callback.
+// hidden: retained registration staging belongs to the game
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct BlockStateDefinitionRegistration {
