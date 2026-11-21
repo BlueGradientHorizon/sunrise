@@ -6,6 +6,8 @@ pub trait Hooks {
     /// to bind each loader identifier to its schema and bake callback. Each model and set of
     /// resolved texture slots invokes that callback once per load or reload. The callback's quads
     /// replace the cuboid geometry unless the loader explicitly delegates to the cuboid decoder.
+    /// An absent required loader rejects its declaring model file. A reference to that file uses
+    /// the missing model at that link without discarding a descendant's own geometry.
     /// Duplicates and collisions with built-ins (`neoforge:composite`, `neoforge:obj`,
     /// `fusion:model`) are registration errors.
     #[notes = r#"## Model loaders
@@ -53,8 +55,10 @@ Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted. 
 collisions with `neoforge:composite`, `neoforge:obj` or `fusion:model` are registration errors; the first
 registration stands. A loader ID written as a string, or as an object with `id` and no `optional` flag,
 is required. When the loader is absent, only `"loader": {"id":"example:pillar","optional":true}` uses
-ordinary cuboid geometry. A required loader that is absent or a present loader that returns `Err(reason)`
-uses the missing model and logs the error. An empty successful quad list is not an error. Panicking also
+ordinary cuboid geometry. An absent required loader rejects its declaring file and logs the error.
+References to that file use the missing model at that link: a descendant can still supply its own
+geometry. If a present loader returns `Err(reason)`, that bake uses the missing model and logs the
+error. An empty successful quad list is not an error. Panicking also
 disables that loader callback for the session and surfaces an error toast. A quad with a position or UV
 that isn't finite, or a texture key the model doesn't define, is skipped by itself with a reason."#]
     #[hook(

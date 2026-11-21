@@ -433,11 +433,6 @@ impl ModelLibrary {
                     .map_err(|reason| ResolveFailure::Loader(error(&reason)))?;
                 Some(ResolvedLoader::Registered(quads))
             }
-            Some((_, Loader::Missing(kind))) => {
-                return Err(ResolveFailure::Loader(error(&format!(
-                    "unknown required loader {kind}"
-                ))));
-            }
             Some((_, Loader::Fusion)) | None => None,
         };
         Ok(ResolvedCuboidModel {

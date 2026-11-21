@@ -130,9 +130,10 @@ cuboid elements as well as your quads. An empty replacement draws no geometry. R
 `ModelLoaderTexture::Sprite(id)` to name the sprite directly.
 
 A string `"loader": "example:loader"` is required. Use `"loader": {"id":"example:loader","optional":true}`
-to keep ordinary cuboid decoding when that provider is absent. An absent required loader or a refusal
-from a present loader produces the missing model, with a diagnostic. A later resource load invokes
-non-panicking providers again.
+to keep ordinary cuboid decoding when that provider is absent. An absent required loader rejects its
+own model file with a diagnostic. References to that file use the missing model at that link, so a
+child with its own geometry still renders it. A refusal from a present loader uses the missing model
+for that bake, with a diagnostic. A later resource load invokes non-panicking providers again.
 
 ## Conditional properties (`item_model_property`)
 

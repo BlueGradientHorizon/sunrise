@@ -44,11 +44,15 @@ impl ParsedModels {
                 Some((format!("{namespace}:{path}"), name))
             })
             .collect();
-        let parsed = crate::par::par_map(&files, |(_, path)| {
+        let parsed = crate::par::par_map(&files, |(id, path)| {
             let text = source.read_to_string(path).ok()?;
-            crate::mod_model_loaders::decode_model(&text)
-                .ok()
-                .map(Arc::new)
+            match crate::mod_model_loaders::decode_model(&text) {
+                Ok(model) => Some(Arc::new(model)),
+                Err(reason) => {
+                    log::error!("Sunrise: failed to decode model {id}: {reason}");
+                    None
+                }
+            }
         });
         let models = files
             .into_iter()
@@ -187,6 +191,41 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn an_unknown_required_loader_replaces_only_its_model_in_the_parent_chain() -> Result<()> {
+        use sunrise_assets::bake::{BlockModelTransform, bake_block_model};
+
+        let fixture = Fixture(
+            std::env::temp_dir().join(format!("sunrise-rejected-model-{}", std::process::id())),
+        );
+        fixture.write("demo:block/rejected", r#"{"loader":"demo:unregistered"}"#);
+        fixture.write(
+            "demo:block/child",
+            r##"{"parent":"demo:block/rejected","textures":{"side":"demo:block/stone"},"elements":[{"from":[0,0,0],"to":[16,16,16],"faces":{"up":{"texture":"#side"}}}]}"##,
+        );
+        let source = ResourceSource::directory(fixture.0.clone());
+        let parsed = ParsedModels::load(&source);
+        let blocks = parsed.block_library_or_missing(
+            &source,
+            vec!["demo:block/rejected".into(), "demo:block/child".into()],
+        )?;
+        let items = parsed.into_item_library()?;
+        for library in [&blocks, items.as_ref()] {
+            let transform = BlockModelTransform::new([0; 3], false);
+            let missing = bake_block_model(&library.resolve("demo:block/rejected")?, transform)?;
+            assert_eq!(missing.len(), 6);
+            assert!(
+                missing
+                    .iter()
+                    .all(|q| q.material.sprite == "minecraft:missingno")
+            );
+            let child = bake_block_model(&library.resolve("demo:block/child")?, transform)?;
+            assert_eq!(child.len(), 1);
+            assert_eq!(child[0].material.sprite, "demo:block/stone");
+        }
+        Ok(())
     }
 
     #[test]

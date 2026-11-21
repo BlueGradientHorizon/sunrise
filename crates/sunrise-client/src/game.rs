@@ -11404,6 +11404,15 @@ fn autosave_interval(rate: f32) -> i64 {
     i64::from((rate * 300.0) as i32).max(100)
 }
 
+/// The parts of a window key used by IME and preset editor dispatch. The original winit
+/// event carries platform data for the rest of the window's input handling.
+struct WindowKeyInput<'a> {
+    physical: PhysicalKey,
+    state: ElementState,
+    repeat: bool,
+    text: Option<&'a str>,
+}
+
 /// winit's events for a window's game, with any loop: a headless client (#4951) has no
 /// winit loop and calls these from its own.
 impl Game<'_> {
@@ -11461,94 +11470,43 @@ impl Game<'_> {
         }
     }
 
-    /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
-    ///
-    /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
-    /// (`mapped_key`, `mouse_mapping`). So a key handled below before `mapped_key_event` (a window
-    /// shortcut, a special case) never reaches a controller. If a player could want it on one, give
-    /// it a handler both can call and a `gamepad::Route` (screenshot and fullscreen do this). A
-    /// screen's own raw keys, text and mods' key hooks stay raw on purpose.
-    fn handle_window_event_inner(
+    /// Dispatch a window key through IME, the window's shortcuts and overlays, then any bound
+    /// preset editor. `true` means no further screen or gameplay handling is needed.
+    fn dispatch_window_key(
         &mut self,
         event_loop: &dyn EventLoopCtl,
-        mut event: WindowEvent,
-        cursor_sample: Option<sunrise_client::window::PointerSample>,
-    ) {
-        if matches!(
-            event,
-            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }
-        ) {
-            self.window_pointer_space.take();
-        }
-        let pressed = match &event {
-            WindowEvent::KeyboardInput { event, .. } => {
-                event.state == ElementState::Pressed && !event.repeat
-            }
-            WindowEvent::MouseInput { state, .. } => *state == ElementState::Pressed,
-            _ => false,
-        };
-        if pressed && !self.pad.menu.synthetic {
+        input: WindowKeyInput<'_>,
+        before_screen: impl FnOnce(&mut Self) -> bool,
+    ) -> bool {
+        let pressed = input.state == ElementState::Pressed;
+        if pressed && !input.repeat && !self.pad.menu.synthetic {
             self.pad_radial_cancel();
         }
-        if let WindowEvent::Focused(false) = &event {
-            self.modifiers = winit::keyboard::ModifiersState::empty();
-            self.physical_keys.clear();
-            self.physical_buttons.clear();
-            self.drag_button = None;
-            self.container_buttons.clear();
-        }
-        if let WindowEvent::ModifiersChanged(m) = &event {
-            self.update_modifiers(m.state());
-        }
-        if let WindowEvent::Focused(false) = &event {
-            self.update_modifiers(winit::keyboard::ModifiersState::empty());
-            self.debug_keys.reset();
-        }
-        // Pack drops on the resource-pack and Create New World screens.
-        if let WindowEvent::DroppedFile(path) = &event {
-            self.drop_pack_file(path);
-        }
-        if let WindowEvent::KeyboardInput {
-            event: key_event, ..
-        } = &event
-            && let PhysicalKey::Code(key) = key_event.physical_key
-        {
-            if key_event.state == ElementState::Pressed {
+        if let PhysicalKey::Code(key) = input.physical {
+            if pressed {
                 // Only a press that finds no field focused can open one.
-                let text = key_event
+                let text = input
                     .text
-                    .as_deref()
                     .filter(|_| self.preset_editor_title().is_none() && !self.text_field_focused());
                 self.held_key_text.pressed(key, text);
             } else {
                 self.held_key_text.released(key);
             }
         }
-        // GLFW never hands a field the keys an input method consumes: while a
-        // composition is open, and the Enter or Escape that ends it (winit on
-        // Windows still sends that one right after `Ime::Commit`).
-        if let WindowEvent::KeyboardInput {
-            event: key_event, ..
-        } = &event
-            && key_event.state == ElementState::Pressed
-            && self.ime_suppresses_key()
-        {
-            return;
+        // The input method consumes composing keys before screen dispatch (including the Enter
+        // or Escape that Windows may send just after `Ime::Commit`).
+        if pressed && self.ime_suppresses_key() {
+            return true;
         }
-        // A character that comes with no key (Windows' Alt codes, `Alt` + digits on the numeric
-        // keypad: a `WM_CHAR` after the Alt is released) reaches winit as a key event with no
-        // physical key. GLFW's char callback types it in the focused text field (`charTyped`),
-        // and every screen's key handler here would drop it for want of a key code.
-        if let WindowEvent::KeyboardInput {
-            event: key_event, ..
-        } = &event
-            && key_event.state == ElementState::Pressed
-            && matches!(key_event.physical_key, PhysicalKey::Unidentified(_))
-            && let Some(text) = key_event.text.as_deref()
+        // Windows' Alt codes can supply text without a physical key. Dispatch it like
+        // KeyboardHandler.charTyped, rather than dropping it in a screen's key handler.
+        if pressed
+            && matches!(input.physical, PhysicalKey::Unidentified(_))
+            && let Some(text) = input.text
         {
             if self.preset_editor_title().is_some() {
                 self.screen_chars_typed(Some(text));
-                return;
+                return true;
             }
             let text: String = text.chars().filter(|c| !c.is_control()).collect();
             if !text.is_empty() && self.text_field_focused() && self.types_text() {
@@ -11557,11 +11515,71 @@ impl Game<'_> {
                     let _ = game.type_chars_into_screen(c);
                 });
             }
-            return;
+            return true;
+        }
+        if before_screen(self) {
+            return true;
+        }
+        if pressed
+            && let PhysicalKey::Code(key) = input.physical
+            && self.preset_editor_title().is_some()
+        {
+            let result = self.preset_editor_key_pressed(event_loop, key, input.repeat);
+            self.screen_chars_typed(input.text);
+            if let Err(error) = result {
+                self.error = Some(error);
+                event_loop.exit();
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Window bookkeeping, shortcuts and overlays before dispatching to the screen. Returns
+    /// `true` when an early handler consumed the event.
+    fn prepare_window_event(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        event: &WindowEvent,
+        cursor_sample: Option<sunrise_client::window::PointerSample>,
+    ) -> bool {
+        if matches!(
+            event,
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }
+        ) {
+            self.window_pointer_space.take();
+        }
+        if matches!(
+            event,
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                ..
+            }
+        ) && !self.pad.menu.synthetic
+        {
+            self.pad_radial_cancel();
+        }
+        if let WindowEvent::Focused(false) = event {
+            self.modifiers = winit::keyboard::ModifiersState::empty();
+            self.physical_keys.clear();
+            self.physical_buttons.clear();
+            self.drag_button = None;
+            self.container_buttons.clear();
+        }
+        if let WindowEvent::ModifiersChanged(m) = event {
+            self.update_modifiers(m.state());
+        }
+        if let WindowEvent::Focused(false) = event {
+            self.update_modifiers(winit::keyboard::ModifiersState::empty());
+            self.debug_keys.reset();
+        }
+        // Pack drops on the resource-pack and Create New World screens.
+        if let WindowEvent::DroppedFile(path) = event {
+            self.drop_pack_file(path);
         }
         // Fullscreen is a window shortcut, before screens consume keyboard input.
         // Not Alt or Super on their own: leaving the window isn't playing with the keyboard.
-        if let WindowEvent::KeyboardInput { event, .. } = &event
+        if let WindowEvent::KeyboardInput { event, .. } = event
             && event.state == ElementState::Pressed
             && !event.repeat
             && !matches!(
@@ -11573,7 +11591,7 @@ impl Game<'_> {
         {
             self.pad.keyboard_took_over = true;
         }
-        if let WindowEvent::KeyboardInput { event, .. } = &event
+        if let WindowEvent::KeyboardInput { event, .. } = event
             && event.state == ElementState::Pressed
             && let PhysicalKey::Code(key) = event.physical_key
             && sunrise_client::keybinds::key_name(key)
@@ -11584,24 +11602,24 @@ impl Game<'_> {
             if !event.repeat {
                 self.toggle_fullscreen();
             }
-            return;
+            return true;
         }
         // A screenshot is a window shortcut too: vanilla takes it before a
         // screen or a text box consumes the key (`handleGlobalKeyPress`), so
         // it works with chat, a sign or a book open.
-        if let WindowEvent::KeyboardInput { event, .. } = &event
+        if let WindowEvent::KeyboardInput { event, .. } = event
             && event.state == ElementState::Pressed
             && let PhysicalKey::Code(key) = event.physical_key
         {
             self.last_input = Instant::now();
             if self.screenshot_shortcut(key, event.repeat) {
-                return;
+                return true;
             }
         }
         // KeyboardHandler.keyPress: the debug keys come before the game's.
         if let WindowEvent::KeyboardInput {
             event: key_event, ..
-        } = &event
+        } = event
             && let PhysicalKey::Code(key) = key_event.physical_key
         {
             use sunrise_client::debug_keys::KeyAction;
@@ -11611,12 +11629,12 @@ impl Game<'_> {
                 (_, true) => KeyAction::Repeat,
             };
             if self.debug_key(key, action) {
-                return;
+                return true;
             }
         }
         // KeyboardHandler.keyPress: the narrator hotkey, on every screen and
         // in game, before the screen takes the key.
-        if let WindowEvent::KeyboardInput { event, .. } = &event {
+        if let WindowEvent::KeyboardInput { event, .. } = event {
             self.narrator_hotkey(event);
         }
         if matches!(
@@ -11639,11 +11657,11 @@ impl Game<'_> {
             self.refresh_window_cursor();
         }
         // The real mouse takes the pointer back from the keyboard's focus.
-        self.key_focus_mouse(event_loop, &event, cursor_sample);
+        self.key_focus_mouse(event_loop, event, cursor_sample);
         // The screen's narration hears of the input before the screen takes
         // it; the pointer events the keyboard's focus sends aren't the mouse.
         if !self.key_focus_quiet() {
-            narrator::narrate_input(&mut self.narration, &event, self.cursor);
+            narrator::narrate_input(&mut self.narration, event, self.cursor);
         }
         // FileFixerProgressScreen: Cancel is the only way out (`shouldCloseOnEsc`
         // is false), so it takes the pointer and Escape does nothing.
@@ -11651,7 +11669,7 @@ impl Game<'_> {
             && starting.handle.upgrade().is_file_fixing()
         {
             let upgrade = starting.handle.upgrade();
-            match &event {
+            match event {
                 WindowEvent::CursorMoved { .. } => {
                     if let (Some(projection), Some(sample)) =
                         (self.renderer_pointer_projection(), cursor_sample)
@@ -11673,58 +11691,57 @@ impl Game<'_> {
                 }
                 _ => {}
             }
-            if matches!(&event, WindowEvent::KeyboardInput { .. }) {
-                return;
+            if matches!(event, WindowEvent::KeyboardInput { .. }) {
+                return true;
             }
         }
         if self.pending_entry.is_some()
-            && matches!(&event, WindowEvent::KeyboardInput { event, .. }
+            && matches!(event, WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed
                     && event.physical_key == PhysicalKey::Code(KeyCode::Escape))
         {
             self.pending_entry = None;
             self.perf.cancel_world_opening();
-            return;
+            return true;
         }
         if (self.pending_entry.is_some() || self.integrated_starting.is_some())
             && !matches!(
-                &event,
+                event,
                 WindowEvent::CloseRequested
                     | WindowEvent::Resized(_)
                     | WindowEvent::RedrawRequested
             )
         {
-            return;
+            return true;
         }
         // The pack reload's overlay takes no input until it has faded out
         // (`LoadingOverlay`): `spawn_pack_reload` released what was held.
         if self.reload_overlay.is_some()
             && !matches!(
-                &event,
+                event,
                 WindowEvent::CloseRequested
                     | WindowEvent::Focused(_)
                     | WindowEvent::Resized(_)
                     | WindowEvent::RedrawRequested
             )
         {
-            return;
+            return true;
         }
-        if self.pending_save.is_some() {
+        if let Some(saving) = &mut self.pending_save {
             match event {
                 WindowEvent::CloseRequested => {
-                    if !self.settings.quit_shortcuts
-                        && sunrise_client::input::is_quit_shortcut_down(
+                    if self.settings.quit_shortcuts
+                        || !sunrise_client::input::is_quit_shortcut_down(
                             self.modifiers,
                             &self.physical_keys,
                         )
                     {
-                        return;
+                        saving.quit = true;
                     }
-                    self.pending_save.as_mut().unwrap().quit = true;
                 }
                 WindowEvent::Focused(focused) => {
-                    self.focused = focused;
-                    if !focused {
+                    self.focused = *focused;
+                    if !*focused {
                         self.capture(false);
                     }
                 }
@@ -11741,6 +11758,40 @@ impl Game<'_> {
                 }
                 _ => {}
             }
+            return true;
+        }
+        false
+    }
+
+    /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
+    ///
+    /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
+    /// (`mapped_key`, `mouse_mapping`). So a key handled below before `mapped_key_event` (a window
+    /// shortcut, a special case) never reaches a controller. If a player could want it on one, give
+    /// it a handler both can call and a `gamepad::Route` (screenshot and fullscreen do this). A
+    /// screen's own raw keys, text and mods' key hooks stay raw on purpose.
+    fn handle_window_event_inner(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        mut event: WindowEvent,
+        cursor_sample: Option<sunrise_client::window::PointerSample>,
+    ) {
+        let before_screen =
+            |game: &mut Self| game.prepare_window_event(event_loop, &event, cursor_sample);
+        let handled = match &event {
+            WindowEvent::KeyboardInput { event: key, .. } => self.dispatch_window_key(
+                event_loop,
+                WindowKeyInput {
+                    physical: key.physical_key,
+                    state: key.state,
+                    repeat: key.repeat,
+                    text: key.text.as_deref(),
+                },
+                before_screen,
+            ),
+            _ => before_screen(self),
+        };
+        if handled {
             return;
         }
         // ScreenEvent.KeyPressed.Pre: the open screen hears of the key before
@@ -11766,17 +11817,6 @@ impl Game<'_> {
         } = &mut event
             && key_event.state == ElementState::Pressed
         {
-            if let PhysicalKey::Code(key) = key_event.physical_key
-                && self.preset_editor_title().is_some()
-            {
-                let result = self.preset_editor_key_pressed(event_loop, key, key_event.repeat);
-                self.screen_chars_typed(key_event.text.as_deref());
-                if let Err(error) = result {
-                    self.error = Some(error);
-                    event_loop.exit();
-                }
-                return;
-            }
             let title_text = control::title_owns_text(&self.screen, self.title.is_some());
             if self.screen_hooks_open()
                 && self.screen != Screen::Options

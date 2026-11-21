@@ -21,8 +21,9 @@ World's type selector; unlisted presets remain hidden.
 Put editor-specific input and drawing in the bound `PresetEditor`. Generic screen hooks can identify
 its screen as `world_preset_editor`. Input first reaches the corresponding screen Pre hook; characters
 from a key, the input method, or the control socket reach `PresetEditor::char_typed` independently of
-key cancellation. An unhandled character reaches CharacterTyped.Post; an unhandled key reaches
-KeyPressed.Post after the editor and the normal title controls decline it.
+key cancellation. Keys consumed by the input method during composition do not reach the editor or
+its footer; committed text uses the character path. An unhandled character reaches CharacterTyped.Post;
+an unhandled key reaches KeyPressed.Post after the editor and the normal title controls decline it.
 
 ```rust,ignore
 struct IslandsEditor;

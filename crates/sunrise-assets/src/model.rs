@@ -93,8 +93,6 @@ pub enum Loader {
     Fusion,
     /// A native provider selected before any cuboid fields are decoded.
     Registered(Arc<RegisteredLoader>),
-    /// A required provider is absent. Resource resolution reports this error for the model.
-    Missing(String),
 }
 /// NeoForge's `neoforge_data` of an element or a face; a face's keys win.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -251,7 +249,6 @@ impl CuboidModel {
         };
         let schema = match &loader {
             Some(Loader::Registered(registered)) => registered.schema(),
-            Some(Loader::Missing(_)) => LoaderSchema::Custom,
             _ => LoaderSchema::Cuboids,
         };
         if schema == LoaderSchema::Custom {
@@ -403,7 +400,7 @@ impl Loader {
                     provider,
                 ))),
                 None if optional => return Ok(None),
-                None => Self::Missing(canonical),
+                None => return Err(error(&format!("unknown required loader {canonical}"))),
             },
         };
         Ok(Some(loader))

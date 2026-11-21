@@ -103,7 +103,7 @@ pub trait PresetEditor: Send + 'static {
 
     /// Handle a key press (`key`: vanilla `InputConstants` code, `scancode`: platform scan code,
     /// `modifiers`: GLFW bits: shift 1, control 2, alt 4, super 8). Return `true` to consume the
-    /// key.
+    /// key. Keys consumed by the input method during composition do not reach this callback.
     fn key_pressed(
         &mut self,
         _key: u32,
@@ -114,7 +114,8 @@ pub trait PresetEditor: Send + 'static {
         false
     }
 
-    /// Handle a typed character (`modifiers`: GLFW bits). Return `true` to consume the character.
+    /// Handle a typed character, including text committed by the input method (`modifiers`:
+    /// GLFW bits). Return `true` to consume the character.
     fn char_typed(
         &mut self,
         _ch: char,

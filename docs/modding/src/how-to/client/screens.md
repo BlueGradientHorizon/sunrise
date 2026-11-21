@@ -49,6 +49,14 @@ the sign's block position and whether its front side is being edited. It returns
 editor open, or outside a world. A close of the sign editor always sends the sign update, however it
 closes; there is no close that skips it, because the vanilla client never omits that packet.
 
+## Input in a world preset editor
+
+Bind a `PresetEditor` to a world preset with `register_preset_editors`. While `world_preset_editor`
+is open, keys consumed by the input method during composition do not reach `PresetEditor::key_pressed`
+or the editor's Done and Cancel buttons. Committed characters go through the usual character hooks
+and `PresetEditor::char_typed`, separately from key presses. A release after the editor closes goes
+to the screen now open with the released key no longer held.
+
 ## Drawing a dimension transition
 
 In `Hooks::register_dimension_transition_screen`, push a `DimensionTransitionScreen` for

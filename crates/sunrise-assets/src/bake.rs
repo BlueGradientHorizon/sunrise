@@ -622,25 +622,17 @@ mod loader_tests {
         );
     }
     #[test]
-    fn an_unknown_required_loader_replaces_the_model_and_an_optional_loader_inherits() {
+    fn an_unknown_optional_loader_inherits() {
         let library = library(
             &[
                 ("t:cube", CUBE),
                 ("t:comp", COMPOSITE),
-                (
-                    "t:required",
-                    r#"{"parent":"t:comp","loader":"somemod:thing"}"#,
-                ),
                 (
                     "t:optional",
                     r#"{"parent":"t:comp","loader":{"id":"somemod:thing","optional":true}}"#,
                 ),
             ],
             &[],
-        );
-        assert_eq!(
-            sprites(&bake(&library, "t:required")),
-            ["minecraft:missingno"; 6]
         );
         assert_eq!(
             sprites(&bake(&library, "t:optional")),

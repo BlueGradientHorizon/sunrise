@@ -41,16 +41,19 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::WindowKeyInput;
     use mod_api::{
         DrawContext, Hooks, Identifier, ModEntry, PresetEditor, PresetEditorDraft,
         RegisterPresetEditorsEvent, ScreenCharTypedPostEvent, ScreenCharTypedPreEvent,
-        ScreenKeyPressedPostEvent, ScreenKeyPressedPreEvent, ScreenRenderPostEvent,
+        ScreenKeyPressedPostEvent, ScreenKeyPressedPreEvent, ScreenKeyReleasedPreEvent,
+        ScreenRenderPostEvent,
     };
     use std::sync::{
         Mutex,
         atomic::{AtomicUsize, Ordering},
     };
     use sunrise_client::title::{Mode, WorldOptions};
+    use winit::{event::ElementState, keyboard::PhysicalKey};
 
     struct IslandsEditor {
         clicks: Arc<AtomicUsize>,
@@ -134,6 +137,7 @@ mod tests {
         typed: Arc<Mutex<String>>,
         char_post: Arc<Mutex<String>>,
         key_post: Arc<Mutex<Vec<String>>>,
+        shift_releases_in_create: Arc<Mutex<Vec<u32>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for EditorMod {
@@ -165,6 +169,20 @@ mod tests {
         ) -> mod_api::Flow {
             if event.screen.id == "world_preset_editor" {
                 self.key_post.lock().unwrap().push(event.key.to_owned());
+            }
+            mod_api::Flow::Continue
+        }
+
+        fn screen_key_released_pre(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut ScreenKeyReleasedPreEvent<'_>,
+        ) -> mod_api::Flow {
+            if event.screen.id == "world_create" && event.key == "key.keyboard.left.shift" {
+                self.shift_releases_in_create
+                    .lock()
+                    .unwrap()
+                    .push(event.modifiers);
             }
             mod_api::Flow::Continue
         }
@@ -234,6 +252,7 @@ mod tests {
         let typed = Arc::new(Mutex::new(String::new()));
         let char_post = Arc::new(Mutex::new(String::new()));
         let key_post = Arc::new(Mutex::new(Vec::new()));
+        let shift_releases_in_create = Arc::new(Mutex::new(Vec::new()));
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
                 "example",
@@ -243,6 +262,7 @@ mod tests {
                     typed: Arc::clone(&typed),
                     char_post: Arc::clone(&char_post),
                     key_post: Arc::clone(&key_post),
+                    shift_releases_in_create: Arc::clone(&shift_releases_in_create),
                 }),
             )]
             .into(),
@@ -325,12 +345,29 @@ mod tests {
                         )),
                         None,
                     );
-                    assert!(game.ime_suppresses_key());
+                    let window_press = |game: &mut Game<'_>, key| {
+                        // winit's KeyEvent contains private platform data. Send the key to the
+                        // same dispatcher that receives those events, without OS shortcuts.
+                        game.dispatch_window_key(
+                            &NoopLoop,
+                            WindowKeyInput {
+                                physical: PhysicalKey::Code(key),
+                                state: ElementState::Pressed,
+                                repeat: false,
+                                text: None,
+                            },
+                            |_| false,
+                        );
+                    };
+                    window_press(game, KeyCode::Escape);
+                    game.settle_title_mode();
+                    assert!(game.preset_editor_title().is_some());
                     game.handle_window_event_inner(
                         &NoopLoop,
                         winit::event::WindowEvent::Ime(winit::event::Ime::Commit("é!x".into())),
                         None,
                     );
+                    assert_eq!(typed.lock().unwrap().as_str(), "é");
                     assert!(!sunrise_client::preedit::composing());
                     sunrise_client::preedit::reset();
                     // The socket passes a held modifier into the editor, then releases both keys.
@@ -347,9 +384,9 @@ mod tests {
                     assert!(!game.physical_keys.contains(&KeyCode::Tab));
                     assert!(!game.physical_keys.contains(&KeyCode::ShiftLeft));
                     game.control_command("type Ωx", &reply, &NoopLoop).unwrap();
+                    // Outside composition the same window dispatcher reaches the editor;
                     // Q is declined by both the editor and its widgets.
-                    game.preset_editor_key_pressed(&NoopLoop, KeyCode::KeyQ, false)
-                        .unwrap();
+                    window_press(game, KeyCode::KeyQ);
                     assert_eq!(*key_post.lock().unwrap(), ["key.keyboard.q"]);
                     assert_eq!(keys.load(Ordering::Relaxed), 1);
                     assert_eq!(clicks.load(Ordering::Relaxed), 1);
@@ -383,6 +420,26 @@ mod tests {
                     game.screen = Screen::Options;
                     assert!(game.preset_editor_dimensions().is_none());
                     assert!(!game.set_preset_editor_dimensions(dimensions));
+                    game.screen = Screen::Playing;
+
+                    // Releases target the screen that is open when they arrive, not the editor
+                    // that saw the presses. No world is loaded on either screen.
+                    for line in ["key shift down", "key q down"] {
+                        game.control_command(line, &reply, &NoopLoop).unwrap();
+                    }
+                    assert!(game.has_shift_down());
+                    assert!(game.physical_keys.contains(&KeyCode::ShiftLeft));
+                    assert!(game.physical_keys.contains(&KeyCode::KeyQ));
+                    game.control_command("key escape tap", &reply, &NoopLoop)
+                        .unwrap();
+                    assert_eq!(game.title.as_ref().unwrap().mode.id(), "world_create");
+                    for line in ["key shift up", "key q up"] {
+                        game.control_command(line, &reply, &NoopLoop).unwrap();
+                    }
+                    assert!(!game.has_shift_down());
+                    assert!(!game.physical_keys.contains(&KeyCode::ShiftLeft));
+                    assert!(!game.physical_keys.contains(&KeyCode::KeyQ));
+                    assert_eq!(*shift_releases_in_create.lock().unwrap(), [0]);
                     sunrise_client::title::preset_editors::register(Vec::new());
                 });
             },
