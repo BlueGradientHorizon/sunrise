@@ -61,8 +61,9 @@ cargo sunrise-mod registry build 'target/sunrise-mod/publish' --files 'target/su
 
 ## 3. Open the pull request
 
-A row written without `--sunrise` is refused by review; give `publish` the flags of
-[the stable source submission](#publishing-a-stable-source-version) before opening the pull request.
+A row without `sunrise` is refused by review. For a native mod, give `publish` the flags of
+[the stable source submission](#publishing-a-stable-source-version) before opening the pull request; for any other
+kind, write the row by hand as [the registry reference](../reference/registry-index.md#the-entry) shows.
 
 1. Create a release of your repository and attach `<id>-<version>.smod` to it. Its address is the artifact URL.
 2. Fork [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods) and copy in `mods/<id>.toml`.
