@@ -217,6 +217,7 @@ fn connect(port: u16, name: &str, data: &Arc<ItemData>) -> Session {
         ClientInformation::new(8),
         Arc::new(Default::default()),
         Arc::clone(data),
+        Arc::default(),
     )
 }
 
@@ -500,6 +501,7 @@ fn an_incomplete_configuration_snapshot_refuses_finish_after_earlier_replies() {
         ClientInformation::new(8),
         Arc::new(sunrise_protocol::text::Language::new()),
         data,
+        Arc::default(),
     );
     let mut server = Connection::local(server);
     server

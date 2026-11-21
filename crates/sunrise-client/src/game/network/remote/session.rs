@@ -62,6 +62,7 @@ impl Game<'_> {
                 info.clone(),
                 lang.clone(),
                 item_data,
+                Arc::clone(&self.client_reports),
             ),
             (None, Some(cookies)) => Session::connect_transferred(
                 address,
@@ -71,6 +72,7 @@ impl Game<'_> {
                 lang.clone(),
                 cookies,
                 item_data,
+                Arc::clone(&self.client_reports),
             ),
             (None, None) => {
                 let connect = if lan {
@@ -85,6 +87,7 @@ impl Game<'_> {
                     info.clone(),
                     lang.clone(),
                     item_data,
+                    Arc::clone(&self.client_reports),
                 )
             }
         };

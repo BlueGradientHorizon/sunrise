@@ -616,7 +616,7 @@ impl<'b, 'i, 's> Routes<'b, 'i, 's> {
                         .eq(expected.split("::"))
                     && matches!(self.index.item(*id), Item::Fn(function) if function.sig.ident == name)
             }
-            (Found::External(path), Target::Path(expected)) => {
+            (Found::External { path, .. }, Target::Path(expected)) => {
                 path.iter().map(String::as_str).eq(expected.split("::"))
             }
             _ => false,

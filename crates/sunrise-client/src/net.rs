@@ -305,9 +305,10 @@ impl Session {
         info: cfg::ClientInformation,
         lang: Arc<Language>,
         resources: Arc<ItemData>,
+        reports: Arc<crate::chunk_io::Reports>,
     ) -> Self {
         Self::start(
-            address, name, auth, info, lang, None, None, resources, false,
+            address, name, auth, info, lang, None, None, resources, reports, false,
         )
     }
     /// `ClientHandshakePacketListenerImpl.handleHello`: LAN entries can continue
@@ -320,8 +321,11 @@ impl Session {
         info: cfg::ClientInformation,
         lang: Arc<Language>,
         resources: Arc<ItemData>,
+        reports: Arc<crate::chunk_io::Reports>,
     ) -> Self {
-        Self::start(address, name, auth, info, lang, None, None, resources, true)
+        Self::start(
+            address, name, auth, info, lang, None, None, resources, reports, true,
+        )
     }
     /// `ConnectScreen.startConnecting` for a `transfer`: the cookies the
     /// server stored carry to the new connection (`TransferState`).
@@ -333,6 +337,7 @@ impl Session {
         lang: Arc<Language>,
         cookies: Cookies,
         resources: Arc<ItemData>,
+        reports: Arc<crate::chunk_io::Reports>,
     ) -> Self {
         Self::start(
             address,
@@ -343,6 +348,7 @@ impl Session {
             None,
             Some(cookies),
             resources,
+            reports,
             false,
         )
     }
@@ -357,6 +363,7 @@ impl Session {
         info: cfg::ClientInformation,
         lang: Arc<Language>,
         resources: Arc<ItemData>,
+        reports: Arc<crate::chunk_io::Reports>,
     ) -> Self {
         Self::start(
             "local",
@@ -367,6 +374,7 @@ impl Session {
             Some(pipe),
             None,
             resources,
+            reports,
             false,
         )
     }
@@ -400,6 +408,7 @@ impl Session {
         local: Option<sunrise_protocol::connection::Pipe>,
         transfer_from: Option<Cookies>,
         resources: Arc<ItemData>,
+        reports: Arc<crate::chunk_io::Reports>,
         lan: bool,
     ) -> Self {
         let (send, events) = event_channel();
@@ -451,6 +460,7 @@ impl Session {
                         &thread_recorder,
                         &thread_payloads,
                         &thread_pings,
+                        &reports,
                     )
                 });
                 // The physical close is immediate. Session::disconnect retires
@@ -1002,6 +1012,7 @@ fn run(
     recorder: &RecorderSlot,
     payloads: &Arc<crate::raw_payloads::Transport>,
     pings: &PingSamples,
+    reports: &Arc<crate::chunk_io::Reports>,
 ) -> Result<Reason, Reason> {
     let singleplayer = local.is_some();
     let (host, port, mut c) = if let Some(pipe) = local {
@@ -1200,6 +1211,7 @@ fn run(
         recorder,
         payloads,
         pings,
+        reports,
     )
 }
 
@@ -1405,6 +1417,7 @@ pub struct PlayIo {
     lang: Arc<Language>,
     far: Arc<crate::lod_net::Inbox>,
     pings: PingSamples,
+    reports: Arc<crate::chunk_io::Reports>,
     // ClientPacketListener.chunkBatchSizeCalculator.
     batch: Mutex<sunrise_protocol::chunk_batch::ChunkBatchSize>,
 }
@@ -1428,7 +1441,7 @@ impl PlayIo {
                 }
                 pings.push_back(ping_millis().wrapping_sub(p.time));
             }
-            play::Clientbound::LowDiskSpaceWarning(_) => crate::chunk_io::report_low_disk_space(),
+            play::Clientbound::LowDiskSpaceWarning(_) => self.reports.report_low_disk_space(),
             // The combat messages have no effect; remote debug samples aren't
             // consumed by Sunrise. Keep only their main-thread mod observation.
             play::Clientbound::Unknown(
@@ -1471,6 +1484,7 @@ fn receive_play(
     recorder: &RecorderSlot,
     payloads: &Arc<crate::raw_payloads::Transport>,
     pings: &PingSamples,
+    reports: &Arc<crate::chunk_io::Reports>,
 ) -> Result<Reason, Reason> {
     use play_bundle::{PlayBundle, PlayTurn};
     use sunrise_protocol::payload_negotiation::Phase;
@@ -1480,6 +1494,7 @@ fn receive_play(
             lang: lang.clone(),
             far: far.clone(),
             pings: pings.clone(),
+            reports: reports.clone(),
             batch: Mutex::default(),
         })
     };
@@ -2643,6 +2658,7 @@ mod tests {
                 cfg::ClientInformation::new(8),
                 Arc::new(Language::new()),
                 Arc::clone(&data),
+                Arc::default(),
             );
             let (stream, _) = listener.accept().unwrap();
             stream
@@ -2877,6 +2893,7 @@ mod tests {
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
+                &Arc::default(),
                 &Arc::default(),
             ));
         });
@@ -3258,6 +3275,7 @@ mod tests {
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
                 &thread_pings,
+                &Arc::default(),
             )
         });
         let mut server = Connection::local(server);
@@ -3347,6 +3365,7 @@ mod tests {
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
+                &Arc::default(),
                 &Arc::default(),
             );
             report_connection_end(result, &writer, &send);
@@ -3766,6 +3785,7 @@ mod tests {
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
+                &Arc::default(),
             )
         });
         let mut server = Connection::local(server);
@@ -3903,6 +3923,7 @@ mod tests {
                 &data,
                 &thread_recorder,
                 &crate::raw_payloads::Transport::empty(),
+                &Arc::default(),
                 &Arc::default(),
             )
         });
@@ -4086,6 +4107,7 @@ mod tests {
                 cfg::ClientInformation::new(8),
                 Arc::new(lang),
                 Arc::clone(&data),
+                Arc::default(),
             );
             let (reason, _credit) = loop {
                 let (event, credit) = session
@@ -4196,6 +4218,7 @@ mod tests {
                 &data,
                 &thread_recorder,
                 &crate::raw_payloads::Transport::empty(),
+                &Arc::default(),
                 &Arc::default(),
             )
         });

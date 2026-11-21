@@ -463,7 +463,7 @@ impl<'a> Index<'a> {
 
     fn extern_crate_name(&mut self, module: usize, name: &str) -> Result<Option<String>, String> {
         let krate = self.modules[module].krate.clone();
-        let root = self.module(krate, &[])?;
+        let root = self.module(&krate, &[])?;
         let spelling = self.modules[root].items.iter().find_map(|item| {
             let Item::ExternCrate(item) = item else {
                 return None;
@@ -571,10 +571,7 @@ impl<'a> Index<'a> {
     fn parse_module(&mut self, krate: &str, path: &[String]) -> Result<Vec<Item>, String> {
         Ok(match path.split_last() {
             None => {
-                let file = self
-                    .root_files
-                    .get(krate.as_str())
-                    .map_or("lib.rs", String::as_str);
+                let file = self.root_files.get(krate).map_or("lib.rs", String::as_str);
                 self.parse(krate, file)?
             }
             Some((last, parent)) => {
