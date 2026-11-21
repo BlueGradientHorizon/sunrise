@@ -15,16 +15,15 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-/// Sunrise's vanilla server reload listeners and ordering boundaries.
+/// Sunrise's vanilla server reload listeners.
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct VanillaServerListeners;
 impl VanillaServerListeners {
-    /// Boundary before every reload listener.
+    /// First vanilla server reload listener, matching NeoForge's
+    /// `VanillaServerListeners.FIRST` (aliases [`Self::functions`]).
     pub fn first() -> Identifier {
-        static ID: LazyLock<Identifier> =
-            LazyLock::new(|| Identifier::parse("minecraft:first").unwrap());
-        ID.clone()
+        Self::functions()
     }
     /// Vanilla's function library. Use this anchor rather than its string value,
     /// which need not match NeoForge's identifier.
@@ -33,11 +32,10 @@ impl VanillaServerListeners {
             LazyLock::new(|| Identifier::parse("minecraft:function_library").unwrap());
         ID.clone()
     }
-    /// Boundary after every reload listener.
+    /// Last vanilla server reload listener, matching NeoForge's
+    /// `VanillaServerListeners.LAST` (aliases [`Self::functions`]).
     pub fn last() -> Identifier {
-        static ID: LazyLock<Identifier> =
-            LazyLock::new(|| Identifier::parse("minecraft:last").unwrap());
-        ID.clone()
+        Self::functions()
     }
 }
 
@@ -125,14 +123,14 @@ pub trait ServerReloadListeners {
         first: Identifier,
         second: Identifier,
     ) -> Result<(), ReloadOrderError>;
-    /// Borrow the registered names in registration order, boundaries included.
+    /// Borrow the registered names in registration order, vanilla anchor included.
     fn get_registry(&self) -> ServerReloadRegistryView<'_>;
     /// Borrow the dependency graph as `(first, second)` names.
     fn get_graph(&self) -> ServerReloadGraphView<'_>;
-    /// Borrow the effective vanilla anchor preceding mod listeners by default.
-    /// On the server this is the built-in loot modifier listener once registered,
-    /// not the function library. Use `VanillaServerListeners::functions()` to
-    /// order against the function library itself.
+    /// Borrow the last vanilla server reload listener
+    /// ([`VanillaServerListeners::functions`]), which unrelated mod listeners
+    /// sort after by default (matching NeoForge's
+    /// `SortedReloadListenerEvent.getLastVanillaListener`).
     fn get_last_vanilla_listener(&self) -> &Identifier;
 }
 
@@ -144,7 +142,7 @@ pub struct ServerReloadRegistryView<'a> {
 }
 
 impl<'a> ServerReloadRegistryView<'a> {
-    /// Iterate over registered names in registration order, boundaries included.
+    /// Iterate over registered names in registration order, vanilla anchor included.
     pub fn iter(&self) -> impl Iterator<Item = &'a Identifier> + use<'a> {
         self.core.registry().map(|(id, _)| id)
     }
@@ -159,8 +157,8 @@ pub struct ServerReloadGraphView<'a> {
 
 impl<'a> ServerReloadGraphView<'a> {
     /// Iterate over dependency edges in insertion order. Each `(first, second)`
-    /// edge requires `first` to run before `second`; the edges include the
-    /// built-in ordering boundaries and are not a sorted list of listeners.
+    /// edge requires `first` to run before `second`; this is the explicit
+    /// dependency graph, not a sorted list of listeners.
     pub fn iter(&self) -> impl Iterator<Item = (&'a Identifier, &'a Identifier)> + use<'a> {
         self.core.graph()
     }
@@ -187,7 +185,7 @@ impl dyn ServerReloadListeners + '_ {
 pub struct ServerListenerRegistry {
     core: ReloadCore<dyn ServerReloadListener>,
     retained: Vec<RetainedEntry>,
-    pub(crate) default_anchor: Identifier,
+    vanilla_anchor: Identifier,
 }
 impl ServerReloadListeners for ServerListenerRegistry {
     fn add_listener(
@@ -223,25 +221,24 @@ impl ServerReloadListeners for ServerListenerRegistry {
         ServerReloadGraphView { core: &self.core }
     }
     fn get_last_vanilla_listener(&self) -> &Identifier {
-        &self.default_anchor
+        &self.vanilla_anchor
     }
 }
 impl ServerListenerRegistry {
     pub(crate) fn new() -> Self {
+        let vanilla_anchor = VanillaServerListeners::functions();
         Self {
             core: ReloadCore::new(
-                VanillaServerListeners::first(),
-                VanillaServerListeners::functions(),
-                VanillaServerListeners::last(),
+                vanilla_anchor.clone(),
                 || -> Arc<dyn ServerReloadListener> { Arc::new(Boundary) },
             ),
             retained: Vec::new(),
-            default_anchor: VanillaServerListeners::functions(),
+            vanilla_anchor,
         }
     }
     pub(crate) fn finish(self) -> Result<OrderedServerReload, ReloadOrderError> {
         Ok(OrderedServerReload {
-            listeners: self.core.finish(&self.default_anchor)?,
+            listeners: self.core.finish(&self.vanilla_anchor)?,
             retained: self.retained,
         })
     }

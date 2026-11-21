@@ -2023,28 +2023,35 @@ runs. Do not read another listener's new published state in prepare: dependencie
 phases but do not remove this barrier. Publication cannot report an error, and a later server
 table refusal does not roll back actions that already ran. As vanilla's
 `SimpleJsonResourceReloadListener.scanDirectory`, a listener that parses its files logs and
-skips one that will not parse, carrying the rest through. Returning `Err` from `prepare` — like
-any preparation, registration or ordering error — aborts the whole reload: all pending actions
-are dropped without running and the old mod data and vanilla function library are kept. A
-panic in `prepare` or an apply is not recovered: it stops the server, and the crash
-report names the listener and the mod that registered it. Wrap the original error in
-`ReloadResourceError::new(id, cause)` to keep its source chain; `resource()` borrows the
-resource ID and `std::error::Error::source` exposes the cause. The diagnostic names the
-listener and the resource; world open fails, and `/reload` reports the failure. A failed `/datapack` change also preserves the selected packs on disk.
+skips one that will not parse, carrying the rest through. Returning `Err` from `prepare` — or
+introducing a dependency cycle — aborts the whole reload: all pending actions are dropped
+without running and the old mod data and vanilla function library are kept. A handled
+registration error from `add_listener` or `add_dependency` returns `Err(ReloadOrderError)`
+without mutating or poisoning the registry. A panic in `prepare` or an apply is not recovered:
+it stops the server, and the crash report names the listener and the mod that registered it.
+Wrap the original error in `ReloadResourceError::new(id, cause)` to keep its source chain;
+`resource()` borrows the resource ID, `std::error::Error::source` exposes the cause, and
+formatting the error walks the full `Error::source()` chain. The diagnostic names the listener,
+the resource and the full cause chain; world open fails, and `/reload` reports the failure. A
+failed `/datapack` change also preserves the selected packs on disk.
 
 `event.listeners.add_dependency(first, second)` orders named listeners. `ReloadOrderError` retains the
-IDs as typed variants: unknown names fail immediately, and cycles fail after registration.
-`VanillaServerListeners::functions()` names Sunrise's function-library listener; `first()` and
-`last()` are ordering boundaries. These anchors and dependency ends use `Identifier`. Mod
-listeners run after vanilla by default, in registration order; an explicit dependency before
-`functions()` works without a false cycle. Use these anchors rather than their string values.
-`event.listeners.get_registry().iter()` borrows the registered names in registration order,
-including the boundaries. `event.listeners.get_graph().iter()` borrows `(first, second)`
-name pairs in edge insertion order. These views borrow the registration in progress: copy
-only the IDs you need to keep or use after registering another listener or dependency.
-`event.listeners.get_last_vanilla_listener()` borrows the effective default anchor: the
-built-in global loot modifier listener is registered after the function library and becomes
-the anchor. Use `VanillaServerListeners::functions()` to target the function library itself.
+IDs as typed variants: unknown names fail immediately without latching a failure, and cycles fail
+after registration. `VanillaServerListeners::functions()` names Sunrise's function-library
+listener; `first()` and `last()` alias `functions()` (matching NeoForge's
+`VanillaServerListeners.FIRST`/`LAST`), with no synthetic `minecraft:first` or `minecraft:last`
+boundary nodes or automatic edges. These anchors and dependency ends use `Identifier`. Mod
+listeners run after vanilla by default, in registration order; explicit dependencies before
+`first()` or after `last()` work without cycles. Use these anchors rather than their string
+values. `event.listeners.get_registry().iter()` borrows the registered names in registration
+order, starting with the vanilla anchor. `event.listeners.get_graph().iter()` borrows
+`(first, second)` name pairs in edge insertion order. These views borrow the registration in
+progress: copy only the IDs you need to keep or use after registering another listener or
+dependency. `event.listeners.get_last_vanilla_listener()` always borrows
+`VanillaServerListeners::functions()` (matching NeoForge's
+`SortedReloadListenerEvent.getLastVanillaListener`); the built-in global loot modifier listener
+(`neoforge:loot_modifiers`) is registered before mod hooks without replacing it or adding a
+pre-wired edge.
 The reads give names, not the listener objects NeoForge exposes (a mod keeps its own listener's
 `Arc`, and its name is the one it registered it under). `prepare` returns a boxed `FnOnce() + Send + 'static` action. Sunrise does not expose
 NeoForge's condition context here.
@@ -2124,11 +2131,14 @@ language files arrive key-wise merged across the packs, as vanilla loads them.
 Prepare and apply semantics, error handling, crash attribution and dependency ordering match
 those of [server listeners](#server-data-reload-listeners). Client registry reads return owned IDs.
 `ClientReloadListener::prepare` parses without changing live state and returns a boxed
-`FnOnce() + Send + 'static` action. All prepares finish before any apply; a prepare,
-registration or ordering error aborts the reload and drops pending actions without running them.
+`FnOnce() + Send + 'static` action. All prepares finish before any apply; a prepare error or
+dependency cycle aborts the reload and drops pending actions without running them, while a
+handled registration error leaves the registry unmutated and does not poison the reload.
 A panic names the listener and its registering mod in the crash report.
 `VanillaClientListeners::model_manager()` names vanilla's model manager, the anchor of the
-26.3 `Minecraft` registration order; `first()` and `last()` are the ordering boundaries. Mod applies run on the main thread after the staged pack is
+26.3 `Minecraft` registration order; `first()` and `last()` alias `model_manager()` (matching
+NeoForge's `VanillaClientListeners.FIRST`/`LAST`), with no synthetic boundary nodes or automatic
+edges. Mod applies run on the main thread after the staged pack is
 published, before `client_resources_reloaded`. Listeners are registered fresh for every
 load: the initial resource load registers them once, before any prepare runs (as
 NeoForge's construction-time event does — no game exists yet, and a host read during

@@ -20,7 +20,8 @@ pub trait Hooks {
         dispatch = "flat",
         side = "client",
         contract = "listen",
-        neoforge = "AddClientReloadListenersEvent"
+        neoforge = "AddClientReloadListenersEvent",
+        version = 2
     )]
     fn add_client_reload_listeners(listeners: &mut dyn ClientReloadListeners);
 }

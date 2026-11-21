@@ -1534,6 +1534,61 @@ mod tests {
     use super::*;
 
     #[test]
+    fn reload_failure_formats_nested_listener_error_source_chain() {
+        #[derive(Debug)]
+        struct Inner;
+        impl std::fmt::Display for Inner {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("inner cause")
+            }
+        }
+        impl std::error::Error for Inner {}
+
+        #[derive(Debug)]
+        struct Middle(Inner);
+        impl std::fmt::Display for Middle {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("middle cause")
+            }
+        }
+        impl std::error::Error for Middle {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        #[derive(Debug)]
+        struct Outer(Middle);
+        impl std::fmt::Display for Outer {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("outer cause")
+            }
+        }
+        impl std::error::Error for Outer {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        let source = mod_api::ReloadResourceError::new(
+            mod_api::Identifier::parse("test_mod:machine").unwrap(),
+            Outer(Middle(Inner)),
+        );
+        let reply = Game::reload_failure(ReloadStageError::Listener {
+            listener: mod_api::Identifier::parse("test_mod:listener").unwrap(),
+            source,
+        })
+        .message
+        .plain();
+        assert!(
+            reply.contains(
+                "reload listener test_mod:listener: test_mod:machine: outer cause: middle cause: inner cause"
+            ),
+            "{reply}"
+        );
+    }
+
+    #[test]
     #[ignore = "daily"]
     fn first_world_open_admits_block_function() {
         crate::game::native_entity_refs::tests::with_game(|game| {

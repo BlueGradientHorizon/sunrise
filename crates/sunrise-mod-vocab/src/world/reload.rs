@@ -8,7 +8,9 @@ use crate::{
 use std::{collections::BTreeMap, sync::Arc};
 
 /// An error loading a resource, with its ID and the original cause available
-/// through [`Self::resource`] and [`std::error::Error::source`].
+/// through [`Self::resource`] and [`std::error::Error::source`]. Formatting
+/// walks the full `Error::source()` chain so nested causes appear in logs and
+/// `/reload` replies.
 // no wire: retains the native error and its source chain in this process.
 #[derive(Debug)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
@@ -35,7 +37,13 @@ impl ReloadResourceError {
 }
 impl std::fmt::Display for ReloadResourceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.resource, self.source)
+        write!(f, "{}: {}", self.resource, self.source)?;
+        let mut next = self.source.source();
+        while let Some(cause) = next {
+            write!(f, ": {cause}")?;
+            next = cause.source();
+        }
+        Ok(())
     }
 }
 impl std::error::Error for ReloadResourceError {
@@ -96,54 +104,29 @@ pub struct RegisteredListener<L: ?Sized> {
 }
 
 /// Registration both sides share: unique names and objects, dependencies, the
-/// first/anchor/last boundaries, failure recording, and the ordering sort. A
-/// side adds what its moment needs (the server retains listeners) around it.
+/// vanilla anchor, and the ordering sort. A side adds what its moment needs
+/// (the server retains listeners) around it.
 pub(crate) struct ReloadCore<L: ?Sized> {
     order: ReloadOrder<RegisteredListener<L>>,
-    failure: Option<ReloadOrderError>,
-    first: Identifier,
-    last: Identifier,
 }
 
 impl<L: ?Sized + 'static> ReloadCore<L> {
-    /// The `first`, vanilla-anchor and `last` boundaries with their default
-    /// edges; `boundary` builds each id's own stateless listener, as the
-    /// vanilla anchors are distinct listener objects.
-    pub(crate) fn new(
-        first: Identifier,
-        anchor: Identifier,
-        last: Identifier,
-        boundary: impl Fn() -> Arc<L>,
-    ) -> Self {
+    /// Seed the registry with the side's vanilla anchor; `boundary` builds its
+    /// stateless placeholder listener.
+    pub(crate) fn new(anchor: Identifier, boundary: impl Fn() -> Arc<L>) -> Self {
         let mut order = ReloadOrder::default();
-        for id in [first.clone(), anchor.clone(), last.clone()] {
-            order
-                .add_listener(
-                    id.clone(),
-                    RegisteredListener {
-                        id,
-                        converter: None,
-                        listener: boundary(),
-                        owner: None,
-                    },
-                )
-                .unwrap();
-        }
-        let mut core = Self {
-            order,
-            failure: None,
-            first,
-            last,
-        };
-        // The anchor keeps its place between the boundaries even though no
-        // listener ever orders against it explicitly.
-        core.order
-            .add_dependency(core.first.clone(), anchor.clone())
+        order
+            .add_listener(
+                anchor.clone(),
+                RegisteredListener {
+                    id: anchor,
+                    converter: None,
+                    listener: boundary(),
+                    owner: None,
+                },
+            )
             .unwrap();
-        core.order
-            .add_dependency(anchor, core.last.clone())
-            .unwrap();
-        core
+        Self { order }
     }
     /// Register a unique listener and converter, e.g.
     /// `FileToIdConverter::json("machines")`.
@@ -154,11 +137,7 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
         listener: Arc<L>,
     ) -> Result<(), ReloadOrderError> {
         let owner = crate::content::crash::current_native_mod();
-        let result = self.insert(id, converter, listener, owner);
-        if let Err(error) = &result {
-            self.failure.get_or_insert_with(|| error.clone());
-        }
-        result
+        self.insert(id, converter, listener, owner)
     }
     fn insert(
         &mut self,
@@ -176,17 +155,12 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
         self.order.add_listener(
             id.clone(),
             RegisteredListener {
-                id: id.clone(),
+                id,
                 converter: Some(converter),
                 listener,
                 owner,
             },
-        )?;
-        self.order
-            .add_dependency(self.first.clone(), id.clone())
-            .unwrap();
-        self.order.add_dependency(id, self.last.clone()).unwrap();
-        Ok(())
+        )
     }
     /// Require `first` before `second`; both names must already be registered.
     pub(crate) fn add_dependency(
@@ -194,13 +168,9 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
         first: Identifier,
         second: Identifier,
     ) -> Result<(), ReloadOrderError> {
-        let result = self.order.add_dependency(first, second);
-        if let Err(error) = &result {
-            self.failure.get_or_insert_with(|| error.clone());
-        }
-        result
+        self.order.add_dependency(first, second)
     }
-    /// Registration order, boundaries included.
+    /// Registration order, vanilla anchor included.
     pub(crate) fn registry(&self) -> impl Iterator<Item = (&Identifier, &RegisteredListener<L>)> {
         self.order.registry()
     }
@@ -215,15 +185,12 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
             std::ptr::addr_eq(entry.listener.as_ref(), listener).then_some(id)
         })
     }
-    /// The ordered listeners, or the first registration failure; `anchor` is
-    /// the vanilla listener unrelated mods sort after.
+    /// The ordered listeners; `anchor` is the vanilla listener unrelated mods
+    /// sort after.
     pub(crate) fn finish(
         self,
         anchor: &Identifier,
     ) -> Result<Vec<RegisteredListener<L>>, ReloadOrderError> {
-        if let Some(error) = self.failure {
-            return Err(error);
-        }
         self.order.sort(Some(anchor))
     }
 }
@@ -310,7 +277,7 @@ pub fn prepare_listeners<L: ?Sized, C, V>(
             prepared.push(PreparedStep::Vanilla(step));
             continue;
         }
-        // The boundaries have no converter and no work.
+        // Converter-less anchors have no mod work to prepare.
         let Some(converter) = &listener.converter else {
             continue;
         };
@@ -430,6 +397,61 @@ mod tests {
                 "apply vanilla",
                 "apply last"
             ]
+        );
+    }
+
+    #[test]
+    fn reload_resource_error_display_walks_the_full_source_chain() {
+        #[derive(Debug)]
+        struct Inner;
+        impl std::fmt::Display for Inner {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("inner")
+            }
+        }
+        impl std::error::Error for Inner {}
+
+        #[derive(Debug)]
+        struct Middle(Inner);
+        impl std::fmt::Display for Middle {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("middle")
+            }
+        }
+        impl std::error::Error for Middle {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        #[derive(Debug)]
+        struct Outer(Middle);
+        impl std::fmt::Display for Outer {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("outer")
+            }
+        }
+        impl std::error::Error for Outer {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        let resource_error = ReloadResourceError::new(
+            Identifier::parse("test:machine").unwrap(),
+            Outer(Middle(Inner)),
+        );
+        assert_eq!(
+            resource_error.to_string(),
+            "test:machine: outer: middle: inner"
+        );
+        let stage_error = ReloadStageError::Listener {
+            listener: Identifier::parse("test:listener").unwrap(),
+            source: resource_error,
+        };
+        assert_eq!(
+            stage_error.to_string(),
+            "reload listener test:listener: test:machine: outer: middle: inner"
         );
     }
 }

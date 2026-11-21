@@ -700,6 +700,15 @@ fn server_reload_registration_failure_stops_world_open_and_quiet_mods_never_list
     struct Quiet;
     #[mod_api::__subscriptions]
     impl Hooks for Quiet {}
+    struct NoopListener;
+    impl ServerReloadListener for NoopListener {
+        fn prepare(
+            &self,
+            _: &ServerReloadContext,
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+            Ok(Box::new(|| {}))
+        }
+    }
     struct Broken;
     #[mod_api::__subscriptions]
     impl Hooks for Broken {
@@ -708,10 +717,29 @@ fn server_reload_registration_failure_stops_world_open_and_quiet_mods_never_list
             _host: &dyn Host,
             event: &mut AddServerReloadListenersEvent<'_>,
         ) {
-            let _ = event.listeners.add_dependency(
-                Identifier::parse("mistyped:listener").unwrap(),
-                VanillaServerListeners::functions(),
-            );
+            let a = Identifier::parse("broken:a").unwrap();
+            let b = Identifier::parse("broken:b").unwrap();
+            event
+                .listeners
+                .add_listener(
+                    a.clone(),
+                    FileToIdConverter::json("broken_a").unwrap(),
+                    Arc::new(NoopListener),
+                )
+                .unwrap();
+            event
+                .listeners
+                .add_listener(
+                    b.clone(),
+                    FileToIdConverter::json("broken_b").unwrap(),
+                    Arc::new(NoopListener),
+                )
+                .unwrap();
+            event
+                .listeners
+                .add_dependency(a.clone(), b.clone())
+                .unwrap();
+            event.listeners.add_dependency(b, a).unwrap();
         }
     }
     let root = std::env::current_dir()
@@ -743,7 +771,7 @@ fn server_reload_registration_failure_stops_world_open_and_quiet_mods_never_list
             with_game(|game| {
                 let error = game.load_world(request(&root)).unwrap_err().to_string();
                 assert!(
-                    error.contains("unknown reload listener mistyped:listener"),
+                    error.contains("reload listener dependency cycle:"),
                     "{error}"
                 );
                 assert!(game.fns.store.functions.is_empty());

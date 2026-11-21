@@ -4,11 +4,15 @@ A mod has one top-level `data/` tree and one `assets/` tree, with the same names
 content checks as a content mod. They are normal pack resources, not a second native-only data folder.
 [Server data reload listeners](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/world/server_reload.rs) register through
 `Hooks::add_server_reload_listeners`. During registration, use `event.listeners.get_registry().iter()`
-to read names in registration order and `event.listeners.get_graph().iter()` to read dependency pairs
-`(first, second)`. Both lend IDs from the registry, so clone only the names you need after the borrow ends.
-`event.listeners.get_last_vanilla_listener()` borrows the effective ordering anchor (the built-in global
-loot modifier listener). Use `VanillaServerListeners::functions()` to order against the function library
-itself.
+to read names in registration order and `event.listeners.get_graph().iter()` to read explicit
+dependency pairs `(first, second)`. Both lend IDs from the registry, so clone only the names you
+need after the borrow ends. `event.listeners.get_last_vanilla_listener()` always borrows
+`VanillaServerListeners::functions()` (matching NeoForge's
+`SortedReloadListenerEvent.getLastVanillaListener`); the built-in `neoforge:loot_modifiers`
+listener is registered before mod hooks without replacing it. `VanillaServerListeners::first()`
+and `last()` alias `functions()` (and `VanillaClientListeners::first()` / `last()` alias
+`model_manager()`), with no synthetic `minecraft:first` or `minecraft:last` boundary nodes or
+automatic edges.
 
 A listener's `ServerReloadContext` lists namespaced IDs and reads the
 winning bytes from selected datapacks and the mod's own `data/`. Parse once in `prepare`, then return
@@ -29,10 +33,11 @@ normal resource packs.
 Both prepare contexts lend converted IDs through `context.list()` and bytes through
 `context.read(&id)`. These views and reload errors stay in-process, not on `Wire`. To abort on
 an invalid file, return `Err(ReloadResourceError::new(id, cause))` with the original error, not
-its message. `error.resource()` borrows the failing resource ID, and
-`std::error::Error::source(&error)` exposes its original cause. Registration still returns typed
-`ReloadOrderError` values for dependency and listener failures. No listener applies until every
-prepare succeeds.
+its message. `error.resource()` borrows the failing resource ID,
+`std::error::Error::source(&error)` exposes its original cause, and formatting `error` walks the
+full `Error::source()` chain in logs and `/reload` replies. Registration returns typed
+`ReloadOrderError` values without poisoning the reload if the caller handles the `Err`. No
+listener applies until every prepare succeeds.
 
 Outside a listener, `host.resource(pack_type, &identifier)` reads one file from the selected
 stack: `PackType::ServerData` takes `mymod:machines/furnace.json` from `data/`, and

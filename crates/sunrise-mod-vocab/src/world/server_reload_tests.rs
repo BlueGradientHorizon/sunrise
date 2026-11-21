@@ -9,50 +9,60 @@ fn files() -> FileToIdConverter {
 #[test]
 fn registry_views_and_explicit_order_before_vanilla() {
     let mut listeners = ServerListenerRegistry::new();
-    let [first, functions, last, mod_first, mod_second] = [
-        "minecraft:first",
+    let [functions, mod_first, mod_second, mod_after] = [
         "minecraft:function_library",
-        "minecraft:last",
         "test_mod:first",
         "test_mod:second",
+        "test_mod:after",
     ]
     .map(id);
+    assert_eq!(VanillaServerListeners::first(), functions);
+    assert_eq!(VanillaServerListeners::last(), functions);
+    assert!(listeners.get_registry().iter().eq([&functions]));
+    assert!(listeners.get_graph().iter().next().is_none());
+
     listeners
         .add_listener(mod_first.clone(), files(), Arc::new(Boundary))
         .unwrap();
     listeners
         .add_listener(mod_second.clone(), files(), Arc::new(Boundary))
         .unwrap();
-    assert_eq!(listeners.get_last_vanilla_listener(), &functions);
-    assert!(listeners.get_registry().iter().eq([
-        &first,
-        &functions,
-        &last,
-        &mod_first,
-        &mod_second,
-    ]));
     listeners
-        .add_dependency(mod_second.clone(), functions.clone())
+        .add_listener(mod_after.clone(), files(), Arc::new(Boundary))
         .unwrap();
-    assert!(listeners.get_graph().iter().eq([
-        (&first, &functions),
-        (&functions, &last),
-        (&first, &mod_first),
-        (&mod_first, &last),
-        (&first, &mod_second),
-        (&mod_second, &last),
-        (&mod_second, &functions),
-    ]));
+    assert_eq!(listeners.get_last_vanilla_listener(), &functions);
+    assert!(
+        listeners
+            .get_registry()
+            .iter()
+            .eq([&functions, &mod_first, &mod_second, &mod_after,])
+    );
+    listeners
+        .add_dependency(mod_second.clone(), VanillaServerListeners::first())
+        .unwrap();
+    listeners
+        .add_dependency(VanillaServerListeners::last(), mod_after.clone())
+        .unwrap();
+    assert!(
+        listeners
+            .get_graph()
+            .iter()
+            .eq([(&mod_second, &functions), (&functions, &mod_after),])
+    );
     let sorted = listeners.finish().unwrap().listeners;
     assert_eq!(
         sorted.into_iter().map(|entry| entry.id).collect::<Vec<_>>(),
-        [first, mod_second, functions, mod_first, last]
+        [mod_second, functions, mod_first, mod_after]
     );
 }
 
 #[test]
-fn failed_registration_is_not_silenced_by_ignoring_the_result() {
+fn handled_registration_error_does_not_poison_finish() {
     let mut listeners = ServerListenerRegistry::new();
+    let ok = id("test_mod:ok");
+    listeners
+        .add_listener(ok.clone(), files(), Arc::new(Boundary))
+        .unwrap();
     assert_eq!(
         listeners
             .add_dependency(id("mistyped:listener"), VanillaServerListeners::functions())
@@ -61,10 +71,18 @@ fn failed_registration_is_not_silenced_by_ignoring_the_result() {
             id: id("mistyped:listener")
         }
     );
-    assert!(matches!(
-        listeners.finish(),
-        Err(ReloadOrderError::UnknownListener { .. })
-    ));
+    assert_eq!(
+        listeners
+            .add_listener(ok.clone(), files(), Arc::new(Boundary))
+            .unwrap_err(),
+        ReloadOrderError::DuplicateListener { id: ok.clone() }
+    );
+    assert!(listeners.get_graph().iter().next().is_none());
+    let sorted = listeners.finish().unwrap().listeners;
+    assert_eq!(
+        sorted.into_iter().map(|entry| entry.id).collect::<Vec<_>>(),
+        [VanillaServerListeners::functions(), ok]
+    );
 }
 
 #[test]
@@ -175,9 +193,19 @@ fn retained_registration_follows_the_same_rules_as_plain_listeners() {
             )
             .is_err()
     );
-    assert!(matches!(
-        listeners.finish(),
-        Err(ReloadOrderError::DuplicateObject { .. })
-    ));
+    let ordered = listeners.finish().unwrap();
+    assert_eq!(
+        ordered
+            .listeners
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>(),
+        [
+            VanillaServerListeners::functions(),
+            id("one:listener"),
+            id("one:kept"),
+        ]
+    );
+    assert_eq!(ordered.retained.len(), 1);
     drop(key);
 }
