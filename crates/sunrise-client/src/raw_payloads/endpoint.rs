@@ -253,7 +253,7 @@ impl Endpoint {
                 ..
             } => {
                 let writer = writer.lock().unwrap();
-                let _ = events.send_ordered(Event::Disconnected {
+                let _ = events.send_terminal(Event::Disconnected {
                     reason: reason.plain(),
                     key: None,
                     from_server: false,

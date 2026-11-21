@@ -113,7 +113,7 @@ pub enum Event {
     DecodeError(String),
     /// The server sent us back to configuration (`ClientboundStartConfigurationPacket`):
     /// the game shows `ServerReconfigScreen` until the server logs it in again.
-    Reconfiguring(std::sync::mpsc::Sender<()>),
+    Reconfiguring(Box<Reconfiguration>),
     /// Cookie handlers are main-affine, including standalone play cookies.
     PlayCookie(Box<(Arc<PlayIo>, PlayCookie)>),
     /// The server sent us back to configuration and finished it again.
@@ -133,13 +133,9 @@ pub enum Event {
     /// `Session::accept_code_of_conduct` or a disconnect; until then the
     /// server waits in configuration.
     CodeOfConduct(String),
-    /// `ClientboundTransferPacket`: the server sent us to another address.
-    /// The connection ends right after; the game reconnects there with the
-    /// stored cookies.
-    Transfer {
-        host: String,
-        port: i32,
-    },
+    /// `ClientboundTransferPacket`: main closes the old connection and starts
+    /// the new one with the shared cookie store.
+    Transfer(cfg::Transfer),
     /// `ClientboundServerLinksPacket`: the links the pause menu's "Server
     /// Links..." lists (ClientCommonPacketListenerImpl.handleServerLinks).
     ServerLinks(Vec<cfg::ServerLink>),
@@ -175,14 +171,11 @@ impl Event {
                 s.capacity()
             }
             Self::Bundle(bundle) => bundle.owned_bytes(),
+            Self::Reconfiguring(_) => size_of::<Reconfiguration>(),
             Self::PlayCookie(cookie) => {
                 size_of::<(Arc<PlayIo>, PlayCookie)>() + cookie.1.owned_bytes()
             }
-            Self::QuietCommands
-            | Self::CustomBooks
-            | Self::Reconfiguring(_)
-            | Self::ClearDialog
-            | Self::PackPop(_) => 0,
+            Self::QuietCommands | Self::CustomBooks | Self::ClearDialog | Self::PackPop(_) => 0,
             Self::FarTerrain(crate::lod_net::Offer {
                 distance: _,
                 in_flight: _,
@@ -203,7 +196,7 @@ impl Event {
             Self::ShowDialog { dialog, registries } => dialog
                 .owned_heap_bytes()
                 .saturating_add(dynamic(registries)),
-            Self::Transfer { host, port: _ } => host.capacity(),
+            Self::Transfer(packet) => packet.host.capacity(),
             Self::ServerLinks(links) => links.owned_heap_bytes(),
             Self::Disconnected {
                 reason,
@@ -411,7 +404,7 @@ impl Session {
         })
         .inspect_err(|error| {
             // No reader runs to report the end: say it here, or the session waits forever.
-            let _ = payload_events.send_ordered(Event::Disconnected {
+            let _ = payload_events.send_terminal(Event::Disconnected {
                 reason: format!("network thread: {error}"),
                 key: None,
                 from_server: false,
@@ -511,6 +504,19 @@ impl Session {
     /// `Connection.isConnected`: the connection is open (a replay's never is).
     pub fn connected(&self) -> bool {
         self.writer.lock().is_ok_and(|writer| writer.is_some())
+    }
+    pub fn accepts_packets(&self) -> bool {
+        self.writer
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(QueuedWriter::accepts_packets)
+    }
+    /// Stop output at a main-affine close but let preceding replies drain.
+    pub fn close_after_pending(&self) {
+        if let Some(writer) = self.writer.lock().unwrap().as_ref() {
+            writer.close_after_pending();
+        }
     }
     /// Whether recording is currently active.
     pub fn is_recording(&self) -> bool {
@@ -1127,7 +1133,37 @@ fn report_connection_end(
     {
         w.shutdown();
     }
-    let _ = events.send_ordered(why.ended(from_server));
+    let _ = events.send_terminal(why.ended(from_server));
+}
+
+/// The ordered main task owns the outbound protocol switch; the reader owns
+/// only the decoder resumption once that task has queued the ACK.
+pub struct Reconfiguration {
+    writer: Arc<Mutex<Option<QueuedWriter>>>,
+    payloads: Arc<crate::raw_payloads::Transport>,
+    configuring: Arc<AtomicBool>,
+    resume: std::sync::mpsc::Sender<sunrise_protocol::Result<()>>,
+}
+
+impl Reconfiguration {
+    pub fn acknowledge(self) {
+        self.payloads.begin_configuration();
+        let result = self
+            .writer
+            .lock()
+            .unwrap()
+            .as_ref()
+            .ok_or_else(|| sunrise_protocol::Error::new("Disconnected"))
+            .and_then(|writer| {
+                writer.transition_protocol(
+                    sunrise_protocol::payload_negotiation::Phase::Configuration,
+                    &play::Serverbound::ConfigurationAcknowledged(Empty).encode(),
+                )?;
+                self.configuring.store(true, Ordering::Release);
+                Ok(())
+            });
+        let _ = self.resume.send(result);
+    }
 }
 
 pub enum PlayCookie {
@@ -1264,7 +1300,7 @@ fn receive_play(
             None => continue,
             Some(PlayTurn::Single(packet)) => packet,
             Some(PlayTurn::Bundle(packets)) => {
-                send.send_ordered(Event::Bundle(Box::new(CompletedBundle {
+                send.send_wait(Event::Bundle(Box::new(CompletedBundle {
                     packets,
                     io: io.clone(),
                 })))
@@ -1289,18 +1325,17 @@ fn receive_play(
                 // StartConfiguration is the real protocol barrier. The main
                 // task runs behind preceding play handlers before the ACK.
                 let (resume, ready) = std::sync::mpsc::channel();
-                send.send_ordered(Event::Reconfiguring(resume))
-                    .map_err(|error| Reason::plain(error.to_string()))?;
-                ready.recv().map_err(|_| Reason::plain("Disconnected"))?;
-                payloads.begin_configuration();
-                if let Some(w) = shared_writer.lock().unwrap().as_mut() {
-                    w.transition_protocol(
-                        sunrise_protocol::payload_negotiation::Phase::Configuration,
-                        &play::Serverbound::ConfigurationAcknowledged(Empty).encode(),
-                    )
+                send.send_wait(Event::Reconfiguring(Box::new(Reconfiguration {
+                    writer: shared_writer.clone(),
+                    payloads: payloads.clone(),
+                    configuring: configuring.clone(),
+                    resume,
+                })))
+                .map_err(|error| Reason::plain(error.to_string()))?;
+                ready
+                    .recv()
+                    .map_err(|_| Reason::plain("Disconnected"))?
                     .map_err(|error| Reason::plain(connection_lost(error, lang)))?;
-                    configuring.store(true, Ordering::Relaxed);
-                }
                 let registries = configure(
                     reader,
                     shared_writer,
@@ -1330,15 +1365,10 @@ fn receive_play(
             play::Clientbound::ServerLinks(p) => {
                 let _ = send.send(Event::ServerLinks(p.links));
             }
-            // ClientCommonPacketListenerImpl.handleTransfer: the connection
-            // ends and the game connects to the other address.
+            // ClientCommonPacketListenerImpl.handleTransfer is main-affine.
             play::Clientbound::Transfer(p) => {
-                let _ = send.send(Event::Transfer {
-                    host: p.host,
-                    port: p.port,
-                });
-                io.close_after_pending();
-                return Ok(Reason::keyed("disconnect.transfer", lang));
+                send.send_wait(Event::Transfer(p))
+                    .map_err(|error| Reason::plain(error.to_string()))?;
             }
             play::Clientbound::Disconnect(d) => {
                 io.close_after_pending();
@@ -1616,11 +1646,8 @@ fn configure(
                 let _ = send.send(Event::ServerLinks(p.links));
             }
             cfg::Clientbound::Transfer(p) => {
-                let _ = send.send(Event::Transfer {
-                    host: p.host,
-                    port: p.port,
-                });
-                return Err(Reason::keyed("disconnect.transfer", lang));
+                send.send_wait(Event::Transfer(p))
+                    .map_err(|error| Reason::plain(error.to_string()))?;
             }
             cfg::Clientbound::Disconnect(d) => return Err(Reason::tag(&d.reason, lang)),
             cfg::Clientbound::FinishConfiguration(_) => {
@@ -3036,7 +3063,7 @@ mod tests {
     }
 
     #[test]
-    fn clientbound_bundle_is_count_bounded_not_watermark_bounded() {
+    fn an_oversized_bundle_waits_for_credit_but_still_accepts_exactly_4096_members() {
         use play_bundle::{InvalidBundle, PlayBundle};
         let ping = |id| play::Clientbound::Ping(cfg::Ping { id });
         let capacity = 2
@@ -3050,11 +3077,8 @@ mod tests {
             server.send(&ping(id).encode()).unwrap();
         }
         server.send(&delimiter.encode()).unwrap();
-        // Ordinary admission still has a slot even while the completed bundle
-        // is unconsumed and larger than the watermark.
         server.send(&ping(-2).encode()).unwrap();
-        // This incomplete bundle never publishes its prefix, even though its
-        // terminal notice itself would not fit the still-held watermark.
+        // A later truncated bundle never publishes its prefix.
         server.send(&delimiter.encode()).unwrap();
         server.send(&ping(4096).encode()).unwrap();
         server
@@ -3063,9 +3087,11 @@ mod tests {
         let timeout = Duration::from_secs(5);
         let (event, baseline_credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(matches!(event, Event::Packet(packet) if *packet == ping(-1)));
+        assert!(events.try_recv_owned().is_err());
+        drop(baseline_credit);
         let (event, credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         let Event::Bundle(bundle) = event else {
-            panic!("missing bundle");
+            panic!("missing bundle")
         };
         assert!(events.stats().reserved_bytes > capacity);
         assert_eq!(bundle.packets.len(), 4096);
@@ -3076,10 +3102,11 @@ mod tests {
                 .enumerate()
                 .all(|(id, p)| *p == ping(id as i32))
         );
-        let (next, next_credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
-        assert!(matches!(next, Event::Packet(packet) if *packet == ping(-2)));
+        assert!(events.try_recv_owned().is_err());
         drop(bundle);
         drop(credit);
+        let (next, next_credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        assert!(matches!(next, Event::Packet(packet) if *packet == ping(-2)));
         let (end, end_credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(
             matches!(end, Event::Disconnected { from_server: false, key: Some(key), .. }
@@ -3087,8 +3114,6 @@ mod tests {
         );
         assert!(events.try_recv_owned().is_err());
         drop(end_credit);
-        assert_eq!(events.stats().reserved_bytes, capacity);
-        drop(baseline_credit);
         drop(next_credit);
         assert_eq!(events.stats().reserved_bytes, 0);
         thread.join().unwrap();
@@ -3103,6 +3128,64 @@ mod tests {
             packer.accept(ping(4096)),
             Err(InvalidBundle::TooManyPackets)
         ));
+    }
+
+    #[test]
+    fn several_completed_bundles_wait_for_owned_credit_without_disconnecting() {
+        use play::{Clientbound as C, Serverbound as S};
+        let timeout = Duration::from_secs(5);
+        let members = 64;
+        let one = Event::INGRESS_RECORD_OVERHEAD
+            + std::mem::size_of::<CompletedBundle>()
+            + members * std::mem::size_of::<C>()
+            + sunrise_mod_runtime::byte_channel::message_overhead::<Event>();
+        let capacity = one * 2;
+        let (root, mut server, events, thread) = bundle_pipe("bundle-aggregate", capacity);
+        let delimiter = C::BundleDelimiter(Empty).encode();
+        for id in 0..5 {
+            server.send(&delimiter).unwrap();
+            for _ in 0..members {
+                server.send(&C::Ping(cfg::Ping { id }).encode()).unwrap();
+            }
+            server.send(&delimiter).unwrap();
+        }
+        let keep_alive = cfg::KeepAlive { id: 31 };
+        server
+            .send(&C::KeepAlive(keep_alive.clone()).encode())
+            .unwrap();
+        let receive = |id| {
+            let (event, lease) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+            let Event::Bundle(bundle) = event else {
+                panic!("bundle {id} was refused")
+            };
+            assert_eq!(bundle.packets.len(), members);
+            assert!(
+                bundle
+                    .packets
+                    .iter()
+                    .all(|packet| *packet == C::Ping(cfg::Ping { id }))
+            );
+            lease
+        };
+        let mut first = receive(0);
+        let mut second = receive(1);
+        for id in 2..5 {
+            assert!(matches!(
+                events.recv_timeout_owned(Duration::from_millis(25)),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            ));
+            assert_eq!(events.stats().reserved_bytes, capacity);
+            drop(first);
+            first = second;
+            second = receive(id);
+        }
+        assert_eq!(events.stats().peak_reserved_bytes, capacity);
+        drop((first, second));
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(S::decode(id, &body).unwrap(), S::KeepAlive(keep_alive));
+        server.writer.shutdown();
+        thread.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -3168,7 +3251,19 @@ mod tests {
         let Event::Reconfiguring(resume) = event else {
             panic!("missing configuration task")
         };
-        resume.send(()).unwrap();
+        let configuring = resume.configuring.clone();
+        let config_writer = resume.writer.clone();
+        resume.acknowledge();
+        assert!(configuring.load(Ordering::Acquire));
+        assert_eq!(
+            config_writer
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .play_incarnation(),
+            None
+        );
         assert_eq!(recv(&mut server), response(10));
         assert_eq!(recv(&mut server), response(11));
         assert_eq!(recv(&mut server), S::ConfigurationAcknowledged(Empty));
@@ -3337,12 +3432,28 @@ mod tests {
         let (root, data) = empty_item_data("reconfiguration");
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (mut reader, writer) = Connection::local(client).split();
+        let (mut server_read, mut server_write) = Connection::local(server).split();
+        let timeout = Duration::from_secs(5);
+        server_read.set_read_timeout(Some(timeout)).unwrap();
+        let writer = QueuedWriter::new(writer).unwrap();
+        // Put the fixture's writer in Play the same way initial configuration does.
+        writer
+            .transition_protocol(
+                sunrise_protocol::payload_negotiation::Phase::Play,
+                &cfg::Serverbound::FinishConfiguration(Empty).encode(),
+            )
+            .unwrap();
+        let (id, body) = server_read.recv().unwrap();
+        assert_eq!(
+            cfg::Serverbound::decode(id, &body).unwrap(),
+            cfg::Serverbound::FinishConfiguration(Empty)
+        );
         let (send, events) = event_channel();
         let session = Session {
             events,
             payload_events: event_channel().0,
             payloads: crate::raw_payloads::Transport::empty(),
-            writer: Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap()))),
+            writer: Arc::new(Mutex::new(Some(writer))),
             configuring: Arc::new(AtomicBool::new(false)),
             thread: None,
             address: "local".into(),
@@ -3373,38 +3484,67 @@ mod tests {
                 &crate::raw_payloads::Transport::empty(),
             )
         });
-        let mut server = Connection::local(server);
         let tick_end = play::Serverbound::ClientTickEnd(Empty);
-        server
+        server_write
             .send(&play::Clientbound::StartConfiguration(Empty).encode())
             .unwrap();
         let (event, _) = session
             .events
-            .recv_timeout_owned(Duration::from_secs(5))
+            .recv_timeout_owned(timeout)
             .unwrap()
             .into_parts();
         let Event::Reconfiguring(resume) = event else {
             panic!("missing configuration task")
         };
-        resume.send(()).unwrap();
-        let (id, body) = server.recv().unwrap();
+        let configuring = resume.configuring.clone();
+        let config_writer = resume.writer.clone();
+        assert!(
+            config_writer
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .play_incarnation()
+                .is_some()
+        );
+        resume.acknowledge();
+        assert!(configuring.load(Ordering::Acquire));
+        assert_eq!(
+            config_writer
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .play_incarnation(),
+            None
+        );
+        let (id, body) = server_read.recv().unwrap();
         assert_eq!(
             play::Serverbound::decode(id, &body).unwrap(),
             play::Serverbound::ConfigurationAcknowledged(Empty)
         );
         // The game thread still ticks the old level: nothing of it goes out.
         session.send(tick_end.clone());
-        server
+        server_write
             .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
             .unwrap();
-        let (id, body) = server.recv().unwrap();
+        let keep_alive = cfg::KeepAlive { id: 19 };
+        server_write
+            .send(&play::Clientbound::KeepAlive(keep_alive.clone()).encode())
+            .unwrap();
+        let (id, body) = server_read.recv().unwrap();
         assert_eq!(
             cfg::Serverbound::decode(id, &body).unwrap(),
             cfg::Serverbound::FinishConfiguration(Empty)
         );
+        let (id, body) = server_read.recv().unwrap();
+        assert_eq!(
+            play::Serverbound::decode(id, &body).unwrap(),
+            play::Serverbound::KeepAlive(keep_alive)
+        );
         // Back in play, the game's packets flow again.
         session.send(tick_end.clone());
-        let (id, body) = server.recv().unwrap();
+        let (id, body) = server_read.recv().unwrap();
         assert_eq!(play::Serverbound::decode(id, &body).unwrap(), tick_end);
         drop(session);
         assert!(thread.join().unwrap().is_err());
@@ -3474,20 +3614,32 @@ mod tests {
                 payload: Some(vec![1, 2, 3]),
             })
         );
+        server.send(&store.encode()).unwrap();
         let transfer = play::Clientbound::Transfer(cfg::Transfer {
             host: "example.net".into(),
             port: 25566,
         });
         server.send(&transfer.encode()).unwrap();
-        assert!(thread.join().unwrap().is_ok());
-        let turn: Vec<_> = events
-            .take_turn()
-            .into_iter()
-            .map(ingress::OwnedReceipt::into_parts)
-            .collect();
-        assert!(
-            matches!(turn.last(), Some((Event::Transfer { host, port: 25566 }, _credit)) if host == "example.net")
+        // No main work has run since sending the store and transfer. The old
+        // receiver is still live, and main sees the cookie before the transfer.
+        let keep_alive = cfg::KeepAlive { id: 42 };
+        server
+            .send(&play::Clientbound::KeepAlive(keep_alive.clone()).encode())
+            .unwrap();
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            play::Serverbound::decode(id, &body).unwrap(),
+            play::Serverbound::KeepAlive(keep_alive)
         );
+        cookies.lock().unwrap().clear();
+        run_cookie();
+        let (event, _) = events
+            .recv_timeout_owned(Duration::from_secs(5))
+            .unwrap()
+            .into_parts();
+        assert!(matches!(event, Event::Transfer(p) if p.host == "example.net" && p.port == 25566));
+        writer.lock().unwrap().take().unwrap().shutdown();
+        assert!(thread.join().unwrap().is_err());
         // The stored cookie stays for the next connection (TransferState).
         assert_eq!(
             cookies.lock().unwrap().get("proxy:session"),

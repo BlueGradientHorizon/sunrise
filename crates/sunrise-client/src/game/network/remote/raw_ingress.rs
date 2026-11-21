@@ -1,6 +1,14 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
 use super::*;
 
+fn local_transfer_notice() -> Event {
+    Event::Disconnected {
+        reason: sunrise_client::lang::get("disconnect.transfer"),
+        key: Some("disconnect.transfer".into()),
+        from_server: true,
+    }
+}
+
 impl Remote {
     pub(super) fn receive_credited_backlog(&mut self, events: &mut VecDeque<Received>) {
         // Chunk packets start decoding now; the frame that reaches one in
@@ -143,6 +151,7 @@ impl Game<'_> {
             return Ok(self.remote.is_some());
         }
         let mut end = None;
+        let mut transfer = None;
         for packet in packets {
             match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
@@ -167,16 +176,22 @@ impl Game<'_> {
                         }
                     }
                 }
-                BundleStep::Close { transfer, notice } => {
-                    if let Some(transfer) = transfer {
-                        self.handle_remote_event(transfer)?;
+                BundleStep::Transfer(packet) => {
+                    transfer = self.start_remote_transfer(packet)?;
+                    if transfer.is_none() {
+                        end.get_or_insert_with(local_transfer_notice);
                     }
-                    // Closing the writer is immediate. Dispose of the listener only
-                    // after the rest of this bundle has invoked its handlers.
+                }
+                BundleStep::Close(notice) => {
+                    // Discard the old listener only after its remaining handlers run.
                     end.get_or_insert(notice);
                 }
                 BundleStep::Continue => {}
             }
+        }
+        if let Some(opening) = transfer {
+            self.install_remote_transfer(opening)?;
+            return Ok(false);
         }
         if let Some(end) = end {
             return self.handle_remote_event(end);
@@ -280,7 +295,7 @@ impl Game<'_> {
                     r.reconfiguring = Some(ticks);
                     r.chat_tree_received = false;
                 }
-                let _ = resume.send(());
+                resume.acknowledge();
             }
             Event::Reconfigured(registries) => {
                 // handleConfigurationStart → clearClientLevel, and the next
@@ -304,13 +319,17 @@ impl Game<'_> {
                 self.ui.registries.custom_completions.clear();
                 self.set_registries(registries);
             }
-            // handleTransfer: "Cannot transfer to server from
-            // singleplayer" (no ServerData), so the world just closes.
-            Event::Transfer { host, port } => {
-                if let Some(r) = self.remote.as_mut()
-                    && r.session.address != "local"
+            Event::Transfer(packet) => {
+                if self
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.session.accepts_packets())
                 {
-                    r.transfer = Some(format!("{host}:{port}"));
+                    if let Some(opening) = self.start_remote_transfer(packet)? {
+                        self.install_remote_transfer(opening)?;
+                        return Ok(false);
+                    }
+                    return self.handle_remote_event(local_transfer_notice());
                 }
             }
             Event::PackPush(p) => self.handle_pack_push(p),
@@ -340,21 +359,6 @@ impl Game<'_> {
             } => {
                 self.reset_book_view();
                 log::info!("Sunrise: disconnected: {reason}");
-                // ClientboundTransferPacket left a target: connect there
-                // instead of showing the disconnect, the stored cookies
-                // carried over (ClientCommonPacketListenerImpl.
-                // handleTransfer → ConnectScreen.startConnecting).
-                let transfer = self.remote.as_mut().and_then(|r| {
-                    r.transfer
-                        .take()
-                        .map(|address| (address, r.session.name.clone(), r.session.cookies.clone()))
-                });
-                if let Some((address, name, cookies)) = transfer {
-                    self.connection_left(sunrise_hooks::connection::Left::Transferred);
-                    self.leave_server(None)?;
-                    self.connect_server_with_cookies(&address, &name, Some(cookies))?;
-                    return Ok(false);
-                }
                 let by = if from_server {
                     sunrise_hooks::connection::By::Server
                 } else {
