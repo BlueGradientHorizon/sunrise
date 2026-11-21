@@ -294,7 +294,7 @@ impl Game<'_> {
             self,
             |game| game.native_lifecycle.tasks.pop_due(),
             |game, (owner, task)| {
-                use mod_api::__private as api;
+                use mod_api::__private::game::CallbackOwner;
 
                 let Some(mod_id) = owner else {
                     // Engine-owned work still follows the server's own failure policy.
@@ -305,42 +305,25 @@ impl Game<'_> {
                         });
                     return;
                 };
-                let _call = api::enter(mod_id, "schedule_task");
-                let index = api::mod_index(mod_id);
-                let result = sunrise_client::crash::contain_unwind(|| {
-                    if index.is_some_and(api::scheduled_tasks_on) {
-                        mod_api::run_transaction(game, |game, _| {
-                            api::contain_refusal(mod_id, || task(game))
-                        })
-                    } else {
-                        drop(task);
-                        Ok(())
-                    }
-                });
-                match result {
-                    Ok(Ok(())) => {}
-                    Ok(Err(refusal)) => log::warn!("scheduled task refused: {refusal}"),
-                    Err(panic) => {
-                        if let Some(index) = index {
-                            api::poison_scheduled_tasks(index);
-                        }
-                        log::error!(
-                            "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
-                        );
-                        if let Some(serving) = &game.serving {
-                            use sunrise_client::{hud::rgba, text::Text, toasts::SystemToast};
+                if let Err(panic) =
+                    CallbackOwner::call_scheduled_task(mod_id, game, |game| task(game))
+                {
+                    log::error!(
+                        "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
+                    );
+                    if let Some(serving) = &game.serving {
+                        use sunrise_client::{hud::rgba, text::Text, toasts::SystemToast};
 
-                            serving.report_system_toast(
-                                SystemToast::new(
-                                    Text::tr("sunrise.mods.scheduled_task_error.title", &[]),
-                                    Some(Text::tr(
-                                        "sunrise.mods.scheduled_task_error.message",
-                                        &[&mod_id],
-                                    )),
-                                )
-                                .with_title_color(rgba(255, 85, 85, 255)),
-                            );
-                        }
+                        serving.report_system_toast(
+                            SystemToast::new(
+                                Text::tr("sunrise.mods.scheduled_task_error.title", &[]),
+                                Some(Text::tr(
+                                    "sunrise.mods.scheduled_task_error.message",
+                                    &[&mod_id],
+                                )),
+                            )
+                            .with_title_color(rgba(255, 85, 85, 255)),
+                        );
                     }
                 }
             },

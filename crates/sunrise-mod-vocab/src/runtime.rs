@@ -53,9 +53,8 @@ pub(crate) struct Installed {
     pub(crate) by_id: std::collections::HashMap<&'static str, usize>,
     pub(crate) subscribers: sunrise_mod_runtime::subscribers::Subscribers,
     pub(crate) disabled: Box<[std::sync::atomic::AtomicBool]>,
-    /// Delayed tasks are not hook subscriptions. Their per-mod poison does not
-    /// change the owner's other hooks or its enabled switch.
-    pub(crate) scheduled_tasks_poisoned: Box<[std::sync::atomic::AtomicBool]>,
+    /// One installed owner per mod for delayed tasks, independent of its other callbacks.
+    pub(crate) scheduled_tasks: Box<[crate::callback_owner::CallbackOwner]>,
     mod_id_owners: std::collections::HashMap<&'static str, usize>,
     content_owners: OnceLock<std::collections::HashMap<Box<str>, Option<usize>>>,
     disabled_count: std::sync::atomic::AtomicUsize,
@@ -93,13 +92,14 @@ impl Installed {
             mods.len(),
             subscriptions,
         );
-        let fresh_flags = || {
-            (0..mods.len())
-                .map(|_| std::sync::atomic::AtomicBool::new(false))
-                .collect()
-        };
-        let disabled = fresh_flags();
-        let scheduled_tasks_poisoned = fresh_flags();
+        let disabled = (0..mods.len())
+            .map(|_| std::sync::atomic::AtomicBool::new(false))
+            .collect();
+        let scheduled_tasks = mods
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| crate::callback_owner::CallbackOwner::for_index(entry.id, index))
+            .collect();
         let mod_id_owners = mods
             .iter()
             .enumerate()
@@ -114,7 +114,7 @@ impl Installed {
             mods,
             subscribers,
             disabled,
-            scheduled_tasks_poisoned,
+            scheduled_tasks,
             mod_id_owners,
             content_owners: OnceLock::new(),
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
