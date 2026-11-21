@@ -14,11 +14,7 @@ ids = [
     "method:ClientItemUseBehavior::use_item",
     "method:ClientItemUseBehavior::release_using",
     "method:ClientItemUseBehavior::on_stop_using",
-    "trait:ItemsRegistrar",
     "method:ItemsRegistrar::register_client_item_use",
-    "method:prelude::ClientViewClientHost::local_item_use",
-    "method:prelude::LivingHost::living_used_item_hand",
-    "method:prelude::LivingHost::living_is_blocking",
 ]
 why = "Client main-hand input now calls one owner registered for the item rather than queueing start and stop events with SNBT copies. The owner gets the original typed stack, and a valid input release is distinct from a reset. Ordinary item use on both sides is unchanged."
 migrate = '''
