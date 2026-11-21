@@ -1,4 +1,7 @@
 ids = [
+    "hook:gui_layer_pre",
+    "hook:gui_layer_post",
+    "hook:player_heart_type",
     "hook:health_hud",
     "hook:health_hud.inputs",
     "hook:health_hud.wi",
@@ -27,11 +30,15 @@ ids = [
     "type:client::hud_layout::HealthInputs.under_water",
     "type:client::hud_layout::HealthInputs.vehicle_hearts",
 ]
-why = "Vanilla 26.3 updates the heart flash in Hud.extractPlayerHealth and the bubble sound in Hud.extractAirBubbles. NeoForge's Hud.extractHealthLevel keeps the heart update inside the layer. GuiLayerManager.renderInner fires RenderGuiLayerEvent.Pre once, then calls the installed layer body unless Pre cancels; RegisterGuiLayersEvent replaces or wraps that body. Remove the second health callback and update vanilla's display state only when its body runs."
+why = "Vanilla 26.3 updates the heart flash in Hud.extractPlayerHealth and the pop sound in Hud.extractAirBubbles. NeoForge's Hud.registerVanillaLayers splits the rows into extractHealthLevel, extractArmorLevel, extractFoodLevel, extractVehicleHealth and extractAirLevel. GuiLayerManager.renderInner fires RenderGuiLayerEvent.Pre once, then calls the installed layer body unless Pre cancels. Remove the second health callback; update the heart state and choose the sprites (Hud.HeartType.forPlayer) inside the vanilla heart body, and update bubble state and emit sound independently in the vanilla air body."
 migrate = """
-Remove `Hooks::health_hud` and the `HealthHudEvent` and `HealthInputs` imports. In `Hooks::register_gui_layers`, use `event.layers.replace_layer(\"minecraft:player_health\", Box::new(move |host, draw| { /* paint */ }))` instead of returning `Some(Vec<GuiDraw>)`. Submit the drawing directly through `draw`, for example with `draw.fill` and `draw.sprite`. Replace `event.wi` and `event.hi` with `let [w, h] = draw.size();` (GUI pixels as `f32`).
+Remove `Hooks::health_hud` and the `HealthHudEvent` and `HealthInputs` imports. In `Hooks::register_gui_layers`, use `event.layers.replace_layer(\"minecraft:player_health\", Box::new(move |host, draw| { /* paint */ }))` for custom hearts. If replacing all the former rows, also replace `minecraft:armor_level`, `minecraft:food_level` and `minecraft:air_level`. `minecraft:vehicle_health` is a separate slot; leave it alone unless replacing the mount hearts. A `Some(Vec<GuiDraw>)` can become `draw.gui_paint(&draws)` inside the installed body; handle the returned `GuiPaintError`. Either paint each row in its own slot, or paint a combined buffer in `player_health` and replace the other three bodies with no-ops. The painted status rows still reserve space from Sunrise's radial overlay. Replace `event.wi` and `event.hi` with `let [w, h] = draw.size();` (GUI pixels as `f32`).
 
 There is no replacement `event.inputs` snapshot. Get the local player with `host.local_player()`; then use `host.living(player.entity())` and `living.health(host)`, `living.max_health(host)`, `living.absorption(host)` and `living.attribute_value(host, \"minecraft:armor\")` for the corresponding values. Read food and saturation from `player.food(host)` (`level` and `saturation`). Read hunger and regeneration from `living.potion_affected(host, effect_key)` using keys resolved at load. A custom body owns its visual state, including its heart sprites and timing. The old HUD-only fields have no equivalent snapshot; use the vanilla body if you need its flash and bubble behaviour.
 
-If you returned `None` on frames that should use vanilla, use `event.layers.wrap_layer(\"minecraft:player_health\", Box::new(move |ctx| { /* choose a body */ }))` instead. Read the player through `ctx.host()`, paint with `ctx.with_draw(&mut |draw| { /* custom paint */ })`, and call `ctx.draw_previous()` on frames that should keep the previous body. Use `gui_layer_pre` with `Flow::Cancel` to skip the entire slot for a frame. `player_heart_type` still changes vanilla heart sprites, but does not run when the vanilla body is skipped. The separate vehicle-health slot is unchanged.
+If you returned `None` on frames that should use vanilla, use `event.layers.wrap_layer(id, Box::new(move |ctx| { /* choose a body */ }))` instead for each affected slot. Read the player through `ctx.host()`, paint with `ctx.with_draw(&mut |draw| { /* custom paint */ })`, and call `ctx.draw_previous()` on frames that should keep the previous body.
+
+`gui_layer_pre` (v2) and `gui_layer_post` (v3) keep their signatures. Match `minecraft:player_health` for hearts only. For a veto or observation that used to cover all four rows, also match `minecraft:armor_level`, `minecraft:food_level` and `minecraft:air_level`. Return `Flow::Cancel` from Pre for each slot that should be skipped; cancelling only the heart slot no longer skips the air body or bubble audio. For drawing once below or above the entire group, attach your own layer below `minecraft:player_health` or above `minecraft:air_level`.
+
+`player_heart_type` (v2) keeps its signature; sprite overrides need no source change. It now fires after the heart slot's `gui_layer_pre` and only when the vanilla heart body runs. Move work that must run independently of that body to an independent HUD layer or to `gui_render_post` if it must also run with the HUD hidden.
 """

@@ -184,9 +184,11 @@ pub trait Notes {
   `list(&folder, after, limit)` returns lexicographically ordered names strictly after the cursor, at most `limit` entries; start with `None`, continue with the last name, and stop on an empty page.
   `ConfigPath::root()` lists the mod's own root; `limit` must be 1 through `CONFIG_LIST_MAX` (1024), otherwise `InvalidPage` ([config and bulk storage](../how-to/mod-settings.md)).
 
-- To draw custom player-health rows, replace or wrap `minecraft:player_health` in
-  `register_gui_layers` and paint through the installed body's `DrawContext`. `gui_layer_pre` can veto the
-  entire slot. Vanilla's armour, hearts, food and air extraction runs only when its body draws.
+- To draw custom status rows, replace or wrap `minecraft:player_health` (hearts), `minecraft:armor_level`,
+  `minecraft:food_level` or `minecraft:air_level` in `register_gui_layers`. Use the installed body's
+  `DrawContext` (`gui_paint` accepts a `GuiDraw` list). `gui_layer_pre` can veto a slot without vetoing
+  the other rows. Heart bookkeeping belongs to the vanilla heart body; bubble sounds belong to the
+  vanilla air body.
 
 - Which hearts the player's health bar draws through `player_heart_type` (NeoForge's `PlayerHeartTypeEvent`):
   when the vanilla player-health body draws its hearts, `kind` comes in as vanilla's pick (poisoned, withered,

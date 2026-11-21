@@ -53,8 +53,9 @@ runs. For work that must happen even when the HUD is hidden, use the independent
 
 ## Status rows and fixed text positions
 
-`minecraft:player_health` is a single GUI layer for hearts, armour, food and air. Cancel it with
-`gui_layer_pre`, or install a custom body in `register_gui_layers`:
+`minecraft:player_health` draws the hearts. The neighbouring `minecraft:armor_level`,
+`minecraft:food_level`, `minecraft:vehicle_health` and `minecraft:air_level` slots draw the other
+status rows. Cancel a slot with `gui_layer_pre`, or install a custom body in `register_gui_layers`:
 
 ```rust,ignore
 event.layers.replace_layer("minecraft:player_health", Box::new(|host, draw| {
@@ -66,10 +67,14 @@ event.layers.replace_layer("minecraft:player_health", Box::new(|host, draw| {
 }));
 ```
 
-Use `wrap_layer` and call `ctx.draw_previous()` if the vanilla rows should still draw. Vanilla
-heart flashing, the `player_heart_type` sprite choice and air-bubble sound are part of the vanilla
-body, so they run only when that body runs. Replacing this layer does not replace the separate
-`minecraft:vehicle_health` layer.
+Use `wrap_layer` and call `ctx.draw_previous()` if the vanilla row should still draw. Heart
+flashing and `player_heart_type` run only in the vanilla heart body, after the layer's Pre hook.
+Bubble bookkeeping and pop audio run in the vanilla air body, even if the heart layer was
+cancelled or replaced. To replace all rows formerly drawn by `health_hud`, replace or wrap
+`player_health`, `armor_level`, `food_level` and `air_level`; `vehicle_health` is separate.
+You can keep a `GuiDraw` list: pass it to `draw.gui_paint(&draws)` and handle its returned error.
+Sunrise's radial overlay keeps clear of the actual paint from installed status-layer bodies,
+including replacements and wrappers.
 
 Adding a taller status bar does not move the selected item name or the action bar. The name starts
 59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68

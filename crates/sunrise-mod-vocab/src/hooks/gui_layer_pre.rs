@@ -10,8 +10,8 @@ pub trait Hooks {
     /// at startup in `register_gui_layers`.
     ///
     /// The vanilla anchors, in HUD order, are `minecraft:crosshair`, `hotbar`,
-    /// `effects`, `boss_overlay`, `vehicle_health` (while riding a mount),
-    /// `player_health` (one layer for the health, armor, food and air rows),
+    /// `effects`, `boss_overlay`, `player_health` (hearts), `armor_level`, `food_level`,
+    /// `vehicle_health` (while riding a mount), `air_level`,
     /// `contextual_info_bar` (jump, locator or experience bar, with the level number),
     /// `selected_item_name`, `sleep_overlay`, `overlay_message` (action bar), `title`,
     /// `scoreboard_sidebar`, `subtitle_overlay`, `chat` and `tab_list`. A slot skipped
@@ -25,6 +25,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderGuiLayerEvent.Pre",

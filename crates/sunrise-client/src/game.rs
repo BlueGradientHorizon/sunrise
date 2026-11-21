@@ -7328,67 +7328,136 @@ impl Game<'_> {
                 self.experience_recent(),
             );
             use sunrise_client::locator_bar::ContextualBar;
-            // The mount's hearts reserve right-column space before air is laid out.
+            // NeoForge's Hud.registerVanillaLayers: each status row owns its own extraction.
+            // The installed vanilla bodies share the column heights and a scratch draw list.
             let mut status_heights = hud_layout::StatusBarHeights::default();
-            let vehicle_hearts = if spectator {
-                0
+            let mut status_rows = Vec::new();
+            let mount = if spectator {
+                None
             } else {
-                self.draw_mount_hud(&mut batch, wi, hi, &mut status_heights)
+                self.mount_index().map(|i| {
+                    let mob = &self.mobs[i];
+                    (
+                        hud_layout::vehicle_max_hearts(mob.attrs.max_health),
+                        mob.health,
+                    )
+                })
             };
-            if !self.creative && !spectator && self.player.is_some() {
-                // Hud.extractPlayerHealth owns both the status draws and their frame state.
-                // Keep extraction in the vanilla body so a veto or replacement skips it.
+            let show_survival_rows = !self.creative && !spectator && self.player.is_some();
+            if show_survival_rows {
                 self.gui_layer(
                     VanillaGuiLayer::PlayerHealth,
                     &mut batch,
                     &mut |g, batch| {
                         let (tick, millis) = (g.visual_ticks() as i32, g.visual_millis());
+                        let Some(p) = &g.player else { return };
+                        let blink = g.health_hud.update_health(
+                            p.health.health(),
+                            tick,
+                            millis,
+                            p.health.hurt.cooldown > 0,
+                        );
+                        let inputs = hud_layout::HealthInputs {
+                            tick,
+                            max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+                            absorption: p.health.absorption(),
+                            regeneration: g.potions.effects.get("regeneration").is_some(),
+                            hardcore: g.level.hardcore,
+                            blink,
+                        };
                         let Some(kind) = g.player_heart_kind() else {
                             return;
                         };
-                        let Some(p) = &g.player else { return };
-                        let effects = &g.potions.effects;
-                        let inputs = hud_layout::HealthInputs {
-                            tick,
-                            millis,
-                            health: p.health.health(),
-                            max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                            absorption: p.health.absorption(),
-                            armor: p
-                                .attribute("minecraft:armor")
-                                .or_else(|_| p.attribute("armor"))
-                                .unwrap_or(0.0) as i32,
-                            food: p.health.food.food,
-                            saturation: p.health.food.saturation,
+                        status_rows.clear();
+                        g.health_hud.health_level(
+                            &inputs,
                             kind,
-                            regeneration: effects.get("regeneration").is_some(),
-                            hunger: effects.get("hunger").is_some(),
-                            hardcore: g.level.hardcore,
-                            damage_cooldown: p.health.hurt.cooldown > 0,
-                            air: p.air,
-                            max_air: 300,
-                            // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
-                            under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
-                            vehicle_hearts,
-                        };
-                        let at = [p.position.x, p.position.y, p.position.z];
-                        let rows = g.health_hud.layout(&inputs, wi, hi, &mut status_heights);
-                        g.keep_status_rows(rows.draws(), wi, hi);
-                        hud_layout::paint_layers(batch, &g.gui.atlas, &rows.layers());
-                        // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
-                        // by this client only.
-                        if let Some((volume, pitch)) = g.health_hud.bubble_pop_sound.take() {
-                            let players = sunrise_client::settings::SOUND_SOURCES
-                                .iter()
-                                .position(|s| *s == "player")
-                                .unwrap_or(0);
-                            let capture = g.audio.capture.take();
-                            g.audio
-                                .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
-                            g.audio.capture = capture;
-                        }
+                            wi,
+                            hi,
+                            &mut status_heights,
+                            &mut status_rows,
+                        );
+                        hud_layout::paint(batch, &g.gui.atlas, &status_rows);
                     },
                 );
+                self.gui_layer(VanillaGuiLayer::ArmorLevel, &mut batch, &mut |g, batch| {
+                    let Some(p) = &g.player else { return };
+                    let armor = p
+                        .attribute("minecraft:armor")
+                        .or_else(|_| p.attribute("armor"))
+                        .unwrap_or(0.0) as i32;
+                    status_rows.clear();
+                    hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
+                    hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                });
+                self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
+                    if mount.is_some_and(|(hearts, _)| hearts != 0) {
+                        return;
+                    }
+                    let Some(p) = &g.player else { return };
+                    let inputs = hud_layout::FoodInputs {
+                        tick: g.visual_ticks() as i32,
+                        food: p.health.food.food,
+                        saturation: p.health.food.saturation,
+                        hunger: g.potions.effects.get("hunger").is_some(),
+                    };
+                    status_rows.clear();
+                    g.health_hud
+                        .food_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
+                    hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                });
+            }
+            if let Some((hearts, health)) = mount {
+                self.gui_layer(
+                    VanillaGuiLayer::VehicleHealth,
+                    &mut batch,
+                    &mut |g, batch| {
+                        status_rows.clear();
+                        hud_layout::vehicle_health(
+                            wi,
+                            hi,
+                            hearts,
+                            health,
+                            &mut status_heights,
+                            &mut status_rows,
+                        );
+                        hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                    },
+                );
+            }
+            if show_survival_rows {
+                self.gui_layer(VanillaGuiLayer::AirLevel, &mut batch, &mut |g, batch| {
+                    let Some(p) = &g.player else { return };
+                    let inputs = hud_layout::AirInputs {
+                        tick: g.visual_ticks() as i32,
+                        air: p.air,
+                        max_air: 300,
+                        // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
+                        under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
+                    };
+                    let at = [p.position.x, p.position.y, p.position.z];
+                    status_rows.clear();
+                    let pop_sound = g.health_hud.air_level(
+                        &inputs,
+                        wi,
+                        hi,
+                        &mut status_heights,
+                        &mut status_rows,
+                    );
+                    hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                    // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
+                    // by this client only.
+                    if let Some((volume, pitch)) = pop_sound {
+                        let players = sunrise_client::settings::SOUND_SOURCES
+                            .iter()
+                            .position(|s| *s == "player")
+                            .unwrap_or(0);
+                        let capture = g.audio.capture.take();
+                        g.audio
+                            .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
+                        g.audio.capture = capture;
+                    }
+                });
             }
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
