@@ -36,8 +36,8 @@ pub trait GuiLayerWrapContext {
 
 // no wire: the registrar borrows the live HUD registration for one hook call.
 /// The HUD layer registrar handed to `register_gui_layers` once at client startup.
-/// Edits are visible in call order to the current callback and publish together when it
-/// returns successfully. The registrar is only available during that hook.
+/// Edits are visible in call order to the current listener and publish together when it
+/// returns successfully. The registrar is borrowed only for that listener.
 pub trait GuiLayerRegistrar {
     /// Stage `draw` at `placement` under a namespaced ID such as `mymod:compass`.
     /// Returns false and logs a warning if the ID is malformed, in the `minecraft` namespace,
@@ -54,7 +54,9 @@ pub trait GuiLayerRegistrar {
     /// Discards the entire previous body, including any wrappers, but keeps the layer's ID,
     /// position and draw conditions. Callbacks staged in this listener are dropped before this
     /// call returns. After commit, bodies installed by earlier listeners are dropped in the
-    /// order this listener first replaced their layers, not in HUD draw order.
+    /// order this listener first replaced their layers, not in HUD draw order. A panic
+    /// while dropping a staged callback rejects this listener's edits. A panic while retiring
+    /// a previously installed body is attributed to its owner and leaves the new body installed.
     /// Do not call the Host from a callback capture's `Drop`.
     /// Returns false and logs a warning if `id` is not registered.
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool;

@@ -34,9 +34,14 @@ an existing layer's body, including any wrappers. Use `event.layers.wrap_layer(i
 to keep the previous body and draw around it. Both methods accept a vanilla ID or an already
 registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID, its
 place in the HUD and its draw conditions. A replacement drops callbacks staged in the same listener
-before returning. Bodies from earlier listeners are dropped after commit, in the order the
-listener first replaced their layers, not in HUD draw order. Do not call the Host from `Drop` on
-a captured value.
+before returning. A panic there rejects the listener's pending edits and disables its registration
+callback for the session. Bodies from earlier listeners are dropped after publication, in the order
+this listener first replaced their layers, not in HUD draw order. A panic in that cleanup is reported
+against the retired body's owner and does not undo the published replacement or stop later listeners.
+The shared diagnostic names the mod in the log and client error toast.
+
+Capture owned startup data from `RegistrationContext` if cleanup needs it. Do not call the Host
+from `Drop` on a captured value; the `ClientHost` and `DrawContext` are borrowed only for drawing.
 
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.

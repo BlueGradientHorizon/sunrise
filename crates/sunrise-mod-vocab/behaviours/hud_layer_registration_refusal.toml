@@ -1,7 +1,7 @@
 version = 1
-doc = "HUD layer registrations, replacements and wrappers are committed in call order per listener. A phase refusal during register_gui_layers discards only that listener's edits, even if it catches the refusal or the refusal came from dropping a callback it staged and replaced. Retiring an earlier listener's callback cannot undo a committed replacement. After commit, earlier bodies retire in the order the listener first replaced their layers, not in HUD draw order. Later calls in a listener can use anchors it just added."
+doc = "HUD layer edits publish in call order per successful listener; later calls in a listener can use anchors it just added. A panic or phase refusal during registration discards only that listener's pending HUD edits. A panic during disposal is attributed to the owning mod. Discarded bodies are cleaned up before the next listener runs. Earlier bodies retire after publication in first-replacement order, not HUD draw order; a retirement panic leaves the accepted replacement in place."
 tests = [
     "crates/sunrise-client/src/gui_layers.rs::a_phase_refusal_discards_all_hud_layer_edits_from_one_listener",
-    "crates/sunrise-client/src/gui_layers.rs::hud_callback_teardown_refusals_are_contained",
+    "crates/sunrise-client/src/gui_layers.rs::a_panicking_hud_registration_cannot_displace_vanilla_or_later_layers",
     "crates/sunrise-client/src/gui_layers.rs::earlier_hud_bodies_retire_in_first_replacement_order",
 ]

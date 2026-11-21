@@ -136,7 +136,7 @@ impl Default for GuiLayers {
 
 impl GuiLayerBody {
     /// Drop each callback separately. Detach the tail before running a wrapper's destructor so
-    /// another mod destructor cannot run as part of its unwind.
+    /// the previous callback cannot run its destructor as part of that unwind.
     fn dispose(&mut self, in_listener: bool) {
         loop {
             let (owner, draw, wrap) = match std::mem::replace(self, Self::Vanilla) {
@@ -636,210 +636,103 @@ mod tests {
     }
 
     #[test]
-    fn hud_callback_teardown_refusals_are_contained() {
-        use mod_api::__private::game::RegistrationContextNew;
-        use mod_api::__private::{LoadAccess, ModPhase, PhaseOwner, check_access};
-        use mod_api::{Hooks, ModEntry, RegisterGuiLayersEvent, RegistrationContext};
-        use std::sync::{Arc, Mutex};
-
-        type Drops = Arc<Mutex<Vec<(&'static str, Option<&'static str>)>>>;
-
-        struct PhaseDrop(&'static str, Drops);
-        impl Drop for PhaseDrop {
-            fn drop(&mut self) {
-                self.1.lock().unwrap().push((self.0, current_native_mod()));
-                // A regression should fail this test, not double-panic and abort the test binary.
-                if !std::thread::panicking() {
-                    check_access("hud_capture_drop", LoadAccess::WorldOnly);
-                }
-            }
-        }
-
-        enum Action {
-            Register,
-            Refuse,
-            Replace,
-        }
-        struct Listener(Action, Drops);
-        #[mod_api::__subscriptions]
-        impl Hooks for Listener {
-            fn register_gui_layers(
-                &self,
-                _: &RegistrationContext,
-                event: &mut RegisterGuiLayersEvent<'_>,
-            ) {
-                let layers = &mut *event.layers;
-                let draw = |label| -> Box<GuiLayerDraw> {
-                    let capture = PhaseDrop(label, Arc::clone(&self.1));
-                    Box::new(move |_, _| {
-                        std::hint::black_box(&capture);
-                    })
-                };
-                match self.0 {
-                    Action::Register => {
-                        assert!(layers.register(
-                            "hud:original".into(),
-                            GuiLayerPlacement::AboveAll,
-                            draw("retired"),
-                        ));
-                    }
-                    Action::Refuse => {
-                        assert!(layers.register(
-                            "hud:aborted".into(),
-                            GuiLayerPlacement::AboveAll,
-                            draw("discarded inner draw"),
-                        ));
-                        let outer = PhaseDrop("superseded wrapper", Arc::clone(&self.1));
-                        assert!(layers.wrap_layer(
-                            "hud:aborted",
-                            Box::new(move |_| {
-                                std::hint::black_box(&outer);
-                            }),
-                        ));
-                        // The superseded wrapper refuses the listener while this call is active.
-                        layers.replace_layer("hud:aborted", draw("discarded replacement"));
-                        self.1
-                            .lock()
-                            .unwrap()
-                            .push(("replace returned", current_native_mod()));
-                    }
-                    Action::Replace => {
-                        assert!(layers.replace_layer("hud:original", Box::new(|_, _| {})));
-                        assert!(layers.register(
-                            "hud:last".into(),
-                            GuiLayerPlacement::Above("hud:original".into()),
-                            Box::new(|_, _| {}),
-                        ));
-                    }
-                }
-            }
-        }
-
-        crate::test_log::install();
-        crate::test_log::clear();
-        let drops = Drops::default();
-        let mods = vec![
-            ModEntry::new(
-                "original",
-                Box::new(Listener(Action::Register, drops.clone())),
-            ),
-            ModEntry::new(
-                "refusing_drop",
-                Box::new(Listener(Action::Refuse, drops.clone())),
-            ),
-            ModEntry::new(
-                "replacing",
-                Box::new(Listener(Action::Replace, drops.clone())),
-            ),
-        ];
-        mod_platform::testing::with_mods(mods.into(), || {
-            let _phase = PhaseOwner::scope(ModPhase::Registration);
-            // Refusal is not poison: both calls take the same path, but use the shared diagnostic.
-            for _ in 0..2 {
-                let mut layers = GuiLayers::default();
-                mod_api::dispatch_register_gui_layers(&RegistrationContext::new(), |listen| {
-                    layers.register_listener(listen);
-                });
-                let order = layers.into_order();
-                let native = &order.slots()[VanillaGuiLayer::ALL.len()..];
-                assert_eq!(
-                    native.iter().map(GuiLayerSlot::id).collect::<Vec<_>>(),
-                    ["hud:original", "hud:last"]
-                );
-                assert!(matches!(
-                    &native[0].body,
-                    GuiLayerBody::Native {
-                        owner: Some(owner),
-                        ..
-                    } if owner.id() == "replacing"
-                ));
-            }
-        });
-        assert_eq!(
-            *drops.lock().unwrap(),
-            [
-                ("superseded wrapper", Some("refusing_drop")),
-                ("discarded replacement", Some("refusing_drop")),
-                ("discarded inner draw", Some("refusing_drop")),
-                ("retired", Some("original")),
-            ]
-            .repeat(2)
-        );
-        let logs: Vec<_> = crate::test_log::records()
-            .into_iter()
-            .map(|(_, message)| message)
-            .filter(|message| message.contains("hud_capture_drop"))
-            .collect();
-        assert_eq!(
-            logs,
-            [
-                "native refusal: refusing_drop hook register_gui_layers: mod API hud_capture_drop is unavailable during Registration",
-                "native refusal: refusing_drop hook register_gui_layers: mod API hud_capture_drop is unavailable during Registration",
-                "native refusal: refusing_drop hook register_gui_layers: mod API hud_capture_drop is unavailable during Registration",
-                "native refusal: original hook register_gui_layers: mod API hud_capture_drop is unavailable during Registration",
-            ].repeat(2)
-        );
-    }
-
-    #[test]
     fn a_panicking_hud_registration_cannot_displace_vanilla_or_later_layers() {
         use mod_api::__private::game::RegistrationContextNew;
-        use mod_api::__private::{HookPanicReport, ModPhase, PhaseOwner, take_hook_panics};
-        use mod_api::{Hooks, ModEntry, RegisterGuiLayersEvent, RegistrationContext};
+        use mod_api::__private::{HookPanicReport, take_hook_panics};
+        use mod_api::{Hooks, LoadedMods, ModEntry, RegisterGuiLayersEvent, RegistrationContext};
         use std::sync::{Arc, Mutex};
 
-        struct PanicOnDrop(Arc<Mutex<Vec<&'static str>>>);
+        type Trace = Arc<Mutex<Vec<(&'static str, Option<&'static str>)>>>;
+
+        struct PanicOnDrop(&'static str, Trace);
         impl Drop for PanicOnDrop {
             fn drop(&mut self) {
-                self.0.lock().unwrap().push(current_native_mod().unwrap());
-                if !std::thread::panicking() {
-                    panic!("discarded HUD callback");
-                }
+                self.1.lock().unwrap().push((self.0, current_native_mod()));
+                panic!("{}", self.0);
             }
         }
+
+        struct ReadOnDrop(LoadedMods, Trace);
+        impl Drop for ReadOnDrop {
+            fn drop(&mut self) {
+                let label = if self.0.get("failing").is_some() {
+                    "typed capture"
+                } else {
+                    "missing package from registration context"
+                };
+                self.1.lock().unwrap().push((label, current_native_mod()));
+            }
+        }
+
         struct Register {
             mod_id: &'static str,
-            drops: Arc<Mutex<Vec<&'static str>>>,
+            trace: Trace,
         }
         #[mod_api::__subscriptions]
         impl Hooks for Register {
             fn register_gui_layers(
                 &self,
-                _: &RegistrationContext,
+                context: &RegistrationContext,
                 event: &mut RegisterGuiLayersEvent<'_>,
             ) {
                 use GuiLayerPlacement::{Above, AboveAll};
                 let layers = &mut *event.layers;
+                let panicking_draw = |label| -> Box<GuiLayerDraw> {
+                    let capture = PanicOnDrop(label, self.trace.clone());
+                    Box::new(move |_, _| {
+                        std::hint::black_box(&capture);
+                    })
+                };
                 match self.mod_id {
                     "retired" => {
-                        let capture = PanicOnDrop(self.drops.clone());
                         assert!(layers.register(
                             "hud:earlier".into(),
                             AboveAll,
-                            Box::new(move |_, _| {
-                                std::hint::black_box(&capture);
-                            })
+                            panicking_draw("retired body"),
                         ));
                     }
                     "failing" => {
-                        let capture = PanicOnDrop(self.drops.clone());
+                        assert!(layers.replace_layer("minecraft:hotbar", Box::new(|_, _| {})));
+                        assert!(layers.wrap_layer("minecraft:hotbar", Box::new(|_| {})));
                         assert!(layers.register(
                             "hud:discarded".into(),
                             AboveAll,
-                            Box::new(move |_, _| {
-                                std::hint::black_box(&capture);
-                            })
+                            panicking_draw("discarded inner draw"),
                         ));
-                        assert!(layers.replace_layer("minecraft:hotbar", Box::new(|_, _| {})));
-                        assert!(layers.wrap_layer("minecraft:hotbar", Box::new(|_| {})));
-                        panic!("HUD registration failed");
+                        let wrapper = PanicOnDrop("superseded wrapper", self.trace.clone());
+                        assert!(layers.wrap_layer(
+                            "hud:discarded",
+                            Box::new(move |_| {
+                                std::hint::black_box(&wrapper);
+                            }),
+                        ));
+                        let panic = PanicOnDrop("discarded replacement", self.trace.clone());
+                        // This capture has only the owned startup metadata, not a Host.
+                        let metadata = ReadOnDrop(context.mods().clone(), self.trace.clone());
+                        // Dropping the superseded wrapper rejects the batch. Its inner body and
+                        // this replacement (both captures) must still be cleaned up separately.
+                        let _ = layers.replace_layer(
+                            "hud:discarded",
+                            Box::new(move |_, _| {
+                                std::hint::black_box(&panic);
+                                std::hint::black_box(&metadata);
+                            }),
+                        );
+                        self.trace
+                            .lock()
+                            .unwrap()
+                            .push(("replacement returned", current_native_mod()));
                     }
                     "healthy" => {
+                        self.trace
+                            .lock()
+                            .unwrap()
+                            .push(("next listener", current_native_mod()));
                         assert!(layers.replace_layer("hud:earlier", Box::new(|_, _| {})));
                         assert!(layers.register(
                             "hud:next".into(),
                             Above("minecraft:hotbar".into()),
-                            Box::new(|_, _| {})
+                            Box::new(|_, _| {}),
                         ));
                     }
                     _ => unreachable!(),
@@ -847,56 +740,89 @@ mod tests {
             }
         }
 
-        let drops = Arc::new(Mutex::new(Vec::new()));
+        crate::test_log::install();
+        crate::test_log::clear();
+        let trace = Trace::default();
         let mods = ["retired", "failing", "healthy"].map(|mod_id| {
             ModEntry::new(
                 mod_id,
                 Box::new(Register {
                     mod_id,
-                    drops: drops.clone(),
+                    trace: trace.clone(),
                 }),
             )
         });
         mod_platform::testing::with_mods(Vec::from(mods).into(), || {
-            let _phase = PhaseOwner::scope(ModPhase::Registration);
-            let mut layers = GuiLayers::default();
-            mod_api::dispatch_register_gui_layers(&RegistrationContext::new(), |listen| {
-                layers.register_listener(listen);
+            mod_platform::__private::with_test_packages(&["failing"], || {
+                let mut layers = GuiLayers::default();
+                mod_api::dispatch_register_gui_layers(&RegistrationContext::new(), |listen| {
+                    layers.register_listener(listen);
+                });
+                let order = layers.into_order();
+                let hotbar = order.position(VanillaGuiLayer::Hotbar);
+                assert!(matches!(order.slots()[hotbar].body, GuiLayerBody::Vanilla));
+                assert_eq!(order.slots()[hotbar + 1].id(), "hud:next");
+                assert!(
+                    !order
+                        .slots()
+                        .iter()
+                        .any(|slot| slot.id() == "hud:discarded")
+                );
+                let replaced = order.slots().last().unwrap();
+                assert_eq!(replaced.id(), "hud:earlier");
+                assert!(
+                    matches!(&replaced.body, GuiLayerBody::Native { owner: Some(owner), .. }
+                    if owner.id() == "healthy")
+                );
+                assert_eq!(
+                    take_hook_panics(),
+                    [
+                        HookPanicReport {
+                            mod_id: "failing",
+                            hook: "register_gui_layers"
+                        },
+                        HookPanicReport {
+                            mod_id: "retired",
+                            hook: "register_gui_layers"
+                        },
+                    ]
+                );
             });
-            let order = layers.into_order();
-            let hotbar = order.position(VanillaGuiLayer::Hotbar);
-            assert!(matches!(order.slots()[hotbar].body, GuiLayerBody::Vanilla));
-            assert_eq!(order.slots()[hotbar + 1].id(), "hud:next");
-            assert!(
-                !order
-                    .slots()
-                    .iter()
-                    .any(|slot| slot.id() == "hud:discarded")
-            );
-            let replaced = order.slots().last().unwrap();
-            assert_eq!(replaced.id(), "hud:earlier");
-            assert!(matches!(
-                &replaced.body,
-                GuiLayerBody::Native {
-                    owner: Some(owner),
-                    ..
-                } if owner.id() == "healthy"
-            ));
-            assert_eq!(*drops.lock().unwrap(), ["failing", "retired"]);
-            assert_eq!(
-                take_hook_panics(),
-                [
-                    HookPanicReport {
-                        mod_id: "failing",
-                        hook: "register_gui_layers"
-                    },
-                    HookPanicReport {
-                        mod_id: "retired",
-                        hook: "register_gui_layers"
-                    },
-                ]
-            );
         });
+        let trace = trace.lock().unwrap();
+        assert_eq!(trace[0], ("superseded wrapper", Some("failing")));
+        // Rust does not specify the relative destruction order of closure captures.
+        let mut captures = [trace[1], trace[2]];
+        captures.sort_unstable();
+        assert_eq!(
+            captures,
+            [
+                ("discarded replacement", Some("failing")),
+                ("typed capture", Some("failing")),
+            ]
+        );
+        assert_eq!(
+            &trace[3..],
+            [
+                ("discarded inner draw", Some("failing")),
+                ("next listener", Some("healthy")),
+                ("retired body", Some("retired")),
+            ]
+        );
+        let reports: Vec<_> = crate::test_log::records()
+            .into_iter()
+            .filter(|(level, message)| {
+                *level == log::Level::Error && message.contains("register_gui_layers")
+            })
+            .map(|(_, message)| message)
+            .collect();
+        assert_eq!(
+            reports,
+            [
+                "mod failing panicked in hook register_gui_layers and has been disabled for this hook for the rest of the session: superseded wrapper",
+                "mod retired panicked in hook register_gui_layers and has been disabled for this hook for the rest of the session: retired body",
+            ]
+        );
     }
 
     #[test]

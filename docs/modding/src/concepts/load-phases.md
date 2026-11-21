@@ -63,7 +63,10 @@ refusal discards the failed callback's whole batch; installed entries stand and 
 can register. Only a panic disables the callback for the session; an ordinary refusal is reported
 on each call. A normal registration method returning an error still follows that registrar's
 contract. For example, a duplicate can reject one entry or reject the whole resource candidate,
-depending on the registrar. Handle the returned error; it is not a callback panic.
+depending on the registrar. Handle the returned error; it is not a callback panic. In
+[HUD layer registration](../how-to/client/hud-drawing.md#replacing-or-wrapping-a-layer), a
+superseded body from this listener is dropped before publication. Earlier listeners' bodies retire
+only after publication; a panic in that cleanup does not undo the published replacement.
 
 A callback registered on the event cannot borrow the event or the context. Capture owned inputs
 for its `Send + Sync + 'static` closure. A model layer supplier runs once at the startup freeze;
