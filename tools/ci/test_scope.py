@@ -68,7 +68,7 @@ READERS = {
     # The shared guest-stack tests read the sources that use its constants, and the jobs they wait on.
     "sunrise-guest-stack": ["crates/sunrise-client/src", "crates/sunrise-threads/src"],
     "sunrise-mod-api": MOD_API_GEN,
-    "sunrise-mod-api-gen": MOD_API_GEN,
+    "sunrise-mod-api-gen": [*MOD_API_GEN, "crates/sunrise-mod-vocab/extension-tags"],
     "sunrise-mod-api-gen-tests": MOD_API_GEN,
     "sunrise-mod-package": [
         "Cargo.lock", "docs/developer-install.md", "tools/mixins/narrow-reference-rule.patch",
@@ -86,7 +86,6 @@ READERS = {
         "packaging/executable_link.rs",
     ],
     "sunrise-shader-api": ["docs/api/shaders-reference.md", "docs/api/shaders-reference-0.2.md"],
-    "sunrise-world": ["crates/sunrise-core", "Cargo.lock"],
     # Commands (tokens, icons, package), not tests: listed so the scan finds nothing unexplained.
     "xtask": [
         "crates/sunrise-client/src", "crates/sunrise-mod-vocab/src/hooks", "crates/sunrise-perf/web",

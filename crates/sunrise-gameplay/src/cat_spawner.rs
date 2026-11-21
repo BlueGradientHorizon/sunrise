@@ -1,6 +1,7 @@
 //! `CatSpawner`'s clock and its picks that need no level services: where a cat may try to spawn, and whether a village or a hut takes one.
+use crate::custom_spawner::{CustomSpawnerLevel, section, sections_to_village};
 use sunrise_client::chunk_map::ChunkMap;
-use sunrise_client::mobs::{Mob, Species};
+use sunrise_client::mobs::{Mob, Species, spawn_rules::Reason};
 use sunrise_core::{
     geometry::Vec3,
     random::{LevelRandom, RandomSource},
@@ -22,6 +23,56 @@ impl CatSpawner {
         }
         self.next_tick = TICK_DELAY;
         true
+    }
+}
+
+/// `CatSpawner.tick` after the countdown: a cat near a random player, in a village or a swamp hut.
+pub fn spawn_near_player(l: &mut dyn CustomSpawnerLevel) {
+    // ServerLevel.getRandomPlayer: one of the living players.
+    let alive: Vec<Vec3> = l
+        .players()
+        .into_iter()
+        .filter(|p| p.alive)
+        .map(|p| p.position)
+        .collect();
+    let parts = l.parts();
+    let Some(pos) = candidate(&mut parts.world.random, &alive, &parts.world.chunks) else {
+        return;
+    };
+    if !l.is_spawn_position_ok("minecraft:cat", Species::Cat, pos) {
+        return;
+    }
+    if sections_to_village(&l.village_centers(), section(pos)) <= 2 {
+        if village_takes_cat(l.parts().mobs, pos) {
+            spawn_cat(l, pos, false);
+        }
+    } else {
+        let hut = l.structure_tag("minecraft:cats_spawn_in");
+        if l.structures_at(pos).iter().any(|s| hut.contains(s))
+            && hut_takes_cat(l.parts().mobs, pos)
+        {
+            spawn_cat(l, pos, true);
+        }
+    }
+}
+
+/// `spawnCat`: a natural spawn, then `snapTo(spawnPos, 0.0F, 0.0F)`, so the cat faces yaw 0 and its facing takes no draw.
+pub fn spawn_cat(l: &mut dyn CustomSpawnerLevel, pos: [i32; 3], persistent: bool) {
+    let at = [
+        f64::from(pos[0]) + 0.5,
+        f64::from(pos[1]),
+        f64::from(pos[2]) + 0.5,
+    ];
+    let Some(id) = l.spawn_mob("minecraft:cat", at, persistent, Reason::Natural, Some(0.0)) else {
+        return;
+    };
+    // `Cat.finalizeSpawn` asks `#cats_spawn_as_black` about the origin: `snapTo` runs after it, so a hut does not make it black.
+    let black = l.structure_tag("minecraft:cats_spawn_as_black");
+    let at_origin = l.structures_at([0, 0, 0]);
+    if at_origin.iter().any(|s| black.contains(s))
+        && let Some(m) = l.parts().mobs.iter_mut().find(|m| m.id == id)
+    {
+        m.extra.variant = 10;
     }
 }
 

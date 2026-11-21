@@ -163,7 +163,7 @@ fn with_finder_hidden(feature: bool, required: bool, hidden: bool, test: impl Fn
 }
 
 #[test]
-fn restricted_pack_discovery_refuses_game_text_reads() {
+fn restricted_pack_discovery_refuses_game_text_reads_and_player_writes() {
     use std::sync::{Arc, Mutex};
 
     struct Observe(Arc<Mutex<Vec<PackType>>>);
@@ -171,8 +171,30 @@ fn restricted_pack_discovery_refuses_game_text_reads() {
     impl Hooks for Observe {
         fn add_pack_finders(&self, host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
             let component = mod_api::Text::literal("Startup");
+            let player = mod_api::__private::game::player_ref(
+                mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 1),
+                0,
+            );
+            let read_host: &dyn mod_api::Host = match &host {
+                HostSide::Client(host) => &**host,
+                HostSide::Server(host) => &**host,
+            };
+            assert_eq!(
+                player.supporting_block(read_host),
+                Err(mod_api::LevelReadError::Unavailable)
+            );
+            assert_eq!(
+                player.on_block(read_host),
+                Err(mod_api::LevelReadError::Unavailable)
+            );
             let resolved = match host {
-                HostSide::Client(host) => host.text_string(&component),
+                HostSide::Client(host) => {
+                    assert_eq!(
+                        player.reset_fall_distance(host),
+                        Err(mod_api::LevelWriteError::Unavailable),
+                    );
+                    host.text_string(&component)
+                }
                 HostSide::Server(host) => host.text_string(&component),
             };
             assert_eq!(resolved, Err(mod_api::text::TextFormError::Unavailable));

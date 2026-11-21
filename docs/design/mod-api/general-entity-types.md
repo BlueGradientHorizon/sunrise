@@ -10,8 +10,8 @@ Provisional answer to [#792](https://github.com/arismoko/horizon/issues/792): re
 
 `Hooks::register` receives `&mut dyn Registrar`, whose `GeneralTypesRegistrar`
 supertrait provides `declare_general_entity(path, category, width, height,
-passenger_attachment, save_policy, summonable, pickable, tracking_chunks, update_interval,
-payload_version, required_features)`. Use `GeneralEntityCategory::Misc` and
+passenger_attachment, save_policy, summonable, pickable, piston_push_reaction,
+tracking_chunks, update_interval, payload_version, required_features)`. Use `GeneralEntityCategory::Misc` and
 `GeneralSavePolicy::{Save, NoSave}`. The path must belong to the declaring
 mod's namespace. Registration is only available during the registration phase,
 requires a both-side package, and refuses duplicates and unavailable required

@@ -1,6 +1,7 @@
 //! The native travel decision affects real player reports and sends vanilla corrections.
 use super::*;
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::execution_role::ExecutionRole;
+use crate::game::native_entity_refs::tests::{fixture_root, with_game_role};
 use crate::game::native_item_places::tests::guest as online_guest;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, MoveCause};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -39,7 +40,12 @@ impl Hooks for Reply {
 }
 
 fn with_player(integrated: bool, run: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>)) {
-    with_game(|game| {
+    let role = if integrated {
+        ExecutionRole::IntegratedServer
+    } else {
+        ExecutionRole::DedicatedServer
+    };
+    with_game_role(fixture_root(), role, |game| {
         game.lan_host(
             crate::game::lan::LanSettings {
                 port: 0,
@@ -115,6 +121,31 @@ fn report(game: &mut Game<'_>, [x, y, z]: [f64; 3]) {
         game,
         S::MovePlayerPos(play::MovePlayerPos { x, y, z, flags: 0 }),
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_connected_players_report_never_exposes_stale_collision_flags() {
+    for integrated in [true, false] {
+        with_player(integrated, |game, _rx| {
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(1, |g| {
+                    g.motion.as_mut().unwrap().collision.horizontal = true;
+                })
+                .unwrap();
+            let player = game.player(guest(game).uuid).unwrap();
+            report(game, ACCEPTED);
+            assert_eq!(guest(game).position, ACCEPTED);
+            assert_eq!(player.collision_flags(game), Ok(None));
+            game.as_guest(1, |game| {
+                assert_eq!(player.collision_flags(game), Ok(None));
+            })
+            .unwrap();
+        });
+    }
 }
 
 fn guest<'a>(game: &'a Game<'_>) -> &'a Guest {

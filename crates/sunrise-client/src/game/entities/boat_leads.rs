@@ -197,14 +197,25 @@ impl Game<'_> {
     }
 
     /// `AbstractBoat.remove`: a boat that is destroyed drops its lead.
+    pub(super) fn drop_removed_boat_lead(&mut self, i: usize) {
+        let (holder, id, at) = self.boats.update(i, |b| {
+            let holder = b.leash;
+            let had_pending = b.leash_pending.take().is_some();
+            let at = Self::take_boat_leash(b, true)
+                .or_else(|| had_pending.then(|| b.position.components()));
+            (holder, b.id, at)
+        });
+        self.notify_knot_leashee_removed(holder, id);
+        if let Some(at) = at {
+            self.drop_lead_item(at);
+        }
+    }
+
+    /// Release a boat already extracted by a fixture.
     pub(super) fn boat_removed(&mut self, b: &Boat) {
         self.notify_knot_leashee_removed(b.leash, b.id);
-        let mut b = b.clone();
-        let pending = b.leash_pending.take().is_some();
-        if b.leash.is_some() || pending {
-            let at = [b.position.x, b.position.y, b.position.z];
-            b.leash = None;
-            self.drop_lead_item(at);
+        if b.leash.is_some() || b.leash_pending.is_some() {
+            self.drop_lead_item(b.position.components());
         }
     }
 
