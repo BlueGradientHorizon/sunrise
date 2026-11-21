@@ -1769,6 +1769,18 @@ pub fn canonicalize_stack_patch(
     wire.removed.retain(|id| retain(*id, true));
 }
 
+/// Encode a live stack, dropping component patch rows already in its prototype.
+pub(super) fn resident_stack(
+    source: &ItemStack,
+    item_id: &dyn Fn(&str) -> i32,
+    sync: &super::data::SyncData,
+    items: &crate::items::Items,
+) -> Stack {
+    let mut wire = network_stack(item_id, &|registry, name| sync.id(registry, name), source);
+    canonicalize_stack_patch(&mut wire, source, items, &sync.builtin);
+    wire
+}
+
 /// Convert a borrowed item template with the same component codecs as inventory slots.
 pub(super) fn network_stack(
     item_id: &dyn Fn(&str) -> i32,

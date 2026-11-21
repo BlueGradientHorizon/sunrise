@@ -893,7 +893,6 @@ sunrise-client game::lan_crafting::lending_tests::sources_skip_invalid_answers_a
 sunrise-client game::lan_crafting::machine_recipe_placement_tests::h234_registered_place_recipe_reaches_actual_furnace_and_preserves_controls lib daily resources
 sunrise-client game::lan_crafting::recipe_check_tests::a_check_answers_and_leaves_the_world_and_the_guest_alone lib daily resources
 sunrise-client game::lan_crafting::recipe_check_tests::checks_past_the_limit_go_unanswered lib daily resources
-sunrise-client game::lan_entities::tests::kept_display_data_is_what_a_build_gives lib daily resources
 sunrise-client game::lan_entities::tests::late_dragon_ids_reserve_parts_before_crystals lib daily resources
 sunrise-client game::lan_entities::tests::tracking_ids_only_number_the_spawn_buffer_during_a_taken_pass lib daily resources
 sunrise-client game::lan_entities::tests::tracking_ids_preserve_all_family_interleaving lib daily resources
@@ -1191,7 +1190,6 @@ sunrise-client game::native_data_bound::tests::defaults_are_announced_bound_befo
 sunrise-client game::native_data_bound::tests::the_first_open_announces_bound_defaults_readable lib daily resources
 sunrise-client game::native_datapack_refs::tests::level_registry_reads_check_world_session_and_generation lib daily resources
 sunrise-client game::native_display_refs::tests::display_kinds_keep_their_own_state_and_refuse_the_others lib daily resources
-sunrise-client game::native_display_refs::tests::display_writes_reach_entity_data_and_the_saved_entity lib daily resources
 sunrise-client game::native_display_refs::tests::displays_narrow_by_kind_and_share_the_display_state lib daily resources
 sunrise-client game::native_display_refs::tests::each_start_delay_write_forces_a_send_even_when_equal lib daily resources
 sunrise-client game::native_display_refs::tests::stale_removed_and_client_displays_do_nothing lib daily resources

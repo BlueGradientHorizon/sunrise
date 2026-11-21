@@ -90,6 +90,14 @@ impl Game<'_> {
 
     /// What a handle names now, or None for a stale or foreign one.
     pub(super) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
+        self.native_entity_location(entity)
+            .map(|(_, target)| target)
+    }
+
+    pub(super) fn native_entity_location(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(sunrise_client::join_seq::residency::table::Location, Target)> {
         if self.held_out.contains(&entity.id())
             || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
@@ -105,7 +113,7 @@ impl Game<'_> {
         // their existing current-level domain; source membership is global.
         (matches!(value, Target::Player | Target::Guest(_))
             || location.owner.dimension == self.dim.key())
-        .then_some(value)
+        .then_some((location, value))
     }
     /// What a handle names on a client: the local player, or an entity the
     /// server told this client of (`ClientLevel.getEntity`, whose entities are

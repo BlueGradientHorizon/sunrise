@@ -178,11 +178,7 @@ fn the_live_settings_are_what_the_interaction_saves() {
         assert_eq!((m.id, m.interaction), (marker.id, None));
         assert_eq!(
             (d.id, d.interaction, format!("{:?}", d.display)),
-            (
-                display.id,
-                None,
-                format!("{:?}", display.display)
-            )
+            (display.id, None, format!("{:?}", display.display))
         );
         assert_eq!(game.others.len(), 3);
         assert_eq!(find(game, [66, 0, 0, 1]).id, interaction.id);

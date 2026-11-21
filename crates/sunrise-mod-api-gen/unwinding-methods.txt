@@ -186,8 +186,8 @@ displays::display_default_background
 displays::display_glow_color_override
 displays::display_height
 displays::display_interpolation_duration
-displays::display_item
 displays::display_item_context
+displays::display_item_stack
 displays::display_kind
 displays::display_line_width
 displays::display_see_through
