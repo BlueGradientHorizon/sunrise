@@ -247,7 +247,7 @@ fn lethal_landing(totem: bool) {
         let drop = g
             .dropped
             .iter()
-            .find(|item| item.stack.item == "minecraft:diamond")
+            .find(|item| item.stack.item.as_ref() == "minecraft:diamond")
             .unwrap();
         assert_eq!(
             drop.position.y,
