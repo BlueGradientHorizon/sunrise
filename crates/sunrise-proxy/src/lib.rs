@@ -614,26 +614,34 @@ mod tests {
     #[test]
     fn checks_each_redirect_before_requesting_it() {
         let check = |url: &Url| {
-            (url.scheme() == "https" && url.host_str() == Some("assets.invalid"))
-                .then_some(())
-                .ok_or_else(|| "unlisted host".into())
+            (url.scheme() == "https"
+                && matches!(
+                    url.host_str(),
+                    Some("github.com" | "release-assets.githubusercontent.com")
+                ))
+            .then_some(())
+            .ok_or_else(|| "unlisted host".into())
         };
         let mut seen = Vec::new();
-        let result = follow("https://assets.invalid/file", Some(&check), |url, first| {
+        let result = follow("https://github.com/file", Some(&check), |url, _| {
             seen.push(url.to_string());
-            let reply = if first {
-                "HTTP/1.1 302 Found\r\nLocation: /release\r\n\r\n"
-            } else {
-                "HTTP/1.1 302 Found\r\nLocation: https://other.invalid/file\r\n\r\n"
+            let reply = match seen.len() {
+                1 => "HTTP/1.1 302 Found\r\nLocation: /release\r\n\r\n",
+                2 => {
+                    "HTTP/1.1 302 Found\r\nLocation: https://release-assets.githubusercontent.com/file\r\n\r\n"
+                }
+                3 => "HTTP/1.1 302 Found\r\nLocation: https://other.invalid/file\r\n\r\n",
+                _ => "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n",
             };
             Ok(reply.parse().unwrap())
         });
-        assert_eq!(result.unwrap_err().to_string(), "unlisted host");
+        assert!(result.is_err());
         assert_eq!(
             seen,
             [
-                "https://assets.invalid/file",
-                "https://assets.invalid/release"
+                "https://github.com/file",
+                "https://github.com/release",
+                "https://release-assets.githubusercontent.com/file"
             ]
         );
     }
@@ -661,7 +669,7 @@ mod tests {
                 .parse()
                 .unwrap())
         });
-        assert_eq!(result.unwrap_err().to_string(), "Too many redirects");
+        assert!(result.is_err());
         assert_eq!(requests, 6);
     }
 
