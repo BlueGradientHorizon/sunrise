@@ -51,7 +51,7 @@ fn only_container_loot_filled_changes_when_stack_count_marker_is_removed() {
             for (marked, ordinary) in marked_lines.iter().zip(&ordinary_lines) {
                 if marked != ordinary {
                     changes += 1;
-                    assert!(marked.contains("fn fire_container_loot_filled "));
+                    assert!(marked.contains("fn fire_container_loot_filled("));
                     assert!(marked.contains("try_into_engine_preserving_count"));
                     assert!(!ordinary.contains("try_into_engine_preserving_count"));
                 }
