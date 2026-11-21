@@ -1523,6 +1523,9 @@ impl Streaming {
                 .remove(&(x + (i % 3) as i32 - 1, z + (i / 3) as i32 - 1));
         }
         self.decorated.insert((x, z));
+        for ([bx, by, bz], state) in writes.blocks {
+            let _ = world.set(bx, by, bz, sunrise_world::registry::BlockStateId(state));
+        }
         for (i, proto) in region.into_iter().enumerate() {
             // A final chunk keeps its own chunk: only what decoration wrote
             // into it goes there.
@@ -1533,11 +1536,9 @@ impl Streaming {
             self.light_views.remove(&key);
             self.protos.insert(key, Some(proto));
             self.written.insert(key);
+            // Features can change section occupancy in initialized neighbours too.
+            Self::publish_proto_light_support(world, key, self.proto_sections(key.0, key.1));
         }
-        for ([bx, by, bz], state) in writes.blocks {
-            let _ = world.set(bx, by, bz, sunrise_world::registry::BlockStateId(state));
-        }
-        self.publish_proto_light_support(world, (x, z));
         // After the blocks: the write of a block with a block entity made a
         // default one, which the generated one replaces.
         for (pos, entity) in writes.block_entities {
@@ -1626,10 +1627,11 @@ impl Streaming {
                 for dx in -1..=1 {
                     let neighbour = (key.0 + dx, key.1 + dz);
                     if neighbour != key && !world.chunks.contains_key(&neighbour) {
-                        let support = self.proto_light_support(world, neighbour);
-                        if !support.is_empty() {
-                            world.set_proto_light_support(neighbour, support);
-                        }
+                        Self::publish_proto_light_support(
+                            world,
+                            neighbour,
+                            self.proto_sections(neighbour.0, neighbour.1),
+                        );
                     }
                 }
             }
@@ -1757,33 +1759,25 @@ impl Streaming {
         (self.non_air_sections)(self.protos.get(&(x, z))?.as_ref()?)
     }
 
-    fn proto_light_support(&self, world: &World, key: (i32, i32)) -> SectionMask {
+    fn publish_proto_light_support(
+        world: &mut World,
+        key: (i32, i32),
+        sections: Option<SectionMask>,
+    ) {
+        // None means the proto is not initialized or is checked out, not that its
+        // published support was withdrawn. Eviction/promotion retire it separately.
+        let Some(sections) = sections else { return };
+        let first = world.layout().min_y() >> 4;
         let mut support = SectionMask::EMPTY;
-        if let Some(sections) = self.proto_sections(key.0, key.1) {
-            let first = world.layout().min_y() >> 4;
-            for s in sections
-                .iter()
-                .filter(|s| world.shape.has_section(first + *s as i32))
-            {
-                for padded in s..=s + 2 {
-                    support.insert(padded);
-                }
+        for s in sections
+            .iter()
+            .filter(|s| world.shape.has_section(first + *s as i32))
+        {
+            for padded in s..=s + 2 {
+                support.insert(padded);
             }
         }
-        support
-    }
-
-    fn publish_proto_light_support(&self, world: &mut World, key: (i32, i32)) {
-        if (-1..=1).any(|dz| {
-            (-1..=1).any(|dx| {
-                world
-                    .chunks
-                    .get(&(key.0 + dx, key.1 + dz))
-                    .is_some_and(|c| c.light_loaded)
-            })
-        }) {
-            world.set_proto_light_support(key, self.proto_light_support(world, key));
-        }
+        world.set_proto_light_support(key, support);
     }
     /// `ChunkMap.getLatestStatus` for the loading screen's chunk map: the
     /// furthest step this column has reached, `None` before it is asked for.
@@ -1993,7 +1987,11 @@ impl Streaming {
                         self.protos.insert((x, z), Some(proto));
                         if decorated || !self.decorates {
                             self.decorated.insert((x, z));
-                            self.publish_proto_light_support(world, (x, z));
+                            Self::publish_proto_light_support(
+                                world,
+                                (x, z),
+                                self.proto_sections(x, z),
+                            );
                         }
                     }
                 }
@@ -2427,7 +2425,11 @@ impl Streaming {
                     self.decoration_changed = true;
                 }
                 for key in initialized {
-                    self.publish_proto_light_support(world, key);
+                    Self::publish_proto_light_support(
+                        world,
+                        key,
+                        self.proto_sections(key.0, key.1),
+                    );
                 }
             }
         }
@@ -3891,6 +3893,58 @@ fn checkout_protos(
 mod tests {
     use super::section_visibility::tests::fixture;
     use super::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn decoration_updates_saved_column_light_through_neighbour_checkout() {
+        use crate::{chunk::MIN_Y, light::light_from_saved_layers};
+
+        let (mut world, mut streaming) = decoration_fixture();
+        streaming.non_air_sections = Arc::new(|proto| proto.downcast_ref::<SectionMask>().copied());
+        let neighbour = (1, 0);
+        streaming.shared.done.send(Done::Proto(
+            neighbour.0,
+            neighbour.1,
+            Box::new(SectionMask::single(6)),
+            true,
+        ));
+        streaming.plan_update(&mut world);
+
+        // A decoration centred at (0, 0) leaves its already initialized east
+        // neighbour with section 0 occupied instead of section 6.
+        streaming.decorating = 1;
+        streaming.protos.insert(neighbour, None);
+        let mut region: [Proto; 9] = std::array::from_fn(|_| Box::new(SectionMask::EMPTY) as Proto);
+        region[5] = Box::new(SectionMask::single(0));
+        streaming.shared.done.send(Done::Decorated(
+            0,
+            0,
+            Box::new(region),
+            Vec::new(),
+            FinalWrites::default(),
+        ));
+        streaming.plan_update(&mut world);
+
+        let SaveStep::Protos(checked_out) =
+            streaming.prepare_save(&mut world, false, std::time::Instant::now())
+        else {
+            panic!("expected proto saves");
+        };
+        assert!(checked_out.iter().any(|save| save.pos == neighbour));
+        assert_eq!(streaming.proto_sections(neighbour.0, neighbour.1), None);
+
+        // The arriving saved column touches the neighbour, but not the centre
+        // of decoration. It can only use the checked-out proto's published mask.
+        let mut saved = Chunk::empty(2, 0);
+        light_from_saved_layers::<&[u8]>(&mut saved, &[], true);
+        streaming.shared.done.send(Done::Generated(saved));
+        streaming.plan_update(&mut world);
+        let column = &world.chunks[&(2, 0)];
+        for b in 0..world.layout().sections() + 2 {
+            assert_eq!(column.stored_light_layers(b), Some([b < 3; 2]), "layer {b}");
+        }
+        assert_eq!(world.light(32, MIN_Y - 1, 0), 0);
+    }
 
     fn finish_jobs(streaming: &Streaming) -> usize {
         streaming

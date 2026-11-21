@@ -432,7 +432,8 @@ Local addresses bypass the proxy. `NO_PROXY` (or `no_proxy` if `NO_PROXY` is uns
 list: `*` bypasses all hosts; a host or domain (`example.org`, `.example.org`, `*.example.org`) matches
 that name and its subdomains. The list accepts IP literals, including bare or bracketed IPv6, but not CIDR.
 An entry with a port (`example.org:8443` or `[2001:db8::1]:8443`) matches only that destination port,
-including the URL scheme's default port when no port is written.
+including the URL scheme's default port when no port is written. Release checks and downloads
+select the route again at each redirect.
 
 ## 6. Web panel
 

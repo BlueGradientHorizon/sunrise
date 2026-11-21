@@ -32,6 +32,7 @@ pub mod registry_generate;
 mod registry_inventory;
 mod registry_lock;
 pub mod registry_plan;
+mod registry_resolve;
 mod registry_runtime;
 pub mod registry_rustc;
 mod registry_shared;
