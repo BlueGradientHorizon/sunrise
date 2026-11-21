@@ -4392,6 +4392,7 @@ dependencies = [
  "lz4_flex",
  "miniz_oxide 0.8.9",
  "naga",
+ "num-bigint",
  "png",
  "pollster",
  "rustix 1.1.5",

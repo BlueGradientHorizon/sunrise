@@ -207,7 +207,12 @@ pub(crate) fn record_callback_panic(
     hook_name: &'static str,
 ) {
     poison(hook, id);
-    log::error!("mod {id} hook {hook_name} panicked; disabling that hook for this session");
+    queue_callback_panic(id, hook_name);
+}
+
+/// Report a panic whose owning dispatcher already disabled the callback.
+pub fn queue_callback_panic(id: &'static str, hook_name: &'static str) {
+    log::error!("mod {id} callback for {hook_name} panicked; disabled for this session");
     if let Some(installed) = installed() {
         installed
             .pending_panics
@@ -450,14 +455,24 @@ pub(crate) fn call_listener<T>(
     if !contain_panics {
         return refusable(phase_gate, call).map(Some);
     }
+    let outcome = catch_gui_callback(phase_gate, call);
+    if matches!(outcome, Ok(None))
+        && let Some(call) = crate::content::crash::current_native_call()
+    {
+        record_callback_panic(hook, call.id, call.hook);
+    }
+    outcome
+}
+
+/// The common GUI callback boundary: a panic has no answer, a phase refusal stays an error.
+/// The caller owns attribution and disables only the offending callback.
+pub fn catch_gui_callback<T>(
+    phase_gate: bool,
+    call: impl FnOnce() -> T,
+) -> Result<Option<T>, crate::world::phase_refusal::PhaseRefusal> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(phase_gate, call))) {
         Ok(outcome) => outcome.map(Some),
-        Err(_) => {
-            if let Some(call) = crate::content::crash::current_native_call() {
-                record_callback_panic(hook, call.id, call.hook);
-            }
-            Ok(None)
-        }
+        Err(_) => Ok(None),
     }
 }
 

@@ -15,8 +15,9 @@ pub trait Hooks {
     /// `selected_item_name`, `effects`, `boss_overlay`, `sleep_overlay`,
     /// `overlay_message` (action bar), `title`, `scoreboard_sidebar`,
     /// `subtitle_overlay`, `chat` and `tab_list`. Visibility conditions such as F1 apply to
-    /// the original vanilla bodies, not the slots or their hooks. Focused chat still draws
-    /// at the chat screen's paint site. The camera overlays and debug screen are not HUD layers.
+    /// the original vanilla bodies, not the slots or their hooks. `minecraft:chat` is the
+    /// HUD slot only; focused chat draws through the screen without firing the layer hooks.
+    /// The camera overlays and debug screen are not HUD layers.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_gui_layer_pre",
         receiver = "read",
@@ -25,7 +26,7 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderGuiLayerEvent.Pre",
-        version = 2,
+        version = 3,
         cancellable = true
     )]
     fn gui_layer_pre(layer: &str, draw: &mut dyn DrawContext, canceled: &mut bool);

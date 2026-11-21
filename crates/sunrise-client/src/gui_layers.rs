@@ -5,7 +5,7 @@ use mod_api::{
     GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar, GuiLayerWrapper, Identifier,
     content::crash::current_native_mod,
 };
-use std::sync::OnceLock;
+use std::sync::{OnceLock, atomic::AtomicBool};
 
 /// Vanilla HUD anchors used by the engine's HUD pass (no camera overlays or debug screen).
 #[derive(Clone, Copy)]
@@ -96,10 +96,12 @@ pub enum GuiLayerBody {
     Vanilla,
     Native {
         owner: Option<&'static str>,
+        panicked: AtomicBool,
         draw: Box<GuiLayerDraw>,
     },
     Wrapped {
         owner: Option<&'static str>,
+        panicked: AtomicBool,
         wrap: Box<GuiLayerWrapper>,
         previous: Box<GuiLayerBody>,
     },
@@ -178,7 +180,11 @@ impl GuiLayerRegistrar for GuiLayers {
             at,
             GuiLayerSlot {
                 id: GuiLayerId::Native(id),
-                body: GuiLayerBody::Native { owner, draw },
+                body: GuiLayerBody::Native {
+                    owner,
+                    panicked: AtomicBool::new(false),
+                    draw,
+                },
             },
         );
         true
@@ -189,7 +195,11 @@ impl GuiLayerRegistrar for GuiLayers {
         let Some(slot) = self.slot_for_edit(id, owner, "replace") else {
             return false;
         };
-        slot.body = GuiLayerBody::Native { owner, draw };
+        slot.body = GuiLayerBody::Native {
+            owner,
+            panicked: AtomicBool::new(false),
+            draw,
+        };
         true
     }
 
@@ -201,6 +211,7 @@ impl GuiLayerRegistrar for GuiLayers {
         let previous = Box::new(std::mem::replace(&mut slot.body, GuiLayerBody::Vanilla));
         slot.body = GuiLayerBody::Wrapped {
             owner,
+            panicked: AtomicBool::new(false),
             wrap,
             previous,
         };

@@ -67,6 +67,71 @@ fn standalone_picture_draw_order_and_screen_exit_release() {
     eprintln!("standalone picture GPU rendering and release exercised");
 }
 
+#[test]
+#[ignore = "daily"]
+fn tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers() {
+    use crate::{
+        hud_layout::Blend as SpriteBlend,
+        ui::{GuiSpriteBlit, GuiSpriteScaling, blit_gui_sprite},
+    };
+
+    const RED: [u8; 4] = [255, 0, 0, 255];
+    const GREEN: [u8; 4] = [0, 255, 0, 255];
+    const BLUE: [u8; 4] = [0, 0, 255, 255];
+    const YELLOW: [u8; 4] = [255, 255, 0, 255];
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(mut gpu) = Gpu::with_atlas([1, 4], &[RED, GREEN, BLUE, YELLOW].concat()) else {
+        return;
+    };
+    let atlas = HudAtlas::boot();
+    let atlas_rect = Rect {
+        u0: 0.0,
+        v0: 0.0,
+        u1: 1.0,
+        v1: 1.0,
+        w: 1,
+        h: 4,
+    };
+    let extreme = 3.0 * f32::from_bits(67 << 23); // 3 * 2^-60
+    for (y_scale, zoom, size, expected) in [
+        // Extreme scale: the first centers hit phases 2/3, 0 and 1/3.
+        (extreme, 1.0, [4, 6], [BLUE, RED, GREEN, BLUE, RED, GREEN]),
+        // Ordinary subpixel pose, captured at 2x: 1/3, 0 and 2/3 instead.
+        (0.75, 2.0, [8, 12], [GREEN, RED, BLUE, GREEN, RED, BLUE]),
+    ] {
+        let mut batch = HudBatch::scratch([4, 6]);
+        assert!(blit_gui_sprite(
+            &mut batch,
+            &atlas,
+            "test:phase",
+            GuiSpriteBlit {
+                rect: atlas_rect,
+                scaling: Some(GuiSpriteScaling::Tile([1, 1])),
+                dst: [0.0, 0.0, 4.0, 6.0 / y_scale],
+                color: u32::MAX,
+                region: None,
+                blend: SpriteBlend::Textured,
+            },
+            [1.0, 0.0, 0.0, y_scale, 0.0, 0.0],
+            None,
+        ));
+        gpu.hud.zoom = zoom;
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        let mut uploads = crate::gfx::upload::Uploads::new(&gpu.device);
+        gpu.hud
+            .prepare(&gpu.device, &mut uploads, &mut encoder, &batch, size);
+        uploads.finish(&encoder);
+        let (pixels, _) = gpu.read_draw(encoder, &batch, size, [0.0, 0.0], false);
+        let rows = pixels.chunks_exact(size[0] as usize * 4);
+        for (row, color) in rows.zip(expected) {
+            assert!(
+                row.as_chunks::<4>().0.iter().all(|pixel| *pixel == color),
+                "y_scale={y_scale}, zoom={zoom}: {row:?}"
+            );
+        }
+    }
+}
+
 pub(super) struct Gpu {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,
@@ -75,6 +140,10 @@ pub(super) struct Gpu {
 
 impl Gpu {
     pub(super) fn new() -> Option<Self> {
+        Self::with_atlas([2, 1], &[255, 255, 255, 255, 255, 255, 255, 0])
+    }
+
+    fn with_atlas([width, height]: [u32; 2], pixels: &[u8]) -> Option<Self> {
         let instance = crate::gfx::test_gpu::instance();
         let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
         if !hud_coverage::supported(
@@ -92,8 +161,8 @@ impl Gpu {
             &wgpu::TextureDescriptor {
                 label: None,
                 size: wgpu::Extent3d {
-                    width: 2,
-                    height: 1,
+                    width,
+                    height,
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,
@@ -104,7 +173,7 @@ impl Gpu {
                 view_formats: &[],
             },
             wgpu::util::TextureDataOrder::LayerMajor,
-            &[255, 255, 255, 255, 255, 255, 255, 0],
+            pixels,
         );
         let view = atlas.create_view(&Default::default());
         let hud = HudRenderer::new(
@@ -120,12 +189,12 @@ impl Gpu {
         Some(Self { device, queue, hud })
     }
 
-    fn texture(&self, format: wgpu::TextureFormat) -> wgpu::Texture {
+    fn texture(&self, [width, height]: [u32; 2], format: wgpu::TextureFormat) -> wgpu::Texture {
         self.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
-                width: 4,
-                height: 2,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -146,11 +215,6 @@ impl Gpu {
         initial: f64,
         coverage: bool,
     ) -> (Vec<u8>, Vec<u8>) {
-        let frame = self.texture(hud_coverage::HUD_FORMAT);
-        let mask = self.texture(hud_coverage::FORMAT);
-        let depth = self.texture(wgpu::TextureFormat::Depth32Float);
-        let [frame_view, mask_view, depth_view] =
-            [&frame, &mask, &depth].map(|t| t.create_view(&Default::default()));
         self.queue
             .write_buffer(&self.hud.buffer, 0, bytemuck::cast_slice(&batch.vertices));
         self.queue.write_buffer(
@@ -158,7 +222,23 @@ impl Gpu {
             0,
             bytemuck::bytes_of(&HudUniform::new([4.0, 2.0, 1.0, 0.75], batch.end_portal, 0)),
         );
-        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let encoder = self.device.create_command_encoder(&Default::default());
+        self.read_draw(encoder, batch, [4, 2], [backdrop, initial], coverage)
+    }
+
+    fn read_draw(
+        &self,
+        mut encoder: wgpu::CommandEncoder,
+        batch: &HudBatch,
+        size: [u32; 2],
+        [backdrop, initial]: [f64; 2],
+        coverage: bool,
+    ) -> (Vec<u8>, Vec<u8>) {
+        let frame = self.texture(size, hud_coverage::HUD_FORMAT);
+        let mask = self.texture(size, hud_coverage::FORMAT);
+        let depth = self.texture(size, wgpu::TextureFormat::Depth32Float);
+        let [frame_view, mask_view, depth_view] =
+            [&frame, &mask, &depth].map(|t| t.create_view(&Default::default()));
         for (view, value) in [(&frame_view, backdrop), (&mask_view, initial)] {
             let mut attachment = hud_coverage::attachment(view);
             attachment.ops.load = wgpu::LoadOp::Clear(wgpu::Color {
@@ -178,14 +258,15 @@ impl Gpu {
             coverage.then_some(&mask_view),
             &depth_view,
             batch,
-            [4, 2],
+            size,
             0..batch.vertices.len() as u32,
             None,
         );
+        let stride = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let buffers = [&frame, &mask].map(|t| {
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
-                size: 512,
+                size: u64::from(stride) * u64::from(size[1]),
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                 mapped_at_creation: false,
             });
@@ -195,7 +276,7 @@ impl Gpu {
                     buffer: &buffer,
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: 0,
-                        bytes_per_row: Some(256),
+                        bytes_per_row: Some(stride),
                         rows_per_image: None,
                     },
                 },
@@ -211,13 +292,14 @@ impl Gpu {
                 .unwrap();
             buffer.get_mapped_range(..).unwrap().to_vec()
         });
+        let width = size[0] as usize;
         (
             color
-                .chunks(256)
-                .flat_map(|r| r[..16].iter().copied())
+                .chunks(stride as usize)
+                .flat_map(|r| r[..width * 4].iter().copied())
                 .collect(),
-            mask.chunks(256)
-                .flat_map(|r| r[..4].iter().copied())
+            mask.chunks(stride as usize)
+                .flat_map(|r| r[..width].iter().copied())
                 .collect(),
         )
     }

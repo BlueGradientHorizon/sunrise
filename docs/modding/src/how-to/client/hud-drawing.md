@@ -20,7 +20,9 @@ invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it in
 The client keeps the callback for the session and calls it as the mod that installed it. Capture
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
 passed on each draw. The callback runs for its own layer, even under F1, unless `render_gui_pre`
-cancels the HUD pass or `gui_layer_pre` cancels that layer.
+cancels the HUD pass or `gui_layer_pre` cancels that layer. A panic discards that callback's
+partial drawing, logs and shows an error toast naming the mod, and disables only that callback
+for the session. Other slots and hooks keep running.
 A vanilla anchor that doesn't draw that frame still determines the layer's position. The player
 health, armor, food, vehicle health, air and contextual bar anchors follow NeoForge's paint order
 (`player_health`, `armor_level`, `food_level`, `vehicle_health`, `air_level`,
@@ -54,7 +56,9 @@ wrapper omitted the previous body. If Pre cancels the slot, neither the installe
 runs. A skipped status body reserves no height. Only the original hearts body fires
 `player_heart_type` and reseeds the status jitter; replacing the hearts leaves armor, food,
 vehicle health and air on their own slots. `render_gui_post` runs after the final HUD layer and
-before screen drawing, including under F1. For a foreground pass after screens, use `gui_render_post`.
+before screen drawing, including under F1. `minecraft:chat` is the HUD slot for background chat:
+the chat screen draws focused chat separately without running that slot again, even if the HUD
+pass is canceled. For a foreground pass after screens, use `gui_render_post`.
 
 ## Registering F3 text
 

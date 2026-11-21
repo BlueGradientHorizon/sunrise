@@ -48,7 +48,9 @@ Non-finite pose or scissor geometry refuses the scope with `GuiDrawError::NotFin
 
 - `canvas.blit_sprite(name, dst, region, argb, blend)` draws a present GUI sprite by ID, honouring
   its metadata scaling (stretch, tile or nine-slice) and an optional `GuiSpriteRegion { size, offset }`
-  for partial blits. Accepts `Blend::Textured` and `Blend::Crosshair`.
+  for partial blits. Tiled regions repeat from the original tile origin under clipping and poses,
+  sampling at the render target's pixel centers (including scaled captures). Accepts `Blend::Textured`
+  and `Blend::Crosshair`.
 - `canvas.atlas_sprite(name, dst, argb)` draws a sprite by its exact packed atlas name.
 - `canvas.blit(texture, dst, GuiBlitRegion { uv, src, tex }, argb, blend)` draws part of a raw
   texture (path under `textures/`, without `.png`, or a live/registered texture ID) with any

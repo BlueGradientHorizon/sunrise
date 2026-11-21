@@ -538,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    fn extreme_tile_counts_clip_both_axes_and_keep_subpixel_repeat_phase() {
+    fn extreme_tile_counts_clip_both_axes_before_submitting_repeats() {
         use sunrise_client::ui::GuiSpriteScaling;
         let mut atlas = HudAtlas::build(&ResourceSource::indexed(Default::default())).unwrap();
         atlas.gui.insert(
@@ -576,10 +576,8 @@ mod tests {
             .unwrap();
             assert_eq!(batch.vertices.len(), if visible { 6 } else { 0 });
             if let Some(v) = batch.vertices.first() {
-                // Sample at physical (0.5, 0.5): local (0.5, 1.75), so sample the (1/2, 3/4)
-                // point of the atlas subrect. Adjacent device samples advance by whole periods.
-                assert_eq!(v.repeat_x, [0, 0, 0x8000_0000, 1]);
-                assert_eq!(v.repeat_y, [0, 0, 0xC000_0000]);
+                // This quad repeats this atlas subrect; the renderer supplies the phase at upload.
+                assert_eq!(v.repeat_x[3], 1);
                 assert_eq!((v.uv, v.glint_uv), ([0.25; 2], [0.75; 2]));
             }
         }

@@ -1,0 +1,2 @@
+# Repeat phase uses a headless render pass and reads back the actual device pixels.
+sunrise-client-render hud::coverage_tests::tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers lib daily slow

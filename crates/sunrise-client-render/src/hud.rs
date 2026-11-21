@@ -25,6 +25,8 @@ mod model_reducing;
 pub(crate) mod pack_text;
 pub mod pictures;
 pub(crate) mod sprite_modifiers;
+mod sprite_repeat;
+pub(crate) use sprite_repeat::SpriteRepeat;
 
 /// GUI sprite ids a draw asked for that the atlas lacks, each warned about once.
 static MISSING_GUI_SPRITES: std::sync::Mutex<BTreeSet<String>> =
@@ -2144,7 +2146,8 @@ pub struct HudVertex {
     /// 1 for the GUI's text (`RenderPipelines.GUI_TEXT`), which a resource
     /// pack's text shader draws when it has one.
     pub text: u32,
-    /// Fixed-point repeat phase per device pixel, zero for an ordinary vertex.
+    /// X repeat phase and one-based index into the batch's repeats (0 for an ordinary vertex).
+    /// The renderer fills phase coefficients when uploading for the current device scale.
     pub repeat_x: [u32; 4],
     pub repeat_y: [u32; 3],
 }
@@ -2210,6 +2213,7 @@ pub struct GuiScale {
 pub struct HudBatch {
     pub pictures: Vec<Arc<pictures::Picture>>,
     pub vertices: Vec<HudVertex>,
+    pub(crate) sprite_repeats: Vec<SpriteRepeat>,
     pub scale: f32,
     pub width: f32,
     pub height: f32,
@@ -2286,6 +2290,7 @@ impl HudBatch {
         Self {
             pictures: Vec::new(),
             vertices: Vec::new(),
+            sprite_repeats: Vec::new(),
             scale: gui.scale as f32,
             width: gui.size[0] as f32,
             height: gui.size[1] as f32,
@@ -2579,19 +2584,24 @@ impl HudBatch {
                 .chain([vertex.depth])
                 .all(f32::is_finite)
             {
-                self.vertices.truncate(start);
-                let start = start as u32;
-                self.blends.truncate(
-                    self.blends
-                        .partition_point(|(range, _)| range.start < start),
-                );
-                if let Some((last, _)) = self.blends.last_mut() {
-                    last.end = last.end.min(start);
-                }
+                self.discard_since(start);
                 return false;
             }
         }
         true
+    }
+
+    /// Remove unpublished geometry and blend runs, keeping earlier draws and atlas updates.
+    pub fn discard_since(&mut self, start: usize) {
+        self.vertices.truncate(start);
+        let start = start as u32;
+        self.blends.truncate(
+            self.blends
+                .partition_point(|(range, _)| range.start < start),
+        );
+        if let Some((last, _)) = self.blends.last_mut() {
+            last.end = last.end.min(start);
+        }
     }
 
     /// Clip only when a primitive really crosses the screen-space scissor.
@@ -3628,12 +3638,32 @@ impl HudRenderer {
                 mapped_at_creation: false,
             });
         }
-        uploads.buffer(
-            encoder,
-            &self.buffer,
-            0,
-            bytemuck::cast_slice(&batch.vertices),
-        );
+        let device_scale = batch.scale * self.zoom;
+        let vertices = bytemuck::cast_slice(&batch.vertices);
+        if batch.sprite_repeats.is_empty() {
+            uploads.buffer(encoder, &self.buffer, 0, vertices);
+        } else {
+            let phases: Vec<_> = batch
+                .sprite_repeats
+                .iter()
+                .map(|repeat| repeat.device_phase(device_scale))
+                .collect();
+            uploads.buffer_with(encoder, &self.buffer, 0, vertices.len(), |mut dst| {
+                dst.slice(..).copy_from_slice(vertices);
+                for (i, vertex) in batch.vertices.iter().enumerate() {
+                    let repeat = vertex.repeat_x[3];
+                    if repeat != 0 {
+                        let [x, y] = phases[repeat as usize - 1];
+                        let mut vertex = *vertex;
+                        vertex.repeat_x[..3].copy_from_slice(&x);
+                        vertex.repeat_y = y;
+                        let bytes = bytemuck::bytes_of(&vertex);
+                        let start = i * bytes.len();
+                        dst.slice(start..start + bytes.len()).copy_from_slice(bytes);
+                    }
+                }
+            });
+        }
         uploads.buffer(
             encoder,
             &self.uniform,
@@ -3642,7 +3672,7 @@ impl HudRenderer {
                 [
                     size[0] as f32,
                     size[1] as f32,
-                    batch.scale * self.zoom,
+                    device_scale,
                     batch.glint_alpha,
                 ],
                 batch.end_portal,
@@ -3650,7 +3680,7 @@ impl HudRenderer {
             )),
         );
         if let Some(pack_text) = &self.pack_text {
-            pack_text.prepare(uploads, encoder, batch, size, batch.scale * self.zoom);
+            pack_text.prepare(uploads, encoder, batch, size, device_scale);
         }
     }
     /// Draw the batch `prepare` staged.
@@ -6780,6 +6810,7 @@ texture=wide",
             let batch = HudBatch {
                 pictures: Vec::new(),
                 vertices: Vec::new(),
+                sprite_repeats: Vec::new(),
                 scale: 3.0,
                 width: width as f32,
                 height: height as f32,

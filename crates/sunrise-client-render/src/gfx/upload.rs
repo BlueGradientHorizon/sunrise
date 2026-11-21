@@ -94,7 +94,21 @@ impl Uploads {
         offset: u64,
         bytes: &[u8],
     ) {
-        let Some(size) = NonZeroU64::new(bytes.len() as u64) else {
+        self.buffer_with(encoder, target, offset, bytes.len(), |mut dst| {
+            dst.copy_from_slice(bytes)
+        });
+    }
+
+    /// Copy directly into the staging range when the bytes need preparing for this pass.
+    pub(crate) fn buffer_with(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::Buffer,
+        offset: u64,
+        len: usize,
+        write: impl FnOnce(wgpu::WriteOnly<'_, [u8]>),
+    ) {
+        let Some(size) = NonZeroU64::new(len as u64) else {
             return;
         };
         // The belt's own `write_buffer` checks, kept now that a large write's
@@ -107,11 +121,10 @@ impl Uploads {
         let alignment = NonZeroU64::new(wgpu::COPY_BUFFER_ALIGNMENT).expect("non-zero alignment");
         let slice = self.allocate(size, alignment).slice(..size.get());
         encoder.copy_buffer_to_buffer(slice.buffer(), slice.offset(), target, offset, size.get());
-        slice
+        let mut mapped = slice
             .get_mapped_range_mut()
-            .expect("staging belt slices are mapped")
-            .slice(..)
-            .copy_from_slice(bytes);
+            .expect("staging belt slices are mapped");
+        write(mapped.slice(..));
     }
     /// Close this frame's staging buffers: they come back for reuse once the
     /// encoder's submission finishes on the GPU.

@@ -144,7 +144,8 @@ pub trait GuiCanvas {
     /// Draw a present GUI sprite by id at `dst = [x, y, w, h]`, honouring its metadata scaling
     /// (stretch, tile or nine-slice) and optional source region. A removed sprite is refused. Accepts
     /// `Blend::Textured` and `Blend::Crosshair`. Pack sprite modifiers are applied as in the HUD;
-    /// non-finite resulting geometry is refused without affecting earlier draws.
+    /// non-finite resulting geometry is refused without affecting earlier draws. Tiled regions
+    /// repeat from their original origin, sampling at the actual render target's pixel centers.
     fn blit_sprite(
         &mut self,
         name: &str,

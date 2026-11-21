@@ -4,6 +4,7 @@ use mod_api::{
     ClientHost, DrawContext, GuiLayerWrapContext,
     content::crash::{ModCall, enter_native_mod},
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use sunrise_client::gui_layers::{self, GuiLayerBody, VanillaGuiLayer};
 
 #[allow(dead_code)]
@@ -262,34 +263,69 @@ impl<'g> Game<'g> {
                     draw(self, batch);
                 }
             }
-            GuiLayerBody::Native { owner, draw } => {
-                let _guard = owner.map(|id| {
-                    enter_native_mod(ModCall {
-                        id,
-                        hook: "gui_layer_callback",
-                        part: None,
-                    })
-                });
-                draw(self, &mut GameDrawContext::new(self, batch));
-            }
+            GuiLayerBody::Native {
+                owner,
+                panicked,
+                draw,
+            } => self.run_gui_callback(
+                batch,
+                *owner,
+                panicked,
+                "gui_layer_callback",
+                |game, batch| {
+                    draw(game, &mut GameDrawContext::new(game, batch));
+                },
+            ),
             GuiLayerBody::Wrapped {
                 owner,
+                panicked,
                 wrap,
                 previous,
-            } => {
-                let _guard = owner.map(|id| {
-                    enter_native_mod(ModCall {
-                        id,
-                        hook: "gui_layer_wrapper",
-                        part: None,
-                    })
-                });
-                wrap(&mut GuiLayerWrapFrame {
-                    game: self,
-                    batch,
-                    previous,
-                    vanilla,
-                });
+            } => self.run_gui_callback(
+                batch,
+                *owner,
+                panicked,
+                "gui_layer_wrapper",
+                |game, batch| {
+                    wrap(&mut GuiLayerWrapFrame {
+                        game,
+                        batch,
+                        previous,
+                        vanilla,
+                    });
+                },
+            ),
+        }
+    }
+
+    fn run_gui_callback(
+        &mut self,
+        batch: &mut HudBatch,
+        owner: Option<&'static str>,
+        panicked: &AtomicBool,
+        hook: &'static str,
+        call: impl FnOnce(&mut Self, &mut HudBatch),
+    ) {
+        let Some(id) = owner else {
+            call(self, batch);
+            return;
+        };
+        if panicked.load(Ordering::Relaxed) {
+            return;
+        }
+        let start = batch.vertices.len();
+        let _guard = enter_native_mod(ModCall {
+            id,
+            hook,
+            part: None,
+        });
+        match mod_api::__private::catch_gui_callback(true, || call(self, batch)) {
+            Ok(Some(())) => {}
+            Err(refusal) => refusal.report(),
+            Ok(None) => {
+                panicked.store(true, Ordering::Relaxed);
+                batch.discard_since(start);
+                mod_api::__private::queue_callback_panic(id, hook);
             }
         }
     }

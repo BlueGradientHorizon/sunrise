@@ -6,9 +6,13 @@ use super::{
 };
 use mod_api::{
     ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
-    RegisterGuiLayersEvent, RegistrationContext, content::crash::current_native_mod,
+    RegisterGuiLayersEvent, RegistrationContext, RenderGuiPostEvent, RenderGuiPreEvent,
+    content::crash::current_native_mod,
 };
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -256,5 +260,204 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
                 "post minecraft:sleep_overlay"
             ]
         );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn focused_chat_is_separate_from_its_hud_slot_even_when_hud_is_canceled() {
+    if run_fresh_cases(
+        "game::gui_layer_tests::focused_chat_is_separate_from_its_hud_slot_even_when_hud_is_canceled",
+        "SUNRISE_FOCUSED_CHAT_HUD_FIXTURE",
+        &["run"],
+    ) {
+        return;
+    }
+
+    const BODY: u32 = 0xFF13_579B;
+    const MESSAGE: u32 = 0x29_AD64;
+    static CANCEL_HUD: AtomicBool = AtomicBool::new(false);
+    struct ChatLayer;
+    #[mod_api::__subscriptions]
+    impl Hooks for ChatLayer {
+        fn register_gui_layers(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterGuiLayersEvent<'_>,
+        ) {
+            assert!(event.layers.replace_layer(
+                "minecraft:chat",
+                Box::new(|_, draw| {
+                    log("replacement");
+                    draw.fill([0.0, 0.0, 4.0, 4.0], BODY);
+                }),
+            ));
+        }
+        fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
+            if event.layer == "minecraft:chat" {
+                log("chat pre");
+            }
+            Flow::Continue
+        }
+        fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
+            if event.layer == "minecraft:chat" {
+                log("chat post");
+            }
+        }
+        fn render_gui_post(&self, _: &dyn ClientHost, _: &mut RenderGuiPostEvent<'_>) {
+            log("hud post");
+        }
+        fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+            if CANCEL_HUD.load(Ordering::Relaxed) {
+                Flow::Cancel
+            } else {
+                Flow::Continue
+            }
+        }
+    }
+
+    with_client_game(|game| {
+        mod_platform::__private::install(
+            vec![ModEntry::new("chat_layer", Box::new(ChatLayer))].into(),
+        );
+        mods::register_gui_layers(ExecutionRole::Client);
+        game.title = None;
+        game.screen = super::Screen::Playing;
+        game.ui.hide_gui = false;
+        game.player = Some(
+            sunrise_client::motion::PlayerMotion::new(
+                game.motion,
+                sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+            )
+            .unwrap(),
+        );
+        game.begin_chat_screen("", false);
+        assert!(game.screen == super::Screen::Chat);
+        game.system_message(
+            sunrise_client::text::Text::literal("Focused chat").with_color(MESSAGE),
+        );
+        for canceled in [false, true] {
+            CANCEL_HUD.store(canceled, Ordering::Relaxed);
+            let batch = game.hud_layers([640, 480]);
+            let (hud, screen) = batch.vertices.split_at(batch.blur_at as usize);
+            let expected: &[&str] = if canceled {
+                &[]
+            } else {
+                &["chat pre", "replacement", "chat post", "hud post"]
+            };
+            assert_eq!(take().as_slice(), expected);
+            assert_eq!(
+                hud.iter()
+                    .filter(|v| v.color == sunrise_client::hud_layout::abgr(BODY))
+                    .count(),
+                if canceled { 0 } else { 6 },
+            );
+            assert!(
+                screen
+                    .iter()
+                    .any(|v| v.color == sunrise_client::hud_layout::abgr(0xFF00_0000 | MESSAGE))
+            );
+        }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_hidden_retained_layer_panic_discards_only_that_callback_and_reports_its_owner() {
+    const FLAG: &str = "SUNRISE_PANICKING_HUD_LAYER_FIXTURE";
+    if run_fresh_cases(
+        "game::gui_layer_tests::a_hidden_retained_layer_panic_discards_only_that_callback_and_reports_its_owner",
+        FLAG,
+        &["replacement", "wrapper"],
+    ) {
+        return;
+    }
+    const FAILED: u32 = 0xFF67_1234;
+    const HEALTHY: u32 = 0xFF25_EFC1;
+
+    struct HiddenLayer(bool);
+    #[mod_api::__subscriptions]
+    impl Hooks for HiddenLayer {
+        fn register_gui_layers(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterGuiLayersEvent<'_>,
+        ) {
+            let fail = |draw: &mut dyn mod_api::DrawContext| {
+                log("panic");
+                draw.fill([0.0, 0.0, 4.0, 4.0], FAILED);
+                panic!("hidden layer test");
+            };
+            if self.0 {
+                assert!(event.layers.wrap_layer(
+                    "minecraft:player_health",
+                    Box::new(move |ctx| ctx.with_draw(&mut |draw| fail(draw))),
+                ));
+            } else {
+                assert!(event.layers.replace_layer(
+                    "minecraft:player_health",
+                    Box::new(move |_, draw| fail(draw)),
+                ));
+            }
+            assert!(event.layers.register(
+                "hud_test:after".into(),
+                GuiLayerPlacement::Above("minecraft:player_health".into()),
+                Box::new(|_, draw| {
+                    log("healthy");
+                    draw.fill([0.0, 0.0, 4.0, 4.0], HEALTHY);
+                }),
+            ));
+        }
+    }
+
+    with_client_game(|game| {
+        let wrapper = std::env::var(FLAG).unwrap() == "wrapper";
+        mod_platform::__private::install(
+            vec![ModEntry::new(
+                "hidden_layer",
+                Box::new(HiddenLayer(wrapper)),
+            )]
+            .into(),
+        );
+        mods::register_gui_layers(ExecutionRole::Client);
+        game.title = None;
+        game.screen = super::Screen::Playing;
+        game.ui.hide_gui = true;
+        for expected in [&["panic", "healthy"][..], &["healthy"][..]] {
+            let frame = game.hud_layers([640, 480]);
+            assert_eq!(take().as_slice(), expected);
+            assert!(
+                frame
+                    .vertices
+                    .iter()
+                    .all(|v| v.color != sunrise_client::hud_layout::abgr(FAILED))
+            );
+            assert!(
+                frame
+                    .vertices
+                    .iter()
+                    .any(|v| v.color == sunrise_client::hud_layout::abgr(HEALTHY))
+            );
+            assert_eq!(game.mod_error_toasts.len(), 1);
+            assert!(
+                game.mod_error_toasts[0]
+                    .title
+                    .plain()
+                    .contains("hidden_layer")
+            );
+            let hook = if wrapper {
+                "gui_layer_wrapper"
+            } else {
+                "gui_layer_callback"
+            };
+            assert!(
+                game.mod_error_toasts[0]
+                    .message
+                    .as_ref()
+                    .unwrap()
+                    .plain()
+                    .contains(hook)
+            );
+        }
     });
 }

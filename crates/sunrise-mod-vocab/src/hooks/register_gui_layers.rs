@@ -6,6 +6,8 @@ pub trait Hooks {
     /// between `gui_layer_pre` and `gui_layer_post` unless Pre cancels it. Use
     /// `event.layers.register(id, placement, Box::new(draw))` to insert a new slot,
     /// or `replace_layer` and `wrap_layer` to change an existing slot's body.
+    /// Panicking installed callbacks lose their partial drawing and are disabled for the session,
+    /// with a log and an error toast naming their owning mod.
     #[notes = r#"## HUD layers
 
 `Hooks::register_gui_layers` is the client registration-phase counterpart of NeoForge 26.3's
@@ -32,12 +34,14 @@ A vanilla body that draws nothing this frame (for example, the crosshair in thir
 health body hidden by F1) does not skip its slot. Pre, the installed body and Post are still
 visited in order unless Pre cancels. Replacements, wrappers and inserted layers can draw under F1;
 only the original bodies have the vanilla visibility conditions. A canceled `Hooks::render_gui_pre`
-skips the entire layer walk."#]
+skips the entire layer walk. The focused chat screen does not run the `minecraft:chat` slot
+again. If an installed callback panics, only that callback is disabled; its partial drawing is
+discarded and the log and error toast name its owning mod."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 3,
+        version = 4,
         contract = "listen",
         context = "registration",
         neoforge = "RegisterGuiLayersEvent"

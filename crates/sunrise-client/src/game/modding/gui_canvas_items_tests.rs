@@ -145,7 +145,7 @@ fn oversized_item_refuses_its_actual_non_finite_posed_vertices() {
         item.oversized_in_gui = true;
         item.model = ItemModelNode::Model(ModelLeaf {
             model: "minecraft:item/stick".into(),
-            transformation: Some(glam::Mat4::from_translation(glam::Vec3::new(4.0, 0.0, 0.0))),
+            transformation: Some(sunrise_assets::math::Mat4::translation([4.0, 0.0, 0.0])),
             tints: Vec::new(),
         });
         game.pack.item_renderer = std::sync::Arc::new(renderer);

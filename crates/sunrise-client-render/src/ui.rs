@@ -2,7 +2,7 @@
 //! metadata), buttons, sliders, tiled menu backgrounds, separators and the
 //! EditBox text field with vanilla cursor, selection and scrolling.
 use crate::{
-    hud::{GuiSprite, HudAtlas, HudBatch, Rect, rgba},
+    hud::{GuiSprite, HudAtlas, HudBatch, Rect, SpriteRepeat, rgba},
     hud_layout::{Blend, IDENTITY, Pose, pose_point},
     text::Text,
 };
@@ -110,7 +110,7 @@ fn sub(r: Rect, size: [f32; 2], [x, y, w, h]: [f32; 4]) -> Rect {
 /// The inverse pose and device viewport used to cull tiles and sample subpixel repeats.
 struct SpriteViewport {
     to_local: [[f64; 2]; 2],
-    translation: [f64; 2],
+    pose: Pose,
     local_bounds: [f64; 4],
     device_scale: f64,
 }
@@ -127,7 +127,7 @@ impl SpriteViewport {
         if pose == IDENTITY {
             return Some(Self {
                 to_local: [[1.0, 0.0], [0.0, 1.0]],
-                translation: [0.0; 2],
+                pose,
                 local_bounds: [left, top, right, bottom],
                 device_scale,
             });
@@ -153,7 +153,7 @@ impl SpriteViewport {
         }
         Some(Self {
             to_local,
-            translation: [x, y],
+            pose,
             local_bounds: bounds,
             device_scale,
         })
@@ -195,23 +195,12 @@ fn tile(
     if subpixel {
         // A device sample crosses a tile in one step. Emit the destination once; the fragment
         // shader samples exactly that atlas subrect, with a phase relative to the original origin.
-        let [repeat_x, repeat_y] = [0, 1].map(|axis| {
-            let origin = [ox, oy][axis];
-            let period = periods[axis];
-            let [u, v] = viewport.to_local[axis];
-            const ONE: f64 = (1u64 << 32) as f64;
-            let fraction = |value: f64| value.rem_euclid(1.0);
-            let fixed = |value: f64| (fraction(value) * ONE).round() as u64 as u32;
-            let [tx, ty] = viewport.translation;
-            let x = u / (period * viewport.device_scale);
-            let y = v / (period * viewport.device_scale);
-            // Reduce the separate terms before combining them, including the half-pixel center.
-            let at_origin = fraction(x * 0.5) + fraction(y * 0.5)
-                - fraction(u * tx / period)
-                - fraction(v * ty / period)
-                - fraction(origin / period);
-            [fixed(x), fixed(y), fixed(at_origin)]
+        batch.sprite_repeats.push(SpriteRepeat {
+            pose: viewport.pose,
+            origin: [dx, dy],
+            period: [sw, sh],
         });
+        let repeat = batch.sprite_repeats.len() as u32;
         let uv = sub(r, size, [sx, sy, sw, sh]);
         let start = batch.vertices.len();
         batch.quad(
@@ -221,8 +210,7 @@ fn tile(
         );
         for vertex in &mut batch.vertices[start..] {
             vertex.glint_uv = [uv.u1, uv.v1];
-            vertex.repeat_x = [repeat_x[0], repeat_x[1], repeat_x[2], 1];
-            vertex.repeat_y = repeat_y;
+            vertex.repeat_x[3] = repeat;
         }
         return;
     }
