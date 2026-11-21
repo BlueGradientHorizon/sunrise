@@ -143,6 +143,7 @@ const GOAL_VIEW_ENTITY_ARGS: &[&str] = &[
     "MobRef",
     "PlayerRef",
     "ItemEntityRef",
+    "ExperienceOrbRef",
     "MerchantRef",
 ];
 
@@ -1289,9 +1290,8 @@ fn goal_view(
                 let name = pat.ident.to_string();
                 match ty.as_str() {
                     "EntityRef" => Some(name),
-                    "LivingRef" | "PlayerRef" | "MobRef" | "ItemEntityRef" | "MerchantRef" => {
-                        Some(format!("{name}.entity()"))
-                    }
+                    "LivingRef" | "PlayerRef" | "MobRef" | "ItemEntityRef" | "ExperienceOrbRef"
+                    | "MerchantRef" => Some(format!("{name}.entity()")),
                     _ => None,
                 }
             })

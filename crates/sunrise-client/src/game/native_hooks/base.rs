@@ -3826,7 +3826,7 @@ impl Game<'_> {
     /// ticks as an orb scans for neighbours (`scanForMerges`). `can_merge` holds vanilla's
     /// answer; change it either way. A merged orb counts as `count` orbs of `into`'s
     /// value, so forcing orbs of different values together drops points unless the mod
-    /// raises `into`'s value with `set_experience_orb` in `native_experience_orb_merge`.
+    /// raises `into`'s value with `ExperienceOrbRef::set_value` in `native_experience_orb_merge`.
     /// Server-side.
     pub(in crate::game) fn native_experience_orb_can_merge(
         &mut self,
