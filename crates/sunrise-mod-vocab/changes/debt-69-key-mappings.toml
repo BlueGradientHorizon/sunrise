@@ -1,0 +1,25 @@
+ids = [
+    "type:KeyMapping",
+    "type:KeyMapping.down",
+    "type:KeyMapping.label",
+    "type:MappingError",
+    "type:MappingError.Stale",
+    "type:MappingError.Unavailable",
+    "type:MappingError.NoLogicalState",
+    "type:MappingError.Label",
+    "type:VanillaKeyMappingRef",
+    "method:prelude::ClientInputClientHost::mapping",
+    "method:prelude::ClientInputClientHost::mapping_state",
+    "method:prelude::ClientInputClientHost::mapping_physical_down",
+    "method:prelude::ClientInputClientHost::vanilla_key_mapping",
+    "method:prelude::ClientInputClientHost::set_mapping_down",
+    "method:prelude::ClientInputClientHost::click_mapping",
+    "handle:VanillaKeyMappingRef::is_down",
+    "handle:VanillaKeyMappingRef::physical_down",
+    "handle:VanillaKeyMappingRef::binding",
+    "handle:VanillaKeyMappingRef::translated_key_message",
+]
+why = "A mod resolves a vanilla mapping once and uses it to read the current binding and held state. There is no name lookup, binding hash or label snapshot on the read path. The handle cannot read another client's input, and the label is built only on request. MappingError is a local refusal, not a Wire value."
+migrate = """
+Resolve `let jump = host.vanilla_key_mapping("key.jump")?;` during `client_setup` (import `mod_api::prelude::*`) and store the `VanillaKeyMappingRef` for later callbacks. Replace `host.mapping(name)?.map(|m| m.down)` with `jump.is_down(host)` and `host.mapping(name)?.map(|m| m.label)` with `jump.translated_key_message(host)`. Handle `MappingError::Label(error)` instead of a bare `TextFormError` from the label read. Replace `host.mapping_state(name)` with separate `jump.is_down(host)` and `jump.binding(host)` calls. The latter lends the actual binding name for the host borrow; compare it directly, or copy the name if you need it after the callback. No hash is returned. Replace `host.mapping_physical_down(name)` with `jump.physical_down(host)`; this gives `Ok(bool)`, where unbound is `Ok(false)`, or a `MappingError`. Unknown names now return `Unknown { key }` at resolution. Known mappings without tracked logical held state return `NoLogicalState` from `is_down`. Resolve again if a handle reports `Stale` on a new client. Persist canonical names, not the handle or a `MappingError`; if you need to send a refusal, define your own Wire record for the facts you need. An unavailable backend or phase returns `Unavailable`; gameplay writes outside the world phase now return it instead of unwinding.
+"""

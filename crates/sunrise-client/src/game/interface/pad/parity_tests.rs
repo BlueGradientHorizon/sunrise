@@ -163,6 +163,7 @@ fn a_spectators_bumpers_set_the_flying_speed_as_the_wheel_does() {
 #[ignore = "daily"]
 fn readers_of_the_movement_keys_see_the_stick() {
     playing(|game| {
+        game.options.execution_role = ExecutionRole::Client;
         let forward_mapping = game.vanilla_key_mapping("key.forward").unwrap();
         let left_mapping = game.vanilla_key_mapping("key.left").unwrap();
         let back_mapping = game.vanilla_key_mapping("key.back").unwrap();
@@ -230,18 +231,27 @@ fn readers_of_the_movement_keys_see_the_stick() {
 
 #[test]
 #[ignore = "daily"]
-fn mapping_state_reads_what_mapping_reads_and_follows_the_binding() {
+fn resolved_mapping_reads_live_state_and_binding() {
     playing(|game| {
+        game.options.execution_role = ExecutionRole::Client;
         game.focused = true;
-        let (down, bound) = game.mapping_state("key.forward").unwrap();
-        assert!(!down);
+        let forward = game.vanilla_key_mapping("key.forward").unwrap();
+        assert_eq!(forward.binding(game), Ok("key.keyboard.w"));
+        assert_eq!(forward.is_down(game), Ok(false));
+
         game.pad.state.left = [-0.7, 0.7];
-        let held = game.mapping_state("key.forward").unwrap();
-        assert_eq!(held, (true, bound), "holding it leaves the binding's hash");
-        assert_eq!(held.0, game.mapping("key.forward").unwrap().unwrap().down);
-        game.settings.keys.set("key.forward", "key.keyboard.up");
-        assert_ne!(game.mapping_state("key.forward").unwrap().1, bound);
-        assert_eq!(game.mapping_state("key.not_a_mapping"), None);
+        assert_eq!(forward.is_down(game), Ok(true));
+        assert_eq!(forward.binding(game), Ok("key.keyboard.w"));
+
+        let mut bindings = sunrise_client::keybinds::KeyBinds::default();
+        bindings.set("key.forward", "key.keyboard.up");
+        game.settings.keys = bindings;
+        assert_eq!(forward.binding(game), Ok("key.keyboard.up"));
+        assert_eq!(forward.is_down(game), Ok(true));
+
+        game.pad.state.left = [0.0, 0.0];
+        assert_eq!(forward.is_down(game), Ok(false));
+        assert_eq!(forward.binding(game), Ok("key.keyboard.up"));
     });
 }
 
@@ -281,6 +291,7 @@ fn a_held_pad_toolbar_action_counts_as_the_toolbar_key() {
 #[ignore = "daily"]
 fn the_pads_attack_and_use_reach_what_the_mouse_tells_mods() {
     playing(|game| {
+        game.options.execution_role = ExecutionRole::Client;
         let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
         let use_mapping = game.vanilla_key_mapping("key.use").unwrap();
         assert_eq!(game.native_clicks(), (0, 0));

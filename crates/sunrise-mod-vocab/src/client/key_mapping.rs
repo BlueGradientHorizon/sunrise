@@ -1,6 +1,21 @@
-//! The keys a native mod registers on Options > Controls.
+//! Vanilla mapping handles and the keys a native mod registers on Options > Controls.
 
-use crate::ClientModifiers;
+use crate::{ClientModifiers, VanillaKeyMappingRef};
+use std::num::NonZeroU64;
+
+/// Construct a handle from the game's client generation and resolved mapping slot.
+pub fn vanilla_key_mapping_ref(client_generation: NonZeroU64, slot: usize) -> VanillaKeyMappingRef {
+    VanillaKeyMappingRef {
+        client_generation,
+        slot,
+    }
+}
+
+/// Inspect a handle at the game's client and slot boundary.
+pub fn vanilla_key_mapping_parts(mapping: VanillaKeyMappingRef) -> (NonZeroU64, usize) {
+    (mapping.client_generation, mapping.slot)
+}
+
 /// The screens in which two mappings can conflict.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]

@@ -37,6 +37,7 @@ input below the limits keeps its order and timing.
 |---|---|
 | `MappingError::ClickOnly { key }` | `set_mapping_down` on `key.pickItem`; use `click_mapping` instead |
 | `MappingError::NoWorld` | no player is in a world |
+| `MappingError::Unavailable` | the call is outside the world phase |
 | `MappingError::Unknown { key }` | no vanilla mapping has that name (`"nope"`) |
 | `MappingError::NotGameplay { key }` | a vanilla mapping of another category (`key.screenshot`, `key.fullscreen`, `key.chat`...) |
 
@@ -64,16 +65,29 @@ held-state writes, as `KeyMapping.releaseAll` does; set the state again once the
 
 `interaction_key_mapping_triggered` fires at the attack or use as it does for the player's click, and
 its cancel and swing work the same. `key_mapping_pre` is not asked: it is about physical key and mouse
-button events. `ClientHost::mapping(name)` reads the mapping's logical held state.
-`ClientHost::mapping_state(name)` is the same read without the label, for a HUD that reads mappings every
-frame: whether the mapping is held, and a hash of the key it is bound to. The hash changes when the binding
-does, so read the label with `mapping` only then. It allocates nothing.
-
-`ClientHost::mapping_physical_down(name)` reads the other state: whether the key or mouse button the mapping is
-bound to is physically down, following the player's binding and ignoring the toggle option, the conflict
-context and any `set_mapping_down` write. A mod that let go of mappings while its own control was in use hands
-back what the player still holds with `set_mapping_down(key, mapping_physical_down(key) == Ok(Some(true)))`.
-`ClientHost::is_key_down` takes mouse button names (`key.mouse.left`) as well as key names.
+button events.
 
 The game has no bare swing to add: in 26.3 a swing sends nothing of its own, and the attack mapping
 produces the swing and its packet.
+
+## Reading live vanilla mappings
+
+Resolve a vanilla mapping name such as `key.forward` once with `host.vanilla_key_mapping(name)`
+during `client_setup`. Keep the `VanillaKeyMappingRef` for later callbacks. Rebinding, replacing options,
+or changing worlds or screens does not invalidate it. Save the canonical mapping name, not the handle;
+resolve the name again for a new client. Resolution returns `MappingError::Unknown { key }` for a name
+that is not a vanilla mapping. Reads return `Stale` if the handle belongs to a different client and
+`Unavailable` when the client read cannot run in the current phase or backend.
+
+- `mapping.is_down(host)` reads the logical held state for movement, attack and use, including
+  controller input, toggles and logical overrides. Other vanilla mappings return `NoLogicalState`,
+  not their physical state.
+- `mapping.physical_down(host)` follows the current binding and ignores toggles, conflict context,
+  modifiers and logical writes. It returns `Ok(false)` when no physical key or button is bound.
+- `mapping.binding(host)` borrows the current binding name (`&str`) from the host, for example
+  `key.keyboard.w`. Read it again after a rebind; the borrow lasts only as long as the host borrow.
+- `mapping.translated_key_message(host)` builds the current Controls label when you need to display it.
+  It returns `MappingError::Label` if the label cannot be represented as API `Text`.
+
+`ClientHost::is_key_down` still takes a physical key or mouse button name (`key.mouse.left`), rather
+than a mapping name.

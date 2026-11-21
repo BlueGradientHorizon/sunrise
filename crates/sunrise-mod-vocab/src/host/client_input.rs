@@ -62,30 +62,12 @@ pub trait ClientInputClientHost {
     #[access(ClientSetup)]
     fn playing(&self) -> bool;
     /// Side: client.
-    /// A vanilla mapping (`key.forward`, `key.jump`, `key.attack`…): whether
-    /// it is held (`KeyMapping.isDown`), and its key's name as Controls shows
-    /// it. `Ok(None)` for a mapping it doesn't answer for. Refuses an invalid
-    /// label with [`TextFormError`], including components deeper than 512 nodes.
+    /// Resolve a vanilla mapping name such as `key.jump`, not a binding name such as
+    /// `key.keyboard.space`. Keep the handle for subsequent reads. An unknown name returns
+    /// [`MappingError::Unknown`]; a host or phase without client input returns
+    /// [`MappingError::Unavailable`].
     #[access(ClientSetup)]
-    fn mapping(&self, name: &str) -> Result<Option<KeyMapping>, TextFormError>;
-    /// Side: client.
-    /// `mapping` without its label, for a mod that reads a mapping every frame: whether the
-    /// vanilla mapping `name` is held, and a hash of the key it is bound to, which changes when
-    /// the binding does. Read the label with `mapping` only when the hash changes. Allocates
-    /// nothing. `None` for a mapping `mapping` doesn't answer for.
-    #[access(ClientSetup)]
-    fn mapping_state(&self, name: &str) -> Option<(bool, u64)>;
-    /// Side: client.
-    /// Whether the key or mouse button the vanilla mapping `name` is bound to is physically down
-    /// (`InputConstants.isKeyDown`, or the window's mouse button, on `KeyMapping.getKey`), where
-    /// `mapping` reads the logical `KeyMapping.isDown`. It follows the player's binding and
-    /// ignores the toggle option, the conflict context, the modifiers and any `set_mapping_down`
-    /// write, so a mod that let go of a mapping can hand back what the player still holds:
-    /// `set_mapping_down(key, mapping_physical_down(key) == Ok(Some(true)))`. False for a mapping
-    /// bound to no key, `Ok(None)` for a mapping `mapping` doesn't answer for, and
-    /// `Err(Unavailable)` where a client read is not allowed. Allocates nothing.
-    #[access(ClientSetup)]
-    fn mapping_physical_down(&self, name: &str) -> Result<Option<bool>, LevelReadError>;
+    fn vanilla_key_mapping(&self, name: &str) -> Result<VanillaKeyMappingRef, MappingError>;
     /// Side: client.
     /// Holds the vanilla gameplay mapping `key` down or lets it go (`KeyMapping.setDown`): the
     /// held state its key gives it, without the click a press adds. For a hold-style mapping
@@ -99,7 +81,8 @@ pub trait ClientInputClientHost {
     /// goes on breaking the block. With a screen or overlay open a press does nothing, and opening
     /// one lets go of every mapping, as `KeyMapping.releaseAll` does. `key_mapping_pre` is not
     /// asked: it is about physical keys. `key.pickItem` is click-only; this call returns
-    /// [`MappingError::ClickOnly`] for it.
+    /// [`MappingError::ClickOnly`] for it. Outside the world phase this returns
+    /// [`MappingError::Unavailable`].
     #[access(WorldOnly)]
     fn set_mapping_down(&mut self, key: &str, down: bool) -> Result<(), MappingError>;
     /// Side: client.
@@ -117,7 +100,8 @@ pub trait ClientInputClientHost {
     /// key 9, so the highest key clicked wins. Selection can drain more than once per tick: there
     /// is no once-per-tick guard. A full queue refuses the new entry and returns normally,
     /// logging only its first refusal for that queue's lifetime. These bounds also apply to
-    /// physical input queued through the same routes.
+    /// physical input queued through the same routes. Outside the world phase this returns
+    /// [`MappingError::Unavailable`].
     #[access(WorldOnly)]
     fn click_mapping(&mut self, key: &str) -> Result<(), MappingError>;
     /// Side: client.
@@ -145,4 +129,50 @@ pub trait ClientInputClientHost {
     /// on a server; empty text copies nothing, as vanilla's.
     #[access(ClientSetup)]
     fn set_clipboard_text(&self, text: &str) -> bool;
+}
+
+/// The live client reads behind [`VanillaKeyMappingRef`].
+// hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
+#[doc(hidden)]
+#[sunrise_mod_api_macros::host_area]
+pub trait ClientInputClientBackend {
+    /// Side: client.
+    /// The current binding name (`key.keyboard.w`, `key.mouse.left`, or
+    /// `key.keyboard.unknown` when unbound), borrowed for the life of the host borrow.
+    /// Reads through a foreign client return [`MappingError::Stale`]; an unavailable
+    /// backend or phase returns [`MappingError::Unavailable`].
+    #[access(ClientSetup)]
+    fn vanilla_key_mapping_binding(
+        &self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<&str, MappingError>;
+    /// Side: client.
+    /// The logical held state (`KeyMapping.isDown`) of movement, attack or use, including
+    /// controller input, toggles and logical overrides. Other vanilla mappings resolve but
+    /// return [`MappingError::NoLogicalState`]; this never substitutes a physical read.
+    /// Stale and unavailable handles are refused as for [`VanillaKeyMappingRef::binding`].
+    #[access(ClientSetup)]
+    fn vanilla_key_mapping_is_down(
+        &self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<bool, MappingError>;
+    /// Side: client.
+    /// Whether the current binding's key or mouse button is physically down. Ignores
+    /// toggles, conflict context, modifiers and logical overrides. False when the binding
+    /// has no physical key or button. Stale and unavailable handles are refused as for
+    /// [`VanillaKeyMappingRef::binding`].
+    #[access(ClientSetup)]
+    fn vanilla_key_mapping_physical_down(
+        &self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<bool, MappingError>;
+    /// Side: client.
+    /// Builds the current binding's Controls label on demand (`KeyMapping.getTranslatedKeyMessage`).
+    /// An invalid component returns [`MappingError::Label`]; stale and unavailable handles
+    /// are refused as for [`VanillaKeyMappingRef::binding`].
+    #[access(ClientSetup)]
+    fn vanilla_key_mapping_translated_key_message(
+        &self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<Text, MappingError>;
 }
