@@ -57,42 +57,58 @@ pub struct ContentMod {
     pub jars: Vec<JarRef>,
 }
 
-/// Leaves out a mod with an item whose `crafting_remainder` names an item the mod does not have:
-/// a file item that named a code-declared one the declaration check then refused. Left in, the
-/// overlay would fail on it and no content mod at all would load. Returns what was left out.
-pub fn drop_dangling_remainders(mods: &mut Vec<ContentMod>) -> Vec<String> {
+/// Leaves out packages with crafting remainders outside the prepared vanilla item table and
+/// their own admitted entries, without refusing unrelated packages.
+pub fn drop_dangling_remainders(base: &Path, mods: &mut Vec<ContentMod>) -> Result<Vec<String>> {
+    if !mods
+        .iter()
+        .flat_map(|m| &m.content.items)
+        .any(|i| i.crafting_remainder.is_some())
+    {
+        return Ok(Vec::new());
+    }
+    let vanilla_items = builtin_item_keys(base)?;
     let mut dropped = Vec::new();
-    mods.retain(|m| {
-        // The mod's items and its blocks that have an item (`Content::read`'s own rule).
-        let ids: BTreeSet<&str> = m
-            .content
-            .items
-            .iter()
-            .map(|i| i.id.as_str())
-            .chain(
-                m.content
-                    .blocks
-                    .iter()
-                    .filter(|b| b.item)
-                    .map(|b| b.id.as_str()),
-            )
-            .collect();
-        let dangling = m.content.items.iter().find(|i| {
-            i.crafting_remainder
-                .as_deref()
-                .is_some_and(|r| !r.starts_with("minecraft:") && !ids.contains(r))
-        });
-        if let Some(item) = dangling {
-            dropped.push(format!(
-                "mod {} content not loaded: {}: crafting_remainder {:?} is not one of its items",
-                m.id,
-                item.id,
-                item.crafting_remainder.as_deref().unwrap_or_default()
-            ));
+    mods.retain(|m| match invalid_remainder(m, &vanilla_items) {
+        Some(error) => {
+            dropped.push(format!("mod {} content not loaded: {error}", m.id));
+            false
         }
-        dangling.is_none()
+        None => true,
     });
-    dropped
+    Ok(dropped)
+}
+
+fn builtin_item_keys(base: &Path) -> Result<BTreeSet<String>> {
+    let path = base.join("items.json");
+    if !path.exists() {
+        return Ok(BTreeSet::new());
+    }
+    match read_json(&path)? {
+        J::Obj(entries) => Ok(entries.into_iter().map(|(id, _)| id).collect()),
+        _ => Err("items.json is not an object".into()),
+    }
+}
+
+fn invalid_remainder(m: &ContentMod, vanilla_items: &BTreeSet<String>) -> Option<String> {
+    let own: BTreeSet<&str> = m
+        .content
+        .items
+        .iter()
+        .map(|i| i.id.as_str())
+        .chain(
+            m.content
+                .blocks
+                .iter()
+                .filter(|b| b.item)
+                .map(|b| b.id.as_str()),
+        )
+        .collect();
+    m.content.items.iter().find_map(|i| {
+        let rest = i.crafting_remainder.as_deref()?;
+        (rest == "minecraft:air" || !vanilla_items.contains(rest) && !own.contains(rest))
+            .then(|| format!("{}: crafting_remainder {rest:?} is not a vanilla item or one of this package's items", i.id))
+    })
 }
 
 /// The mods' mob effects in registry order: by id, as items are. Their
@@ -1105,13 +1121,7 @@ use entity_sounds::mod_entity_row;
 
 impl<'a> Plan<'a> {
     fn new(base: &Path, mods: &'a [ContentMod]) -> Result<Self> {
-        let vanilla_items: BTreeSet<String> = match base.join("items.json").exists() {
-            true => match read_json(&base.join("items.json"))? {
-                J::Obj(entries) => entries.into_iter().map(|(id, _)| id).collect(),
-                _ => return Err("items.json is not an object".into()),
-            },
-            false => BTreeSet::new(),
-        };
+        let vanilla_items = builtin_item_keys(base)?;
         // Class chains are most-derived first. Fluid-dependent overrides must
         // use the resolved state's fluid, not the template's cached dry answer.
         let mut skylight_rules = BTreeMap::new();
@@ -1239,6 +1249,9 @@ impl<'a> Plan<'a> {
         let mut declared_ids = BTreeSet::new();
         let mut item_ids = BTreeSet::new();
         for m in mods {
+            if let Some(error) = invalid_remainder(m, &vanilla_items) {
+                return Err(format!("{}: {error}", m.id).into());
+            }
             for block in &m.content.blocks {
                 if defaults.contains_key(&block.id) || !declared_ids.insert(block.id.as_str()) {
                     return Err(format!("{}: {} is already a block", m.id, block.id).into());
@@ -2160,17 +2173,6 @@ impl<'a> Plan<'a> {
                     {
                         return Err(format!("{}: {key} {item:?} is not an item", b.decl.id).into());
                     }
-                }
-            }
-            for i in &self.items {
-                if let Some(rest) = &i.crafting_remainder
-                    && map.get(rest).is_none()
-                {
-                    return Err(format!(
-                        "{}: crafting_remainder {rest:?} is not an item",
-                        i.rename.to
-                    )
-                    .into());
                 }
             }
         }

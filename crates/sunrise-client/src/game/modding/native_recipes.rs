@@ -756,6 +756,51 @@ mod tests {
         assert_eq!(names, ["iron_ingot", "stick", "braid:sticks_from_logs"]);
     }
 
+    #[test]
+    fn registered_minecraft_serializer_decodes_before_and_after_sync() {
+        use sunrise_client::{crafting::Recipes, items::Items, lan::recipes};
+        use sunrise_world::{
+            loot::PackOverlay,
+            native_load_context::{LoadContext, LoadInputs},
+        };
+        const KIND: &str = "minecraft:grinding_json";
+        mod_platform::testing::with_recipe_types(&[KIND], || {
+            let context = LoadContext::new(
+                mod_api::DataLoadOrigin::ServerDataLoad,
+                std::sync::Arc::new(LoadInputs::new(Default::default(), Default::default())),
+                [],
+            );
+            let sources = vec![(
+                "test:ore".into(),
+                serde_json::json!({"type": KIND, "result": "minecraft:iron_ingot"}),
+            )];
+            let load = |files| {
+                Recipes::from_sources(
+                    std::path::Path::new(""),
+                    &Items::for_tests(Default::default()),
+                    &PackOverlay::NONE,
+                    files,
+                    &context,
+                )
+                .unwrap()
+            };
+            let owning = load(sources.clone());
+            let payloads = recipes::encode_content(&[KIND.into()], &sources, false);
+            assert_eq!(payloads.len(), 1);
+            let part = recipes::ContentPart::decode(&payloads[0]).unwrap();
+            let synced = load(super::synced_sources(
+                vec![],
+                part.recipes,
+                &part.last.unwrap(),
+            ));
+            for tables in [owning, synced] {
+                assert_eq!(tables.mod_read_only.len(), 1);
+                assert_eq!(tables.mod_read_only[0].1.serializer, KIND);
+                assert_eq!(tables.by_type[KIND][0].id, "test:ore");
+            }
+        });
+    }
+
     /// A window's own `smelting` file (a bare type) and a server's bare one
     /// both read as `minecraft:smelting`: the server's replaces the window's,
     /// and the book numbers the same displays as for qualified types.

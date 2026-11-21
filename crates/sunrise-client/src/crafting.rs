@@ -1257,12 +1257,6 @@ pub fn registration_key(name: &str) -> (String, String) {
     let (namespace, path) = name.split_once(':').unwrap_or(("minecraft", name));
     (format!("{path}.json"), namespace.to_owned())
 }
-/// The type of a recipe the game doesn't craft itself: one outside `minecraft`.
-fn custom_type(v: &Value) -> Option<&str> {
-    v["type"]
-        .as_str()
-        .filter(|t| t.contains(':') && !t.starts_with("minecraft:"))
-}
 pub struct Recipes {
     /// Decoded read-only recipes, retained for their serializers when synchronizing.
     pub mod_read_only: Vec<(String, mod_kinds::ModRecipe)>,
@@ -1479,16 +1473,8 @@ impl PropertyAdditions {
         native_hooks::native_recipe_property_sets(context, &mut asked);
         let mut sets = HashMap::<String, HashSet<String>>::new();
         for addition in asked {
-            let key = match addition.set.strip_prefix("minecraft:") {
-                Some(vanilla)
-                    if crate::lan::recipes::PROPERTY_SETS
-                        .iter()
-                        .any(|(set, ..)| *set == vanilla) =>
-                {
-                    vanilla
-                }
-                _ => addition.set.as_str(),
-            };
+            let key =
+                crate::lan::recipes::vanilla_property_set(&addition.set).unwrap_or(&addition.set);
             if !key.contains(':')
                 && !crate::lan::recipes::PROPERTY_SETS
                     .iter()
@@ -1808,7 +1794,12 @@ impl Recipes {
                 .recipes
                 .iter()
                 .enumerate()
-                .filter(|(_, recipe)| custom_type(&recipe.file).is_some())
+                // Resolution has already rejected unregistered serializer keys.
+                .filter(|(_, recipe)| {
+                    recipe.file["type"]
+                        .as_str()
+                        .is_some_and(|id| !VANILLA_RECIPE_SERIALIZERS.contains(&id))
+                })
                 .map(|(position, _)| (position, OnceLock::new()))
                 .collect()
         });
@@ -3058,22 +3049,6 @@ mod tests {
             cook_index: Default::default(),
             property_additions: PropertyAdditions::default(),
         }
-    }
-    #[test]
-    fn only_types_outside_minecraft_are_custom() {
-        let kind = |json: &str| {
-            let v: Value = serde_json::from_str(json).unwrap();
-            custom_type(&v).map(str::to_owned)
-        };
-        assert_eq!(
-            kind(r#"{"type":"mymod:crusher"}"#).as_deref(),
-            Some("mymod:crusher")
-        );
-        assert_eq!(kind(r#"{"type":"minecraft:smelting"}"#), None);
-        assert_eq!(kind(r#"{"type":"minecraft:from_a_later_version"}"#), None);
-        assert_eq!(kind(r#"{"type":"no_namespace"}"#), None);
-        assert_eq!(kind(r#"{"type":7}"#), None);
-        assert_eq!(kind("{}"), None);
     }
     /// Recipes of every type land in `by_type`, in file order, with the id the
     /// file has; a data pack overrides by id and adds more; a recipe of a mod's

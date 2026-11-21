@@ -31,6 +31,15 @@ pub(crate) const PROPERTY_SETS: &[(&str, &str, &[&str])] = &[
     ("brewing_reagent", "minecraft:brewing", &["reagent"]),
 ];
 
+/// The short internal key for an exact built-in property set on the wire.
+pub fn vanilla_property_set(id: &str) -> Option<&str> {
+    let key = id.strip_prefix("minecraft:")?;
+    PROPERTY_SETS
+        .iter()
+        .any(|(set, ..)| *set == key)
+        .then_some(key)
+}
+
 /// An ingredient as its HolderSet: a tag, or the items listed.
 enum Ingredient {
     Tag(String),

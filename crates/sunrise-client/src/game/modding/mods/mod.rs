@@ -941,13 +941,11 @@ pub(super) fn content_overlay(
             return Err(DeclarationFailures::new(refusals).into());
         }
         admission?;
-        // A file item's remainder named a code-declared item that was refused: that mod
-        // alone is left out, not every content mod through the overlay's check.
-        for e in mod_content::drop_dangling_remainders(&mut mods) {
-            log::warn!("Sunrise: {e}");
-        }
     } else if !refusals.is_empty() {
         return Err(DeclarationFailures::new(refusals).into());
+    }
+    for e in mod_content::drop_dangling_remainders(root, &mut mods)? {
+        log::warn!("Sunrise: {e}");
     }
     for m in &manifests {
         if let Some(batch) = declared.batches.get(m.id.as_str()) {
