@@ -7,7 +7,7 @@ use crate::{Identifier, WorldDepth};
 /// primitive type; this API fixes both. The engine builds every GPU object.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client render-pipeline registration descriptor.
 pub struct RenderPipeline {
     owner: String,
     /// The pipeline's own name (`mymod:glow`), in a namespace the mod owns.
@@ -81,7 +81,7 @@ impl RenderPipeline {
 /// that it repeats. It returns linear light (the mod render colour rule) with the texel's alpha.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client render-pipeline texture binding.
 pub enum PipelineTexture {
     /// A sprite of the game's block or item atlas, by its texture id: `powah:block/energy_charge`
     /// is `assets/powah/textures/block/energy_charge.png` as the `minecraft:blocks` atlas holds
@@ -95,7 +95,7 @@ pub enum PipelineTexture {
 /// Why a pipeline's texture was refused: the named cause its refusal is logged with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: refusal of a local client render-pipeline texture load.
 pub enum PipelineTextureError {
     /// No sprite of that id in the block or item atlas.
     NoSuchSprite,
@@ -129,7 +129,7 @@ impl std::error::Error for PipelineTextureError {}
 /// The vertex data a pipeline's draws carry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client render-pipeline vertex format.
 pub enum PipelineVertexFormat {
     /// A position, a texture coordinate and a colour: what [`PipelineQuad`] gives.
     PositionTexColor,
@@ -138,7 +138,7 @@ pub enum PipelineVertexFormat {
 /// How a pipeline's fragments join the frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client render-pipeline blend mode.
 pub enum PipelineBlend {
     /// Laid over the frame by the fragment's alpha, as [`crate::WorldQuad`] is.
     Translucent,
@@ -149,7 +149,7 @@ pub enum PipelineBlend {
 /// A registered pipeline as the current resources built it, resolved through
 /// [`crate::RenderAssets::render_pipeline`]. Retain it between frames; resolve it again after a
 /// successful resource reload.
-// no wire: decoding from_parts rejects generation zero (an unpublished pipeline handle).
+// no wire: process-local handle to a client render pipeline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: private fields; only the engine resolves pipeline handles
 pub struct RenderPipelineRef(pub(crate) u64, pub(crate) u32);
@@ -166,7 +166,7 @@ impl RenderPipelineRef {
 /// Why a pipeline could not be resolved or drawn with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: refusal of a local client render-pipeline lookup or draw.
 pub enum RenderPipelineError {
     /// No mod registered a pipeline of this id.
     Unknown,
@@ -181,7 +181,7 @@ pub enum RenderPipelineError {
 /// top right as seen from the front.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local client render-pipeline quad primitive.
 pub struct PipelineQuad {
     /// Four world-space corners in blocks, before camera subtraction.
     pub corners: [[f64; 3]; 4],
@@ -209,7 +209,7 @@ impl PipelineQuad {
 /// Why a whole pipeline batch was refused; nothing from that batch was appended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: refusal of a local client render-pipeline draw submission.
 pub enum PipelineDrawError {
     /// The handle is stale, or names no usable pipeline.
     Pipeline(RenderPipelineError),
