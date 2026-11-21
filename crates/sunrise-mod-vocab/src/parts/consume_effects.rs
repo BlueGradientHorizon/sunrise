@@ -1,45 +1,103 @@
 //! Registration of the persistent and stream codecs for a custom consume effect.
 use crate::{Compound, Identifier, callback_owner::CallbackOwner, wire};
 use std::sync::Arc;
-use sunrise_protocol::item::consume_effects;
 
 // no wire: this is a process-local codec registration; only its values have a Wire form.
 /// A consume-effect type's save codec and its typed `Wire` stream form.
 pub struct ConsumeEffectType {
-    wire_schema: u64,
-    save_to_stream: Arc<SaveToStream>,
-    stream_to_save: Arc<StreamToSave>,
+    install: Box<InstallCodec>,
 }
 
-type SaveToStream = dyn Fn(&Compound) -> Result<Vec<u8>, String> + Send + Sync;
-type StreamToSave = dyn Fn(&[u8], bool) -> Result<(usize, Option<Compound>), String> + Send + Sync;
+type InstallCodec = dyn Fn(&'static str) -> Result<ConsumeEffectCodecs, String> + Send + Sync;
+type Load = dyn Fn(&Compound) -> Result<(Compound, Vec<u8>), String> + Send + Sync;
+type Read = dyn Fn(&[u8], bool) -> Result<(usize, Option<Compound>), String> + Send + Sync;
+
+// no wire: type-erased engine adapter for the map and Wire codec callbacks.
+#[doc(hidden)]
+pub struct ConsumeEffectCodecs {
+    pub schema: u64,
+    pub load: Box<Load>,
+    pub read: Box<Read>,
+}
 
 impl ConsumeEffectType {
     /// Construct a type from its persistent map codec. Implement the stream
     /// form by deriving [`Wire`](crate::Wire) on `T`. The game handles the
     /// dispatch key `type`; neither function reads or writes that field.
-    /// Both functions run on whichever thread encodes or decodes the stack.
-    /// Return an error for invalid data rather than panicking.
+    /// `load` validates saved data before the stack is admitted; `save` writes
+    /// the canonical fields of that value, including when received over Wire.
+    /// Neither callback depends on the live gameplay listener being enabled.
+    /// Both can run on load and network threads. Return an error for invalid
+    /// data rather than panicking.
     pub fn new<T: wire::Wire + 'static>(
         load: fn(&Compound) -> Result<T, String>,
         save: fn(&T) -> Result<Compound, String>,
     ) -> Self {
+        let wire_schema = T::describe(&mut wire::WireSchema::default());
         Self {
-            wire_schema: T::describe(&mut wire::WireSchema::default()),
-            save_to_stream: Arc::new(move |fields| {
-                let value = load(fields)?;
-                let mut out = wire::Writer::new();
-                out.put(&value);
-                if let Some(error) = out.error() {
-                    return Err(error.to_string());
-                }
-                Ok(out.into_bytes())
-            }),
-            stream_to_save: Arc::new(move |bytes, project| {
-                let mut reader = wire::Reader::new(bytes);
-                let value = reader.take::<T>().map_err(|error| error.to_string())?;
-                let saved = project.then(|| save(&value)).transpose()?;
-                Ok((bytes.len() - reader.rest().len(), saved))
+            install: Box::new(move |mod_id| {
+                let owner = || {
+                    CallbackOwner::new(mod_id)
+                        .ok_or_else(|| format!("unknown consume effect codec owner {mod_id}"))
+                };
+                let loader = owner()?;
+                let saver = Arc::new(owner()?);
+                let stream = owner()?;
+                let save_value = move |value: &T| {
+                    let result = saver
+                        .call_registered("consume effect save codec", "consume_effect_save", || {
+                            save(value)
+                        })
+                        .and_then(|value| value);
+                    if let Err(why) = &result {
+                        log::warn!("mod {mod_id}: consume effect save refused: {why}");
+                    }
+                    result
+                };
+                let save_for_load = save_value.clone();
+                Ok(ConsumeEffectCodecs {
+                    schema: wire_schema,
+                    load: Box::new(move |fields| {
+                        let result = loader
+                            .call_registered(
+                                "consume effect load codec",
+                                "consume_effect_load",
+                                || {
+                                    let value = load(fields)?;
+                                    let mut out = wire::Writer::new();
+                                    out.put(&value);
+                                    if let Some(error) = out.error() {
+                                        return Err(error.to_string());
+                                    }
+                                    Ok((value, out.into_bytes()))
+                                },
+                            )
+                            .and_then(|value| value);
+                        if let Err(why) = &result {
+                            log::warn!("mod {mod_id}: consume effect load refused: {why}");
+                        }
+                        let (value, bytes) = result?;
+                        Ok((save_for_load(&value)?, bytes))
+                    }),
+                    read: Box::new(move |bytes, project| {
+                        let (size, value) = stream.call_registered(
+                            "consume effect Wire codec",
+                            "consume_effect_wire",
+                            || {
+                                let mut reader = wire::Reader::new(bytes);
+                                let value =
+                                    reader.take::<T>().map_err(|error| error.to_string())?;
+                                Ok::<_, String>((bytes.len() - reader.rest().len(), value))
+                            },
+                        )??;
+                        let saved = if project {
+                            save_value(&value).ok()
+                        } else {
+                            None
+                        };
+                        Ok((size, saved))
+                    }),
+                })
             }),
         }
     }
@@ -49,7 +107,8 @@ impl ConsumeEffectType {
 pub trait ConsumeEffectsRegistrar {
     /// Register a custom kind during `Hooks::register`. The registry and stream
     /// schema are synchronized before play. Both peers install the same type;
-    /// a duplicate ID or a package not installed on both sides is refused.
+    /// the identifier must be in an owned, non-reserved package namespace.
+    /// Duplicate IDs and server-only packages are refused.
     fn register_consume_effect_type(
         &mut self,
         id: Identifier,
@@ -69,46 +128,15 @@ pub struct RegisteredConsumeEffect {
     pub ty: ConsumeEffectType,
 }
 
-/// Reserve the built-in registry entries before installing mod entries.
+/// Take the registered engine-side codecs after mod registration has finished.
 #[doc(hidden)]
-pub fn is_builtin_consume_effect(id: &str) -> bool {
-    consume_effects::BUILTINS.contains(&id)
-}
-
-/// Freeze the registry before stacks or sessions are opened.
-#[doc(hidden)]
-pub fn freeze_consume_effect_types() -> Result<(), String> {
+pub fn consume_effect_codecs() -> Result<Vec<(String, ConsumeEffectCodecs)>, String> {
     let Some(parts) = super::installed() else {
-        return Ok(());
+        return Ok(Vec::new());
     };
-    if parts.consume_effects.is_empty() {
-        return Ok(());
-    }
-    let mut types = Vec::with_capacity(parts.consume_effects.len());
-    for effect in &parts.consume_effects {
-        let owner = Arc::new(CallbackOwner::new(effect.owner).ok_or_else(|| {
-            format!(
-                "mod {} has no consume effect registration owner",
-                effect.owner
-            )
-        })?);
-        let reader_owner = Arc::clone(&owner);
-        let save_to_stream = Arc::clone(&effect.ty.save_to_stream);
-        let stream_to_save = Arc::clone(&effect.ty.stream_to_save);
-        types.push(consume_effects::Type {
-            name: effect.id.to_string(),
-            wire_schema: effect.ty.wire_schema,
-            from_stream: Box::new(move |bytes, project| {
-                reader_owner.call("consume effect codec", "consume_effect_from_stream", || {
-                    stream_to_save(bytes, project)
-                })?
-            }),
-            to_stream: Box::new(move |data| {
-                owner.call("consume effect codec", "consume_effect_to_stream", || {
-                    save_to_stream(data)
-                })?
-            }),
-        });
-    }
-    consume_effects::install(types).map_err(|error| error.to_string())
+    parts
+        .consume_effects
+        .iter()
+        .map(|effect| Ok((effect.id.to_string(), (effect.ty.install)(effect.owner)?)))
+        .collect()
 }

@@ -105,6 +105,13 @@ pub fn item_from_persistent_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
 /// command's NBT often leaves the namespace out), and an id that is no valid
 /// identifier makes no stack.
 pub fn item_from_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
+    item_from_nbt_with_effects(tag, None)
+}
+
+pub(crate) fn item_from_nbt_with_effects(
+    tag: &Tag,
+    effects: Option<&[sunrise_world::component_value::consume_effects::Admitted]>,
+) -> Option<crate::items::ItemStack> {
     let (namespace, path) = sunrise_world::datafix::identifier(&text(tag.get("id"))?)?;
     let id = format!("{namespace}:{path}");
     if id == "minecraft:air" {
@@ -125,13 +132,24 @@ pub fn item_from_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
         }
         components => components,
     };
-    let (damage, extra) = crate::item_data::decode_components(components);
-    Some(crate::items::ItemStack {
+    let (damage, extra) = match effects {
+        Some(effects) => crate::item_data::decode_network_components(components, effects),
+        None => crate::item_data::decode_components(components),
+    };
+    let stack = crate::items::ItemStack {
         item: Arc::from(id.as_str()),
         count,
         damage,
         extra,
-    })
+    };
+    if let Some(components) = components
+        && ((components.get("minecraft:consumable").is_some() && stack.consumable(None).is_none())
+            || (components.get("minecraft:death_protection").is_some()
+                && stack.death_protection(None).is_none()))
+    {
+        return None;
+    }
+    Some(stack)
 }
 pub fn encode_items(slots: &[Option<crate::items::ItemStack>], items: &crate::items::Items) -> Tag {
     Tag::List(encode_items_using(slots, |stack| item_to_nbt(stack, items)))

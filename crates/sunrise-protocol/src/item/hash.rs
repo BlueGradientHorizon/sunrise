@@ -16,13 +16,18 @@ use super::{
     Component, FireworkExplosion, Hashed, Stack, StackHashError, WirePatch, component as kind,
     persistent,
 };
-use crate::hash_ops::HashCode;
+use crate::{buf::Reader, hash_ops::HashCode};
 use ops::{Ops, Record};
 
 /// Registry names for the ids a component holds.
 pub trait Names {
     /// The name of entry `id` of `registry` (`minecraft:enchantment`, ...).
     fn name(&self, registry: &str, id: i32) -> Option<String>;
+
+    /// The consume-effect type at this connection's stream ID.
+    fn consume_effect_kind(&self, id: i32) -> Option<super::consume_effects::Kind> {
+        super::consume_effects::builtin_name(id).map(|_| super::consume_effects::Kind::Builtin(id))
+    }
 }
 /// No registries: only the components that hold no registry id hash.
 pub struct NoNames;
@@ -486,7 +491,7 @@ impl Hashed {
             .wire
             .0
             .as_deref()
-            .map(WirePatch::decode)
+            .map(|patch| WirePatch::decode_reader(Reader::new(patch).with_names(names)))
             .transpose()
             .map_err(StackHashError::Wire)?;
         let (sets, removals) = decoded

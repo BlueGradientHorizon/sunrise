@@ -738,14 +738,23 @@ impl SyncData {
             );
             registries.push(((*key).to_owned(), e));
         }
-        if consume_effects::entries().next().is_some() {
+        if consume_effects::has_custom_types() {
             let (names, data): (Vec<_>, Vec<_>) = consume_effects::configuration()
                 .map(|(name, schema)| (name.to_owned(), Tag::Long(schema as i64)))
                 .unzip();
-            dynamic.registries.insert(
-                consume_effects::REGISTRY.to_owned(),
-                names.iter().cloned().map(|name| (name, None)).collect(),
-            );
+            dynamic
+                .add_consume_effects(RegistryData {
+                    registry: consume_effects::REGISTRY.to_owned(),
+                    entries: names
+                        .iter()
+                        .zip(&data)
+                        .map(|(name, schema)| RegistryEntry {
+                            id: name.clone(),
+                            data: Some(schema.clone()),
+                        })
+                        .collect(),
+                })
+                .map_err(|error| error.to_string())?;
             let from_pack = vec![true; names.len()];
             registries.push((
                 consume_effects::REGISTRY.to_owned(),
@@ -928,7 +937,7 @@ impl SyncData {
     /// The id of a name in a built-in or synchronized registry.
     pub fn id(&self, registry: &str, name: &str) -> Option<i32> {
         if registry == consume_effects::REGISTRY {
-            return consume_effects::id(name);
+            return self.dynamic.consume_effect_id(name);
         }
         if registry == "minecraft:data_component_type"
             && self.dynamic.custom_components

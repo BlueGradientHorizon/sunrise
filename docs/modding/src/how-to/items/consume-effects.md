@@ -1,11 +1,18 @@
 # Custom consume effects
 
-Register the type in `Hooks::register` before using it in a synchronized item
-stack. The two functions in `ConsumeEffectType::new` read and write its saved
-map. The game owns the `type` field. The value itself derives `Wire`; its
-bytes follow the registry ID just as a built-in effect's stream fields do.
-Install the registering mod on both sides. The type IDs and stream layouts
-are checked during the normal content registry sync, not on first use.
+In `Hooks::register`, call `register_consume_effect_type` on the engine's
+`Registrar`. If you implement `Registrar` yourself, also implement
+`ConsumeEffectsRegistrar`. Use a type ID in an owned, non-reserved
+namespace. The two functions in `ConsumeEffectType::new` read and write the
+saved map; the game handles the `type` field. `load` validates the fields
+before a stack edit or load is admitted. `save` supplies the canonical fields
+with exact NBT types, including when the value arrives over the network.
+
+Derive `Wire` on the value itself. Its bytes follow the server's registry ID,
+just as a built-in effect's stream fields do. Install the registering mod on
+both sides: normal configuration sync resolves the server's IDs by key and
+checks the Wire schemas. Switching off a live effect listener does not remove
+its registered codec from the connection.
 
 ```rust
 use mod_api::{Compound, ConsumeEffectType, Identifier, Registrar, Tag, Wire};
@@ -29,7 +36,9 @@ fn register(r: &mut dyn Registrar) -> Result<(), String> {
 }
 ```
 
-An entry then reads `{type: "example:charge", points: 10}` in SNBT.
+An entry then reads `{type: "example:charge", points: 10}` in SNBT, in either
+`on_consume_effects` or `death_effects`. The example accepts an NBT `Int`;
+accept other numeric tag types in `load` if your data format calls for them.
 Implement `Hooks::consume_effect` to handle a consumable's `on_consume_effects`
 entry whose type is in your mod's namespace. Only that namespace's enabled
 subscriber receives it. The hook runs on the server thread for the consuming

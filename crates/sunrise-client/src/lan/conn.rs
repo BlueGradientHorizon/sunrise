@@ -1120,6 +1120,7 @@ fn serve_login(
 }
 
 struct Parts {
+    sync: Arc<SyncData>,
     payload_transport: Arc<Transport>,
     uuid: u128,
     name: String,
@@ -1531,6 +1532,7 @@ fn login_and_configure(
     let channels = std::mem::take(&mut c.channels);
     c.finish()?;
     Ok(Some(Parts {
+        sync: sync_data,
         channels,
         payload_transport,
         uuid,
@@ -1979,6 +1981,7 @@ fn play(
         .as_ref()
         .is_some_and(|p| p.required);
     let session = PlayConn {
+        sync: parts.sync,
         payload_sender: sender.clone(),
         payload_transport: parts.payload_transport,
         conn,
@@ -2022,6 +2025,7 @@ fn play(
 
 /// A player's play state on its network thread.
 struct PlayConn {
+    sync: Arc<SyncData>,
     payload_sender: PlayerSender,
     payload_transport: Arc<Transport>,
     conn: u32,
@@ -2069,10 +2073,13 @@ impl io_pool::Session for PlayConn {
         if let Some(average) = self.rate.as_mut().and_then(|r| r.received(now)) {
             return kick(rate_exceeded(&self.shared, average));
         }
-        match play::Serverbound::decode_with_payload_codecs(
+        match play::Serverbound::decode_reader(
             id,
-            &payload,
-            &self.payload_transport.local.codecs,
+            sunrise_protocol::buf::Reader::with_payload_codecs(
+                &payload,
+                &self.payload_transport.local.codecs,
+            )
+            .with_names(&self.sync.dynamic),
         )
         .and_then(checked_play)
         {
@@ -3455,6 +3462,7 @@ mod tests {
         };
         let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
         let mut c = PlayConn {
+            sync: Arc::new(SyncData::empty()),
             payload_sender: PlayerSender::disabled(),
             payload_transport: Transport::empty(),
             conn: 1,
@@ -3593,6 +3601,7 @@ mod tests {
         };
         let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
         let conn = |uuid: u128, pending: Option<i64>| PlayConn {
+            sync: Arc::new(SyncData::empty()),
             payload_sender: PlayerSender::disabled(),
             payload_transport: Transport::empty(),
             conn: 1,
@@ -3646,6 +3655,7 @@ mod tests {
         };
         let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
         let conn = |uuid: u128| PlayConn {
+            sync: Arc::new(SyncData::empty()),
             payload_sender: PlayerSender::disabled(),
             payload_transport: Transport::empty(),
             conn: 1,

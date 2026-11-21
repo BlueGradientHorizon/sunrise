@@ -13890,7 +13890,7 @@ pub(crate) fn run_with(
     native_chunk_generator::install();
     native_biome_source::install();
     mods::register_components(&vanilla_root)?;
-    mod_api::__private::freeze_consume_effect_types()?;
+    sunrise_client::item_sync::install_consume_effect_codecs()?;
     mods::register_standalone_models(options.execution_role);
     mods::register_layer_definitions(options.execution_role, &vanilla_root);
     mods::register_debug_entries(options.execution_role);

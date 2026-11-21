@@ -1,7 +1,5 @@
 //! Exports for custom consume-effect registrations.
 pub use crate::parts::ConsumeEffectType;
 mod __private {
-    pub use crate::parts::{
-        RegisteredConsumeEffect, freeze_consume_effect_types, is_builtin_consume_effect,
-    };
+    pub use crate::parts::{ConsumeEffectCodecs, RegisteredConsumeEffect, consume_effect_codecs};
 }

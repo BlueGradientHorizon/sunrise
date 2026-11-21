@@ -2174,7 +2174,14 @@ pub(super) fn network_stack(
                 }
                 return;
             }
-            match persistent::component_from_tag(kind, value, &ids) {
+            let encoded = if matches!(key, "minecraft:consumable" | "minecraft:death_protection") {
+                d.effect_codec_value(key, value)
+                    .map_err(sunrise_protocol::Error::new)
+                    .and_then(|value| persistent::component_from_value(kind, &value, &ids))
+            } else {
+                persistent::component_from_tag(kind, value, &ids)
+            };
+            match encoded {
                 Ok(component) => stack.added.push((kind, component)),
                 Err(error) => {
                     log::warn!("Cannot send component {name} on {}: {error}", s.item);

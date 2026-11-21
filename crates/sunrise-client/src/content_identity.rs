@@ -31,7 +31,7 @@ pub const MISMATCH: &str =
 /// Registries that a vanilla client cannot validate before reading their IDs.
 pub(crate) fn requires_sunrise() -> bool {
     sunrise_protocol::item::custom::entries().next().is_some()
-        || consume_effects::entries().next().is_some()
+        || consume_effects::has_custom_types()
         || !mod_api::__private::custom_stat_declarations().is_empty()
 }
 

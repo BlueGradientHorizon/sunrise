@@ -1,10 +1,10 @@
-//! `ConsumeEffect.Type` dispatch for the extension entries in the synchronized registry.
-use crate::{Error, Result, buf::Reader};
-use std::sync::OnceLock;
-use sunrise_core::nbt::{Compound, Tag};
+//! `ConsumeEffect.Type` dispatch through the connection's synchronized registry.
+use crate::{Error, Result, buf::Reader, packets::configuration::RegistryEntry};
+use sunrise_core::nbt::Tag;
+use sunrise_world::component_value::consume_effects::{Admitted, by_name, entries};
 
 pub const REGISTRY: &str = "minecraft:consume_effect_type";
-pub const BUILTINS: [&str; 5] = [
+const BUILTINS: [&str; 5] = [
     "minecraft:apply_effects",
     "minecraft:remove_effects",
     "minecraft:clear_all_effects",
@@ -12,90 +12,103 @@ pub const BUILTINS: [&str; 5] = [
     "minecraft:play_sound",
 ];
 
-type FromStream =
-    dyn Fn(&[u8], bool) -> std::result::Result<(usize, Option<Compound>), String> + Send + Sync;
-type ToStream = dyn Fn(&Compound) -> std::result::Result<Vec<u8>, String> + Send + Sync;
-
-/// The transport half of a registered type. Callers supply the existing Wire codec,
-/// specialized to the mod's type; protocol never needs to know its Rust type.
-pub struct Type {
-    pub name: String,
-    pub wire_schema: u64,
-    pub from_stream: Box<FromStream>,
-    pub to_stream: Box<ToStream>,
+pub(crate) fn builtin_names() -> &'static [&'static str] {
+    &BUILTINS
 }
 
-static TYPES: OnceLock<Vec<Type>> = OnceLock::new();
-
-/// Freeze the native extension IDs after all registrations have completed.
-pub fn install(mut types: Vec<Type>) -> Result<()> {
-    types.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-    TYPES
-        .set(types)
-        .map_err(|_| Error::new("consume effect types already installed"))
+pub fn builtin_id(name: &str) -> Option<i32> {
+    BUILTINS
+        .iter()
+        .position(|&key| key == name)
+        .map(|i| i as i32)
 }
 
-pub fn entries() -> impl Iterator<Item = (i32, &'static Type)> {
-    TYPES
-        .get()
-        .into_iter()
-        .flatten()
-        .enumerate()
-        .map(|(index, ty)| ((BUILTINS.len() + index) as i32, ty))
+pub fn builtin_name(id: i32) -> Option<&'static str> {
+    BUILTINS.get(usize::try_from(id).ok()?).copied()
 }
 
-/// Frozen registry rows in protocol ID order. Built-in streams have the
-/// pinned protocol layout; extension entries publish their Wire schema.
+pub fn has_custom_types() -> bool {
+    entries().next().is_some()
+}
+
+/// Registry rows in the server's protocol ID order. Custom rows carry a Wire schema.
 pub fn configuration() -> impl Iterator<Item = (&'static str, u64)> {
     BUILTINS
         .into_iter()
         .map(|name| (name, 0))
-        .chain(entries().map(|(_, ty)| (ty.name.as_str(), ty.wire_schema)))
+        .chain(entries().map(|(name, ty)| (name.as_ref(), ty.schema)))
 }
 
-pub fn id(name: &str) -> Option<i32> {
-    if let Some(id) = BUILTINS.iter().position(|&key| key == name) {
-        return Some(id as i32);
+pub(crate) fn resolve_configuration(entries: &[RegistryEntry]) -> Result<Vec<Kind>> {
+    let mut seen = std::collections::HashSet::new();
+    let mut kinds = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let name = entry.id.as_str();
+        let (kind, expected) = if let Some(id) = builtin_id(name) {
+            (Kind::Builtin(id), 0)
+        } else if let Some((name, ty)) = by_name(name) {
+            (Kind::Native(name, ty), ty.schema)
+        } else {
+            return Err(Error::new(format!("unknown consume effect {name}")));
+        };
+        if !seen.insert(name)
+            || !matches!(&entry.data, Some(Tag::Long(schema)) if *schema as u64 == expected)
+        {
+            return Err(Error::new(format!(
+                "duplicate or incompatible consume effect {name}"
+            )));
+        }
+        kinds.push(kind);
     }
-    let types = TYPES.get()?;
-    let index = types
-        .binary_search_by(|ty| ty.name.as_str().cmp(name))
-        .ok()?;
-    Some((BUILTINS.len() + index) as i32)
+    if BUILTINS.iter().any(|name| !seen.contains(name)) {
+        return Err(Error::new("missing built-in consume effect type"));
+    }
+    Ok(kinds)
 }
 
-fn by_id(id: i32) -> Result<&'static Type> {
-    usize::try_from(id)
-        .ok()
-        .and_then(|id| id.checked_sub(BUILTINS.len()))
-        .and_then(|index| TYPES.get()?.get(index))
+/// Stream discriminant after resolving the connection's ID to its registered type.
+#[derive(Clone, Copy)]
+pub enum Kind {
+    Builtin(i32),
+    Native(
+        &'static std::sync::Arc<str>,
+        &'static sunrise_world::component_value::consume_effects::Type,
+    ),
+}
+
+impl std::fmt::Debug for Kind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Builtin(id) => f.debug_tuple("Builtin").field(id).finish(),
+            Self::Native(name, _) => f.debug_tuple("Native").field(name).finish(),
+        }
+    }
+}
+
+pub fn read_kind(reader: &mut Reader<'_>) -> Result<Kind> {
+    let id = reader.varint()?;
+    reader
+        .consume_effect_kind(id)
         .ok_or_else(|| Error::new(format!("unknown consume effect type {id}")))
 }
 
-pub(super) fn write_saved(kind: i32, mut data: Compound) -> Result<Vec<u8>> {
-    let ty = by_id(kind)?;
-    data.remove(&"type".into());
-    (ty.to_stream)(&data).map_err(|why| Error::new(format!("consume effect {}: {why}", ty.name)))
-}
-
-pub(super) fn skip(kind: i32, reader: &mut Reader<'_>) -> Result<()> {
-    let ty = by_id(kind)?;
-    let (size, _) = (ty.from_stream)(reader.unread(), false)
-        .map_err(|why| Error::new(format!("consume effect {}: {why}", ty.name)))?;
+pub(super) fn skip_native(
+    ty: &sunrise_world::component_value::consume_effects::Type,
+    reader: &mut Reader<'_>,
+) -> Result<()> {
+    let (size, _) = (ty.read)(reader.unread(), false).map_err(Error::new)?;
     reader.bytes(size)?;
     Ok(())
 }
 
-/// Read the registered stream form and project it onto the persistent dispatch map.
-pub fn read_saved(kind: i32, reader: &mut Reader<'_>) -> Result<Tag> {
-    let ty = by_id(kind)?;
-    let (size, data) = (ty.from_stream)(reader.unread(), true).map_err(|why| {
-        let error = Error::new(format!("consume effect {}: {why}", ty.name));
-        log::warn!("Cannot project consume effect from stream: {error}");
-        error
-    })?;
-    reader.bytes(size)?;
-    let mut data = data.ok_or_else(|| Error::new("missing saved consume effect fields"))?;
-    data.insert("type".into(), Tag::String(ty.name.as_str().into()));
-    Ok(Tag::Compound(data))
+/// Read one structural value and project it onto the persistent map. A mod whose
+/// save callback fails loses only that effect; its Wire framing is still usable.
+pub fn read_native(
+    name: &std::sync::Arc<str>,
+    ty: &sunrise_world::component_value::consume_effects::Type,
+    reader: &mut Reader<'_>,
+) -> Result<Option<Admitted>> {
+    let (size, saved) = (ty.read)(reader.unread(), true).map_err(Error::new)?;
+    let bytes = reader.bytes(size)?;
+    Ok(saved.map(|saved| Admitted::new(name, saved, bytes.into())))
 }

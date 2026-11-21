@@ -351,7 +351,7 @@ pub fn update_recipes(
             Ingredient::Tag(tag) => HolderSet::Tag(sunrise_client::crafting::qualified(&tag)),
             Ingredient::Items(_) => HolderSet::Items(candidates),
         };
-        let (stack, _) = super::guest::network_stack(
+        let stack = super::guest::network_stack(
             &|name| item(name).unwrap_or(0),
             &|registry, name| sync.id(registry, name),
             &result,
