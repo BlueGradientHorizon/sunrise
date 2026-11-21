@@ -2321,18 +2321,14 @@ impl Recipes {
         overlay: &PackOverlay,
         sources: &ResolvedSources,
     ) -> Result<Self> {
+        sources.check()?;
         let curses = crate::items::load_tags(root, "enchantment", overlay)?
             .remove("minecraft:curse")
             .unwrap_or_default();
-        Self::from_decoded(items, curses, sources)
+        Ok(Self::from_decoded(items, curses, sources))
     }
 
-    fn from_decoded(
-        items: &Items,
-        curses: HashSet<String>,
-        sources: &ResolvedSources,
-    ) -> Result<Self> {
-        sources.check()?;
+    fn from_decoded(items: &Items, curses: HashSet<String>, sources: &ResolvedSources) -> Self {
         let mut crafting = Vec::new();
         let mut cooking = Vec::new();
         let mut by_type: HashMap<String, Vec<crate::crafting::RecipeSnapshot>> = HashMap::new();
@@ -2446,7 +2442,7 @@ impl Recipes {
                 )
             })
             .collect();
-        Ok(Self {
+        Self {
             sources: sources.recipes.clone(),
             mod_crafting: !mod_api::__private::parts_installation::crafting_recipe_kinds()
                 .is_empty(),
@@ -2461,7 +2457,7 @@ impl Recipes {
             curses,
             cook_index: Default::default(),
             property_additions: sources.property_additions.clone(),
-        })
+        }
     }
     /// Match a `size`x`size` grid (row-major) against the crafting recipes.
     pub fn craft(

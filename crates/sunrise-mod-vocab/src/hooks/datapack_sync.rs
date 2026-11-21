@@ -20,7 +20,8 @@ pub trait Hooks {
         side = "server",
         contract = "collect",
         out = "recipe_types",
-        neoforge = "OnDatapackSyncEvent"
+        neoforge = "OnDatapackSyncEvent",
+        version = 2
     )]
     fn datapack_sync(player: PlayerRef, recipe_types: &mut Vec<String>);
 }

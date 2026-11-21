@@ -20,7 +20,8 @@ pub trait Hooks {
         dispatch = "flat",
         side = "client",
         contract = "listen",
-        neoforge = "RecipesReceivedEvent"
+        neoforge = "RecipesReceivedEvent",
+        version = 2
     )]
     fn recipes_received(recipe_types: &[String]);
 }

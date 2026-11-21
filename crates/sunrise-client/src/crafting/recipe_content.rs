@@ -54,6 +54,7 @@ impl Recipes {
             })
             .collect();
         let mut sources = ResolvedSources::decode(received, items, IngredientInput::Network(types));
+        sources.check()?;
         sources.property_additions = self.property_additions.clone();
         sources.recipes.extend(
             self.sources
@@ -66,7 +67,7 @@ impl Recipes {
                 })
                 .cloned(),
         );
-        let recipes = Self::from_decoded(items, self.curses.clone(), &sources)?;
+        let recipes = Self::from_decoded(items, self.curses.clone(), &sources);
         let index = RecipeIndex::from_recipes(&recipes);
         Ok((recipes, index))
     }

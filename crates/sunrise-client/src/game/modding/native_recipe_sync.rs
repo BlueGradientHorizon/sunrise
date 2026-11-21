@@ -43,6 +43,7 @@ impl Game<'_> {
         let Some(g) = host.hub.guest(conn) else {
             return;
         };
+        let sunrise = g.brand == "sunrise";
         let player = mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(epoch, g.entity_id as u32),
             g.uuid,
@@ -50,10 +51,14 @@ impl Game<'_> {
         let requested = self.ask_for(player);
         let types = crate::crafting::mod_kinds::sync_recipe_types(&requested);
         // Use the published generation: a failed reload must not leak candidate files.
-        let sources = self.recipes().recipe_content(&types);
+        let sources = if sunrise {
+            self.recipes().recipe_content(&types)
+        } else {
+            Vec::new()
+        };
         if let Some(host) = self.lan.as_mut() {
             host.hub.update_guest(conn, |g| {
-                g.recipe_sync.replace(g.brand == "sunrise", types, &sources);
+                g.recipe_sync.replace(sunrise, types, &sources);
             });
         }
     }
