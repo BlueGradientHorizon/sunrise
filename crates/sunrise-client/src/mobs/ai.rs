@@ -93,7 +93,8 @@ mod inside_walk_tests {
 
     fn install_walk_hooks() {
         let _ = crate::block_contact::HOOKS.set(crate::block_contact::Hooks {
-            step_on: |_, _| {},
+            step_listens: |_| false,
+            step_on: |_, _, _, _| {},
             any_inside: || ENABLED.load(Ordering::SeqCst),
             inside_listens: |_| ENABLED.load(Ordering::SeqCst),
             pass_listens: |_| false,

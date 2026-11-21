@@ -1837,13 +1837,17 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
 /// reports them.
 pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
     sunrise_client::block_contact::Hooks {
-        step_on: |dimension, c| {
-            Game::native_block_step_on(
-                dimension,
+        step_listens: |state| {
+            crate::game::api_values::block_state::block_listens(mod_api::HookId::StepOn, state)
+        },
+        step_on: |level, c, stepping_carefully, movement| {
+            crate::game::native_surface::FrictionView(level).native_step_on(
                 c.entity,
                 c.kind,
                 c.state,
-                [c.position.x, c.position.y, c.position.z],
+                c.position,
+                stepping_carefully,
+                movement,
             );
         },
         any_inside: || mod_api::__private::has_scoped_hook(mod_api::HookId::EntityInside),

@@ -4120,18 +4120,6 @@ impl Game<'_> {
     ) {
         self.fire_projectile_impact(call);
     }
-
-    /// `Block.stepOn` for a mod block, on its authoritative server level.
-    /// No self: the simulation owns the entity during this callback.
-    pub(in crate::game) fn native_block_step_on(
-        dimension: &str,
-        entity: i32,
-        kind: &str,
-        state: BlockStateId,
-        position: [i32; 3],
-    ) {
-        Self::fire_block_step_on(dimension, entity, kind, state, position);
-    }
 }
 
 impl HitLevel<'_> {

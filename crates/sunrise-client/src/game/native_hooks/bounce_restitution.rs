@@ -15,6 +15,19 @@ impl FrictionView<'_> {
     ) {
         self.fire_bounce_restitution(entity, kind, state, pos, factor);
     }
+
+    /// `Block.stepOn` before the simulation checks the blocks it traversed.
+    pub(in crate::game) fn native_step_on(
+        &self,
+        entity: i32,
+        kind: &str,
+        state: BlockStateId,
+        pos: BlockPos,
+        stepping_carefully: bool,
+        movement: &mut [f64; 3],
+    ) {
+        self.fire_step_on(entity, kind, state, pos, stepping_carefully, movement);
+    }
 }
 
 /// The restitution the simulation's own code (client-lib) asks of a block an entity lands on.
