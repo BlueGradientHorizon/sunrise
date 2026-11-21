@@ -116,7 +116,8 @@ impl<'a> EntityServerScope<'a> {
         self.0.host()
     }
 
-    /// Run an atomic transaction spanning the entity and other world storage.
+    /// Commit the view's velocity, rotation and fall-distance writes together with other
+    /// journaled Host writes on `Ok`. Returning `Err` restores those writes.
     pub fn transaction<T, E>(
         &mut self,
         f: impl FnOnce(&mut Self, &Transaction) -> Result<T, E>,
@@ -340,13 +341,20 @@ impl<'a> ItemEntitySubjectView<'a> {
 /// ```
 // exhaustive: the engine constructs this scope around a single dispatch.
 // no wire: the sequential loans cannot escape their call.
-pub struct ItemEntityServerScope<'a>(&'a mut dyn ItemEntityServerAccess);
+pub struct ItemEntityServerScope<'a> {
+    access: &'a mut dyn ItemEntityServerAccess,
+    item_id: &'a str,
+}
 
 impl<'a> ItemEntityServerScope<'a> {
-    // hidden: the engine supplies the loan backend for this item-entity update.
+    // hidden: the engine supplies the loan backend and the item ID at dispatch entry.
     #[doc(hidden)]
-    pub fn new(access: &'a mut dyn ItemEntityServerAccess) -> Self {
-        Self(access)
+    pub fn new(access: &'a mut dyn ItemEntityServerAccess, item_id: &'a str) -> Self {
+        Self { access, item_id }
+    }
+
+    pub(crate) fn route_item(&self) -> &str {
+        self.item_id
     }
 
     /// Lend the live dropped-item entity for `f`. Once `f` returns, you can use the Host
@@ -355,7 +363,7 @@ impl<'a> ItemEntityServerScope<'a> {
     pub fn with_view<R>(&mut self, f: impl FnOnce(ItemEntitySubjectView<'_>) -> R) -> Option<R> {
         let mut f = Some(f);
         let mut result = None;
-        self.0.with_view(&mut |view| {
+        self.access.with_view(&mut |view| {
             if let Some(f) = f.take() {
                 result = Some(f(view));
             }
@@ -366,18 +374,19 @@ impl<'a> ItemEntityServerScope<'a> {
     /// Borrow the server Host for attachments, removal or other world operations.
     /// No view is live while this borrow is held; reborrow the view afterwards to re-check it.
     pub fn host(&mut self) -> &mut dyn ServerHost {
-        self.0.host()
+        self.access.host()
     }
 
-    /// Run an atomic transaction spanning the dropped item and other world storage.
+    /// Commit the view's stack, pickup-delay, target and velocity writes together with other
+    /// journaled Host writes on `Ok`. Returning `Err` restores those writes.
     pub fn transaction<T, E>(
         &mut self,
         f: impl FnOnce(&mut Self, &Transaction) -> Result<T, E>,
     ) -> Result<T, E> {
         crate::item::transaction::run_transaction_on(
             self,
-            |scope| scope.0.host().transaction_open(),
-            |scope, seal, commit| scope.0.host().transaction_close(seal, commit),
+            |scope| scope.access.host().transaction_open(),
+            |scope, seal, commit| scope.access.host().transaction_close(seal, commit),
             f,
         )
     }

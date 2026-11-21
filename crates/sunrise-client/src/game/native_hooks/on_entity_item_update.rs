@@ -1,8 +1,6 @@
-#[cfg(test)]
-thread_local! { static STACK_CONVERSIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
-
 use super::*;
 use crate::game::native_ticks;
+use sunrise_core::geometry::Vec3;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
@@ -49,8 +47,8 @@ impl Game<'_> {
         round
     }
 
-    /// `IItemExtension.onEntityItemUpdate`: a dropped item entity holding
-    /// `stack` is about to tick (`ItemEntity.tick`). Set `canceled` and its
+    /// `IItemExtension.onEntityItemUpdate`: a dropped item entity is about to
+    /// tick (`ItemEntity.tick`). Set `canceled` and its
     /// movement and merging are skipped for this tick. Server-side.
     pub(in crate::game) fn native_on_entity_item_update(
         call: mod_api::__private::OnEntityItemUpdateCall<'_>,
@@ -67,23 +65,23 @@ impl Game<'_> {
         {
             return false;
         }
-        let id = item.id;
-        #[cfg(test)]
-        STACK_CONVERSIONS.with(|count| count.set(count.get() + 1));
-        let Ok(stack) = item.stack.try_into_api() else {
+        let Some(epoch) = self.native_lifecycle.epoch() else {
             return false;
         };
-        let Some(handle) = self.entity(id).and_then(|entity| self.item_entity(entity)) else {
+        let subject = mod_api::ItemEntityRef::new(mod_api::EntityRef::new(epoch, item.id));
+        let Some(index) = self.native_item_entity_index(subject, Some(index)) else {
             return false;
         };
+        // Hold the entry's routing identity across callbacks, even if a part changes the stack.
+        let item_id = self.dropped[index].stack.item.clone();
         let mut canceled = false;
         let mut access = ItemEntityTickAccess {
             game: self,
-            subject: handle,
+            subject,
+            index,
         };
         Self::native_on_entity_item_update(mod_api::__private::OnEntityItemUpdateCall {
-            stack: &stack,
-            subject: mod_api::ItemEntityServerScope::new(&mut access),
+            subject: mod_api::ItemEntityServerScope::new(&mut access, &item_id),
             canceled: &mut canceled,
         });
         canceled
@@ -139,25 +137,28 @@ impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
         if stack.count == 0 || &*stack.item == "minecraft:air" {
             return Ok(false);
         }
-        Ok(self
-            .game
-            .journal_set_item_entity(self.subject.entity().id(), stack))
+        Ok(self.game.journal_set_item_entity_at(self.index, stack))
     }
     fn set_pickup_delay(&mut self, ticks: i32) -> bool {
-        self.game.dropped[self.index].pickup_delay = i64::from(ticks);
+        self.game.journal_set_item_pickup_delay(self.index, ticks);
         true
     }
     fn set_target(&mut self, target: Option<u128>) -> bool {
-        self.game.dropped[self.index].target =
-            target.map(sunrise_client::lan::playerdata::uuid_ints);
+        self.game.journal_set_item_target(
+            self.index,
+            target.map(sunrise_client::lan::playerdata::uuid_ints),
+        );
         true
     }
     fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
         if !velocity.iter().all(|v| v.is_finite()) {
             return false;
         }
-        self.game.dropped[self.index].velocity =
-            sunrise_core::geometry::Vec3::new(velocity[0], velocity[1], velocity[2]);
+        let (item, kept) = self.game.journal_item_fields(self.index);
+        if let Some(kept) = kept {
+            kept.velocity.get_or_insert(item.velocity);
+        }
+        item.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
         true
     }
 }
@@ -165,21 +166,18 @@ impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
 struct ItemEntityTickAccess<'g, 'w> {
     game: &'g mut Game<'w>,
     subject: mod_api::ItemEntityRef,
+    index: usize,
 }
 
 impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
     fn with_view(&mut self, call: &mut dyn FnMut(mod_api::ItemEntitySubjectView<'_>)) {
-        if !self.game.is_logical_server() {
-            return;
-        }
-        let Some(crate::game::commands::Target::Item(id)) =
-            self.game.native_entity_target(self.subject.entity())
+        let Some(index) = self
+            .game
+            .native_item_entity_index(self.subject, Some(self.index))
         else {
             return;
         };
-        let Some(index) = self.game.dropped.iter().position(|item| item.id == id) else {
-            return;
-        };
+        self.index = index;
         let mut data = ResidentDroppedItem {
             game: self.game,
             subject: self.subject,
@@ -196,6 +194,10 @@ impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
 #[cfg(test)]
 mod on_entity_item_update_tests {
     use super::*;
+    use crate::game::{
+        api_values::{STACK_PROJECTIONS, test_snapshot},
+        native_entity_refs::tests::with_game,
+    };
     use mod_api::{Flow, Hooks, ItemPart, OnEntityItemUpdateEvent, Registrar, RegistrationContext};
     use std::sync::{Arc, Mutex};
     use sunrise_client::chunk::Chunk;
@@ -350,7 +352,6 @@ mod on_entity_item_update_tests {
     }
 
     fn a_canceling_part_holds_its_own_item_and_nothing_else_isolated(named: bool) {
-        use crate::game::native_entity_refs::tests::with_game;
         let iron = Update {
             item: "minecraft:iron_ingot",
             cancels: true,
@@ -406,9 +407,13 @@ mod on_entity_item_update_tests {
                 let gold_id = rest(game, "minecraft:gold_ingot", 6.5, 10.5);
 
                 ORDER.with(|order| order.borrow_mut().clear());
-                STACK_CONVERSIONS.with(|count| count.set(0));
+                STACK_PROJECTIONS.set(0);
                 game.tick_items();
-                assert_eq!(STACK_CONVERSIONS.with(|count| count.get()), 3);
+                assert_eq!(
+                    STACK_PROJECTIONS.get(),
+                    0,
+                    "routing does not project stacks"
+                );
                 for id in irons.into_iter().chain([gold_id]) {
                     assert_eq!(
                         ORDER.with(|order| order
@@ -481,19 +486,146 @@ mod on_entity_item_update_tests {
         });
     }
 
+    #[test]
+    #[ignore = "daily"]
+    fn dropped_subject_and_host_writes_commit_or_abort_together() {
+        crate::game::in_own_process(
+            "game::native_hooks::on_entity_item_update::on_entity_item_update_tests::dropped_subject_and_host_writes_commit_or_abort_together",
+            || {
+                with_game(|game| {
+                    floor(game);
+                    let _world =
+                        mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+                    let item = rest(game, "minecraft:iron_ingot", 2.5, 2.5);
+                    let peer = rest(game, "minecraft:stick", 6.5, 2.5);
+                    let subject = game.item_entity(game.entity(item).unwrap()).unwrap();
+                    let peer = game.item_entity(game.entity(peer).unwrap()).unwrap();
+                    let earlier = test_snapshot(&ItemStack::new("minecraft:iron_ingot", 2));
+                    let later = test_snapshot(&ItemStack::new("minecraft:iron_ingot", 3));
+                    let peer_stack = test_snapshot(&ItemStack::new("minecraft:stick", 4));
+                    for commit in [false, true] {
+                        let mut access = ItemEntityTickAccess {
+                            game: &mut *game,
+                            subject,
+                            index: 0,
+                        };
+                        let mut scope = mod_api::ItemEntityServerScope::new(
+                            &mut access,
+                            "minecraft:iron_ingot",
+                        );
+                        let result = scope.transaction(|scope, _| {
+                            assert_eq!(
+                                scope.with_view(|mut view| view.set_stack(earlier.clone())),
+                                Some(Ok(true))
+                            );
+                            scope.transaction(|scope, _| {
+                                scope
+                                    .with_view(|mut view| {
+                                        assert_eq!(view.set_stack(later.clone()), Ok(true));
+                                        assert!(view.set_pickup_delay(7));
+                                        assert!(view.set_target(Some(8)));
+                                        assert!(view.set_velocity([9.0; 3]));
+                                        STACK_PROJECTIONS.set(0);
+                                        assert_eq!(view.with_stack(|stack| stack.count()), Some(3));
+                                        assert_eq!(STACK_PROJECTIONS.get(), 0);
+                                        assert_eq!(
+                                            view.with_stack(|stack| stack.project()).flatten(),
+                                            Some(later.clone())
+                                        );
+                                        assert_eq!(STACK_PROJECTIONS.get(), 1);
+                                    })
+                                    .unwrap();
+                                assert_eq!(
+                                    peer.set_stack(scope.host(), peer_stack.clone()),
+                                    Ok(true)
+                                );
+                                Ok::<_, ()>(())
+                            })?;
+                            commit.then_some(()).ok_or(())
+                        });
+                        assert_eq!(result, commit.then_some(()).ok_or(()));
+                        let item = &game.dropped[0];
+                        assert_eq!(
+                            (
+                                item.stack.count,
+                                item.pickup_delay,
+                                item.target,
+                                item.velocity.components(),
+                                game.dropped[1].stack.count
+                            ),
+                            if commit {
+                                (3, 7, Some([0, 0, 0, 8]), [9.0; 3], 4)
+                            } else {
+                                (1, 20, None, [0.0; 3], 1)
+                            }
+                        );
+                    }
+                })
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn dropped_scope_reborrows_its_item_after_slots_shift() {
+        crate::game::in_own_process(
+            "game::native_hooks::on_entity_item_update::on_entity_item_update_tests::dropped_scope_reborrows_its_item_after_slots_shift",
+            || {
+                with_game(|game| {
+                    floor(game);
+                    let _world =
+                        mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+                    let ahead = rest(game, "minecraft:stick", 1.5, 2.5);
+                    let subject = rest(game, "minecraft:iron_ingot", 2.5, 2.5);
+                    let behind = rest(game, "minecraft:gold_ingot", 3.5, 2.5);
+                    let ahead = game.entity(ahead).unwrap();
+                    let subject = game.item_entity(game.entity(subject).unwrap()).unwrap();
+                    let mut access = ItemEntityTickAccess {
+                        game,
+                        subject,
+                        index: 1,
+                    };
+                    let mut scope =
+                        mod_api::ItemEntityServerScope::new(&mut access, "minecraft:iron_ingot");
+                    assert_eq!(scope.with_view(|view| view.handle()), Some(subject));
+
+                    // Sweep the preceding row discarded through the Host, shifting both live items.
+                    assert!(ahead.discard(scope.host()));
+                    access.game.native_removals_flush();
+                    let mut scope =
+                        mod_api::ItemEntityServerScope::new(&mut access, "minecraft:iron_ingot");
+                    assert_eq!(
+                        scope.with_view(|mut view| (view.handle(), view.set_pickup_delay(7))),
+                        Some((subject, true))
+                    );
+                    assert!(subject.entity().discard(scope.host()));
+                    assert!(scope.with_view(|_| ()).is_none());
+                    assert_eq!(access.game.dropped[0].pickup_delay, 7);
+                    assert_eq!(
+                        (
+                            access.game.dropped[1].id,
+                            access.game.dropped[1].pickup_delay
+                        ),
+                        (behind, 20)
+                    );
+                })
+            },
+        );
+    }
+
     /// With no part attached to any item, every item ticks and merges as it did before the hook.
     #[test]
     #[ignore = "daily"]
     fn without_parts_items_tick_and_merge() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        with_game(|game| {
             floor(game);
             let ids = [
                 rest(game, "minecraft:iron_ingot", 2.5, 2.5),
                 rest(game, "minecraft:iron_ingot", 2.7, 2.5),
             ];
-            STACK_CONVERSIONS.with(|count| count.set(0));
+            STACK_PROJECTIONS.set(0);
             game.tick_items();
-            assert_eq!(STACK_CONVERSIONS.with(|count| count.get()), 0);
+            assert_eq!(STACK_PROJECTIONS.get(), 0);
             assert!(
                 game.dropped
                     .iter()
