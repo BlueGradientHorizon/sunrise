@@ -1,0 +1,20 @@
+ids = [
+    "hook:living_knockback",
+    "hook:living_knockback.attacker_main",
+    "hook:living_knockback.attacker_off",
+    "hook:living_knockback.kill_credit_main",
+    "hook:living_knockback.entry",
+    "type:LivingKnockbackEvent.attacker_main",
+    "type:LivingKnockbackEvent.attacker_off",
+    "type:LivingKnockbackEvent.kill_credit_main",
+    "type:LivingKnockbackEvent.entry",
+    "type:KnockbackEntry",
+]
+why = "Match vanilla LivingEntity.knockback overloads (where the short overload delegates directly to the full overload) and NeoForge CommonHooks.onLivingKnockBack / LivingKnockBackEvent: living_knockback (bumped from version 2 to 3) removes the Java mixin overload-emulation discriminator `entry` (`KnockbackEntry::Short`/`Full`) so every knockback operation exposes one clean event, and lends `attacker_main`, `attacker_off`, and `kill_credit_main` lazily as `Option<ItemStackView<'_>>` so unrelated component projection failures or empty/unknown items never skip the event."
+migrate = '''
+### `living_knockback` (version 3)
+- Remove imports and matches on `KnockbackEntry` (`KnockbackEntry::Short`, `KnockbackEntry::Full`) and reads of `event.entry`. Apply each knockback strength, direction, or cancellation edit once per `LivingKnockbackEvent`, matching NeoForge's `LivingKnockBackEvent`.
+- `event.attacker_main`, `event.attacker_off`, and `event.kill_credit_main` are now `Option<ItemStackView<'_>>` instead of `Option<&ItemStack>`. Borrow each view with `.as_ref()` to read scalar metadata (`view.item()`, `view.count()`, `view.damage()`, `view.damage_component()`) without projecting components, and call `view.project()` only when components or an owned `ItemStack` are needed (handling `None` if component projection fails).
+- Empty or unrepresentable stacks omit only that field (`None`) instead of skipping `living_knockback` dispatch.
+- Rebuild against the updated SDK so your package's `uses` list records `living_knockback` version `3`.
+'''

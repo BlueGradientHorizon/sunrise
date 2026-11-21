@@ -26,11 +26,10 @@ keeps vanilla hunger and creative-mode behavior.
 
 ## Gaps
 
-The `living_knockback` hook fires once per full-entry call. Its read-only `entry` value is
-`Short` for a delegated short-entry push and `Full` for a direct full-entry push (#3107).
-A listener may apply its strength rewrite twice for `Short` and once for `Full`. This is not
-an extra event: two non-commuting listeners run in dispatch order, each completing its
-rewrites before the next listener, rather than two separate passes over all listeners.
+The `living_knockback` hook fires once per knockback operation, matching vanilla
+`LivingEntity.knockback` (short overload delegating directly to the full overload) and NeoForge's
+`CommonHooks.onLivingKnockBack` / `LivingKnockBackEvent`, without exposing a Java overload
+discriminator.
 #2767 tracks cross-target API admission. For hearing refused
 damage attempts without changing the amount, use the existing
 [invulnerability observation](../../modding/src/how-to/entities/refused-damage-attempts.md), with its explicit vanilla exclusions (#2752).

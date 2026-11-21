@@ -19,11 +19,12 @@ type Held = (i32, Option<String>, Option<String>);
 pub(in crate::game) struct Heard {
     knocks: Vec<Held>,
     pub(in crate::game) credits: Vec<(i32, Option<String>)>,
-    /// The entry of `LivingEntity.knockback` each push came through, as the hook named it.
-    entries: Vec<mod_api::KnockbackEntry>,
+    /// Optional projection results `(attacker_main, attacker_off, kill_credit_main)` when
+    /// `record_projections` is enabled.
+    projections: Vec<(Option<bool>, Option<bool>, Option<bool>)>,
     incoming_causing: Vec<i32>,
     cancel: bool,
-    repeat_short: bool,
+    record_projections: bool,
     pub(in crate::game) reduce_sword_credit: bool,
 }
 
@@ -37,26 +38,32 @@ impl Hooks for Probe {
         event: &mut LivingKnockbackEvent<'_>,
     ) -> mod_api::Flow {
         let mut heard = self.0.lock().unwrap();
-        let id = |s: Option<&mod_api::ItemStack>| {
+        let id = |s: Option<&mod_api::ItemStackView<'_>>| {
             s.and_then(|s| mod_api::__private::item_key_id(s.item()).map(str::to_owned))
         };
         heard.knocks.push((
             event.attacker,
-            id(event.attacker_main),
-            id(event.attacker_off),
+            id(event.attacker_main.as_ref()),
+            id(event.attacker_off.as_ref()),
         ));
         heard
             .credits
-            .push((event.kill_credit, id(event.kill_credit_main)));
-        heard.entries.push(event.entry);
+            .push((event.kill_credit, id(event.kill_credit_main.as_ref())));
+        if heard.record_projections {
+            heard.projections.push((
+                event.attacker_main.as_ref().map(|s| s.project().is_some()),
+                event.attacker_off.as_ref().map(|s| s.project().is_some()),
+                event
+                    .kill_credit_main
+                    .as_ref()
+                    .map(|s| s.project().is_some()),
+            ));
+        }
         if heard.reduce_sword_credit {
-            if id(event.kill_credit_main).as_deref() == Some("minecraft:iron_sword") {
+            if id(event.kill_credit_main.as_ref()).as_deref() == Some("minecraft:iron_sword") {
                 event.strength *= 0.5;
             }
         } else {
-            event.strength *= 2.0;
-        }
-        if heard.repeat_short && event.entry == mod_api::KnockbackEntry::Short {
             event.strength *= 2.0;
         }
         event.x = -event.x;
@@ -499,16 +506,13 @@ fn a_mobs_fireball_on_the_player_names_the_shooter_and_its_bow() {
     );
 }
 
-/// The hook fires once per call of the full entry and names the entry the push came through:
-/// `Short` for `knockback(power, x, z)` (which delegates to the full entry), `Full` for a direct
-/// call of the full entry. A listener that wants a mixin's double change on the short entry
-/// applies its change twice on `Short`.
+/// Both `knockback` and `knockback_full` fire one `living_knockback` event per push with the
+/// same strength and cancel semantics, matching vanilla's delegating overload and NeoForge's
+/// `CommonHooks.onLivingKnockBack`.
 #[test]
 #[ignore = "daily"]
-fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
-    use mod_api::KnockbackEntry::{Full, Short};
+fn short_and_full_knockback_entries_fire_one_event_with_same_semantics() {
     let heard = heard(|game, log| {
-        log.lock().unwrap().repeat_short = true;
         let hit = Damage::of(DamageKind::Generic);
         zombie_at(game, 42, Vec3::ZERO);
         let mut mob = game.mobs.pop().unwrap();
@@ -517,24 +521,24 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
         with_detached_credit(game, 42, |level| {
             mob.knockback(level, 0.4, 1.0, 0.0, &hit, 0.0)
         });
-        assert_eq!(mob.velocity, Vec3::new(1.6, 0.0, 0.0));
+        assert_eq!(mob.velocity, Vec3::new(0.8, 0.0, 0.0));
+        assert_eq!(log.lock().unwrap().knocks.len(), 1, "mob, short entry");
+
         mob.velocity = Vec3::ZERO;
-        assert_eq!(log.lock().unwrap().entries, [Short], "mob, short entry");
         with_detached_credit(game, 42, |level| {
             mob.knockback_full(level, 0.4, 1.0, 0.0, &hit, 0.0, false)
         });
-        assert_eq!(
-            log.lock().unwrap().entries,
-            [Short, Full],
-            "mob, full entry"
-        );
         assert_eq!(mob.velocity, Vec3::new(0.8, 0.0, 0.0));
+        assert_eq!(log.lock().unwrap().knocks.len(), 2, "mob, full entry");
+
+        mob.velocity = Vec3::ZERO;
         with_detached_credit(game, 42, |level| {
             mob.knockback_full(level, 0.4, 1.0, 0.0, &hit, 0.0, true)
         });
+        assert_eq!(mob.velocity, Vec3::new(0.8, 0.0, 0.0));
         assert_eq!(
-            log.lock().unwrap().entries,
-            [Short, Full, Full],
+            log.lock().unwrap().knocks.len(),
+            3,
             "mob, full entry for an effect push"
         );
 
@@ -544,7 +548,7 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
         game.knock_back_player(0.4, 1.0, 0.0, source(0), attack, 0.0);
         assert_eq!(
             game.player.as_ref().unwrap().velocity,
-            Vec3::new(1.6, 0.0, 0.0)
+            Vec3::new(0.8, 0.0, 0.0)
         );
         game.player.as_mut().unwrap().velocity = Vec3::ZERO;
         game.knock_back_player_full(0.4, 1.0, 0.0, source(0), attack, 0.0, false);
@@ -552,19 +556,112 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
             game.player.as_ref().unwrap().velocity,
             Vec3::new(0.8, 0.0, 0.0)
         );
-        let entries = log.lock().unwrap().entries.clone();
         assert_eq!(
-            &entries[3..],
-            [Short, Full],
+            log.lock().unwrap().knocks.len(),
+            5,
             "player, short then full entry"
         );
-        // The short entry leaves nothing behind: a full call after it is `Full` again.
+
+        log.lock().unwrap().cancel = true;
+        mob.velocity = Vec3::ZERO;
         with_detached_credit(game, 42, |level| {
-            mob.knockback_full(level, 0.4, 1.0, 0.0, &hit, 0.0, false)
+            mob.knockback(level, 0.4, 1.0, 0.0, &hit, 0.0)
         });
-        assert_eq!(log.lock().unwrap().entries.last(), Some(&Full));
+        assert_eq!(mob.velocity, Vec3::ZERO, "canceled short entry");
+        game.player.as_mut().unwrap().velocity = Vec3::ZERO;
+        game.knock_back_player(0.4, 1.0, 0.0, source(0), attack, 0.0);
+        assert_eq!(
+            game.player.as_ref().unwrap().velocity,
+            Vec3::ZERO,
+            "canceled player short entry"
+        );
     });
-    assert_eq!(heard.entries.len(), 6, "one event per full-entry call");
+    assert_eq!(heard.knocks.len(), 7, "one event per knockback operation");
+}
+
+/// Unprojectable component patches, unknown item IDs, or empty stacks on `attacker_main`,
+/// `attacker_off`, or `kill_credit_main` never skip `living_knockback`: valid metadata is lent
+/// lazily as `ItemStackView`, only unrepresentable/empty stacks become `None`, and listener
+/// strength edits and cancellation still take effect.
+#[test]
+#[ignore = "daily"]
+fn knockback_fires_and_lends_views_when_stacks_have_unprojectable_components_or_unknown_items() {
+    let heard = heard(|game, log| {
+        log.lock().unwrap().record_projections = true;
+        player_with_sword(game);
+        super::native_entity_refs::tests::bind_local_player(game, 7, 777);
+        zombie_at(game, 42, Vec3::ZERO);
+        game.mobs[0].ai.last_hurt_by_player = 100;
+        game.remember_mob_player_credit(42);
+
+        let by_player = Damage {
+            attacker: Some(Who::Player),
+            ..Damage::of(DamageKind::Generic)
+        };
+        let push = |game: &mut super::Game<'_>| {
+            let attack = game.attack_of(7);
+            let plan = game.prepare_knockback_credit(42, None, &attack);
+            let mut credit = plan.lend(&mut game.last_hurt_by_player);
+            let mob = &mut game.mobs[0];
+            mob.velocity = Vec3::ZERO;
+            mob.on_ground = false;
+            mob.knockback(
+                damage_level_of!(game, &attack, &mut credit, None),
+                0.4,
+                1.0,
+                0.0,
+                &by_player,
+                0.0,
+            );
+            mob.velocity
+        };
+
+        let mut broken_sword = ItemStack::new("minecraft:iron_sword", 1);
+        broken_sword
+            .data_mut()
+            .set_other("minecraft:damage", Some(sunrise_core::nbt::Tag::Int(-1)));
+        assert!(super::api_values::TryIntoApi::try_into_api(&broken_sword).is_err());
+        game.inventory[game.selected] = Some(broken_sword);
+        game.offhand = Some(ItemStack::new("minecraft:shield", 1));
+        assert_eq!(push(game), Vec3::new(0.8, 0.0, 0.0));
+
+        log.lock().unwrap().cancel = true;
+        assert_eq!(push(game), Vec3::ZERO);
+        log.lock().unwrap().cancel = false;
+
+        game.inventory[game.selected] = Some(ItemStack::new("unknown:missing_blade", 1));
+        game.offhand = Some(ItemStack::new("minecraft:shield", 1));
+        assert_eq!(push(game), Vec3::new(0.8, 0.0, 0.0));
+
+        game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 0));
+        game.offhand = Some(ItemStack::new("minecraft:air", 1));
+        assert_eq!(push(game), Vec3::new(0.8, 0.0, 0.0));
+    });
+
+    let sword = Some("minecraft:iron_sword".to_string());
+    let shield = Some("minecraft:shield".to_string());
+    assert_eq!(
+        heard.knocks,
+        [
+            (7, sword.clone(), shield.clone()),
+            (7, sword.clone(), shield.clone()),
+            (7, None, shield),
+            (7, None, None),
+        ]
+    );
+    assert_eq!(
+        heard.credits,
+        [(7, sword.clone()), (7, sword), (7, None), (7, None),]
+    );
+    assert_eq!(
+        heard.projections,
+        [
+            (Some(false), Some(true), Some(false)),
+            (Some(false), Some(true), Some(false)),
+            (None, Some(true), None),
+            (None, None, None),
+        ]
+    );
 }
 
 fn with_detached_credit(

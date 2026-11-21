@@ -4093,8 +4093,10 @@ impl HitLevel<'_> {
     /// attacker's side), and the entity is pushed the other way. `source` is the push's
     /// `DamageSource`, named as `native_living_incoming_damage` names a hit's. `attacker` is the
     /// attacking entity's network id, falling back to the victim's last hurt-by mob, or 0 when
-    /// unknown; `attacker_main` and `attacker_off` are what it holds (a player's selected and
-    /// off-hand stacks, a mob's main hand), none when unknown. Change `strength`, `x` or `z`, or
+    /// unknown; `attacker_main`, `attacker_off` and `kill_credit_main` lazily borrow the
+    /// credited stacks as `ItemStackView` (a player's selected and off-hand stacks, a mob's main
+    /// hand; none when unknown, empty or unrepresentable, never skipping the event on component
+    /// projection failure). Change `strength`, `x` or `z`, or
     /// set `canceled`, and the push follows them: canceled, the entity's motion is left alone. A
     /// `strength` of 0 or less after the hook is no push, and a direction too short to tell
     /// draws a random one after it, as in vanilla. A value a mod leaves that is not a finite

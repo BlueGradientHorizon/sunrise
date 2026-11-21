@@ -1,0 +1,2 @@
+sunrise-client game::native_knockback_tests::knockback_fires_and_lends_views_when_stacks_have_unprojectable_components_or_unknown_items lib daily resources
+sunrise-client game::native_knockback_tests::short_and_full_knockback_entries_fire_one_event_with_same_semantics lib daily resources

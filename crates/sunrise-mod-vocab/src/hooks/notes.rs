@@ -2241,10 +2241,12 @@ registration path.
   type (`minecraft:player` for a player), the push's `source` (`HurtSource`, named as `native_living_incoming_damage`
   names a hit's, with the same entity ids left at 0; a goat's ram pushes with `minecraft:mob_attack` and hurts with
   `minecraft:mob_attack_no_aggro`, as in vanilla), the `attacker` (the attacking entity's network id, falling back to a
-  known last hurt-by mob, or 0 when unknown) and what it holds (`attacker_main` and `attacker_off`: a player's selected
-  and off-hand stacks, a mob's main hand; none when unknown, recorded only while a native mod is loaded), the `entry`
-  (`Short` via `knockback(power, x, z)`, else `Full`), the `strength`, the direction (`x`, `z`; vanilla points it at the
-  source of a hit, the attacker's side, and the entity is pushed the other way) and a `canceled` flag. A mod may change
+  known last hurt-by mob, or 0 when unknown) and what it holds (`attacker_main` and `attacker_off`: lazily borrowed
+  `ItemStackView`s of a player's selected and off-hand stacks or a mob's main hand; none when unknown, empty or
+  unrepresentable, recorded only while a native mod is loaded), the pushed entity's `kill_credit` and lazily borrowed
+  `kill_credit_main` (`ItemStackView`; unrelated component projection failures never skip the event), the `strength`,
+  the direction (`x`, `z`; vanilla points it at the source of a hit, the attacker's side, and the entity is pushed the
+  other way) and a `canceled` flag. A mod may change
   the three numbers or set `canceled`, and the push follows: canceled, the entity's motion is left alone. A `strength`
   of 0 or less after the hook is no push, and a direction too short to tell draws a random one after it, as in vanilla;
   the resistance scales the strength the hook leaves, so a full knockback resistance still stops the push. A value a mod
