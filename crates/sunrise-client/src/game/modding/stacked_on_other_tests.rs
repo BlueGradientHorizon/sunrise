@@ -411,20 +411,6 @@ fn a_lan_hub_click_is_decided_the_same_way() {
             assert_eq!(ASKS.get(), 2);
             assert_eq!(SEEN.with(|s| s.borrow().clone()), [(3, 0)]);
             assert!(game.lan.is_some());
-            // Rows 73 and 84: a write and then a panic: undone, the click does nothing, the
-            // guest's swap and the host are restored, and the next click works.
-            let window = open(game);
-            script(Script {
-                write_dirt: Some(20),
-                panic: true,
-                ..Script::default()
-            });
-            assert_eq!(click(game, window), (0, 3, 0));
-            assert!(game.lan.is_some());
-            assert!(game.lan_guest_swaps.is_empty());
-            let window = open(game);
-            script(Script::default());
-            assert_eq!(click(game, window), (3, 0, 0));
 
             // The listener proposes dirt, not the stone a plain click would place. Both a
             // permission refusal and an undersized limit keep the cursor and the container.
@@ -444,10 +430,28 @@ fn a_lan_hub_click_is_decided_the_same_way() {
                     click(game, window),
                     (count, if count == 0 { 3 } else { 0 }, 0)
                 );
+                assert_eq!(dispatches(), 1);
                 // A placement refusal short-circuits before the capacity query.
                 assert_eq!(ASKS.get(), if may_place { 2 } else { 1 });
                 assert_eq!(game.score.board.objective("pickup").is_some(), count != 0);
             }
+
+            // Rows 73 and 84: a write and then a panic are undone, and the guest swap and
+            // host are restored. Run this last: the failing callback is now disabled.
+            let window = open(game);
+            script(Script {
+                write_dirt: Some(20),
+                panic: true,
+                ..Script::default()
+            });
+            assert_eq!(click(game, window), (0, 3, 0));
+            assert_eq!(dispatches(), 1);
+            assert!(game.lan.is_some());
+            assert!(game.lan_guest_swaps.is_empty());
+            let window = open(game);
+            script(Script::default());
+            assert_eq!(click(game, window), (3, 0, 0));
+            assert_eq!(dispatches(), 0);
         });
     });
 }
