@@ -773,18 +773,26 @@ impl Game<'_> {
         level: LevelRef,
         pos: [i32; 3],
         state: BlockStateId,
-    ) -> Option<u8> {
-        self.native_level_read_world(level)?;
+    ) -> Result<u8, mod_api::LevelReadError> {
+        use mod_api::LevelReadError;
+        if self.native_level_read_world(level).is_none() {
+            return Err(if self.level_handle_current(level) {
+                LevelReadError::Unavailable
+            } else {
+                LevelReadError::Stale
+            });
+        }
         let light = &self.pack.context.light;
         if light.is_dynamic(state.0)
-            && let Some(answer) =
-                self.query_dynamic_light_emission(Some(level), block_pos(pos), state, || {
+            && let Some(answer) = self
+                .query_dynamic_light_emission(Some(level), block_pos(pos), state, || {
                     Self::light_emission_dimension(level)
-                })?
+                })
+                .ok_or(LevelReadError::Unavailable)?
         {
-            return Some(answer);
+            return Ok(answer);
         }
-        Some(light.emission(state.0))
+        Ok(light.emission(state.0))
     }
 
     /// The stored light of one layer at `pos` (`BlockAndLightGetter.getBrightness`), 0 to 15,

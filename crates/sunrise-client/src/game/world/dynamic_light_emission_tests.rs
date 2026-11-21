@@ -78,11 +78,14 @@ impl BlockPart for Proxy {
         let level = host.level(event.dimension.key().id()).unwrap();
         let pos = [event.pos.x, event.pos.y, event.pos.z];
         if event.pos.y == 66 {
-            assert_eq!(level.get_light_emission(host, pos, event.state), None);
+            assert_eq!(
+                level.get_light_emission(host, pos, event.state),
+                Err(LevelReadError::Unavailable)
+            );
             None
         } else {
             let lamp = host.block_state_id(LAMP).unwrap();
-            level.get_light_emission(host, pos, lamp)
+            level.get_light_emission(host, pos, lamp).ok()
         }
     }
 }
@@ -208,22 +211,36 @@ fn light_query_uses_the_supplied_state_and_its_declared_default() {
             let dynamic = host.block_state_id(LAMP).unwrap();
             let without_part = host.block_state_id(SILENT).unwrap();
             let air = host.block_state_id("minecraft:air").unwrap();
-            assert_eq!(level.get_light_emission(host, [1, 65, 2], dynamic), Some(4));
+            assert_eq!(level.get_light_emission(host, [1, 65, 2], dynamic), Ok(4));
             assert_eq!(depth.take(), [[1, 65, 2]]);
             let unloaded = [200, 65, 200];
             assert_eq!(
                 level.get_light_emission(host, unloaded, static_state),
-                Some(4)
+                Ok(4)
             );
             assert_eq!(
                 level.get_light_emission(host, unloaded, without_part),
-                Some(4)
+                Ok(4)
             );
-            assert_eq!(level.get_light_emission(host, unloaded, air), Some(0));
+            assert_eq!(level.get_light_emission(host, unloaded, air), Ok(0));
             let invalid = BlockStateRecord::new(static_state.block(), u16::MAX).into();
-            assert_eq!(level.get_light_emission(host, unloaded, invalid), None);
-            let stale = LevelRef::with_generation(level.epoch(), level.dimension(), 1);
-            assert_eq!(stale.get_light_emission(host, [1, 65, 2], dynamic), None);
+            assert_eq!(
+                level.get_light_emission(host, unloaded, invalid),
+                Err(LevelReadError::Unavailable)
+            );
+            let stale =
+                LevelRef::with_generation(level.epoch(), level.dimension(), level.generation() + 1);
+            assert_eq!(
+                stale.get_light_emission(host, [1, 65, 2], dynamic),
+                Err(LevelReadError::Stale)
+            );
+            {
+                let _phase = PhaseOwner::scope(ModPhase::Boot);
+                assert_eq!(
+                    level.get_light_emission(host, [1, 65, 2], dynamic),
+                    Err(LevelReadError::Unavailable)
+                );
+            }
             assert!(depth.take().is_empty());
             assert_eq!(game.world.chunks.len(), 1);
         },
@@ -258,10 +275,10 @@ fn light_query_reads_live_answers_in_the_named_level_without_publication() {
             let unloaded = [200, 70, 200];
             for requested in [0, 200] {
                 depth.glow.store(requested, Ordering::Relaxed);
-                assert_eq!(level.get_light_emission(host, pos, lamp), Some(requested));
+                assert_eq!(level.get_light_emission(host, pos, lamp), Ok(requested));
                 assert_eq!(
                     level.get_light_emission(host, unloaded, lamp),
-                    Some(requested)
+                    Ok(requested)
                 );
                 let asks = depth.take_asks();
                 assert_eq!(asks.len(), 2);
@@ -297,10 +314,10 @@ fn light_providers_can_delegate_but_an_active_cycle_refuses() {
         |game, level, _, depth, calls| {
             let host: &dyn Host = game;
             let proxy = host.block_state_id(PROXY).unwrap();
-            assert_eq!(level.get_light_emission(host, [1, 64, 2], proxy), Some(12));
+            assert_eq!(level.get_light_emission(host, [1, 64, 2], proxy), Ok(12));
             assert_eq!(depth.take(), [[1, 64, 2]]);
             // The callback's repeated query refuses instead of reading static light.
-            assert_eq!(level.get_light_emission(host, [1, 66, 2], proxy), Some(4));
+            assert_eq!(level.get_light_emission(host, [1, 66, 2], proxy), Ok(4));
             assert_eq!(calls.load(Ordering::Relaxed), 2);
 
             let placed = game.pack.assets.registry.default_state(PROXY).unwrap();
@@ -318,7 +335,7 @@ fn light_providers_can_delegate_but_an_active_cycle_refuses() {
                 None,
                 "the provider declined the outer request"
             );
-            assert_eq!(level.get_light_emission(game, [1, 64, 2], proxy), Some(12));
+            assert_eq!(level.get_light_emission(game, [1, 64, 2], proxy), Ok(12));
             assert_eq!(depth.take(), [[1, 64, 2]]);
         },
     );
