@@ -1,3 +1,4 @@
+use super::super::Received;
 use super::{connect_play_test, spawn_menu_test};
 use crate::game::{native_entity_refs::tests::with_client_game, viewed_worlds::tests::column};
 use mod_api::{
@@ -6,7 +7,7 @@ use mod_api::{
 };
 use std::{
     sync::{Arc, Mutex, mpsc},
-    thread::{self, ThreadId},
+    thread::{self, JoinHandle, ThreadId},
     time::{Duration, Instant},
 };
 use sunrise_client::{net::Event, raw_payloads};
@@ -28,6 +29,7 @@ struct Witness {
     main: ThreadId,
     order: Mutex<Vec<&'static str>>,
     transfer_started: Mutex<Option<mpsc::Receiver<()>>>,
+    parked_reader: Mutex<Option<JoinHandle<()>>>,
 }
 
 struct Handler {
@@ -64,11 +66,25 @@ impl IPayloadHandler for Handler {
                         .push("network after transfer");
                     return Ok(());
                 }
-                let mut order = self.witness.order.lock().unwrap();
-                if bytes.0 == [3] {
-                    order.push("network after close");
+                if bytes.0 == [6] {
+                    let reader = self.witness.parked_reader.lock().unwrap().take().unwrap();
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    while !reader.is_finished() {
+                        assert!(Instant::now() < deadline, "cutoff did not end the reader");
+                        thread::yield_now();
+                    }
+                    reader.join().unwrap();
                     return Ok(());
                 }
+                if bytes.0 == [3] {
+                    self.witness
+                        .order
+                        .lock()
+                        .unwrap()
+                        .push("network after close");
+                    return Ok(());
+                }
+                let mut order = self.witness.order.lock().unwrap();
                 assert_eq!(*order, ["main"]);
                 order.push("network");
             }
@@ -137,6 +153,7 @@ fn with_probe(test: impl FnOnce(&mut crate::game::Game<'_>, Arc<Witness>)) {
         main: thread::current().id(),
         order: Mutex::new(Vec::new()),
         transfer_started: Mutex::new(None),
+        parked_reader: Mutex::new(None),
     });
     mod_platform::testing::with_mods(
         vec![ModEntry::new(
@@ -255,8 +272,10 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
                 key: cookie.into(),
                 payload: vec![17],
             }),
+            C::Ping(cfg::Ping { id: 179 }),
             payload(NETWORK, 3),
             delimiter,
+            payload(MAIN, 5),
         ] {
             writer
                 .send(
@@ -266,14 +285,28 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
                 )
                 .unwrap();
         }
-        wait_for_bundle(game);
+        // Have the separate MAIN payload queued behind the bundle before
+        // processing either one: only the inline handlers survive the close.
+        game.wait_for_test_remote_event(|event| matches!(event, Event::RawPayload(_)));
         game.poll_remote_events(true).unwrap();
         assert!(game.remote.is_none());
         assert_eq!(cookies.lock().unwrap().get(cookie), Some(&vec![17]));
         assert_eq!(
-            witness.order.lock().unwrap().last(),
-            Some(&"network after close")
+            *witness.order.lock().unwrap(),
+            ["main", "network", "work", "network after close"]
         );
+        loop {
+            match reader.recv() {
+                Ok((id, body)) => assert!(!matches!(
+                    S::decode_with_payload_codecs(id, &body, &local.codecs).unwrap(),
+                    S::Pong(pong) if pong.id == 179
+                )),
+                Err(error) => {
+                    assert!(error.is_end_of_stream(), "expected EOF, got {error}");
+                    break;
+                }
+            }
+        }
     });
 }
 
@@ -530,6 +563,13 @@ fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
         });
         writer.shutdown();
         game.wait_for_test_remote_event(|event| matches!(event, Event::Disconnected { .. }));
+        let source = game.remote.as_ref().unwrap();
+        assert!(!source.session.accepts_packets());
+        let admitted = source.backlog.iter().filter_map(|item| match item {
+            Received::Event(Event::Transfer(task), _) => Some(task.is_eligible()),
+            _ => None,
+        });
+        assert_eq!(admitted.collect::<Vec<_>>(), [true, true]);
         game.poll_remote_events(true).unwrap();
         target.join().unwrap();
         assert_eq!(
@@ -544,7 +584,7 @@ fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
 
 #[test]
 #[ignore = "daily"]
-fn a_negotiated_member_refuses_the_source_without_stopping_the_bundle() {
+fn a_parked_main_payload_does_not_retire_the_bundle_listener() {
     with_probe(|game, witness| {
         let (local, _reader, mut writer) = connect_probe(game);
         let old = game.remote.as_ref().unwrap().session.cookies.clone();
@@ -561,6 +601,10 @@ fn a_negotiated_member_refuses_the_source_without_stopping_the_bundle() {
             }),
             C::CustomPayload(CustomPayload {
                 channel: NETWORK.into(),
+                data: vec![6],
+            }),
+            C::CustomPayload(CustomPayload {
+                channel: NETWORK.into(),
                 data: vec![3],
             }),
             C::BundleDelimiter(Empty),
@@ -574,7 +618,23 @@ fn a_negotiated_member_refuses_the_source_without_stopping_the_bundle() {
                 .unwrap();
         }
         wait_for_bundle(game);
+        let source = &mut game.remote.as_mut().unwrap().session;
+        let held = source.hold_test_ingress_credit();
+        writer
+            .send(
+                &C::CustomPayload(CustomPayload {
+                    channel: MAIN.into(),
+                    data: vec![20],
+                })
+                .try_encode_with_payload_codecs(&local.codecs)
+                .unwrap(),
+            )
+            .unwrap();
+        *witness.parked_reader.lock().unwrap() = Some(source.take_parked_test_reader());
+        // The first inline NETWORK handler joins the awakened reader. Only
+        // then can the second one classify and dispatch against the old epoch.
         game.poll_remote_events(true).unwrap();
+        drop(held);
         assert!(game.remote.is_none());
         assert_eq!(old.lock().unwrap().get(key), Some(&vec![45]));
         assert_eq!(*witness.order.lock().unwrap(), ["network after close"]);

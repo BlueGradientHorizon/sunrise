@@ -166,8 +166,9 @@ pub enum Event {
     },
 }
 
+const EVENT_BUDGET: usize = 96 << 20;
 fn event_channel() -> (ingress::Producer<Event>, ingress::Consumer<Event>) {
-    ingress::channel(96 << 20, Event::ingress_charge).expect("positive incoming byte budget")
+    ingress::channel(EVENT_BUDGET, Event::ingress_charge).expect("positive incoming byte budget")
 }
 impl Event {
     /// PacketProcessor checks ordinary standalone main tasks before calling
@@ -538,6 +539,16 @@ impl Session {
     #[sunrise_mod_api_macros::replaceable]
     pub fn poll(&self) -> Vec<ingress::OwnedReceipt<Event>> {
         self.events.take_turn()
+    }
+    #[cfg(feature = "test-payload-probe")]
+    pub fn hold_test_ingress_credit(&self) -> impl Drop + use<> {
+        self.payload_events
+            .hold_test_credit(EVENT_BUDGET - self.events.stats().reserved_bytes)
+    }
+    #[cfg(feature = "test-payload-probe")]
+    pub fn take_parked_test_reader(&mut self) -> JoinHandle<()> {
+        self.events.wait_for_parked_reader();
+        self.thread.take().expect("test Session has a reader")
     }
     /// Starts recording into `recorder`. `initialize` runs first, while the network thread
     /// can't record, so what it writes (a snapshot of the world) comes before any live packet.
@@ -1354,7 +1365,12 @@ pub struct TransferTask {
 impl TransferTask {
     /// A queued Transfer retains its original listener and may run after it closes.
     pub fn into_eligible_packet(self) -> Option<cfg::Transfer> {
-        self.io.may_handle(true).then_some(self.packet)
+        self.is_eligible().then_some(self.packet)
+    }
+
+    /// Test the original listener's queued-packet predicate without consuming the task.
+    pub fn is_eligible(&self) -> bool {
+        self.io.may_handle(true)
     }
 }
 
@@ -3518,10 +3534,8 @@ mod tests {
                 .encode(),
             )
             .unwrap();
-        assert!(matches!(
-            events.recv_timeout_owned(Duration::from_millis(25)),
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
-        ));
+        events.wait_for_parked_reader();
+        assert_eq!(events.stats().queued_items, 0);
         let (Event::Transfer(task), receipt) = receipt.into_parts() else {
             panic!("missing transfer")
         };

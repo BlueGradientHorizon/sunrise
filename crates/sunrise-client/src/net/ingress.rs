@@ -118,6 +118,13 @@ impl<T> Producer<T> {
         })
     }
 
+    #[cfg(feature = "test-payload-probe")]
+    pub(super) fn hold_test_credit(&self, total_bytes: usize) -> byte_channel::Permit<T> {
+        self.sender
+            .reserve(total_bytes - byte_channel::message_overhead::<T>())
+            .expect("hold the remaining test ingress credit")
+    }
+
     pub(crate) fn send_terminal(&self, value: T) -> Result<(), Refused<T>> {
         self.prepare_with(value, byte_channel::Sender::reserve_terminal)?
             .publish()
@@ -140,6 +147,17 @@ impl<T> Consumer<T> {
         timeout: std::time::Duration,
     ) -> Result<OwnedReceipt<T>, std::sync::mpsc::RecvTimeoutError> {
         self.receiver.recv_timeout_owned(timeout)
+    }
+    #[cfg(any(test, feature = "test-payload-probe"))]
+    pub(super) fn wait_for_parked_reader(&self) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while self.receiver.waiting_for_space() == 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "reader did not park for credit"
+            );
+            std::thread::yield_now();
+        }
     }
     pub(super) fn close_reader_admission(&self) {
         self.receiver.close_wait_admission();

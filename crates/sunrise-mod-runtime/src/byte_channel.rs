@@ -346,6 +346,11 @@ impl<T> Receiver<T> {
             state = self.0.ready.wait(state).unwrap_or_else(|e| e.into_inner());
         }
     }
+    /// Number of producers currently waiting for retained byte credit.
+    pub fn waiting_for_space(&self) -> usize {
+        self.0.lock().waiting_for_space
+    }
+
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
     }
@@ -479,7 +484,7 @@ mod tests {
         let waiter = tx.clone();
         let parked = std::thread::spawn(move || waiter.send_wait(3, 0));
         let deadline = Instant::now() + Duration::from_secs(2);
-        while rx.0.lock().waiting_for_space == 0 {
+        while rx.waiting_for_space() == 0 {
             assert!(
                 Instant::now() < deadline,
                 "reader did not park for held credit"
