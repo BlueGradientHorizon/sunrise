@@ -502,10 +502,15 @@ impl LayerDefinition {
 
 impl RegisterLayerDefinitionsEvent<'_> {
     /// Register a supplier for a model layer ID such as `mymod:golem#main`.
-    /// The first valid registration of an ID wins. Malformed IDs, IDs in `minecraft`,
-    /// duplicates and registrations from a phase-refused listener never call their supplier.
-    /// An accepted supplier runs once at client startup to build the frozen definition, not
-    /// when the layer is baked or resources are reloaded. Capture owned data in the supplier.
+    /// Any valid `<namespace>:<path>#<layer>` syntax is accepted (including `minecraft:` for
+    /// non-vanilla layer keys). When multiple registrations share an ID, the last supplier wins
+    /// and overwritten suppliers never run (matching NeoForge's
+    /// `ClientHooks.registerLayerDefinition`). Exact collisions with vanilla layer keys in
+    /// `entity-models.json` fail client startup (matching vanilla's
+    /// `LayerDefinitions.createRoots`). Malformed IDs and registrations from a phase-refused
+    /// listener never call their supplier. An accepted supplier runs once at client startup to
+    /// build the frozen definition, not when the layer is baked or resources are reloaded.
+    /// Capture owned data in the supplier.
     pub fn register(
         &mut self,
         id: impl Into<String>,

@@ -462,16 +462,20 @@ pub(super) fn collect_key_mappings<'declared>(
 
 /// Freeze the native mods' entity model layer definitions at startup, then bake their skull
 /// types (`native_create_skull_models`) from those definitions or vanilla's under `vanilla_root`.
-pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std::path::Path) {
+pub(super) fn register_layer_definitions(
+    role: ExecutionRole,
+    vanilla_root: &std::path::Path,
+) -> sunrise_client::Result<()> {
     if !role.is_client() {
-        return;
+        return Ok(());
     }
     let mut suppliers = Vec::new();
     Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
-    sunrise_client::mobs::model_layers::register(suppliers);
+    sunrise_client::mobs::model_layers::register(suppliers, vanilla_root)?;
     let mut models = Vec::new();
     Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
     sunrise_client::skull_models::register(models, vanilla_root);
+    Ok(())
 }
 /// Freeze the native mods' F3 text callbacks and renderer toggles at client startup.
 pub(super) fn register_debug_entries(role: ExecutionRole) {
@@ -600,12 +604,13 @@ fn register_special_model_renderers() {
 /// The client presentation registrations, kept once at start, before resources load: the
 /// dimension transition screens, the entity spectator shaders, the render pipelines and the entity
 /// renderers.
-pub(super) fn register_client_presentations(role: ExecutionRole) {
+pub(super) fn register_client_presentations(role: ExecutionRole) -> sunrise_client::Result<()> {
     register_preset_editors(role);
     register_dimension_transition_screens(role);
     register_entity_spectator_shaders(role);
-    register_render_pipelines(role);
+    register_render_pipelines(role)?;
     register_entity_renderers(role);
+    Ok(())
 }
 
 /// Resolve client dimension-transition registrations once, before the first level opens.
@@ -639,13 +644,14 @@ pub(super) fn register_preset_editors(role: ExecutionRole) {
 
 /// Keep the mods' render pipeline registrations once at startup, before resources load: every
 /// load builds them from its own shader files.
-pub(super) fn register_render_pipelines(role: ExecutionRole) {
+pub(super) fn register_render_pipelines(role: ExecutionRole) -> sunrise_client::Result<()> {
     if !role.is_client() {
-        return;
+        return Ok(());
     }
     let mut pipelines = Vec::new();
     Game::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
-    sunrise_client_render::mod_pipelines::register(pipelines);
+    sunrise_client_render::mod_pipelines::register(pipelines)?;
+    Ok(())
 }
 
 /// The native mods' meshing registrations, kept once at start, before resources load: colour

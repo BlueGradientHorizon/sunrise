@@ -11,17 +11,38 @@ use mod_api::{
     Identifier, PipelineBlend, PipelineTexture, PipelineTextureError, RenderPipeline,
     RenderPipelineError, RenderPipelineRef, WorldDepth,
 };
-use std::sync::OnceLock;
+use std::{collections::BTreeMap, sync::OnceLock};
 use sunrise_shader_api::mod_pipeline::{FOLDER, compose_with};
 
 static REGISTERED: OnceLock<Vec<RenderPipeline>> = OnceLock::new();
 
-/// Publish the mods' registrations once at startup, as `register_render_pipelines` left them:
-/// each id once, in a namespace its mod owns. A pipeline's place in the list is its slot.
-pub fn register(pipelines: Vec<RenderPipeline>) {
-    if REGISTERED.set(pipelines).is_err() {
+/// Publish the mods' registrations once at startup, as `register_render_pipelines` left them.
+/// Duplicate pipeline IDs fail client startup without committing the table, matching NeoForge's
+/// `RegisterRenderPipelinesEvent` (`RenderPipelines.registerCustomPipelines`). A pipeline's place
+/// in the list is its slot.
+pub fn register(pipelines: Vec<RenderPipeline>) -> Result<(), String> {
+    register_into(&REGISTERED, pipelines)
+}
+
+fn register_into(
+    slot: &OnceLock<Vec<RenderPipeline>>,
+    pipelines: Vec<RenderPipeline>,
+) -> Result<(), String> {
+    let mut seen: BTreeMap<&Identifier, &str> = BTreeMap::new();
+    for pipeline in &pipelines {
+        if let Some(first_owner) = seen.insert(&pipeline.id, pipeline.owner()) {
+            return Err(format!(
+                "Duplicate render pipeline registration: {} (registered by {} and {})",
+                pipeline.id,
+                first_owner,
+                pipeline.owner()
+            ));
+        }
+    }
+    if slot.set(pipelines).is_err() {
         log::warn!("Render pipelines already registered; keeping the first list");
     }
+    Ok(())
 }
 
 /// The registered pipelines; none until registration publishes them.
@@ -428,6 +449,75 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
         assert_eq!(
             built("test:effect/glow.png"),
             Err("required render pipeline test:glow from mod  refused: its texture: NotASpriteKey: the id names a file, not a sprite key".into())
+        );
+    }
+
+    #[test]
+    fn register_accepts_distinct_ids_and_fails_on_duplicates_naming_id_and_mods() {
+        use mod_api::__private::game::RegistrationContextNew;
+        use mod_api::{Hooks, ModEntry, RegisterRenderPipelinesEvent, RegistrationContext};
+
+        struct Register(&'static [&'static str]);
+        #[mod_api::__subscriptions]
+        impl Hooks for Register {
+            fn register_render_pipelines(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterRenderPipelinesEvent<'_>,
+            ) {
+                for &name in self.0 {
+                    event.register(pipeline(name, name));
+                }
+            }
+        }
+
+        mod_platform::testing::with_mods(
+            vec![
+                ModEntry::new(
+                    "first",
+                    Box::new(Register(&["minecraft:glow", "other:beam"])),
+                ),
+                ModEntry::new("second", Box::new(Register(&["second:halo"]))),
+            ]
+            .into(),
+            || {
+                let mut staged = Vec::new();
+                mod_api::dispatch_register_render_pipelines(
+                    &RegistrationContext::new(),
+                    &mut staged,
+                );
+                let slot = OnceLock::new();
+                register_into(&slot, staged).unwrap();
+                let stored = slot.get().unwrap();
+                assert_eq!(stored.len(), 3);
+                assert_eq!(stored[0].id, id("minecraft:glow"));
+                assert_eq!(stored[0].owner(), "first");
+                assert_eq!(stored[1].id, id("other:beam"));
+                assert_eq!(stored[1].owner(), "first");
+                assert_eq!(stored[2].id, id("second:halo"));
+                assert_eq!(stored[2].owner(), "second");
+            },
+        );
+
+        mod_platform::testing::with_mods(
+            vec![
+                ModEntry::new("first", Box::new(Register(&["shared:glow"]))),
+                ModEntry::new("second", Box::new(Register(&["shared:glow"]))),
+            ]
+            .into(),
+            || {
+                let mut staged = Vec::new();
+                mod_api::dispatch_register_render_pipelines(
+                    &RegistrationContext::new(),
+                    &mut staged,
+                );
+                let slot = OnceLock::new();
+                let error = register_into(&slot, staged).unwrap_err();
+                assert!(error.contains("shared:glow"), "{error}");
+                assert!(error.contains("first"), "{error}");
+                assert!(error.contains("second"), "{error}");
+                assert!(slot.get().is_none());
+            },
         );
     }
 }

@@ -62,8 +62,10 @@ fn register_render_pipelines(
 scaled by its alpha. `WorldDepth::Tested` hides the quads behind nearer world surfaces, and
 `ThroughWalls` draws them over everything. No pipeline writes depth.
 
-The id must be in a namespace your mod owns. There is no per-mod pipeline count cap. A registration
-with an unowned namespace or a duplicate id is logged with the mod's id and dropped.
+Any valid `Identifier` is accepted for the pipeline id (there is no mod-namespace ownership gate or
+per-mod pipeline count cap). Registering the same pipeline id twice fails client startup with an
+error naming the duplicate id and registering mods, matching NeoForge's
+`RegisterRenderPipelinesEvent`.
 
 ### Required or optional
 

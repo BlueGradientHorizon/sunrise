@@ -58,14 +58,14 @@ ids = [
     "type:StandaloneModelBakeError.DependencyBake",
     "type:StandaloneModelBakeError.Rejected",
 ]
-why = "Scoped registration methods let each listener append without reading, editing or removing earlier registrations. A phase refusal discards only that listener's additions. Particle groups follow NeoForge RegisterParticleGroupsEvent (version 3): any nonempty namespace and path is allowed including minecraft, duplicate IDs fail client startup without invoking factories, and accepted factories construct once per particle engine. Layer suppliers run once at startup when the layer table freezes. Standalone model bakers follow NeoForge StandaloneModelLoader: they assemble declared files at resource load, a failed append_dependency returns Err without mutating the assembly or latching across calls, the baker's Result decides publication, and non-panic failures re-run on subsequent reloads. Atlas timing and duplicate parity are separate from this API change."
+why = "Scoped registration methods let each listener append without reading, editing or removing earlier registrations. A phase refusal discards only that listener's additions. Particle groups follow NeoForge RegisterParticleGroupsEvent (version 3): any nonempty namespace and path is allowed including minecraft, duplicate IDs fail client startup without invoking factories, and accepted factories construct once per particle engine. Model layers follow NeoForge ClientHooks.registerLayerDefinition and vanilla LayerDefinitions.createRoots (version 3): any valid <namespace>:<path>#<layer> ID is allowed including minecraft for non-vanilla keys, duplicate mod registrations keep the last supplier before running suppliers once at startup, and exact collisions with vanilla layer keys in entity-models.json fail client startup. Render pipelines follow NeoForge RegisterRenderPipelinesEvent and RenderPipelines.registerCustomPipelines (version 3): the mod-namespace ownership gate is removed and duplicate pipeline IDs fail client startup instead of being dropped. Standalone model bakers follow NeoForge StandaloneModelLoader: they assemble declared files at resource load, a failed append_dependency returns Err without mutating the assembly or latching across calls, the baker's Result decides publication, and non-panic failures re-run on subsequent reloads. Atlas timing and duplicate parity are separate from this API change."
 migrate = """
 In Hooks::component_types, replace event.types.push(id) with event.register(id), passing the same owned String.
 In Hooks::create_skull_models, replace event.models.push(model) with event.register(model), passing the same SkullModel.
 In Hooks::map_decoration_types, replace event.types.push(decoration) with event.register(decoration), passing the same MapDecorationType.
 In Hooks::register_entity_spectator_shaders, replace event.shaders.push(shader) with event.register(shader), passing the same EntitySpectatorShader.
 In Hooks::register_fluid_models, replace event.models.push(model) with event.register(model), passing the same FluidModel.
-In Hooks::register_render_pipelines, replace event.pipelines.push(pipeline) with event.register(pipeline), passing the same RenderPipeline.
+In Hooks::register_render_pipelines, replace event.pipelines.push(pipeline) with event.register(pipeline), passing the same RenderPipeline. Any valid Identifier is accepted (no mod-namespace ownership gate); duplicate pipeline IDs now fail client startup instead of being silently dropped (hook version 3, matching NeoForge RegisterRenderPipelinesEvent / RenderPipelines.registerCustomPipelines).
 In Hooks::register_texture_atlases, replace event.atlases.push(atlas) with event.register(atlas), passing the same TextureAtlasRegistration.
 For multiple entries, call event.register(entry) once per entry in the same order.
 In Hooks::block_entity_type_add_blocks, replace event.additions.push((kind, block)) with event.modify(kind, &[block]). For one block list shared by matching types, call event.modify_matching(predicate, blocks). Read event.types as before to inspect registered type keys.
@@ -92,8 +92,12 @@ replace `event.layers.push((id, create_golem_layer()))` with `event.register(id,
 For an inline definition use `event.register(id, move || LayerDefinition::create(build_mesh(), 64, 32))`,
 with your own mesh and texture dimensions. The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`;
 capture owned inputs, and if reusing a definition already built, return `definition.clone()`.
-The game retains only the definition after the startup freeze, not the supplier. Keep the same
-`<namespace>:<path>#<layer>` ID and the same calls to `ClientHost::bake_layer`.
+The game retains only the definition after the startup freeze, not the supplier. Any valid
+`<namespace>:<path>#<layer>` ID is accepted (including `minecraft:` for non-vanilla keys);
+duplicate mod registrations for the same ID now keep the last supplier instead of the first
+(matching NeoForge `ClientHooks.registerLayerDefinition`), and an exact collision with a vanilla
+layer key in `entity-models.json` fails client startup (matching vanilla
+`LayerDefinitions.createRoots`, hook version 3). Keep the same calls to `ClientHost::bake_layer`.
 
 In `Hooks::standalone_models`, replace `event.models.push(id)` with `event.register_model(id)`.
 `StandaloneModelForm` and its `id()` accessor are gone; keep the result ID separately. Replace

@@ -67,14 +67,16 @@ At client startup, implement `Hooks::register_layer_definitions` and call
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
 inputs, not the event or its registration context. Use a `<namespace>:<path>#<layer>`
-ID outside the `minecraft` namespace.
+ID matching vanilla's `ModelLayerLocation`; any namespace (including `minecraft`) is
+accepted, while an exact collision with a vanilla layer key in `entity-models.json`
+fails client startup.
 
-The game calls each accepted supplier once when it freezes the layer table, in
-registration order. A duplicate ID does not run its supplier. The frozen table
-retains the definitions, not the suppliers. Call
-`ClientHost::bake_layer("mymod:golem#main")` during renderer setup, then keep the
-resulting `ModelPart` tree for posing and drawing. Baking again and reloading
-resources reuse the definition.
+When multiple registrations share an ID, the last registration wins and overwritten
+suppliers never run. The game calls each winning supplier once when it freezes the
+layer table, in registration order. The frozen table retains the definitions, not the
+suppliers. Call `ClientHost::bake_layer("mymod:golem#main")` during renderer setup,
+then keep the resulting `ModelPart` tree for posing and drawing. Baking again and
+reloading resources reuse the definition.
 
 ## Worn humanoid equipment
 

@@ -1,14 +1,15 @@
 //! Client render pipeline registration.
 
 pub trait Hooks {
-    /// Register the mod's own render pipelines, once at client startup (NeoForge's
+    /// Register render pipelines, once at client startup (NeoForge's
     /// `RegisterRenderPipelinesEvent`; 1.21.1 mods used `RegisterShadersEvent`): call
     /// `event.register(pipeline)` with each [`RenderPipeline`]. The game builds them with its own
-    /// at startup and again on every resource reload. An id outside the mod's namespaces or one
-    /// already registered is logged with the mod and dropped. A required pipeline whose shader
-    /// is missing or doesn't build fails the load: the game does not start, and a reload fails
-    /// and keeps the previous resources. An [optional](RenderPipeline::optional()) one is
-    /// logged and resolves to [`RenderPipelineError::Invalid`].
+    /// at startup and again on every resource reload. Any valid pipeline id is accepted; duplicate
+    /// pipeline ids fail client startup (matching NeoForge's
+    /// `RenderPipelines.registerCustomPipelines`). A required pipeline whose shader is missing or
+    /// doesn't build fails the load: the game does not start, and a reload fails and keeps the
+    /// previous resources. An [optional](RenderPipeline::optional()) one is logged and resolves to
+    /// [`RenderPipelineError::Invalid`].
     #[notes = r#"## Render pipelines
 
 `Hooks::register_render_pipelines` is the client registration-phase counterpart of NeoForge's
@@ -78,7 +79,7 @@ game reaches."#]
         collect_validator = "crate::client::render_pipeline::validate_render_pipelines",
         context = "registration",
         neoforge = "RegisterRenderPipelinesEvent",
-        version = 2
+        version = 3
     )]
     fn register_render_pipelines(pipelines: &mut Vec<mod_api::RenderPipeline>);
 }
