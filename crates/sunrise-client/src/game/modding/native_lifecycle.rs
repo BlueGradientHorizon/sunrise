@@ -290,10 +290,9 @@ impl Game<'_> {
     }
 
     fn drain_due_tasks(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
-        let cutoff = self.native_lifecycle.tasks.cutoff();
         run_all(
             self,
-            |game| game.native_lifecycle.tasks.pop_due_up_to(cutoff),
+            |game| game.native_lifecycle.tasks.pop_due(),
             |game, (owner, task)| {
                 let _call = owner.map(|mod_id| mod_api::__private::enter(mod_id, "schedule_task"));
                 let enabled = owner.is_none_or(|mod_id| {
@@ -345,9 +344,15 @@ impl Game<'_> {
             .schedule(owner, delay_ticks, task)
     }
 
-    /// `cancel_task`: withdraws a waiting task by its opaque `TaskId`.
+    /// `cancel_task`: withdraws a waiting task by its opaque `TaskId`, dropping its captures
+    /// under the scheduling owner's attribution when attributed.
     pub(in crate::game) fn cancel_task(&mut self, id: TaskId) -> bool {
-        self.native_lifecycle.tasks.cancel(id).is_some()
+        let Some((owner, task)) = self.native_lifecycle.tasks.cancel(id) else {
+            return false;
+        };
+        let _call = owner.map(|mod_id| mod_api::__private::enter(mod_id, "schedule_task"));
+        drop(task);
+        true
     }
 
     /// An errored tick returned at `result?` before this site.
@@ -450,8 +455,7 @@ mod tests {
                         .unwrap();
                 }
             }
-            let cutoff = lifecycle.tasks.cutoff();
-            while lifecycle.tasks.pop_due_up_to(cutoff).is_some() {
+            while lifecycle.tasks.pop_due().is_some() {
                 fired.push(tick);
             }
             lifecycle.server_tick_end(false);
@@ -499,18 +503,39 @@ mod tests {
                     )
                     .unwrap();
                 }
-                // TaskId is an opaque capability: another caller can cancel a waiting task.
+                // TaskId is an opaque capability: another caller can cancel a waiting task, and
+                // its captures still drop under the scheduling owner's identity.
+                struct DropObserver(Rc<Cell<Option<&'static str>>>);
+                impl Drop for DropObserver {
+                    fn drop(&mut self) {
+                        self.0.set(current_native_mod());
+                    }
+                }
+                let dropped_under = Rc::new(Cell::new(None));
                 let cancelled_id = {
                     let host: &mut dyn ServerHost = game;
                     let _owner = api::enter("task_disabled", "schedule fixture");
-                    host.schedule_task(1, Box::new(|_| panic!("a cancelled task must not run")))
-                        .unwrap()
+                    let observer = DropObserver(Rc::clone(&dropped_under));
+                    host.schedule_task(
+                        1,
+                        Box::new(move |_| {
+                            let _keep = &observer;
+                            panic!("a cancelled task must not run");
+                        }),
+                    )
+                    .unwrap()
                 };
                 let hit = Rc::new(Cell::new(0));
                 {
                     let host: &mut dyn ServerHost = game;
                     let _owner = api::enter("task_owner", "schedule fixture");
                     assert!(host.cancel_task(cancelled_id));
+                    assert_eq!(
+                        dropped_under.get(),
+                        Some("task_disabled"),
+                        "cancelled captures drop under the scheduling owner's attribution"
+                    );
+                    assert_eq!(current_native_mod(), Some("task_owner"));
                     assert!(!host.cancel_task(cancelled_id));
                     let hit = Rc::clone(&hit);
                     host.schedule_task(
@@ -545,16 +570,51 @@ mod tests {
                 game.native_lifecycle_server_tick_start(true);
                 assert_eq!(
                     hit.get(),
-                    1,
-                    "a nested delay-0 task defers past the active drain"
+                    2,
+                    "a nested delay-0 task completes in the active start drain"
                 );
                 assert_eq!(Rc::strong_count(&capture), 1, "disabled captures are gone");
                 assert_eq!(current_native_mod(), None);
+
+                // A finite delay-0 chain scheduled during the end drain completes without
+                // advancing the tick.
+                let chain = Rc::new(Cell::new(0));
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = api::enter("task_owner", "schedule fixture");
+                    let chain_a = Rc::clone(&chain);
+                    host.schedule_task(
+                        0,
+                        Box::new(move |host| {
+                            assert_eq!(chain_a.get(), 0);
+                            chain_a.set(1);
+                            let chain_b = Rc::clone(&chain_a);
+                            host.schedule_task(
+                                0,
+                                Box::new(move |host| {
+                                    assert_eq!(chain_b.get(), 1);
+                                    chain_b.set(2);
+                                    let chain_c = Rc::clone(&chain_b);
+                                    host.schedule_task(
+                                        0,
+                                        Box::new(move |_| {
+                                            assert_eq!(chain_c.get(), 2);
+                                            chain_c.set(3);
+                                        }),
+                                    )
+                                    .unwrap();
+                                }),
+                            )
+                            .unwrap();
+                        }),
+                    )
+                    .unwrap();
+                }
                 game.native_lifecycle_server_tick_end(false);
                 assert_eq!(
-                    hit.get(),
-                    2,
-                    "a nested delay-0 task runs at server_tick_end of the same tick"
+                    chain.get(),
+                    3,
+                    "a finite delay-0 chain scheduled during the end drain completes in the same tick"
                 );
                 assert_eq!(current_native_mod(), None);
 

@@ -18,24 +18,25 @@ fn schedule_reminder(host: &mut dyn ServerHost) -> Result<TaskId, ScheduleError>
 ```
 
 **Timing.** Delays count ticks the server runs: a paused integrated server does not advance them.
-Due tasks drain after both the `server_tick` start phase and the `server_tick` end phase (matching
-vanilla's `MinecraftServer.schedule(TickTask)` and `pollTask`), so `delay_ticks == 0` runs in the
-current tick: a `0`-delay task scheduled from `server_tick` start, mid-tick hooks, or `server_tick`
-end runs before the tick finishes. Tasks due on the same tick run in the order they were scheduled.
-A `0`-delay task scheduled from inside a draining task waits for the next drain (`server_tick` end
-if scheduled during the start drain, or the next tick's start drain if scheduled during the end
-drain) so a task cannot recurse infinitely within one drain.
+Due tasks drain to exhaustion after both the `server_tick` start phase and the `server_tick` end
+phase (matching vanilla's `MinecraftServer.schedule(TickTask)` and
+`BlockableEventLoop.runAllTasks`), so `delay_ticks == 0` runs in the current tick: a `0`-delay task
+scheduled from `server_tick` start, mid-tick hooks, `server_tick` end, or another running task
+completes within the active drain without advancing the tick. Tasks due on the same tick run in the
+order they were scheduled.
 
 **Ownership and cancellation.** Only the scheduled callable runs. When scheduled inside a mod call,
-it runs under that mod's identity (including when it schedules more work), and if its owner is
-disabled when due, the game drops the task without calling it. Scheduling outside an active mod call
-also succeeds. `TaskId` is an opaque capability: any holder of a still-pending `id` can cancel it
-with `host.cancel_task(id)`, which returns `true` when the task was still waiting. A cancelled or
-discarded task releases the values it captured; ids are not reused in a world.
+it runs under that mod's identity (including when it schedules more work or when its captures drop
+on cancellation or world close), and if its owner is disabled when due, the game drops the task
+without calling it. Scheduling outside an active mod call also succeeds. `TaskId` is an opaque
+capability (mods cannot construct one): any holder of a still-pending `id` can cancel it with
+`host.cancel_task(id)`, which returns `true` when the task was still waiting. A cancelled or
+discarded task releases the values it captured; ids are never reused, even across world resets.
 
 **Refusals.** `schedule_task` returns `ScheduleError::TooMany` (and logs a warning naming the mod)
-when that mod (or the unattributed caller pool) already has `MAX_PENDING_TASKS` tasks waiting, and
-`ScheduleError::Unavailable` outside the world phase or without an open or opening server world.
+when the scheduling mod already has `MAX_PENDING_TASKS` tasks waiting (unattributed callers outside
+a mod callback share no global cap), and `ScheduleError::Unavailable` outside the world phase or
+without an open or opening server world.
 
 **Writes.** Each callback runs in its own transaction. Journaled writes commit on normal return or
 roll back if the callback panics. Other due tasks still run; the first panic resumes after the due

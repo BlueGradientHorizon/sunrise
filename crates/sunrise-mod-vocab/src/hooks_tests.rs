@@ -650,10 +650,11 @@ fn server_inventory_operations_take_a_server_host(
 #[allow(dead_code)]
 fn delayed_tasks_take_a_server_host(
     host: &mut dyn ServerHost,
+    id: TaskId,
 ) -> (Result<TaskId, ScheduleError>, bool) {
     (
         host.schedule_task(20, Box::new(|_| {})),
-        host.cancel_task(TaskId(1)),
+        host.cancel_task(id),
     )
 }
 

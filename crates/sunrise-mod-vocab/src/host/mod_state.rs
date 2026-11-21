@@ -62,19 +62,19 @@ pub trait ModStateServerHost {
     fn transaction_depth(&self, tx: &Transaction) -> Option<u32>;
     /// Side: server.
     /// Runs `task` once after `delay_ticks` server ticks, matching vanilla's
-    /// `MinecraftServer.schedule(TickTask)` / `pollTask`. Due tasks drain after both the
-    /// `server_tick` start hook and the `server_tick` end hook, so `delay_ticks == 0` runs in the
-    /// same tick (a `delay_ticks == 0` task scheduled inside a draining task waits for the next
-    /// drain to avoid infinite same-tick recursion). A paused server does not advance the delay.
-    /// Tasks due together run in the order they were scheduled.
+    /// `MinecraftServer.schedule(TickTask)` / `BlockableEventLoop.runAllTasks`. Due tasks drain to
+    /// exhaustion after both the `server_tick` start hook and the `server_tick` end hook, so
+    /// `delay_ticks == 0` runs in the current tick (including `0`-delay tasks scheduled from inside
+    /// a running task). A paused server does not advance the delay. Tasks due together run in the
+    /// order they were scheduled.
     ///
     /// Move owned data into the closure, not the current host or event. The task gets a fresh
     /// server host on the same thread. Journaled writes commit on return or roll back on panic;
     /// other due tasks still run before the first panic resumes. When scheduled inside a mod call,
-    /// the task runs under that mod's identity and is discarded if that mod is disabled when due;
-    /// calls outside a mod call also succeed. Reaching [`MAX_PENDING_TASKS`] logs a warning naming
-    /// the mod and returns [`ScheduleError::TooMany`]. Pending tasks are dropped with the world
-    /// and are not saved.
+    /// the task runs (and drops on cancel or shutdown) under that mod's identity, is discarded if
+    /// that mod is disabled when due, and reaching [`MAX_PENDING_TASKS`] logs a warning naming the
+    /// mod and returns [`ScheduleError::TooMany`]. Calls outside a mod call also succeed without a
+    /// shared global cap. Pending tasks are dropped with the world and are not saved.
     #[access(WorldOnly)]
     fn schedule_task(
         &mut self,

@@ -1,11 +1,21 @@
 //! The delayed tasks mods scheduled in the running world (`schedule_task`): a queue counted in
 //! server ticks, owned by the world's lifecycle and dropped with it.
 
-use mod_api::{MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId};
+use mod_api::{
+    __private::game::{Fields, task_id},
+    MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId,
+};
 use std::{
     collections::{BTreeMap, HashMap},
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
+    sync::atomic::{AtomicU64, Ordering},
 };
+
+static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_task_id() -> u64 {
+    NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed)
+}
 
 pub(super) type ServerTask = Box<dyn FnOnce(&mut dyn ServerHost)>;
 /// The owning mod's `[mod] id` (when scheduled inside a mod call) and its callable, detached from
@@ -39,13 +49,12 @@ pub(super) fn run_all<S, T>(
 pub(super) struct ScheduledTasks {
     /// Ticks advanced since the world opened.
     now: u64,
-    next_id: u64,
     /// Waiting tasks by due tick, then id (the order they were scheduled).
     queue: BTreeMap<(u64, u64), PendingTask>,
     /// Each waiting task's due tick, to find it again on cancel.
     due: HashMap<u64, u64>,
-    /// How many tasks each mod (or the unattributed caller pool) has waiting.
-    pending: HashMap<Option<&'static str>, usize>,
+    /// How many tasks each named mod has waiting.
+    pending: HashMap<&'static str, usize>,
 }
 
 impl ScheduledTasks {
@@ -56,29 +65,30 @@ impl ScheduledTasks {
         delay_ticks: u32,
         task: ServerTask,
     ) -> Result<TaskId, ScheduleError> {
-        let waiting = self.pending.entry(owner).or_insert(0);
-        if *waiting >= MAX_PENDING_TASKS {
-            log::warn!(
-                "mod `{}` reached MAX_PENDING_TASKS ({MAX_PENDING_TASKS}) pending scheduled tasks",
-                owner.unwrap_or("<unattributed>")
-            );
-            return Err(ScheduleError::TooMany);
+        if let Some(mod_id) = owner {
+            let waiting = self.pending.entry(mod_id).or_insert(0);
+            if *waiting >= MAX_PENDING_TASKS {
+                log::warn!(
+                    "mod `{mod_id}` reached MAX_PENDING_TASKS ({MAX_PENDING_TASKS}) pending scheduled tasks"
+                );
+                return Err(ScheduleError::TooMany);
+            }
+            *waiting += 1;
         }
-        *waiting += 1;
-        self.next_id += 1;
-        let id = self.next_id;
+        let id = next_task_id();
         let due = self.now.saturating_add(u64::from(delay_ticks));
         self.queue.insert((due, id), (owner, task));
         self.due.insert(id, due);
-        Ok(TaskId(id))
+        Ok(task_id(id))
     }
 
     /// Withdraw `id` if it is still waiting. `TaskId` is an opaque capability, so holding it
-    /// suffices to cancel the task. The caller gets the callable back only once all bookkeeping
-    /// is done, so dropping its captures is safe.
-    pub(super) fn cancel(&mut self, id: TaskId) -> Option<ServerTask> {
-        let &due = self.due.get(&id.0)?;
-        self.remove(due, id.0).map(|(_, task)| task)
+    /// suffices to cancel the task. The caller gets the detached owner and callable back only once
+    /// all bookkeeping is updated, so dropping captures under the scheduling owner's scope is safe.
+    pub(super) fn cancel(&mut self, id: TaskId) -> Option<PendingTask> {
+        let raw = id.fields();
+        let &due = self.due.get(&raw)?;
+        self.remove(due, raw)
     }
 
     /// A server tick starts: "now" moves to it before any hook of the tick runs, so tasks
@@ -87,30 +97,17 @@ impl ScheduledTasks {
         self.now += 1;
     }
 
-    /// Current scheduling watermark (`next_id`), to bound a drain pass so a `delay_ticks == 0`
-    /// task scheduled from inside a draining task waits for the next drain instead of recursing
-    /// infinitely in the same drain.
-    pub(super) fn cutoff(&self) -> u64 {
-        self.next_id
-    }
-
-    /// The next task due by now with `id <= max_id`, taken off the queue before any of its mod
-    /// code runs.
-    pub(super) fn pop_due_up_to(&mut self, max_id: u64) -> Option<PendingTask> {
-        let key = self
-            .queue
-            .range(..=(self.now, u64::MAX))
-            .find_map(|(&(due, id), _)| (id <= max_id).then_some((due, id)))?;
-        self.remove(key.0, key.1)
-    }
-
     /// The next task due by now, taken off the queue before any of its mod code runs.
-    #[cfg(test)]
     pub(super) fn pop_due(&mut self) -> Option<PendingTask> {
-        self.pop_due_up_to(u64::MAX)
+        let (&(due, id), _) = self.queue.first_key_value()?;
+        if due > self.now {
+            return None;
+        }
+        self.remove(due, id)
     }
 
     /// The world closed or opened: detach the old queue before running any capture destructors.
+    /// Globally unique task ids are never reset, so retained ids cannot alias tasks in a new world.
     pub(super) fn clear(&mut self) {
         let mut retired = std::mem::take(self).queue.into_values();
         let panic = run_all(&mut retired, Iterator::next, |_, (owner, task)| {
@@ -125,7 +122,9 @@ impl ScheduledTasks {
     fn remove(&mut self, due: u64, id: u64) -> Option<PendingTask> {
         let task = self.queue.remove(&(due, id))?;
         self.due.remove(&id);
-        if let Some(waiting) = self.pending.get_mut(&task.0) {
+        if let Some(mod_id) = task.0
+            && let Some(waiting) = self.pending.get_mut(mod_id)
+        {
             *waiting -= 1;
         }
         Some(task)
@@ -193,10 +192,12 @@ mod tests {
             .schedule(A, 3, Box::new(move |_| drop(owned)))
             .unwrap();
         assert_eq!(Rc::strong_count(&capture), 2);
-        assert!(tasks.cancel(id).is_some());
+        let (owner, detached) = tasks.cancel(id).unwrap();
+        assert_eq!(owner, A);
+        drop(detached);
         assert_eq!(Rc::strong_count(&capture), 1);
         assert!(tasks.cancel(id).is_none());
-        assert!(tasks.cancel(TaskId(99)).is_none());
+        assert!(tasks.cancel(task_id(0)).is_none());
         for _ in 0..3 {
             assert!(advance(&mut tasks).is_empty());
         }
@@ -206,18 +207,13 @@ mod tests {
     }
 
     #[test]
-    fn unattributed_tasks_succeed_and_each_owner_is_capped() {
+    fn unattributed_tasks_are_uncapped_and_each_mod_is_capped_independently() {
         let mut tasks = ScheduledTasks::default();
         let unattributed_first = tasks.schedule(None, 5, Box::new(|_| {})).unwrap();
-        for _ in 1..MAX_PENDING_TASKS {
+        for _ in 0..MAX_PENDING_TASKS {
             tasks.schedule(None, 5, Box::new(|_| {})).unwrap();
         }
-        assert_eq!(
-            tasks.schedule(None, 5, Box::new(|_| {})),
-            Err(ScheduleError::TooMany)
-        );
         assert!(tasks.cancel(unattributed_first).is_some());
-        assert!(tasks.schedule(None, 5, Box::new(|_| {})).is_ok());
 
         let first = tasks.schedule(A, 5, Box::new(|_| {})).unwrap();
         for _ in 1..MAX_PENDING_TASKS {
@@ -238,19 +234,15 @@ mod tests {
     }
 
     #[test]
-    fn pop_due_up_to_defers_same_tick_tasks_scheduled_during_a_drain() {
+    fn pop_due_drains_same_tick_delay_zero_chains_to_exhaustion() {
         let mut tasks = ScheduledTasks::default();
         tasks.begin_tick();
         tasks.schedule(A, 0, Box::new(|_| {})).unwrap();
-        let cutoff = tasks.cutoff();
-        assert!(tasks.pop_due_up_to(cutoff).is_some());
-        // A recursive delay-0 task scheduled during the drain waits for the next drain.
+        assert!(tasks.pop_due().is_some());
+        // A delay-0 task scheduled during the drain runs in the same drain without advancing now.
         tasks.schedule(A, 0, Box::new(|_| {})).unwrap();
-        assert!(tasks.pop_due_up_to(cutoff).is_none());
-        // The next drain in the same tick runs it without advancing now.
-        let next_cutoff = tasks.cutoff();
-        assert!(tasks.pop_due_up_to(next_cutoff).is_some());
-        assert!(tasks.pop_due_up_to(next_cutoff).is_none());
+        assert!(tasks.pop_due().is_some());
+        assert!(tasks.pop_due().is_none());
     }
 
     #[test]
@@ -261,22 +253,27 @@ mod tests {
     }
 
     #[test]
-    fn closing_the_world_detaches_all_tasks_before_dropping_captures() {
+    fn closing_the_world_detaches_all_tasks_and_does_not_reuse_ids() {
         let mut tasks = ScheduledTasks::default();
         let panics = PanicOnDrop;
-        tasks
+        let stale_first = tasks
             .schedule(A, 1, Box::new(move |_| drop(panics)))
             .unwrap();
         let capture = Rc::new(());
         let owned = Rc::clone(&capture);
-        tasks
+        let stale_second = tasks
             .schedule(None, 1, Box::new(move |_| drop(owned)))
             .unwrap();
         let panic = catch_unwind(AssertUnwindSafe(|| tasks.clear())).unwrap_err();
         assert_eq!(panic.downcast_ref::<&str>(), Some(&"destructor panicked"));
         assert_eq!(Rc::strong_count(&capture), 1);
         assert!(advance(&mut tasks).is_empty());
-        assert_eq!(tasks.schedule(A, 1, Box::new(|_| {})).unwrap(), TaskId(1));
+        let fresh = tasks.schedule(A, 1, Box::new(|_| {})).unwrap();
+        assert_ne!(fresh, stale_first);
+        assert_ne!(fresh, stale_second);
+        assert!(tasks.cancel(stale_first).is_none());
+        assert!(tasks.cancel(stale_second).is_none());
+        assert!(tasks.cancel(fresh).is_some());
     }
 
     #[test]

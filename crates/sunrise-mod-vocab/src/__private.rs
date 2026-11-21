@@ -519,6 +519,17 @@ pub mod game {
         }
     }
 
+    /// A delayed task id the game allocates for `schedule_task`.
+    pub fn task_id(id: u64) -> TaskId {
+        TaskId::of(id)
+    }
+    impl Fields for TaskId {
+        type Fields<'a> = u64;
+        fn fields(&self) -> u64 {
+            self.raw()
+        }
+    }
+
     pub struct ModEntryFields<'a> {
         pub id: &'static str,
         pub hooks: &'a dyn Hooks,
