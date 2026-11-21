@@ -1079,7 +1079,6 @@ impl Game<'_> {
                  (Sunrise has no Velocity forwarding any more): turn [transfer] off"
                 .into());
         }
-        self.start_loaded_dedicated_world(&opened_packs);
         let net = NetConfig {
             bind: (!props.server_ip.is_empty())
                 .then(|| props.server_ip.parse().ok())
@@ -1214,12 +1213,14 @@ impl Game<'_> {
                 .is_none_or(|v| v.trim() != "false");
         }
         log("INFO", &startup_done(level_load_time));
-        // DedicatedServer.initServer ends with saveEverything(false, true, true).
+        // DedicatedServer.initServer ends with saveEverything(false, true, true)
+        // followed by handleServerStarting(this), then runServer fires ServerStartedEvent.
         self.save_game()?;
         self.log_saved_levels();
         if let Some(host) = self.lan.as_mut() {
             host.hub.entity_range_percent = props.entity_broadcast_range_percentage;
         }
+        self.start_loaded_dedicated_world(&opened_packs);
         // The dedicated server's open is complete before its first tick.
         self.native_lifecycle_world_ready();
         let mut state = ServerState {
@@ -2375,38 +2376,6 @@ fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
 /// spawn's (`MinecraftServer.createCommandSourceStack` uses `findRespawnDimension`).
 fn console_level(active: super::Dim, spawn: super::Dim) -> Option<super::Dim> {
     (active != spawn).then_some(spawn)
-}
-
-impl Game<'_> {
-    pub(super) fn stop_after_crash(&mut self, message: &str) -> Result<()> {
-        // Single player's server thread (`integrated.rs`) has no console: it logs to the game's log.
-        let integrated = self.serving.is_some();
-        let warn = |message: &str| {
-            if integrated {
-                log::warn!("Sunrise: {message}");
-            } else {
-                log("WARN", message);
-            }
-        };
-        if integrated {
-            // `message` already says whether the tick panicked or failed.
-            log::error!("Sunrise: {message}");
-        } else {
-            log("ERROR", &format!("The server thread panicked: {message}"));
-        }
-        self.exclude_interrupted_players(true, warn);
-        if integrated {
-            // `IntegratedServer.stopServer`'s steps; `save_guest` skips the guest unplaced above.
-            return self.stop_integrated(true);
-        }
-        self.native_lifecycle.begin_close();
-        log("INFO", "Saving worlds");
-        self.save_game()?;
-        self.log_saved_levels();
-        self.native_lifecycle_world_closed();
-        self.lan_close(false);
-        Err(format!("the server thread panicked: {message}").into())
-    }
 }
 
 #[cfg(test)]

@@ -749,6 +749,9 @@ impl Game<'_> {
         opening: Opening,
     ) -> Result<()> {
         self.integrated_open(&launch, &flags, tasks, ready, opening)?;
+        // IntegratedServer.initServer ends with `ServerStartingEvent`, right before
+        // `MinecraftServer.runServer` fires `ServerStartedEvent`.
+        self.native_server_starting(false);
         // The server thread's `server_started` site, before the tick loop.
         self.native_lifecycle_world_ready();
         if let (Some(script), Some(output)) = (
@@ -770,6 +773,10 @@ impl Game<'_> {
     }
 
     fn integrated_tick_loop(&mut self, flags: &Flags) -> Result<()> {
+        enum TickFailure {
+            Error(Box<dyn std::error::Error>),
+            Panic(Box<dyn std::any::Any + Send>),
+        }
         let mut next = Instant::now();
         let mut was_paused = false;
         let mut failure = None;
@@ -831,17 +838,11 @@ impl Game<'_> {
             match ticked {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
-                    failure = Some(error);
+                    failure = Some(TickFailure::Error(error));
                     break;
                 }
                 Err(payload) => {
-                    failure = Some(
-                        format!(
-                            "the server thread panicked: {}",
-                            super::dedicated::panic_message(payload.as_ref())
-                        )
-                        .into(),
-                    );
+                    failure = Some(TickFailure::Panic(payload));
                     break;
                 }
             }
@@ -849,7 +850,7 @@ impl Game<'_> {
             self.publish_load_view();
             self.wait_for_next_server_tick(&mut next, paused);
         }
-        if let Some(error) = failure {
+        if let Some(failure) = failure {
             let finished = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 self.finish_server_capture();
             }));
@@ -859,18 +860,10 @@ impl Game<'_> {
                     super::dedicated::panic_message(payload.as_ref())
                 );
             }
-            let stopped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.stop_after_crash(&error.to_string())
-            }));
-            match stopped {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => log::error!("Sunrise: crash shutdown: {e}"),
-                Err(payload) => log::error!(
-                    "Sunrise: crash shutdown panicked: {}",
-                    super::dedicated::panic_message(payload.as_ref())
-                ),
-            }
-            return Err(error);
+            return match failure {
+                TickFailure::Error(error) => Err(error),
+                TickFailure::Panic(payload) => std::panic::resume_unwind(payload),
+            };
         }
         Ok(())
     }
@@ -892,9 +885,8 @@ impl Game<'_> {
         }
     }
 
-    /// The integrated server's world open: `run_integrated`'s segment
-    /// from `load_world` through `settle_spawn`, whole so its failures are
-    /// one open failure (`WorldOpenFailed`, the engine's own error text).
+    /// The integrated server's world open: `IntegratedServer.initServer`'s segment
+    /// from `load_world` through `settle_spawn`.
     fn integrated_open(
         &mut self,
         launch: &Launch,
@@ -909,7 +901,6 @@ impl Game<'_> {
         }
         let prepared = self.prepare_early_game_rules(opening.world?)?;
         self.native_server_about_to_start(false);
-        self.native_server_starting(false);
         self.native_lifecycle_open_started();
         // `load_world`, with the world `serve` started preparing.
         startup::time("server.wait_rest", || self.join_world_rest())?;
@@ -1788,7 +1779,12 @@ pub(super) mod tests {
                 pending: None,
                 load: LoadPhase::default(),
             });
-            let error = game.integrated_tick_loop(&flags).unwrap_err();
+            let error = game
+                .run_server_lifecycle(false, |game, began| {
+                    *began = true;
+                    game.integrated_tick_loop(&flags)
+                })
+                .unwrap_err();
             assert_eq!(
                 error.to_string(),
                 "the server thread panicked: integrated tick fixture"

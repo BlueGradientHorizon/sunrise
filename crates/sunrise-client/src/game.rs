@@ -8980,6 +8980,11 @@ impl Game<'_> {
         self.streaming.nether_shading =
             facts.cardinal_light == sunrise_world::dimension_type::CardinalLight::Nether;
         self.load_world_state()?;
+        // MinecraftServer.createLevels loads scoreboard, command storage, and
+        // stopwatches before firing the Overworld's LevelEvent.Load.
+        if self.remote.is_none() {
+            self.load_scoreboard();
+        }
         self.open_builtin_levels()?;
         Ok(stack)
     }

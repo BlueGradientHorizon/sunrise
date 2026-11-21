@@ -29,8 +29,8 @@ impl Game<'_> {
         if !startup_began {
             return result;
         }
-        let run_error = result.as_ref().err().map(ToString::to_string);
-        let shutdown = self.shutdown_started_server(dedicated, crashed, run_error.as_deref());
+        let orderly = result.is_ok() && !self.native_lifecycle.is_opening();
+        let shutdown = self.shutdown_started_server(dedicated, crashed, orderly);
         result.and(shutdown)
     }
 
@@ -40,24 +40,17 @@ impl Game<'_> {
         &mut self,
         dedicated: bool,
         crashed: bool,
-        run_error: Option<&str>,
+        orderly: bool,
     ) -> Result<()> {
         // There will be no next server tick; do not keep logs for another world.
         sunrise_client::logging::stop_tap();
         let mut failure: Option<String> = None;
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
-        if let Err(payload) =
-            catch_unwind(AssertUnwindSafe(|| self.native_server_stopping(dedicated)))
-        {
-            remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()));
-        }
-        self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
-        if let Some(error) = run_error {
-            let error = error.to_owned();
-            if let Err(payload) = catch_unwind(AssertUnwindSafe(|| {
-                self.native_lifecycle_world_failed(&error);
-                self.native_lifecycle_close_failed(&error);
-            })) {
+        self.native_lifecycle.begin_close();
+        if orderly {
+            if let Err(payload) =
+                catch_unwind(AssertUnwindSafe(|| self.native_server_stopping(dedicated)))
+            {
                 remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()));
             }
             self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
@@ -72,9 +65,6 @@ impl Game<'_> {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
                 let text = error.to_string();
-                let _ = catch_unwind(AssertUnwindSafe(|| {
-                    self.native_lifecycle_close_failed(&text);
-                }));
                 log::error!("Exception stopping the server: {text}");
                 if failure.is_none() {
                     failure = Some(text);
@@ -82,11 +72,7 @@ impl Game<'_> {
             }
             Err(payload) => {
                 let message = shutdown_panic(payload.as_ref());
-                remember_shutdown(&mut failure, message.clone());
-                self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
-                let _ = catch_unwind(AssertUnwindSafe(|| {
-                    self.native_lifecycle_close_failed(&message);
-                }));
+                remember_shutdown(&mut failure, message);
                 // The callback can panic inside a new player's turn, and the save below writes
                 // every player the exclusion does not name.
                 self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
@@ -233,9 +219,9 @@ impl Game<'_> {
                 }
             }
         }
-        if result.is_ok()
-            && let Err(payload) =
-                catch_unwind(AssertUnwindSafe(|| self.native_lifecycle_world_closed()))
+        if let Err(payload) =
+            catch_unwind(AssertUnwindSafe(|| self.native_lifecycle_world_closed()))
+            && result.is_ok()
         {
             result = Err(shutdown_panic(payload.as_ref()).into());
         }
