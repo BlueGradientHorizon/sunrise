@@ -36,7 +36,8 @@ after registration and update it or call `bar.message(text)` from a worker threa
 
 `RegistrationContext::message(text)` shows a line for a few seconds without opening a bar. Both
 message methods and `bar.label(text)` borrow `text`; the caller need not keep it alive after the call.
-The newest four bars and the last three lines are drawn, each cut to one line. A dedicated server
+The newest four bars and the last three lines are drawn; message lines are cut to one line
+while bar labels are kept verbatim. A dedicated server
 logs each label, line and progress in 10% increments instead.
 
 This is part of the startup progress feature, not live rendering of synchronous setup work.
@@ -175,27 +176,19 @@ a fact, map it into a field of your own [Wire record](wire-types.md).
 FML's file and path APIs (`ModList` file reads, config full paths, the game directory, update URLs) are
 replaced on purpose; [FML loader APIs and their Sunrise routes](../reference/fml-loader-apis.md) lists each one.
 
-## Settings snapshot limits
+## Settings snapshots
 
 Settings snapshots accept regular UTF-8 files only. File and package-directory symlinks,
-including internal links, are not followed. Invalid UTF-8, special files and refused entries
-are absent from the snapshot rather than reported as read errors.
-
-| Limit | Behaviour |
-| --- | --- |
-| 64 KiB per file, before trimming | Oversized values are omitted. |
-| 1,024 captured keys per mod | Additional keys are omitted. |
-| 16 MiB for the snapshot, before trimming | Values exceeding the remaining budget are omitted. |
-| 4,096 enumerated names per package | A package exceeding the budget is omitted entirely. |
+including internal links, are not followed. Non-UTF-8 filenames, invalid UTF-8 contents,
+special files and unreadable entries are skipped individually and omitted from the snapshot
+rather than discarding the mod's remaining settings or failing load.
 
 Capture proceeds in sorted package-ID and key-name order. Missing settings directories and
-empty settings produce no warning. A capture with refusals emits one warning naming each
-known omitted key, its mod and its reason; an inaccessible or incompletely enumerated
-directory is identified by scope instead of inventing a key. Enumeration-limit diagnostics
-name the entries visited within the bounded scan; the entire package is still omitted.
+empty settings produce no warning. A capture with skipped entries emits one warning naming
+each omitted key, its mod and its reason; an inaccessible or incompletely enumerated
+directory is identified by scope instead of inventing a key.
 Initial registration, item-data loading, table preload and loop publication share one
 captured settings snapshot rather than rescanning it on each startup thread. The game,
 audio and world-generation readers retain that generation's immutable snapshot without
-recapturing or repeating diagnostics. A new capture reports new refusals,
-even if an earlier generation already warned. These limits apply to scalar settings, not
-mod data files.
+recapturing or repeating diagnostics. A new capture reports new omissions,
+even if an earlier generation already warned.

@@ -15,7 +15,7 @@ const SHOWN_LINES: usize = 3;
 const MAX_BARS: usize = 64;
 /// Lines kept for drawing.
 const MAX_LINES: usize = 32;
-/// A label or line is cut to this many bytes when it is kept.
+/// A startup message line is cut to this many bytes when it is kept.
 const MAX_TEXT: usize = 256;
 
 struct Bar {
@@ -126,11 +126,15 @@ impl mod_api::StartupScreen for ModProgress {
     ) -> Result<Box<dyn mod_api::ProgressMeter>, mod_api::StartupProgressError> {
         let mut state = self.state();
         if state.bars.len() >= MAX_BARS {
+            drop(state);
+            log::warn!(
+                "Sunrise: mod {} exceeded the {MAX_BARS}-bar startup progress limit",
+                mod_api::content::crash::current_native_mod().unwrap_or("unknown")
+            );
             return Err(mod_api::StartupProgressError::TooManyBars);
         }
-        let label = one_line(label);
         let bar = Arc::new(Mutex::new(Bar {
-            label: label.clone().collect(),
+            label: label.to_owned(),
             done: 0,
             steps,
             logged: 0,
@@ -138,7 +142,7 @@ impl mod_api::StartupScreen for ModProgress {
         state.bars.push(bar.clone());
         drop(state);
         if self.dedicated {
-            log_line(label);
+            log::info!("{label}");
         }
         Ok(Box::new(Meter { screen: self, bar }))
     }
@@ -184,16 +188,15 @@ impl mod_api::ProgressMeter for Meter {
     }
 
     fn label(&self, text: &str) {
-        let label = one_line(text);
         let mut bar = self.bar.lock().unwrap_or_else(|p| p.into_inner());
-        if label.clone().eq(bar.label.chars()) {
+        if bar.label == text {
             return;
         }
         bar.label.clear();
-        bar.label.extend(label.clone());
+        bar.label.push_str(text);
         drop(bar);
         if self.screen.dedicated {
-            log_line(label);
+            log::info!("{text}");
         }
     }
 
@@ -217,17 +220,16 @@ mod tests {
     use mod_api::StartupScreen;
 
     #[test]
-    fn multibyte_labels_stop_at_the_last_complete_character() {
+    fn multibyte_labels_are_stored_verbatim_and_messages_stop_at_char_boundary() {
         let screen = Arc::new(ModProgress::new(false));
-        let bar = screen
-            .clone()
-            .open(&format!("{}界", "é".repeat(127)), 1)
-            .unwrap();
-        assert_eq!(screen.shown(Instant::now()).0[0].0, "é".repeat(127));
-        bar.label(&"é".repeat(129));
-        assert_eq!(screen.shown(Instant::now()).0[0].0, "é".repeat(128));
-        bar.message(&"é".repeat(128));
-        assert_eq!(screen.shown(Instant::now()).1, ["é".repeat(128)]);
+        let initial = format!("{}界", "é".repeat(127));
+        let bar = screen.clone().open(&initial, 1).unwrap();
+        assert_eq!(screen.shown(Instant::now()).0[0].0, initial);
+        let updated = "é".repeat(129);
+        bar.label(&updated);
+        assert_eq!(screen.shown(Instant::now()).0[0].0, updated);
+        bar.message(&initial);
+        assert_eq!(screen.shown(Instant::now()).1, ["é".repeat(127)]);
     }
 
     #[test]
@@ -287,7 +289,7 @@ mod tests {
         let now = Instant::now;
         assert_eq!(
             screen.shown(now()).0,
-            [("Baking models".to_owned(), 0.4_f32)]
+            [("Baking\nmodels".to_owned(), 0.4_f32)]
         );
         first.set(99);
         assert_eq!(screen.shown(now()).0[0].1, 1.0);
@@ -313,7 +315,7 @@ mod tests {
                 ("Models".to_owned(), 0.0),
                 ("Models".to_owned(), 0.0),
                 ("Models".to_owned(), 0.0),
-                ("Baking models".to_owned(), 1.0),
+                ("Baking\nmodels".to_owned(), 1.0),
             ]
         );
         drop(more);

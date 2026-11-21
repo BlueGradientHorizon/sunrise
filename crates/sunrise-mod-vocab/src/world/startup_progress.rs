@@ -46,7 +46,7 @@ pub trait ProgressMeter: Send + Sync + 'static {
     fn step(&self);
     /// `done` of the bar's steps are done, up to its total steps.
     fn set(&self, done: u32);
-    /// Replace the bar's label, cut to one line. The new label may outlive `text`.
+    /// Replace the bar's label. The new label may outlive `text`.
     fn label(&self, text: &str);
     /// Show a startup line, separate from the bar's label, or log it on a dedicated server.
     fn message(&self, text: &str);
@@ -104,7 +104,7 @@ impl StartupProgress {
         }
     }
 
-    /// The bar reads `text` from now on, cut to one line.
+    /// The bar reads `text` from now on.
     pub fn label(&self, text: &str) {
         if let Some(meter) = &self.meter {
             meter.label(text);
