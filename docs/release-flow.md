@@ -577,7 +577,9 @@ reservation, on publish-only retries and in dry runs. Comparing against a previo
 stable release requires both signed SDKs, even on a dry run. Native engine loops, internals and mixin targets
 are outside the API restriction. The release notes list targets added, removed or changed since the previous
 stable release of the same Minecraft version (including across a major bump). They compare each target's signature
-and source hashes from `functions.json`, not offsets or other lookup metadata. If the list doesn't fit in the notes,
+and source hashes from `functions.json`, not offsets or other lookup metadata; when both SDKs carry the
+declaration and body digests, a target whose digests differ is listed too, so a change to an enclosing impl
+shows even when its own signature and source span did not change. If the list doesn't fit in the notes,
 they link to the full list on the release.
 
 Launchers without Stable profiles can only use a `26.3-<semver>` release as a manual download.

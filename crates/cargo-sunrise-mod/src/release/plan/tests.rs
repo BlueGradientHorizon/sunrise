@@ -285,6 +285,15 @@ impl Registry {
     }
 
     fn broke_at(&mut self, label: &str) {
+        self.verdict_at(
+            label,
+            index::FitVerdict::Breaks {
+                changed: vec!["hook removed".into()],
+            },
+        );
+    }
+
+    fn verdict_at(&mut self, label: &str, fit: index::FitVerdict) {
         self.published
             .projects
             .iter_mut()
@@ -295,9 +304,7 @@ impl Registry {
             .insert(
                 label.into(),
                 index::BuildVerdict {
-                    fit: index::FitVerdict::Breaks {
-                        changed: vec!["hook removed".into()],
-                    },
+                    fit,
                     targets: Vec::new(),
                 },
             );
@@ -428,6 +435,25 @@ fn a_nightly_break_still_applies_to_that_commit_as_a_stable_target() {
         date: "2026-11-20".into(),
     });
     registry.broke_at("nightly");
+    assert!(registry.select(None).unwrap().is_none());
+    assert!(registry.select(Some(("1.0.0", TIP_TAG))).is_err());
+}
+
+#[test]
+fn a_body_change_does_not_schedule_a_rebuild() {
+    let mut registry = Registry::new();
+    registry
+        .published
+        .releases
+        .as_mut()
+        .unwrap()
+        .extend(stable_list(&[(TIP_TAG, TIP)]));
+    registry.verdict_at(
+        TIP_TAG,
+        index::FitVerdict::Rebuild {
+            review: vec!["game::tick".into()],
+        },
+    );
     assert!(registry.select(None).unwrap().is_none());
     assert!(registry.select(Some(("1.0.0", TIP_TAG))).is_err());
 }
