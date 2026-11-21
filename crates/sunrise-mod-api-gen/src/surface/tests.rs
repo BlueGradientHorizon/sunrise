@@ -847,6 +847,80 @@ fn a_public_type_through_a_workspace_module_glob_is_still_a_leak() {
 }
 
 #[test]
+fn workspace_globs_see_transitive_default_features_but_not_optional_ones() {
+    let edited = "mod imported {
+            use engine::*;
+            pub fn result() -> Result<u8, u8> { unimplemented!() }
+        }
+        pub use imported::result;
+        /// A colour.";
+    let manifest = "engine-fixture/Cargo.toml";
+    let source = (
+        "engine-fixture/src/lib.rs",
+        "#[cfg(feature = \"extra\")] pub struct Result",
+        "#[cfg(all(feature = \"default\", feature = \"extra\"))] pub struct Result",
+    );
+    let declarations = "[features]\nbridge = [\"extra\"]\nextra = []\n";
+    let disabled = format!("name = \"engine_library\"\n{declarations}");
+    try_export_fixture(
+        &[
+            (LIB, "/// A colour.", edited),
+            source,
+            (manifest, "name = \"engine_library\"", &disabled),
+        ],
+        HOOKS,
+    )
+    .expect("the optional feature is off, so Result comes from the prelude");
+
+    let enabled = format!("{disabled}default = [\"bridge\"]\n");
+    let error = try_export_fixture(
+        &[
+            (LIB, "/// A colour.", edited),
+            source,
+            (manifest, "name = \"engine_library\"", &enabled),
+        ],
+        HOOKS,
+    )
+    .err()
+    .expect("the default feature transitively adds the workspace Result to the glob");
+    assert!(error.contains("mod_api::result"), "{error}");
+    assert!(error.contains("engine_library::Result"), "{error}");
+}
+
+#[test]
+fn preflight_reads_only_dependencies_for_the_current_target() {
+    for (selector, active) in [
+        ("cfg(all())", true),
+        ("cfg(any())", false),
+        (r#"cfg(target_vendor = "sunrise-fixture-vendor")"#, false),
+        ("x86_64-sunrise-fixture-os", false),
+    ] {
+        let table = format!("[target.'{selector}'.dependencies]");
+        let result = try_export_fixture(
+            &[
+                (
+                    "crates/sunrise-mod-vocab/Cargo.toml",
+                    "[dependencies]",
+                    &table,
+                ),
+                (
+                    "engine-fixture/src/lib.rs",
+                    "pub struct Secret;",
+                    "include!(concat!(env!(\"OUT_DIR\"), \"unknown_generated.rs\"));",
+                ),
+            ],
+            HOOKS,
+        );
+        if active {
+            let error = result.err().expect("the active dependency must be indexed");
+            assert!(error.contains("unknown_generated.rs"), "{error}");
+        } else {
+            result.expect("the inactive dependency's source should not be read");
+        }
+    }
+}
+
+#[test]
 fn a_workspace_library_without_source_cannot_be_silently_skipped() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();

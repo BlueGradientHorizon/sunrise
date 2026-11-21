@@ -15,16 +15,12 @@ fn target_cfg(name: &str) -> Option<String> {
     match name {
         "target_os" => Some(std::env::consts::OS.to_owned()),
         "target_arch" => Some(std::env::consts::ARCH.to_owned()),
-        "target_family" => Some(
-            if cfg!(unix) {
-                "unix"
-            } else if cfg!(windows) {
-                "windows"
-            } else {
-                "other"
-            }
-            .to_owned(),
-        ),
+        "target_abi" => Some(env!("CARGO_CFG_TARGET_ABI").to_owned()),
+        "target_env" => Some(env!("CARGO_CFG_TARGET_ENV").to_owned()),
+        "target_feature" => Some(env!("CARGO_CFG_TARGET_FEATURE").to_owned()),
+        "target_has_atomic" => Some(env!("CARGO_CFG_TARGET_HAS_ATOMIC").to_owned()),
+        "target_vendor" => Some(env!("CARGO_CFG_TARGET_VENDOR").to_owned()),
+        "target_family" => Some(env!("CARGO_CFG_TARGET_FAMILY").to_owned()),
         "target_pointer_width" => Some(usize::BITS.to_string()),
         "target_endian" if cfg!(target_endian = "little") => Some("little".to_owned()),
         "target_endian" if cfg!(target_endian = "big") => Some("big".to_owned()),
@@ -36,7 +32,7 @@ fn target_flag(name: &str, fallback: bool) -> bool {
     std::env::var_os(format!("CARGO_CFG_{}", name.to_ascii_uppercase())).is_some() || fallback
 }
 
-fn cfg_active(meta: &Meta) -> bool {
+fn cfg_active(meta: &Meta, features: Option<&HashSet<String>>) -> bool {
     match meta {
         Meta::Path(path) => {
             let Some(name) = path.get_ident().map(ToString::to_string) else {
@@ -62,10 +58,7 @@ fn cfg_active(meta: &Meta) -> bool {
             let Some(name) = pair.path.get_ident().map(ToString::to_string) else {
                 return true;
             };
-            if name == "feature" {
-                return false;
-            }
-            if !name.starts_with("target_") {
+            if name != "feature" && !name.starts_with("target_") {
                 return true;
             }
             let syn::Expr::Lit(syn::ExprLit {
@@ -75,6 +68,9 @@ fn cfg_active(meta: &Meta) -> bool {
             else {
                 return true;
             };
+            if name == "feature" {
+                return features.is_some_and(|features| features.contains(&expected.value()));
+            }
             target_cfg(&name).is_none_or(|actual| {
                 actual
                     .split(',')
@@ -88,11 +84,11 @@ fn cfg_active(meta: &Meta) -> bool {
                 return true;
             };
             if list.path.is_ident("any") {
-                inner.iter().any(cfg_active)
+                inner.iter().any(|meta| cfg_active(meta, features))
             } else if list.path.is_ident("all") {
-                inner.iter().all(cfg_active)
+                inner.iter().all(|meta| cfg_active(meta, features))
             } else if list.path.is_ident("not") {
-                !inner.iter().all(cfg_active)
+                !inner.iter().all(|meta| cfg_active(meta, features))
             } else {
                 true
             }
@@ -100,11 +96,11 @@ fn cfg_active(meta: &Meta) -> bool {
     }
 }
 
-fn attribute_is_active(meta: &Meta) -> bool {
+fn attribute_is_active(meta: &Meta, features: Option<&HashSet<String>>) -> bool {
     match meta {
         Meta::List(list) if list.path.is_ident("cfg") => list
             .parse_args::<Meta>()
-            .map(|condition| cfg_active(&condition))
+            .map(|condition| cfg_active(&condition, features))
             .unwrap_or(true),
         Meta::List(list) if list.path.is_ident("cfg_attr") => {
             let Ok(args) = list.parse_args_with(
@@ -115,15 +111,31 @@ fn attribute_is_active(meta: &Meta) -> bool {
             let Some(condition) = args.first() else {
                 return true;
             };
-            !cfg_active(condition) || args.iter().skip(1).all(attribute_is_active)
+            !cfg_active(condition, features)
+                || args
+                    .iter()
+                    .skip(1)
+                    .all(|meta| attribute_is_active(meta, features))
         }
         _ => true,
     }
 }
 
-/// Whether source items are present in the default build for Cargo's target.
-pub fn default_build(attrs: &[Attribute]) -> bool {
-    attrs.iter().all(|attr| attribute_is_active(&attr.meta))
+/// Whether a Cargo target dependency table applies to the current target.
+pub fn target_dependency_active(selector: &str) -> Result<bool, String> {
+    if let Some(condition) = selector
+        .strip_prefix("cfg(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        let meta: Meta = syn::parse_str(condition)
+            .map_err(|error| format!("invalid Cargo target selector `{selector}`: {error}"))?;
+        return Ok(cfg_active(&meta, None));
+    }
+    let target = std::env::var("TARGET");
+    Ok(selector
+        == target
+            .as_deref()
+            .unwrap_or(env!("SUNRISE_MOD_SOURCE_TARGET")))
 }
 
 /// One module: its crate, its path below the crate root, and its items.
@@ -255,11 +267,12 @@ pub struct Index<'a> {
     root_files: HashMap<String, String>,
     /// Cargo names for dependencies whose source is in this index, by importing crate.
     dependency_aliases: HashMap<String, HashMap<String, String>>,
+    default_features: HashMap<String, HashSet<String>>,
 }
 
 /// The file a module's `#[path = "..."]` names.
-fn path_attribute(attrs: &[syn::Attribute]) -> Option<String> {
-    fn path(meta: &Meta) -> Option<String> {
+fn path_attribute(attrs: &[syn::Attribute], features: Option<&HashSet<String>>) -> Option<String> {
+    fn path(meta: &Meta, features: Option<&HashSet<String>>) -> Option<String> {
         match meta {
             Meta::NameValue(value) if value.path.is_ident("path") => match &value.value {
                 syn::Expr::Lit(syn::ExprLit {
@@ -275,15 +288,15 @@ fn path_attribute(attrs: &[syn::Attribute]) -> Option<String> {
                     )
                     .ok()?;
                 let condition = args.first()?;
-                cfg_active(condition)
-                    .then(|| args.iter().skip(1).find_map(path))
+                cfg_active(condition, features)
+                    .then(|| args.iter().skip(1).find_map(|meta| path(meta, features)))
                     .flatten()
             }
             _ => None,
         }
     }
 
-    attrs.iter().find_map(|attr| path(&attr.meta))
+    attrs.iter().find_map(|attr| path(&attr.meta, features))
 }
 
 /// The directory below the crate root that holds `path`'s last module, with its slash.
@@ -310,6 +323,7 @@ impl<'a> Index<'a> {
             extra: Vec::new(),
             root_files: HashMap::new(),
             dependency_aliases: HashMap::new(),
+            default_features: HashMap::new(),
         }
     }
 
@@ -336,6 +350,18 @@ impl<'a> Index<'a> {
         self.dependency_aliases.extend(aliases.clone());
     }
 
+    pub fn add_default_features(&mut self, features: &HashMap<String, HashSet<String>>) {
+        self.default_features.extend(features.clone());
+    }
+
+    /// Whether an item's attributes admit the default build of its owning crate.
+    pub fn default_build(&self, module: usize, attrs: &[Attribute]) -> bool {
+        let features = self.default_features.get(&self.modules[module].krate);
+        attrs
+            .iter()
+            .all(|attr| attribute_is_active(&attr.meta, features))
+    }
+
     fn extern_crate_name(&mut self, module: usize, name: &str) -> Result<Option<String>, String> {
         let krate = self.modules[module].krate.clone();
         let root = self.module(&krate, &[])?;
@@ -344,7 +370,8 @@ impl<'a> Index<'a> {
                 return None;
             };
             let alias = item.rename.as_ref().map_or(&item.ident, |(_, name)| name);
-            (default_build(&item.attrs) && *alias == name).then(|| item.ident.to_string())
+            (self.default_build(root, &item.attrs) && *alias == name)
+                .then(|| item.ident.to_string())
         });
         let name = spelling.as_deref().unwrap_or(name);
         Ok(self
@@ -440,9 +467,13 @@ impl<'a> Index<'a> {
                     .any(|item| matches!(item, Item::Mod(item) if item.ident == last.as_str()));
                 let declared = declarations.iter().find_map(|item| match item {
                     Item::Mod(item)
-                        if item.ident == last.as_str() && default_build(&item.attrs) =>
+                        if item.ident == last.as_str()
+                            && self.default_build(parent, &item.attrs) =>
                     {
-                        Some((item.content.clone(), path_attribute(&item.attrs)))
+                        Some((
+                            item.content.clone(),
+                            path_attribute(&item.attrs, self.default_features.get(&krate)),
+                        ))
                     }
                     _ => None,
                 });
@@ -673,7 +704,7 @@ impl<'a> Index<'a> {
         let mut shadowed = false;
         for (item, definition_item) in items.iter().enumerate() {
             if let Some((attrs, visibility)) = definition(definition_item)
-                && default_build(attrs)
+                && self.default_build(module, attrs)
                 && defines(definition_item, name, namespace)
             {
                 if reachable(visibility) {
@@ -693,7 +724,7 @@ impl<'a> Index<'a> {
         let mut named = Vec::new();
         for item in items {
             match item {
-                Item::Use(item) if default_build(&item.attrs) => {
+                Item::Use(item) if self.default_build(module, &item.attrs) => {
                     let open = reachable(&item.vis);
                     uses(
                         &item.tree,
@@ -707,7 +738,7 @@ impl<'a> Index<'a> {
                         },
                     );
                 }
-                Item::ExternCrate(item) if default_build(&item.attrs) => {
+                Item::ExternCrate(item) if self.default_build(module, &item.attrs) => {
                     let alias = item.rename.as_ref().map_or(&item.ident, |(_, alias)| alias);
                     if *alias == name {
                         named.push((vec![item.ident.to_string()], true, reachable(&item.vis)));
@@ -870,7 +901,8 @@ impl<'a> Index<'a> {
                     let Some(length) = m.path.len().checked_sub(count) else {
                         return Ok(Binding::Missing);
                     };
-                    scope = self.module(m.krate.clone(), &m.path[..length].to_vec())?;
+                    let prefix = Vec::from(&m.path[..length]);
+                    scope = self.module(m.krate.clone(), &prefix)?;
                     remaining = &path[count..];
                 }
                 _ => unqualified = true,
@@ -971,7 +1003,7 @@ impl<'a> Index<'a> {
                 m.path[..m.path.len().checked_sub(1)?].to_vec(),
             ),
             name if m.items.iter().any(|item| {
-                matches!(item, Item::Mod(item) if item.ident == name && default_build(&item.attrs))
+                matches!(item, Item::Mod(item) if item.ident == name && self.default_build(module, &item.attrs))
             }) =>
             {
                 let mut path = m.path.clone();
@@ -1107,7 +1139,10 @@ mod index_tests {
     #[test]
     fn default_build_uses_debug_and_thread_local_cfgs() {
         let debug: Attribute = syn::parse_quote!(#[cfg(debug_assertions)]);
-        assert_eq!(default_build(&[debug]), cfg!(debug_assertions));
+        assert_eq!(
+            attribute_is_active(&debug.meta, None),
+            cfg!(debug_assertions)
+        );
 
         let thread_local: Attribute = syn::parse_quote!(#[cfg(target_thread_local)]);
         let family_supports_thread_local = target_cfg("target_family").is_some_and(|family| {
@@ -1116,12 +1151,12 @@ mod index_tests {
                 .any(|name| name == "unix" || name == "windows")
         });
         assert_eq!(
-            default_build(&[thread_local]),
+            attribute_is_active(&thread_local.meta, None),
             target_flag("target_thread_local", family_supports_thread_local)
         );
 
         let test_only: Attribute = syn::parse_quote!(#[cfg(test)]);
-        assert!(!default_build(&[test_only]));
+        assert!(!attribute_is_active(&test_only.meta, None));
     }
 
     #[test]

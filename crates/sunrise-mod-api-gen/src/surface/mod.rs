@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use syn::visit_mut::VisitMut;
 use syn::{Item, Visibility};
-use walk::{attrs, compiled, hidden};
+use walk::{attrs, hidden};
 
 /// The crates whose own `macro_rules!` calls the export expands: the API and the crates its
 /// public items come from.
@@ -538,7 +538,7 @@ fn impls(
         let module_items = index.modules[module].items.clone();
         for item in module_items {
             let Item::Impl(block) = item else { continue };
-            if !compiled(&block.attrs) {
+            if !index.default_build(module, &block.attrs) {
                 out.gated.push(format!(
                     "impl {} in {}: compiled out of a default native build ({}), not recorded",
                     print(block.self_ty.to_token_stream()),
@@ -594,7 +594,10 @@ fn impls(
                     syn::ImplItem::Const(c) => (&c.vis, &c.attrs),
                     _ => continue,
                 };
-                if matches!(vis, Visibility::Public(_)) && !compiled(attrs) && !hidden(attrs) {
+                if matches!(vis, Visibility::Public(_))
+                    && !index.default_build(module, attrs)
+                    && !hidden(attrs)
+                {
                     let name = match impl_item {
                         syn::ImplItem::Fn(f) => f.sig.ident.to_string(),
                         syn::ImplItem::Const(c) => c.ident.to_string(),
@@ -607,7 +610,10 @@ fn impls(
                     ));
                     continue;
                 }
-                if matches!(vis, Visibility::Public(_)) && compiled(attrs) && !hidden(attrs) {
+                if matches!(vis, Visibility::Public(_))
+                    && index.default_build(module, attrs)
+                    && !hidden(attrs)
+                {
                     out.inherent.entry(owner).or_default().push(Inherent {
                         module,
                         params: params.clone(),
@@ -954,7 +960,7 @@ fn trait_record(
         if hidden(attrs) {
             continue;
         }
-        if !compiled(attrs) {
+        if !writer.index.default_build(module, attrs) {
             let name = match member {
                 syn::TraitItem::Fn(f) => f.sig.ident.to_string(),
                 syn::TraitItem::Type(t) => t.ident.to_string(),
@@ -1440,7 +1446,7 @@ fn macros(
                 let Some(name) = &mac.ident else { continue };
                 if !has_attr(&mac.attrs, "macro_export")
                     || hidden(&mac.attrs)
-                    || !compiled(&mac.attrs)
+                    || !walker.index.default_build(module, &mac.attrs)
                     || name.to_string().starts_with("__")
                 {
                     continue;

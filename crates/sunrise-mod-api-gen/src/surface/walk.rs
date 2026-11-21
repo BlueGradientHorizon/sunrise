@@ -1,7 +1,7 @@
 //! The public items of `mod_api`, each under the path a mod writes: the facade crate's root,
 //! through public modules and `pub use`s (globs included), skipping `#[doc(hidden)]`, `__`
 //! names and items compiled out of a mod's default native build.
-use crate::index::{Found, Index, ItemId, OutsideSeam, default_build, uses};
+use crate::index::{Found, Index, ItemId, OutsideSeam, uses};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use syn::{Item, Visibility};
 
@@ -57,11 +57,6 @@ pub(super) fn hidden(attrs: &[syn::Attribute]) -> bool {
         matches!(&attr.meta, syn::Meta::List(list)
             if list.path.is_ident("doc") && list.tokens.to_string() == "hidden")
     })
-}
-
-/// Whether the items under `attrs` are part of the default native build.
-pub(super) fn compiled(attrs: &[syn::Attribute]) -> bool {
-    default_build(attrs)
 }
 
 pub(super) fn attrs(item: &Item) -> &[syn::Attribute] {
@@ -308,7 +303,7 @@ impl<'i, 'a> Walker<'i, 'a> {
         let mut globbed: Vec<Name> = Vec::new();
         for (position, item) in items.iter().enumerate() {
             let attrs = attrs(item);
-            if !compiled(attrs) {
+            if !self.index.default_build(module, attrs) {
                 let public = match item {
                     Item::Use(i) => matches!(i.vis, Visibility::Public(_)),
                     Item::Mod(i) => matches!(i.vis, Visibility::Public(_)),
@@ -621,7 +616,7 @@ impl<'i, 'a> Walker<'i, 'a> {
                 matches!(item, Item::Mod(child)
                     if child.ident == path[depth].as_str()
                         && matches!(child.vis, Visibility::Public(_))
-                        && compiled(&child.attrs)
+                        && self.index.default_build(parent, &child.attrs)
                         && !hidden(&child.attrs))
             });
             if !public {
@@ -655,7 +650,9 @@ impl<'i, 'a> Walker<'i, 'a> {
                 .items
                 .iter()
                 .filter_map(|item| match item {
-                    Item::Mod(child) if compiled(&child.attrs) => Some(child.ident.to_string()),
+                    Item::Mod(child) if self.index.default_build(module, &child.attrs) => {
+                        Some(child.ident.to_string())
+                    }
                     _ => None,
                 })
                 .collect();

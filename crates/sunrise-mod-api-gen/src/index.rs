@@ -1,6 +1,6 @@
 //! The crates the mod API's signatures name, indexed by [`mod_source::index`].
-use mod_source::index::Binding;
-pub(crate) use mod_source::index::{Found, Index, ItemId, default_build, uses};
+use mod_source::index::{Binding, target_dependency_active};
+pub(crate) use mod_source::index::{Found, Index, ItemId, uses};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::Path,
@@ -25,6 +25,7 @@ pub(crate) struct OutsideSeam {
     indexed: Vec<WorkspaceCrate>,
     /// Dependency names as Rust spells them, keyed by the indexed crate that declares them.
     dependencies: HashMap<String, HashMap<String, String>>,
+    default_features: HashMap<String, HashSet<String>>,
 }
 
 struct WorkspaceCrate {
@@ -122,7 +123,27 @@ impl OutsideSeam {
         }
 
         let mut dependencies = HashMap::new();
+        let mut default_features = HashMap::new();
         for (indexed_name, package) in member_manifests {
+            if let Some(features) = package.get("features").and_then(toml::Value::as_table)
+                && features.contains_key("default")
+            {
+                let mut enabled = HashSet::new();
+                let mut pending = vec!["default"];
+                while let Some(feature) = pending.pop() {
+                    if enabled.insert(feature.to_owned())
+                        && let Some(edges) = features.get(feature).and_then(toml::Value::as_array)
+                    {
+                        pending.extend(
+                            edges
+                                .iter()
+                                .filter_map(toml::Value::as_str)
+                                .filter(|edge| !edge.starts_with("dep:") && !edge.contains('/')),
+                        );
+                    }
+                }
+                default_features.insert(indexed_name.clone(), enabled);
+            }
             let mut aliases = HashMap::new();
             let mut add = |table: Option<&toml::map::Map<String, toml::Value>>| {
                 let Some(table) = table else { return };
@@ -153,8 +174,10 @@ impl OutsideSeam {
             };
             add(package.get("dependencies").and_then(toml::Value::as_table));
             if let Some(targets) = package.get("target").and_then(toml::Value::as_table) {
-                for target in targets.values() {
-                    add(target.get("dependencies").and_then(toml::Value::as_table));
+                for (selector, target) in targets {
+                    if target_dependency_active(selector)? {
+                        add(target.get("dependencies").and_then(toml::Value::as_table));
+                    }
                 }
             }
             if !aliases.is_empty() {
@@ -165,6 +188,7 @@ impl OutsideSeam {
             crates,
             indexed,
             dependencies,
+            default_features,
         })
     }
 
@@ -181,6 +205,7 @@ impl OutsideSeam {
         }
 
         index.add_dependency_aliases(&self.dependencies);
+        index.add_default_features(&self.default_features);
 
         // Resolve every source module reachable from the seam crates in each default build up
         // front. Export lookup can treat an unknown name as absent, but it must not mistake an
@@ -218,7 +243,7 @@ impl OutsideSeam {
                     .items
                     .iter()
                     .filter_map(|item| match item {
-                        Item::Mod(child) if default_build(&child.attrs) => {
+                        Item::Mod(child) if index.default_build(module, &child.attrs) => {
                             Some(child.ident.to_string())
                         }
                         _ => None,
