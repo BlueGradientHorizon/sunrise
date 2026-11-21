@@ -2,25 +2,34 @@ use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
-    /// A mouse press after the open screen's arms ran (`ScreenEvent.MouseButtonPressed.Post`).
+    /// A mouse press after the receiving screen ran (`ScreenEvent.MouseButtonPressed.Post`).
     pub(in crate::game) fn native_screen_mouse_button_pressed_post(
         &self,
         screen: &ScreenView<'_>,
         button: i32,
         modifiers: u32,
+        double_click: bool,
+        handled: &mut bool,
     ) {
-        self.fire_screen_mouse_button_pressed_post(screen, button, modifiers);
+        self.fire_screen_mouse_button_pressed_post(
+            screen,
+            button,
+            modifiers,
+            double_click,
+            handled,
+        );
     }
-    /// A mouse release after the open screen's arms ran (`ScreenEvent.MouseButtonReleased.Post`).
+    /// A mouse release after the receiving screen ran (`ScreenEvent.MouseButtonReleased.Post`).
     pub(in crate::game) fn native_screen_mouse_button_released_post(
         &self,
         screen: &ScreenView<'_>,
         button: i32,
         modifiers: u32,
+        handled: &mut bool,
     ) {
-        self.fire_screen_mouse_button_released_post(screen, button, modifiers);
+        self.fire_screen_mouse_button_released_post(screen, button, modifiers, handled);
     }
-    /// A drag the open screen's handlers have seen (`ScreenEvent.MouseDragged.Post`).
+    /// A drag the receiving screen did not handle (`ScreenEvent.MouseDragged.Post`).
     pub(in crate::game) fn native_screen_mouse_dragged_post(
         &self,
         screen: &ScreenView<'_>,
@@ -30,7 +39,7 @@ impl Game<'_> {
     ) {
         self.fire_screen_mouse_dragged_post(screen, button, delta, modifiers);
     }
-    /// A wheel turn the open screen has scrolled by (`ScreenEvent.MouseScrolled.Post`).
+    /// A wheel turn the receiving screen did not handle (`ScreenEvent.MouseScrolled.Post`).
     pub(in crate::game) fn native_screen_mouse_scrolled_post(
         &self,
         screen: &ScreenView<'_>,
@@ -66,8 +75,7 @@ impl Game<'_> {
         screen: &ScreenView<'_>,
         c: char,
         modifiers: u32,
-        canceled: &mut bool,
     ) {
-        self.fire_screen_char_typed_post(screen, c, modifiers, canceled);
+        self.fire_screen_char_typed_post(screen, c, modifiers);
     }
 }

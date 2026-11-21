@@ -436,7 +436,7 @@ impl Game<'_> {
         // Told here, so the frame's `observe_screen` sees no change to announce.
         self.screen_state.observed = self.observed_now();
         let none = self.screen_change_view(Screen::Playing);
-        self.native_screen_init_post(&screen_view_with_id(&none, id));
+        self.native_screen_init_post(&screen_view_with_id(&none, id), &mut NoopScreenWidgets);
         true
     }
 
@@ -513,7 +513,7 @@ impl Game<'_> {
             Some(title) if self.screen == Screen::Playing => title.mode.id(),
             _ => view.id,
         };
-        self.native_screen_init_post(&screen_view_with_id(&view, id));
+        self.native_screen_init_post(&screen_view_with_id(&view, id), &mut NoopScreenWidgets);
     }
 
     /// Shows `title`, as `Minecraft.setScreen(new TitleScreen())` (or the
@@ -616,14 +616,39 @@ impl Game<'_> {
                 );
             }
             if let Some(new) = &current {
-                self.native_screen_init_post(&new.view());
+                self.native_screen_init_post(&new.view(), &mut NoopScreenWidgets);
             }
         } else if let (Some(old), Some(new)) = (&self.screen_state.observed, &current)
             && old.rect != new.rect
         {
-            self.native_screen_init_post(&new.view());
+            self.native_screen_init_post(&new.view(), &mut NoopScreenWidgets);
         }
         self.screen_state.observed = current;
+    }
+}
+
+/// Temporary no-op widget registrar until the screen widget store lands.
+struct NoopScreenWidgets;
+
+impl mod_api::ScreenWidgets for NoopScreenWidgets {
+    fn add_button(&mut self, _button: mod_api::Button) -> mod_api::ScreenWidgetId {
+        mod_api::ScreenWidgetId::from_raw(0)
+    }
+
+    fn add_text_field(&mut self, _field: mod_api::TextField) -> mod_api::ScreenWidgetId {
+        mod_api::ScreenWidgetId::from_raw(0)
+    }
+
+    fn add_widget(&mut self, _widget: Box<dyn mod_api::ScreenWidget>) -> mod_api::ScreenWidgetId {
+        mod_api::ScreenWidgetId::from_raw(0)
+    }
+
+    fn set_initial_focus(&mut self, _id: mod_api::ScreenWidgetId) -> bool {
+        false
+    }
+
+    fn remove(&mut self, _id: mod_api::ScreenWidgetId) -> bool {
+        false
     }
 }
 
@@ -1304,11 +1329,14 @@ impl Game<'_> {
             ScreenMousePost::Button {
                 button,
                 pressed: true,
-            } => self.native_screen_mouse_button_pressed_post(&screen, button, modifiers),
+            } => self.native_screen_mouse_button_pressed_post(
+                &screen, button, modifiers, false, &mut false,
+            ),
             ScreenMousePost::Button {
                 button,
                 pressed: false,
-            } => self.native_screen_mouse_button_released_post(&screen, button, modifiers),
+            } => self
+                .native_screen_mouse_button_released_post(&screen, button, modifiers, &mut false),
             ScreenMousePost::Scroll(scroll) => {
                 self.native_screen_mouse_scrolled_post(&screen, scroll, modifiers)
             }
@@ -1354,7 +1382,7 @@ impl Game<'_> {
         };
         let modifiers = super::glfw_modifiers(self.modifiers);
         for c in text.chars() {
-            self.native_screen_char_typed_post(&screen, c, modifiers, &mut false);
+            self.native_screen_char_typed_post(&screen, c, modifiers);
         }
     }
     /// A screen the native mods' input hooks are for is open: the window has a

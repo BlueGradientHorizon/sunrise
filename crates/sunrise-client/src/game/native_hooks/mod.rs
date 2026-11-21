@@ -40,7 +40,7 @@ use mod_api::{
     EntityRenderers, GameRuleActor, HandRender, InsideEffects, InteractionAttempt, InteractionKey,
     ItemEntityRef, JsonAnimationType, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
     ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
-    RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
+    RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets, ScreenshotImage,
     ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
     VillagerProfessions, WorldPhase,
 };

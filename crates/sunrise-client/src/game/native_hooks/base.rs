@@ -1116,9 +1116,16 @@ impl Game<'_> {
         screen: &ScreenView<'_>,
         button: i32,
         modifiers: u32,
+        double_click: bool,
         canceled: &mut bool,
     ) {
-        self.fire_screen_mouse_button_pressed_pre(screen, button, modifiers, canceled);
+        self.fire_screen_mouse_button_pressed_pre(
+            screen,
+            button,
+            modifiers,
+            double_click,
+            canceled,
+        );
     }
     /// A mouse button went up over the open screen
     /// (`ScreenEvent.MouseButtonReleased.Pre`, vanilla's

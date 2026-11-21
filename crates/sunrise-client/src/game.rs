@@ -11970,6 +11970,7 @@ impl Game<'_> {
                         &screen,
                         button,
                         modifiers,
+                        false,
                         &mut canceled,
                     );
                 } else {

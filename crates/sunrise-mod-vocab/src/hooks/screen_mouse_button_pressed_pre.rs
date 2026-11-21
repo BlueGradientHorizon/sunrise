@@ -8,9 +8,11 @@ pub trait Hooks {
     /// where the pointer is (so there is no position of its own), `button` the
     /// button's GLFW index (0 left, 1 right, 2 middle, 3 back, 4 forward; a
     /// button past those is the platform's own number, which differs between
-    /// systems) and `modifiers` GLFW's bits (shift 1, control 2,
-    /// alt 4, super 8). Set `canceled` and the press goes no further: no slot,
-    /// no screen button, no drag, no hotbar key, no sort or header button.
+    /// systems), `modifiers` GLFW's bits (shift 1, control 2, alt 4, super 8),
+    /// and `double_click` matches vanilla's `MouseHandler` rule (a second press
+    /// of the same button on the same screen within 250 ms). Set `canceled` and
+    /// the press goes no further: no mounted widget, no slot, no screen button,
+    /// no drag, no hotbar key, no sort or header button.
     ///
     /// It fires before anything the screen does with the press, on the window
     /// only, and while a screen of the game's or the title's is open (Options
@@ -27,6 +29,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "cancel",
         out = "canceled",
         neoforge = "ScreenEvent.MouseButtonPressed.Pre",
@@ -36,6 +39,7 @@ pub trait Hooks {
         screen: &ScreenView<'_>,
         button: i32,
         modifiers: u32,
+        double_click: bool,
         canceled: &mut bool,
     );
 }
