@@ -11,12 +11,13 @@ pub trait Hooks {
     ///
     /// The vanilla anchors, in HUD order, are `minecraft:crosshair`, `hotbar`,
     /// `effects`, `boss_overlay`, `player_health` (hearts), `armor_level`, `food_level`,
-    /// `vehicle_health` (while riding a mount), `air_level`,
-    /// `contextual_info_bar` (jump, locator or experience bar, with the level number),
-    /// `selected_item_name`, `sleep_overlay`, `overlay_message` (action bar), `title`,
-    /// `scoreboard_sidebar`, `subtitle_overlay`, `chat` and `tab_list`. A slot skipped
-    /// by its draw conditions (for example, one F1 hides) fires neither hook. Focused
-    /// chat still draws at the chat screen's paint site. The camera overlays and debug
+    /// `vehicle_health`, `air_level`, `contextual_info_bar` (jump, locator or experience
+    /// bar, with the level number), `selected_item_name`, `sleep_overlay`,
+    /// `overlay_message` (action bar), `title`, `scoreboard_sidebar`, `subtitle_overlay`,
+    /// `chat` and `tab_list`. The status slots fire whenever the HUD is visible, even
+    /// if their vanilla bodies do not draw (for example, hearts in creative or vehicle
+    /// health off a mount). A skipped slot, such as one F1 hides, fires neither hook.
+    /// Focused chat still draws at the chat screen's paint site. The camera overlays and debug
     /// screen are not HUD layers. The selected item name and action bar keep vanilla's
     /// fixed positions; adding bars doesn't move them. Cancel and redraw the
     /// corresponding layer if it needs to move.

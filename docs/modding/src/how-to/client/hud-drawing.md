@@ -20,8 +20,7 @@ The client keeps the callback for the session and calls it as the mod that insta
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
 passed on each draw. The callback runs only for its own layer, and not when the HUD is hidden
 or `gui_layer_pre` cancels the layer.
-A vanilla anchor that doesn't draw that frame still determines the layer's position. The vehicle
-health, player health and contextual bar anchors follow that paint order.
+A vanilla anchor still determines the layer's position if its body doesn't draw that frame.
 
 ### Replacing or wrapping a layer
 
@@ -55,7 +54,10 @@ runs. For work that must happen even when the HUD is hidden, use the independent
 
 `minecraft:player_health` draws the hearts. The neighbouring `minecraft:armor_level`,
 `minecraft:food_level`, `minecraft:vehicle_health` and `minecraft:air_level` slots draw the other
-status rows. Cancel a slot with `gui_layer_pre`, or install a custom body in `register_gui_layers`:
+status rows. `GuiLayerPlacement::Above("minecraft:player_health".into())` places a layer between
+hearts and armor; use `Above("minecraft:air_level".into())` for a layer above all the status rows.
+
+Cancel a slot with `gui_layer_pre`, or install a custom body in `register_gui_layers`:
 
 ```rust,ignore
 event.layers.replace_layer("minecraft:player_health", Box::new(|host, draw| {
@@ -69,9 +71,12 @@ event.layers.replace_layer("minecraft:player_health", Box::new(|host, draw| {
 
 Use `wrap_layer` and call `ctx.draw_previous()` if the vanilla row should still draw. Heart
 flashing and `player_heart_type` run only in the vanilla heart body, after the layer's Pre hook.
-Bubble bookkeeping and pop audio run in the vanilla air body, even if the heart layer was
-cancelled or replaced. To replace all rows formerly drawn by `health_hud`, replace or wrap
-`player_health`, `armor_level`, `food_level` and `air_level`; `vehicle_health` is separate.
+Bubble bookkeeping and pop audio run only in the vanilla air body, even if the heart layer was
+cancelled or replaced. With the HUD visible, status slots still run their layer hooks and installed
+bodies in creative or spectator mode. Only the vanilla bodies check whether the player is in
+survival or adventure (or, for vehicle health, whether a mount has hearts to show). To replace all
+rows formerly drawn by `health_hud`, replace or wrap `player_health`, `armor_level`, `food_level`
+and `air_level`; `vehicle_health` is separate.
 You can keep a `GuiDraw` list: pass it to `draw.gui_paint(&draws)` and handle its returned error.
 Sunrise's radial overlay keeps clear of the actual paint from installed status-layer bodies,
 including replacements and wrappers.

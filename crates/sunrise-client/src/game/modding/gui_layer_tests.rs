@@ -10,7 +10,12 @@ use mod_api::{
     content::crash::current_native_mod,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch, motion::PlayerMotion};
+use sunrise_client::{
+    chunk::Chunk,
+    gui_layers::VanillaGuiLayer,
+    hud::HudBatch,
+    motion::{MotionWorld, PlayerMotion, WATER, dry_side},
+};
 use sunrise_core::geometry::Vec3;
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -157,6 +162,7 @@ fn take() -> Vec<String> {
 
 const PLAYER_HEALTH: &str = "minecraft:player_health";
 const AIR_LEVEL: &str = "minecraft:air_level";
+const BUBBLE_POP: &str = "ui.hud.bubble_pop";
 // Equal RGB channels make the marker's packed vertex colour independent of channel order.
 const HEALTH_MARKER: u32 = 0xFF2D_2D2D;
 
@@ -192,6 +198,14 @@ impl Hooks for HealthLayer {
                 }),
             ));
         }
+        let trace = self.trace.clone();
+        assert!(event.layers.wrap_layer(
+            AIR_LEVEL,
+            Box::new(move |ctx| {
+                trace.lock().unwrap().calls.push("air wrapper");
+                ctx.draw_previous();
+            }),
+        ));
     }
 
     fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
@@ -205,6 +219,7 @@ impl Hooks for HealthLayer {
             }
             "minecraft:armor_level" => trace.calls.push("armor pre"),
             "minecraft:food_level" => trace.calls.push("food pre"),
+            "minecraft:vehicle_health" => trace.calls.push("vehicle pre"),
             AIR_LEVEL => {
                 trace.calls.push("air pre");
                 if trace.cancel_air {
@@ -221,11 +236,15 @@ impl Hooks for HealthLayer {
     }
 
     fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
-        match event.layer {
-            PLAYER_HEALTH => self.trace.lock().unwrap().calls.push("health post"),
-            AIR_LEVEL => self.trace.lock().unwrap().calls.push("air post"),
-            _ => {}
-        }
+        let call = match event.layer {
+            PLAYER_HEALTH => "health post",
+            "minecraft:armor_level" => "armor post",
+            "minecraft:food_level" => "food post",
+            "minecraft:vehicle_health" => "vehicle post",
+            AIR_LEVEL => "air post",
+            _ => return,
+        };
+        self.trace.lock().unwrap().calls.push(call);
     }
 }
 
@@ -260,50 +279,131 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
         game.set_mode_id(0);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
         player.health.set_health(12.0, false).unwrap();
-        // Above water with missing air, vanilla draws bubbles and resets the sound latch.
-        player.air = 200;
+        player
+            .set_modifier(
+                "minecraft:armor",
+                "health-test:armor",
+                2.0,
+                "add_value",
+                true,
+            )
+            .unwrap();
+        // At 181/300, Hud.extractAirBubbles has six full bubbles and one popping.
+        // Above water the same depleted air instead resets the pop latch, with no sound.
+        player.air = 181;
         game.player = Some(player);
-        for (cancel_health, cancel_air) in
-            [(true, false), (true, true), (false, false), (false, true)]
-        {
-            game.health_hud.last_health = 17;
-            game.health_hud.last_bubble_pop_sound = 3;
-            *trace.lock().unwrap() = HealthTrace {
-                cancel_health,
-                cancel_air,
-                calls: Vec::new(),
-            };
-            let batch = game.hud_layers([640, 480]);
-            let calls = std::mem::take(&mut trace.lock().unwrap().calls);
-            let mut expected = vec!["health pre"];
-            if !cancel_health {
-                expected.extend([
-                    if replace { "replacement" } else { "hearts" },
-                    "health post",
-                ]);
+        for (under_water, creative) in [(false, false), (true, false), (true, true)] {
+            if creative {
+                game.set_mode_id(1);
+            } else if under_water {
+                let water = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:water")
+                    .unwrap();
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                for y in 64..=66 {
+                    game.world.set(2, y, 2, water).unwrap();
+                }
+                let player = game.player.as_mut().unwrap();
+                MotionWorld {
+                    entities: &[],
+                    player,
+                    scene: &mut game.world,
+                    assets: &game.pack.assets,
+                    collision_binding: game.collision,
+                    resources: game.motion,
+                    health: &game.health_resources,
+                    tag_items: None,
+                    loop_context: &game.loop_context,
+                    side: dry_side(),
+                    damage_hooks: &game.damage_hooks,
+                    block_registries: None,
+                }
+                .update_fluids()
+                .unwrap();
+                assert!(player.is_eye_in_fluid(WATER));
             }
-            expected.extend(["armor pre", "food pre", "air pre"]);
-            if !cancel_air {
-                expected.push("air post");
-            }
-            assert_eq!(calls, expected);
-            assert_eq!(
-                batch.vertices.iter().any(|v| v.color == HEALTH_MARKER),
-                !cancel_health && replace,
-            );
-            if !cancel_health && replace {
-                assert_eq!(game.ui.room.bottom(), 100.0);
+            let vetoes: &[(bool, bool)] = if creative {
+                &[(false, false)]
             } else {
-                assert!(game.ui.room.bottom() > 100.0);
+                &[(true, false), (true, true), (false, false), (false, true)]
+            };
+            for &(cancel_health, cancel_air) in vetoes {
+                game.health_hud.last_health = 17;
+                game.health_hud.last_bubble_pop_sound = 3;
+                game.audio.heard.remove(BUBBLE_POP);
+                *trace.lock().unwrap() = HealthTrace {
+                    cancel_health,
+                    cancel_air,
+                    calls: Vec::new(),
+                };
+                let batch = game.hud_layers([640, 480]);
+                let calls = std::mem::take(&mut trace.lock().unwrap().calls);
+                let mut expected = vec!["health pre"];
+                if !cancel_health {
+                    if replace {
+                        expected.push("replacement");
+                    } else if !creative {
+                        expected.push("hearts");
+                    }
+                    expected.push("health post");
+                }
+                expected.extend([
+                    "armor pre",
+                    "armor post",
+                    "food pre",
+                    "food post",
+                    "vehicle pre",
+                    "vehicle post",
+                    "air pre",
+                ]);
+                if !cancel_air {
+                    expected.extend(["air wrapper", "air post"]);
+                }
+                assert_eq!(calls, expected);
+                let painted_replacement = !cancel_health && replace;
+                assert_eq!(
+                    batch.vertices.iter().any(|v| v.color == HEALTH_MARKER),
+                    painted_replacement,
+                );
+                if painted_replacement {
+                    assert_eq!(game.ui.room.bottom(), 100.0);
+                } else if creative {
+                    assert_eq!(
+                        game.ui.room.bottom(),
+                        batch.height,
+                        "no vanilla status paint"
+                    );
+                } else {
+                    assert!(game.ui.room.bottom() > 100.0);
+                }
+                assert_eq!(
+                    game.health_hud.last_health,
+                    if cancel_health || replace || creative {
+                        17
+                    } else {
+                        12
+                    }
+                );
+                let draws_air = !cancel_air && !creative;
+                let pops = draws_air && under_water;
+                assert_eq!(
+                    game.health_hud.last_bubble_pop_sound,
+                    if !draws_air {
+                        3
+                    } else if pops {
+                        7
+                    } else {
+                        0
+                    }
+                );
+                // The sound is local-only; `heard` counts it even with the device disabled.
+                assert_eq!(game.audio.heard.get(BUBBLE_POP).copied(), pops.then_some(1));
             }
-            assert_eq!(
-                game.health_hud.last_health,
-                if cancel_health || replace { 17 } else { 12 }
-            );
-            assert_eq!(
-                game.health_hud.last_bubble_pop_sound,
-                if cancel_air { 3 } else { 0 }
-            );
         }
     });
 }

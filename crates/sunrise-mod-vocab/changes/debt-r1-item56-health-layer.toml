@@ -1,6 +1,7 @@
 ids = [
     "hook:gui_layer_pre",
     "hook:gui_layer_post",
+    "hook:register_gui_layers",
     "hook:player_heart_type",
     "hook:health_hud",
     "hook:health_hud.inputs",
@@ -30,7 +31,7 @@ ids = [
     "type:client::hud_layout::HealthInputs.under_water",
     "type:client::hud_layout::HealthInputs.vehicle_hearts",
 ]
-why = "Vanilla 26.3 updates the heart flash in Hud.extractPlayerHealth and the pop sound in Hud.extractAirBubbles. NeoForge's Hud.registerVanillaLayers splits the rows into extractHealthLevel, extractArmorLevel, extractFoodLevel, extractVehicleHealth and extractAirLevel. GuiLayerManager.renderInner fires RenderGuiLayerEvent.Pre once, then calls the installed layer body unless Pre cancels. Remove the second health callback; update the heart state and choose the sprites (Hud.HeartType.forPlayer) inside the vanilla heart body, and update bubble state and emit sound independently in the vanilla air body."
+why = "Vanilla 26.3 updates the heart flash in Hud.extractPlayerHealth and the pop sound in Hud.extractAirBubbles. NeoForge's Hud.registerVanillaLayers gives each status row its own body and applies survivalVisible to the original body, not the slot (GuiLayerManager.add). RegisterGuiLayersEvent replaces or wraps that body in place; GuiLayerManager.renderInner fires RenderGuiLayerEvent.Pre once before calling the installed body. Remove the second health callback. The vanilla heart body updates its own state and chooses sprites (Hud.HeartType.forPlayer); the vanilla air body updates bubbles and plays the pop independently. With the HUD visible, the status slots dispatch even when their original bodies have nothing to draw."
 migrate = """
 Remove `Hooks::health_hud` and the `HealthHudEvent` and `HealthInputs` imports. In `Hooks::register_gui_layers`, use `event.layers.replace_layer(\"minecraft:player_health\", Box::new(move |host, draw| { /* paint */ }))` for custom hearts. If replacing all the former rows, also replace `minecraft:armor_level`, `minecraft:food_level` and `minecraft:air_level`. `minecraft:vehicle_health` is a separate slot; leave it alone unless replacing the mount hearts. A `Some(Vec<GuiDraw>)` can become `draw.gui_paint(&draws)` inside the installed body; handle the returned `GuiPaintError`. Either paint each row in its own slot, or paint a combined buffer in `player_health` and replace the other three bodies with no-ops. The painted status rows still reserve space from Sunrise's radial overlay. Replace `event.wi` and `event.hi` with `let [w, h] = draw.size();` (GUI pixels as `f32`).
 
@@ -38,7 +39,9 @@ There is no replacement `event.inputs` snapshot. Get the local player with `host
 
 If you returned `None` on frames that should use vanilla, use `event.layers.wrap_layer(id, Box::new(move |ctx| { /* choose a body */ }))` instead for each affected slot. Read the player through `ctx.host()`, paint with `ctx.with_draw(&mut |draw| { /* custom paint */ })`, and call `ctx.draw_previous()` on frames that should keep the previous body.
 
-`gui_layer_pre` (v2) and `gui_layer_post` (v3) keep their signatures. Match `minecraft:player_health` for hearts only. For a veto or observation that used to cover all four rows, also match `minecraft:armor_level`, `minecraft:food_level` and `minecraft:air_level`. Return `Flow::Cancel` from Pre for each slot that should be skipped; cancelling only the heart slot no longer skips the air body or bubble audio. For drawing once below or above the entire group, attach your own layer below `minecraft:player_health` or above `minecraft:air_level`.
+`register_gui_layers` (v3) keeps its signature. If you already replaced or wrapped `minecraft:player_health`, keep that call for hearts only. To replace or wrap the whole former body, use a separate `replace_layer` or `wrap_layer` call for each of `minecraft:player_health`, `minecraft:armor_level`, `minecraft:food_level` and `minecraft:air_level`. If your `register` call used `GuiLayerPlacement::Above("minecraft:player_health".into())` to draw above the whole group, change it to `GuiLayerPlacement::Above("minecraft:air_level".into())`. Keep `Below("minecraft:player_health".into())` to draw below the group. If your custom paint must stay survival/adventure-only, get `player` from `host.local_player()` (use `let host = ctx.host();` in a wrapper) and run the custom paint only when `matches!(player.game_mode(host), Some(mod_api::GameMode::Survival | mod_api::GameMode::Adventure))`; the slot itself also runs in creative.
+
+`gui_layer_pre` (v2) and `gui_layer_post` (v3) keep their signatures. Match `minecraft:player_health` for hearts only. For a veto or observation that used to cover all four rows, also match `minecraft:armor_level`, `minecraft:food_level` and `minecraft:air_level`. Return `Flow::Cancel` from Pre for each slot that should be skipped; cancelling only the heart slot no longer skips the air body or bubble audio. Observers of status slots now run whenever the HUD is visible, even if the vanilla body does not paint (for example, `minecraft:vehicle_health` off a mount). If you only want to observe one row while it is eligible to paint, check that row's player mode or mount condition in your listener.
 
 `player_heart_type` (v2) keeps its signature; sprite overrides need no source change. It now fires after the heart slot's `gui_layer_pre` and only when the vanilla heart body runs. Move work that must run independently of that body to an independent HUD layer or to `gui_render_post` if it must also run with the HUD hidden.
 """
