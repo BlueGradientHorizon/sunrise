@@ -2371,7 +2371,7 @@ impl Game<'_> {
                     }
                 }
                 Arg::Coords(coordinates) => positional_value(
-                    ty.as_ref(),
+                    ty,
                     &coordinates,
                     self.resolve_coords(&coordinates),
                     self.source_rotation(),
@@ -3118,7 +3118,7 @@ mod tests {
                 "{name}: the type comes from the parsed node"
             );
             positional_value(
-                ty.as_ref(),
+                ty,
                 coordinates,
                 coordinates.position(origin, rotation),
                 rotation,

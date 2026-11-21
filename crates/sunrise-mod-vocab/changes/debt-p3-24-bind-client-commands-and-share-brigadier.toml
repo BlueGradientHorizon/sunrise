@@ -1,0 +1,16 @@
+ids = [
+    "type:Command",
+    "type:ArgType",
+    "type:ArgType.Res",
+    "type:ArgType.ResKey",
+    "type:ArgType.ResOrTag",
+    "type:ArgType.ResOrTagKey",
+    "type:ArgType.ResourceSelector",
+    "type:ArgType.ResourceOrId",
+]
+why = "Command arguments now own registry names when they come from a mod or a server, so replacing a dispatcher frees those names. There is no global interner or registration budget. This follows the registry-key arguments in vanilla 26.3's ArgumentTypeInfos.bootstrap and ResourceArgument.Info.deserializeFromNetwork, the name rules in Identifier.isValidNamespace/isValidPath, and NeoForge's dispatcher-scoped RegisterCommandsEvent and RegisterClientCommandsEvent. The protocol still uses the string frame from FriendlyByteBuf.readIdentifier."
+migrate = """
+No mod API code changes: keep using `Command::new(\"pick <kind:resource:minecraft:entity_type>\")` and reading `CommandArgumentValue::Id`. Supply a qualified `namespace:path` for the registry as before; remove any application-side workaround for the old 256-byte or 256-registry registration limit.
+
+If a native replacement constructs a dispatcher argument directly, import `sunrise_client::command::RegistryId`. Replace `ArgType::Res(\"minecraft:entity_type\")` with `ArgType::Res(RegistryId::from_static(\"minecraft:entity_type\"))`. Do the same for `ResKey`, `ResOrTag`, `ResOrTagKey`, `ResourceSelector` and `ResourceOrId`. For a runtime name, call `RegistryId::parse(name)`, handle `None` as an invalid name, and pass the `RegistryId` to the variant. Use `registry.as_str()` to read the name from a matched variant.
+"""

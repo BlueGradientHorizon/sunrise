@@ -40,16 +40,18 @@ pub fn split_command_registration(
 /// rest of the line, last), `integer`, `number`, `boolean`, `player`, `players`,
 /// `entity`, `entities`, `item`, `block_pos`, `vec3` (a point, `Vec3Argument.vec3()`; delivered
 /// as `Vec3`), `id` (a free `namespace:path` identifier, delivered as that canonical string),
-/// `mod_id` (a loaded package id, delivered as a
-/// string), `resource:<registry>` (an id that registry holds, delivered as `Id`:
-/// `<kind:resource:minecraft:entity_type>`), or a command argument type a mod registered with
-/// `Registrar::register_command_argument`, named by its namespaced id:
+/// `mod_id` (a loaded package id, delivered as a string), `resource:<registry>` (an id that
+/// registry holds, delivered as `Id`: `<kind:resource:minecraft:entity_type>`), or a command
+/// argument type a mod registered with `Registrar::register_command_argument`, named by its namespaced id:
 /// `machine use <machine:mymod:machine>`. Usages of one command share their
 /// words; the server merges them into one tree. A public `foo bar` lets everyone traverse
 /// `foo`, but does not by itself make an operator-only `foo` executable. Optional arguments
 /// allow a usage to execute at their preceding prefixes too. If accepted usages execute at
 /// the same node, the one requiring the lowest level supplies both permission and executor;
 /// the first such registration wins on ties.
+///
+/// A `resource:<registry>` usage requires a `namespace:path` registry name; an invalid name
+/// refuses the usage. There is no separate registration budget for registry names.
 ///
 /// Side: server. Selector arguments use vanilla's source position, permissions,
 /// cardinality and selection order; `player`/`entity` require one result and
