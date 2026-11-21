@@ -4619,24 +4619,34 @@ impl Game<'_> {
     }
     /// Creative mode only: gives the local player `count` of `item`
     /// (`minecraft:diamond`) as taking it from the creative inventory does
-    /// (`ServerboundSetCreativeModeSlot`): the selected slot first, then the
-    /// hotbar, then the inventory. The count is cut to one stack.
+    /// (`Inventory.add`'s slot order). Returns the count that did not fit.
     pub(in crate::game) fn player_give_creative(
         &mut self,
         player: mod_api::PlayerRef,
         item: mod_api::ItemKey,
         count: u32,
-    ) -> Result<(), mod_api::CreativeGiveError> {
+    ) -> Result<u32, mod_api::CreativeGiveError> {
         use mod_api::CreativeGiveError;
-        if self.is_logical_server() || self.player.is_none() || self.res.rest.get().is_none() {
+        if self.is_logical_server() || self.res.rest.get().is_none() {
             return Err(CreativeGiveError::Unavailable);
         }
         let local = self.local_player().ok_or(CreativeGiveError::Unavailable)?;
         if local != player {
             return Err(CreativeGiveError::Stale);
         }
+        if !self.creative {
+            return Err(CreativeGiveError::NotCreative);
+        }
         let item = mod_api::__private::item_key_id(item).ok_or(CreativeGiveError::UnknownItem)?;
-        self.recipe_give(item, count)
+        if self.res.items().get(item).is_none() {
+            return Err(CreativeGiveError::UnknownItem);
+        }
+        Ok(if count == 0 {
+            0
+        } else {
+            self.add_stack_to_inventory(sunrise_items::items::ItemStack::new(item, count))
+                .map_or(0, |left| left.count)
+        })
     }
 }
 

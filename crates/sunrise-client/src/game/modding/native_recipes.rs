@@ -313,39 +313,6 @@ impl Game<'_> {
             .find(|category| category.recipe_type == kind)
             .cloned()
     }
-    /// `PlayerRef::give_creative`: `count` of `item`, refused outside a world, unless
-    /// creative, for an item the game doesn't have, or when the inventory has no room.
-    pub(super) fn recipe_give(
-        &mut self,
-        item: &str,
-        count: u32,
-    ) -> Result<(), mod_api::CreativeGiveError> {
-        use mod_api::CreativeGiveError;
-        if self.player.is_none() || self.res.rest.get().is_none() {
-            return Err(CreativeGiveError::Unavailable);
-        }
-        if !self.creative {
-            return Err(CreativeGiveError::NotCreative);
-        }
-        let max = self
-            .res
-            .items()
-            .get(item)
-            .ok_or(CreativeGiveError::UnknownItem)?
-            .max_stack;
-        let requested = count.clamp(1, 99).min(max);
-        let left = self.add_stack_to_inventory(ItemStack {
-            item: item.into(),
-            // One stack at most, as the creative inventory hands out.
-            count: requested,
-            damage: 0,
-            extra: None,
-        });
-        if left.is_some_and(|rem| rem.count == requested) {
-            return Err(CreativeGiveError::NoRoom);
-        }
-        Ok(())
-    }
     /// `place_recipe`: refused as `recipes.place` refuses it.
     pub(super) fn recipe_place(&mut self, book_id: i32, all: bool) -> Result<(), String> {
         if !self.mod_recipe_screen() {

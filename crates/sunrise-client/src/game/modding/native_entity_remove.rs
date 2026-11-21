@@ -49,8 +49,8 @@ impl Game<'_> {
     /// `LivingEntity.kill(ServerLevel)` -> `hurtServer(level, damageSources().genericKill(), Float.MAX_VALUE)`):
     /// a living entity falls and drops its loot, and any other entity is removed
     /// and posts `minecraft:entity_die`. Reaches entities in parked dimensions.
-    /// Returns `Ok(false)` for a dragon part or an already-dead/removed mob
-    /// (`LivingEntity.isAlive()`).
+    /// An open transaction stages the kill in its level; its effects wait for
+    /// the root commit. A live target that refuses the kill returns `Ok(false)`.
     pub(super) fn entity_kill(&mut self, entity: EntityRef) -> Result<bool, LevelWriteError> {
         if !self.is_logical_server() {
             return Err(LevelWriteError::Unavailable);
@@ -68,30 +68,20 @@ impl Game<'_> {
         if matches!(value, Target::DragonPart(_)) {
             return Ok(false);
         }
-        let parked = !matches!(value, Target::Player | Target::Guest(_))
-            && location.owner.dimension != self.dim.key();
-        if parked && !self.transactions.is_empty() {
+        if location.owner.dimension != self.dim.key() && !self.transactions.is_empty() {
             return Err(LevelWriteError::InTransaction);
         }
-        if let Target::Mob(id) = value {
-            let mobs = if location.owner.dimension == self.dim.key() {
-                Some(&*self.mobs)
-            } else {
-                self.levels
-                    .parked_dims()
-                    .into_iter()
-                    .find(|dim| dim.key() == location.owner.dimension)
-                    .and_then(|dim| self.levels.parked_mobs(dim))
-            };
-            let alive = mobs
-                .and_then(|mobs| mobs.iter().find(|m| m.id == id))
-                .is_some_and(|m| !m.removed && m.alive());
-            if !alive {
-                return Ok(false);
-            }
+        if self.transactions.is_empty() {
+            return Ok(self.kill_target(value));
         }
-        self.kill_target(value);
-        Ok(true)
+        if !self.can_kill_target_in_level(value) {
+            return Ok(false);
+        }
+        if self.journal_kill(entity) {
+            Ok(true)
+        } else {
+            Ok(self.kill_target(value))
+        }
     }
     /// `Entity.setRemoved` of `t`, which `entity` names and is no mob, player or dragon part.
     pub(in crate::game) fn remove_target_now(&mut self, entity: EntityRef, t: Target) {
@@ -300,7 +290,9 @@ impl Game<'_> {
                     }
                 }
                 // The remaining kinds `/kill` already removes with no death.
-                t => self.kill_target_in_level(t),
+                t => {
+                    self.kill_target_in_level(t);
+                }
             }
         }
     }

@@ -605,6 +605,46 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
 
 #[test]
 #[ignore = "daily"]
+fn a_player_turn_closes_its_native_window_and_returns_both_kinds_of_stack_once() {
+    with_owned_menu(true, |game, _rx, key| {
+        let (_, menu) = open(game, key);
+        let stick =
+            mod_api::ItemStack::of(mod_api::__private::item_key("minecraft:stick").unwrap());
+        let host: &mut dyn ServerHost = game;
+        host.transaction(|host, tx| {
+            assert_eq!(
+                ItemPlace::MenuSlot { menu, slot: 1 }.insert(
+                    host,
+                    tx,
+                    &ItemResource::of(&stick),
+                    3
+                ),
+                3
+            );
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        let dirt = ItemStack::new("minecraft:dirt", 2);
+        CLOSE_NOTICES.set(0);
+        game.as_guest(1, |game| {
+            game.carried = Some(dirt.clone());
+            assert!(menu.close_container(game));
+            assert!(!menu.close_container(game));
+            assert!(game.carried.is_none());
+        })
+        .unwrap();
+        game.run_native_menu_events();
+        game.run_native_menu_events();
+        assert_eq!(CLOSE_NOTICES.get(), 1);
+        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        let mut returned: Vec<_> = guest.inventory.iter().flatten().cloned().collect();
+        returned.sort_by(|a, b| a.item.cmp(&b.item));
+        assert_eq!(returned, [dirt, ItemStack::new("minecraft:stick", 3)]);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
     with_owned_menu(true, |game, _rx, key| {
         let (_, old) = open(game, key);

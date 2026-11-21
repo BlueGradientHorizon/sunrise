@@ -183,8 +183,12 @@ impl Drop for ClosingPhase<'_, '_> {
     }
 }
 
+#[derive(Clone, Copy)]
 struct KeptBlock {
     state: BlockStateId,
+    /// An ordinary write is replayed from here, not from before an earlier strict bulk write.
+    replay_from: Option<BlockStateId>,
+    bulk_written: bool,
     flags: i32,
     /// Replay LevelWriteHost writes through the direct host's block-entity creation path.
     level_host: bool,
@@ -231,6 +235,9 @@ pub(super) struct Level {
     slots: HashMap<(Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
     blocks: HashMap<Pos, KeptBlock>,
+    /// A holder last made by a strict write, then detached by an ordinary write.
+    /// Unlike the rollback capture, this is the holder the ordinary write actually replaces.
+    bulk_replay_holders: HashMap<Pos, Kept>,
     /// Composter-local random streams before this depth first evaluated their layers.
     composter_randoms: ComposterRandoms,
     /// Each quart cell before this transaction first wrote it.
@@ -449,6 +456,7 @@ pub(super) enum After {
     ),
     Cauldron(super::cauldron_interactions::Effects),
     Composter(super::composter::Effects),
+    DispenseEvent(i32, Pos, i32),
     /// A mod's world pickup or placement of fluid, its block already set: what is left of it
     /// (`Game::commit_fluid_write`).
     FluidWrite(Box<super::world_fluids::WrittenFluid>),
@@ -474,6 +482,11 @@ pub(super) enum After {
     BreakProgress(i32, [i32; 3], i32),
     /// The block's final state, set with the combined update flags.
     Block(Pos),
+    /// Publish strict bulk changes after the root accepts their storage.
+    BulkBlocks(
+        Vec<sunrise_client::block_edit::EditedChunk>,
+        Vec<super::block_edits::Tracked>,
+    ),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
     BlockGameEvent(
@@ -813,15 +826,29 @@ impl Game<'_> {
                     .removed_block_entities
                     .extend(level.removed_block_entities);
                 for (pos, block) in level.blocks {
+                    if block.bulk_written {
+                        outer.bulk_replay_holders.remove(&pos);
+                    }
                     outer
                         .blocks
                         .entry(pos)
                         .and_modify(|kept| {
-                            kept.flags = merge_block_update_flags(kept.flags, block.flags);
-                            kept.level_host = block.level_host;
-                            kept.replay_removal |= block.replay_removal;
+                            if block.bulk_written || kept.replay_from.is_none() {
+                                *kept = KeptBlock {
+                                    state: kept.state,
+                                    bulk_written: kept.bulk_written || block.bulk_written,
+                                    ..block
+                                };
+                            } else {
+                                kept.flags = merge_block_update_flags(kept.flags, block.flags);
+                                kept.level_host = block.level_host;
+                                kept.replay_removal |= block.replay_removal;
+                            }
                         })
                         .or_insert(block);
+                }
+                for (pos, holder) in level.bulk_replay_holders {
+                    outer.bulk_replay_holders.entry(pos).or_insert(holder);
                 }
                 for (chunk, randoms) in level.composter_randoms {
                     let kept = outer.composter_randoms.entry(chunk).or_default();
@@ -1055,8 +1082,20 @@ impl Game<'_> {
     /// none. Outside a transaction, it just goes.
     pub(super) fn journal_remove_block_entity(&mut self, pos: Pos) {
         self.journal_block_entity(pos);
+        let after_bulk = self.transactions.iter().any(|level| {
+            level
+                .blocks
+                .get(&pos)
+                .is_some_and(|block| block.bulk_written)
+        });
         if let Some(level) = self.transactions.last_mut() {
             level.removed_block_entities.insert(pos);
+            if after_bulk {
+                level
+                    .bulk_replay_holders
+                    .entry(pos)
+                    .or_insert_with(|| Kept::capture(&self.world, &self.hoppers, pos));
+            }
         }
         self.world.block_entities.remove(&pos);
     }
@@ -1482,11 +1521,18 @@ impl Game<'_> {
             .blocks
             .entry(key)
             .and_modify(|kept| {
-                kept.flags = merge_block_update_flags(kept.flags, flags);
+                if kept.replay_from.is_none() {
+                    kept.replay_from = Some(old);
+                    kept.flags = flags;
+                } else {
+                    kept.flags = merge_block_update_flags(kept.flags, flags);
+                }
                 kept.level_host = level_host;
             })
             .or_insert(KeptBlock {
                 state: old,
+                replay_from: Some(old),
+                bulk_written: false,
                 flags,
                 level_host,
                 replay_removal: false,
@@ -1498,6 +1544,38 @@ impl Game<'_> {
         self.transactions.block_writes = self.transactions.block_writes.wrapping_add(1);
         true
     }
+    /// Hold a strict bulk write in the ordinary block rollback journal.
+    pub(super) fn journal_bulk_block(&mut self, pos: Pos, was: BlockStateId) {
+        let Some(level) = self.transactions.last_mut() else {
+            return;
+        };
+        level.bulk_replay_holders.remove(&pos);
+        level
+            .blocks
+            .entry(pos)
+            .and_modify(|block| {
+                block.bulk_written = true;
+                block.replay_from = None;
+                block.replay_removal = false;
+            })
+            .or_insert(KeptBlock {
+                state: was,
+                replay_from: None,
+                bulk_written: true,
+                flags: 0,
+                level_host: false,
+                replay_removal: false,
+            });
+        self.transactions.block_writes = self.transactions.block_writes.wrapping_add(1);
+    }
+
+    pub(super) fn journal_bulk_holder(&mut self, pos: Pos) {
+        self.journal_block_entity(pos);
+        if let Some(level) = self.transactions.last_mut() {
+            level.removed_block_entities.insert(pos);
+        }
+    }
+
     /// Hide a replaced block entity from staged reads, without dropping its
     /// contents until the real write. Fluid pickup/pour instead rolls its own
     /// drops against the old entity before journalling the removal.
@@ -1567,6 +1645,7 @@ impl Game<'_> {
             After::Packet(packet, body) => self.publish_mod_held(packet, body),
             After::Cauldron(effects) => self.commit_cauldron_effects(effects),
             After::Composter(effects) => self.commit_composter_effects(effects),
+            After::DispenseEvent(id, pos, data) => self.dispenser_event(id, pos, data),
             After::FluidWrite(written) => self.commit_fluid_write(*written),
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
             After::LevelWrite(write) => self.commit_level_write(*write),
@@ -1620,6 +1699,14 @@ impl Game<'_> {
                 } => self.audio.play(sound, Some(at), volume, pitch),
             },
             // Only reached through a root commit, which sets the block itself.
+            After::BulkBlocks(chunks, tracked) => {
+                for chunk in chunks {
+                    self.world.publish_bulk_chunk(chunk.key, chunk.sections);
+                }
+                for change in tracked {
+                    super::block_edits::notify_bulk_block(&mut self.world, change);
+                }
+            }
             After::Block(_) => {}
             After::Drop(pos, stack) => {
                 self.spawn_item(stack, pos.map(|p| f64::from(p) + 0.5), [0.0; 3], 10);
@@ -1792,18 +1879,27 @@ impl Game<'_> {
                     }
                     let now = self.world.block(pos.0, pos.1, pos.2);
                     let KeptBlock {
-                        state: was,
+                        replay_from: Some(was),
                         flags,
                         level_host,
                         replay_removal,
-                    } = level.blocks[&pos];
+                        bulk_written,
+                        ..
+                    } = level.blocks[&pos]
+                    else {
+                        continue;
+                    };
                     // Restore an entity that the real write must remove with its side effects,
                     // or that survives because a later write returned it to the old block kind.
                     let b = self.res.behaviours();
                     if level.removed_block_entities.contains(&pos)
                         && !detached.contains(&pos)
                         && (replay_removal || b.block(now) == b.block(was))
-                        && let Some(kept) = level.block_entities.get(&pos)
+                        && let Some(kept) = if bulk_written {
+                            level.bulk_replay_holders.get(&pos)
+                        } else {
+                            level.block_entities.get(&pos)
+                        }
                     {
                         self.restore_removed_block_entity(pos, kept);
                     }
@@ -1902,6 +1998,14 @@ impl Game<'_> {
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
         for (pos, kept) in level.block_entities {
+            if level
+                .blocks
+                .get(&pos)
+                .is_some_and(|block| block.bulk_written)
+                && self.world.block_entities.generation(&pos) != kept.generation
+            {
+                self.world.block_entities.remove(&pos);
+            }
             match (&kept.entity, self.world.block_entities.get_mut(&pos)) {
                 (Some(entity), Some(now)) => {
                     fn shapes(

@@ -1395,8 +1395,11 @@ mod tests {
             let other_window =
                 mod_api::__private::game::menu_ref(player, window + 1, menu.fields().generation);
             let stale_player = mod_api::__private::game::player_ref(
-                player.fields().epoch.wrapping_add(1),
-                player.fields().uuid,
+                mod_api::EntityRef::new(
+                    mod_api::WorldEpoch::new(player.entity().epoch().get().wrapping_add(1)),
+                    player.entity().id(),
+                ),
+                player.uuid(),
             );
             let stale_player_menu = mod_api::__private::game::menu_ref(stale_player, window, 0);
             sent(&rx);

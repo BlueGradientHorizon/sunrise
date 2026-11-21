@@ -92,7 +92,7 @@ pub trait LevelBlocksBackendMut {
     /// Side: server.
     /// Drop one item as `DefaultDispenseItemBehavior.execute` does. Use the
     /// returned remainder in the dispenser's answer; the caller plays the answer's
-    /// event and smoke. An unloaded chunk leaves a nonempty stack unchanged.
+    /// event and smoke. A missing or mismatched dispenser returns `InvalidDispenser`.
     /// A parked level cannot be used while a Host transaction is open.
     #[access(WorldOnly)]
     fn level_dispense_default(
@@ -106,7 +106,7 @@ pub trait LevelBlocksBackendMut {
     /// `DefaultDispenseItemBehavior.consumeWithRemainder`: one item of `stack` is used.
     /// If it was the last, the slot gets `remainder`; otherwise the remainder goes
     /// into the dispenser or out its front with a click and smoke. Returns the chosen
-    /// slot's resulting stack. An unloaded chunk leaves a nonempty stack unchanged.
+    /// slot's resulting stack. A missing or mismatched dispenser returns `InvalidDispenser`.
     /// A parked level cannot be used while a Host transaction is open.
     #[access(WorldOnly)]
     fn level_dispense_with_remainder(

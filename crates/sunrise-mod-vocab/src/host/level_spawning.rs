@@ -140,8 +140,10 @@ pub trait LevelSpawningBackendMut {
     /// dimension while a Host transaction is open, `Err(LevelWriteError::Stale)`
     /// for a stale or closed level handle, and `Err(LevelWriteError::Unavailable)`
     /// on a client or outside the world phase. Returns `Ok(None)` for a position
-    /// outside `/summon`'s bounds, an unloaded chunk, a kind Sunrise cannot load,
-    /// exhausted entity ids, or an entity a mod kept out (`entity_join_level`).
+    /// outside `/summon`'s bounds, an unloaded chunk, a kind Sunrise cannot load or
+    /// admit in Peaceful, exhausted entity ids, or an entity a mod kept out
+    /// (`entity_join_level`). If a UUID of the summon tree is already present in
+    /// the level, no member of the tree is added and the result is `Ok(None)`.
     /// Inside a transaction its join waits for the root commit, so a mod keeping
     /// it out is not known at the call: the handle is returned and reads stale
     /// from the commit on.

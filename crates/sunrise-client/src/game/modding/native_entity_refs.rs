@@ -964,6 +964,10 @@ impl Game<'_> {
         }
         match self.native_entity_read_target(entity) {
             Some(target) => self.target_position(target),
+            None if self.is_logical_server() => self
+                .native_orb_ref(entity)
+                .ok()
+                .map(|orb| orb.position.components()),
             None => self
                 .native_client_tracked(entity)
                 .map(|(_, position)| position),

@@ -61,9 +61,11 @@ pub trait EntityLifetimeBackendMut {
     /// `LivingEntity.kill(ServerLevel)` -> `hurtServer(level, damageSources().genericKill(), Float.MAX_VALUE)`):
     /// a living entity dies and drops its loot, and any other entity is removed
     /// and posts `minecraft:entity_die`. Reaches entities in parked dimensions
-    /// as well as the level in place. Returns `Ok(true)` when killed, or
-    /// `Ok(false)` for a dragon part (it is not killed independently) or a mob
-    /// that is already dead or removed (`LivingEntity.isAlive()`). Returns
+    /// as well as the level in place. Returns `Ok(true)` when killed or staged
+    /// for the transaction's outermost commit; staging makes the handle stale
+    /// until commit or abort, without running death or removal effects.
+    /// Returns `Ok(false)` for a live target that refuses the kill (including
+    /// disembodied dragon parts or a mob already dying). Returns
     /// `Err(LevelWriteError::Unavailable)` on a client or outside the world phase,
     /// `Err(LevelWriteError::Stale)` for a stale, held-out, or missing handle,
     /// and `Err(LevelWriteError::InTransaction)` when the entity lives in a

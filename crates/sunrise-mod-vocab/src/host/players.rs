@@ -184,16 +184,16 @@ pub trait PlayersClientBackendMut {
     /// Side: client.
     /// Creative mode only: gives the local player `count` of `item`
     /// (`minecraft:diamond`) as taking it from the creative inventory does
-    /// (`ServerboundSetCreativeModeSlot`): the selected slot first, then the
-    /// hotbar, then the inventory. The count is cut to one stack.
+    /// using `Inventory.add`'s slot order. Returns the count that did not fit;
+    /// a zero request does not change the inventory.
     /// Refuses outside a client world (`Unavailable`), for a stale or non-local
-    /// handle (`Stale`), outside creative mode (`NotCreative`), for an unknown
-    /// item (`UnknownItem`), or when the inventory has no room (`NoRoom`).
+    /// handle (`Stale`), outside creative mode (`NotCreative`), or for an unknown
+    /// item (`UnknownItem`).
     #[access(WorldOnly)]
     fn player_give_creative(
         &mut self,
         player: PlayerRef,
         item: ItemKey,
         count: u32,
-    ) -> Result<(), CreativeGiveError>;
+    ) -> Result<u32, CreativeGiveError>;
 }

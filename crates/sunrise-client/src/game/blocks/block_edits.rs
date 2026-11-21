@@ -6,7 +6,7 @@ use super::Game;
 use mod_api::{BlockEdit, BlockEditError, Heightmap};
 use std::sync::Arc;
 use sunrise_client::{
-    block_edit::Run,
+    block_edit::{EditJournal, Run},
     containers::BlockEntity,
     fast_hash::{FxHashMap, FxHashSet},
     world::World,
@@ -14,7 +14,7 @@ use sunrise_client::{
 use sunrise_world::{heightmap::HeightmapType, registry::BlockStateId};
 
 /// A change `World::edit_runs` reported: position, previous and new state.
-type Tracked = ((i32, i32, i32), u32, u32);
+pub(super) type Tracked = ((i32, i32, i32), u32, u32);
 
 impl Game<'_> {
     /// Make a mod's block edit; how many blocks changed, or why none did.
@@ -41,8 +41,9 @@ impl Game<'_> {
         let tags = [&self.res.items().block_tags, &world_items.block_tags];
         let facts = self.res.facts();
         let watched = std::mem::take(&mut self.world.watched);
+        let mut journal = (!self.transactions.is_empty()).then(EditJournal::default);
         let out = self.world.edit_runs(
-            None,
+            journal.as_mut(),
             &runs,
             |f, s| {
                 super::commands::block_input_matches(
@@ -61,6 +62,16 @@ impl Game<'_> {
             },
         );
         self.world.watched = watched;
+        if let Some(journal) = &mut journal {
+            // Keep the first state in the same journal as ordinary writes. Capture each
+            // holder before a strict replacement can retire it or install a new generation.
+            for (pos, was) in std::mem::take(&mut journal.originals) {
+                self.journal_bulk_block(pos, BlockStateId(was));
+            }
+            for &(pos, _, _) in &out.tracked {
+                self.journal_bulk_holder(pos);
+            }
+        }
         // The block entities the new blocks bring, as `native_set_block` makes them (a mod block's own,
         // included), in the order `replace_block_entities` takes them: the positions needing a fresh entity.
         let name = |s: u32| self.res.facts().get(BlockStateId(s)).name.clone();
@@ -84,11 +95,22 @@ impl Game<'_> {
         let removed = replace_block_entities(
             &mut self.world,
             &out.tracked,
+            journal.is_none(),
             |s| facts.get(BlockStateId(s)).name.clone(),
             |_| made.next().flatten(),
         );
-        for pos in removed {
-            self.jukebox_removed(pos);
+        if let Some(journal) = journal {
+            for chunk in &journal.chunks {
+                self.journal_chunk_save(chunk.key);
+            }
+            self.after_commit(super::transactions::After::BulkBlocks(
+                journal.chunks,
+                out.tracked,
+            ));
+        } else {
+            for pos in removed {
+                self.jukebox_removed(pos);
+            }
         }
         Ok(out.changed)
     }
@@ -257,16 +279,15 @@ fn make_block_entities<S: Eq + std::hash::Hash>(
 fn replace_block_entities(
     world: &mut World,
     tracked: &[Tracked],
+    publish: bool,
     name: impl Fn(u32) -> Arc<str>,
     mut new_entity: impl FnMut(&str) -> Option<BlockEntity>,
 ) -> Vec<[i32; 3]> {
     let mut replaced = Vec::new();
     for &((x, y, z), old, new) in tracked {
-        let watches = |id: u32| world.watched.get(id as usize).copied().unwrap_or(false);
-        if watches(old) || watches(new) {
-            world.watched_writes.push(((x, y, z), old, new));
+        if publish {
+            notify_bulk_block(world, ((x, y, z), old, new));
         }
-        world.block_entities.state_changed((x, y, z), old, new);
         let (was, now) = (name(old), name(new));
         if was != now {
             replaced.push([x, y, z]);
@@ -288,6 +309,14 @@ fn replace_block_entities(
         }
     }
     replaced
+}
+
+pub(super) fn notify_bulk_block(world: &mut World, change @ (pos, old, new): Tracked) {
+    let watches = |id: u32| world.watched.get(id as usize).copied().unwrap_or(false);
+    if watches(old) || watches(new) {
+        world.watched_writes.push(change);
+    }
+    world.block_entities.state_changed(pos, old, new);
 }
 
 #[cfg(test)]
@@ -366,6 +395,105 @@ mod tests {
                 "the same valid run must actually mutate"
             );
             game.world.block_log = None;
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mixed_bulk_and_ordinary_writes_publish_only_on_outer_commit() {
+        use crate::game::{api_values::TryIntoApi, native_entity_refs::tests::with_game};
+        use mod_api::BlockUpdateFlags;
+
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.world.block_log = Some(Vec::new());
+            let level = game.level(game.dim.id()).unwrap();
+            let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+            let (air, stone, chest, dirt) = (
+                state("minecraft:air"),
+                state("minecraft:stone"),
+                state("minecraft:chest"),
+                state("minecraft:dirt"),
+            );
+            let original = [1, 64, 0];
+            let new_holder = [2, 64, 0];
+            let ordinary = [3, 64, 0];
+            let sync = [4, 64, 0];
+            for pos in [original, sync] {
+                assert_eq!(
+                    level.set_block(
+                        game,
+                        pos,
+                        chest.try_into_api().unwrap(),
+                        BlockUpdateFlags::NONE
+                    ),
+                    Ok(true)
+                );
+            }
+            let holder = game.block_entity(level, original).unwrap();
+            let explicit = game.block_entity(level, sync).unwrap();
+            let edit = BlockEdit {
+                palette: vec![stone.try_into_api().unwrap(), chest.try_into_api().unwrap()],
+                filters: vec![],
+                runs: [(original, 0), (new_holder, 1)]
+                    .into_iter()
+                    .map(|([x, y, z], block)| BlockRun {
+                        x,
+                        y,
+                        z,
+                        block,
+                        height: 1,
+                        surface: None,
+                        only: None,
+                    })
+                    .collect(),
+            };
+            game.world.modified.clear();
+            game.world.dirty_light.clear();
+            game.world.block_log.as_mut().unwrap().clear();
+
+            for commit in [false, true] {
+                let tx = game.transaction_open();
+                let nested = game.transaction_open();
+                assert_eq!(level.edit_blocks(game, &edit), Ok(2));
+                game.transaction_close(&nested, true);
+                assert!(game.block_entity(level, original).is_none());
+                assert!(game.block_entity(level, new_holder).is_some());
+                for pos in [ordinary, original] {
+                    assert_eq!(
+                        level.set_block(
+                            game,
+                            pos,
+                            dirt.try_into_api().unwrap(),
+                            BlockUpdateFlags::CLIENTS
+                        ),
+                        Ok(true)
+                    );
+                }
+                assert!(game.world.bulk_log.is_empty());
+                assert!(game.world.dirty_light.is_empty());
+                assert!(game.world.modified.is_empty());
+                assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                game.transaction_close(&tx, commit);
+                assert_eq!(
+                    game.world.block(1, 64, 0),
+                    if commit { dirt } else { chest }
+                );
+                assert_eq!(game.world.block(2, 64, 0), if commit { chest } else { air });
+                assert_eq!(game.world.block(3, 64, 0), if commit { dirt } else { air });
+                assert_eq!(
+                    game.block_entity(level, original),
+                    (!commit).then_some(holder)
+                );
+                assert_eq!(game.block_entity(level, new_holder).is_some(), commit);
+                assert_eq!(game.world.modified.contains(&(0, 0)), commit);
+                assert_eq!(game.world.dirty_light.contains(&(0, 0)), commit);
+                assert_eq!(game.world.bulk_log.contains(&(0, 0)), commit);
+            }
+            assert_eq!(explicit.sync(game), Ok(()));
+            assert!(game.world.block_log.as_ref().unwrap().contains(&(4, 64, 0)));
         });
     }
 
@@ -495,7 +623,8 @@ mod tests {
             |s| s == 2,
         );
         assert_eq!(out.tracked, [((1, 5, 1), 2, 1)]);
-        let replaced = replace_block_entities(&mut w, &out.tracked, names, BlockEntity::for_block);
+        let replaced =
+            replace_block_entities(&mut w, &out.tracked, true, names, BlockEntity::for_block);
         assert_eq!(replaced, [[1, 5, 1]]);
         assert!(w.block_entities.get(&(1, 5, 1)).is_none());
         assert_eq!(w.block(1, 5, 1).0, 1);
@@ -540,7 +669,7 @@ mod tests {
                 )))
             })
         };
-        replace_block_entities(&mut w, &out.tracked, names, made);
+        replace_block_entities(&mut w, &out.tracked, true, names, made);
         assert!(w.block_entities.get(&(1, 5, 1)).is_none());
     }
 
@@ -569,7 +698,7 @@ mod tests {
                 )))
             })
         };
-        replace_block_entities(&mut w, &out.tracked, names, made);
+        replace_block_entities(&mut w, &out.tracked, true, names, made);
         assert!(matches!(
             w.block_entities.get(&(3, 10, 3)),
             Some(BlockEntity::Mod(e)) if e.id() == "machines:press"
@@ -606,7 +735,7 @@ mod tests {
             |_| true,
         );
         assert_eq!(out.tracked, [((1, 5, 1), 2, 4)]);
-        replace_block_entities(&mut w, &out.tracked, names, BlockEntity::for_block);
+        replace_block_entities(&mut w, &out.tracked, true, names, BlockEntity::for_block);
         assert!(
             matches!(
                 w.block_entities.get(&(1, 5, 1)),
@@ -631,7 +760,7 @@ mod tests {
             |_| true,
         );
         assert_eq!(out.tracked, [((2, 5, 1), 2, 4)]);
-        replace_block_entities(&mut w, &out.tracked, names, BlockEntity::for_block);
+        replace_block_entities(&mut w, &out.tracked, true, names, BlockEntity::for_block);
         assert!(matches!(
             w.block_entities.get(&(2, 5, 1)),
             Some(BlockEntity::Chest(_))

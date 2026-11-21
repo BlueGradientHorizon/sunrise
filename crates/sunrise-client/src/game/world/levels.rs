@@ -226,7 +226,13 @@ impl Game<'_> {
             sunrise_client::join_seq::residency::Kind::Player
                 | sunrise_client::join_seq::residency::Kind::Hook
         ) {
-            return self.locate_specialized_resident_owner(at);
+            return self
+                .locate_specialized_resident_owner(at)
+                .map(|mut source| {
+                    source.value.1 &=
+                        self.resident_source_target_visible(at.owner.dimension, source.value.0);
+                    source
+                });
         }
         if at.owner.dimension == self.dim.key() {
             // An open transaction's removal reads as gone already.

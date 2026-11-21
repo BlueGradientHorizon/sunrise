@@ -34,7 +34,18 @@ pub struct Outcome {
 
 /// The changes a Host transaction holds until its root commits.
 #[derive(Debug, Default)]
-pub struct EditJournal;
+pub struct EditJournal {
+    /// The first state each changed cell had at this transaction depth.
+    pub originals: FxHashMap<(i32, i32, i32), u32>,
+    /// Changed chunks and their sections, for a full update at the root commit.
+    pub chunks: Vec<EditedChunk>,
+}
+
+#[derive(Debug)]
+pub struct EditedChunk {
+    pub key: (i32, i32),
+    pub sections: Vec<usize>,
+}
 
 /// Per state answers, worked out once each.
 struct Memo(Vec<u8>);
@@ -68,7 +79,7 @@ impl World {
     /// chunk and its neighbours are lit again whole, through `dirty_light`).
     pub fn edit_runs(
         &mut self,
-        _journal: Option<&mut EditJournal>,
+        mut journal: Option<&mut EditJournal>,
         runs: &[Run],
         mut matches: impl FnMut(u16, u32) -> bool,
         mut tracked: impl FnMut(u32) -> bool,
@@ -134,6 +145,9 @@ impl World {
                                 continue;
                             }
                         }
+                        if let Some(journal) = journal.as_deref_mut() {
+                            journal.originals.entry((r.x, yy, r.z)).or_insert(old);
+                        }
                         vals[at] = r.state;
                         changed[s] = true;
                         any += 1;
@@ -160,32 +174,56 @@ impl World {
                     chunk.replace_blocks(s, v);
                 }
             }
-            self.revision = self.revision.wrapping_add(1);
-            self.modified.insert(key);
-            if self.block_log.is_some() {
-                self.bulk_log.insert(key);
-            }
-            // remeshed once (with the neighbours whose faces and light it touches), lit again whole
-            for (s, _) in changed.iter().enumerate().filter(|c| *c.1) {
-                for ds in -1..=1 {
-                    let sy = s as i32 + ds;
-                    if !(0..sections as i32).contains(&sy) {
-                        continue;
-                    }
-                    for dz in -1..=1 {
-                        for dx in -1..=1 {
-                            self.dirty_sections.insert((key.0 + dx, sy, key.1 + dz));
-                        }
-                    }
-                }
-            }
-            for dz in -1..=1 {
-                for dx in -1..=1 {
-                    self.dirty_light.insert((key.0 + dx, key.1 + dz));
-                }
+            let sections = changed
+                .iter()
+                .enumerate()
+                .filter_map(|(s, &yes)| yes.then_some(s));
+            if let Some(journal) = journal.as_deref_mut() {
+                journal.chunks.push(EditedChunk {
+                    key,
+                    sections: sections.collect(),
+                });
+            } else {
+                self.publish_bulk_chunk(key, sections);
             }
         }
         out
+    }
+
+    /// Publish a bulk storage write as a full chunk update and a full relight.
+    pub fn publish_bulk_chunk(
+        &mut self,
+        key: (i32, i32),
+        changed: impl IntoIterator<Item = usize>,
+    ) {
+        let Some(chunk) = self.chunks.get(&key) else {
+            return;
+        };
+        let sections = chunk.sections.len() as i32;
+        self.revision = self.revision.wrapping_add(1);
+        self.modified.insert(key);
+        if self.block_log.is_some() {
+            self.bulk_log.insert(key);
+        }
+        // Remesh the sections and the neighbours whose faces and light they touch.
+        for s in changed {
+            for ds in -1..=1 {
+                let sy = s as i32 + ds;
+                if !(0..sections).contains(&sy) {
+                    continue;
+                }
+                for dz in -1..=1 {
+                    for dx in -1..=1 {
+                        self.dirty_sections.insert((key.0 + dx, sy, key.1 + dz));
+                    }
+                }
+            }
+        }
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                self.dirty_light.insert((key.0 + dx, key.1 + dz));
+            }
+        }
     }
 }
 

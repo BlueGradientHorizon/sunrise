@@ -2,13 +2,14 @@
 //! any entity from its compound as `/summon` does through [`LevelRef::summon`], and move, show or remove
 //! the entities Sunrise keeps without simulating them (displays, markers,
 //! interactions); `native_display_refs.rs` poses displays.
-use super::{
-    Game,
-    commands::{Target, place_summoned, strip_finalize_tree},
-};
+#[cfg(test)]
+use super::commands::{place_summoned, summon_position_ok};
+use super::{Game, commands::Target};
 use mod_api::{EntityRef, LevelRef, LevelWriteError};
 use sunrise_core::geometry::Vec3;
-use sunrise_core::nbt::{Compound, Tag};
+use sunrise_core::nbt::Compound;
+#[cfg(test)]
+use sunrise_core::nbt::Tag;
 
 impl super::commands::OtherEntity {
     /// Physical query bounds, not display rendering/culling dimensions.
@@ -39,14 +40,6 @@ impl super::commands::OtherEntity {
             sunrise_core::geometry::Aabb::new(self.position, self.position)
         })
     }
-}
-
-/// Whether a position is one `/summon` takes.
-fn position_ok(pos: [f64; 3]) -> bool {
-    pos.iter().all(|v| v.is_finite())
-        && pos[0].abs() < 30_000_000.0
-        && pos[2].abs() < 30_000_000.0
-        && (-20_000_000.0..20_000_000.0).contains(&pos[1])
 }
 
 /// The id of a summoned stack's root: its command target's, else `first`,
@@ -118,27 +111,18 @@ impl Game<'_> {
                     .native_lifecycle
                     .epoch()
                     .ok_or(LevelWriteError::Unavailable)?;
-                if game.entity_ids_exhausted() || !position_ok(pos) {
+                if game.entity_ids_exhausted() {
                     return Ok(None);
                 }
                 let chunk = ((pos[0].floor() as i32) >> 4, (pos[2].floor() as i32) >> 4);
                 if !game.world.chunks.contains_key(&chunk) {
                     return Ok(None);
                 }
-                let mut tag = nbt;
-                tag.insert("id".into(), Tag::String(kind.into()));
-                // As `/summon <kind> <pos> <nbt>` takes it: with an NBT argument vanilla
-                // does not finalize the mob (`SummonCommand.createEntity`), so a
-                // `sunrise:finalize` in it is not the caller's to set.
-                let mut tag = Tag::Compound(tag);
-                strip_finalize_tree(&mut tag);
-                // As `/summon` does: every entity of the stack, passengers included,
-                // stands at `pos`.
-                place_summoned(&mut tag, pos);
-                let from = game.mobs.len();
                 let first = game.next_entity + 1;
                 let deferred = (game.tnts.len(), game.falling.len(), game.rockets.len());
-                let target = game.spawn_entity_from_nbt(tag);
+                let Ok(target) = game.summon_from_compound(kind, pos, nbt) else {
+                    return Ok(None);
+                };
                 // These roots take their id as they load, and a rocket has no command
                 // Target variant. Select the newly appended root, never an older waiting entity.
                 let root = match kind {
@@ -171,7 +155,6 @@ impl Game<'_> {
                     }
                     _ => None,
                 };
-                game.native_mobs_joined(from, false);
                 // Otherwise the root is the first entity spawned, also for kinds no
                 // command target stands for (experience orbs, end crystals, cushions). An id handed out to an
                 // entity a mod then kept out is not given back, so the root must be
@@ -1159,9 +1142,53 @@ mod tests {
 
     #[test]
     fn summon_positions_are_summons() {
-        assert!(position_ok([0.5, 64.0, 0.5]));
-        assert!(!position_ok([3.0e7, 64.0, 0.5]));
-        assert!(!position_ok([0.5, f64::NAN, 0.5]));
+        assert!(summon_position_ok([0.5, 64.0, 0.5]));
+        assert!(summon_position_ok([-3.0e7, 64.0, 0.5]));
+        assert!(!summon_position_ok([3.0e7, 64.0, 0.5]));
+        assert!(!summon_position_ok([0.5, f64::NAN, 0.5]));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn receiver_summon_refuses_a_tree_with_a_resident_passenger_uuid() {
+        use sunrise_client::chunk::Chunk;
+        use sunrise_core::nbt::parse_snbt;
+
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
+            let level = game.level(game.dim.id()).unwrap();
+            let compound = |s| match parse_snbt(s).unwrap().0 {
+                Tag::Compound(c) => c,
+                _ => panic!("expected a compound"),
+            };
+            let existing = level
+                .summon(
+                    game,
+                    "minecraft:pig",
+                    [1.5, 70.0, 1.5],
+                    compound("{UUID:[I;22,33,44,55]}"),
+                )
+                .unwrap()
+                .unwrap();
+            let next = game.next_entity;
+            let tree = compound(
+                r#"{UUID:[I;11,22,33,44],Passengers:[{id:"minecraft:pig",UUID:[I;22,33,44,55]}]}"#,
+            );
+            assert_eq!(
+                level.summon(game, "minecraft:pig", [2.5, 70.0, 1.5], tree),
+                Ok(None)
+            );
+            assert_eq!(
+                game.mobs.iter().map(|mob| mob.id).collect::<Vec<_>>(),
+                [existing.id()]
+            );
+            assert_eq!(
+                game.next_entity, next,
+                "not even the root entered construction"
+            );
+        });
     }
 
     #[test]

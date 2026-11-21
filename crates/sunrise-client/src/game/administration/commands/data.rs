@@ -1867,10 +1867,37 @@ impl Game<'_> {
         pos: [f64; 3],
         nbt: &str,
     ) -> R<Option<Target>> {
-        let (mut tag, _) = parse_snbt(nbt).map_err(|e| err("argument.nbt.invalid", &[&e]))?;
-        if !matches!(tag, Tag::Compound(_)) {
+        let (tag, _) = parse_snbt(nbt).map_err(|e| err("argument.nbt.invalid", &[&e]))?;
+        let Tag::Compound(nbt) = tag else {
             return Err(err("argument.nbt.expected.compound", &[]));
+        };
+        self.summon_from_compound(kind, pos, nbt)
+    }
+
+    /// `SummonCommand.createEntity` with explicit NBT, shared by commands and level handles.
+    pub(in crate::game) fn summon_from_compound(
+        &mut self,
+        kind: &str,
+        pos: [f64; 3],
+        nbt: Compound,
+    ) -> R<Option<Target>> {
+        if !summon_position_ok(pos) {
+            return Err(err("commands.summon.invalidPosition", &[]));
         }
+        if matches!(kind, "minecraft:player" | "minecraft:fishing_bobber") {
+            return Err(err("entity.not_summonable", &[&kind]));
+        }
+        let peaceful = self.difficulty_id() == 0;
+        if peaceful
+            && self
+                .res
+                .mob_types()
+                .get(kind)
+                .is_some_and(|t| !t.allowed_in_peaceful())
+        {
+            return Err(err("commands.summon.failed.peaceful", &[]));
+        }
+        let mut tag = Tag::Compound(nbt);
         // SummonCommand.createEntity with an NBT argument passes
         // `finalize = false`: the mob is what its compound says, and the
         // `sunrise:finalize` marker worldgen leaves on a structure mob is not
@@ -1887,7 +1914,7 @@ impl Game<'_> {
             });
             set_key(&mut tag, "home_pos", Tag::IntArray(home.to_vec()));
         }
-        if self.difficulty_id() == 0 {
+        if peaceful {
             self.prune_peaceful_summon_passengers(&mut tag);
         }
         place_summoned(&mut tag, pos);
@@ -1934,6 +1961,13 @@ impl Game<'_> {
             });
         }
     }
+}
+
+/// `Level.isInSpawnableBounds(BlockPos.containing(pos))`.
+pub(super) fn summon_position_ok([x, y, z]: [f64; 3]) -> bool {
+    (-30_000_000.0..30_000_000.0).contains(&x)
+        && (-20_000_000.0..20_000_000.0).contains(&y)
+        && (-30_000_000.0..30_000_000.0).contains(&z)
 }
 
 /// `sunrise:finalize` off `tag` and off the riders under its `Passengers`:

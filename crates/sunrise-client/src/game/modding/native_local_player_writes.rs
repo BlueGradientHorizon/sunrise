@@ -493,9 +493,8 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn creative_give_adds_to_local_player_and_refuses_stale_non_creative_and_full() {
+    fn creative_give_adds_to_local_player_and_reports_remainder() {
         use crate::game::native_entity_refs::tests::with_client_game;
-        use mod_api::__private::game::Fields;
         use mod_api::{ClientHost, CreativeGiveError};
         use sunrise_client::items::ItemStack;
 
@@ -504,8 +503,11 @@ mod tests {
             let local = game.local_player().unwrap();
             let diamond = mod_api::__private::item_key("minecraft:diamond").unwrap();
             let stale = mod_api::__private::game::player_ref(
-                local.fields().epoch.wrapping_add(1),
-                local.fields().uuid,
+                mod_api::EntityRef::new(
+                    mod_api::WorldEpoch::new(local.entity().epoch().get().wrapping_add(1)),
+                    local.entity().id(),
+                ),
+                local.uuid(),
             );
 
             game.creative = false;
@@ -526,7 +528,7 @@ mod tests {
             game.offhand = None;
             {
                 let host: &mut dyn ClientHost = game;
-                assert_eq!(local.give_creative(host, diamond, 3), Ok(()));
+                assert_eq!(local.give_creative(host, diamond, 3), Ok(0));
             }
             assert_eq!(
                 game.inventory[game.selected]
@@ -539,13 +541,13 @@ mod tests {
             game.inventory
                 .fill(Some(ItemStack::new("minecraft:stone", 64)));
             game.offhand = Some(ItemStack::new("minecraft:stone", 64));
-            {
-                let host: &mut dyn ClientHost = game;
-                assert_eq!(
-                    local.give_creative(host, diamond, 1),
-                    Err(CreativeGiveError::NoRoom)
-                );
-            }
+            let selected = game.selected;
+            assert_eq!(local.give_creative(game, diamond, 1), Ok(1));
+            game.inventory[selected] = Some(ItemStack::new("minecraft:diamond", 63));
+            assert_eq!(local.give_creative(game, diamond, 0), Ok(0));
+            assert_eq!(game.inventory[selected].as_ref().unwrap().count, 63);
+            assert_eq!(local.give_creative(game, diamond, 2), Ok(1));
+            assert_eq!(game.inventory[selected].as_ref().unwrap().count, 64);
         });
     }
 }

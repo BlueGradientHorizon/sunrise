@@ -1961,7 +1961,7 @@ fn ordered_box(min: [f64; 3], max: [f64; 3]) -> Option<([f64; 3], [f64; 3])> {
 #[allow(dead_code)]
 impl Game<'_> {
     /// Resolves `entity` to a live experience orb in the active or any parked server level.
-    fn native_orb_ref(
+    pub(super) fn native_orb_ref(
         &self,
         entity: EntityRef,
     ) -> Result<&sunrise_client::entities::ExperienceOrb, LevelReadError> {
@@ -2822,6 +2822,7 @@ mod tests {
         );
         let orb = parked_orbs[0];
         assert_eq!(game.experience_orb(orb.entity()), Ok(Some(orb)));
+        assert_eq!(orb.entity().position(&game), Some([1.0, 70.0, 1.0]));
         assert_eq!(orb.value(&game), Ok(3));
         assert_eq!(orb.count(&game), Ok(1));
         assert_eq!(orb.age(&game), Ok(0));

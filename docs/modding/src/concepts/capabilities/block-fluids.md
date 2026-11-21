@@ -135,4 +135,7 @@ sound and game event come before the dispenser's click and smoke. Where neither 
 `level.dispense_default(host, pos, facing, stack)` drops one unchanged container as
 `DefaultDispenseItemBehavior` does. Both methods return the stack left in the dispenser's
 slot or a typed `LevelWriteError`; resolve the dispenser's level with
-`host.level(event.dimension)`.
+`host.level(event.dimension)`. A missing or mismatched holder yields
+`InvalidDispenser`. The fluid transfer and writes to the source and its remainder commit
+together. A refusal leaves the original slot unchanged and plays the dispenser's failure
+event instead of running another behavior.

@@ -66,11 +66,8 @@ impl Game<'_> {
                 .parked_world_mut_of(fields.level.dimension_id())
                 .ok_or(LevelWriteError::Stale)?
         };
-        // The identity check already verified that the chunk is loaded.
-        if let Some(log) = world.block_log.as_mut() {
-            let [x, y, z] = fields.position;
-            log.push((x, y, z));
-        }
+        let [x, y, z] = fields.position;
+        super::block_notifications::notify_block_clients(world, (x, y, z));
         Ok(())
     }
 

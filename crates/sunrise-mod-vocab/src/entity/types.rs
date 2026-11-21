@@ -1568,7 +1568,7 @@ impl NoBackend for RecipePlaceError {
     }
 }
 
-/// Why [`PlayerRef::give_creative`] gave nothing (`ServerboundSetCreativeModeSlot`).
+/// Why [`PlayerRef::give_creative`] refused the request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub enum CreativeGiveError {
@@ -1580,8 +1580,6 @@ pub enum CreativeGiveError {
     NotCreative,
     /// The item key does not resolve to an item in this world.
     UnknownItem,
-    /// The player's inventory had no room for the stack.
-    NoRoom,
 }
 
 impl crate::AccessRefusal for CreativeGiveError {

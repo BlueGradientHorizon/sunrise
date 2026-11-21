@@ -106,6 +106,8 @@ pub trait WorldEditBackendMut {
     /// mod block's included); no neighbour is told, and changed chunks go to players whole. Runs
     /// in unloaded chunks and parts of runs outside the column's height are skipped. Returns the
     /// number of blocks changed, or a typed [`BlockEditError`] with nothing changed.
+    /// Active-level writes are visible to the transaction but saves, full chunk updates
+    /// and relighting wait for the outermost commit. Parked levels require no open transaction.
     #[access(WorldOnly)]
     fn level_edit_blocks(
         &mut self,

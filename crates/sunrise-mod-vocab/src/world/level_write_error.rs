@@ -16,6 +16,8 @@ pub enum LevelWriteError {
     InvalidState(BlockStateError),
     /// The supplied detached item value cannot be converted for the operation.
     InvalidStack(StackWriteError),
+    /// The source position is unloaded or does not hold a dispenser.
+    InvalidDispenser,
     /// The operation cannot run inside a Host transaction: it needs to switch to a parked
     /// level or complete a wither pattern.
     InTransaction,
