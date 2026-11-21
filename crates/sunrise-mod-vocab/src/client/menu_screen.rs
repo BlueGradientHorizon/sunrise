@@ -95,7 +95,9 @@ pub struct OwnedMenuScreen {
     screen: MenuScreen,
     owner: &'static str,
     index: usize,
-    panicked: AtomicBool,
+    draw_panicked: AtomicBool,
+    click_panicked: AtomicBool,
+    tooltip_panicked: AtomicBool,
 }
 
 impl OwnedMenuScreen {
@@ -105,7 +107,9 @@ impl OwnedMenuScreen {
             screen,
             owner,
             index,
-            panicked: AtomicBool::new(false),
+            draw_panicked: AtomicBool::new(false),
+            click_panicked: AtomicBool::new(false),
+            tooltip_panicked: AtomicBool::new(false),
         }
     }
 
@@ -126,7 +130,7 @@ impl OwnedMenuScreen {
 
     /// Whether to build a draw context for this frame.
     pub fn has_draw(&self) -> bool {
-        self.screen.draw.is_some() && self.enabled()
+        self.screen.draw.is_some() && self.callback_enabled(&self.draw_panicked)
     }
 
     /// Run the opening's draw callback, if enabled.
@@ -142,7 +146,9 @@ impl OwnedMenuScreen {
             .as_ref()
             .and_then(|f| f.try_borrow_mut().ok())
         {
-            self.call("menu_screen_draw", || draw(host, frame, ctx));
+            self.call(&self.draw_panicked, "menu_screen_draw", || {
+                draw(host, frame, ctx)
+            });
         }
     }
 
@@ -154,13 +160,15 @@ impl OwnedMenuScreen {
         right: bool,
     ) -> Option<i32> {
         let mut click = self.screen.click.as_ref()?.try_borrow_mut().ok()?;
-        self.call("menu_screen_click", || click(host, frame, right))
-            .flatten()
+        self.call(&self.click_panicked, "menu_screen_click", || {
+            click(host, frame, right)
+        })
+        .flatten()
     }
 
     /// Whether this opening wants to see the current tooltip lines.
     pub fn has_tooltip(&self) -> bool {
-        self.screen.tooltip.is_some() && self.enabled()
+        self.screen.tooltip.is_some() && self.callback_enabled(&self.tooltip_panicked)
     }
 
     /// Run the tooltip callback. Only take the edited lines when it succeeds.
@@ -179,22 +187,29 @@ impl OwnedMenuScreen {
         else {
             return false;
         };
-        self.call("menu_screen_tooltip", || tooltip(host, frame, slot, lines))
-            .is_some()
+        self.call(&self.tooltip_panicked, "menu_screen_tooltip", || {
+            tooltip(host, frame, slot, lines)
+        })
+        .is_some()
     }
 
-    fn enabled(&self) -> bool {
-        crate::callback_owner::enabled(self.index, &self.panicked)
+    fn callback_enabled(&self, poisoned: &AtomicBool) -> bool {
+        crate::callback_owner::enabled(self.index, poisoned)
     }
 
-    fn call<T>(&self, operation: &'static str, invoke: impl FnOnce() -> T) -> Option<T> {
-        if !self.enabled() {
+    fn call<T>(
+        &self,
+        poisoned: &AtomicBool,
+        operation: &'static str,
+        invoke: impl FnOnce() -> T,
+    ) -> Option<T> {
+        if !self.callback_enabled(poisoned) {
             return None;
         }
         match crate::callback_owner::call(
             self.owner,
             self.index,
-            &self.panicked,
+            poisoned,
             "menu screen",
             operation,
             invoke,
@@ -249,5 +264,65 @@ where
 {
     fn create(&self, host: &dyn crate::ClientHost, open: MenuScreenOpen<'_>) -> Option<MenuScreen> {
         self(host, open)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct EmptyDraw;
+    impl DrawContext for EmptyDraw {}
+
+    #[test]
+    fn draw_panic_disables_only_draw_leaving_click_and_tooltip_active() {
+        let _ = crate::callback_owner::take_callback_panic_notices();
+        let draw_runs = Arc::new(AtomicUsize::new(0));
+        let draw_runs_clone = draw_runs.clone();
+        let screen = MenuScreen::new(MenuScreenLayout {
+            width: 176.0,
+            height: 166.0,
+            ..Default::default()
+        })
+        .with_draw(move |_, _, _| {
+            draw_runs_clone.fetch_add(1, Ordering::Relaxed);
+            panic!("draw exploded");
+        })
+        .with_click(|_, _, right| Some(if right { 2 } else { 1 }))
+        .with_tooltip(|_, _, _, lines| lines.push((Text::literal("tip"), 0xFFFFFFFF)));
+
+        let owned = OwnedMenuScreen::new("screen_mod", 0, screen);
+        let host = crate::testing::FakeHost::new();
+        let frame = MenuScreenFrame {
+            origin: [0.0, 0.0],
+            pointer: [10, 10],
+            gui_size: [320, 240],
+            at: [10.0, 10.0],
+            data: &[],
+        };
+        let mut ctx = EmptyDraw;
+
+        assert!(owned.has_draw());
+        assert!(owned.has_tooltip());
+
+        owned.draw(&host, frame, &mut ctx);
+        assert_eq!(draw_runs.load(Ordering::Relaxed), 1);
+        assert!(!owned.has_draw(), "panicking draw must be disabled");
+
+        // Second draw is skipped.
+        owned.draw(&host, frame, &mut ctx);
+        assert_eq!(draw_runs.load(Ordering::Relaxed), 1);
+
+        // Click and tooltip on the same opening remain enabled and functional.
+        assert_eq!(owned.click(&host, frame, false), Some(1));
+        assert_eq!(owned.click(&host, frame, true), Some(2));
+        assert!(owned.has_tooltip());
+        let mut lines = Vec::new();
+        assert!(owned.tooltip(&host, frame, Some(0), &mut lines));
+        assert_eq!(lines.len(), 1);
     }
 }

@@ -3,13 +3,14 @@
 //! only in the overlay or never, the two built-in profiles, and
 //! `debug-profile.json` beside `options.txt`, which keeps them.
 use mod_api::{
-    __private::game::CallbackOwner, Answered, ClientHost, DebugEntry, DebugGroup, DebugRenderer,
-    Identifier,
+    __private::game::{CallbackOwner, debug_renderer_callback_type},
+    Answered, ClientHost, DebugEntry, DebugGroup, DebugRenderer, Identifier,
 };
+use std::any::TypeId;
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock, atomic::AtomicBool};
 
 /// `DebugScreenEntryStatus`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -368,6 +369,9 @@ pub struct DebugEntries {
     file: Option<PathBuf>,
     /// Monotonic `rebuildCurrentList` revision, including unchanged selections.
     version: u64,
+    /// Session-persistent panic state per `(mod_id, callback TypeId, per-type ordinal)` so an
+    /// unrelated F3 refresh never re-enables a debug renderer callback that already panicked.
+    renderer_poisons: HashMap<(&'static str, TypeId, usize), Arc<AtomicBool>>,
 }
 
 impl Default for DebugEntries {
@@ -377,6 +381,7 @@ impl Default for DebugEntries {
             profile: None,
             file: None,
             version: 0,
+            renderer_poisons: HashMap::new(),
         };
         entries.reset_to_profile(Profile::Default);
         entries
@@ -553,15 +558,29 @@ impl DebugEntries {
         self.version
     }
     /// `DebugRenderer.refreshRendererList`: keep every submitted renderer whose owning mod is
-    /// enabled, in registration order, each wrapped in its own [`CallbackOwner`].
+    /// enabled, in registration order, each wrapped in its own session-persistent
+    /// [`CallbackOwner`].
     pub fn active_renderers(
-        &self,
+        &mut self,
         renderers: Vec<Answered<DebugRenderer>>,
     ) -> Vec<ActiveDebugRenderer> {
+        let mut seen: HashMap<(&'static str, TypeId), usize> = HashMap::new();
         renderers
             .into_iter()
             .filter_map(|renderer| {
-                let owner = CallbackOwner::for_mod(renderer.mod_id);
+                let callback_type = debug_renderer_callback_type(&renderer.answer);
+                let ordinal = {
+                    let count = seen.entry((renderer.mod_id, callback_type)).or_insert(0);
+                    let current = *count;
+                    *count += 1;
+                    current
+                };
+                let poisoned = self
+                    .renderer_poisons
+                    .entry((renderer.mod_id, callback_type, ordinal))
+                    .or_default()
+                    .clone();
+                let owner = CallbackOwner::with_shared_poison(renderer.mod_id, poisoned);
                 owner.is_enabled().then_some(ActiveDebugRenderer {
                     owner,
                     renderer: renderer.answer,
@@ -915,7 +934,7 @@ mod tests {
             .into(),
             || {
                 assert!(mod_api::__private::set_mod_enabled("disabled_mod", false));
-                let entries = DebugEntries::default();
+                let mut entries = DebugEntries::default();
                 let active = entries.active_renderers(vec![
                     Answered {
                         mod_id: "first",
@@ -1089,6 +1108,58 @@ mod tests {
             let second: Vec<_> = mod_lines(&entries, &host, &selection, false, false).collect();
             assert_eq!(second, [(DebugGroup::Memory, vec!["ok".to_owned()])]);
             assert_eq!(bad_runs.load(Ordering::Relaxed), 1);
+        });
+    }
+
+    #[test]
+    fn panicked_debug_renderer_stays_disabled_across_unrelated_refresh() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct EmptyWorldDraw;
+        impl mod_api::WorldDrawContext for EmptyWorldDraw {}
+
+        mod_platform::testing::with_mods(Vec::new().into(), || {
+            let bad_runs = Arc::new(AtomicUsize::new(0));
+            let good_runs = Arc::new(AtomicUsize::new(0));
+            let make_batch = || {
+                let bad_runs = bad_runs.clone();
+                let good_runs = good_runs.clone();
+                vec![
+                    Answered {
+                        mod_id: "same_mod",
+                        answer: DebugRenderer::new(move |_, _, _| {
+                            bad_runs.fetch_add(1, Ordering::Relaxed);
+                            panic!("renderer boom");
+                        }),
+                    },
+                    Answered {
+                        mod_id: "same_mod",
+                        answer: DebugRenderer::new(move |_, _, _| {
+                            good_runs.fetch_add(1, Ordering::Relaxed);
+                        }),
+                    },
+                ]
+            };
+
+            let mut entries = DebugEntries::default();
+            let host = FakeHost::new();
+            let view = mod_api::WorldRenderView::new([0.0; 3], 0.0, 0);
+            let mut draw = EmptyWorldDraw;
+
+            let active = entries.active_renderers(make_batch());
+            assert_eq!(active.len(), 2);
+            assert!(!active[0].draw(&host, &view, &mut draw));
+            assert!(active[1].draw(&host, &view, &mut draw));
+            assert_eq!(bad_runs.load(Ordering::Relaxed), 1);
+            assert_eq!(good_runs.load(Ordering::Relaxed), 1);
+
+            // An unrelated F3 toggle refreshes the renderer list; the panicked renderer stays off
+            // while the healthy sibling continues to run.
+            entries.set_status("fps", Status::AlwaysOn);
+            let refreshed = entries.active_renderers(make_batch());
+            assert_eq!(refreshed.len(), 1);
+            assert!(refreshed[0].draw(&host, &view, &mut draw));
+            assert_eq!(bad_runs.load(Ordering::Relaxed), 1);
+            assert_eq!(good_runs.load(Ordering::Relaxed), 2);
         });
     }
 }

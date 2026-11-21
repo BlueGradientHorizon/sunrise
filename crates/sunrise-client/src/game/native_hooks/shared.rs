@@ -1090,7 +1090,11 @@ impl Game<'_> {
     }
 
     /// Drain pending retained-callback panic notices into system error toasts naming the mod.
+    /// Bypass `ToastAdd` so no mod (including the failing one) can suppress or rewrite the notice.
     pub(super) fn drain_mod_callback_panic_toasts(&mut self) {
+        if self.is_logical_server() {
+            return;
+        }
         for notice in mod_api::__private::game::take_callback_panic_notices() {
             let detail = format!("{} ({}): {}", notice.kind, notice.operation, notice.message);
             let toast = sunrise_client::toasts::SystemToast::new(
@@ -1102,9 +1106,7 @@ impl Game<'_> {
             )
             .with_display_time(sunrise_client::toasts::SystemToast::LONG_DISPLAY_TIME)
             .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
-            if let Some(toast) = self.add_system_toast(toast) {
-                self.mod_callback_toasts.push(toast);
-            }
+            self.mod_callback_toasts.push(toast);
         }
     }
 

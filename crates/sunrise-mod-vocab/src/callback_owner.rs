@@ -2,7 +2,7 @@
 use std::any::Any;
 use std::collections::VecDeque;
 use std::sync::{
-    Mutex,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -64,7 +64,7 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
 pub struct CallbackOwner {
     id: &'static str,
     index: Option<usize>,
-    poisoned: AtomicBool,
+    poisoned: Arc<AtomicBool>,
 }
 
 impl CallbackOwner {
@@ -73,7 +73,7 @@ impl CallbackOwner {
         Some(Self {
             id,
             index: Some(crate::__private::mod_index(id)?),
-            poisoned: AtomicBool::new(false),
+            poisoned: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -82,7 +82,16 @@ impl CallbackOwner {
         Self {
             id,
             index: crate::__private::mod_index(id),
-            poisoned: AtomicBool::new(false),
+            poisoned: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Bind a callback owner by mod id with session-persistent poison state shared across refreshes.
+    pub fn with_shared_poison(id: &'static str, poisoned: Arc<AtomicBool>) -> Self {
+        Self {
+            id,
+            index: crate::__private::mod_index(id),
+            poisoned,
         }
     }
 

@@ -2867,10 +2867,19 @@ mod tests {
     #[ignore = "daily"]
     fn toast_admission_cancels_edits_and_preserves_queue_behavior() {
         use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
-        struct Listener;
+        struct Listener {
+            cancel_all_system: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        }
         #[mod_api::__subscriptions]
         impl Hooks for Listener {
             fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                if event.kind == ToastKind::System
+                    && self
+                        .cancel_all_system
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    return Flow::Cancel;
+                }
                 match event.description.as_ref().map(|text| &text.content) {
                     Some(mod_api::text::TextContent::Literal(value)) if value == "cancel" => {
                         Flow::Cancel
@@ -2885,7 +2894,14 @@ mod tests {
                 }
             }
         }
-        let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
+        let cancel_all_system = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "toasts",
+            Box::new(Listener {
+                cancel_all_system: cancel_all_system.clone(),
+            }),
+        )]
+        .into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
@@ -2937,6 +2953,40 @@ mod tests {
                 let system = game.add_system_toast(system).unwrap();
                 assert_eq!(system.title.plain(), "replacement");
                 assert_eq!(system.message.unwrap().plain(), "changed");
+                // Callback-panic diagnostic toasts bypass `ToastAdd` so a listener cancelling
+                // all system toasts cannot hide or rewrite the failing mod's notice.
+                cancel_all_system.store(true, std::sync::atomic::Ordering::Relaxed);
+                let _ = mod_api::__private::game::take_callback_panic_notices();
+                game.mod_callback_toasts.clear();
+                let blocked_system =
+                    sunrise_client::toasts::SystemToast::new("sys".into(), Some("ordinary".into()));
+                assert!(game.add_system_toast(blocked_system).is_none());
+                let owner = mod_api::__private::game::CallbackOwner::for_mod("panicky_mod");
+                let _ = owner.call("debug entry", "debug_entry_callback", || {
+                    panic!("unmaskable boom");
+                });
+                game.drain_mod_callback_panic_toasts();
+                cancel_all_system.store(false, std::sync::atomic::Ordering::Relaxed);
+                assert_eq!(game.mod_callback_toasts.len(), 1);
+                let panic_toast = &game.mod_callback_toasts[0];
+                assert!(
+                    panic_toast
+                        .title
+                        .component()
+                        .to_string()
+                        .contains("panicky_mod"),
+                    "panic toast title must name the failing mod: {}",
+                    panic_toast.title.component()
+                );
+                assert!(
+                    panic_toast
+                        .message
+                        .as_ref()
+                        .unwrap()
+                        .plain()
+                        .contains("unmaskable boom"),
+                    "panic toast description must not be rewritten or cancelled"
+                );
                 for role in [
                     super::super::execution_role::ExecutionRole::IntegratedServer,
                     super::super::execution_role::ExecutionRole::DedicatedServer,

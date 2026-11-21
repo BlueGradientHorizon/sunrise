@@ -85,6 +85,7 @@ type DebugRendererDraw =
 /// A world-space debug renderer owned by the client until its renderer list next refreshes.
 // exhaustive: private storage keeps the draw callback opaque.
 pub struct DebugRenderer {
+    callback_type: std::any::TypeId,
     draw: Box<DebugRendererDraw>,
 }
 
@@ -94,13 +95,12 @@ impl DebugRenderer {
     /// Capture any renderer-specific state in the callback. To gate a renderer on a debug
     /// options switch, check [`crate::RegisterDebugRenderersEvent::is_debug_entry_enabled`]
     /// before pushing it.
-    pub fn new(
-        draw: impl Fn(&dyn ClientHost, &WorldRenderView, &mut dyn WorldDrawContext)
-        + Send
-        + Sync
-        + 'static,
-    ) -> Self {
+    pub fn new<F>(draw: F) -> Self
+    where
+        F: Fn(&dyn ClientHost, &WorldRenderView, &mut dyn WorldDrawContext) + Send + Sync + 'static,
+    {
         Self {
+            callback_type: std::any::TypeId::of::<F>(),
             draw: Box::new(draw),
         }
     }
@@ -114,6 +114,12 @@ impl DebugRenderer {
     ) {
         (self.draw)(host, view, draw);
     }
+}
+
+/// Engine-internal callback identity used to keep a panicked debug renderer disabled across
+/// renderer-list refreshes for the session.
+pub fn debug_renderer_callback_type(renderer: &DebugRenderer) -> std::any::TypeId {
+    renderer.callback_type
 }
 
 // no wire: engine-side read-only view borrowed by `RegisterDebugRenderersEvent`.
