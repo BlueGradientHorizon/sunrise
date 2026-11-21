@@ -104,9 +104,12 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
             .unwrap();
             assert!(game.session_lock.is_none());
             let disk = open();
-            assert_eq!(disk.load_entities(slot.0, slot.1), [entity(1)]);
-            assert_eq!(disk.load_entities(neighbour.0, neighbour.1), [entity(2)]);
-            assert!(disk.load_entities(deleted.0, deleted.1).is_empty());
+            assert_eq!(disk.load_entities(slot.0, slot.1).unwrap(), [entity(1)]);
+            assert_eq!(
+                disk.load_entities(neighbour.0, neighbour.1).unwrap(),
+                [entity(2)]
+            );
+            assert!(disk.load_entities(deleted.0, deleted.1).unwrap().is_empty());
             assert_eq!(
                 sunrise_client::save::Level::read(root.path()).unwrap().name,
                 "saved on exit after record failure"

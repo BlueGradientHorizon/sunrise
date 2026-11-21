@@ -1988,7 +1988,7 @@ pub(super) mod tests {
                 .find(|tag| tag.get("id") == Some(&Tag::String("crash_checkpoint:counter".into())))
                 .expect("crash checkpoint lost the counter");
             assert_eq!(counter.get("saved_progress"), Some(&Tag::Int(41)));
-            let entities = disk.load_entities(0, 0);
+            let entities = disk.load_entities(0, 0).unwrap();
             let ids: Vec<_> = entities.iter().map(|tag| tag.get("UUID")).collect();
             assert_eq!(ids, [Some(&bystander_uuid), Some(&victim_uuid)]);
             let victim = &entities[1];
