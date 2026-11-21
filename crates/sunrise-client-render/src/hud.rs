@@ -2532,9 +2532,6 @@ impl HudBatch {
             self.rect_uv(x, y, w, r.h as f32, r, u32::MAX);
         }
     }
-    /// Clip the quads drawn since `start` to `[x0, x1) x [y0, y1)` (the
-    /// GUI scissor): axis-aligned quads are cut with their UVs, others (item
-    /// triangles) are clipped as polygons.
     /// Scale the vertices pushed since `start` about `(cx, cy)` (a GUI pose
     /// matrix of translate, scale, translate back).
     pub fn scale_since(&mut self, start: usize, cx: f32, cy: f32, sx: f32, sy: f32) {
@@ -2543,6 +2540,9 @@ impl HudBatch {
             v.pos[1] = cy + (v.pos[1] - cy) * sy;
         }
     }
+    /// Clip the quads drawn since `start` to `[x0, x1) x [y0, y1)` (the
+    /// GUI scissor): axis-aligned quads are cut with their UVs, others (item
+    /// triangles) are clipped as polygons.
     pub fn clip_since(&mut self, start: usize, x0: f32, y0: f32, x1: f32, y1: f32) {
         let quads: Vec<[HudVertex; 6]> = self.vertices[start..].as_chunks::<6>().0.to_vec();
         self.vertices.truncate(start);
@@ -2614,13 +2614,19 @@ impl HudBatch {
             self.vertices.extend([0, 1, 2, 0, 2, 3].map(|i| c[i]));
         }
         moved.push(self.vertices.len() as u32);
-        let at = |v: u32| moved[((v as usize).saturating_sub(start) / 6).min(moved.len() - 1)];
-        for (range, _) in &mut self.blends {
-            if range.start as usize >= start {
-                *range = at(range.start)..at(range.end);
-            }
-        }
-        self.blends.retain(|(range, _)| !range.is_empty());
+        let at = |v: u32| moved[((v as usize - start) / 6).min(moved.len() - 1)];
+        let start = start as u32;
+        let first = self.blends.partition_point(|(range, _)| range.end <= start);
+        self.blends
+            .extract_if(first.., |(range, _)| {
+                // A coalesced run can straddle the start: its prefix stays put.
+                if range.start >= start {
+                    range.start = at(range.start);
+                }
+                range.end = at(range.end);
+                range.is_empty()
+            })
+            .for_each(drop);
     }
     /// `blit` of the top-left `w x h` texels of a `tw x th` texture.
     pub fn sprite_region(
@@ -4700,6 +4706,57 @@ mod tests {
             batch.blends,
             [(0..batch.vertices.len() as u32, Blend::Additive)]
         );
+    }
+
+    #[test]
+    fn clip_since_remaps_only_the_scoped_part_of_a_coalesced_blend() {
+        let mut batch = HudBatch::scratch([320, 240]);
+        let quad = |batch: &mut HudBatch, x: f32, y: f32| {
+            batch.quad(
+                [[x, y], [x + 4.0, y], [x + 4.0, y + 4.0], [x, y + 4.0]],
+                [[0.0; 2]; 4],
+                u32::MAX,
+            );
+        };
+        quad(&mut batch, 32.0, 32.0);
+        batch.invert_since(0);
+        let start = batch.vertices.len();
+        quad(&mut batch, -8.0, 0.0); // outside
+        quad(&mut batch, 0.0, 0.0); // cut at x = 2
+        batch.invert_since(start);
+        assert_eq!(batch.blends, [(0..18, Blend::Invert)]);
+
+        batch.clip_since(start, 2.0, 0.0, 8.0, 8.0);
+        let positions: Vec<_> = batch.vertices.iter().map(|v| v.pos).collect();
+        assert_eq!(
+            positions,
+            [
+                [32.0, 32.0],
+                [36.0, 32.0],
+                [36.0, 36.0],
+                [32.0, 32.0],
+                [36.0, 36.0],
+                [32.0, 36.0],
+                [2.0, 0.0],
+                [4.0, 0.0],
+                [4.0, 4.0],
+                [2.0, 0.0],
+                [4.0, 4.0],
+                [2.0, 4.0],
+            ]
+        );
+        assert_eq!(batch.blends, [(0..12, Blend::Invert)]);
+
+        let start = batch.vertices.len();
+        quad(&mut batch, 0.0, 0.0);
+        batch.invert_since(start);
+        batch.clip_since(start, 2.0, 0.0, 2.0, 8.0); // empty scissor
+        quad(&mut batch, 16.0, 16.0);
+        assert_eq!(
+            batch.runs(),
+            [(0..12, Blend::Invert), (12..18, Blend::Alpha)]
+        );
+        assert_eq!(batch.vertices[12].pos, [16.0, 16.0]);
     }
 
     #[test]

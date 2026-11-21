@@ -5,25 +5,31 @@ use crate::game::{
 };
 use mod_api::{prelude::*, *};
 
+#[path = "draw/gui_canvas.rs"]
+mod gui_canvas;
+pub(crate) use gui_canvas::GameGuiCanvas;
+
 /// [`DrawContext`] on the game's `crate::hud::HudBatch`: one per hook call.
 pub(crate) struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
     pub(crate) surface: &'a mut crate::hud::HudBatch,
-    /// The call's open clips (`push_clip`), closed when the call returns.
-    clips: crate::game::gui_clips::GuiClips,
+    /// Only a scoped child owns a clip; its parent keeps the enclosing one.
+    clip: Option<crate::game::gui_clips::GuiClip>,
 }
 impl<'a, 'g> GameDrawContext<'a, 'g> {
     pub(crate) fn new(game: &'a Game<'g>, surface: &'a mut crate::hud::HudBatch) -> Self {
         Self {
             game,
             surface,
-            clips: Default::default(),
+            clip: None,
         }
     }
 }
 impl Drop for GameDrawContext<'_, '_> {
     fn drop(&mut self) {
-        self.clips.close_all(self.surface);
+        if let Some(clip) = self.clip.take() {
+            clip.close(self.surface);
+        }
     }
 }
 impl DrawContext for GameDrawContext<'_, '_> {
@@ -72,10 +78,11 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game
             .native_item_stack(&mut *self.surface, &stack, at, size)
     }
-    fn gui_paint(&mut self, draws: &[GuiDraw]) -> Result<(), GuiPaintError> {
-        let draws = draws.try_into_engine(&())?;
-        crate::game::gui_pose::report_refused_poses(&draws);
-        self.game.native_gui_paint(&mut *self.surface, &draws)
+    fn draw_gui(
+        &mut self,
+        draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
+    ) -> Result<(), GuiDrawError> {
+        GameGuiCanvas::draw(self.surface, &self.game.gui.atlas, Some(self.game), draw)
     }
     fn gui_nine_slice(&mut self, sprite: &str, rect: [f32; 4], color: u32) {
         self.game
@@ -123,11 +130,18 @@ impl DrawContext for GameDrawContext<'_, '_> {
     ) -> Result<(), mod_api::Gui3dError> {
         self.game.native_model_3d(&mut *self.surface, subject, view)
     }
-    fn push_clip(&mut self, rect: [f32; 4]) -> Result<(), GuiClipRefusal> {
-        self.clips.push(self.surface, rect)
-    }
-    fn pop_clip(&mut self) -> Result<(), GuiClipRefusal> {
-        self.clips.pop(self.surface)
+    fn with_scissor(
+        &mut self,
+        rect: [f32; 4],
+        draw: &mut dyn FnMut(&mut dyn DrawContext),
+    ) -> Result<(), GuiClipRefusal> {
+        let clip = crate::game::gui_clips::GuiClip::open(self.surface, rect, self.clip.as_ref())?;
+        draw(&mut GameDrawContext {
+            game: self.game,
+            surface: &mut *self.surface,
+            clip: Some(clip),
+        });
+        Ok(())
     }
     fn entity(&mut self, entity: &GuiEntity, view: GuiEntityView) -> Result<(), GuiEntityError> {
         self.game
