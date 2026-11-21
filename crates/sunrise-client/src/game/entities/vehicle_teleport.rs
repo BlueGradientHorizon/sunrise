@@ -931,9 +931,9 @@ impl Game<'_> {
                     });
                 }
             }
-            Target::Stand(id) if yaw.is_finite() => {
+            Target::Stand(id) => {
                 if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
-                    a.yaw = yaw;
+                    a.set_rotation([yaw, pitch.unwrap_or(a.pitch)]);
                 }
             }
             Target::Boat(id) if yaw.is_finite() => {

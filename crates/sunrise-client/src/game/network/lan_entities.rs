@@ -1189,6 +1189,8 @@ fn push_arrow_meta(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_client::lan::entity::{Entities, Tracker, Viewer};
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
 
     // NBT constructors assign ids. Reinstall unbound owners to exercise delayed tracking.
     macro_rules! pending {
@@ -1497,12 +1499,8 @@ mod tests {
     #[ignore = "daily"]
     fn a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw() {
         use crate::game::native_entity_refs::tests::run_fresh_cases;
-        use sunrise_client::{
-            entities::ArmorStand,
-            lan::entity::{Entities, Tracker, Viewer},
-        };
+        use sunrise_client::entities::ArmorStand;
         use sunrise_core::geometry::Vec3;
-        use sunrise_protocol::packets::play::Clientbound;
 
         if run_fresh_cases(
             "game::lan_entities::tests::a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw",
@@ -1516,44 +1514,104 @@ mod tests {
             let mut stand = ArmorStand::new(40, Vec3::new(at[0], at[1], at[2]), 45.0);
             stand.head_yaw = 90.0;
             game.armor_stands.push(stand);
-            let mut rows = States::default();
-            game.lan_object_states(&mut rows, false, 0);
-
-            let mut out = Vec::new();
-            let mut tracker = Tracker::default();
-            let chunks = [(0, 0)].into_iter().collect();
-            let sync = game.lan.as_ref().unwrap().hub.sync_data();
-            Entities::default().pair_after_tick(
-                rows.as_slice(),
-                &Riding::default(),
-                &mut [Viewer {
-                    entity_id: 12,
-                    spectator: false,
-                    permission: 0,
-                    sunrise: false,
-                    general_entity: false,
-                    moved: false,
-                    position: at,
-                    view_distance: 2,
-                    chunks: &chunks,
-                    sources: None,
-                    tracker: &mut tracker,
-                    out: &mut out,
-                }],
-                |kind| sync.id("minecraft:entity_type", kind),
-            );
-            let packet = out
-                .iter()
-                .find_map(|body| {
-                    let Clientbound::AddEntity(p) =
-                        Clientbound::decode(i32::from(body[0]), &body[1..]).ok()?
-                    else {
-                        return None;
-                    };
-                    (p.id == 40).then_some(p)
+            let packet = track_stands(game, &mut Entities::default(), &mut Tracker::default())
+                .into_iter()
+                .find_map(|packet| match packet {
+                    Clientbound::AddEntity(p) if p.id == 40 => Some(p),
+                    _ => None,
                 })
                 .expect("the tracker sent the stand's AddEntity");
             assert_eq!([packet.yaw, packet.head_yaw], [32, 64]);
+        });
+    }
+
+    /// Track from a guest's chunk for one stand update interval. This lets the
+    /// test observe both initial pairing and updates to that same viewer.
+    fn track_stands(
+        game: &mut Game<'_>,
+        level: &mut Entities,
+        tracker: &mut Tracker,
+    ) -> Vec<Clientbound> {
+        let mut rows = States::default();
+        game.lan_object_states(&mut rows, false, 0);
+        let rows: Vec<_> = rows.as_slice().iter().collect();
+        let mut out = Vec::new();
+        let chunks = [(0, 0)].into_iter().collect();
+        let sync = game.lan.as_ref().unwrap().hub.sync_data();
+        let mut viewers = [Viewer {
+            entity_id: 12,
+            spectator: false,
+            permission: 0,
+            sunrise: false,
+            general_entity: false,
+            moved: false,
+            position: [3.0, 64.0, 5.0],
+            view_distance: 2,
+            chunks: &chunks,
+            sources: None,
+            tracker,
+            out: &mut out,
+        }];
+        let riding = Riding::default();
+        for _ in 0..sunrise_client::lan::tracking::settings("minecraft:armor_stand").1 {
+            level.tick(&rows, &riding, &mut viewers, |kind| {
+                sync.id("minecraft:entity_type", kind)
+            });
+        }
+        out.iter()
+            .map(|body| {
+                let mut reader = Reader::new(body);
+                Clientbound::decode(reader.varint().unwrap(), reader.rest()).unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn stand_rotation_commands_update_the_head_for_an_already_paired_viewer() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+
+        if run_fresh_cases(
+            "game::lan_entities::tests::stand_rotation_commands_update_the_head_for_an_already_paired_viewer",
+            "SUNRISE_STAND_COMMAND_YAW_TEST",
+            &["rotate", "teleport", "teleport_without_rotation"],
+        ) {
+            return;
+        }
+        let case = std::env::var("SUNRISE_STAND_COMMAND_YAW_TEST").unwrap();
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            assert!(game.run_command(
+                r#"summon minecraft:armor_stand 3 64 5 {Tags:["turn_me"],Rotation:[45f,0f]}"#
+            ));
+            let stand = game.armor_stands.iter_mut().next().unwrap();
+            let id = stand.id as i32;
+            let (command, expected) = match case.as_str() {
+                "rotate" => ("rotate @e[tag=turn_me,limit=1] 90 0", [64, 64]),
+                "teleport" => ("teleport @e[tag=turn_me,limit=1] 4 64 5 135 0", [96, 96]),
+                "teleport_without_rotation" => {
+                    // The head can be turned independently of view before /tp.
+                    stand.head_yaw = 90.0;
+                    ("teleport @e[tag=turn_me,limit=1] 4 64 5", [32, 32])
+                }
+                _ => unreachable!(),
+            };
+            let mut level = Entities::default();
+            let mut tracker = Tracker::default();
+            let paired = track_stands(game, &mut level, &mut tracker);
+            assert!(
+                paired
+                    .iter()
+                    .any(|p| matches!(p, Clientbound::AddEntity(a) if a.id == id))
+            );
+            assert!(game.run_command(command));
+            let packets = track_stands(game, &mut level, &mut tracker);
+            assert!(packets.iter().any(|p| {
+                matches!(p, Clientbound::RotateHead(r) if r.id == id && r.head_yaw == expected[1])
+            }), "no RotateHead with yaw {} after {command}", expected[1]);
+            let late = track_stands(game, &mut Entities::default(), &mut Tracker::default());
+            assert!(late.iter().any(|p| {
+                matches!(p, Clientbound::AddEntity(a) if a.id == id && [a.yaw, a.head_yaw] == expected)
+            }), "no AddEntity with yaw {expected:?} after {command}");
         });
     }
 

@@ -10,8 +10,9 @@ arms, wearing a helmet, one falling), a chicken jockey, a slime, a pig whose sca
 frames (one holding a turned diamond), paintings, primed TNT (one falling), a floating falling block, sand
 falling into a cobweb, sand that falls onto a torch and breaks into an item (added after the tick's tracking pass in
 Sunrise), an arrow that lands, a burning arrow and an end crystal. The client records for 20 seconds, the ticks
-running for 200 more after 3, what ClientPacketListener would make of the packets (EntityTranscript): each
-entity's spawn
+running for 200 more after 3, what ClientPacketListener would make of the packets (EntityTranscript). After
+pairing, the console rotates one stand and teleports two stands, one without explicit angles. The transcript
+keeps head and view angles separate both at spawn and after the commands. It includes each entity's spawn
 packet (position, rotations, data, motion), the entity data it was paired with and all it was sent since, its
 equipment, its attribute instances (ClientboundUpdateAttributesPacket: the ones its first tick creates, the
 type's set by finalizeSpawn, the baby speed modifier, effects', equipment's and /attribute's) and passengers, and
@@ -67,6 +68,7 @@ SCENE = [
     'summon minecraft:armor_stand 6.5 -57 -2.5',
     'summon minecraft:armor_stand -4.5 -60 -2.5 {ShowArms:1b,Small:1b,NoBasePlate:1b,'
     'Pose:{Head:[10f,20f,0f],RightArm:[-30f,0f,15f]},equipment:{head:{id:"minecraft:diamond_helmet",count:1}}}',
+    'summon minecraft:armor_stand 7.5 -60 0.5 {Rotation:[45f,0f]}',
     # A chicken jockey (passengers).
     'summon minecraft:chicken -6.5 -60 -2.5 {NoAI:1b,Passengers:[{id:"minecraft:husk",IsBaby:1b,NoAI:1b}]}',
     # Attributes: a slime's size sets its bases, /attribute a pig's scale.
@@ -96,6 +98,13 @@ SCENE = [
     # A burning arrow (a Flame bow's): its shared flag of fire (Entity.DATA_SHARED_FLAGS_ID) reaches the client.
     'summon minecraft:arrow 0.5 -55 2.5 {Motion:[0.3d,0d,0d],Fire:2000s}',
     'summon minecraft:end_crystal -6.5 -60 6.5 {ShowBottom:0b}',
+]
+
+
+STAND_ROTATIONS = [
+    'rotate @e[type=minecraft:armor_stand,x=-2.5,y=-60,z=-2.5,distance=..1,limit=1] 135 0',
+    'teleport @e[type=minecraft:armor_stand,x=-4.5,y=-60,z=-2.5,distance=..1,limit=1] -4.5 -60 -2.5 90 0',
+    'teleport @e[type=minecraft:armor_stand,x=7.5,y=-60,z=0.5,distance=..1,limit=1] 7.5 -60 2.5',
 ]
 
 
@@ -144,6 +153,8 @@ def run_side(label, server_command, client_command, build, world):
                 for command in SCENE:
                     server.console(command)
                 time.sleep(3)
+                for command in STAND_ROTATIONS:
+                    server.console(command)
                 # A fixed number of ticks, so that what still changes (a TNT fuse) ends the same.
                 server.console(f'tick step {STEPS}')
                 client.wait(timeout=120)
