@@ -4,6 +4,9 @@ use super::{Event, PlayCookie, PlayIo, PlayIoAction, Reason, brand_event};
 use std::sync::Arc;
 use sunrise_protocol::packets::{custom_payload::CustomPayload, play::Clientbound as C};
 
+/// `BundlerInfo.BUNDLE_SIZE_LIMIT` counts decoded members, not delimiters or bytes.
+const BUNDLE_SIZE_LIMIT: usize = 4096;
+
 #[derive(Default)]
 pub(super) struct PlayBundle(Option<Vec<C>>);
 
@@ -39,7 +42,8 @@ impl PlayBundle {
         if matches!(packet, C::StartConfiguration(_)) {
             return Err(InvalidBundle::Terminal);
         }
-        if packets.len() == 4096 {
+        // `BundlerInfo.addPacket` checks before retaining the next member.
+        if packets.len() >= BUNDLE_SIZE_LIMIT {
             return Err(InvalidBundle::TooManyPackets);
         }
         packets.push(packet);
