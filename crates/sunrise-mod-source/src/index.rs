@@ -7,26 +7,81 @@ use std::{
 };
 use syn::{Attribute, Item, Meta, UseTree, Visibility};
 
+/// The first of `values` this tool's own target has, as `cfg!` saw it when the tool was built.
+macro_rules! built_for {
+    ($key:ident: $($value:literal),+) => {
+        [$((cfg!($key = $value), $value)),+]
+            .into_iter()
+            .find_map(|(active, value)| active.then_some(value))
+    };
+}
+
+/// A target `cfg` value: Cargo's, when a build script runs this, else the target this tool was
+/// built for. A key the tool can't know about itself (`target_feature`) is unknown.
 fn target_cfg(name: &str) -> Option<String> {
     let environment = format!("CARGO_CFG_{}", name.to_ascii_uppercase());
     if let Ok(value) = std::env::var(environment) {
         return Some(value);
     }
-    match name {
-        "target_os" => Some(std::env::consts::OS.to_owned()),
-        "target_arch" => Some(std::env::consts::ARCH.to_owned()),
-        "target_abi" => Some(env!("CARGO_CFG_TARGET_ABI").to_owned()),
-        "target_env" => Some(env!("CARGO_CFG_TARGET_ENV").to_owned()),
-        "target_feature" => Some(env!("CARGO_CFG_TARGET_FEATURE").to_owned()),
-        "target_has_atomic" => Some(env!("CARGO_CFG_TARGET_HAS_ATOMIC").to_owned()),
-        "target_vendor" => Some(env!("CARGO_CFG_TARGET_VENDOR").to_owned()),
-        "target_family" => Some(env!("CARGO_CFG_TARGET_FAMILY").to_owned()),
-        "target_pointer_width" => Some(usize::BITS.to_string()),
-        "target_endian" if cfg!(target_endian = "little") => Some("little".to_owned()),
-        "target_endian" if cfg!(target_endian = "big") => Some("big".to_owned()),
-        _ => None,
-    }
+    let value = match name {
+        "target_os" => std::env::consts::OS,
+        "target_arch" => std::env::consts::ARCH,
+        "target_family" => std::env::consts::FAMILY,
+        "target_env" => {
+            built_for!(target_env: "gnu", "msvc", "musl", "sgx", "newlib", "uclibc", "ohos")
+                .unwrap_or("")
+        }
+        "target_vendor" => built_for!(target_vendor: "unknown", "pc", "apple", "fortanix")?,
+        "target_has_atomic" => {
+            return Some(
+                [
+                    (cfg!(target_has_atomic = "8"), "8"),
+                    (cfg!(target_has_atomic = "16"), "16"),
+                    (cfg!(target_has_atomic = "32"), "32"),
+                    (cfg!(target_has_atomic = "64"), "64"),
+                    (cfg!(target_has_atomic = "128"), "128"),
+                    (cfg!(target_has_atomic = "ptr"), "ptr"),
+                ]
+                .into_iter()
+                .filter_map(|(active, width)| active.then_some(width))
+                .collect::<Vec<_>>()
+                .join(","),
+            );
+        }
+        "target_pointer_width" => return Some(usize::BITS.to_string()),
+        "target_endian" if cfg!(target_endian = "little") => "little",
+        "target_endian" if cfg!(target_endian = "big") => "big",
+        _ => return None,
+    };
+    Some(value.to_owned())
 }
+
+/// The target triple this tool was built for, among the platforms Sunrise ships tools for.
+const BUILT_FOR: Option<&str> = if cfg!(all(
+    target_arch = "x86_64",
+    target_os = "linux",
+    target_env = "gnu"
+)) {
+    Some("x86_64-unknown-linux-gnu")
+} else if cfg!(all(
+    target_arch = "aarch64",
+    target_os = "linux",
+    target_env = "gnu"
+)) {
+    Some("aarch64-unknown-linux-gnu")
+} else if cfg!(all(target_arch = "x86_64", target_os = "macos")) {
+    Some("x86_64-apple-darwin")
+} else if cfg!(all(target_arch = "aarch64", target_os = "macos")) {
+    Some("aarch64-apple-darwin")
+} else if cfg!(all(
+    target_arch = "x86_64",
+    target_os = "windows",
+    target_env = "msvc"
+)) {
+    Some("x86_64-pc-windows-msvc")
+} else {
+    None
+};
 
 fn target_flag(name: &str, fallback: bool) -> bool {
     std::env::var_os(format!("CARGO_CFG_{}", name.to_ascii_uppercase())).is_some() || fallback
@@ -131,11 +186,10 @@ pub fn target_dependency_active(selector: &str) -> Result<bool, String> {
             .map_err(|error| format!("invalid Cargo target selector `{selector}`: {error}"))?;
         return Ok(cfg_active(&meta, None));
     }
-    let target = std::env::var("TARGET");
-    Ok(selector
-        == target
-            .as_deref()
-            .unwrap_or(env!("SUNRISE_MOD_SOURCE_TARGET")))
+    Ok(match std::env::var("TARGET") {
+        Ok(target) => selector == target,
+        Err(_) => BUILT_FOR == Some(selector),
+    })
 }
 
 /// One module: its crate, its path below the crate root, and its items.
