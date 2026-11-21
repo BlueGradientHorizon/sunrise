@@ -1389,6 +1389,18 @@ pub(super) mod tests {
         role: super::super::execution_role::ExecutionRole,
         test: impl FnOnce(&mut super::Game<'_>),
     ) {
+        with_game_role_and_facts(root, role, None, test);
+    }
+
+    /// Configure the fixture's owned gameplay facts before constructing the game.
+    pub(in crate::game) fn with_game_role_and_facts(
+        root: std::path::PathBuf,
+        role: super::super::execution_role::ExecutionRole,
+        configure: Option<
+            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
+        >,
+        test: impl FnOnce(&mut super::Game<'_>),
+    ) {
         use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
         use mod_api::Authority;
 
@@ -1416,7 +1428,7 @@ pub(super) mod tests {
         .unwrap();
         let saves = tempfile::tempdir().unwrap();
         let settings = Settings::default();
-        let loaded = load_resources(
+        let mut loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
             Vec::new(),
             None,
@@ -1429,6 +1441,15 @@ pub(super) mod tests {
             &mut |_, _| unreachable!(),
         )
         .unwrap();
+        if let Some(configure) = configure {
+            configure(
+                loaded.pack.assets.registry,
+                &mut std::sync::Arc::get_mut(&mut loaded.resources)
+                    .unwrap()
+                    .core
+                    .facts,
+            );
+        }
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = role;

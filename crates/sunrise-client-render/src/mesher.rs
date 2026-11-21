@@ -1926,7 +1926,11 @@ impl<'a> Tints<'a> {
             None => Self::biome_id(&self.zoom, self.region, self.plains, self.origin, at),
         };
         let [cx, cz, base_y] = self.origin;
-        let block = [cx * 16 + at[0], base_y + at[1], cz * 16 + at[2]];
+        let block = [
+            (cx * 16).wrapping_add(at[0]),
+            base_y.wrapping_add(at[1]),
+            (cz * 16).wrapping_add(at[2]),
+        ];
         let mut host = crate::environment::BlockHost::new(block, self.biomes.get(id));
         let colour = colormap.sample(&mut host).map(|c| c & 0xFF_FFFF);
         self.cells.insert((index, at), colour);
@@ -1957,7 +1961,11 @@ impl<'a> Tints<'a> {
         [cx, cz, base_y]: [i32; 3],
         [x, y, z]: [i32; 3],
     ) -> u16 {
-        let q = zoom.quart_at_block(BlockPos::new(cx * 16 + x, base_y + y, cz * 16 + z));
+        let q = zoom.quart_at_block(BlockPos::new(
+            (cx * 16).wrapping_add(x),
+            base_y.wrapping_add(y),
+            (cz * 16).wrapping_add(z),
+        ));
         Self::quart_biome(region, plains, [cx, cz], q)
     }
     /// The biome of quart cell `q` in the loaded chunks around chunk `(cx, cz)`, plains where
@@ -1970,9 +1978,7 @@ impl<'a> Tints<'a> {
     ) -> u16 {
         let (rx, rz) = ((q[0] >> 2) - cx + 1, (q[2] >> 2) - cz + 1);
         if (0..3).contains(&rx) && (0..3).contains(&rz) {
-            region[rz as usize][rx as usize].map_or(plains, |c| {
-                c.biome((q[0] & 3) * 4, q[1] * 4, (q[2] & 3) * 4)
-            })
+            region[rz as usize][rx as usize].map_or(plains, |c| c.quart_biome(q[0], q[1], q[2]))
         } else {
             plains
         }
@@ -1989,10 +1995,15 @@ impl<'a> Tints<'a> {
         // The base cells of blocks lo..=hi, and the cell past the last.
         let span = |lo: i32, hi: i32| (lo.wrapping_sub(2) >> 2)..=(hi.wrapping_sub(2) >> 2) + 1;
         let (xs, ys, zs) = (
-            span(cx * 16 - r, cx * 16 + 15 + r),
-            span(base_y, base_y + 15),
-            span(cz * 16 - r, cz * 16 + 15 + r),
+            span((cx * 16).wrapping_sub(r), (cx * 16).wrapping_add(15 + r)),
+            span(base_y, base_y.wrapping_add(15)),
+            span((cz * 16).wrapping_sub(r), (cz * 16).wrapping_add(15 + r)),
         );
+        // A rectangle that wraps Java's signed block coordinates isn't one continuous quart range.
+        if xs.is_empty() || ys.is_empty() || zs.is_empty() {
+            self.uniform = Some(None);
+            return None;
+        }
         let first = Self::quart_biome(
             self.region,
             self.plains,
@@ -2052,7 +2063,11 @@ impl<'a> Tints<'a> {
             return cached;
         }
         let [cx, cz, base_y] = self.origin;
-        let (bx, by, bz) = (cx * 16, base_y + y, cz * 16);
+        let (bx, by, bz) = (cx * 16, base_y.wrapping_add(y), cz * 16);
+        let first = [bx, bz].map(|v| v.wrapping_sub(r + 2) >> 2);
+        // BiomeManager subtracts two in signed block coordinates before shifting by two.
+        // Across the wrap the quart bases still occupy adjacent slots in this local cache.
+        let quart_distance = |q: i32, first: i32| ((q - first) & (i32::MAX >> 1)) as usize;
         let (mut red, mut green, mut blue) = (0, 0, 0);
         if cells.is_empty() {
             cells.resize(dim * dim, UNSET);
@@ -2067,16 +2082,18 @@ impl<'a> Tints<'a> {
                     blue += known & 255;
                     continue;
                 }
+                // ClientLevel.calculateBlockTint iterates over signed Java block positions.
+                let (px, pz) = (bx.wrapping_add(x + dx), bz.wrapping_add(z + dz));
                 let mut biome = layer.zoomed[cell];
                 if biome == NO_BIOME {
                     // BiomeManager.getBiome over the loaded chunks (plains
                     // where there is none): `quart_at_block`, its cell's
                     // corner jitter mixed once per layer.
-                    let block = BlockPos::new(bx + x + dx, by, bz + z + dz);
-                    let base = [block.x, block.y, block.z].map(|v| v.wrapping_sub(2) >> 2);
-                    let first = [bx - r, bz - r].map(|v| v.wrapping_sub(2) >> 2);
+                    let block = BlockPos::new(px, by, pz);
+                    let base = [px, by, pz].map(|v| v.wrapping_sub(2) >> 2);
                     let span = dim / 4 + 2;
-                    let at = (base[2] - first[1]) as usize * span + (base[0] - first[0]) as usize;
+                    let at = quart_distance(base[2], first[1]) * span
+                        + quart_distance(base[0], first[0]);
                     if layer.jitter.is_empty() {
                         layer.jitter.resize(span * span, None);
                     }
@@ -2092,18 +2109,15 @@ impl<'a> Tints<'a> {
                     layer.zoomed[cell] = biome;
                 }
                 let c = match resolver {
-                    Resolver::Grass => {
-                        self.biomes
-                            .grass(biome, f64::from(bx + x + dx), f64::from(bz + z + dz))
-                    }
+                    Resolver::Grass => self.biomes.grass(biome, f64::from(px), f64::from(pz)),
                     Resolver::Foliage => self.biomes.get(biome).foliage,
                     Resolver::Dry => self.biomes.get(biome).dry_foliage,
                     Resolver::Water => self.biomes.get(biome).water,
                     Resolver::Mod(index) => mod_tint::resolve(
                         index,
                         self.biomes.get(biome),
-                        f64::from(bx + x + dx),
-                        f64::from(bz + z + dz),
+                        f64::from(px),
+                        f64::from(pz),
                     ),
                 };
                 cells[cell] = c;

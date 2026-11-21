@@ -109,5 +109,5 @@ outline or collision boxes with an empty context at a position in that level.
 The supplied state can differ from the world's block, without changing it;
 level-dependent shape inputs come from the actual level. To query the
 stored block, first read `level.block_state(host, pos)` and pass that state.
-This server read returns block-local boxes, or `None` for a
-stale handle, closed level or client. Parked levels are supported.
+Returns block-local boxes for the current client level and for open server levels,
+including parked levels, or `None` for an unknown state, stale handle or unavailable level.

@@ -268,6 +268,8 @@ sounds.
 
 Use `event.level.add_breaking_particles(host, pos, state, face)` for a normal hit crumb from an
 explicit state and position, or `event.level.add_terrain_particle(host, state, source_pos, at,
-velocity)` for an individual piece of debris. These queue directly, without firing a callback or
-playing a sound. Read the supplied state's outline with `event.level.block_shape` if you need to
-sample it. The hit helper uses the same random stream as `event.random`.
+velocity)` for an individual piece of debris. The debris uses the supplied state's material and
+samples its tint at `source_pos`, which can differ from the spawn point. These helpers don't
+redispatch the hit or destroy Part or play a sound, but can ask block tint sources. Read the
+supplied state's outline with `event.level.block_shape` if you need to sample it. The hit helper
+uses the same random stream as `event.random`.
