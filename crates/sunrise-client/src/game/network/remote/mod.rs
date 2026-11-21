@@ -56,6 +56,7 @@ use sunrise_client::{
     entities::{Experience, ExperienceOrb, ItemEntity},
     hud::HudBatch,
     items::ItemStack,
+    join_seq::JoinSeq,
     lan::data::{BIOME_REGISTRY, client_biomes},
     menu::Input,
     mobs::{Mob, MobType, Who},
@@ -217,6 +218,13 @@ pub(super) struct Tracked {
     silent: bool,
     /// `Entity.vehicle`: the entity it rides (`SetPassengers`), whatever either one's type.
     pub(in crate::game) vehicle: Option<u32>,
+}
+
+/// An item has joined the client level, but has no stack to draw yet.
+pub(super) struct PendingItem {
+    join: JoinSeq,
+    position: [f64; 3],
+    velocity: Vec3,
 }
 
 /// `Entity.startRiding` / `removePassenger` for a `SetPassengers` packet: the
@@ -459,7 +467,7 @@ pub(super) struct Remote {
     /// The player's place in its vehicle's `getPassengers`.
     pub(super) passenger_index: usize,
     /// Item entities waiting for their item data: where they are and their motion.
-    pub(super) pending_items: HashMap<i32, ([f64; 3], Vec3)>,
+    pub(super) pending_items: HashMap<i32, PendingItem>,
     health: (f32, i32, f32),
     /// `LocalPlayer.flashOnSetHealth`: set by the first health the server
     /// sends; from then on a drop starts the hurt animation.
@@ -1277,7 +1285,7 @@ impl Game<'_> {
         let Some(stack) = self.to_stack(stack) else {
             return;
         };
-        let position = self
+        let pending = self
             .remote
             .as_mut()
             .and_then(|r| r.pending_items.remove(&id));
@@ -1285,17 +1293,29 @@ impl Game<'_> {
             item.stack = stack;
             return;
         }
-        let Some((p, velocity)) = position else {
+        let Some(PendingItem {
+            join,
+            position: [x, y, z],
+            velocity,
+        }) = pending
+        else {
             return;
         };
-        let at = Vec3::new(p[0], p[1], p[2]);
+        let at = Vec3::new(x, y, z);
         // ItemEntity's constructor draws bobOffs from the item's own random.
         let mut random = sunrise_client::mobs::entity_random(id as u32, at);
         let bob = super::item_entities::bob_offset(at, random.next_float(), self.clock.still());
-        self.dropped.push(ItemEntity {
-            random,
-            ..ItemEntity::new(id as u32, stack, at, velocity, bob)
-        });
+        // Metadata can arrive after newer entities (including other items). Insert at the
+        // reserved ClientLevel.addEntity slot, not the tail at metadata time.
+        let index = self.dropped.partition_point(|item| item.join < join);
+        self.dropped.insert(
+            index,
+            ItemEntity {
+                join,
+                random,
+                ..ItemEntity::new(id as u32, stack, at, velocity, bob)
+            },
+        );
     }
 
     // remote_teleport: remote/sync.rs

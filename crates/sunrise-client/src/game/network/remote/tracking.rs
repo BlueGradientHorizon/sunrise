@@ -52,8 +52,22 @@ impl Game<'_> {
             // A new entity has a new interpolation handler (a mob's or an
             // armor stand's), even under an id the server used before.
             r.stepped.remove(&id);
+            if r.entities
+                .get(&id)
+                .is_some_and(|old| old.kind == "minecraft:item")
+            {
+                self.dropped.retain(|item| item.id != id as u32);
+                r.pending_items.remove(&id);
+            }
             if kind == "minecraft:item" {
-                r.pending_items.insert(id, (position, Vec3::ZERO));
+                r.pending_items.insert(
+                    id,
+                    PendingItem {
+                        join: JoinSeq::next(),
+                        position,
+                        velocity: Vec3::ZERO,
+                    },
+                );
             }
             r.entities.insert(
                 id,

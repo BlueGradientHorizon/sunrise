@@ -269,7 +269,6 @@ impl Game<'_> {
                 self.take_carried_attributes(&mut player)?;
                 self.hook.discard();
                 self.player_state.attachments.retire();
-                self.resident_entities.local_player.renew();
                 self.player = Some(player);
                 self.bind_local_player_residency();
                 self.input_player_replaced();

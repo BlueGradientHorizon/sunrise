@@ -1861,7 +1861,7 @@ struct Game<'a> {
     gpu_culling_auto: sunrise_client::autotune::GpuCullingAuto,
     /// Dynamic Resolution: the scale it has the world at (`frame_autotune`).
     dynamic_resolution: sunrise_client::dynamic_resolution::DynamicResolution,
-    /// The mobs `mob_geometry` drew last frame (`lastEntityRenderStateCount`).
+    /// The mobs `mob_run_geometry` drew last frame (`lastEntityRenderStateCount`).
     rendered_mobs: std::cell::Cell<usize>,
     /// Whether a native mod requested background blur for this frame (`apply_screen_blur`).
     screen_blur_requested: std::cell::Cell<bool>,
@@ -5428,6 +5428,8 @@ impl Game<'_> {
     pub(super) const MOTION_MOVING_BLOCK: u64 = 6 << 32;
     /// The player's own model (third person, and a shader pack's shadow pass).
     pub(super) const MOTION_OWN_PLAYER: u64 = 7 << 32;
+    /// The local player's flame vertices are tracked separately from the body run.
+    const MOTION_OWN_PLAYER_FIRE: u64 = Self::MOTION_OWN_PLAYER | 1;
     /// The entity whose geometry starts at vertex `start` (0: none), for frame
     /// generation to follow its own motion. Each run lasts until the next mark.
     pub(super) fn mark_motion(&self, start: usize, id: u64) {
@@ -5550,10 +5552,14 @@ impl Game<'_> {
         let orb_frame = std::cell::OnceCell::new();
         let mut runs = std::mem::take(&mut self.entity_runs);
         self.ordered_draw_runs(&mut runs);
+        // Sets the CEM frame even if there are no mobs; later passes also use it.
+        let mob_frame = self.begin_mob_geometry(camera, alpha);
         for run in &runs {
             use entity::DrawFamily as F;
             let range = run.range.clone();
             match run.family {
+                F::Mob => self.mob_run_geometry(&mob_frame, range, &mut out),
+                F::LocalPlayer => self.local_player_geometry(camera, &mut out),
                 F::Item => {
                     // `ItemEntityRenderer`.
                     self.mark_entity(out.len(), "minecraft:item");
@@ -5618,9 +5624,11 @@ impl Game<'_> {
         self.mark_entity(out.len(), "minecraft:ominous_item_spawner");
         self.ominous_item_spawner_geometry(camera, alpha, &mut out);
         laps.lap("eg_items_misc");
-        // Mobs and their projectiles (a span each).
-        self.mob_geometry(camera, alpha, &mut out);
+        // General rows, spawners and projectiles still have their own pass.
+        self.other_creature_geometry(camera, alpha, &mut out);
         self.mark_motion(out.len(), 0);
+        laps.lap("eg_other_creatures");
+        // These billboards stay in their later pass, outside the ordered body runs.
         for m in self.drawn_mobs() {
             // Blaze.isOnFire: a charged blaze burns.
             let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
@@ -5646,13 +5654,6 @@ impl Game<'_> {
                 );
             }
         }
-        laps.lap("eg_mobs");
-        // In first person only a shader pack's shadow pass draws the player.
-        self.mark_player(out.len(), !self.own_body_in_view());
-        let player_start = out.len();
-        self.mark_motion(player_start, Self::MOTION_OWN_PLAYER);
-        let player_alpha = self.own_player_alpha();
-        self.player_model_geometry(camera, player_alpha, &mut out);
         if self.own_body_in_view()
             && let Some(p) = &self.player
             && p.is_on_fire()
@@ -5666,6 +5667,8 @@ impl Game<'_> {
                 p.dimensions.width,
                 p.dimensions.height,
             ) {
+                self.mark_player(out.len(), false);
+                self.mark_motion(out.len(), Self::MOTION_OWN_PLAYER_FIRE);
                 sunrise_client::fire_render::flames(
                     [feet.x, feet.y, feet.z],
                     p.dimensions.width,
@@ -5680,19 +5683,14 @@ impl Game<'_> {
                     ),
                     &mut out,
                 );
+                self.mark_motion(out.len(), 0);
             }
         }
-        // A native pack's shadow pass alone gets the first-person model (no per-entity draws).
-        if self.pack_ids.is_none() && !self.own_body_in_view() {
-            self.shadow_only_vertices
-                .borrow_mut()
-                .extend(out.drain(player_start..));
-        }
-        self.mark_motion(out.len(), 0);
+        laps.lap("eg_fire_living");
         self.mark_entity(out.len(), "minecraft:evoker_fangs");
         self.fangs_geometry(camera, alpha, &mut out);
         self.block_item_display_geometry(camera, alpha, &mut out);
-        laps.lap("eg_players");
+        laps.lap("eg_displays");
         let mut see_through = std::mem::take(&mut self.see_through_vertices);
         see_through.clear();
         self.name_tag_geometry(camera, alpha, &mut out, &mut see_through);
@@ -6317,7 +6315,6 @@ impl Game<'_> {
         self.mark_entity(out.len(), "minecraft:item");
         self.pickup_item_geometry(camera, alpha, out);
         self.mark_motion(out.len(), 0);
-        self.mark_entity(out.len(), "minecraft:arrow");
         self.pickup_arrow_geometry(camera, alpha, out);
         self.mark_entity(out.len(), "minecraft:trident");
         self.pickup_trident_geometry(camera, alpha, out);
@@ -6329,7 +6326,6 @@ impl Game<'_> {
         });
         let frame = self.orb_frame();
         self.orb_geometry(camera, &frame, taken, None, out);
-        self.mark_entity(out.len(), "minecraft:elder_guardian");
         self.elder_apparition_geometry(alpha, out);
         if self.mod_clear_particles.get() {
             self.apply_mod_particle_clear();

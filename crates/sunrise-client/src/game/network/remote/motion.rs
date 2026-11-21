@@ -184,7 +184,7 @@ impl Game<'_> {
                 return;
             }
             if let Some(p) = r.pending_items.get_mut(&id) {
-                p.0 = position;
+                p.position = position;
             }
             // ItemEntity, FallingBlockEntity and PrimedTnt keep Entity's
             // NO_OP InterpolationHandler: moveOrInterpolateTo puts them there
@@ -324,7 +324,7 @@ impl Game<'_> {
             .as_mut()
             .and_then(|r| r.pending_items.get_mut(&id))
         {
-            p.1 = v;
+            p.velocity = v;
         } else if !self.potions.remote_thrown_motion(id as u32, v) {
             self.end.remote_eye_motion(id as u32, velocity);
         }

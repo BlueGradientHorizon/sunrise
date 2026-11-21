@@ -171,6 +171,9 @@ scan over the mods.
 
 ## What draws through registered renderers
 
+In the ordered body pass, living, primed TNT and experience orb renderers submit in level join
+order, interleaved by entity.
+
 Registered renderers draw these routes:
 
 - content-defined thrown types: a `data/<id>/sunrise/entity_type/<name>.json` using the

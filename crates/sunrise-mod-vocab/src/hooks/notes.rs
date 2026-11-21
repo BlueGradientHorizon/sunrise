@@ -1067,10 +1067,10 @@ more of it draws this frame: model, layers, name tag, shadow, flames, leash, out
 - A mod's own creature is an ordinary mob (`native_spawn_mob`) drawn this way: a quiet villager, an allay or a bat
   gives it movement, sounds and saving, and the mod gives it a model and animations of its own. Tell yours apart by the
   ids the server half sends with mod messages, or by its custom name.
-- Players have an outer pair: `render_player_pre(player, who, draw, hidden, canceled)` (`RenderPlayerEvent.Pre`) before the
-  living pre, and `render_player_post(player, who, parts, draw)` after the living post, once a frame for each other player in
-  view and for this window's player in third person, with the same frame and `who` (the profile name, and `local`). A
-  canceled player pre skips all four; canceling only the living pre still asks `render_player_post`.
+- Players wrap the living hooks with `render_player_pre` (`RenderPlayerEvent.Pre`) and `render_player_post`.
+  In the ordered body pass each entity finishes at its join slot before the next body; the local player
+  draws in third person when it holds the camera. `who` supplies the profile name and `local`.
+  Canceling player pre skips all four hooks; canceling only living pre still asks `render_player_post`.
 - `render_living_post(entity, parts, draw)` (`RenderLivingEvent.Post`; a type's own layers are `register_entity_layers`)
   adds after the entity's model and layers, in the same frame. The geometry hangs from the entity's frame, not from a model
   bone: place a hat from `head_yaw`, `pitch` and the entity type's eye height.
