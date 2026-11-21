@@ -313,9 +313,13 @@ fn bypasses_proxy(url: &url::Url, no_proxy: &str) -> bool {
         })
 }
 
-/// A lower-case host name or canonical IP literal, without IPv6 brackets.
+/// A lower-case host name or canonical IP literal, without IPv6 brackets or a DNS root dot.
 fn bare(host: &str) -> String {
-    let host = host.trim().trim_matches(['[', ']']);
+    let host = host.trim();
+    let host = host
+        .strip_suffix('.')
+        .unwrap_or(host)
+        .trim_matches(['[', ']']);
     if host.contains(':')
         && let Ok(ip) = host.parse::<Ipv6Addr>()
     {
@@ -508,6 +512,20 @@ mod tests {
         assert!(!bypasses("https://edge.forgecdn.net", "modrinth.com"));
         assert!(!bypasses("https://modrinth.com", ""));
         assert!(!bypasses("http://192.0.2.10/", "192.0.2.0/24"));
+    }
+
+    #[test]
+    fn a_dns_root_dot_does_not_change_the_route() {
+        assert!(bypasses("https://localhost./", ""));
+        assert!(bypasses("https://tools.localhost./", ""));
+        assert!(bypasses("https://cdn.example.org./", "example.org"));
+        assert!(bypasses("https://cdn.example.org/", ".EXAMPLE.ORG."));
+        assert!(bypasses(
+            "https://cdn.example.org.:8443/",
+            "example.org.:8443"
+        ));
+        assert!(!bypasses("https://cdn.example.org./", "example.org.:8443"));
+        assert!(!bypasses("https://notexample.org./", "example.org."));
     }
 
     #[test]
