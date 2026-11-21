@@ -300,7 +300,7 @@ pub(crate) fn record_hook_panic(
     }
 }
 
-fn log_and_queue_panic(
+pub(crate) fn log_and_queue_panic(
     hook: &'static str,
     mod_id: &'static str,
     payload: &(dyn std::any::Any + Send),

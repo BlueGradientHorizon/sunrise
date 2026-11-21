@@ -769,7 +769,9 @@ pub fn install(home: PathBuf, side: &'static str) {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let (contain_depth, contain_hook_depth) = CONTAINED.with(Cell::get);
-        if mod_api::__private::hook_dispatch_depth() > contain_hook_depth {
+        if mod_api::__private::hook_dispatch_depth() > contain_hook_depth
+            || mod_api::__private::game::retained_callback_active()
+        {
             return;
         }
         if contain_depth > 0 && contained_panic(info) {

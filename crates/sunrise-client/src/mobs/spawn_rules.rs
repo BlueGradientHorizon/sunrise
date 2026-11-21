@@ -279,17 +279,28 @@ pub fn check_spawn_rules<L: SpawnLevel>(
                 rng: random,
                 pos,
             };
+            let test = |p: &data::OwnedSpawnPredicate, ctx: &mut SpawnContext<'_, L, _>| {
+                if !p.owner.is_enabled() {
+                    return None;
+                }
+                p.owner
+                    .call("spawn placement", "spawn_placement_predicate", || {
+                        p.predicate.test(row.kind, ctx, reason, pos)
+                    })
+                    .ok()
+            };
             match &row.predicates {
+                // MergedSpawnPredicate.build installs only the selected replacement.
                 data::SpawnPredicates::Replacement(predicate) => {
-                    predicate.test(row.kind, &mut ctx, reason, pos)
+                    test(predicate, &mut ctx).unwrap_or(false)
                 }
                 data::SpawnPredicates::Combined { original, or, and } => {
                     let original = match original {
-                        Some(predicate) => predicate.test(row.kind, &mut ctx, reason, pos),
+                        Some(predicate) => test(predicate, &mut ctx).unwrap_or(false),
                         None => placement_predicate(kind.species, l, reason, ctx.rng, x, y, z),
                     };
-                    (original || or.iter().any(|p| p.test(row.kind, &mut ctx, reason, pos)))
-                        && and.iter().all(|p| p.test(row.kind, &mut ctx, reason, pos))
+                    (original || or.iter().any(|p| test(p, &mut ctx) == Some(true)))
+                        && and.iter().all(|p| test(p, &mut ctx) != Some(false))
                 }
             }
         }
@@ -1174,6 +1185,52 @@ mod mod_spawn_rule_tests {
         assert_eq!(context.random().next_int(), JAVA_DRAWS[0]);
         assert!(context.is_dark_enough_to_spawn());
         assert_eq!(rng.next_int(), JAVA_DRAWS[3]);
+    }
+
+    #[test]
+    fn a_panicking_replacement_does_not_retry_vanilla_or_draw_again() {
+        let mut level = Flat::new(&[SpawnPlacementDeclaration {
+            id: "minecraft:zombie".into(),
+            kind: entity_type_key(0),
+            mod_id: "broken_spawn_replacement",
+            placement: None,
+            heightmap: None,
+            predicate: Arc::new(
+                |_: EntityTypeKey,
+                 ctx: &mut dyn SpawnPlacementContext,
+                 _: Reason,
+                 _: BlockPos|
+                 -> bool {
+                    assert_eq!(ctx.random().next_int(), JAVA_DRAWS[0]);
+                    panic!("test spawn predicate panic");
+                },
+            ),
+            operation: Replace,
+        }]);
+        level.sky = 0;
+        let kind = mob_kind("minecraft:zombie", Species::Zombie);
+        let mut rng = LegacyRandom::new(7);
+        assert!(!check_spawn_rules(
+            &kind,
+            &level,
+            Reason::Natural,
+            &mut rng,
+            [0, 1, 0]
+        ));
+        assert_eq!(rng.next_int(), JAVA_DRAWS[1]);
+
+        // The check hook still gets the failed answer and can override it. The
+        // disabled replacement and vanilla consume no draws on this check.
+        level.hook = Some(true);
+        assert!(check_spawn_rules(
+            &kind,
+            &level,
+            Reason::Natural,
+            &mut rng,
+            [0, 1, 0]
+        ));
+        assert_eq!(rng.next_int(), JAVA_DRAWS[2]);
+        assert_eq!(*level.heard.borrow(), [false, false]);
     }
 
     /// `mob_spawn_placement_check` still runs after the rule and is told its

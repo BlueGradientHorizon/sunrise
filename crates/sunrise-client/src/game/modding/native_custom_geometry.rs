@@ -6,7 +6,6 @@ use glam::{DVec3, Mat4, Vec3};
 use mod_api::{
     DrawError, InstanceError, ModelInstance, ModelRef, NameTagOptions, PipelineDrawError,
     PipelineQuad, RenderLevelStage, RenderPipelineRef, WorldDrawUsage, WorldLine, WorldQuad,
-    content::crash::{ModCall, enter_native_mod},
 };
 use sunrise_client::mesher::Vertex;
 use sunrise_client::screen_effects::{CameraQuads, sampling};
@@ -92,14 +91,17 @@ impl Game<'_> {
         self.native_submit_custom_geometry(&view, draw);
         self.follow_debug_selection();
         for renderer in &self.debug_renderers {
-            let _owner = enter_native_mod(ModCall {
-                id: renderer.mod_id,
-                hook: "debug_renderer_callback",
-                part: None,
-            });
-            renderer
-                .answer
-                .draw(self, &view, &mut GameWorldDrawContext::new(self, draw));
+            if renderer.owner.is_enabled() {
+                let _ = renderer
+                    .owner
+                    .call("debug renderer", "debug_renderer_draw", || {
+                        renderer.renderer.draw(
+                            self,
+                            &view,
+                            &mut GameWorldDrawContext::new(self, draw),
+                        );
+                    });
+            }
         }
         self.native_render_level_stage(*last, &view, draw);
         self.commit_model_instances(draw, DVec3::from(camera), entities);

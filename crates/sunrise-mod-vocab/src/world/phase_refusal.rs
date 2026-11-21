@@ -31,7 +31,7 @@ impl std::fmt::Display for PhaseRefusal {
 }
 
 impl PhaseRefusal {
-    /// Logs this refusal.
+    /// Logs this occurrence, without suppressing future refusals.
     pub fn report(&self) {
         log::warn!(
             "native refusal: {} hook {}: mod API {} is unavailable during {:?}",
@@ -68,6 +68,11 @@ pub fn enter_scope(mod_id: &'static str) -> OuterScope {
         mod_id,
         refusal: None,
     })))
+}
+
+/// Temporarily leave the mod's phase scope while executing delegated engine code.
+pub(crate) fn suspend_scope() -> OuterScope {
+    OuterScope(SCOPE.replace(None))
 }
 
 /// Closes the scope, restores the outer one, and returns the refusal the scope latched.

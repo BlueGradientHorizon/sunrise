@@ -171,6 +171,8 @@ even if the hook is refused afterwards. A native mod that calls a method in a ph
 
 - The call ends the mod's hook call (it unwinds out of the listener; the game makes no panic report). The game logs
   `native refusal: <mod> hook <hook>: mod API <method> is unavailable during <phase>` once for each mod and method.
+  Retained HUD, F3, loading-screen, spawn-placement, configuration-task and special item callbacks report each
+  refused invocation instead, without disabling the callback.
 - The latch: after one refusal, every later Host call that hook call makes is refused too, whatever it asks, and the
   refusal counts even if the mod caught the unwind itself and returned normally.
 - The listener is dropped, and the hook goes on with the next one. The event outputs the listener touched are put

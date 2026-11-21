@@ -2,8 +2,9 @@
 //! draws them, with native layers inserted and bodies installed once at client startup.
 
 use mod_api::{
-    __private::game::discard_registration, GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar,
-    GuiLayerWrapper, HookId, Identifier, content::crash::current_native_mod,
+    __private::game::{CallbackOwner, discard_registration},
+    GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar, GuiLayerWrapper, HookId, Identifier,
+    content::crash::current_native_mod,
 };
 use std::sync::OnceLock;
 
@@ -86,11 +87,11 @@ enum GuiLayerId {
 pub enum GuiLayerBody {
     Vanilla,
     Native {
-        owner: Option<&'static str>,
+        owner: Option<CallbackOwner>,
         draw: Box<GuiLayerDraw>,
     },
     Wrapped {
-        owner: Option<&'static str>,
+        owner: Option<CallbackOwner>,
         wrap: Box<GuiLayerWrapper>,
         previous: Box<GuiLayerBody>,
     },
@@ -157,7 +158,7 @@ impl GuiLayerBody {
                 // Slots are already published or rejected; cleanup cannot undo another batch.
                 discard_registration(
                     (HookId::RegisterGuiLayers, "register_gui_layers"),
-                    owner,
+                    owner.as_ref().map(CallbackOwner::id),
                     (draw, wrap),
                 );
             }
@@ -241,7 +242,10 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
             at,
             StagedLayer {
                 id: StagedLayerId::Native(id),
-                body: GuiLayerBody::Native { owner, draw },
+                body: GuiLayerBody::Native {
+                    owner: owner.map(CallbackOwner::for_mod),
+                    draw,
+                },
                 retirement: None,
             },
         );
@@ -258,7 +262,13 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
             slot.retirement = Some(self.retired.len());
             self.retired.push(GuiLayerBody::Vanilla);
         }
-        let old = std::mem::replace(&mut slot.body, GuiLayerBody::Native { owner, draw });
+        let old = std::mem::replace(
+            &mut slot.body,
+            GuiLayerBody::Native {
+                owner: owner.map(CallbackOwner::for_mod),
+                draw,
+            },
+        );
         if !matches!(old, GuiLayerBody::Vanilla) {
             self.obsolete.push(old);
         }
@@ -278,7 +288,7 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
         let body = &mut self.slots[at].body;
         let previous = Box::new(std::mem::replace(body, GuiLayerBody::Vanilla));
         *body = GuiLayerBody::Wrapped {
-            owner,
+            owner: owner.map(CallbackOwner::for_mod),
             wrap,
             previous,
         };

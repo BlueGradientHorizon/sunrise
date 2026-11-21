@@ -1069,6 +1069,11 @@ pub(super) fn emit<'a>(
                 continue;
             }
             let index = snaps.len();
+            if event_type == "RegisterConfigurationTasksEvent" && field == "registration" {
+                snaps.push(format!("{event}.{field}.checkpoint()"));
+                restores.push(format!("{event}.{field}.rollback({saved}.{index});"));
+                continue;
+            }
             if registration_append.is_some() && Some(field.as_str()) == out {
                 // Only the tail is writable; never clone or restore earlier registrations.
                 snaps.push(format!("{event}.{field}.len()"));

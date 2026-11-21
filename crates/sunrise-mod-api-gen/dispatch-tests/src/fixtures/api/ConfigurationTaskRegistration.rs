@@ -1,13 +1,13 @@
 pub struct ConfigurationTaskRegistration {
-    _tasks: Vec<Box<dyn Send>>,
+    tasks: Vec<Box<dyn Send>>,
 }
 
 impl ConfigurationTaskRegistration {
-    pub(crate) fn checkpoint(&self) -> (usize, bool) {
-        (self._tasks.len(), false)
+    pub fn checkpoint(&self) -> (usize, bool) {
+        (self.tasks.len(), false)
     }
 
-    pub(crate) fn rollback(&mut self, (len, _): (usize, bool)) {
-        self._tasks.truncate(len);
+    pub fn rollback(&mut self, (len, _): (usize, bool)) {
+        self.tasks.truncate(len);
     }
 }
