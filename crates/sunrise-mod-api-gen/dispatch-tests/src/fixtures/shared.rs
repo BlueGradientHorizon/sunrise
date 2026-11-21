@@ -71,12 +71,28 @@ trait ClientHost: Host {}
 
 mod item {
     pub(super) mod transaction {
+        use super::super::ServerHost;
+
+        pub(in crate::tests) enum TransactionError<E> {
+            Aborted(E),
+            #[allow(dead_code)]
+            Unavailable,
+        }
+
         // The game exercises the actual journal; these fixtures have no world state.
-        pub(in crate::tests) fn run_transaction<H: super::super::ServerHost + ?Sized, T, E>(
-            host: &mut H,
-            call: impl FnOnce(&mut H, &()) -> Result<T, E>,
-        ) -> Result<T, E> {
-            call(host, &())
+        pub(in crate::tests) trait HostTransaction {
+            fn transaction<T, E>(
+                &mut self,
+                call: impl FnOnce(&mut dyn ServerHost, &()) -> Result<T, E>,
+            ) -> Result<T, TransactionError<E>>;
+        }
+        impl HostTransaction for dyn ServerHost + '_ {
+            fn transaction<T, E>(
+                &mut self,
+                call: impl FnOnce(&mut dyn ServerHost, &()) -> Result<T, E>,
+            ) -> Result<T, TransactionError<E>> {
+                call(self, &()).map_err(TransactionError::Aborted)
+            }
         }
     }
 }

@@ -274,6 +274,8 @@ impl IPayloadContext for MainContext<'_, '_> {
         }
         let receiver = self.receiver.clone();
         if let Err(error) = receiver.run_work(work.as_ref(), self) {
+            // The owner boundary already reports panics. This field only decides the
+            // delivery's outcome, and is discarded if the child scope handles its abort.
             self.failure = Some(error);
             return Err(PayloadContextError::Disconnected);
         }
@@ -348,3 +350,6 @@ mod tests;
 #[cfg(test)]
 #[path = "payload_transport/typed_tests.rs"]
 mod typed_tests;
+#[cfg(test)]
+#[path = "payload_transport/work_panic_tests.rs"]
+mod work_panic_tests;

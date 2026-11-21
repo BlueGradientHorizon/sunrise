@@ -271,6 +271,9 @@ pub trait IPayloadHandler: Send + Sync + 'static {
 /// Work scheduled on the logical receiving main thread.
 pub trait PayloadWork: Send + Sync + 'static {
     /// Execute with the same connection-derived context and transaction rules.
+    /// A panic disables the receiving callback for the session and reports the owning mod
+    /// in the error log and client error toast, even if the handler aborts a child transaction
+    /// and handles its error. The abort only undoes work covered by the journal.
     fn run(&self, context: &mut dyn IPayloadContext) -> Result<(), String>;
 }
 
@@ -331,7 +334,8 @@ pub trait IPayloadContext {
     /// task completion staged by the handler.
     fn disconnect(&mut self, reason: Text);
     /// Run now on the main thread or schedule there from the network executor.
-    /// Failure of the work is reported as a named session failure.
+    /// A main-thread failure returns an error to the caller. An unhandled failure is reported
+    /// with the delivery; a panic is always reported by the receiving callback's owner boundary.
     fn enqueue_work(
         &mut self,
         work: Arc<dyn PayloadWork>,

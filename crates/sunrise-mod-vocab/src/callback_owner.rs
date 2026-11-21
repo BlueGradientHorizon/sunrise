@@ -1,4 +1,5 @@
 //! Owner enablement, attribution and panic containment for retained resources.
+use crate::runtime::{DispatchOutcome, invoke_callback, log_and_queue_panic};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Owner identity and poison state for one retained mod callback.
@@ -48,18 +49,19 @@ pub(crate) fn call<T>(
         return Err(format!("{kind} owner is disabled"));
     }
     let _guard = crate::mark_mod(owner, operation);
-    // A refusal by the phase gate refuses this call and nothing more; a real panic disables the owner.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::world::phase_refusal::contain_refusal(owner, invoke)
-    })) {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(refusal)) => {
+    match invoke_callback(
+        || crate::world::phase_refusal::contain_refusal(owner, invoke),
+        |payload| {
+            if !poisoned.swap(true, Ordering::AcqRel) {
+                log_and_queue_panic(operation, owner, payload);
+            }
+        },
+    ) {
+        DispatchOutcome::Ok(value) => Ok(value),
+        DispatchOutcome::Refused(refusal) => {
             refusal.report();
             Err(format!("{kind} callback refused: {refusal}"))
         }
-        Err(_) => {
-            poisoned.store(true, Ordering::Release);
-            Err(format!("{kind} callback panicked; it is disabled"))
-        }
+        DispatchOutcome::Panicked => Err(format!("{kind} callback panicked; it is disabled")),
     }
 }

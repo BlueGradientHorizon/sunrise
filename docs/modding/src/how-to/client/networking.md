@@ -94,6 +94,13 @@ There is **no per-task timeout**. A client answering keep-alives can remain in
 configuration indefinitely while its task waits. The connection's ordinary idle
 and keep-alive checks still apply.
 
+## Payload work and failures
+
+If enqueued work panics, the receiving callback is disabled for the session. The
+error log and client error toast name its owning mod even if the parent handles a
+child's abort. The abort rolls back journaled writes and drops staged replies;
+it does not undo effects outside the journal or withdraw the panic report.
+
 ## Typed payloads
 
 A typed payload sends a value of your own type on a registered channel. Its body is the value's

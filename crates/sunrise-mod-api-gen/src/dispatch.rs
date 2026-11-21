@@ -1072,23 +1072,30 @@ pub(super) fn emit<'a>(
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
             run_with(mod_id_expr, on_abort, "", expression)
         };
-        let listener_call = |callee: &str| {
+        let listener_call = |callee: &str, mod_id_expr: &str| {
             let expression = format!("{callee}.{name}({invoke})");
             if matches!(name, "contents_changed" | "farmland_trample") {
                 // Let the existing journal see the unwind before invoke catches it. In World a
                 // successful child merges into the owning action's frame; outside World use
                 // the normal typed phase-refusal path.
                 let (host, _) = host.as_ref().unwrap();
-                let commit = if contract == Contract::Listen {
-                    format!("{expression}; Ok(())")
+                let (commit, no_answer) = if contract == Contract::Listen {
+                    (format!("{expression}; Ok(())"), "()")
                 } else {
-                    format!("Ok({expression})")
+                    (format!("Ok({expression})"), "Flow::Continue")
                 };
                 format!(
                     "if contained {{ {expression} }} else {{\
-                     super::item::transaction::run_transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{\
-                         {commit}\
-                     }}).unwrap_or_else(|never| match never {{}}) }}"
+                         use super::item::transaction::{{HostTransaction, TransactionError}};\
+                         match HostTransaction::transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{ {commit} }}) {{\
+                             Ok(answer) => answer,\
+                             Err(TransactionError::Aborted(never)) => match never {{}},\
+                             Err(TransactionError::Unavailable) => {{\
+                                 log::warn!(\"mod {{}}: {name} callback refused: transaction unavailable\", {mod_id_expr});\
+                                 {no_answer}\
+                             }}\
+                         }}\
+                     }}"
                 )
             } else {
                 expression
@@ -1115,7 +1122,7 @@ pub(super) fn emit<'a>(
             } else {
                 run(mod_id_expr, on_abort, &format!("{callee}.{name}({invoke})"))
             };
-            let plain_call = run(mod_id_expr, on_abort, &listener_call(callee));
+            let plain_call = run(mod_id_expr, on_abort, &listener_call(callee, mod_id_expr));
             let invocation = match contract {
                 Contract::Cancel => format!(
                     "if matches!({plain_call}, Flow::Cancel) {{ *{o} = true; {exit}; }}",
@@ -1155,10 +1162,11 @@ pub(super) fn emit<'a>(
         // Global cancel hooks use the same snapshot and invoke path even when they validate
         // outputs. Only a completed listener has a proposal for the validator to check.
         let cancel_step = if mod_cancel {
+            let mod_id_expr = format!("{mod_entry}.id");
             let invocation = run(
-                &format!("{mod_entry}.id"),
+                &mod_id_expr,
                 "continue;",
-                &listener_call(&mod_item),
+                &listener_call(&mod_item, &mod_id_expr),
             );
             if let Some(validator) = &hook.output_validator {
                 let flow = fresh_name("flow", &mut used);

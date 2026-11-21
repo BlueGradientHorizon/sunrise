@@ -412,7 +412,7 @@ fn a_panicking_part_does_not_leave_its_contents_notice_guarded() {
                 assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), 1);
                 assert!(entity.set_changed(host).unwrap());
                 assert!(PANIC_WRITE_FINISHED.get());
-                assert_eq!(host.transaction_current().as_ref(), Some(tx));
+                assert!(host.transaction_matches(Some(tx)));
                 assert_eq!(items.amount(host, 0), 1);
                 assert_eq!(other.amount(host, 0), 0);
                 Ok::<_, ()>(())
