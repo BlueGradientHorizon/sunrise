@@ -461,6 +461,22 @@ fn a_local_module_alias_shadows_a_dependency_only_for_unrooted_paths() {
 }
 
 #[test]
+fn an_indexed_type_import_can_shadow_a_dependency_of_the_same_name() {
+    let edited = "use crate::Text as engine;
+        pub fn safe() -> engine { unimplemented!() }
+        /// A colour.";
+    let export = export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS);
+    let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
+    let safe = value["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|function| function["id"] == "fn:safe")
+        .expect("safe is exported");
+    assert_eq!(safe["refs"], serde_json::json!(["type:Text"]));
+}
+
+#[test]
 fn a_renamed_workspace_dependency_glob_cannot_hide_a_type() {
     let edited = "mod imported { use engine::*; pub fn leak() -> Secret { unimplemented!() } }\npub use imported::leak;\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
@@ -526,7 +542,7 @@ fn a_named_static_import_does_not_hide_a_workspace_type_imported_by_glob() {
 
 #[test]
 fn a_named_type_import_keeps_precedence_over_workspace_type_globs() {
-    let edited = "const LOCAL_SECRET: u8 = 0;\nuse crate::LOCAL_SECRET as Secret;\nuse crate::Text as Secret;\nuse engine_library::*;\npub fn safe() -> Secret { unimplemented!() }\n/// A colour.";
+    let edited = "const LOCAL_SECRET: u8 = 0;\nuse crate::LOCAL_SECRET as Secret;\nuse crate::Text as Secret;\nuse engine::*;\npub fn safe() -> Secret { unimplemented!() }\n/// A colour.";
     let export = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .expect("an explicit API type import takes precedence over globbed types");
     let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
@@ -624,6 +640,10 @@ fn two_globs_in_the_same_namespace_are_ambiguous_at_the_api_owner() {
             .err()
             .expect("two different types imported by globs are ambiguous");
         assert!(error.contains("mod_api::ambiguous"), "{error}");
+        assert!(
+            error.contains(&format!("ambiguous type-namespace binding `{name}`")),
+            "{error}"
+        );
         for definition in definitions {
             assert!(error.contains(definition), "{error}");
         }
@@ -724,6 +744,54 @@ fn a_private_named_type_blocks_only_its_own_workspace_glob_binding() {
         .expect("the same glob still imports the unrelated public type");
     assert!(error.contains("mod_api::leak"), "{error}");
     assert!(error.contains("engine_library::fallback::Other"), "{error}");
+}
+
+#[test]
+fn a_private_module_shadows_globbed_types_without_hiding_the_prelude() {
+    let edited = "mod a { pub struct Option; }
+        mod b { pub struct Option; }
+        mod bridge { mod Option {} pub use crate::a::*; pub use crate::b::*; }
+        use bridge::*;
+        pub fn safe() -> Option<u8> { unimplemented!() }
+        /// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("the hidden module blocks both globs, leaving prelude Option");
+}
+
+#[test]
+fn a_private_module_alias_shadows_a_workspace_module_without_hiding_the_prelude() {
+    let engine = (
+        "engine-fixture/src/lib.rs",
+        "pub struct Secret;",
+        "mod hidden { pub mod Option {} }
+         mod fallback { pub mod Option {} }
+         pub mod bridge { use crate::hidden::Option; pub use crate::fallback::*; }",
+    );
+    let safe = "use engine::bridge::*;
+        pub fn safe() -> Option<u8> { unimplemented!() }
+        /// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", safe), engine], HOOKS)
+        .expect("the hidden alias blocks the workspace module, leaving prelude Option");
+}
+
+#[test]
+fn distinct_modules_named_through_intermediate_globs_are_ambiguous() {
+    let edited = "mod a { pub mod clash { pub struct T; } }
+        mod b { pub mod original { pub struct T; } pub use original as clash; }
+        mod bridge { pub use crate::a::*; pub use crate::b::*; }
+        use bridge::*;
+        pub fn ambiguous() -> clash::T { unimplemented!() }
+        /// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the two modules occupy the same type namespace");
+    assert!(error.contains("mod_api::ambiguous"), "{error}");
+    assert!(
+        error.contains("ambiguous type-namespace binding `clash`"),
+        "{error}"
+    );
+    assert!(error.contains("mod_api::a::clash"), "{error}");
+    assert!(error.contains("mod_api::b::original"), "{error}");
 }
 
 #[test]

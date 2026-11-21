@@ -224,7 +224,7 @@ impl Paths<'_, '_> {
                 .ok()
                 .and_then(|found| match found {
                     Found::Item(id) => Some(id),
-                    Found::External { .. } => None,
+                    Found::External { .. } | Found::Module(_) => None,
                 })
         };
         if let Some(id) = found
@@ -366,7 +366,7 @@ impl Paths<'_, '_> {
                     full
                 }
             }
-            Err(_) => {
+            Err(_) | Ok(Found::Module(_)) => {
                 if let Some((check, id)) = self.check {
                     check.inspect(self.index, self.module, id, &segments, rooted);
                 }

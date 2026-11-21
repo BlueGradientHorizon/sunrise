@@ -238,6 +238,7 @@ impl<'i, 'a> Walker<'i, 'a> {
                     Err(error) => Target::Ambiguous(error),
                 },
             ),
+            Ok(Found::Module(target)) => Some(Target::Module(target)),
             Err(_) => None,
         })
     }
@@ -269,6 +270,7 @@ impl<'i, 'a> Walker<'i, 'a> {
             // A name the module does not define or import is an outside crate (`serde_json`).
             return Ok(match self.index.resolve(module, last) {
                 Ok(Found::Item(id)) => Target::Item(id),
+                Ok(Found::Module(target)) => Target::Module(target),
                 Ok(Found::External { path, .. }) => Target::External(path),
                 Err(_) => Target::External(path.to_vec()),
             });
