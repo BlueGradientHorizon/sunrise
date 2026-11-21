@@ -280,7 +280,8 @@ A rebuild downloads the exact signed `.smod` from the original author release an
 reviewed source row. It builds from that package and its existing `Cargo.lock`, not the current branch's Rust
 source. Only the manifest in the disposable build folder is repinned; neither a branch nor the tag moves. If
 the lock no longer works unchanged or the mod does not fit the newer SDK, publish a new mod version instead.
-A withdrawn or no-longer-eligible version is never rebuilt.
+Planning skips withdrawn or ineligible versions. Build jobs use the plan snapshot; preflight stops publication
+if eligibility changes or either stable Sunrise tag moves or is withdrawn after planning.
 
 Only the target's signed archives and descriptor are added to the existing author release. The original source
 and its signature never change. The submission adds one build row to the reviewed version without editing its
