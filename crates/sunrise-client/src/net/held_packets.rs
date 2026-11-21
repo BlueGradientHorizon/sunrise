@@ -67,7 +67,7 @@ impl Session {
 impl Session {
     /// Physical play transport for actor tests, plus the network thread's direct reply path.
     #[doc(hidden)]
-    pub fn packet_hold_probe() -> (Self, Connection, impl Fn(i64)) {
+    pub fn packet_hold_probe(inbox: &ClientInbox) -> (Self, Connection, impl Fn(i64) + use<>) {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (_, physical) = Connection::local(client).split();
         let writer = QueuedWriter::new(physical).unwrap();
@@ -79,7 +79,7 @@ impl Session {
             .set_read_timeout(Some(Duration::from_secs(2)))
             .unwrap();
         assert_eq!(peer.recv().unwrap(), (3, vec![]));
-        let session = Self::replay("hold probe");
+        let session = Self::replay(inbox, "hold probe");
         *session.writer.lock().unwrap() = Some(writer.clone());
         (session, peer, move |id| {
             writer

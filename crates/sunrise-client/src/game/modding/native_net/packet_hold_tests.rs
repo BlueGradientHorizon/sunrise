@@ -147,7 +147,8 @@ fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() 
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "HoldTest").unwrap();
-        let (session, mut peer, keepalive) = sunrise_client::net::Session::packet_hold_probe();
+        let (session, mut peer, keepalive) =
+            sunrise_client::net::Session::packet_hold_probe(&game.client_inbox);
         let remote = game.remote.as_mut().unwrap();
         remote.session = session;
         remote.joined = true;
@@ -255,7 +256,8 @@ fn second_hold_returns_literal_limit_and_first_releases_a_b_c_in_order() {
 #[ignore = "daily"]
 fn generation_change_after_a_drops_b_and_invalidates_the_hold() {
     use sunrise_protocol::packets::configuration::Ping;
-    let (session, mut peer, _keepalive) = sunrise_client::net::Session::packet_hold_probe();
+    let inbox = sunrise_client::net::ClientInbox::default();
+    let (session, mut peer, _keepalive) = sunrise_client::net::Session::packet_hold_probe(&inbox);
     let incarnation = session.hold_incarnation().unwrap();
     let mut h = Holds::default();
     h.sync(Some(incarnation));
