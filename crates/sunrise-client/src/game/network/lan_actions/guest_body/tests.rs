@@ -316,8 +316,22 @@ fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
                 ));
                 guest.armor[0] = Some(ItemStack::new("minecraft:turtle_helmet", 1));
                 guest.armor[1] = Some(ItemStack::new("minecraft:diamond_chestplate", 1));
-                guest.on_ground = true;
                 game.lan.as_mut().unwrap().hub.guests.push(guest);
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(1, |guest| {
+                        guest.on_ground = true;
+                        guest.moves_from_ground = false;
+                        guest.moves.push(sunrise_client::lan::guest::GuestMove {
+                            position: guest.position,
+                            delta: [0.0, -0.25, 0.0],
+                            on_ground: true,
+                            sneaking: false,
+                        });
+                    })
+                    .unwrap();
                 game.guest_server_tick(1, true);
                 let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 left = (
