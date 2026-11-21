@@ -681,13 +681,13 @@ impl Game<'_> {
             // Slot.setChanged on a changed container slot: BlockEntity.setChanged,
             // so the chunk is saved and comparators read the block again.
             if changed {
-                game.after_commit(After::Changed(pos));
+                game.after_commit(After::Changed(game.dim, pos));
             }
             if let Some((l, links)) = &linked {
                 let bound = linked_slot_count(&game.world, links).min(l.count);
                 linked_after.truncate(bound);
                 for at in write_links(&mut game.world, links, linked_after) {
-                    game.after_commit(After::Changed(at));
+                    game.after_commit(After::Changed(game.dim, at));
                 }
             }
         };

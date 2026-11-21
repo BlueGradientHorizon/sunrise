@@ -251,7 +251,10 @@ fn set_front(game: &mut Game<'_>, name: &str) {
 /// The dispenser dispenses `stack` from its slot: what the slot holds then.
 fn dispense(game: &mut Game<'_>, stack: ItemStack) -> Option<ItemStack> {
     let at = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
-    game.dispense_item(at, Direction::East, stack).unwrap()
+    game.dispense_item(at, Direction::East, stack)
+        .unwrap()
+        .continue_value()
+        .unwrap()
 }
 
 fn item(stack: &Option<ItemStack>) -> Option<(String, u32)> {
@@ -520,7 +523,7 @@ fn nested_dispense_settles_in_the_command_source_level() {
 
         dispense_fixture::start_recording();
         game.storage_transaction(|game, _| {
-            game.after_commit(After::Changed(SLOT_POS));
+            game.after_commit(After::Changed(game.dim, SLOT_POS));
             nested_dispense(game);
             Ok::<_, ()>(())
         })

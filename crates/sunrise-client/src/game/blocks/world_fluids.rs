@@ -197,13 +197,16 @@ impl Game<'_> {
         if removes {
             self.journal_remove_block_entity(key);
         }
-        self.after_commit(After::FluidWrite(Box::new(WrittenFluid {
-            level,
-            write,
-            drops,
-            pickup,
-            player,
-        })));
+        self.after_commit(After::FluidWrite(
+            self.dim,
+            Box::new(WrittenFluid {
+                level,
+                write,
+                drops,
+                pickup,
+                player,
+            }),
+        ));
     }
     /// `FluidUtil.triggerSoundAndGameEvent` for `fluid` at the centre of `pos` in the level in
     /// place, at the outermost commit of transaction `tx`.
@@ -223,13 +226,16 @@ impl Game<'_> {
         let Some(id) = mod_api::__private::fluid_id(fluid) else {
             return false;
         };
-        self.after_commit(After::FluidEffects(Box::new(FluidEffects {
-            level,
-            pos,
-            fluid: FluidKind::from_name(id),
-            pickup,
-            player,
-        })));
+        self.after_commit(After::FluidEffects(
+            self.dim,
+            Box::new(FluidEffects {
+                level,
+                pos,
+                fluid: FluidKind::from_name(id),
+                pickup,
+                player,
+            }),
+        ));
         true
     }
     /// The rest of a world pickup or placement at the outermost commit, its block's updates

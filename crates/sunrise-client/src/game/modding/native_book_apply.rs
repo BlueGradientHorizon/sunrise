@@ -251,7 +251,7 @@ impl Game<'_> {
             changed.insert(key.pos);
         }
         for pos in changed {
-            self.after_commit(super::transactions::After::Changed(pos));
+            self.after_commit(super::transactions::After::Changed(self.dim, pos));
         }
         for stack in std::mem::take(&mut menu.dropped) {
             self.drop_after_commit(before.uuid, stack);

@@ -598,7 +598,7 @@ impl Game<'_> {
                     return false;
                 };
                 *held = Some(stack);
-                self.after_commit(super::transactions::After::Changed(pos));
+                self.after_commit(super::transactions::After::Changed(self.dim, pos));
                 true
             }
             Some(

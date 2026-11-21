@@ -232,7 +232,7 @@ impl Game<'_> {
             return;
         }
         for &(pos, _) in &view.parts {
-            self.after_commit(After::Changed(pos));
+            self.after_commit(After::Changed(self.dim, pos));
         }
     }
     /// Puts as much of `stack` as slot `slot` of those `at`'s side reaches takes, as a hopper

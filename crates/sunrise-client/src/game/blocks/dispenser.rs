@@ -7,6 +7,7 @@ use super::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
 use super::level_sounds::LevelSound;
 use super::{Game, item_abilities::ability};
 use mod_api::SoundSource;
+use std::ops::ControlFlow;
 use sunrise_client::{
     Result,
     collisions::SceneCollisions,
@@ -406,7 +407,7 @@ impl Game<'_> {
         // DispenserBlockEntity.insertItem calls setItem only for an empty slot; an in-place
         // merge is covered by dispenseFrom's normal final setItem on the active slot.
         if set_item && self.has_open_transaction() {
-            self.after_commit(super::transactions::After::DispenserChanged(self.dim, pos));
+            self.after_commit(super::transactions::After::Changed(self.dim, pos));
         }
         if rest.count > 0 {
             self.after_commit(super::transactions::After::DispenserDrop {
@@ -442,14 +443,14 @@ impl Game<'_> {
 
     // ---- the registry ----
 
-    /// `DispenserBlock.getDispenseMethod(..).dispense(source, stack)`: what the
-    /// slot holds afterwards.
+    /// `DispenserBlock.getDispenseMethod(..).dispense(source, stack)`: the replacement
+    /// for the slot, or `Break` when the slot must not be written at all.
     pub(super) fn dispense_item(
         &mut self,
         pos: Pos,
         facing: Direction,
         stack: ItemStack,
-    ) -> Result<Option<ItemStack>> {
+    ) -> Result<ControlFlow<(), Option<ItemStack>>> {
         let mut answer = None;
         if self.serving.is_some() || self.options.dedicated.is_some() {
             // The block the dispenser faces has the first say (`dispense_method`), then the
@@ -466,7 +467,7 @@ impl Game<'_> {
                 &mut inert,
             );
             if inert {
-                return Ok(Some(stack));
+                return Ok(ControlFlow::Break(()));
             }
             if answer.is_none() {
                 self.native_dispense_item(
@@ -485,7 +486,7 @@ impl Game<'_> {
                     // The chosen behaviour may have committed effects already. Do not run a
                     // second behaviour on the original stack if its remainder is refused.
                     log::warn!("mod dispense remainder refused at {pos:?}: {error:?}");
-                    return Ok(Some(stack));
+                    return Ok(ControlFlow::Break(()));
                 }
             };
             if event == FAIL {
@@ -501,7 +502,7 @@ impl Game<'_> {
                 self.dispenser_event(event, pos, 0);
                 self.dispenser_event(2000, pos, data_value(facing));
             }
-            return Ok(left);
+            return Ok(ControlFlow::Continue(left));
         }
         let item = stack.item.to_string();
         // A stack able to `shears_harvest` is dispensed as shears are, whatever its item.
@@ -562,7 +563,7 @@ impl Game<'_> {
         }
         self.dispenser_event(event, pos, 0);
         self.dispenser_event(2000, pos, data_value(facing));
-        Ok(left)
+        Ok(ControlFlow::Continue(left))
     }
     /// `DispenserBlock.getDefaultDispenseMethod`: equipment, spawn eggs, or a drop.
     fn dispense_default_method(
@@ -2374,6 +2375,8 @@ mod tests {
                 game.audio.capture = Some(Vec::new());
                 let dispense = |game: &mut Game<'_>, item: &str| {
                     game.dispense_item((5, 64, 5), Direction::East, ItemStack::new(item, 1))
+                        .unwrap()
+                        .continue_value()
                         .unwrap()
                 };
 

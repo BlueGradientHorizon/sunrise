@@ -82,14 +82,10 @@ pub(super) fn validate_stack_limits(
             None => Ok(default),
         }
     };
-    let maximum = if stack.carries_component(Some(definition), "minecraft:max_stack_size") {
-        effective("minecraft:max_stack_size", definition.max_stack)?
-    } else {
-        1
-    };
-    if !(1..=99).contains(&maximum) {
+    let Some(maximum @ 1..=99) = stack.effective_max_stack_size(Some(definition)) else {
         return Err(StackWriteError::InvalidMaximum);
-    }
+    };
+    let maximum = maximum as u32;
     if !sunrise_world::item_template::durability_allows_stack_size(
         stack.carries_component(Some(definition), "minecraft:max_damage"),
         i64::from(maximum),

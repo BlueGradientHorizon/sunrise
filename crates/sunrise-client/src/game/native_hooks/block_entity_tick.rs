@@ -159,7 +159,7 @@ impl TickData<'_> {
 
     fn edit(&mut self, dirty: bool) -> &mut EngineBlockEntity {
         self.journal.journal_block_entity_loan(
-            self.pos,
+            (self.dim, self.pos),
             &self.loan,
             self.chunks,
             self.names.get(&self.pos),

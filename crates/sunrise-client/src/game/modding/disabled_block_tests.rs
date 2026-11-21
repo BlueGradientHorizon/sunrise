@@ -606,7 +606,7 @@ mod tests {
                 assert_eq!(
                     game.dispense_item(dispenser, Direction::East, stack.clone())
                         .unwrap(),
-                    Some(stack.clone())
+                    std::ops::ControlFlow::Break(())
                 );
                 assert!(game.dropped.is_empty());
                 assert!(game.audio.capture.as_ref().unwrap().is_empty());
@@ -617,8 +617,8 @@ mod tests {
                     .dispense_item(dispenser, Direction::East, stack.clone())
                     .unwrap();
                 assert_eq!(
-                    left,
-                    Some(stack),
+                    left.continue_value(),
+                    Some(Some(stack)),
                     "the enabled part returns the detached count"
                 );
                 assert!(game.dropped.is_empty());
@@ -638,7 +638,7 @@ mod tests {
                 let particles = game.particles.len();
                 for enabled in [false, true] {
                     assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
-                    for (input, remaining) in [(3, 3), (4, 2)] {
+                    for (input, remaining) in [(3, None), (4, Some(2))] {
                         assert_eq!(
                             game.dispense_item(
                                 dispenser,
@@ -646,7 +646,12 @@ mod tests {
                                 ItemStack::new("minecraft:stick", input)
                             )
                             .unwrap(),
-                            Some(ItemStack::new("minecraft:stick", remaining))
+                            remaining.map_or(std::ops::ControlFlow::Break(()), |count| {
+                                std::ops::ControlFlow::Continue(Some(ItemStack::new(
+                                    "minecraft:stick",
+                                    count,
+                                )))
+                            })
                         );
                         assert!(
                             game.dropped.is_empty(),

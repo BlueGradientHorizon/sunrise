@@ -325,18 +325,14 @@ impl Containers<'_> {
     fn name(&self, state: BlockStateId) -> &str {
         self.registry.state(state).map_or("", |s| s.name.as_str())
     }
-    /// `ItemStack.getMaxStackSize`: its component, else the item's.
+    /// `ItemInstance.getMaxStackSize`, using the effective component after patching.
     pub(super) fn max_stack(&self, stack: &ItemStack) -> u32 {
-        if let Some(sunrise_core::nbt::Tag::Int(n)) = stack
-            .data()
-            .and_then(|d| d.other("minecraft:max_stack_size"))
-        {
-            return (*n).clamp(1, 99) as u32;
+        let info = self.items.get(&stack.item);
+        match stack.effective_max_stack_size(info) {
+            Some(max) => max.clamp(1, 99) as u32,
+            // Only unchecked legacy stacks can have a malformed component here.
+            None => info.map_or(64, |i| i.max_stack).max(1),
         }
-        self.items
-            .get(&stack.item)
-            .map_or(64, |i| i.max_stack)
-            .max(1)
     }
     /// `Container.getMaxStackSize(stack)` of a container: the container's own
     /// limit, at most the item's. `ComposterBlock.InputContainer` (levels 0 to
@@ -2055,7 +2051,10 @@ impl Game<'_> {
                 None => self.dispense_default_in_level(key, facing, stack),
             }
         } else {
-            self.dispense_item(key, facing, stack)?
+            let ControlFlow::Continue(remaining) = self.dispense_item(key, facing, stack)? else {
+                return Ok(());
+            };
+            remaining
         };
         // DispenserBlock.dispenseFrom calls BaseContainerBlockEntity.setItem after the
         // behaviour returns. Only this resident write limits the detached remainder's count.

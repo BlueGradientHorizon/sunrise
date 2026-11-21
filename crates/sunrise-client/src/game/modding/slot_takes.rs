@@ -50,12 +50,12 @@ impl Game<'_> {
             let changed = entity.items != before;
             **m = entity;
             self.after_commit(if changed {
-                After::Changed(pos)
+                After::Changed(self.dim, pos)
             } else {
                 After::DirtyBlockEntity(pos)
             });
         } else {
-            self.after_commit(After::LostMenuContents(pos, Box::new(entity)));
+            self.after_commit(After::LostMenuContents(self.dim, pos, Box::new(entity)));
         }
     }
 

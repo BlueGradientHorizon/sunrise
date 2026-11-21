@@ -55,6 +55,7 @@ pub(in crate::game) use entities::{Announcement, ArrivalRollback};
 mod scratch;
 
 type Pos = (i32, i32, i32);
+type LevelPos = (super::Dim, Pos);
 /// The last pending value at this depth for a connection, menu generation and data index.
 type MenuDataJournal = BTreeMap<(u32, u64, u16), i32>;
 type ComposterRandoms =
@@ -84,6 +85,8 @@ pub(super) struct OpenTransactions {
     /// Tentative block writes do not advance the world's published revision. This epoch does
     /// advance on those writes and never rolls back, even when the final state is unchanged.
     block_writes: u64,
+    /// Foreign levels with block entity attachment retirement deferred by the open journal.
+    retiring_block_levels: std::collections::HashSet<super::Dim>,
     /// The root commits telling their joins and leaves, outermost first: a listener's command in
     /// another level can commit a transaction there while this level's commit is told.
     committing: Vec<entities::Committing>,
@@ -141,7 +144,7 @@ impl OpenTransactions {
     /// Keep a resident row just before its first write, without relinquishing the loan.
     pub(in crate::game) fn journal_block_entity_loan(
         &mut self,
-        pos: Pos,
+        at: LevelPos,
         loan: &sunrise_client::block_entities::BlockEntityLoan<'_>,
         chunks: &sunrise_client::chunk_map::ChunkMap,
         name: Option<&sunrise_core::nbt::Tag>,
@@ -149,13 +152,13 @@ impl OpenTransactions {
     ) {
         self.writes = self.writes.wrapping_add(1);
         if let Some(level) = self.last_mut() {
-            level.block_entities.entry(pos).or_insert_with(|| Kept {
+            level.block_entities.entry(at).or_insert_with(|| Kept {
                 entity: Some(BlockEntity::Mod(Box::new(loan.entity.clone()))),
                 generation: Some(loan.identity.generation),
                 attachments: loan.attachments.cloned(),
                 hopper,
                 name: name.cloned(),
-                extras: BlockEntityExtras::capture(chunks, pos),
+                extras: BlockEntityExtras::capture(chunks, at.1),
                 contents_watches: loan.contents_watches.snapshot(loan.identity),
             });
         }
@@ -253,16 +256,16 @@ pub(super) struct Level {
     frame: TransactionFrame,
     dimension: Option<super::Dim>,
     /// Each block entity as it was before this transaction first wrote it.
-    block_entities: HashMap<Pos, Kept>,
+    block_entities: HashMap<LevelPos, Kept>,
     /// The block entities this transaction removed (`journal_remove_block_entity`): an abort
     /// puts them back as `block_entities` keeps them.
-    removed_block_entities: std::collections::HashSet<Pos>,
+    removed_block_entities: std::collections::HashSet<LevelPos>,
     /// Each item slot (dimension, block entity, slot) as it was before this transaction
     /// first wrote it, for a block entity not kept whole in `block_entities`. A nested
     /// command can change a slot in another level before returning to the parent's level.
     slots: HashMap<(super::Dim, Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
-    blocks: HashMap<Pos, KeptBlock>,
+    blocks: HashMap<LevelPos, KeptBlock>,
     /// Level.random in this frame's own dimension before its first draw.
     level_random: Option<LegacyRandom>,
     /// Other levels drawn from at this depth. Only those draws allocate a map entry.
@@ -459,17 +462,19 @@ pub(super) enum After {
     Composter(super::composter::Effects),
     /// A mod's world pickup or placement of fluid, its block already set: what is left of it
     /// (`Game::commit_fluid_write`).
-    FluidWrite(Box<super::world_fluids::WrittenFluid>),
+    FluidWrite(super::Dim, Box<super::world_fluids::WrittenFluid>),
     /// A bucket's sound and fluid game event (`level_play_fluid_effects`).
-    FluidEffects(Box<super::world_fluids::FluidEffects>),
+    FluidEffects(super::Dim, Box<super::world_fluids::FluidEffects>),
     /// `BlockEntity.setChanged`.
-    Changed(Pos),
-    /// The dispenser's `insertItem` called `setItem` in this level.
-    DispenserChanged(super::Dim, Pos),
+    Changed(super::Dim, Pos),
     /// Detached mod entity state (not necessarily items) was edited.
     DirtyBlockEntity(Pos),
     /// A detached menu listener removed its holder; spill any unreturned contents only on commit.
-    LostMenuContents(Pos, Box<sunrise_client::containers::ModBlockEntity>),
+    LostMenuContents(
+        super::Dim,
+        Pos,
+        Box<sunrise_client::containers::ModBlockEntity>,
+    ),
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
     /// A provider's answer changed here (`level_invalidate_capabilities`): the capability
     /// generation moves on.
@@ -478,7 +483,7 @@ pub(super) enum After {
     /// `ServerLevel.destroyBlockProgress`: breaker id, position, stage. Sent once, at the root commit.
     BreakProgress(i32, [i32; 3], i32),
     /// The block's final state, set with the combined update flags.
-    Block(Pos),
+    Block(LevelPos),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
     BlockGameEvent(
@@ -892,7 +897,7 @@ impl Game<'_> {
             .trace_storage_attempt(if commit { "commit" } else { "abort" }.into());
         guard.game.close_level(level, commit);
         if root {
-            guard.game.world.block_entities.publish_retirement();
+            guard.game.publish_block_retirements();
             if commit {
                 for completion in guard
                     .game
@@ -957,7 +962,7 @@ impl Game<'_> {
                 // whole entity of is older there, but one kept whole only by this child is not,
                 // so the child's slot entries go up beside its capture.
                 for (key @ (dim, pos, _), kept) in level.slots {
-                    if outer.dimension != Some(dim) || !outer.block_entities.contains_key(&pos) {
+                    if !outer.block_entities.contains_key(&(dim, pos)) {
                         outer.slots.entry(key).or_insert(kept);
                     }
                 }
@@ -1113,7 +1118,16 @@ impl Game<'_> {
         while !self.transactions.is_empty() {
             self.close_storage_transaction(false);
         }
+        self.publish_block_retirements();
+    }
+
+    fn publish_block_retirements(&mut self) {
         self.world.block_entities.publish_retirement();
+        for dim in self.transactions.retiring_block_levels.drain() {
+            if let Some(parked) = self.levels.parked_mut(dim) {
+                parked.world.block_entities.publish_retirement();
+            }
+        }
     }
 
     /// `ComposterWrapper.transactionalRandom`: snapshot only the position's private owner,
@@ -1188,7 +1202,7 @@ impl Game<'_> {
         };
         level
             .block_entities
-            .entry(pos)
+            .entry((self.dim, pos))
             .or_insert_with(|| Kept::capture(&self.world, &self.hoppers, pos));
     }
     /// Puts back the block entity at `pos` that a transaction removed, as `kept` holds it, with
@@ -1214,7 +1228,11 @@ impl Game<'_> {
     pub(super) fn journal_remove_block_entity(&mut self, pos: Pos) {
         self.journal_block_entity(pos);
         if let Some(level) = self.transactions.last_mut() {
-            level.removed_block_entities.insert(pos);
+            level.removed_block_entities.insert((self.dim, pos));
+            if !self.world.block_entities.defers_retirement() {
+                self.world.block_entities.defer_retirement();
+                self.transactions.retiring_block_levels.insert(self.dim);
+            }
         }
         self.world.block_entities.remove(&pos);
     }
@@ -1249,7 +1267,7 @@ impl Game<'_> {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
-        if level.dimension == Some(self.dim) && level.block_entities.contains_key(&pos) {
+        if level.block_entities.contains_key(&(self.dim, pos)) {
             return;
         }
         level
@@ -1536,7 +1554,7 @@ impl Game<'_> {
         let Some(level) = self.transactions.last_mut() else {
             return self.level_set_with_flags(pos, state, flags).is_ok();
         };
-        let key = (pos[0], pos[1], pos[2]);
+        let key = (self.dim, (pos[0], pos[1], pos[2]));
         let old = self.world.block(pos[0], pos[1], pos[2]);
         level
             .blocks
@@ -1563,10 +1581,11 @@ impl Game<'_> {
     /// drops against the old entity before journalling the removal.
     pub(super) fn journal_block_replacement(&mut self, pos: Pos) {
         self.journal_remove_block_entity(pos);
+        let key = (self.dim, pos);
         if let Some(block) = self
             .transactions
             .last_mut()
-            .and_then(|level| level.blocks.get_mut(&pos))
+            .and_then(|level| level.blocks.get_mut(&key))
         {
             block.replay_removal = true;
         }
@@ -1643,9 +1662,8 @@ impl Game<'_> {
             None => self.run_after(after),
         }
     }
-    /// Replay a dispenser effect in its already open source level, not in the
-    /// level hosting the outer transaction.
-    fn in_dispenser_level(&mut self, dim: super::Dim, run: impl FnOnce(&mut Self)) {
+    /// Work in a journal entry's already open source level, not the level hosting the root.
+    fn in_journal_level(&mut self, dim: super::Dim, run: impl FnOnce(&mut Self)) {
         if dim == self.dim {
             run(self);
         } else if self.levels.parked_world(dim).is_some()
@@ -1654,7 +1672,7 @@ impl Game<'_> {
             run(self);
             self.enter_command_level(back);
         } else {
-            log::warn!("could not publish dispenser effect in {}", dim.id());
+            log::warn!("could not settle transaction entry in {}", dim.id());
         }
     }
     fn run_after(&mut self, after: After) {
@@ -1664,20 +1682,25 @@ impl Game<'_> {
             After::Packet(packet, body) => self.publish_mod_held(packet, body),
             After::Cauldron(effects) => self.commit_cauldron_effects(effects),
             After::Composter(effects) => self.commit_composter_effects(effects),
-            After::FluidWrite(written) => self.commit_fluid_write(*written),
-            After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
+            After::FluidWrite(dim, written) => {
+                self.in_journal_level(dim, |game| game.commit_fluid_write(*written));
+            }
+            After::FluidEffects(dim, effects) => {
+                self.in_journal_level(dim, |game| game.commit_fluid_effects(*effects));
+            }
             After::LevelWrite(write) => self.commit_level_write(*write),
             After::BlockGameEvent(id, pos, who, state) => {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
-            After::Changed(pos) => self.container_changed(pos),
-            After::DispenserChanged(dim, pos) => {
-                self.in_dispenser_level(dim, |game| game.container_changed(pos));
+            After::Changed(dim, pos) => {
+                self.in_journal_level(dim, |game| game.container_changed(pos));
             }
             After::DirtyBlockEntity(pos) => {
                 self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
             }
-            After::LostMenuContents(pos, taken) => self.drop_unreturned_mod_contents(pos, *taken),
+            After::LostMenuContents(dim, pos, taken) => {
+                self.in_journal_level(dim, |game| game.drop_unreturned_mod_contents(pos, *taken));
+            }
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
             After::Capabilities(pos) => self.world.capability_generations.invalidate(pos),
 
@@ -1813,7 +1836,7 @@ impl Game<'_> {
                 facing,
                 stack,
                 play_events,
-            } => self.in_dispenser_level(dim, |game| {
+            } => self.in_journal_level(dim, |game| {
                 game.spawn_dispensed(pos, facing, stack, 6);
                 if play_events {
                     game.dispenser_event(super::dispenser::CLICK, pos, 0);
@@ -1880,7 +1903,7 @@ impl Game<'_> {
             .after
             .iter()
             .filter_map(|after| match after {
-                After::LostMenuContents(pos, _) => Some(*pos),
+                After::LostMenuContents(dim, pos, _) => Some((*dim, *pos)),
                 _ => None,
             })
             .collect();
@@ -1889,45 +1912,44 @@ impl Game<'_> {
         for after in level.after {
             match after {
                 // Each storage tells the world once, after every write.
-                After::Changed(pos)
-                    if detached.contains(&pos) || !told.insert(Ok((self.dim, pos))) => {}
-                After::DispenserChanged(dim, pos)
-                    if (dim == self.dim && detached.contains(&pos))
-                        || !told.insert(Ok((dim, pos))) => {}
-                After::Block(pos) => {
-                    if !told.insert(Err(pos)) {
+                After::Changed(dim, pos)
+                    if detached.contains(&(dim, pos)) || !told.insert(Ok((dim, pos))) => {}
+                After::Block(key @ (dim, pos)) => {
+                    if !told.insert(Err(key)) {
                         continue;
                     }
-                    let now = self.world.block(pos.0, pos.1, pos.2);
-                    let KeptBlock {
-                        state: was,
-                        flags,
-                        level_host,
-                        replay_removal,
-                    } = level.blocks[&pos];
-                    // Restore an entity that the real write must remove with its side effects,
-                    // or that survives because a later write returned it to the old block kind.
-                    let b = self.res.behaviours();
-                    if level.removed_block_entities.contains(&pos)
-                        && !detached.contains(&pos)
-                        && (replay_removal || b.block(now) == b.block(was))
-                        && let Some(kept) = level.block_entities.get(&pos)
-                    {
-                        self.restore_removed_block_entity(pos, kept);
-                    }
-                    if now != was {
-                        // The stored state back, so the one real write sees the change.
-                        self.world.set_stored(pos.0, pos.1, pos.2, was);
-                        let pos = [pos.0, pos.1, pos.2];
-                        if level_host {
-                            self.with_level(|_, level, ticks| {
-                                level.native_set_block(ticks, pos, now, flags);
-                            });
-                            let _ = self.process_level_events();
-                        } else {
-                            let _ = self.level_set_with_flags(pos, now, flags);
+                    self.in_journal_level(dim, |game| {
+                        let now = game.world.block(pos.0, pos.1, pos.2);
+                        let KeptBlock {
+                            state: was,
+                            flags,
+                            level_host,
+                            replay_removal,
+                        } = level.blocks[&key];
+                        // Restore an entity that the real write must remove with its side effects,
+                        // or that survives because a later write returned it to the old block kind.
+                        let b = game.res.behaviours();
+                        if level.removed_block_entities.contains(&key)
+                            && !detached.contains(&key)
+                            && (replay_removal || b.block(now) == b.block(was))
+                            && let Some(kept) = level.block_entities.get(&key)
+                        {
+                            game.restore_removed_block_entity(pos, kept);
                         }
-                    }
+                        if now != was {
+                            // The stored state back, so the one real write sees the change.
+                            game.world.set_stored(pos.0, pos.1, pos.2, was);
+                            let pos = [pos.0, pos.1, pos.2];
+                            if level_host {
+                                game.with_level(|_, level, ticks| {
+                                    level.native_set_block(ticks, pos, now, flags);
+                                });
+                                let _ = game.process_level_events();
+                            } else {
+                                let _ = game.level_set_with_flags(pos, now, flags);
+                            }
+                        }
+                    });
                 }
                 After::Biome(key) if !biome_columns.insert(key) => {}
                 after => self.run_after(after),
@@ -1943,24 +1965,26 @@ impl Game<'_> {
                 self.guest_craft_result(*conn);
             }
         }
-        for (pos, kept) in level.block_entities {
-            let record = |entity: Option<&BlockEntity>| match entity {
-                Some(BlockEntity::Jukebox(j)) => j.record().cloned(),
-                _ => None,
-            };
-            let was = record(kept.entity.as_ref());
-            let now = record(self.world.block_entities.get(&pos));
-            if was == now {
-                continue;
-            }
-            // The song of the record it had stops; the one it has now starts.
-            let pos = [pos.0, pos.1, pos.2];
-            if was.is_some() {
-                self.jukebox_stopped(pos);
-            }
-            if now.is_some() {
-                self.jukebox_inserted(pos);
-            }
+        for ((dim, pos), kept) in level.block_entities {
+            self.in_journal_level(dim, |game| {
+                let record = |entity: Option<&BlockEntity>| match entity {
+                    Some(BlockEntity::Jukebox(j)) => j.record().cloned(),
+                    _ => None,
+                };
+                let was = record(kept.entity.as_ref());
+                let now = record(game.world.block_entities.get(&pos));
+                if was == now {
+                    return;
+                }
+                // The song of the record it had stops; the one it has now starts.
+                let pos = [pos.0, pos.1, pos.2];
+                if was.is_some() {
+                    game.jukebox_stopped(pos);
+                }
+                if now.is_some() {
+                    game.jukebox_inserted(pos);
+                }
+            });
         }
     }
     fn roll_back(&mut self, mut level: Level) {
@@ -2009,51 +2033,56 @@ impl Game<'_> {
 
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
-        for (pos, kept) in level.block_entities {
-            match (&kept.entity, self.world.block_entities.get_mut(&pos)) {
-                (Some(entity), Some(now)) => {
-                    fn shapes(
-                        entity: &BlockEntity,
-                    ) -> Option<&sunrise_client::containers::PublishedShapes> {
-                        match entity {
-                            BlockEntity::Mod(entity) => entity.shapes(),
-                            _ => None,
+        for (key @ (dim, pos), kept) in level.block_entities {
+            self.in_journal_level(dim, |game| {
+                match (&kept.entity, game.world.block_entities.get_mut(&pos)) {
+                    (Some(entity), Some(now)) => {
+                        fn shapes(
+                            entity: &BlockEntity,
+                        ) -> Option<&sunrise_client::containers::PublishedShapes>
+                        {
+                            match entity {
+                                BlockEntity::Mod(entity) => entity.shapes(),
+                                _ => None,
+                            }
                         }
+                        if shapes(now) != shapes(entity) {
+                            reshaped.push(key);
+                        }
+                        *now = entity.clone();
+                        game.world
+                            .block_entities
+                            .restore_generation(pos, kept.generation.unwrap());
                     }
-                    if shapes(now) != shapes(entity) {
-                        reshaped.push(pos);
+                    // One this transaction removed comes back.
+                    (Some(_), None) if level.removed_block_entities.contains(&key) => {
+                        game.restore_removed_block_entity(pos, &kept);
                     }
-                    *now = entity.clone();
-                    self.world
+                    _ => {}
+                }
+                game.world.block_entities.put_back_attachments(
+                    pos,
+                    kept.generation,
+                    kept.attachments,
+                );
+                match kept.name {
+                    Some(name) => game.world.block_names.insert(pos, name),
+                    None => game.world.block_names.remove(&pos),
+                };
+                game.world.set_block_entity_extras(pos, kept.extras);
+                if let Some(observer) = game.world.block_entities.identity(pos)
+                    && Some(observer.generation) == kept.generation
+                {
+                    game.world
                         .block_entities
-                        .restore_generation(pos, kept.generation.unwrap());
+                        .contents_watches
+                        .restore(observer, kept.contents_watches);
                 }
-                // One this transaction removed comes back.
-                (Some(_), None) if level.removed_block_entities.contains(&pos) => {
-                    self.restore_removed_block_entity(pos, &kept);
-                }
-                _ => {}
-            }
-            self.world
-                .block_entities
-                .put_back_attachments(pos, kept.generation, kept.attachments);
-            match kept.name {
-                Some(name) => self.world.block_names.insert(pos, name),
-                None => self.world.block_names.remove(&pos),
-            };
-            self.world.set_block_entity_extras(pos, kept.extras);
-            if let Some(observer) = self.world.block_entities.identity(pos)
-                && Some(observer.generation) == kept.generation
-            {
-                self.world
-                    .block_entities
-                    .contents_watches
-                    .restore(observer, kept.contents_watches);
-            }
-            match kept.hopper {
-                Some(hopper) => self.hoppers.insert(pos, hopper),
-                None => self.hoppers.remove(&pos),
-            };
+                match kept.hopper {
+                    Some(hopper) => game.hoppers.insert(pos, hopper),
+                    None => game.hoppers.remove(&pos),
+                };
+            });
         }
         // After the whole entities: a slot kept here was kept before any whole capture of its
         // entity at this depth, so its stack is the older one. Only into the block entity it
@@ -2096,8 +2125,16 @@ impl Game<'_> {
                 );
             }
         }
-        for (pos, block) in level.blocks {
-            self.world.set_stored(pos.0, pos.1, pos.2, block.state);
+        for ((dim, pos), block) in level.blocks {
+            let world = if dim == self.dim {
+                &mut self.world
+            } else if let Some(parked) = self.levels.parked_mut(dim) {
+                &mut parked.world
+            } else {
+                log::warn!("could not restore block state in {}", dim.id());
+                continue;
+            };
+            world.set_stored(pos.0, pos.1, pos.2, block.state);
         }
         if let Some(random) = level.level_random {
             *self.world.random = random;
@@ -2109,12 +2146,14 @@ impl Game<'_> {
         }
         // The shapes are back: the neighbours that read them (a fluid beside it) are told, as
         // the publish told them.
-        for pos in reshaped {
-            let at = BlockPos::new(pos.0, pos.1, pos.2);
-            let state = self.world.block(pos.0, pos.1, pos.2);
-            self.with_level(|b, level, ticks| {
-                let block = b.block(state);
-                b.update_neighbors_at(level, ticks, at, block);
+        for (dim, pos) in reshaped {
+            self.in_journal_level(dim, |game| {
+                let at = BlockPos::new(pos.0, pos.1, pos.2);
+                let state = game.world.block(pos.0, pos.1, pos.2);
+                game.with_level(|b, level, ticks| {
+                    let block = b.block(state);
+                    b.update_neighbors_at(level, ticks, at, block);
+                });
             });
         }
         for (chunk, randoms) in level.composter_randoms {
