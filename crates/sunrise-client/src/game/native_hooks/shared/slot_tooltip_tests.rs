@@ -143,13 +143,13 @@ fn filled_slot_tooltip_replaces_lines_but_keeps_item_image_and_visibility() {
                     layout_revision: 0,
                     slot_moves: Default::default(),
                     shown: true,
-                    screen: mod_api::MenuScreenLayout {
+                    screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
                         width: 176.0,
                         height: 166.0,
                         inventory_x: 8.0,
                         inventory_y: 84.0,
                         ..Default::default()
-                    },
+                    }),
                 });
                 let mut stack = ItemStack::new("minecraft:stone", 1);
                 stack.data_mut().custom_name = Some(sunrise_core::nbt::Tag::compound([

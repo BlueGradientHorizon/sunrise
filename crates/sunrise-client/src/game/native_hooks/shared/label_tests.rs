@@ -25,11 +25,11 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                 layout_revision: 0,
                 slot_moves: Default::default(),
                 shown: true,
-                screen: mod_api::MenuScreenLayout {
+                screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
                     width: 176.0,
                     own_background: true,
                     ..Default::default()
-                },
+                }),
             });
             let (ox, oy) = (17.0, 23.0);
             for (height, inventory_y, label_y) in [
@@ -39,7 +39,7 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                 (167.0, 84.0, 73.0), // Shulker box.
                 (166.0, 30.0, 72.0), // Moving slots does not move the label.
             ] {
-                let screen = &mut game.mod_screen.as_mut().unwrap().screen;
+                let screen = game.mod_screen.as_mut().unwrap().layout_mut();
                 screen.height = height;
                 screen.inventory_y = inventory_y;
                 let mut actual = HudBatch::scratch([512, 512]);
@@ -81,7 +81,7 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                     true,
                 ),
             ] {
-                let screen = &mut game.mod_screen.as_mut().unwrap().screen;
+                let screen = game.mod_screen.as_mut().unwrap().layout_mut();
                 screen.title_label = title_at;
                 screen.inventory_label = inventory_at;
                 screen.own_labels = own_labels;

@@ -204,7 +204,7 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                 ));
                 let screen = game.mod_screen.as_ref().expect("bound screen stages");
                 assert_eq!(
-                    screen.screen.recipe_book.as_ref().unwrap().as_str(),
+                    screen.layout().recipe_book.as_ref().unwrap().as_str(),
                     "bound:book"
                 );
                 assert_eq!(screen.menu.block, None);
@@ -213,8 +213,8 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                     Game::native_hidden_slots("bound:menu", None, 3),
                     Some(&[2][..])
                 );
-                assert_eq!(screen.screen.slots.len(), 3);
-                assert!(screen.screen.slots[2].is_none());
+                assert_eq!(screen.layout().slots.len(), 3);
+                assert!(screen.layout().slots[2].is_none());
             });
         });
     });
@@ -314,7 +314,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                 slot_moves: Default::default(),
                 layout_revision: 0,
                 shown: true,
-                screen: mod_api::MenuScreenLayout {
+                screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
                     slots: vec![Some(mod_api::ScreenSlot {
@@ -330,7 +330,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                     recipe_book: Some(key.clone()),
                     recipe_book_toggle: None,
                     recipe_book_big_result: false,
-                },
+                }),
             });
             // A snapshot may precede the first draw. The build itself must
             // collect declarations, not wait for the render refresh path.
@@ -501,7 +501,7 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
                 slot_moves: Default::default(),
                 layout_revision: 0,
                 shown: true,
-                screen: mod_api::MenuScreenLayout {
+                screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
                     slots: vec![
@@ -518,7 +518,7 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
                     inventory_y: 84.0,
                     inventory_x: 8.0,
                     ..Default::default()
-                },
+                }),
             });
             game.build_screen();
             let before = geometry(game);
@@ -621,7 +621,7 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
                 slot_moves: Default::default(),
                 layout_revision: 0,
                 shown: true,
-                screen: mod_api::MenuScreenLayout {
+                screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
                     slots: vec![
@@ -638,7 +638,7 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
                     inventory_y: 84.0,
                     inventory_x: 8.0,
                     ..Default::default()
-                },
+                }),
             });
             game.build_screen();
             let batch =

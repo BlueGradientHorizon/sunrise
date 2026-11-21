@@ -31,7 +31,7 @@ impl Game<'_> {
                 && screen.menu.name == menu
                 && screen.layout_revision == nonce
                 && screen
-                    .screen
+                    .layout()
                     .recipe_book
                     .as_ref()
                     .is_some_and(|key| key.as_str() == book)
@@ -70,7 +70,7 @@ impl Game<'_> {
             nonce: screen.layout_revision,
             menu: menu.to_owned().try_into().ok()?,
             book: screen
-                .screen
+                .layout()
                 .recipe_book
                 .as_ref()?
                 .as_str()

@@ -676,7 +676,7 @@ pub(super) struct OpenNativeScreen {
     /// Fixed for the opening; slot moves have their own revision.
     pub(super) layout_revision: u64,
     slot_moves: SlotMoves,
-    screen: mod_api::MenuScreenLayout,
+    screen: mod_api::MenuScreen,
     menu: OpenNativeMenu,
     /// Installed as the window's screen, not merely staged for ScreenOpening.
     shown: bool,
@@ -803,6 +803,15 @@ impl Game<'_> {
 }
 
 impl OpenNativeScreen {
+    fn layout(&self) -> &mod_api::MenuScreenLayout {
+        mod_api::__private::menu_screen_layout(&self.screen)
+    }
+
+    #[cfg(test)]
+    fn layout_mut(&mut self) -> &mut mod_api::MenuScreenLayout {
+        mod_api::__private::menu_screen_layout_mut(&mut self.screen)
+    }
+
     /// How many slot moves changed a position, so a layout built before the
     /// last one is rebuilt.
     pub(in crate::game) fn slot_move_count(&self) -> u32 {
@@ -836,7 +845,7 @@ impl OpenNativeScreen {
     }
 
     fn visible_container_slots(&self) -> impl Iterator<Item = usize> + '_ {
-        self.screen
+        self.layout()
             .slots
             .iter()
             .enumerate()
@@ -2712,13 +2721,13 @@ impl Game<'_> {
     /// hid it.
     pub(super) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
         let s = self.shown_native_screen()?;
-        let declared = s.screen.slots.get(slot)?.as_ref()?.position;
+        let declared = s.layout().slots.get(slot)?.as_ref()?.position;
         let [x, y] = s.slot_moves.position(slot, declared)?;
         Some((x, y))
     }
     pub(in crate::game) fn native_screen_slot_icon(&self, slot: usize) -> Option<&str> {
         self.shown_native_screen()?
-            .screen
+            .layout()
             .slots
             .get(slot)?
             .as_ref()?
@@ -2730,7 +2739,7 @@ impl Game<'_> {
     /// declaration; None for a hidden slot, another menu type's screen or none.
     pub(in crate::game) fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]> {
         let s = self.owned_native_screen(menu)?;
-        s.slot_moves.latest(&s.screen.slots, slot)
+        s.slot_moves.latest(&s.layout().slots, slot)
     }
     /// The open screen of menu type `menu`, when the mod calling (if one is)
     /// owns it: another mod's part on a shared vanilla type moves no slot of it.
@@ -2753,7 +2762,7 @@ impl Game<'_> {
         let s = self
             .owned_native_screen(menu)
             .ok_or(mod_api::ScreenSlotRefusal::NoScreen)?;
-        s.slot_moves.set(&s.screen.slots, slot, pos)
+        s.slot_moves.set(&s.layout().slots, slot, pos)
     }
     /// The container slots the open mod screen shows this frame (300.. ids).
     pub(super) fn native_screen_slots(&self) -> Option<Vec<usize>> {
@@ -2765,15 +2774,15 @@ impl Game<'_> {
     }
     /// The first row of the player's inventory on the open mod screen.
     pub(super) fn native_screen_inventory_y(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.inventory_y)
+        self.shown_native_screen().map(|s| s.layout().inventory_y)
     }
     /// The open mod screen's inventory's left column.
     pub(super) fn native_screen_inventory_x(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.inventory_x)
+        self.shown_native_screen().map(|s| s.layout().inventory_x)
     }
     /// The open mod screen's width.
     pub(super) fn native_screen_width(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.width)
+        self.shown_native_screen().map(|s| s.layout().width)
     }
     /// The open mod screen: a plain panel with its slots' frames, the mod's
     /// drawing over it, then the title and the inventory's label. False when
@@ -2783,8 +2792,8 @@ impl Game<'_> {
             return false;
         };
         let atlas = &self.gui.atlas;
-        if !s.screen.own_background {
-            let (w, h) = (s.screen.width, s.screen.height);
+        if !s.layout().own_background {
+            let (w, h) = (s.layout().width, s.layout().height);
             batch.fill(atlas, ox, oy, w, h, rgba(0, 0, 0, 255));
             batch.fill(
                 atlas,
@@ -2831,20 +2840,20 @@ impl Game<'_> {
             });
         }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        if s.screen.own_labels {
+        if s.layout().own_labels {
             return true;
         }
         let grey = rgba(64, 64, 64, 255);
         if let Some(title) = self.remote_menu_title() {
-            let [x, y] = s.screen.title_label.unwrap_or([8.0, 6.0]);
+            let [x, y] = s.layout().title_label.unwrap_or([8.0, 6.0]);
             batch.text_styled(atlas, &title, ox + x, oy + y, grey, false);
         }
         if s.player_slots() != 0 {
             let inventory = self.translate_with_fallback("container.inventory", "Inventory");
             let [x, y] = s
-                .screen
+                .layout()
                 .inventory_label
-                .unwrap_or([8.0, s.screen.height - 94.0]);
+                .unwrap_or([8.0, s.layout().height - 94.0]);
             batch.text(atlas, &inventory, ox + x, oy + y, grey, false);
         }
         true

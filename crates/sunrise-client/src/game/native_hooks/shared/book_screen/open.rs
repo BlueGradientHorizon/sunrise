@@ -159,7 +159,7 @@ impl Game<'_> {
                 static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
                 NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             },
-            screen,
+            screen: mod_api::MenuScreen::new(screen),
             shown: false,
         });
         true

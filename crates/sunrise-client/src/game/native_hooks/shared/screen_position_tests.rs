@@ -392,7 +392,7 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
                 assert!(game.open_native_screen(pos, Some(pos), 27, None));
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
                 assert_eq!(open.menu.block.as_deref(), Some("test:crate"));
-                assert_eq!(open.screen.height, 166.0);
+                assert_eq!(open.layout().height, 166.0);
                 game.container = Some(pos);
                 game.title = None;
                 game.ui.hide_gui = true;
@@ -401,7 +401,7 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
                 game.world
                     .block_entities
                     .insert(pos, BlockEntity::Chest(vec![None; 27]));
-                let screen = &mut game.mod_screen.as_mut().unwrap().screen;
+                let screen = game.mod_screen.as_mut().unwrap().layout_mut();
                 screen.width = 176.0;
                 screen.inventory_x = 8.0;
                 screen.inventory_y = 84.0;
@@ -479,8 +479,8 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
                 seed_native_menu(game, 1, PACK);
                 assert!(game.open_native_screen(key, None, 9, None));
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
-                assert_eq!((open.screen.height, &open.menu.block), (133.0, &None));
-                assert_eq!(open.screen.slots, vec![None; 9]);
+                assert_eq!((open.layout().height, &open.menu.block), (133.0, &None));
+                assert_eq!(open.layout().slots, vec![None; 9]);
                 game.container = Some(key);
                 game.set_screen(Screen::Inventory);
                 let mut batch = HudBatch::scratch([128, 128]);

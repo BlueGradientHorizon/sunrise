@@ -29,13 +29,13 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
                 layout_revision: 0,
                 slot_moves: Default::default(),
                 shown: true,
-                screen: mod_api::MenuScreenLayout {
+                screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
                     slots: vec![Some(mod_api::ScreenSlot {
                         position: [8.0, 18.0],
                         no_item_icon: Some(icon.into()),
                     })],
                     ..Default::default()
-                },
+                }),
             });
             let mut actual = HudBatch::scratch([128, 128]);
             game.draw_slot_item(&mut actual, None, 300, &None, 8.0, 18.0);
@@ -58,7 +58,7 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
             });
             let mut with_icon = HudBatch::scratch([128, 128]);
             game.draw_slot_item(&mut with_icon, None, 300, &filled, 8.0, 18.0);
-            game.mod_screen.as_mut().unwrap().screen.slots[0]
+            game.mod_screen.as_mut().unwrap().layout_mut().slots[0]
                 .as_mut()
                 .unwrap()
                 .no_item_icon = None;
