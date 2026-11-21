@@ -228,24 +228,30 @@ impl Game<'_> {
     /// sent in: off its lead, its tag stored, the bee gone.
     pub(super) fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
         let key = (at[0], at[1], at[2]);
-        let Some(i) = self
+        if !self
             .mobs
             .iter()
-            .position(|m| m.id == mob && m.alive() && !m.removed)
-        else {
+            .any(|m| m.id == mob && m.alive() && !m.removed)
+        {
             return;
         };
         if !matches!(self.world.block_entities.get(&key), Some(BlockEntity::Beehive(h)) if !h.full())
         {
             return;
         }
-        if self.mobs[i].extra.leash.is_some() {
-            self.break_leash(mob, true, false);
-            self.mobs[i].extra.leash = None;
+        // The hive stops the bee riding and ejects its passengers before
+        // storing one occupant. Any vetoed edge is asked again at discard.
+        self.dismount_mob(mob);
+        if let Some(entity) = self.entity(mob) {
+            self.entity_eject_passengers(entity);
         }
-        self.mobs[i].extra.mount = None;
-        let tag = self.mob_tree_nbt(i);
+        self.break_leash(mob, true, false);
+        let Some(i) = self.mobs.iter().position(|m| m.id == mob && !m.removed) else {
+            return;
+        };
+        let tag = self.mob_own_nbt(i);
         let flower = bee::get(&self.mobs[i]).and_then(|b| b.flower);
+        let kind = self.mobs[i].kind.id.clone();
         let Some((lease, BlockEntity::Beehive(mut hive))) = self.world.block_entities.take(&key)
         else {
             return;
@@ -262,16 +268,13 @@ impl Game<'_> {
                 Some(Who::Mob(mob)),
                 Some(state),
             );
-            let kind = self.mobs[i].kind.id.clone();
             let block = self
                 .res
                 .facts()
                 .get(self.world.block(at[0], at[1], at[2]))
                 .name
                 .clone();
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
-                m.removed = true;
-            }
+            self.remove_mob_now(mob, false);
             self.native_entity_enter_block(mob, &kind, at, &block);
         }
     }

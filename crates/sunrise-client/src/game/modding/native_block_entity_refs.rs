@@ -109,6 +109,9 @@ impl Game<'_> {
         }) else {
             return Ok(false);
         };
+        if self.menu_click_in_progress(conn) {
+            return Ok(false);
+        }
         let [x, y, z] = entity.fields().position;
         match self.open_block_menu(conn, (x, y, z)) {
             super::lan_actions::MenuOpen::Stale => Err(BlockEntityError::Stale),

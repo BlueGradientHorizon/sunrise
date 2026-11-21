@@ -22,8 +22,8 @@ pub trait EntityLifetimeBackend {
     #[access(WorldOnly)]
     fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32>;
     /// Side: server.
-    /// Ticks the entity has lived (`Entity.tickCount`): mobs, item entities,
-    /// experience orbs and minecarts. Wraps as vanilla's `int` does.
+    /// Ticks the entity has lived (`Entity.tickCount`): players, mobs, item
+    /// entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
     #[access(WorldOnly)]
     fn entity_tick_count(&self, entity: EntityRef) -> Option<i32>;
 }
@@ -36,7 +36,8 @@ pub trait EntityLifetimeBackendMut {
     /// Removes the entity with no death and no loot (`Entity.discard`): a
     /// chest boat or a minecart with a chest still drops what it holds, and
     /// a boat its lead, as vanilla's `remove` does. False for a player, a dragon
-    /// part (it leaves with its dragon), or a stale handle.
+    /// part (it leaves with its dragon), or a stale handle. Also returns `false`
+    /// if this entity's removal effects are already running, even if its handle still resolves.
     /// The tick scope below is the port's own transactional requirement:
     /// NeoForge adds no event, deferral or drop capture around a block entity's
     /// tick, and new item spawning stays immediate. With no scope open the
@@ -53,7 +54,8 @@ pub trait EntityLifetimeBackendMut {
     /// `discard`, or `Killed`, which also runs a mob's effects that act on
     /// removal (Oozing's slimes, Weaving's cobwebs, Wind Charged's burst),
     /// still with no death and no loot. False for a player, a dragon part (it
-    /// leaves with its dragon), or a stale handle.
+    /// leaves with its dragon), or a stale handle. Also returns `false` if this
+    /// entity's removal effects are already running, even if its handle still resolves.
     /// Removing a general entity dismounts its passengers without removing them.
     /// Dropped items share `entity_discard`'s block-entity tick staging;
     /// non-item removal is deliberately immediate.

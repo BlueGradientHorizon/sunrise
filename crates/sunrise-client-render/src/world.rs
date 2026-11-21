@@ -21,16 +21,47 @@ pub use modified::{ChunkMark, ModifiedChunks};
 /// rather than at every section of it.
 #[derive(Clone, Debug, Default)]
 pub struct DirtySections {
-    columns: crate::fast_hash::FxHashMap<(i32, i32), SectionMask>,
+    columns: FxHashMap<(i32, i32), SectionMask>,
+    // Raw input changes since the streamer last invalidated cached decisions. An answer changing
+    // the mesh of a neighbour does not change that neighbour's raw input.
+    visibility_edits: Option<FxHashMap<(i32, i32), SectionMask>>,
 }
 impl DirtySections {
-    pub fn insert(&mut self, (x, sy, z): (i32, i32, i32)) {
+    pub fn insert(&mut self, key @ (x, sy, z): (i32, i32, i32)) {
+        self.insert_mesh(key);
+        if let Some(edits) = &mut self.visibility_edits {
+            edits.entry((x, z)).or_default().insert(sy as usize);
+        }
+    }
+    /// Mark all sections in `mask` dirty for column `(x, z)`.
+    pub fn insert_column_mask(&mut self, key: (i32, i32), mask: SectionMask) {
+        self.insert_mesh_column_mask(key, mask);
+        if let Some(edits) = &mut self.visibility_edits {
+            *edits.entry(key).or_default() |= mask;
+        }
+    }
+    pub(crate) fn insert_mesh(&mut self, (x, sy, z): (i32, i32, i32)) {
         debug_assert!((0..SectionMask::CAPACITY as i32).contains(&sy));
         self.columns.entry((x, z)).or_default().insert(sy as usize);
     }
-    /// Mark all sections in `mask` dirty for column `(x, z)`.
-    pub fn insert_column_mask(&mut self, (x, z): (i32, i32), mask: SectionMask) {
-        *self.columns.entry((x, z)).or_default() |= mask;
+    pub(crate) fn insert_mesh_column_mask(&mut self, key: (i32, i32), mask: SectionMask) {
+        *self.columns.entry(key).or_default() |= mask;
+    }
+    pub(crate) fn track_visibility_edits(&mut self, listening: bool) {
+        self.visibility_edits = listening.then(FxHashMap::default);
+    }
+    pub(crate) fn visibility_edits(
+        &mut self,
+    ) -> impl Iterator<Item = ((i32, i32), SectionMask)> + '_ {
+        self.visibility_edits
+            .iter_mut()
+            .flat_map(|edits| edits.drain())
+    }
+    pub(crate) fn visibility_edited(&self, (x, sy, z): (i32, i32, i32)) -> bool {
+        self.visibility_edits
+            .as_ref()
+            .and_then(|edits| edits.get(&(x, z)))
+            .is_some_and(|mask| mask.contains(sy as usize))
     }
     pub fn contains(&self, &(x, sy, z): &(i32, i32, i32)) -> bool {
         (0..SectionMask::CAPACITY as i32).contains(&sy)
@@ -53,6 +84,9 @@ impl DirtySections {
     }
     pub fn clear(&mut self) {
         self.columns.clear();
+        if let Some(edits) = &mut self.visibility_edits {
+            edits.clear();
+        }
     }
     pub fn is_empty(&self) -> bool {
         self.columns.is_empty()

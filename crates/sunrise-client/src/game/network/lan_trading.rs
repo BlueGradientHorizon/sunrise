@@ -112,7 +112,7 @@ impl Game<'_> {
             state.session.update_special_prices();
         }
         let title = self.merchant_display_name(&state);
-        if !self.guest_may_open(conn, "minecraft:merchant", None) {
+        if self.guest_may_open(conn, "minecraft:merchant", None) != Some(true) {
             self.merchant_closed(&mut state);
             return;
         }
@@ -253,19 +253,8 @@ impl Game<'_> {
             let mut items: Vec<Option<ItemStack>> = gm.slots.to_vec();
             let g = &host.hub.guests[gi];
             items.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
-            let carried = g.carried.clone();
-            let net: Vec<_> = items.iter().map(|s| host.hub.stack(s)).collect();
-            let carried = host.hub.stack(&carried);
             gm.state = (gm.state + 1) & 0x7FFF;
-            host.hub.send_to(
-                conn,
-                &C::ContainerSetContent(play::ContainerSetContent {
-                    container: gm.window,
-                    state: gm.state,
-                    items: net,
-                    carried,
-                }),
-            );
+            host.hub.send_menu_snapshot(gi, gm.window, gm.state, &items);
         }
     }
     /// Runs `op` on the guest's merchant menu (their inventory copied in and
@@ -605,14 +594,17 @@ impl Game<'_> {
         if !self.lan_merchant_op(conn, window, false, |menu, env| menu.merchant_close(env)) {
             return false;
         }
-        let Some(mut gm) = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.play.get_mut(&conn))
-            .and_then(|p| p.merchant.take())
-        else {
+        let Some(host) = self.lan.as_mut() else {
             return false;
         };
+        let Some(mut gm) = host.play.get_mut(&conn).and_then(|p| p.merchant.take()) else {
+            return false;
+        };
+        if let Some(gi) = host.hub.guests.connection_index(conn)
+            && let Some(carried) = self.close_guest_menu_cursor(gi, gm.window)
+        {
+            self.lan_place_back(gi, vec![carried]);
+        }
         self.merchant_closed(&mut gm.merchant);
         if window.is_some() {
             self.player_menu_closing(conn);
@@ -757,7 +749,7 @@ impl Game<'_> {
         conn: u32,
         edit: impl FnOnce(&mut merchant::Session),
     ) -> bool {
-        if self.merchant_click_in_progress(conn) {
+        if self.menu_click_in_progress(conn) {
             return false;
         }
         let done = self.lan_merchant_op(conn, None, false, |menu, env| {

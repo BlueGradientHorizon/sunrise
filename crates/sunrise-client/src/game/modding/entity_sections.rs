@@ -201,7 +201,10 @@ struct LiveSectionHost(Option<SectionWriter>);
 mod_api::impl_host_areas!(LiveSectionHost);
 mod_api::impl_server_host_areas!(LiveSectionHost);
 mod_api::impl_client_host_areas!(LiveSectionHost, except(menus));
-mod_api::impl_backend_areas!(LiveSectionHost, except(entity_position, entity_physics));
+mod_api::impl_backend_areas!(
+    LiveSectionHost,
+    partial(entity_position, entity_on_ground, entity_velocity)
+);
 
 impl mod_api::prelude::MenusClientHost for LiveSectionHost {
     fn local_player(&self) -> Option<mod_api::PlayerRef> {
@@ -209,7 +212,9 @@ impl mod_api::prelude::MenusClientHost for LiveSectionHost {
     }
 }
 
-impl mod_api::prelude::EntityPositionBackend for LiveSectionHost {
+// The generated read backend forwards these snapshots and answers the
+// standard no-backend result for reads that would need the borrowed world.
+impl LiveSectionHost {
     fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let writer = self.0.filter(|writer| writer.entity == entity)?;
         Some(writer.position)
@@ -219,9 +224,7 @@ impl mod_api::prelude::EntityPositionBackend for LiveSectionHost {
         let player = self.0.filter(|writer| writer.entity == entity)?.player?;
         Some(player.on_ground)
     }
-}
 
-impl mod_api::prelude::EntityPhysicsBackend for LiveSectionHost {
     fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let player = self.0.filter(|writer| writer.entity == entity)?.player?;
         Some(player.velocity)

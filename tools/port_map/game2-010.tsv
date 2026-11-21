@@ -59,7 +59,7 @@ Equippable.llamaSwag	skip:data		datagen factory for the carpet equippable data
 Equippable.saddle	skip:data		datagen factory for the saddle equippable data
 Equippable.harness	skip:data		datagen factory for the harness equippable data
 Equippable.equipOnTarget	port	crates/sunrise-client/src/game/mobs/ghasts.rs::Game::interact_happy_ghast	gap: minor: the harness on a happy ghast only; saddles are put on in mounts.rs and nautili.rs
-Equippable.canBeEquippedBy	port	crates/sunrise-client/src/game/interface/mount_menu.rs::shows_saddle	gap: minor: the saddle slot's entity check only; the armour swap has no entity test
+Equippable.canBeEquippedBy	port	crates/sunrise-gameplay/src/mount_rules.rs::shows_saddle	gap: minor: the saddle slot's entity check only; the armour swap has no entity test
 Equippable.Builder	skip:data		datagen builder for equippable data
 ItemCost.withComponents	skip:data		datagen helper; no runtime caller in 26.3
 ItemCost.test	port	crates/sunrise-client/src/merchant.rs::ItemCost::test	item match, then the stack data when the cost has data
@@ -94,8 +94,8 @@ Level.getWorldBorderAdjustedRespawnData	missing		unsure: respawn clamp to the wo
 Level.hasEntities	missing		unsure: no entity-in-box test found for this use
 Level.getClockTimeTicks	port	crates/sunrise-client/src/game/blocks/level_access.rs::GameLevel::day_time	day time; no separate clock time
 Level.getThunderLevel	port	crates/sunrise-client-render/src/world.rs::World::levels	thunder scaled by rain
-Level.setThunderLevel	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_packet	weather game event sets the thunder level
-Level.setRainLevel	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_packet	weather game event sets the rain level
+Level.setThunderLevel	port	crates/sunrise-client/src/game/network/remote/packets_world.rs::Game::apply_game_event_packet	weather game event sets the thunder level
+Level.setRainLevel	port	crates/sunrise-client/src/game/network/remote/packets_world.rs::Game::apply_game_event_packet	weather game event sets the rain level
 Level.fillReportDetails	skip:debug		crash-report details
 BlockGetter.getBlockEntity	skip:other		bare block_entities map lookup at each caller
 BlockGetter.isBlockInLine	skip:other		no caller in 26.3 code
