@@ -794,24 +794,24 @@ mod tests {
             source
         ));
 
-        // An entityless follow-up (suffocation, with no loan) reacts on remembered credit only
-        // while its timer runs and the remembered player still resolves: not for an absent
-        // player (a tame wolf's owner who is not in the level) or no record at all.
+        // An entityless follow-up (suffocation, with no per-hit loan) reacts only
+        // if its remembered player still resolves. LivingEntity.baseTick leaves
+        // the reference intact in the tick that counts the clock down to zero.
         let present = 0x11_u128;
         let absent = 0x22_u128;
         for (timer, remembered, reacts) in [
             (50, Some(present), true),
             (50, Some(absent), false),
             (50, None, false),
-            (0, Some(present), false),
+            (0, Some(present), true),
+            (0, None, false),
         ] {
             m.extra.ints[INVULNERABLE] = 0;
             m.extra.counter = 0;
             m.ai.last_hurt_by_player = timer;
-            let memory: std::collections::HashMap<u32, u128> =
+            let mut memory: std::collections::HashMap<u32, u128> =
                 remembered.map(|uuid| (m.id, uuid)).into_iter().collect();
             let players = crate::health::PlayerResolver {
-                memory: &memory,
                 in_place: Some(crate::lan::playerdata::uuid_ints(present)),
                 hub: None,
             };
@@ -820,7 +820,7 @@ mod tests {
                     &mut test_level
                         .level()
                         .attacked_by(&entityless_attack)
-                        .with_player_resolver(players),
+                        .with_player_resolver(players, &mut memory),
                     1.0,
                     Damage::of(DamageKind::InWall),
                 ),

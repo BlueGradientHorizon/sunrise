@@ -170,7 +170,6 @@ impl Game<'_> {
         // eligible entity tick, never from the later global positioning pass.
         let mut retried_rider = None;
         let mut resume_from = 0;
-        let mut resume_credit_expiring = false;
         let mut resume_sampled = None;
         let mut resume_guest = None;
         // The slot of the mob whose own Pre was just told (a type a mod named): it resumes there
@@ -217,7 +216,10 @@ impl Game<'_> {
                     Some(&self.pack.block_registries),
                     &self.damage_hooks,
                 )
-                .with_player_resolver(crate::game::entity::player_resolver!(self))
+                .with_player_resolver(
+                    crate::game::entity::player_resolver!(self),
+                    &mut player_credit,
+                )
                 .with_effects(crate::game::entity::hit_effects_of!(
                     self,
                     None,
@@ -544,11 +546,6 @@ impl Game<'_> {
                     };
                     w.section_writer = live_section_observer.clone();
                     w.controlling_player_movement = controlling_player_movement;
-                    let credit_expiring = if resuming {
-                        resume_credit_expiring
-                    } else {
-                        m.ai.last_hurt_by_player == 1
-                    };
                     ticked.insert(m.id);
                     // `sunrise-report`'s cost by mob type (tick_profile.rs).
                     let sampled = if resuming {
@@ -641,7 +638,6 @@ impl Game<'_> {
                                 guests[k].1 = player;
                             }
                             resume_from = from;
-                            resume_credit_expiring = credit_expiring;
                             resume_sampled = sampled;
                             resume_guest = seen_guest;
                             resume_selection = selection;
@@ -706,9 +702,6 @@ impl Game<'_> {
                         }
                     }
                     m.despawn = mod_api::Despawn::default();
-                    if credit_expiring && m.ai.last_hurt_by_player == 0 {
-                        player_credit.remove(&m.id);
-                    }
                     if seen_guest.is_none() {
                         base.player = w.player;
                     } else if let Some(k) = lent {

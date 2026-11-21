@@ -685,6 +685,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             .unwrap()
             .ai
             .last_hurt_by_player = 0;
+        game.last_hurt_by_player.remove(&creaking_id);
         assert!(
             !game.run_command("damage 00000055-0000-0000-0000-000000000001 1 minecraft:generic")
         );

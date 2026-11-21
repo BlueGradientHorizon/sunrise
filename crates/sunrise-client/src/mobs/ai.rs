@@ -1251,9 +1251,6 @@ fn tick_until_pause(
     m.anim.begin_tick();
     super::camel::tick_age(m, w.game_time);
     m.ai.seen_cache.clear();
-    if m.ai.last_hurt_by_player > 0 {
-        m.ai.last_hurt_by_player -= 1;
-    }
     drop_invalid_player_target(m, w);
     // Mob.tick pre-update hooks (Creeper.tick swells before super.tick).
     pre_tick(m, w, events);
@@ -2418,6 +2415,7 @@ fn base_tick_after_air(
     if matches!(m.species(), Species::Evoker | Species::Illusioner) {
         super::illager::cast_particles(m, events);
     }
+    level.tick_player_memory(m);
     super::hurt_by::base_tick(m, w);
     // LivingEntity.baseTick runs tickEffects after the timers count down.
     tick_effects_hurting(m, w.loop_context, level, w.mod_effects, &mut |m| {
