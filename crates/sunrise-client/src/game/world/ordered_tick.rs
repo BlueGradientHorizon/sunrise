@@ -41,6 +41,13 @@ pub(super) struct OrderedTicks {
     /// The falling blocks (id, join) that ended a tick still falling with a part listening to
     /// `falling_tick`, delivered after the pass.
     pub(super) falling_ticked: Vec<(u32, JoinSeq)>,
+    /// While a falling block run ticks: a block that finished (landed, dropped, gone) stays
+    /// in its list with its final state and is removed with the rest of the wave once the run
+    /// ends. Taking each out at once shifts the list tail per block, which is quadratic when a
+    /// filled cube of sand lands in one tick.
+    pub(super) defer_landings: bool,
+    /// The joins of the blocks that finished in this run, removed together after it.
+    pub(super) landed: Vec<JoinSeq>,
     /// Whether the entity tick hooks are heard this tick, and which types are told alone: the
     /// server's unsimulated entities of those types are told at their place in this order
     /// (game/modding/native_ticks.rs).
@@ -122,6 +129,8 @@ impl Game<'_> {
             pending_buf,
             armor_stands,
             falling_ticked,
+            defer_landings: false,
+            landed: Vec::new(),
             told,
         };
     }
@@ -175,6 +184,7 @@ impl Game<'_> {
         // run and again after an explosion, which can move or remove them.
         let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
+        self.ordered.defer_landings = true;
         'entity: for (join, kind) in pending.drain(..) {
             self.ordered.done = Some(join);
             // ServerLevel.tick: only entities in entity-ticking chunks tick.
@@ -431,12 +441,32 @@ impl Game<'_> {
                 }
             }
         }
+        self.ordered.defer_landings = false;
+        self.remove_landed_falling();
         self.ordered.pending_buf = pending;
         self.deliver_falling_ticks();
         if events && let Err(e) = self.process_level_events() {
             first_error.get_or_insert(e);
         }
         first_error.map_or(Ok(()), Err)
+    }
+
+    /// Removes the falling blocks that finished in the run that just ended, in one pass over the
+    /// list (see [`OrderedTicks::defer_landings`]). Their residency retires as each leaves.
+    fn remove_landed_falling(&mut self) {
+        if self.ordered.landed.is_empty() {
+            return;
+        }
+        let mut landed = std::mem::take(&mut self.ordered.landed);
+        landed.sort_unstable();
+        for owner in self
+            .falling
+            .extract_if(|block| landed.binary_search(&block.join_seq()).is_ok())
+        {
+            drop(owner);
+        }
+        landed.clear();
+        self.ordered.landed = landed;
     }
 
     /// Before a batch of another kind ticks: the three kinds' entities that
