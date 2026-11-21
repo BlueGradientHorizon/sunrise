@@ -1982,6 +1982,8 @@ struct RegionFiles {
     clock: u64,
     /// Each region's write stamp (`far_regions::writing`).
     written: HashMap<(i32, i32), u64>,
+    #[cfg(test)]
+    close_on_evict: Option<fn(RegionFile) -> std::io::Result<()>>,
 }
 impl RegionFiles {
     #[cfg(test)]
@@ -1993,14 +1995,14 @@ impl RegionFiles {
     fn open(&self) -> usize {
         self.regions.values().filter(|(r, _)| r.is_some()).count()
     }
-    /// Close the least recently used regions until there is room for one
-    /// more, as `RegionFileStorage.getRegionFile` does. A region a reader or
-    /// the writer still holds stays: closing it under them would let a
-    /// second handle read a header older than its sectors. A failed close fails this access.
-    fn make_room(
-        &mut self,
-        mut close: impl FnMut(RegionFile) -> std::io::Result<()>,
-    ) -> std::io::Result<()> {
+    /// `RegionFileStorage.cache`: remove the least recently used region before closing it.
+    /// A region a reader or the writer still holds stays: closing it under them would let a
+    /// second handle read a header older than its sectors.
+    fn make_room(&mut self) -> Vec<((i32, i32), std::io::Error)> {
+        let close = RegionFile::close;
+        #[cfg(test)]
+        let close = self.close_on_evict.unwrap_or(close);
+        let mut failures = Vec::new();
         while self.regions.len() >= MAX_OPEN_REGIONS {
             let oldest = self
                 .regions
@@ -2014,55 +2016,85 @@ impl RegionFiles {
             let (file, _) = self.regions.remove(&key).unwrap();
             if let Some(file) = file {
                 // The cache owns the only reference, as checked above under its lock.
-                Arc::into_inner(file)
+                let closed = Arc::into_inner(file)
                     .unwrap()
                     .into_inner()
                     .map_err(|_| std::io::Error::other("region file poisoned"))
-                    .and_then(&mut close)?;
+                    .and_then(close);
+                if let Err(error) = closed {
+                    failures.push((key, error));
+                }
             }
         }
-        Ok(())
+        failures
     }
 }
-/// The region file at `path` through the cache, which readers and the writer
-/// share, so a read never sees a header older than the sectors it points to.
-/// `create` makes a missing file (for a write); otherwise a missing file is
-/// `None`, until a write creates it.
-fn cached_region(
-    cache: &RegionCache,
-    key: (i32, i32),
-    path: &Path,
-    create: bool,
-) -> std::io::Result<Option<Arc<Mutex<RegionFile>>>> {
-    let mut cache = cache
-        .lock()
-        .map_err(|_| std::io::Error::other("region cache poisoned"))?;
-    cache.clock += 1;
-    let now = cache.clock;
-    if let Some((cached, used)) = cache.regions.get_mut(&key)
-        && (cached.is_some() || !create)
-    {
-        *used = now;
-        return Ok(cached.clone());
-    }
-    cache.make_room(RegionFile::close)?;
-    if create && let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    // A file this process can't write (a read-only world) is still read.
-    let region = match RegionFile::open_writable(path, create) {
-        Err(e) if !create && e.kind() == std::io::ErrorKind::PermissionDenied => {
-            RegionFile::open(path)
+
+#[derive(Clone, Copy)]
+struct RegionStorage<'a> {
+    root: &'a Path,
+    folder: Folder,
+    cache: &'a RegionCache,
+    reporting: &'a writes::SaveReporting,
+}
+
+impl RegionStorage<'_> {
+    /// Readers and writers share a cache, so a read never sees a header older than the sectors
+    /// it points to. `create` makes a missing file; otherwise a missing file is `None`.
+    fn open_cached(
+        self,
+        (rx, rz): (i32, i32),
+        create: bool,
+    ) -> std::io::Result<Option<Arc<Mutex<RegionFile>>>> {
+        let key = (rx, rz);
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| std::io::Error::other("region cache poisoned"))?;
+        cache.clock += 1;
+        let now = cache.clock;
+        if let Some((cached, used)) = cache.regions.get_mut(&key)
+            && (cached.is_some() || !create)
+        {
+            *used = now;
+            return Ok(cached.clone());
         }
-        other => other,
-    };
-    let region = match region {
-        Ok(r) => Some(Arc::new(Mutex::new(r))),
-        Err(e) if !create && e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(e),
-    };
-    cache.regions.insert(key, (region.clone(), now));
-    Ok(region)
+        let failed_evictions = cache.make_room();
+        let opened = (|| {
+            let path = region_path(self.root, self.folder.name(), rx, rz);
+            if create && let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            // A file this process can't write (a read-only world) is still read.
+            let region = match RegionFile::open_writable(&path, create) {
+                Err(e) if !create && e.kind() == std::io::ErrorKind::PermissionDenied => {
+                    RegionFile::open(&path)
+                }
+                other => other,
+            };
+            let region = match region {
+                Ok(r) => Some(Arc::new(Mutex::new(r))),
+                Err(e) if !create && e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(e),
+            };
+            cache.regions.insert(key, (region.clone(), now));
+            Ok(region)
+        })();
+        drop(cache);
+        // Isolate the evicted region's failure: the requested region must use its own result.
+        for ((rx, rz), error) in failed_evictions {
+            let error = std::io::Error::new(
+                error.kind(),
+                format!(
+                    "Failed to close region [{rx}, {rz}] in {}: {error}",
+                    self.folder.name()
+                ),
+            );
+            self.reporting
+                .report(self.folder, (rx << 5, rz << 5), &error);
+        }
+        opened
+    }
 }
 /// Write `records` into the region files of `folder` in place, as vanilla's
 /// `RegionFile.write` does: each chunk takes free sectors and the header
@@ -2071,9 +2103,7 @@ fn cached_region(
 /// is locked for the writes (`compress_records`), and each region is flushed
 /// to the disk once. An unencodable record is skipped, leaving its old slot alone.
 fn write_region_records(
-    root: &Path,
-    cache: &RegionCache,
-    folder: &str,
+    storage: RegionStorage<'_>,
     records: &[((i32, i32), &Record)],
     sync_data: &impl Fn(&fs::File) -> std::io::Result<()>,
 ) -> RegionWriteOutcome {
@@ -2081,9 +2111,7 @@ fn write_region_records(
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as u32);
     let compressed = compress_records(records, timestamp);
-    write_prepared_region_records(
-        root, cache, folder, timestamp, records, compressed, sync_data,
-    )
+    write_prepared_region_records(storage, timestamp, records, compressed, sync_data)
 }
 
 #[derive(Default)]
@@ -2093,9 +2121,7 @@ struct RegionWriteOutcome {
 }
 
 fn write_prepared_region_records(
-    root: &Path,
-    cache: &RegionCache,
-    folder: &str,
+    storage: RegionStorage<'_>,
     timestamp: u32,
     records: &[((i32, i32), &Record)],
     compressed: Vec<compression_pool::Prepared>,
@@ -2118,15 +2144,14 @@ fn write_prepared_region_records(
         }
     }
     for ((rx, rz), mut list) in by_region {
-        let path = region_path(root, folder, rx, rz);
         // Clearing chunks of a region that doesn't exist changes nothing.
         let create = list.iter().any(|(_, _, r)| r.is_some());
         let result: std::io::Result<()> = (|| {
-            let Some(region) = cached_region(cache, (rx, rz), &path, create)? else {
+            let Some(region) = storage.open_cached((rx, rz), create)? else {
                 return Ok(());
             };
             // Keep far readers on the exact locked read path until the flush completes.
-            let _writing = far_regions::writing(cache, (rx, rz));
+            let _writing = far_regions::writing(storage.cache, (rx, rz));
             let mut region = region
                 .lock()
                 .map_err(|_| std::io::Error::other("region file poisoned"))?;
@@ -2155,7 +2180,10 @@ fn write_prepared_region_records(
                     Err(_) => region.sync(),
                 };
                 if let Err(error) = synced {
-                    log::warn!("Failed to synchronize {folder} region [{rx}, {rz}]: {error}");
+                    log::warn!(
+                        "Failed to synchronize {} region [{rx}, {rz}]: {error}",
+                        storage.folder.name()
+                    );
                     outcome.sync_error.get_or_insert(error);
                 }
             }
@@ -2234,16 +2262,11 @@ fn region_path(root: &Path, folder: &str, rx: i32, rz: i32) -> PathBuf {
 /// A queued POI record as it is written: claims kept from the saved one, and
 /// a chunk that lost its last POI gets an empty one, as vanilla trusts a
 /// saved section. None when the chunk never had any.
-fn resolve_poi(
-    root: &Path,
-    cache: &RegionCache,
-    (x, z): (i32, i32),
-    record: &Record,
-) -> Option<Record> {
+fn resolve_poi(storage: RegionStorage<'_>, (x, z): (i32, i32), record: &Record) -> Option<Record> {
     let Record::Poi(chunk, tables, professions) = record else {
         return Some(record.clone());
     };
-    let old = read_region_record(root, cache, "poi", x, z)
+    let old = read_region_record(storage, x, z)
         .and_then(|old| {
             old.map(|mut old| {
                 upgrade_record(Folder::Poi, &mut old, || None)?;
@@ -2266,16 +2289,8 @@ fn resolve_poi(
     };
     Some(Record::Tag(Arc::new(tag)))
 }
-fn read_region_record(
-    root: &Path,
-    cache: &RegionCache,
-    folder: &str,
-    x: i32,
-    z: i32,
-) -> Result<Option<NamedTag>> {
-    let key = (x >> 5, z >> 5);
-    let path = region_path(root, folder, key.0, key.1);
-    let Some(region) = cached_region(cache, key, &path, false)? else {
+fn read_region_record(storage: RegionStorage<'_>, x: i32, z: i32) -> Result<Option<NamedTag>> {
+    let Some(region) = storage.open_cached((x >> 5, z >> 5), false)? else {
         return Ok(None);
     };
     let record = region
@@ -2599,6 +2614,19 @@ impl SaveDir {
         &self.save_reporting.reporter
     }
 
+    fn region_storage(&self, folder: Folder) -> RegionStorage<'_> {
+        RegionStorage {
+            root: &self.root,
+            folder,
+            cache: match folder {
+                Folder::Region => &self.regions,
+                Folder::Entities => &self.entity_regions,
+                Folder::Poi => &self.poi_regions,
+            },
+            reporting: &self.save_reporting,
+        }
+    }
+
     fn items_for_save(&self) -> Result<&Arc<crate::items::Items>> {
         self.items
             .as_ref()
@@ -2855,23 +2883,21 @@ impl SaveDir {
         z: i32,
         read_pending: fn(&Record) -> Option<Arc<NamedTag>>,
     ) -> std::result::Result<Option<NamedTag>, ()> {
+        let kind = Folder::of(folder);
         let pending = self
             .pending
             .lock()
-            .map_err(|_| ())?
-            .get(&(Folder::of(folder), x, z))
+            .map_err(|_| {
+                crate::chunk_io::report_load_failure(&self.root, x, z, &"pending writes poisoned");
+            })?
+            .get(&(kind, x, z))
             .map(|(_, r)| r.clone());
         if let Some(record) = pending
             && let Ok(tag) = compression_pool::catch_encoding_panic(|| Ok(read_pending(&record)))
         {
             return Ok(tag.map(|t| (*t).clone()));
         }
-        let cache = match Folder::of(folder) {
-            Folder::Region => &self.regions,
-            Folder::Entities => &self.entity_regions,
-            Folder::Poi => &self.poi_regions,
-        };
-        read_region_record(&self.root, cache, folder, x, z)
+        read_region_record(self.region_storage(kind), x, z)
             .inspect(|record| {
                 if self.trusted_fluid_load
                     && folder == "region"
@@ -2916,6 +2942,8 @@ impl SaveDir {
                 .as_ref()
         })
     }
+    /// `ChunkMap.handleChunkLoadFailure`: once this chunk's read failure has been reported,
+    /// let generation replace it, as `ChunkMap.createEmptyChunk` does.
     pub fn load(&self, x: i32, z: i32, registry: &BlockRegistry, biomes: &Biomes) -> Option<Chunk> {
         self.try_load(x, z, registry, biomes).ok().flatten()
     }
@@ -7022,23 +7050,10 @@ mod tests {
         let save =
             super::SaveDir::new(dir.clone(), LevelShape::OVERWORLD, Some(Default::default()));
         let before = open_fds();
-        let held = super::cached_region(
-            &save.regions,
-            (0, 0),
-            &save.region_path("region", 0, 0),
-            true,
-        )
-        .unwrap()
-        .unwrap();
+        let storage = save.region_storage(Folder::Region);
+        let held = storage.open_cached((0, 0), true).unwrap().unwrap();
         for x in 1..=600 {
-            super::cached_region(
-                &save.regions,
-                (x, 0),
-                &save.region_path("region", x, 0),
-                true,
-            )
-            .unwrap()
-            .unwrap();
+            storage.open_cached((x, 0), true).unwrap().unwrap();
         }
         // Other tests open files at the same time: a margin, far below 600.
         let grown = open_fds().saturating_sub(before);
@@ -7077,18 +7092,16 @@ mod tests {
         let save =
             super::SaveDir::new(dir.clone(), LevelShape::OVERWORLD, Some(Default::default()));
         let lock = super::SessionLock::acquire(&dir).unwrap();
-        let path = save.region_path("entities", 0, 0);
-        let region = super::cached_region(&save.entity_regions, (0, 0), &path, true)
+        let region = save
+            .region_storage(Folder::Entities)
+            .open_cached((0, 0), true)
             .unwrap()
             .unwrap();
-        let chunk_region = super::cached_region(
-            &save.regions,
-            (0, 0),
-            &save.region_path("region", 0, 0),
-            true,
-        )
-        .unwrap()
-        .unwrap();
+        let chunk_region = save
+            .region_storage(Folder::Region)
+            .open_cached((0, 0), true)
+            .unwrap()
+            .unwrap();
         // Hold the actual region locks, rather than relying on disk speed or sleeps. The
         // writer takes the Region folder before Entities in a pass, so both are held.
         let blocked = (region.lock().unwrap(), chunk_region.lock().unwrap());
@@ -7136,14 +7149,11 @@ mod tests {
         let lock = super::SessionLock::acquire(&dir).unwrap();
         // Hold the region lock so the writer stops there deterministically, rather
         // than relying on disk speed or sleeps: it keeps the lock while it writes.
-        let region = super::cached_region(
-            &save.regions,
-            (0, 0),
-            &save.region_path("region", 0, 0),
-            true,
-        )
-        .unwrap()
-        .unwrap();
+        let region = save
+            .region_storage(Folder::Region)
+            .open_cached((0, 0), true)
+            .unwrap()
+            .unwrap();
         let blocked = region.lock().unwrap();
         let record = |x: i32| ((x, 0), None);
         save.write_records("region", (0..4).map(record).collect(), false)
@@ -10016,15 +10026,8 @@ mod tests {
             name: "".into(),
             tag,
         }));
-        let cache = match Folder::of(folder) {
-            Folder::Region => &save.regions,
-            Folder::Entities => &save.entity_regions,
-            Folder::Poi => &save.poi_regions,
-        };
         let result = super::write_region_records(
-            &save.root,
-            cache,
-            folder,
+            save.region_storage(Folder::of(folder)),
             &[((0, 0), &record)],
             &fs::File::sync_data,
         );
@@ -10173,9 +10176,7 @@ mod tests {
             ]),
         }));
         let result = super::write_region_records(
-            &nether.root,
-            &nether.regions,
-            "region",
+            nether.region_storage(Folder::Region),
             &[((1, 0), &current)],
             &fs::File::sync_data,
         );

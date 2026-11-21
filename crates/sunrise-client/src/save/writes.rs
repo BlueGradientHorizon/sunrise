@@ -125,7 +125,7 @@ impl SaveReporting {
         }
     }
 
-    fn report(&self, folder: Folder, key: (i32, i32), error: &std::io::Error) {
+    pub(super) fn report(&self, folder: Folder, key: (i32, i32), error: &std::io::Error) {
         let label = match folder {
             Folder::Region => "chunk",
             Folder::Entities => "entities",
@@ -321,7 +321,12 @@ impl SaveDir {
                             Folder::Entities => &entity_regions,
                             Folder::Poi => &poi_regions,
                         };
-                        let folder = kind.name();
+                        let storage = RegionStorage {
+                            root: &root,
+                            folder: kind,
+                            cache,
+                            reporting: &reporting,
+                        };
                         let newest = |k: &(i32, i32), seq: u64| {
                             pending.lock().map_or(true, |p| {
                                 p.get(&(kind, k.0, k.1)).is_none_or(|p| p.0 <= seq)
@@ -343,7 +348,7 @@ impl SaveDir {
                                     return None;
                                 }
                                 match compression_pool::catch_encoding_panic(|| {
-                                    Ok(resolve_poi(&root, cache, job.key, &job.record))
+                                    Ok(resolve_poi(storage, job.key, &job.record))
                                 }) {
                                     Ok(record) => record.map(|record| (job.key, record)),
                                     Err(error) => {
@@ -354,8 +359,7 @@ impl SaveDir {
                             })
                             .collect();
                         let records: Vec<_> = resolved.iter().map(|(k, r)| (*k, r)).collect();
-                        let outcome =
-                            write_region_records(&root, cache, folder, &records, &sync_data);
+                        let outcome = write_region_records(storage, &records, &sync_data);
                         for (key, error) in outcome.failed_records {
                             reporting.report(kind, key, &error);
                         }
@@ -639,7 +643,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let save = SaveDir::new(dir.path().to_path_buf(), LevelShape::OVERWORLD, None);
         let path = save.region_path("region", 0, 0);
-        cached_region(&save.regions, (0, 0), &path, true).unwrap();
+        let storage = save.region_storage(Folder::Region);
+        storage.open_cached((0, 0), true).unwrap();
         fs::OpenOptions::new()
             .append(true)
             .open(&path)
@@ -655,12 +660,7 @@ mod tests {
         assert_eq!(fs::metadata(&path).unwrap().len(), 1);
 
         for x in 1..=MAX_OPEN_REGIONS as i32 {
-            let missing = save.region_path("region", x, 0);
-            assert!(
-                cached_region(&save.regions, (x, 0), &missing, false)
-                    .unwrap()
-                    .is_none()
-            );
+            assert!(storage.open_cached((x, 0), false).unwrap().is_none());
         }
         assert!(!save.regions.lock().unwrap().regions.contains_key(&(0, 0)));
         // The production eviction path pads the file before forcing and closing it.
@@ -669,24 +669,47 @@ mod tests {
     }
 
     #[test]
-    fn an_eviction_failure_fails_only_the_triggering_operation() {
+    fn a_failed_eviction_does_not_regenerate_the_requested_chunk() {
         let dir = tempfile::tempdir().unwrap();
-        let save = SaveDir::new(dir.path().to_path_buf(), LevelShape::OVERWORLD, None);
-        for x in 0..MAX_OPEN_REGIONS as i32 {
-            let path = save.region_path("region", x, 0);
-            cached_region(&save.regions, (x, 0), &path, x == 0).unwrap();
+        let open = || SaveDir::new(dir.path().to_path_buf(), LevelShape::OVERWORLD, None);
+        let key = (32, 0);
+        let saved = NamedTag {
+            name: "".into(),
+            tag: Tag::compound([
+                ("DataVersion", Tag::Int(DATA_VERSION)),
+                ("Status", string("minecraft:full")),
+                ("xPos", Tag::Int(key.0)),
+                ("zPos", Tag::Int(key.1)),
+                ("sections", Tag::List(Vec::new())),
+                ("marker", Tag::Int(42)),
+            ]),
+        };
+        open()
+            .write_records("region", vec![(key, Some(saved))], true)
+            .unwrap();
+        let save = open();
+        let storage = save.region_storage(Folder::Region);
+        for x in (0..=MAX_OPEN_REGIONS as i32).filter(|&x| x != 1) {
+            storage.open_cached((x, 0), x == 0).unwrap();
         }
-        let failure = std::io::ErrorKind::PermissionDenied;
-        let error = save
-            .regions
-            .lock()
-            .unwrap()
-            .make_room(|region| {
-                assert_eq!(region.position(), ChunkPos::new(0, 0));
-                Err(failure.into())
-            })
-            .unwrap_err();
-        assert_eq!(error.kind(), failure);
+        save.regions.lock().unwrap().close_on_evict = Some(|region| {
+            assert_eq!(region.position(), ChunkPos::new(0, 0));
+            Err(std::io::Error::other("injected close failure"))
+        });
+        let (registry, biomes) = super::super::loot_tests::fixture();
+        let loaded = save
+            .load(key.0, key.1, &registry, &biomes)
+            .expect("load B, not generation");
+        assert_eq!(
+            loaded.saved.as_ref().unwrap().root.get(&"marker".into()),
+            Some(&Tag::Int(42))
+        );
+        assert_eq!(save.record_save_failures(), 1);
+        assert!(
+            save.save_failure_reporter()
+                .suppressed_summary()
+                .contains("Failed to close region [0, 0] in region: injected close failure")
+        );
         assert!(!save.regions.lock().unwrap().regions.contains_key(&(0, 0)));
         save.flush().unwrap();
     }

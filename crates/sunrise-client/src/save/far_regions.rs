@@ -133,7 +133,7 @@ impl SaveDir {
         }
         // The region is being written, or was a moment ago. The writer's own
         // open file is in the gameplay cache, and exact under its lock.
-        read_region_record(&self.root, &self.regions, "region", x, z).ok()?
+        read_region_record(self.region_storage(Folder::Region), x, z).ok()?
     }
 }
 
@@ -164,9 +164,7 @@ mod tests {
     }
     fn write(save: &SaveDir, records: &[((i32, i32), &Record)]) {
         let result = write_region_records(
-            &save.root,
-            &save.regions,
-            "region",
+            save.region_storage(Folder::Region),
             records,
             &fs::File::sync_data,
         );

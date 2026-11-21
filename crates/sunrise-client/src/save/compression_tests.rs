@@ -7,7 +7,7 @@ use sunrise_core::{
 use sunrise_world::region::RegionFile;
 
 use super::{
-    Chunk, ChunkExtras, Compression, Encoding, LevelShape, Record,
+    Chunk, ChunkExtras, Compression, Encoding, Folder, LevelShape, Record,
     compression_pool::{
         CompressionPool, compress_record, compress_records, compress_records_with_pool,
     },
@@ -226,9 +226,7 @@ fn a_compressed_size_rejection_does_not_skip_healthy_records_in_either_region() 
             .map(|(_, record)| compress_record(record, Compression::None, 0, Limits::saved()))
             .collect();
         let outcome = write_prepared_region_records(
-            &save.root,
-            &save.regions,
-            "region",
+            save.region_storage(Folder::Region),
             0,
             &records,
             prepared,
