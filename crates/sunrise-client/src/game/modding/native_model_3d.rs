@@ -40,16 +40,18 @@ impl Game<'_> {
         let (start, blends) = (batch.vertices.len(), batch.blends.len());
         match subject {
             Gui3dSubject::Item(stack) => {
-                let stack = crate::game::api_values::stack_value(stack)
-                    .map_err(|_| Gui3dError::UnknownItem)?;
-                // GuiGraphicsExtractor.item draws nothing for an empty stack; ItemStack already
-                // guarantees a nonzero count.
-                if &*stack.item == "minecraft:air" {
+                let item =
+                    mod_api::__private::item_key_id(stack.item()).ok_or(Gui3dError::UnknownItem)?;
+                // GuiGraphicsExtractor.item checks for emptiness before inspecting components.
+                // ItemStack already guarantees a nonzero count.
+                if item == "minecraft:air" {
                     return Ok(());
                 }
-                if self.res.items().get(&stack.item).is_none() {
+                if self.res.items().get(item).is_none() {
                     return Err(Gui3dError::UnknownItem);
                 }
+                let stack = crate::game::api_values::encode_stack(stack, item.into())
+                    .map_err(|_| Gui3dError::InvalidStack)?;
                 if !self.draw_item_model_posed(batch, &stack, pose) {
                     return Err(Gui3dError::NotFinite);
                 }
@@ -204,7 +206,27 @@ mod tests {
             let air =
                 mod_api::ItemStack::new(mod_api::__private::item_key("minecraft:air").unwrap(), 1)
                     .unwrap();
+            let mut sword = mod_api::ItemStack::of(
+                mod_api::__private::item_key("minecraft:diamond_sword").unwrap(),
+            );
+            let invalid = mod_api::Tag::compound([(
+                "on_consume_effects",
+                mod_api::Tag::List(vec![mod_api::Tag::compound([
+                    ("type", mod_api::Tag::String("example:charge".into())),
+                    ("bad", mod_api::Tag::Double(f64::NAN.to_bits())),
+                ])]),
+            )]);
+            let mut air = air;
+            for stack in [&mut air, &mut sword] {
+                stack
+                    .set_components([("minecraft:consumable".into(), invalid.clone())].into())
+                    .unwrap();
+            }
             assert_eq!(draw.model_3d(Gui3dSubject::Item(&air), view), Ok(()));
+            assert_eq!(
+                draw.model_3d(Gui3dSubject::Item(&sword), view),
+                Err(Gui3dError::InvalidStack)
+            );
             assert!(draw.surface.vertices.is_empty());
             assert!(draw.surface.blends.is_empty());
 
