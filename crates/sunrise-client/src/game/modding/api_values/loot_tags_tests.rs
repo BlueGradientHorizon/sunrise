@@ -45,6 +45,7 @@ impl ModLootFunction for TagReader {
             }
             mod_api::TagMembers::Missing => 0,
             mod_api::TagMembers::Unavailable => panic!("loot has a loaded item table"),
+            other => panic!("unexpected tag lookup result: {other:?}"),
         };
         Ok(stack)
     }

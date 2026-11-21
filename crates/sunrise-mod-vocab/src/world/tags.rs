@@ -18,8 +18,9 @@ impl TagKey {
 }
 
 /// The result of reading one registry tag from the current authoritative snapshot.
+// no wire: this native lookup result carries process-local registry keys.
 #[derive(Clone, Debug, PartialEq, Eq)]
-// exhaustive: the lookup can only find a tag, miss it, or be unavailable.
+#[non_exhaustive]
 pub enum TagMembers<K> {
     /// No tag by this name bound, including a definition with an unresolved required entry.
     Missing,

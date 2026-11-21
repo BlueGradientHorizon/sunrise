@@ -362,6 +362,8 @@ for either an absent tag or a loaded empty tag. Use `tags.items(tag_key)`,
 - `Unavailable`: that registry's authoritative tag table has not been applied, or a member
   key cannot be resolved. The query never returns partial membership.
 
+Include a fallback arm when matching `TagMembers`: the enum is non-exhaustive.
+
 Clients read only the tags their server sent. Item and block enumeration includes keys no
 mod requested. Key resolution itself can be refused if the runtime cannot allocate a name
 slot. No lookup stringifies a retained key.
