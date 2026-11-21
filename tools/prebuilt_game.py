@@ -449,16 +449,19 @@ def official_externs(deps: Path) -> list[str]:
     return ["--cfg", 'feature="official"', "--extern", f"sunrise_official={library}"] if library else []
 
 
-def api_route(out: Path) -> list[str]:
+def api_route(out: Path, host: str) -> list[str]:
     """Build the fixed executable shared by both native routes, once for this SDK."""
     deps = out / "deps"
     folder = out / RUNTIME
     folder.mkdir()
     common = ["--edition", "2024", "-C", "prefer-dynamic", "-C", "opt-level=3", "-L", f"dependency={deps}",
               "-L", f"dependency={out / 'host'}", "-L", f"native={out / NATIVE}"]
-    origin = {"linux": ["-Wl,-rpath,$ORIGIN"], "darwin": ["-Wl,-rpath,@executable_path"]}.get(sys.platform, [])
+    link_args = {"linux": ["-Wl,-rpath,$ORIGIN"], "darwin": ["-Wl,-rpath,@executable_path"]}.get(sys.platform, [])
+    if sys.platform == "win32":
+        # Match packaging/windows/exe.rs at this executable's link, not in SDK metadata.
+        link_args = ["/STACK:8388608" if host.endswith("-msvc") else "-Wl,--stack,8388608"]
     run(["rustc", *common, "--crate-type", "bin", "--crate-name", "sunrise_native_game",
-         *(flag for arg in origin for flag in ("-C", f"link-arg={arg}")),
+         *(flag for arg in link_args for flag in ("-C", f"link-arg={arg}")),
          *extern_args(deps, "sunrise_client"), *extern_args(deps, "mod_api"), *extern_args(deps, "sunrise_mod_package"),
          *extern_args(deps, "sunrise_mod_host"), *official_externs(deps),
          "-o", str(folder / EXECUTABLE), str(API_MAIN)])
@@ -659,7 +662,7 @@ def _build_locked(out: Path, server: bool, target_dir: Path) -> None:
         shutil.copy2(staged / manifest, out / manifest)
     if official and dylib(deps, "sunrise_official") is None:
         sys.exit("prebuilt client is missing the sunrise-official dylib")
-    sliced = slices(metadata, copied, api_route(out))
+    sliced = slices(metadata, copied, api_route(out, host))
     files = {str(path.relative_to(out).as_posix()): sha256(path) for path in sorted(out.rglob("*")) if path.is_file()}
     identity = {
         "package_format": layout,

@@ -3,8 +3,8 @@
 //! taskbar show it, and the window takes it as its icon. The `windows-segment-heap` feature also
 //! embeds `crates/sunrise-client/windows-segment-heap.manifest` in the same resource compilation.
 
-/// Embed the executable's resources on Windows; do nothing for other targets.
-pub fn resources() {
+/// Set the executable's stack reservation and embed its resources on Windows only.
+pub fn resources(bin: &str) {
     let manifest_dir = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let ico = manifest_dir
         .join("../..")
@@ -18,6 +18,12 @@ pub fn resources() {
         println!("cargo:rerun-if-env-changed=RC_PATH");
         let target_env = std::env::var("CARGO_CFG_TARGET_ENV")
             .expect("Cargo must provide the target environment");
+        // Debug startup constructs Game by value on the main thread; Windows defaults to 1 MiB.
+        let stack = match target_env.as_str() {
+            "msvc" => "/STACK:8388608",
+            _ => "-Wl,--stack,8388608",
+        };
+        println!("cargo:rustc-link-arg-bin={bin}={stack}");
         let (resource_manifest_dir, resource_icon) = match resource_path(&manifest_dir, &target_env)
             .and_then(|dir| Ok((dir, resource_path(&ico, &target_env)?)))
         {

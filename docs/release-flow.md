@@ -262,8 +262,15 @@ exist, verifies Windows PE architectures, checks the `--help` and `--version` en
 legs are fresh machines. The game's run of a new world (1500 offscreen frames, `smoke-test.json`, which the Nightly
 publishes) is `linux-smoke`'s, on Dyna's runner with the prepared files, from the hosted Linux archive.
 
-Game and server executables use the platform default for the process main thread's stack. Worker threads request
-stack sizes independently; the integrated server still honors `RUST_MIN_STACK` when it exceeds its own minimum.
+On Windows, the binaries built by `sunrise-game` and `sunrise-official`, and the SDK's `sunrise_native_game`,
+reserve 8 MiB for the main thread (`/STACK:8388608` with MSVC, `-Wl,--stack,8388608` with GNU). This gives
+startup's by-value `Game` construction more room than the Windows default. The by-hand Windows ARM64 job in
+`checks` (`gh workflow run checks --ref <ref>`) checks `SizeOfStackReserve` in both Cargo game executables built
+from that same ref. The packaging workflow checks the PE architecture, not the stack size, because snapshots can
+package older revisions with a different reservation. Other shipped executables and platforms use their default
+main stack. The SDK sets the flag when it links the executable; `sunrise-prebuilt.json` does not carry `link_args`.
+Gameplay workers request their own 8 MiB stack; the integrated server honors a larger `RUST_MIN_STACK`. The Linux
+smoke run starts it without that override.
 
 The musl archive is an optional manual download for musl-based Linux desktops; see
 [installation and updates](native-client.md#musl-linux-manual-installation). The launcher still selects the
