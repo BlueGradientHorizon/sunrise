@@ -689,8 +689,8 @@ pub trait LevelAccess: BlockEntityNeighbors {
         _fluid: FluidState,
     ) {
     }
-    /// `LevelChunk.setBlockState` replaced the block at `pos` with a different
-    /// block that does not keep block entities (`!keeps_block_entity`), right
+    /// `LevelChunk.setBlockState` replaced the block at `pos` with one that does
+    /// not preserve block entities (`!Behaviours::keeps_connection_group`), right
     /// after the state write and before `observe_block_changed` and side effects.
     /// Server levels clear derived per-position state (such as connection groups)
     /// here so listeners running after it can publish new state for the new block.

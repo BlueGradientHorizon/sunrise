@@ -65,6 +65,14 @@ impl Game<'_> {
             },
         );
         self.world.watched = watched;
+        if !out.grouped_changes.is_empty() {
+            let behaviours = self.res.behaviours();
+            for &((x, y, z), old, new) in &out.grouped_changes {
+                if !behaviours.keeps_connection_group(BlockStateId(old), BlockStateId(new)) {
+                    let _ = self.world.set_connection_group_stored(x, y, z, None);
+                }
+            }
+        }
         // The block entities the new blocks bring, as `native_set_block` makes them (a mod block's own,
         // included), in the order `replace_block_entities` takes them: the positions needing a fresh entity.
         let name = |s: u32| self.res.facts().get(BlockStateId(s)).name.clone();

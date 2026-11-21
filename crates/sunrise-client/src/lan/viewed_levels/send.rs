@@ -318,6 +318,21 @@ impl Hub {
         if taken.is_empty() {
             return;
         }
+        let group_payloads = if g.negotiated_connection_groups() {
+            let mut runs = Runs::new(view.level);
+            for &idx in &taken {
+                if let Some(chunk) = world.chunks.get(&view.queue[idx]) {
+                    for packet in super::super::hub::block_changes::encode_chunk_connection_groups(
+                        chunk, false,
+                    ) {
+                        runs.push(&packet);
+                    }
+                }
+            }
+            runs.finish()
+        } else {
+            Vec::new()
+        };
         let dimension = self.config.dimension.clone();
         let size = taken.len();
         self.guests.update(i, |g| {
@@ -328,6 +343,9 @@ impl Hub {
                 size: size as i32,
             }));
             g.unacknowledged += 1;
+            if !group_payloads.is_empty() {
+                g.sender.send_many(group_payloads);
+            }
             if let Some(view) = g.viewed.views.get_mut(&dimension) {
                 for idx in taken.into_iter().rev() {
                     let key = view.queue.remove(idx);

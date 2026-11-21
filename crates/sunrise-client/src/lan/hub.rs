@@ -40,7 +40,7 @@ use {
 
 /// GameEvent types (ClientboundGameEventPacket).
 pub mod advancements;
-mod block_changes;
+pub(in crate::lan) mod block_changes;
 mod carried_check;
 pub mod chat;
 mod fake_kicks;
@@ -2945,7 +2945,7 @@ impl Hub {
                     }));
                     g.unacknowledged += 1;
                     for chunk in group_chunks {
-                        for packet in block_changes::encode_chunk_connection_groups(chunk) {
+                        for packet in block_changes::encode_chunk_connection_groups(chunk, false) {
                             g.sender.send(packet);
                         }
                     }

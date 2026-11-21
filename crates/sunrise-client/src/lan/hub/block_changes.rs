@@ -2,7 +2,7 @@
 //! the players sent those chunks, and, wrapped with the level, to the players whose client views
 //! it (`viewed_levels`).
 use super::{Guest, Hub};
-use crate::{chunk::Chunk, lan::viewed_levels::send::Runs, world::World};
+use crate::{chunk::Chunk, fast_hash::FxHashSet, lan::viewed_levels::send::Runs, world::World};
 use sunrise_protocol::{
     connection_groups::{self, ChunkEntry, UpdateEntry},
     packets::{
@@ -12,11 +12,35 @@ use sunrise_protocol::{
     viewed_levels::Level,
 };
 
+fn encode_payload(msg: &connection_groups::Message) -> Vec<u8> {
+    let data = connection_groups::encode(msg)
+        .expect("connection_groups::Message batches are capped at MAX_ENTRIES with 0..16 coords");
+    C::CustomPayload(CustomPayload {
+        channel: connection_groups::CHANNEL.into(),
+        data,
+    })
+    .encode()
+}
+
 /// Encode one chunk's connection-group map into one or more `sunrise:connection_groups` play
-/// clientbound custom-payload packet bodies. Empty chunks produce nothing.
-pub(super) fn encode_chunk_connection_groups(chunk: &Chunk) -> Vec<Vec<u8>> {
+/// clientbound custom-payload packet bodies. When `include_empty` is false (initial chunk send),
+/// an empty chunk produces nothing; when true (bulk chunk resend), an empty chunk emits an
+/// authoritative empty `replace: true` snapshot so clients clear any stale groups in unchanged
+/// sections.
+pub(in crate::lan) fn encode_chunk_connection_groups(
+    chunk: &Chunk,
+    include_empty: bool,
+) -> Vec<Vec<u8>> {
     if chunk.connection_groups.is_empty() {
-        return Vec::new();
+        if !include_empty {
+            return Vec::new();
+        }
+        return vec![encode_payload(&connection_groups::Message::Chunk {
+            cx: chunk.x,
+            cz: chunk.z,
+            replace: true,
+            entries: Vec::new(),
+        })];
     }
     let mut entries: Vec<ChunkEntry> = chunk
         .connection_groups
@@ -32,25 +56,18 @@ pub(super) fn encode_chunk_connection_groups(chunk: &Chunk) -> Vec<Vec<u8>> {
         })
         .collect();
     entries.sort_unstable_by_key(|e| (e.y, e.local_z, e.local_x));
-    let mut packets = Vec::new();
-    for (part, slice) in entries.chunks(connection_groups::MAX_ENTRIES).enumerate() {
-        let msg = connection_groups::Message::Chunk {
-            cx: chunk.x,
-            cz: chunk.z,
-            replace: part == 0,
-            entries: slice.to_vec(),
-        };
-        if let Ok(data) = connection_groups::encode(&msg) {
-            packets.push(
-                C::CustomPayload(CustomPayload {
-                    channel: connection_groups::CHANNEL.into(),
-                    data,
-                })
-                .encode(),
-            );
-        }
-    }
-    packets
+    entries
+        .chunks(connection_groups::MAX_ENTRIES)
+        .enumerate()
+        .map(|(part, slice)| {
+            encode_payload(&connection_groups::Message::Chunk {
+                cx: chunk.x,
+                cz: chunk.z,
+                replace: part == 0,
+                entries: slice.to_vec(),
+            })
+        })
+        .collect()
 }
 
 impl Hub {
@@ -142,7 +159,6 @@ impl Hub {
             keys.sort_unstable();
             keys
         };
-        let mut bulk_sent_groups: Vec<(i32, i32)> = Vec::new();
         if !bulk.is_empty() {
             // The single-player window's far terrain draws a column it isn't sent as the window last saw it: it is
             // handed the column to summarize again (`handoff::changed`).
@@ -171,25 +187,21 @@ impl Hub {
                 }
                 let body = self.encoder.body_in(chunk, world);
                 self.send_to_holders(&holders, &body);
-                if !chunk.connection_groups.is_empty() {
-                    let cg_holders: Vec<_> = holders
-                        .iter()
-                        .copied()
-                        .filter(|&(i, level)| {
-                            level.is_none() && self.guests[i].negotiated_connection_groups()
-                        })
-                        .collect();
-                    if !cg_holders.is_empty() {
-                        for packet in encode_chunk_connection_groups(chunk) {
-                            self.send_to_holders(&cg_holders, &packet);
-                        }
+                let cg_holders: Vec<_> = holders
+                    .iter()
+                    .copied()
+                    .filter(|&(i, _)| self.guests[i].negotiated_connection_groups())
+                    .collect();
+                if !cg_holders.is_empty() {
+                    for packet in encode_chunk_connection_groups(chunk, true) {
+                        self.send_to_holders(&cg_holders, &packet);
                     }
-                    bulk_sent_groups.push(key);
                 }
             }
         }
+        let mut sent_blocks: FxHashSet<(i32, i32, i32)> = Default::default();
         let Some(log) = world.block_log.as_mut() else {
-            self.broadcast_connection_group_changes(world, &bulk_sent_groups);
+            self.broadcast_connection_group_changes(world, &bulk, &sent_blocks);
             return;
         };
         if !bulk.is_empty() {
@@ -220,6 +232,7 @@ impl Hub {
                 if holders.is_empty() {
                     continue;
                 }
+                sent_blocks.extend(positions.iter().copied());
                 let packet = if positions.len() == 1 {
                     let (x, y, z) = positions[0];
                     C::BlockUpdate(play::BlockUpdate {
@@ -276,31 +289,48 @@ impl Hub {
                 }
             }
         }
-        self.broadcast_connection_group_changes(world, &bulk_sent_groups);
+        self.broadcast_connection_group_changes(world, &bulk, &sent_blocks);
     }
 
     /// Broadcast incremental connection-group edits/clears logged in `world.connection_group_log`
-    /// to negotiated guests that hold each entry's chunk.
-    fn broadcast_connection_group_changes(&self, world: &mut World, bulk: &[(i32, i32)]) {
+    /// to negotiated holders (both in-level guests and viewed-level viewers) that hold each
+    /// entry's chunk.
+    fn broadcast_connection_group_changes(
+        &self,
+        world: &mut World,
+        bulk: &[(i32, i32)],
+        sent_blocks: &FxHashSet<(i32, i32, i32)>,
+    ) {
         let Some(log) = world.connection_group_log.as_mut() else {
             return;
         };
         if log.is_empty() {
             return;
         }
-        // Collapse repeated writes to the same position, keeping the last value.
+        // Collapse repeated writes to the same position, keeping the last value. Entries in bulk-
+        // resent chunks were already covered by the authoritative chunk snapshot above. An
+        // automatic clear whose paired block write was not sent to clients (e.g. `NONE` or
+        // `UPDATE_INVISIBLE`) is not sent, and drops any superseded earlier write to that cell in
+        // the same pass so stale groups are never published.
         let mut latest: std::collections::BTreeMap<(i32, i32, i32), Option<u64>> =
             Default::default();
-        for (pos, group) in log.drain(..) {
-            if bulk.binary_search(&(pos.0 >> 4, pos.2 >> 4)).is_ok() {
+        for entry in log.drain(..) {
+            if bulk
+                .binary_search(&(entry.pos.0 >> 4, entry.pos.2 >> 4))
+                .is_ok()
+            {
                 continue;
             }
-            latest.insert(pos, group);
+            if entry.require_block_send && !sent_blocks.contains(&entry.pos) {
+                latest.remove(&entry.pos);
+                continue;
+            }
+            latest.insert(entry.pos, entry.group);
         }
         if latest.is_empty() {
             return;
         }
-        // Group by chunk so we only send to negotiated guests that hold that chunk.
+        // Group by chunk so we only send to negotiated holders that hold that chunk.
         let mut by_chunk: std::collections::BTreeMap<(i32, i32), Vec<UpdateEntry>> =
             Default::default();
         for ((x, y, z), group) in latest {
@@ -312,33 +342,28 @@ impl Hub {
                     group,
                 });
         }
-        // Batch per guest so one packet covers all chunks that guest holds.
-        let mut per_guest: std::collections::BTreeMap<usize, Vec<UpdateEntry>> = Default::default();
+        // Batch per guest so one packet (or `sunrise:levels` run) covers all chunks that guest
+        // holds in this level. (`Level` is not `Ord`, so key by guest index; each guest holds at
+        // most one view of the level in place.)
+        let mut per_guest: std::collections::BTreeMap<usize, (Option<Level>, Vec<UpdateEntry>)> =
+            Default::default();
         for (key, entries) in by_chunk {
-            for (i, g) in self.guests.iter().enumerate() {
-                if self.watches(g)
-                    && g.sent_chunks.contains(&key)
-                    && g.negotiated_connection_groups()
-                {
+            for (i, level) in self.holders(key) {
+                if self.guests[i].negotiated_connection_groups() {
                     per_guest
                         .entry(i)
-                        .or_default()
+                        .or_insert_with(|| (level, Vec::new()))
+                        .1
                         .extend(entries.iter().copied());
                 }
             }
         }
-        for (i, entries) in per_guest {
-            let g = &self.guests[i];
+        for (i, (level, entries)) in per_guest {
             for slice in entries.chunks(connection_groups::MAX_ENTRIES) {
-                let msg = connection_groups::Message::Update {
+                let body = encode_payload(&connection_groups::Message::Update {
                     entries: slice.to_vec(),
-                };
-                if let Ok(data) = connection_groups::encode(&msg) {
-                    g.send(&C::CustomPayload(CustomPayload {
-                        channel: connection_groups::CHANNEL.into(),
-                        data,
-                    }));
-                }
+                });
+                self.send_to_holders(&[(i, level)], &body);
             }
         }
     }

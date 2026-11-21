@@ -30,6 +30,9 @@ pub struct Outcome {
     /// Changes of the states `tracked` asked for (block entities, watched
     /// blocks): position, previous and new state.
     pub tracked: Vec<((i32, i32, i32), u32, u32)>,
+    /// Changes at cells that held a connection group in the chunk before this edit:
+    /// position, previous and new state, in run order.
+    pub grouped_changes: Vec<((i32, i32, i32), u32, u32)>,
 }
 
 /// Per state answers, worked out once each.
@@ -95,6 +98,7 @@ impl World {
             };
             let (min_y, sections) = (chunk.min_y(), chunk.sections.len());
             let max_y = chunk.max_y();
+            let has_groups = !chunk.connection_groups.is_empty();
             let list = &by_chunk[&key];
             changed.clear();
             changed.resize(sections, false);
@@ -132,6 +136,12 @@ impl World {
                         vals[at] = r.state;
                         changed[s] = true;
                         any += 1;
+                        if has_groups {
+                            let cell = (s as u32) << 12 | at as u32;
+                            if chunk.connection_groups.contains_key(&cell) {
+                                out.grouped_changes.push(((r.x, yy, r.z), old, r.state));
+                            }
+                        }
                         if tracked_memo.get(old, &mut tracked)
                             || tracked_memo.get(r.state, &mut tracked)
                         {

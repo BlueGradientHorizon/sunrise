@@ -2270,6 +2270,22 @@ mod tests {
 
         let plain_ctm = build(plain);
         assert!(!plain_ctm.has_group_rules());
+        // A rule without `connect_group` must join normally and never invoke the group callback.
+        assert_eq!(
+            plain_ctm.pick(
+                1,
+                0,
+                Face::Up,
+                [0, 64, 0],
+                |o| if o == [-1, 0, 0] { 1 } else { 0 },
+                |_| panic!("group callback must not run for rules without connect_group"),
+                |_| 0,
+                || None,
+                || None,
+                |_| {},
+            ),
+            tile(101)
+        );
         let ctm = build(rule);
         assert!(ctm.has_group_rules());
 

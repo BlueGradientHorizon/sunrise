@@ -116,16 +116,19 @@ level.set_connection_group(host, pos, Some(tank_controller_id))?;
   `connect` predicate matches and `connection_group(pos) == connection_group(neighbour)` with a `Some` value. A
   position with `None` joins nothing (not even another `None` neighbour). Every `u64`, including `0`, is a valid
   group. When a table enables `cover`, the covering cell must also share the same connection group to suppress a join.
-- **Derived visual state.** Connection groups are never saved to disk. Republish them when a chunk or block entity
-  loads (for example in `BlockEntityPart::block_entity_on_load` or `Hooks::chunk_load`) and whenever your multiblock
-  forms, splits, or changes membership.
-- **Automatic lifetime.** On the server, replacing a block with one that does not keep block entities clears its
-  connection group automatically and syncs the clear to clients; changing only a block state property of the same
-  block preserves it. Writing to an unloaded chunk, an out-of-height position, or an unchanged group returns
-  `Ok(false)`.
-- **Sync and transactions.** The server syncs connection groups to Sunrise clients with chunk loads and incremental
-  updates (skipping vanilla clients) and remeshes affected sections and chunk borders. Writes inside a Host
-  transaction are tentative: aborting restores the previous group quietly, and committing publishes it.
+- **Derived visual state.** Connection groups are never saved to disk. For block-entity-backed structures,
+  republish them from `block_entity_on_load` when `HostSide::Server`; for chunks without block entities, queue
+  the loaded chunk in `chunk_load` and publish on the next server tick (since `chunk_load` gives read-only
+  `&dyn Host`). Also republish whenever your multiblock forms, splits, or changes membership.
+- **Automatic lifetime.** On the server, replacing a block with one that does not keep block entities (including
+  through bulk `edit_blocks`) clears its connection group automatically and syncs the clear with the block
+  update; changing only a block state property of the same block (or weathering a copper chest or copper golem
+  statue) preserves it. Writing to an unloaded chunk, an out-of-height position, a carrier-fenced cell, or an
+  unchanged group returns `Ok(false)`.
+- **Sync and transactions.** The server syncs connection groups to Sunrise clients with chunk loads, bulk chunk
+  resends, viewed levels (`sunrise:levels`), and incremental updates (skipping vanilla clients) and remeshes
+  affected sections and chunk borders. Writes inside a Host transaction are tentative: aborting restores the
+  previous group quietly, and committing replays block and connection-group writes in order.
 
 ## What it joins, and what it does not
 

@@ -147,6 +147,10 @@ struct KeptBlock {
     /// A level-host write only hid the entity from other reads. At commit
     /// the real Level.setBlock still has to run its removal side effects.
     replay_removal: bool,
+    /// Any tentative write at this position replaced the block with one that does not keep
+    /// connection groups (`!Behaviours::keeps_connection_group`), even if a later write returned
+    /// it to a compatible block.
+    clear_connection_group: bool,
 }
 
 /// Preserve requested updates, and suppress an effect only if every write
@@ -186,10 +190,9 @@ pub(super) struct Level {
     slots: HashMap<(Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
     blocks: HashMap<Pos, KeptBlock>,
-    /// Each cell's original connection group before this transaction first changed it, and
-    /// whether the latest change was an explicit `set_connection_group` write (as opposed to an
-    /// automatic clear from a block replacement).
-    connection_groups: HashMap<Pos, (Option<u64>, bool)>,
+    /// Each cell's original connection group before this transaction first changed it, used for
+    /// silent rollback on abort and pre-replay restoration on root commit.
+    connection_groups: HashMap<Pos, Option<u64>>,
     /// Level.random before the first transactional level write drew from it.
     level_random: Option<sunrise_core::random::LegacyRandom>,
     /// Composter-local random streams before this depth first evaluated their layers.
@@ -393,8 +396,12 @@ pub(super) enum After {
 
     /// `ServerLevel.destroyBlockProgress`: breaker id, position, stage. Sent once, at the root commit.
     BreakProgress(i32, [i32; 3], i32),
-    /// The block's final state, set with the combined update flags.
-    Block(Pos),
+    /// The block's final state, set with the combined update flags; the bool records whether this
+    /// write replaced the block with one that clears connection groups.
+    Block(Pos, bool),
+    /// An explicit `LevelRef::set_connection_group` write, replayed in order with block writes at
+    /// the root commit so cross-position cascades (e.g. popping a supported block) clear it.
+    ConnectionGroup(Pos, Option<u64>),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
     BlockGameEvent(
@@ -662,15 +669,12 @@ impl Game<'_> {
                             kept.flags = merge_block_update_flags(kept.flags, block.flags);
                             kept.level_host = block.level_host;
                             kept.replay_removal |= block.replay_removal;
+                            kept.clear_connection_group |= block.clear_connection_group;
                         })
                         .or_insert(block);
                 }
-                for (pos, (was, explicit)) in level.connection_groups {
-                    outer
-                        .connection_groups
-                        .entry(pos)
-                        .and_modify(|kept| kept.1 = explicit)
-                        .or_insert((was, explicit));
+                for (pos, was) in level.connection_groups {
+                    outer.connection_groups.entry(pos).or_insert(was);
                 }
                 if outer.level_random.is_none() {
                     outer.level_random = level.level_random;
@@ -1198,9 +1202,13 @@ impl Game<'_> {
         group: Option<u64>,
     ) -> bool {
         let Some(level) = self.transactions.last_mut() else {
-            return self
-                .world
-                .set_connection_group(pos[0], pos[1], pos[2], group, true);
+            return self.world.set_connection_group(
+                pos[0],
+                pos[1],
+                pos[2],
+                group,
+                sunrise_client::world::ConnectionGroupNotify::Explicit,
+            );
         };
         let key = (pos[0], pos[1], pos[2]);
         let old = self.world.connection_group(pos[0], pos[1], pos[2]);
@@ -1208,11 +1216,8 @@ impl Game<'_> {
             .world
             .set_connection_group_stored(pos[0], pos[1], pos[2], group);
         if changed {
-            level
-                .connection_groups
-                .entry(key)
-                .and_modify(|kept| kept.1 = true)
-                .or_insert((old, true));
+            level.connection_groups.entry(key).or_insert(old);
+            level.after.push(After::ConnectionGroup(key, group));
         }
         changed
     }
@@ -1230,44 +1235,50 @@ impl Game<'_> {
         flags: i32,
         level_host: bool,
     ) -> bool {
-        let Some(level) = self.transactions.last_mut() else {
+        if self.transactions.is_empty() {
             return self.level_set_with_flags(pos, state, flags).is_ok();
-        };
+        }
         let key = (pos[0], pos[1], pos[2]);
         let old = self.world.block(pos[0], pos[1], pos[2]);
-        level
-            .blocks
-            .entry(key)
-            .and_modify(|kept| {
-                kept.flags = merge_block_update_flags(kept.flags, flags);
-                kept.level_host = level_host;
-            })
-            .or_insert(KeptBlock {
-                state: old,
-                flags,
-                level_host,
-                replay_removal: false,
-            });
-        level.after.push(After::Block(key));
+        let clears_group = !self.res.behaviours().keeps_connection_group(old, state);
+        if let Some(level) = self.transactions.last_mut() {
+            level
+                .blocks
+                .entry(key)
+                .and_modify(|kept| {
+                    kept.flags = merge_block_update_flags(kept.flags, flags);
+                    kept.level_host = level_host;
+                })
+                .or_insert(KeptBlock {
+                    state: old,
+                    flags,
+                    level_host,
+                    replay_removal: false,
+                    clear_connection_group: false,
+                });
+            level.after.push(After::Block(key, clears_group));
+        }
         if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
             return false;
         }
         // Mirror live `chunk_set_block_state`: replacing the block with one that does not keep
-        // block entities clears any tentative connection group at `pos`, while same-block state
-        // changes preserve it.
-        if !self.res.behaviours().keeps_block_entity(old, state)
-            && let Some(old_group) = self.world.connection_group(pos[0], pos[1], pos[2])
-        {
+        // connection groups clears any tentative group at `pos`, while compatible state changes
+        // preserve it.
+        if clears_group {
+            let old_group = self.world.connection_group(pos[0], pos[1], pos[2]);
             if let Some(level) = self.transactions.last_mut() {
-                level
-                    .connection_groups
-                    .entry(key)
-                    .and_modify(|kept| kept.1 = false)
-                    .or_insert((Some(old_group), false));
+                if let Some(kept) = level.blocks.get_mut(&key) {
+                    kept.clear_connection_group = true;
+                }
+                if old_group.is_some() {
+                    level.connection_groups.entry(key).or_insert(old_group);
+                }
             }
-            let _ = self
-                .world
-                .set_connection_group_stored(pos[0], pos[1], pos[2], None);
+            if old_group.is_some() {
+                let _ = self
+                    .world
+                    .set_connection_group_stored(pos[0], pos[1], pos[2], None);
+            }
         }
         self.transactions.block_writes = self.transactions.block_writes.wrapping_add(1);
         true
@@ -1395,8 +1406,8 @@ impl Game<'_> {
                     pitch,
                 } => self.audio.play(sound, Some(at), volume, pitch),
             },
-            // Only reached through a root commit, which sets the block itself.
-            After::Block(_) => {}
+            // Only reached through a root commit, which replays blocks and connection groups in order.
+            After::Block(_, _) | After::ConnectionGroup(_, _) => {}
             After::Drop(pos, stack) => {
                 self.spawn_item(stack, pos.map(|p| f64::from(p) + 0.5), [0.0; 3], 10);
             }
@@ -1520,45 +1531,63 @@ impl Game<'_> {
                 _ => None,
             })
             .collect();
-        // Snapshot each tentatively written connection group's final value BEFORE block replays
-        // run. For cells cleared only by a block replacement (not followed by an explicit
-        // `set_connection_group`), restore `was` before the block replay so `on_block_replaced`
-        // performs the real clear and any `block_changed`/`on_place` hook publishing a new group
-        // for the replacement block is preserved.
-        let mut replayed_blocks = std::collections::HashSet::new();
-        let final_groups: Vec<(Pos, Option<u64>, Option<u64>, bool)> = level
-            .connection_groups
-            .into_iter()
-            .map(|(pos, (was, explicit))| {
-                let now = self.world.connection_group(pos.0, pos.1, pos.2);
-                if !explicit && level.blocks.contains_key(&pos) {
-                    let _ = self
-                        .world
-                        .set_connection_group_stored(pos.0, pos.1, pos.2, was);
-                }
-                (pos, was, now, explicit)
-            })
-            .collect();
+        // Restore every tentatively touched connection group to its pre-transaction value before
+        // replaying `level.after` in order, so block replacements, cross-position cascades, and
+        // explicit `set_connection_group` calls observe and publish the exact sequence of writes.
+        for (pos, was) in level.connection_groups {
+            let _ = self
+                .world
+                .set_connection_group_stored(pos.0, pos.1, pos.2, was);
+        }
         let mut told = std::collections::HashSet::new();
+        let mut explicit_group_since_block = std::collections::HashSet::new();
         let mut biome_columns = std::collections::HashSet::new();
         for after in level.after {
             match after {
                 // Each storage tells the world once, after every write.
                 After::Changed(pos) if detached.contains(&pos) || !told.insert(Ok(pos)) => {}
-                After::Block(pos) => {
-                    if !told.insert(Err(pos)) {
-                        continue;
-                    }
-                    let now = self.world.block(pos.0, pos.1, pos.2);
+                After::ConnectionGroup(pos, group) => {
+                    let _ = self.world.set_connection_group(
+                        pos.0,
+                        pos.1,
+                        pos.2,
+                        group,
+                        sunrise_client::world::ConnectionGroupNotify::Explicit,
+                    );
+                    explicit_group_since_block.insert(pos);
+                }
+                After::Block(pos, clears_group) => {
                     let KeptBlock {
                         state: was,
                         flags,
                         level_host,
                         replay_removal,
+                        clear_connection_group,
                     } = level.blocks[&pos];
+                    if !told.insert(Err(pos)) {
+                        // A later replacing block write to `pos` after an earlier explicit
+                        // `set_connection_group` clears that group as live `on_block_replaced`
+                        // would.
+                        if clears_group && explicit_group_since_block.remove(&pos) {
+                            let notify = if flags & flags::UPDATE_CLIENTS != 0
+                                && flags & flags::UPDATE_INVISIBLE == 0
+                            {
+                                sunrise_client::world::ConnectionGroupNotify::Explicit
+                            } else {
+                                sunrise_client::world::ConnectionGroupNotify::OnBlockSend
+                            };
+                            let _ = self
+                                .world
+                                .set_connection_group(pos.0, pos.1, pos.2, None, notify);
+                        }
+                        continue;
+                    }
+                    explicit_group_since_block.remove(&pos);
+                    let now = self.world.block(pos.0, pos.1, pos.2);
                     // Restore an entity that the real write must remove with its side effects,
                     // or that survives because a later write returned it to the old block kind.
                     let b = self.res.behaviours();
+                    let net_keeps_group = b.keeps_connection_group(was, now);
                     if level.removed_block_entities.contains(&pos)
                         && !detached.contains(&pos)
                         && (replay_removal || b.block(now) == b.block(was))
@@ -1567,7 +1596,19 @@ impl Game<'_> {
                         self.restore_removed_block_entity(pos, kept);
                     }
                     if now != was {
-                        replayed_blocks.insert(pos);
+                        // If an intermediate replacement cleared the group even though `was -> now`
+                        // preserves groups (e.g. `oak_log[y] -> stone -> oak_log[x]`), clear it
+                        // before replaying the block write so any hook on the replay can still set
+                        // a new group.
+                        if clear_connection_group && net_keeps_group {
+                            let _ = self.world.set_connection_group(
+                                pos.0,
+                                pos.1,
+                                pos.2,
+                                None,
+                                sunrise_client::world::ConnectionGroupNotify::OnBlockSend,
+                            );
+                        }
                         // The stored state back, so the one real write sees the change.
                         self.world.set_stored(pos.0, pos.1, pos.2, was);
                         let pos = [pos.0, pos.1, pos.2];
@@ -1579,32 +1620,21 @@ impl Game<'_> {
                         } else {
                             let _ = self.level_set_with_flags(pos, now, flags);
                         }
+                    } else if clear_connection_group {
+                        let notify = if flags & flags::UPDATE_CLIENTS != 0
+                            && flags & flags::UPDATE_INVISIBLE == 0
+                        {
+                            sunrise_client::world::ConnectionGroupNotify::Explicit
+                        } else {
+                            sunrise_client::world::ConnectionGroupNotify::None
+                        };
+                        let _ = self
+                            .world
+                            .set_connection_group(pos.0, pos.1, pos.2, None, notify);
                     }
                 }
                 After::Biome(key) if !biome_columns.insert(key) => {}
                 after => self.run_after(after),
-            }
-        }
-        // Publish committed connection-group changes (after block replays so a block replacement
-        // followed by `set_connection_group` in the same transaction keeps the new group, while
-        // block-replacement clears already handled by `on_block_replaced` do not overwrite a new
-        // group published by `block_changed`/`on_place`).
-        for (pos, was, now, explicit) in final_groups {
-            if !explicit && replayed_blocks.contains(&pos) {
-                continue;
-            }
-            let current = self.world.connection_group(pos.0, pos.1, pos.2);
-            if current != now {
-                let _ = self
-                    .world
-                    .set_connection_group(pos.0, pos.1, pos.2, now, true);
-            } else if now != was {
-                let _ = self
-                    .world
-                    .set_connection_group_stored(pos.0, pos.1, pos.2, was);
-                let _ = self
-                    .world
-                    .set_connection_group(pos.0, pos.1, pos.2, now, true);
             }
         }
         // A crafting grid the transaction changed has its result made again, once for each
@@ -1773,7 +1803,7 @@ impl Game<'_> {
         for (pos, block) in level.blocks {
             self.world.set_stored(pos.0, pos.1, pos.2, block.state);
         }
-        for (pos, (group, _)) in level.connection_groups {
+        for (pos, group) in level.connection_groups {
             let _ = self
                 .world
                 .set_connection_group_stored(pos.0, pos.1, pos.2, group);

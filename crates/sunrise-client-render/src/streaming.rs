@@ -1326,12 +1326,13 @@ impl Streaming {
     /// from before its relight, then the new light; another server's is already
     /// right, which matters where the neighbours this light needs aren't all
     /// here).
-    pub fn replace_remote(&mut self, world: &mut World, chunk: Chunk) {
+    pub fn replace_remote(&mut self, world: &mut World, mut chunk: Chunk) {
         let key = (chunk.x, chunk.z);
         let Some(old) = world.chunks.get(&key).cloned() else {
             return self.insert_remote(world, chunk);
         };
         if !self.lit.contains(&key) {
+            chunk.connection_groups = old.connection_groups.clone();
             return self.insert_remote(world, chunk);
         }
         take_resent_column(world, key, &old, chunk, self.relight_resent);
@@ -3543,6 +3544,9 @@ fn take_resent_column(
     let kept = keep_unchanged_sections(old, &mut chunk, &mut cells);
     chunk.light_loaded = old.light_loaded;
     chunk.lit = true;
+    // Keep previously synced connection groups until the authoritative snapshot or delta for this
+    // resend applies, so unchanged sections whose group was cleared still dirty on arrival.
+    chunk.connection_groups = old.connection_groups.clone();
     world.install_light_column(chunk);
     world.revision = world.revision.wrapping_add(1);
     // A section with new biomes and the same blocks remeshes now (its tint), with its neighbours, whose tint
@@ -5088,6 +5092,36 @@ mod tests {
             // its eight neighbours.
             assert_eq!(world.dirty_light.len(), if relight { 9 } else { 0 });
         }
+    }
+
+    #[test]
+    fn resent_column_preserves_groups_so_clear_in_unchanged_section_still_dirties() {
+        let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
+        let mut old = resident_column(&mut world, 0x50);
+        // Section P (y = 64) holds a connection group; section Q (y = 80) will be bulk-edited.
+        old.set_connection_group(3, 64, 4, Some(42));
+        world.install_light_column(old.clone());
+        let mut resent = Chunk::empty(2, -3);
+        resent.set(5, 80, 5, 2);
+        take_resent_column(&mut world, (2, -3), &old, resent, true);
+
+        let sy_p = (64 - crate::chunk::MIN_Y) >> 4;
+        let sy_q = (80 - crate::chunk::MIN_Y) >> 4;
+        assert_ne!(sy_p, sy_q);
+        // Resend dirtied section Q (block edit) but preserved section P's group until the
+        // authoritative group snapshot arrives.
+        assert!(world.dirty_sections.contains(&(2, sy_q, -3)));
+        assert!(!world.dirty_sections.contains(&(2, sy_p, -3)));
+        assert_eq!(
+            world.connection_group(2 * 16 + 3, 64, -3 * 16 + 4),
+            Some(42)
+        );
+
+        // Applying the authoritative empty snapshot clears P's group and dirties section P.
+        world.dirty_sections.clear();
+        world.apply_chunk_connection_groups(2, -3, true, std::iter::empty());
+        assert_eq!(world.connection_group(2 * 16 + 3, 64, -3 * 16 + 4), None);
+        assert!(world.dirty_sections.contains(&(2, sy_p, -3)));
     }
 }
 

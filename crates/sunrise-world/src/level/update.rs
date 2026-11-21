@@ -23,6 +23,13 @@ impl Behaviours {
             || (tags.copper_chests.contains(old) && tags.copper_chests.contains(new))
             || (tags.copper_golem_statues.contains(old) && tags.copper_golem_statues.contains(new))
     }
+
+    /// Whether a mod-published per-position connection group survives this state change:
+    /// the exact same rule as [`Self::keeps_block_entity`].
+    #[inline]
+    pub fn keeps_connection_group(&self, old: BlockStateId, new: BlockStateId) -> bool {
+        self.keeps_block_entity(old, new)
+    }
 }
 
 /// `NeighborUpdater.UPDATE_ORDER`.
@@ -410,7 +417,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
         let new_block = self.block_of(state);
         let block_changed = self.block_of(old) != new_block;
-        if block_changed && !self.b.keeps_block_entity(old, state) {
+        if !self.b.keeps_connection_group(old, state) {
             self.level.on_block_replaced(pos);
         }
         self.level

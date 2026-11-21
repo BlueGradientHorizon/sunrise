@@ -94,8 +94,11 @@ impl ViewedWorld {
                 return Err(RouteError::TooManyColumns(self.columns));
             }
             C::LevelChunkWithLight(p) => match self.format.column(&p) {
-                Ok(chunk) => {
+                Ok(mut chunk) => {
                     let key = (p.x, p.z);
+                    if let Some(old) = self.world.chunks.get(&key) {
+                        chunk.connection_groups = old.connection_groups.clone();
+                    }
                     self.world.install_light_column(chunk);
                     self.unload_block_entities(key);
                     self.block_entities.insert(key, p.chunk.block_entities);
@@ -164,6 +167,19 @@ impl ViewedWorld {
                 }
             }
             C::GameEvent(p) => self.world.weather.game_event(p.event, p.param),
+            C::CustomPayload(p) if p.channel == sunrise_protocol::connection_groups::CHANNEL => {
+                match sunrise_protocol::connection_groups::decode(&p.data) {
+                    Ok(message) => {
+                        crate::game::native_connection_groups::apply_connection_groups(
+                            &mut self.world,
+                            message,
+                        );
+                    }
+                    Err(e) => {
+                        log::warn!("Sunrise: {} bad connection_groups payload: {e}", self.level)
+                    }
+                }
+            }
             other => self.entities.apply(other)?,
         }
         Ok(())

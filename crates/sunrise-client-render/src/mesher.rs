@@ -2169,9 +2169,6 @@ impl GroupLookup<'_> {
             return None;
         }
         let chunk = self.region[(dcz + 1) as usize][(dcx + 1) as usize]?;
-        if chunk.connection_groups.is_empty() {
-            return None;
-        }
         chunk.connection_group(wx & 15, wy, wz & 15)
     }
 }

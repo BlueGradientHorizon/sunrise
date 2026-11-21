@@ -17,7 +17,7 @@ impl Game<'_> {
     pub(super) fn tick_blocks_with_scratch(
         &mut self,
         scratch: &mut TickScratch,
-    ) -> Result<Option<usize>> {
+    ) -> Result<Option<(usize, usize)>> {
         let mut laps = sunrise_client::spans::laps();
         // ServerChunkCache.tick: the tickets that time out.
         let world = &self.world;
