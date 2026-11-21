@@ -720,7 +720,7 @@ impl Game<'_> {
                     .as_ref()
                     .map(|i| {
                         sunrise_client::lang::returned_to_server(|| {
-                            stations::hover_name(&self.pack.names, i)
+                            self.stack_hover_name_text(i).plain()
                         })
                     })
                     .unwrap_or_default();
@@ -1200,22 +1200,25 @@ impl Game<'_> {
     }
     /// Recompute after slot changes; the anvil box follows its input item.
     fn station_after_input(&mut self) {
-        let Some(s) = self.station.as_mut() else {
+        let Some(s) = self.station.as_ref() else {
             return;
         };
         if s.kind == Kind::Anvil && s.inputs[0] != s.anvil_last {
             // AnvilScreen.slotChanged: the box follows its input item, named as vanilla's
             // client names it (the box's text goes back to a server).
-            s.anvil_last = s.inputs[0].clone();
-            let name = s.inputs[0]
+            let input = s.inputs[0].clone();
+            let name = input
                 .as_ref()
                 .map(|i| {
                     sunrise_client::lang::returned_to_server(|| {
-                        stations::hover_name(&self.pack.names, i)
+                        self.stack_hover_name_text(i).plain()
                     })
                 })
                 .unwrap_or_default();
-            anvil::input_changed(s, name);
+            if let Some(s) = self.station.as_mut() {
+                s.anvil_last = input;
+                anvil::input_changed(s, name);
+            }
         }
         self.station_changed();
     }
@@ -1533,9 +1536,12 @@ impl Game<'_> {
     /// `ItemStack.getHoverName`: the custom name, a potion's or tipped
     /// arrow's contents, a written book's title, the item name component,
     /// else the item's name.
-    fn stack_hover_name(&self, stack: &ItemStack) -> String {
+    pub(in crate::game) fn stack_hover_name(&self, stack: &ItemStack) -> String {
         if let Some(n) = stack.custom_name() {
             n.to_owned()
+        } else if let Some(name) = self.mod_item_name(stack) {
+            // `Item.getName` of a mod item whose Part names the stack.
+            name.plain()
         } else if let Some(key) = brewing::contents_name_key(stack) {
             self.pack
                 .names
@@ -1626,8 +1632,7 @@ impl Game<'_> {
         // `getTooltipLines`' own branch: a tooltip the stack doesn't hide.
         let shown = !nested && display.name_visible(creative);
         if shown {
-            let name =
-                sunrise_client::item_tooltip::styled_name(stack, || self.stack_hover_name(stack));
+            let name = self.styled_stack_name(stack);
             lines.push((name, color));
         }
         let translate = |k: &str| self.pack.names.display_get(k);
@@ -2284,8 +2289,7 @@ impl Game<'_> {
         let Some((_, stack)) = layout.selected.and_then(|i| layout.slots.get(i)) else {
             return;
         };
-        let name =
-            sunrise_client::item_tooltip::styled_name(stack, || self.stack_hover_name(stack));
+        let name = self.styled_stack_name(stack);
         let lines = Self::resolved(&[(name, self.rarity_color(stack))]);
         let atlas = &self.gui.atlas;
         let tw = atlas.font.width_text(&lines[0].0);

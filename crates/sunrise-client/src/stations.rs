@@ -2499,6 +2499,7 @@ mod tests {
             maps: None,
             limited_crafting: false,
             can_equip: None,
+            item_names: None,
             known_recipes: None,
             slot_rules: None,
             stacked: None,

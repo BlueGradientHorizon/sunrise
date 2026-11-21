@@ -132,6 +132,7 @@ pub fn main() -> sunrise_client::Result<()> {
         maps: Some(&case_maps),
         limited_crafting: false,
         can_equip: None,
+        item_names: None,
         known_recipes: None,
         slot_rules: None,
         stacked: None,

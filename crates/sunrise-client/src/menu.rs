@@ -96,6 +96,25 @@ impl KnownRecipes for &[&str] {
     }
 }
 
+/// `Item.getName(ItemStack)` for the items whose mod names each stack (the
+/// `item_name` Part hook): `None` keeps the default name.
+pub trait ItemNames {
+    fn item_name(&self, stack: &ItemStack) -> Option<crate::text::Text>;
+}
+
+impl Env<'_> {
+    /// `ItemStack.getHoverName().getString()`: the custom name, else the name
+    /// a mod item's Part gives the stack, else the stack's own.
+    pub fn hover_name(&self, stack: &ItemStack) -> String {
+        if stack.custom_name().is_none()
+            && let Some(name) = self.item_names.and_then(|n| n.item_name(stack))
+        {
+            return name.plain();
+        }
+        crate::stations::hover_name(self.names, stack)
+    }
+}
+
 /// What a menu needs to know about items and recipes.
 #[derive(Clone, Copy)]
 pub struct Env<'a> {
@@ -120,6 +139,9 @@ pub struct Env<'a> {
     /// Item display names: the anvil compares the rename box with the
     /// input's hover name.
     pub names: &'a crate::creative::Names,
+    /// `Item.getName(ItemStack)` of mod items, lent by the game (none names
+    /// every stack from its data alone): the hover name the anvil compares.
+    pub item_names: Option<&'a dyn ItemNames>,
     /// What a merchant menu needs for offers made while it is open (level-ups).
     pub trade: Option<&'a crate::merchant::TradeEnv<'a>>,
     /// The level's maps (`ContainerLevelAccess`): the cartography table reads
@@ -1247,7 +1269,7 @@ impl Menu {
         // neither side's game resolves with a key only Sunrise gives.
         let hover = self.state.containers[MAIN][0]
             .as_ref()
-            .map(|i| crate::lang::returned_to_server(|| crate::stations::hover_name(env.names, i)))
+            .map(|i| crate::lang::returned_to_server(|| env.hover_name(i)))
             .unwrap_or_default();
         let out = crate::stations::anvil_result(
             env.enchantments,
@@ -1414,8 +1436,7 @@ impl Menu {
         // The box (an EditBox of 50) keeps the first 50 UTF-16 units of what it is given.
         let name = if input.custom_name().is_some() {
             // As vanilla's client names it: the name goes to the server.
-            let hover =
-                crate::lang::returned_to_server(|| crate::stations::hover_name(env.names, &input));
+            let hover = crate::lang::returned_to_server(|| env.hover_name(&input));
             let mut units = 0;
             hover
                 .chars()
@@ -3136,6 +3157,7 @@ pub(crate) mod tests {
             maps: None,
             limited_crafting: false,
             can_equip: None,
+            item_names: None,
             known_recipes: None,
             slot_rules: None,
             stacked: None,
@@ -3304,6 +3326,7 @@ pub(crate) mod tests {
             maps: None,
             limited_crafting: false,
             can_equip: None,
+            item_names: None,
             known_recipes: None,
             slot_rules: None,
             stacked: None,
@@ -3354,6 +3377,7 @@ pub(crate) mod tests {
             maps: None,
             limited_crafting: false,
             can_equip: None,
+            item_names: None,
             known_recipes: None,
             slot_rules: None,
             stacked: None,
@@ -3577,6 +3601,7 @@ pub(crate) mod tests {
             maps: None,
             limited_crafting: false,
             can_equip: None,
+            item_names: None,
             known_recipes: None,
             slot_rules: Some(&rules),
             stacked: None,
@@ -4651,6 +4676,7 @@ pub(crate) mod tests {
             maps: None,
             limited_crafting: false,
             can_equip: None,
+            item_names: None,
             known_recipes: None,
             slot_rules: None,
             stacked: None,
@@ -4747,6 +4773,7 @@ pub(crate) mod tests {
             maps: None,
             limited_crafting: false,
             can_equip: None,
+            item_names: None,
             known_recipes: None,
             slot_rules: None,
             stacked: None,
@@ -5161,6 +5188,7 @@ pub(crate) mod tests {
             loop_context: &crate::test_resources::loop_context(LoopSide::Client),
             limited_crafting: false,
             can_equip: None,
+            item_names: None,
             known_recipes: None,
             slot_rules: None,
             stacked: None,
@@ -5218,6 +5246,7 @@ pub(crate) mod tests {
             loop_context: &crate::test_resources::loop_context(LoopSide::Client),
             limited_crafting: true,
             can_equip: None,
+            item_names: None,
             known_recipes: Some(&known),
             slot_rules: None,
             stacked: None,
@@ -5275,6 +5304,7 @@ pub(crate) mod tests {
             loop_context: &crate::test_resources::loop_context(LoopSide::Client),
             limited_crafting: true,
             can_equip: None,
+            item_names: None,
             known_recipes: Some(&known),
             slot_rules: None,
             stacked: None,
@@ -5336,6 +5366,7 @@ pub(crate) mod tests {
             loop_context: &crate::test_resources::loop_context(LoopSide::Client),
             limited_crafting: true,
             can_equip: None,
+            item_names: None,
             known_recipes: Some(&known),
             slot_rules: None,
             stacked: None,
@@ -5387,6 +5418,7 @@ pub(crate) mod tests {
             maps: None,
             limited_crafting: false,
             can_equip: None,
+            item_names: None,
             known_recipes: None,
             slot_rules: None,
             stacked: None,

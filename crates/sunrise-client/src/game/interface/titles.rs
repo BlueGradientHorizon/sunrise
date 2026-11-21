@@ -68,9 +68,13 @@ impl Game<'_> {
         let rarity = item_tooltip::rarity(stack, &default_rarity);
         Some(HeldName {
             item: stack.item.to_string(),
-            hover_name: item_tooltip::styled_name(stack, || {
-                item_tooltip::name_line(stack, &|key| self.pack.names.display_get(key))
-            }),
+            // `Item.getName` of a mod item whose Part names the stack, under a custom name.
+            hover_name: match self.mod_item_name(stack).filter(|_| !custom) {
+                Some(name) => name,
+                None => item_tooltip::styled_name(stack, || {
+                    item_tooltip::name_line(stack, &|key| self.pack.names.display_get(key))
+                }),
+            },
             rarity_color: match rarity {
                 "uncommon" => text::YELLOW,
                 "rare" => text::AQUA,

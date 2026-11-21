@@ -420,6 +420,7 @@ impl Game<'_> {
             maps: None,
             limited_crafting: host.hub.limited_crafting,
             can_equip: None,
+            item_names: Some(self),
             known_recipes: Some(&g.recipe_book),
             slot_rules: Some(self),
             stacked: None,

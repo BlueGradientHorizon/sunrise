@@ -1183,7 +1183,7 @@ impl Game<'_> {
         let item = &*s.item;
         let empty = item == "minecraft:air" || s.count == 0;
         let custom = s.data().and_then(|data| data.custom_name.as_ref());
-        let hover = sunrise_client::stations::hover_name_text(&self.pack.names, s);
+        let hover = self.stack_hover_name_text(s);
         // Component.empty().append(getHoverName()), italic for a custom name.
         let mut name = Text::empty().append(hover);
         if custom.is_some() {

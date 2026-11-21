@@ -179,6 +179,47 @@ impl Game<'_> {
         }
         mod_id
     }
+    /// `Item.getName(ItemStack)` of a mod item: what its `item_name` Part
+    /// answers, or `None` for the default (the `item_name` component, else
+    /// the item's name). One table lookup for an item no Part names.
+    pub(in crate::game) fn mod_item_name(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<sunrise_client::text::Text> {
+        if !mod_api::__private::item_listens(mod_api::HookId::ItemName, &stack.item) {
+            return None;
+        }
+        let mut name = None;
+        self.native_item_name(stack, &mut name);
+        name
+    }
+    /// `ItemStack.getStyledHoverName`: the custom name (italic), else the
+    /// name a mod item's Part gives the stack, else vanilla's hover name.
+    pub(in crate::game) fn styled_stack_name(
+        &self,
+        stack: &ItemStack,
+    ) -> sunrise_client::text::Text {
+        if stack.custom_name().is_none()
+            && let Some(name) = self.mod_item_name(stack)
+        {
+            return name;
+        }
+        sunrise_client::item_tooltip::styled_name(stack, || self.stack_hover_name(stack))
+    }
+    /// `ItemStack.getHoverName` as a component: the custom name or a written
+    /// book's title, else the name a mod item's Part gives the stack, else
+    /// vanilla's.
+    pub(in crate::game) fn stack_hover_name_text(
+        &self,
+        stack: &ItemStack,
+    ) -> sunrise_client::text::Text {
+        if stack.custom_name().is_none()
+            && let Some(name) = self.mod_item_name(stack)
+        {
+            return name;
+        }
+        sunrise_client::stations::hover_name_text(&self.pack.names, stack)
+    }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
     pub(in crate::game) fn item_resource_bar(&self, stack: &ItemStack) -> Option<mod_api::ItemBar> {
         use super::api_values::TryIntoApi;
@@ -1240,4 +1281,12 @@ pub(in crate::game) fn item_damage_resolver<'a>(
     catalog: &'a sunrise_world::damage_source::Catalog,
 ) -> impl Fn(&ItemStack, &str) -> bool + 'a {
     move |stack, damage| stack_can_be_hurt_by(models, catalog, stack, damage).unwrap_or(true)
+}
+
+/// The anvil's hover name in a menu (`menu::Env::hover_name`): the name a mod
+/// item's Part gives the stack.
+impl sunrise_client::menu::ItemNames for Game<'_> {
+    fn item_name(&self, stack: &ItemStack) -> Option<sunrise_client::text::Text> {
+        self.mod_item_name(stack)
+    }
 }
