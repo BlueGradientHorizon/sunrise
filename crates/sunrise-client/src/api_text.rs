@@ -1382,16 +1382,26 @@ fn emitted_node<'a>(
     }
     Value::Object(out)
 }
-fn owned_text_component_with(text: &Text, lenient: bool) -> Result<Value, Error> {
+fn owned_text_component_with(
+    text: &Text,
+    lenient: bool,
+    local_styles: Option<&HashMap<usize, u32>>,
+) -> Result<Value, Error> {
     let nodes = api_nodes(text);
     let payloads = Payloads::new(&nodes, lenient)?; // Refuse all representation errors before any JSON clone.
     let mut ready = HashMap::new();
     for node in nodes {
-        let value = emitted_node(node, &payloads, &mut |child| {
+        let mut value = emitted_node(node, &payloads, &mut |child| {
             ready
                 .remove(&(child as *const _ as usize))
                 .expect("child was built")
         });
+        if let Some(styles) = local_styles
+            && let Some(&id) = styles.get(&(node as *const _ as usize))
+            && let Value::Object(ref mut map) = value
+        {
+            map.insert("__sunrise_local_style_id".into(), Value::from(id));
+        }
         ready.insert(node as *const _ as usize, value);
     }
     Ok(ready
@@ -1400,18 +1410,153 @@ fn owned_text_component_with(text: &Text, lenient: bool) -> Result<Value, Error>
 }
 #[cfg(test)]
 fn owned_text_component(text: &Text) -> Result<Value, Error> {
-    owned_text_component_with(text, false)
+    owned_text_component_with(text, false, None)
 }
 /// Encode API text in memory without imposing serialization depth or profile caps.
 pub fn to_engine(text: &Text) -> Result<engine::Text, TextFormError> {
-    owned_text_component_with(text, false).map(Into::into)
+    owned_text_component_with(text, false, None).map(Into::into)
 }
 /// Encode API text in memory for infallible in-process text reads, omitting any
 /// unrepresentable opaque metadata rather than failing.
 pub fn to_engine_inprocess(text: &Text) -> engine::Text {
-    owned_text_component_with(text, true)
+    owned_text_component_with(text, true, None)
         .expect("lenient emit is infallible")
         .into()
+}
+fn inherit_api_style(child: &TextStyle, parent: &TextStyle) -> TextStyle {
+    let metadata = match (&parent.metadata, &child.metadata) {
+        (Tag::Compound(base), Tag::Compound(over)) if !base.is_empty() && !over.is_empty() => {
+            let mut merged = base.clone();
+            for (k, v) in over {
+                merged.insert(k.clone(), v.clone());
+            }
+            Tag::Compound(merged)
+        }
+        (base, Tag::Compound(over)) if over.is_empty() => base.clone(),
+        (_, over) => over.clone(),
+    };
+    let mut merged = TextStyle::default();
+    merged.color = child.color.clone().or_else(|| parent.color.clone());
+    merged.shadow_color = child.shadow_color.or(parent.shadow_color);
+    merged.bold = child.bold.or(parent.bold);
+    merged.italic = child.italic.or(parent.italic);
+    merged.underlined = child.underlined.or(parent.underlined);
+    merged.strikethrough = child.strikethrough.or(parent.strikethrough);
+    merged.obfuscated = child.obfuscated.or(parent.obfuscated);
+    merged.click = child.click.clone().or_else(|| parent.click.clone());
+    merged.hover = child.hover.clone().or_else(|| parent.hover.clone());
+    merged.insertion = child.insertion.clone().or_else(|| parent.insertion.clone());
+    merged.font = child.font.clone().or_else(|| parent.font.clone());
+    merged.metadata = metadata;
+    merged
+}
+fn assign_local_styles(root: &Text) -> (HashMap<usize, u32>, Vec<TextStyle>) {
+    let empty = TextStyle::default();
+    let mut ids = HashMap::new();
+    let mut styles: Vec<TextStyle> = Vec::new();
+    let mut stack = vec![(root, None::<u32>)];
+    while let Some((node, parent_id)) = stack.pop() {
+        let effective_id = if node.style == empty {
+            parent_id
+        } else {
+            let merged = match parent_id {
+                Some(pid) => inherit_api_style(&node.style, &styles[pid as usize]),
+                None => node.style.clone(),
+            };
+            let id = u32::try_from(styles.len()).expect("local style table index fits u32");
+            styles.push(merged);
+            Some(id)
+        };
+        if let Some(id) = effective_id {
+            ids.insert(node as *const Text as usize, id);
+        }
+        for child in node.children.iter().rev() {
+            stack.push((child, effective_id));
+        }
+        match &node.content {
+            TextContent::Translatable { arguments, .. } => {
+                for arg in arguments.iter().rev() {
+                    stack.push((arg, effective_id));
+                }
+            }
+            TextContent::Selector {
+                separator: Some(sep),
+                ..
+            }
+            | TextContent::Nbt {
+                separator: Some(sep),
+                ..
+            } => stack.push((sep, effective_id)),
+            TextContent::Object(
+                TextObject::Player {
+                    fallback: Some(fb), ..
+                }
+                | TextObject::Atlas {
+                    fallback: Some(fb), ..
+                },
+            ) => stack.push((fb, effective_id)),
+            _ => {}
+        }
+    }
+    (ids, styles)
+}
+/// In-process engine text paired with its inherited API styles so layout and
+/// visual-order reads (`text_split`, `text_visual_order`, `text_lines`)
+/// preserve opaque click/hover/metadata payloads without JSON serialization.
+pub struct LocalText {
+    engine: engine::Text,
+    styles: Vec<TextStyle>,
+}
+impl LocalText {
+    pub fn engine(&self) -> &engine::Text {
+        &self.engine
+    }
+    pub fn style_to_api(&self, style: &engine::Style) -> TextStyle {
+        let Some(orig) = style
+            .opaque_style_id
+            .and_then(|id| self.styles.get(id as usize))
+        else {
+            return style_to_api_inprocess(style);
+        };
+        let mut out = orig.clone();
+        let orig_rgb = orig.color.as_deref().and_then(component::parse_color);
+        if style.color != orig_rgb {
+            out.color = style.color.map(|v| format!("#{v:06X}"));
+        }
+        out.bold = style.bold;
+        out.italic = style.italic;
+        out.underlined = style.underlined;
+        out.strikethrough = style.strikethrough;
+        out.obfuscated = style.obfuscated;
+        out
+    }
+    pub fn text_to_api(&self, text: &engine::Text) -> Text {
+        match text.spans.as_slice() {
+            [] => Text::literal(""),
+            [only] => Text::literal(only.text.clone()).with_style(self.style_to_api(&only.style)),
+            spans => {
+                let mut root = Text::literal("");
+                root.children = spans
+                    .iter()
+                    .map(|span| {
+                        Text::literal(span.text.clone()).with_style(self.style_to_api(&span.style))
+                    })
+                    .collect();
+                root
+            }
+        }
+    }
+}
+/// Convert API text for in-process layout/shaping while retaining every
+/// inherited `TextStyle` (including deep NBT click/hover payloads and opaque
+/// metadata) verbatim in [`LocalText`].
+pub fn to_local_engine(text: &Text) -> LocalText {
+    let (ids, styles) = assign_local_styles(text);
+    let value =
+        owned_text_component_with(text, true, Some(&ids)).expect("lenient emit is infallible");
+    let engine = component::text_with_local_styles(&value);
+    component::discard_component(value);
+    LocalText { engine, styles }
 }
 /// Encode API text for a serialization boundary (Wire, JSON/SNBT, NBT/network),
 /// enforcing the 512-node depth limit and `ExtraCodecs` profile/property bounds.
@@ -2003,6 +2148,67 @@ mod iterative_tests {
         bad_meta.metadata = Tag::Int(7);
         assert_eq!(to_engine(&bad_meta), Err(TextFormError::Malformed));
         assert_eq!(to_engine_inprocess(&bad_meta).plain(), "ok");
+    }
+
+    #[test]
+    fn local_engine_preserves_opaque_click_hover_and_metadata_across_legacy_split() {
+        use super::{Tag, TextClick, TextHover, TextStyle, to_local_engine};
+        let mut opaque_dialog = Tag::ByteArray(vec![1, 2, 3]);
+        for _ in 0..600 {
+            let mut m = std::collections::BTreeMap::new();
+            m.insert("n".into(), opaque_dialog);
+            opaque_dialog = Tag::Compound(m);
+        }
+        let mut custom_meta = std::collections::BTreeMap::new();
+        custom_meta.insert("non_finite".into(), Tag::Float(f32::NAN.to_bits()));
+
+        let mut parent_style = TextStyle::default();
+        parent_style.color = Some("gold".into());
+        parent_style.click = Some(TextClick::ShowDialog(opaque_dialog.clone()));
+        parent_style.hover = Some(TextHover::Item {
+            id: "minecraft:stone".into(),
+            count: 2,
+            components: Some(Tag::ByteArray(vec![9, 8])),
+        });
+        parent_style.metadata = Tag::Compound(custom_meta.clone());
+
+        let mut root = mod_api::Text::literal("hi §lbold §cred").with_style(parent_style);
+        let child = mod_api::Text::literal(" tail");
+        root.children.push(child);
+
+        let local = to_local_engine(&root);
+        let resolved = local.engine().resolved();
+        let rebuilt = local.text_to_api(&resolved);
+        assert_eq!(rebuilt.children.len(), 4);
+        assert_eq!(rebuilt.children[0].style.color.as_deref(), Some("gold"));
+        assert_eq!(
+            rebuilt.children[0].style.click,
+            Some(TextClick::ShowDialog(opaque_dialog.clone()))
+        );
+        assert_eq!(
+            rebuilt.children[0].style.metadata,
+            Tag::Compound(custom_meta.clone())
+        );
+        assert_eq!(rebuilt.children[1].style.bold, Some(true));
+        assert_eq!(
+            rebuilt.children[1].style.click,
+            Some(TextClick::ShowDialog(opaque_dialog.clone()))
+        );
+        assert_eq!(rebuilt.children[2].style.color.as_deref(), Some("#FF5555"));
+        assert_eq!(rebuilt.children[2].style.bold, Some(false));
+        assert_eq!(
+            rebuilt.children[2].style.click,
+            Some(TextClick::ShowDialog(opaque_dialog.clone()))
+        );
+        assert_eq!(rebuilt.children[3].style.color.as_deref(), Some("gold"));
+        assert_eq!(
+            rebuilt.children[3].style.click,
+            Some(TextClick::ShowDialog(opaque_dialog))
+        );
+        assert_eq!(
+            rebuilt.children[3].style.metadata,
+            Tag::Compound(custom_meta)
+        );
     }
 
     #[test]

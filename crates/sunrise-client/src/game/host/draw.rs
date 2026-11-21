@@ -1,8 +1,7 @@
 //! The game's side of the `draw` area (`sunrise-mod-api/src/host/draw.rs`).
-use crate::game::{
-    Game,
-    api_values::{TryIntoApi, TryIntoEngine},
-};
+#[cfg(test)]
+use crate::game::api_values::TryIntoApi;
+use crate::game::{Game, api_values::TryIntoEngine};
 use mod_api::{prelude::*, *};
 
 /// [`DrawContext`] on the game's `crate::hud::HudBatch`: one per hook call.
@@ -86,7 +85,10 @@ impl DrawContext for GameDrawContext<'_, '_> {
         lines: &[Text],
         at: [f32; 2],
     ) -> Result<(), mod_api::text::TextFormError> {
-        let lines = lines.try_into_engine(&())?;
+        let lines: Vec<_> = lines
+            .iter()
+            .map(sunrise_client_lib::api_text::to_engine_inprocess)
+            .collect();
         self.game.native_gui_tooltip(&mut *self.surface, &lines, at);
         Ok(())
     }
@@ -100,8 +102,15 @@ impl DrawContext for GameDrawContext<'_, '_> {
         align: TextAlign,
         scale: f32,
     ) -> Result<TextLines, TextLinesRefusal> {
-        let text: crate::text::Text = text.try_into_engine(&())?;
-        label_layout(&self.game.gui.atlas.font, &text, max_width, align, scale)
+        let local = sunrise_client_lib::api_text::to_local_engine(text);
+        label_layout_with(
+            &self.game.gui.atlas.font,
+            local.engine(),
+            max_width,
+            align,
+            scale,
+            |piece| Ok(local.text_to_api(piece)),
+        )
     }
     fn fluid(&mut self, fluid: &str, at: [f32; 2], size: f32) {
         self.game.native_fluid(&mut *self.surface, fluid, at, size)
@@ -156,7 +165,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         highlighted: bool,
         sprites: Option<&ButtonSprites>,
     ) -> Result<(), mod_api::text::TextFormError> {
-        let label = label.try_into_engine(&())?;
+        let label = sunrise_client_lib::api_text::to_engine_inprocess(label);
         self.game.native_widget_button(
             &mut *self.surface,
             rect,
@@ -184,12 +193,25 @@ const MAX_GLYPHS: usize = 8192;
 /// Lays `text` out as a label's lines, as [`DrawContext::text_lines`] documents: the font's own
 /// split wraps it at `max_width / scale`, the font measures each line, `align` places them inside
 /// that wrapping width, and every dimension and position answered is scaled by `scale`.
+#[cfg(test)]
 fn label_layout(
     font: &crate::font::Font,
     text: &crate::text::Text,
     max_width: f32,
     align: TextAlign,
     scale: f32,
+) -> Result<TextLines, TextLinesRefusal> {
+    label_layout_with(font, text, max_width, align, scale, |piece| {
+        Ok(piece.try_into_api()?)
+    })
+}
+fn label_layout_with(
+    font: &crate::font::Font,
+    text: &crate::text::Text,
+    max_width: f32,
+    align: TextAlign,
+    scale: f32,
+    mut to_api: impl FnMut(&crate::text::Text) -> Result<Text, TextLinesRefusal>,
 ) -> Result<TextLines, TextLinesRefusal> {
     // No position and no size to answer: a scale of zero or less, or one that is not a number,
     // refuses rather than answering every line at an undefined place.
@@ -230,7 +252,7 @@ fn label_layout(
             TextAlign::Right => wrap_width - width,
         };
         let at = [x * scale, i as f32 * LINE_HEIGHT * scale];
-        lines.push(TextLine::new(piece.try_into_api()?, at, width * scale));
+        lines.push(TextLine::new(to_api(&piece)?, at, width * scale));
     }
     let width = lines.iter().map(|line| line.width).fold(0.0, f32::max);
     let height = lines
@@ -344,7 +366,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         glowing: bool,
         outline: Option<u32>,
     ) -> Result<f32, mod_api::text::TextFormError> {
-        let text = text.try_into_engine(&())?;
+        let text = sunrise_client_lib::api_text::to_engine_inprocess(text);
         Ok(self
             .game
             .native_draw_text(&mut *self.surface, &text, at, color, glowing, outline))
@@ -867,5 +889,42 @@ mod tests {
         assert_eq!(doubled.lines[1].width, plain_size.lines[1].width * 2.0);
         assert_eq!(doubled.lines[1].at[1], plain_size.lines[1].at[1] * 2.0);
         assert_eq!(doubled.height, plain_size.height * 2.0);
+    }
+
+    #[test]
+    fn local_label_layout_handles_deep_trees_and_preserves_opaque_styles() {
+        let mut opaque_dialog = Tag::ByteArray(vec![7, 8]);
+        for _ in 0..600 {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("n".into(), opaque_dialog);
+            opaque_dialog = Tag::Compound(map);
+        }
+        let mut style = mod_api::text::TextStyle::default();
+        style.bold = Some(true);
+        style.click = Some(mod_api::text::TextClick::ShowDialog(opaque_dialog.clone()));
+        let mut deep = mod_api::Text::literal("AAAA BBBB").with_style(style);
+        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+            let mut parent = mod_api::Text::literal("");
+            parent.children.push(deep);
+            deep = parent;
+        }
+        let local = sunrise_client_lib::api_text::to_local_engine(&deep);
+        let lines = label_layout_with(
+            &fake_font(6.0),
+            local.engine(),
+            30.0,
+            TextAlign::Left,
+            1.0,
+            |piece| Ok(local.text_to_api(piece)),
+        )
+        .unwrap();
+        assert_eq!(lines.lines.len(), 2);
+        for line in &lines.lines {
+            assert_eq!(line.text.style.bold, Some(true));
+            assert_eq!(
+                line.text.style.click,
+                Some(mod_api::text::TextClick::ShowDialog(opaque_dialog.clone()))
+            );
+        }
     }
 }

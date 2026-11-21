@@ -14,13 +14,13 @@ impl Game<'_> {
         text: &mod_api::Text,
         width: i32,
     ) -> Vec<mod_api::Text> {
-        let engine = sunrise_client_lib::api_text::to_engine_inprocess(text);
+        let local = sunrise_client_lib::api_text::to_local_engine(text);
         self.gui
             .atlas
             .font
-            .split_formatted(&engine.resolved(), width as f32)
+            .split_formatted(&local.engine().resolved(), width as f32)
             .iter()
-            .map(sunrise_client_lib::api_text::to_api_inprocess)
+            .map(|line| local.text_to_api(line))
             .collect()
     }
 }

@@ -113,6 +113,9 @@ pub struct Style {
     pub font: Option<String>,
     /// Content metadata for a single U+FFFC object span; never inherited.
     pub inline_object: Option<InlineObject>,
+    /// Optional index into an in-process caller's style table for lossless
+    /// round-tripping of opaque API click/hover/metadata payloads across layout.
+    pub opaque_style_id: Option<u32>,
 }
 /// A style's `font` field: an identifier (`alt` is `minecraft:alt`).
 pub fn font_id(v: &Value) -> Option<String> {
@@ -150,6 +153,7 @@ impl Style {
         if self.font.is_none() {
             self.font.clone_from(&base.font);
         }
+        self.opaque_style_id = self.opaque_style_id.or(base.opaque_style_id);
     }
     pub fn is_bold(&self) -> bool {
         self.bold == Some(true)
