@@ -811,44 +811,45 @@ pub fn visual_clip<W: DynamicCollisionWorld>(
     to: Vec3,
 ) -> Option<Option<[i32; 3]>> {
     let full = Aabb::new(Vec3::ZERO, Vec3::new(1.0, 1.0, 1.0));
-    let result = traverse_blocks(from, to, 512, |p: BlockPos| {
-        let id = state(p.x, p.y, p.z);
-        if facts.is_air(id) {
-            return None;
-        }
-        let name = facts.get(id).name.trim_start_matches("minecraft:");
-        if name.ends_with("glass")
-            || name.ends_with("glass_pane")
-            || name.ends_with("_bars")
-            || name.ends_with("copper_grate")
-            || name == "powder_snow"
-        {
-            return None;
-        }
-        // FenceBlock and SnowLayerBlock: their outline (a fence's collision shape is 24 px tall).
-        if name == "snow" || name.ends_with("_fence") {
-            return VoxelShape::clip_boxes(
-                facts.get(id).outline.iter().map(|b| {
-                    Aabb::new(Vec3::new(b[0], b[1], b[2]), Vec3::new(b[3], b[4], b[5]))
-                }),
-                from,
-                to,
-                p,
-            )
-            .map(|_| [p.x, p.y, p.z]);
-        }
-        if matches!(name, "mud" | "soul_sand") {
-            return full
-                .move_by(Vec3::new(f64::from(p.x), f64::from(p.y), f64::from(p.z)))
-                .clip(from, to)
+    let result =
+        traverse_blocks(from, to, 512, |p: BlockPos| {
+            let id = state(p.x, p.y, p.z);
+            if facts.is_air(id) {
+                return None;
+            }
+            let name = facts.get(id).name.trim_start_matches("minecraft:");
+            if name.ends_with("glass")
+                || name.ends_with("glass_pane")
+                || name.ends_with("_bars")
+                || name.ends_with("copper_grate")
+                || name == "powder_snow"
+            {
+                return None;
+            }
+            // FenceBlock and SnowLayerBlock: their outline (a fence's collision shape is 24 px tall).
+            if name == "snow" || name.ends_with("_fence") {
+                return VoxelShape::clip_boxes(
+                    facts.get(id).outline.iter().map(|b| {
+                        Aabb::new(Vec3::new(b[0], b[1], b[2]), Vec3::new(b[3], b[4], b[5]))
+                    }),
+                    from,
+                    to,
+                    p,
+                )
                 .map(|_| [p.x, p.y, p.z]);
-        }
-        if let Ok(Some(shape)) = collision.static_shape(id) {
-            return shape.clip(from, to, p).map(|_| [p.x, p.y, p.z]);
-        }
-        let shape = collision.collision_shape(scene, id, [p.x, p.y, p.z]).ok()?;
-        shape.clip(from, to, p).map(|_| [p.x, p.y, p.z])
-    });
+            }
+            if matches!(name, "mud" | "soul_sand") {
+                return full
+                    .move_by(Vec3::new(f64::from(p.x), f64::from(p.y), f64::from(p.z)))
+                    .clip(from, to)
+                    .map(|_| [p.x, p.y, p.z]);
+            }
+            if let Ok(Some(shape)) = collision.static_shape(id) {
+                return shape.clip(from, to, p).map(|_| [p.x, p.y, p.z]);
+            }
+            let shape = collision.collision_shape(scene, id, [p.x, p.y, p.z]).ok()?;
+            shape.clip(from, to, p).map(|_| [p.x, p.y, p.z])
+        });
     result.ok()
 }
 
@@ -1164,7 +1165,9 @@ mod scaffolding_sight_tests {
                     ]))
                     .unwrap();
                 for (x, name) in [(0, "oak_fence"), (2, "powder_snow")] {
-                    let id = registry.default_state(&format!("minecraft:{name}")).unwrap();
+                    let id = registry
+                        .default_state(&format!("minecraft:{name}"))
+                        .unwrap();
                     world.set(x, 65, 0, id).unwrap();
                 }
                 world.set(4, 65, 0, snow4).unwrap();
