@@ -168,9 +168,9 @@ fn extract(&self, particle: &ModParticle, view: &ParticleExtractView,
             rotation,
             half_size: particle.size,
             frame: particle.frame,
-            uv: [0.0, 0.0, 1.0, 1.0],
             color: 0xffcceeff,
             light_coords: view.light_coords,
+            ..ParticleQuad::default()
         });
     }
 }

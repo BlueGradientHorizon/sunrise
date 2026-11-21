@@ -4578,13 +4578,13 @@ impl ParticleEngine {
                 if p.removed {
                     continue;
                 }
-                let view = mod_api::ParticleExtractView {
-                    camera: camera.to_array(),
-                    rotation: base.to_array(),
-                    partial_tick: partial,
-                    previous_roll: p.o_roll,
-                    light_coords: quads.light(p),
-                };
+                let view = mod_api::ParticleExtractView::new(
+                    camera.to_array(),
+                    base.to_array(),
+                    partial,
+                    p.o_roll,
+                    quads.light(p),
+                );
                 let mut output = ProviderQuadSink::<CULL> {
                     quads: &mut quads,
                     particle: p,

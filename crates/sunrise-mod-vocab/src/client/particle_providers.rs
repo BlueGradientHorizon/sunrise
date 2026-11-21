@@ -129,7 +129,7 @@ pub trait ParticleLevelView {
 
 /// The read-only camera and lighting for one call to [`ParticleProvider::extract`].
 // no wire: frame-local renderer inputs.
-// exhaustive: built by the engine for one extraction.
+#[non_exhaustive]
 pub struct ParticleExtractView {
     /// World-space camera position in blocks. Subtract it in f64 before narrowing a center to f32.
     pub camera: [f64; 3],
@@ -143,7 +143,28 @@ pub struct ParticleExtractView {
     pub light_coords: u32,
 }
 
+impl ParticleExtractView {
+    // hidden: the renderer constructs the read-only view at its extraction boundary.
+    #[doc(hidden)]
+    pub fn new(
+        camera: [f64; 3],
+        rotation: [f32; 4],
+        partial_tick: f32,
+        previous_roll: f32,
+        light_coords: u32,
+    ) -> Self {
+        Self {
+            camera,
+            rotation,
+            partial_tick,
+            previous_roll,
+            light_coords,
+        }
+    }
+}
+
 /// One `SingleQuadParticle` quad submitted to the current frame's particle-atlas pass.
+/// Construct it with `..ParticleQuad::default()` so new properties can be added later.
 // no wire: frame-local geometry.
 // exhaustive: mods construct this record to submit a quad.
 pub struct ParticleQuad {
@@ -163,6 +184,23 @@ pub struct ParticleQuad {
     pub color: u32,
     /// Vanilla packed light (`LightCoordsUtil.pack` or `smoothPack`).
     pub light_coords: u32,
+}
+
+impl Default for ParticleQuad {
+    /// A zero-area translucent quad at the camera-relative origin, with identity rotation,
+    /// the whole first sprite, opaque white tint and zero light.
+    fn default() -> Self {
+        Self {
+            layer: ParticleBlend::Translucent,
+            center: [0.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            half_size: 0.0,
+            frame: 0,
+            uv: [0.0, 0.0, 1.0, 1.0],
+            color: 0xffffffff,
+            light_coords: 0,
+        }
+    }
 }
 
 /// The frame's quad output for this particle. Only the current extract call may write to it.
