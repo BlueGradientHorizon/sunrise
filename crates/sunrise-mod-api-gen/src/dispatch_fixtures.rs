@@ -175,33 +175,6 @@ pub(crate) fn generate(root: &Path, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Lossless source ranges and catalog ownership for the one-shot fixture move.
-#[doc(hidden)]
-pub fn layout(root: &Path, source: &str) -> Result<serde_json::Value, String> {
-    use syn::spanned::Spanned;
-    fn items(input: &[Item]) -> Vec<serde_json::Value> {
-        input.iter().map(|item| {
-            let span = item.span();
-            let children = if let Item::Mod(i) = item { i.content.as_ref().map(|(_, i)| items(i)) } else { None };
-            serde_json::json!({"name": key(item), "start": span.start().line, "end": span.end().line, "children": children})
-        }).collect()
-    }
-    let mut hooks = BTreeMap::new();
-    for area in Catalog::modules(&root.join(DECLARATIONS))? {
-        let path = root.join(DECLARATIONS).join(format!("{area}.rs"));
-        let catalog = Catalog::parse(&[(
-            path.display().to_string(),
-            fs::read_to_string(path).map_err(|e| e.to_string())?,
-        )])?;
-        for hook in catalog.hooks {
-            hooks.insert(hook.name, area.clone());
-        }
-    }
-    Ok(
-        serde_json::json!({"hooks": hooks, "items": items(&syn::parse_file(source).map_err(|e| e.to_string())?.items)}),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

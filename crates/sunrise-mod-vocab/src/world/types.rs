@@ -1426,7 +1426,6 @@ pub trait LevelHost {
     /// tables answers every fact with `None` (or `BlockStateError::Unavailable`).
     ///
     /// Computed from this level view's tables.
-    #[sunrise_mod_api_macros::computed_in_mod]
     fn block_states(&self) -> crate::BlockStates<'_> {
         crate::BlockStates::unavailable()
     }

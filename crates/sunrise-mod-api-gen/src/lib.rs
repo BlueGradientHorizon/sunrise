@@ -4,17 +4,13 @@ mod dispatch_fixtures;
 mod exports;
 mod game_modules;
 mod hook_wiring;
-#[doc(hidden)]
-pub use dispatch_fixtures::layout as dispatch_fixture_layout;
 pub use game_modules::materialize_generated_host;
 mod host;
-mod layout;
 mod parts;
 pub use catalog::DECLARATIONS;
 use catalog::{Catalog, Contract, DrawContext, Hook, HostAccess, PartKind, PhaseContext, Side};
 use heck::ToSnakeCase;
 pub use hook_wiring::check_hook_wiring;
-pub use layout::native_hook_layout;
 use quote::ToTokens;
 use std::{
     collections::{BTreeMap, HashSet},
