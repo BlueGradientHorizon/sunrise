@@ -346,6 +346,7 @@ fn observed(id: &'static str, overlay: bool) -> Option<ObservedScreen> {
     Some(ObservedScreen {
         id,
         overlay,
+        mod_screen: None,
         menu: None,
         title: None,
         rect: [0.0; 4],

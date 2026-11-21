@@ -80,17 +80,21 @@ pub trait ScreensClientHost {
     #[access(ClientSetup)]
     fn menu_blur_radius(&self) -> f32;
     /// Side: client.
-    /// Opens a screen of mod `mod_id`'s own over the world: the screen hooks
-    /// fire over it as over any other, so the mod draws it in
-    /// `screen_render_post` and takes its clicks, scroll, keys and
-    /// typing there; the mouse is freed, and Escape closes it. Every mod's own
-    /// screen has the `ScreenView.id` `mod`, so a mod's screen hooks
-    /// check `native_mod_screen()` is its own before drawing. It doesn't pause
-    /// a single-player game (as the inventory doesn't). True when it is open:
-    /// false while another screen is (or another mod's), over the title
-    /// screen, a book, a sign editor, a dialog or a prompt, while the world
-    /// loads, and anywhere but the window's own client (the server thread, a
-    /// dedicated server). A gamepad can close it (B, Start) but not click on
+    /// Opens a screen of mod `mod_id`'s own through the normal screen-transition
+    /// path (`Gui.setScreen`): `screen_opening` and `screen_closing` fire for the
+    /// transition and `screen_init_post` runs once it opens, so the mod mounts
+    /// widgets in `screen_init_post`, draws in `screen_render_post`, and takes its
+    /// clicks, scroll, keys, and typing there; the mouse is freed, and Escape
+    /// closes it. Every mod's own screen has the `ScreenView.id` `mod`, so a mod's
+    /// screen hooks check `mod_screen()` is its own before mounting or drawing. It
+    /// doesn't pause a single-player game (as the inventory doesn't). Can replace
+    /// any open vanilla screen, title screen, overlay (book, sign editor, dialog,
+    /// or prompt), or another mod's screen, running the replaced screen's close
+    /// cleanup once hooks allow the transition. Returns `true` when `mod_id`'s
+    /// screen is open, and `false` when cancelled or redirected by
+    /// `screen_opening`, while a world or connection is loading, or without a
+    /// client window (a headless/dedicated server, the server thread, or
+    /// guest-acting contexts). A gamepad can close it (B, Start) but not click on
     /// it: its clicks don't reach the mouse hooks.
     #[access(WorldOnly)]
     fn mod_screen_open(&mut self, mod_id: &str) -> bool;

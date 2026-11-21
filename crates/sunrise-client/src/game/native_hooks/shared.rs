@@ -217,6 +217,18 @@ impl Game<'_> {
     ) -> ScreenDecision {
         self.screen_decision(self.screen_change(current, new, true, closes))
     }
+    /// Like `decide_screen`, for `mod_screen_open`, which clears any active
+    /// overlay via `close_replaced_screen_for_mod` before applying the
+    /// decision, so `ScreenOpening::ModScreen` and `ScreenOpening::Vanilla`
+    /// answers remain eligible even when replacing an overlay.
+    fn decide_screen_for_mod_open(
+        &self,
+        current: &ScreenView<'_>,
+        new: &ScreenView<'_>,
+        closes: bool,
+    ) -> ScreenDecision {
+        self.screen_decision_with(self.screen_change(current, new, true, closes), true)
+    }
     /// What a mod's `screen_opening` answer does here: a `ModScreen` only
     /// where a mod's screen can open (`mod_screen_blocked`), a `Vanilla`
     /// target only where it opens (a title screen while the title shows, a
@@ -224,6 +236,20 @@ impl Game<'_> {
     /// goes ahead and the refused target is logged. Records whether a mod's
     /// answer changed what shows (`ScreenState::answered`).
     fn screen_decision(&self, answer: Option<Answered<ScreenOpening>>) -> ScreenDecision {
+        self.screen_decision_with(answer, false)
+    }
+    fn screen_decision_with(
+        &self,
+        answer: Option<Answered<ScreenOpening>>,
+        clears_overlays: bool,
+    ) -> ScreenDecision {
+        let blocked = if clears_overlays {
+            self.lan_acting.is_some()
+                || (self.player.is_none() && self.title.is_none())
+                || self.remote_loading()
+        } else {
+            self.mod_screen_blocked()
+        };
         let decision = match answer {
             Some(Answered {
                 answer: ScreenOpening::Cancel,
@@ -233,16 +259,18 @@ impl Game<'_> {
                 answer: ScreenOpening::ModScreen,
                 mod_id,
                 ..
-            }) if !self.mod_screen_blocked() => ScreenDecision::ModScreen(mod_id),
+            }) if !blocked => ScreenDecision::ModScreen(mod_id),
             Some(Answered {
                 answer: ScreenOpening::Vanilla(target),
                 mod_id,
                 ..
             }) => {
                 let opens = match title_target_id(target) {
-                    // An overlay over the title would stay in front of it.
-                    Some(_) => self.title.is_some() && !self.screen_over_playing(),
-                    None => self.title.is_none() && !self.mod_screen_blocked(),
+                    // An overlay over the title would stay in front of it unless cleared.
+                    Some(_) => {
+                        self.title.is_some() && (clears_overlays || !self.screen_over_playing())
+                    }
+                    None => self.title.is_none() && !blocked,
                 };
                 if opens {
                     ScreenDecision::Vanilla(target)
@@ -310,6 +338,8 @@ impl Game<'_> {
         self.screen = screen;
         if let Some(owner) = owner {
             self.native_mod_screen = Some(owner.to_owned());
+        } else if screen != Screen::Mod {
+            self.native_mod_screen = None;
         }
         if screen == Screen::Mod {
             self.keys.clear();
@@ -451,10 +481,37 @@ impl Game<'_> {
             .map(|view| self.observe_view(view))
     }
 
+    /// Runs close cleanup for any screen or overlay being replaced by
+    /// `mod_screen_open` once hooks allow the transition, matching vanilla's
+    /// `Gui.setScreen` / `Screen.removed` so no container menu, editor, dialog,
+    /// or prompt stays open over the new screen.
+    fn close_replaced_screen_for_mod(&mut self) {
+        match self.screen {
+            Screen::Inventory => self.close_container(),
+            Screen::Creative => self.close_creative_menu(),
+            Screen::Options => self.ui.options.discard_draw(),
+            _ => {}
+        }
+        if self.book.is_some() {
+            self.close_book();
+        }
+        if self.sign_edit.is_some() {
+            self.close_sign_editor();
+        }
+        if self.dialog_open() {
+            self.close_dialogs();
+        }
+        self.link_prompt = None;
+        self.command_prompt = None;
+        self.code_of_conduct = None;
+        self.server_packs.prompt = None;
+    }
+
     fn observe_view(&self, view: ScreenView<'_>) -> ObservedScreen {
         ObservedScreen {
             id: view.id,
             overlay: self.screen == Screen::Playing,
+            mod_screen: self.mod_screen().map(str::to_owned),
             menu: view.menu.map(str::to_owned),
             title: view
                 .title
@@ -600,7 +657,9 @@ impl Game<'_> {
     /// follows for every kind, on opening and on a resize.
     fn observe_change(&mut self, current: Option<ObservedScreen>) {
         let changed = match (&self.screen_state.observed, &current) {
-            (Some(old), Some(new)) => old.id != new.id || old.menu != new.menu,
+            (Some(old), Some(new)) => {
+                old.id != new.id || old.menu != new.menu || old.mod_screen != new.mod_screen
+            }
             (None, None) => false,
             _ => true,
         };
@@ -3292,21 +3351,23 @@ fn box_meets(b: &sunrise_core::geometry::Aabb, min: [f64; 3], max: [f64; 3]) -> 
         && hi.z > min[2]
 }
 
-/// What `mod_screen_open(mod_id)` does over `screen` (`blocked`: an
-/// overlay, the title screen, no window or no player; `owner`'s own screen
-/// open): `None` opens it, `Some` answers without changing anything (true:
-/// `mod_id`'s is already open).
+/// What `mod_screen_open(mod_id)` does before running a screen transition
+/// (`unavailable`: no renderer, acting for a guest, neither a player nor a
+/// title screen, or a world/connection is loading; `owner`: the mod whose
+/// `Screen::Mod` is currently shown on top, if any): `Some(false)` refuses
+/// without changing state, `Some(true)` keeps `mod_id`'s already open screen,
+/// and `None` proceeds through the normal screen-transition path.
 pub(super) fn mod_screen_opens(
     screen: Screen,
-    blocked: bool,
+    unavailable: bool,
     owner: Option<&str>,
     mod_id: &str,
 ) -> Option<bool> {
-    if screen == Screen::Mod {
-        return Some(owner == Some(mod_id));
-    }
-    if screen != Screen::Playing || blocked {
+    if unavailable {
         return Some(false);
+    }
+    if screen == Screen::Mod && owner == Some(mod_id) {
+        return Some(true);
     }
     None
 }
@@ -3914,6 +3975,7 @@ mod tests {
                 let view = super::ObservedScreen {
                     id: "inventory",
                     overlay: false,
+                    mod_screen: None,
                     menu: None,
                     title: None,
                     rect: [0.0; 4],

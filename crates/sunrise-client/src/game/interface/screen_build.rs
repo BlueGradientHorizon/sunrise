@@ -27,6 +27,7 @@ pub(super) struct ObservedScreen {
     /// gameplay (sign editor, book, dialog, prompt). `set_screen` never sees
     /// it open or close.
     pub(super) overlay: bool,
+    pub(super) mod_screen: Option<String>,
     pub(super) menu: Option<String>,
     pub(super) title: Option<std::sync::Arc<mod_api::Text>>,
     pub(super) rect: [f32; 4],
