@@ -218,24 +218,6 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner())
             .finished
     }
-    /// Verify that a configuration task is currently running on this session.
-    pub fn require_any_running(&self) -> Result<(), ConfigurationTaskError> {
-        if self.transport().closed() {
-            return Err(ConfigurationTaskError::Disconnected);
-        }
-        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.closed || state.failure.is_some() {
-            return Err(ConfigurationTaskError::Disconnected);
-        }
-        if !state
-            .task_types
-            .as_ref()
-            .is_some_and(|types| state.started && !state.finished && state.at < types.len())
-        {
-            return Err(ConfigurationTaskError::NotRunning);
-        }
-        Ok(())
-    }
     /// Verify that the currently running task on this session matches `task_type`
     /// and return its internal turn ordinal so deferred network publication can
     /// only finish that exact turn.
@@ -364,7 +346,7 @@ mod tests {
 
         session.register(vec![first.clone(), second.clone()]);
         assert_eq!(
-            session.require_any_running(),
+            session.running_ordinal_for_type(&first),
             Err(ConfigurationTaskError::NotRunning)
         );
         let (completed, turn) = session.turn();
@@ -372,7 +354,6 @@ mod tests {
         let turn = turn.unwrap();
         assert!(turn.start);
         assert_eq!(turn.ordinal, 0);
-        assert!(session.require_any_running().is_ok());
         assert_eq!(session.running_ordinal_for_type(&first), Ok(0));
         assert_eq!(
             session.running_ordinal_for_type(&second),
@@ -416,7 +397,6 @@ mod tests {
             Err(ConfigurationTaskError::WrongType)
         );
         assert_eq!(session.running_ordinal_for_type(&second), Ok(1));
-        assert!(session.require_any_running().is_ok());
         session.finish_ordinal_under_epoch(next.ordinal);
         let (completed, turn) = session.turn();
         assert_eq!(completed, Some(1));

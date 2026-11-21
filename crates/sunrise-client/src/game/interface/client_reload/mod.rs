@@ -18,8 +18,7 @@ use mod_api::{
 };
 use sunrise_client::datapack::DataPack;
 
-/// One client reload step to run later on the game-owning thread: a mod
-/// listener's prepared apply.
+/// One client reload step: a mod's apply action or model publication.
 pub(super) type PreparedClientReload = PreparedStep<()>;
 
 /// The registration host of the first load: no game exists yet, so it reads
@@ -77,36 +76,45 @@ pub(super) fn register_startup_client_reload_listeners() -> mod_api::ClientListe
     listeners
 }
 
-/// Orders the registered listeners, then prepares each against `root`, the
-/// merged resource root the reload will publish; runs on the reload's worker,
-/// off the game-owning thread.
-pub(super) fn stage_client_reload(
+/// Prepare listeners against the merged asset view, running the model build
+/// at the model manager's position in their order. The models travel separately
+/// so renderer preflight can use them without publishing them.
+pub(super) fn stage_client_reload<V, E: From<ReloadStageError>>(
     root: &sunrise_assets::resource_source::ResourceSource,
     listeners: mod_api::ClientListenerRegistry,
     entering: mod_api::__private::ModPhase,
-) -> Result<Vec<PreparedClientReload>, ReloadStageError> {
+    build_models: impl FnOnce() -> Result<V, E>,
+) -> Result<(V, Vec<PreparedClientReload>), E> {
     let phase = mod_api::__private::PhaseOwner::scope(entering);
-    let _reload = phase.reloading().expect("client listener prepare");
     let pack = DataPack::from_source("vanilla".into(), root.clone());
     let ordered = listeners.finish().map_err(ReloadStageError::Order)?;
-    prepare_listeners(
+    let mut build_models = Some(build_models);
+    let mut models = None;
+    let steps = prepare_listeners(
         ordered,
         "client_reload_prepare",
-        |_| None,
+        || -> Result<(), E> {
+            models = Some(build_models.take().expect("one model manager")()?);
+            Ok(())
+        },
         |id, converter| ClientReloadContext::new(reload_files("assets", &[&pack], id, converter)),
-        ClientReloadListener::prepare,
-    )
+        |listener, context| {
+            let _reload = phase.reloading().expect("client listener prepare");
+            ClientReloadListener::prepare(listener, context)
+        },
+    )?;
+    Ok((models.expect("model manager is always registered"), steps))
 }
 
-/// Applies the prepared listeners in order on the game-owning thread, after
-/// the rest of the staged pack is published and before the
-/// resources-reloaded notice.
-pub(super) fn apply_client_reload(
+/// Publish the models in order with the mod listener actions on the game-owning
+/// thread, before the resources-reloaded notice.
+pub(super) fn apply_client_reload<E>(
     phase: &mod_api::__private::PhaseOwner,
     prepared: Vec<PreparedClientReload>,
-) {
-    let _reload = phase
-        .reloading()
-        .expect("client apply on its owning thread");
-    apply_listeners(prepared, "client_reload_apply", |()| {});
+    publish_models: impl FnOnce() -> Result<(), E>,
+) -> Result<(), E> {
+    let mut publish_models = Some(publish_models);
+    apply_listeners(prepared, phase, "client_reload_apply", |()| {
+        publish_models.take().expect("one model manager")()
+    })
 }

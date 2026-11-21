@@ -92,9 +92,12 @@ A refused task payload send returns `Err(ConfigurationTaskError::Payload(_))`
 without failing the task session, so the task can handle it, call
 `context.fail(...)`, or finish. An explicit `fail` or callback panic aborts the
 task callback and closes that client with the configuration-error reason. A panic
-is logged and shown in a mod error toast; it does not crash the server. Check
-the channel before sending to an optional or vanilla peer, then request
-completion or explain why it cannot join.
+is logged for that peer and shown in a mod error toast if there is a local client.
+The next peer receives its own task instances. A send uses the live configuration
+connection, not the current task state: even after another handler completes the
+task, sends can still queue while the connection is configuring. Check the channel
+before sending to an optional or vanilla peer, then request completion or explain
+why it cannot join.
 
 There is **no per-task timeout**. A client answering keep-alives can remain in
 configuration indefinitely while its task waits. The connection's ordinary idle

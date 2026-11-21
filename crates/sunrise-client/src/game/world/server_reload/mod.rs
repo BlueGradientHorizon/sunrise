@@ -9,7 +9,7 @@ use super::{Game, functions::PackStack};
 use mod_api::{
     __private::reload::{ReloadStageError, apply_listeners, prepare_listeners},
     FileToIdConverter, Identifier, ServerReloadContext, ServerReloadListener,
-    ServerReloadResources, VanillaServerListeners,
+    ServerReloadResources,
 };
 use sunrise_client::datapack::DataStore;
 
@@ -81,10 +81,7 @@ impl Game<'_> {
         let steps = prepare_listeners(
             ordered.listeners,
             "server_reload_prepare",
-            |listener| {
-                (listener.id == VanillaServerListeners::functions())
-                    .then(|| Box::new(functions_store(stack)))
-            },
+            || Ok::<_, ReloadStageError>(Box::new(functions_store(stack))),
             |id, converter| stack.reload_context(id, converter),
             ServerReloadListener::prepare,
         )?;
@@ -94,36 +91,20 @@ impl Game<'_> {
             loot,
         })
     }
-    pub(super) fn apply_server_reload_callbacks(
-        &mut self,
-        prepared: PreparedServerReload,
-    ) -> PreparedServerReload {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server apply on its owning thread");
-        let mut vanilla = Vec::new();
-        apply_listeners(prepared.steps, "server_reload_apply", |store| {
-            vanilla.push(PreparedStep::Vanilla(store))
-        });
-        PreparedServerReload {
-            steps: vanilla,
-            resources: prepared.resources,
-            loot: prepared.loot,
-        }
-    }
     pub(super) fn apply_server_reload(
         &mut self,
         prepared: PreparedServerReload,
         stack: &PackStack,
+        enabled_features: &[String],
     ) {
         let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server apply on its owning thread");
-        apply_listeners(prepared.steps, "server_reload_apply", |store| {
+        apply_listeners(prepared.steps, &phase, "server_reload_apply", |store| {
+            self.build_native_commands(enabled_features);
+            let _reload = phase.reloading().expect("function library apply");
             self.admit_store(*store, stack);
-        });
+            Ok::<_, std::convert::Infallible>(())
+        })
+        .unwrap();
         if let Some(tables) = &self.world_tables {
             prepared.loot.bind_from(&tables.loot_modifier_manager);
         }

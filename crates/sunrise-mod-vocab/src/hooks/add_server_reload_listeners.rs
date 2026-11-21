@@ -8,6 +8,8 @@ pub trait Hooks {
     /// settings and mod-list reads are available through this Host. World
     /// handles, services and transactions panic naming the phase. Existing
     /// data-load callbacks retain their DataLoadContext; no setup event is added.
+    /// Dependencies on the function library order both its prepare and admission;
+    /// every listener prepares before any apply.
     #[hook(
         receiver = "read",
         dispatch = "flat",
@@ -15,7 +17,7 @@ pub trait Hooks {
         contract = "listen",
         host = "read",
         neoforge = "AddServerReloadListenersEvent",
-        version = 2
+        version = 3
     )]
     fn add_server_reload_listeners(listeners: &mut dyn ServerReloadListeners);
 }

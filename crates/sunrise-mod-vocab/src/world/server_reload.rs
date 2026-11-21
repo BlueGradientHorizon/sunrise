@@ -30,7 +30,8 @@ impl VanillaServerListeners {
             LazyLock::new(|| Identifier::parse("minecraft:function_library").unwrap());
         &ID
     }
-    /// Vanilla's function library. Use this anchor rather than its string value,
+    /// Vanilla's function library: reading the next function files in prepare and
+    /// admitting the library in apply. Use this anchor rather than its string value,
     /// which need not match NeoForge's identifier.
     pub fn functions() -> Identifier {
         Self::functions_ref().clone()
@@ -74,9 +75,8 @@ impl ServerReloadContext {
 pub trait ServerReloadListener: Send + Sync + 'static {
     /// Parse and validate new data without changing the listener's live state.
     /// Return `Ok(Box::new(move || { /* publish prepared data */ }))` with owned
-    /// data. The action is consumed once and cannot report an error. A later
-    /// server table refusal leaves the previous engine generation in place but
-    /// does not undo effects of actions that already ran.
+    /// data. The action is consumed once and cannot report an error. If the
+    /// server cannot prepare its world tables, no apply action runs.
     ///
     /// As vanilla's `SimpleJsonResourceReloadListener.scanDirectory`, a
     /// listener that parses its files logs and skips one that won't parse,

@@ -93,7 +93,9 @@ impl ConfigurationTaskContext<'_> {
     pub fn has_channel(&self, host: &dyn ServerHost, channel: &PayloadId) -> bool {
         self.connection.has_channel(host, channel)
     }
-    /// Queue a payload in the current transaction on this task's registered channel.
+    /// Queue a payload in the current transaction on this connection's registered
+    /// configuration channel. Another handler completing the task does not prevent
+    /// sends on a connection that is still configuring.
     pub fn send_payload(
         &self,
         host: &mut dyn ServerHost,
@@ -127,7 +129,8 @@ pub enum ConfigurationTaskError {
     Disconnected,
     /// The running task on this connection has a different type.
     WrongType,
-    /// No configuration task is currently running on this connection.
+    /// A completion was requested but no configuration task is currently running
+    /// on this connection (or this handler already requested completion).
     NotRunning,
     /// Completion requires a server configuration payload handler.
     WrongContext,

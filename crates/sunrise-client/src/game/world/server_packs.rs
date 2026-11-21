@@ -530,8 +530,8 @@ impl Game<'_> {
         }
     }
 
-    fn add_mod_error_toasts(&mut self) {
-        for (mod_id, operation) in mod_api::__private::game::take_mod_error_toasts() {
+    fn add_mod_error_toasts(&mut self, reports: Vec<(&'static str, &'static str)>) {
+        for (mod_id, operation) in reports {
             let toast = SystemToast::new(
                 Text::tr("sunrise.mods.callback_panicked.title", &[]),
                 Some(Text::tr(
@@ -540,9 +540,9 @@ impl Game<'_> {
                 )),
             )
             .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
-            if let Some(shown) = self.add_system_toast(toast) {
-                self.server_packs.mod_errors.push(Some(shown));
-            }
+            // These diagnostics describe a callback the engine contained. Ordinary
+            // System toasts still go through toast_add, but a mod cannot hide this report.
+            self.server_packs.mod_errors.push(Some(toast));
         }
     }
 
@@ -551,7 +551,7 @@ impl Game<'_> {
     pub(super) fn draw_pack_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
         let multiplier = self.settings.notification_display_time;
         self.add_chunk_io_toasts();
-        self.add_mod_error_toasts();
+        self.add_mod_error_toasts(mod_api::__private::game::take_mod_error_toasts());
         let mut used = self.toast_slots_used();
         let packs = &mut self.server_packs;
         for slot_toast in packs
@@ -687,6 +687,41 @@ mod tests {
         send.send(RequestFinished(true)).unwrap();
         drop(send);
         assert!(!n.poll(|_| panic!("no toast on completion")));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mandatory_panic_toast_cannot_be_cancelled_or_renamed() {
+        use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent};
+
+        struct Filter;
+        #[mod_api::__subscriptions]
+        impl Hooks for Filter {
+            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                *event.description = Some(mod_api::Text::literal("changed"));
+                Flow::Cancel
+            }
+        }
+
+        let mods = vec![ModEntry::new("filter", Box::new(Filter))].into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
+                let ordinary = SystemToast::new(Text::literal("ordinary"), None);
+                assert!(game.add_system_toast(ordinary).is_none());
+                game.add_mod_error_toasts(vec![("failing_mod", "register_texture_atlases")]);
+                let [Some(toast)] = game.server_packs.mod_errors.as_slice() else {
+                    panic!("mandatory diagnostic did not enter the queue");
+                };
+                assert_eq!(
+                    toast.message.as_ref().unwrap().component(),
+                    serde_json::json!({
+                        "translate": "sunrise.mods.callback_panicked.description",
+                        "with": [{"text": "failing_mod"}, {"text": "register_texture_atlases"}],
+                    }),
+                );
+                assert!(toast.slot.is_none());
+            });
+        });
     }
 
     #[test]

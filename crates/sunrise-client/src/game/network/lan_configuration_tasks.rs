@@ -3,7 +3,7 @@ use super::{Game, lan::LanHost};
 use mod_api::{
     __private::{
         ConfigurationTaskOutcome, ConfigurationTaskRegistration, configuration_task_context,
-        game::report_mod_panic,
+        game::queue_mod_error_toast,
     },
     ConfigurationConnection, ConfigurationTaskError, PayloadBytes, PayloadId,
 };
@@ -33,7 +33,10 @@ impl Game<'_> {
         }
         .unwrap_or_else(|_| {
             if let Some((id, operation)) = owner {
-                report_mod_panic(id, "configuration task callback", operation);
+                log::error!("mod {id}: `{operation}` panicked; this peer's configuration failed");
+                if !self.is_dedicated_server() {
+                    queue_mod_error_toast(id, operation);
+                }
             }
             Err("Configuration task callback panicked".into())
         });
@@ -203,7 +206,6 @@ impl Game<'_> {
             .configuration_session(connection)
             .cloned()
             .ok_or(ConfigurationTaskError::Disconnected)?;
-        session.require_any_running()?;
         self.queue_current_payload(session.endpoint(), channel, bytes)
             .map(|_| ())
             .map_err(ConfigurationTaskError::Payload)

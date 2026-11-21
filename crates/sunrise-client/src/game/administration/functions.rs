@@ -218,7 +218,9 @@ impl Game<'_> {
         if self.fns.loaded || self.world_root.as_os_str().is_empty() {
             return;
         }
-        let _ = self.reload_datapacks(false, &self.level.enabled_features.clone());
+        if let Err(error) = self.reload_datapacks(false, &self.level.enabled_features.clone()) {
+            log::warn!("Sunrise: {}", error.diagnostic());
+        }
     }
     pub(super) fn open_world_datapacks(
         &mut self,
@@ -307,7 +309,6 @@ impl Game<'_> {
         }
         // Every candidate, including world tables, must prepare successfully
         // before any listener publishes its new state.
-        let prepared = self.apply_server_reload_callbacks(prepared);
         if let Some(root) = next_root {
             self.options.resources = root.prepared().to_owned();
             self.pack.data_source = root.data().clone();
@@ -334,8 +335,7 @@ impl Game<'_> {
                 .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
             super::lan::sync::install_world_sync_data(wire);
         }
-        self.build_native_commands(enabled_features);
-        self.apply_server_reload(prepared, &stack);
+        self.apply_server_reload(prepared, &stack, enabled_features);
         self.run_native_advancement_grants();
         // The schedule is the world's live `TimerQueue` `SavedData`, not pack
         // content: firing an event (`TimerQueue.tick`) and `/schedule clear`
@@ -1473,7 +1473,6 @@ impl Game<'_> {
             }
         };
         prepared.bind_loot(&world);
-        let prepared = self.apply_server_reload_callbacks(prepared);
         self.install_loop_context(context);
         self.fns.packs = stack.packs.clone();
         self.fns.enabled = stack.enabled.clone();
@@ -1481,14 +1480,13 @@ impl Game<'_> {
         self.save_datapack_settings();
         self.fns.load_pending = true;
         self.install_world_tables(world);
-        self.build_native_commands(&self.level.enabled_features.clone());
-        self.apply_server_reload(prepared, &stack);
+        self.apply_server_reload(prepared, &stack, &self.level.enabled_features.clone());
         self.run_native_advancement_grants();
         Ok(())
     }
 
     fn reload_failure(error: ReloadStageError) -> sunrise_client::command::CommandError {
-        let diagnostic = error.to_string();
+        let diagnostic = error.diagnostic();
         log::warn!("Sunrise: {diagnostic}");
         sunrise_client::command::CommandError::new(
             Text::translate("commands.reload.failure", &[])

@@ -13,7 +13,9 @@ listener is registered before mod hooks without replacing it. `VanillaServerList
 `VanillaClientListeners::first()` / `last()` alias `model_manager()` (Sunrise's single modeled
 vanilla client reload anchor), with no synthetic `minecraft:first` or `minecraft:last` boundary
 nodes or automatic edges. During sorting, only dangling non-`minecraft` listeners are linked after
-the anchor (matching NeoForge's `ReloadListenerSort`).
+the anchor (matching NeoForge's `ReloadListenerSort`). A dependency orders both phases:
+`functions()` reads function files in prepare and admits the new library in apply;
+`model_manager()` builds the models in prepare and publishes them in apply.
 
 A listener's `ServerReloadContext` lists namespaced IDs and reads the
 winning bytes from selected datapacks and the mod's own `data/`. Parse once in `prepare`, then return
@@ -21,23 +23,24 @@ winning bytes from selected datapacks and the mod's own `data/`. Parse once in `
 `Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError>`. Capture owned data: the runner
 consumes the action once on the owning thread
 only after all listeners prepare successfully. A prepare error drops pending actions without
-running them. This work does not run on the tick. Server listener actions run before `data_pack_files`.
-A later refusal keeps the old engine tables and Parts, but cannot undo effects of listeners or hooks
-that already ran. Contributions share a list, so a failed file cannot be attributed to a particular mod.
+running them. This work does not run on the tick. Server world tables, including
+`data_pack_files` contributions, prepare before any listener applies its new state.
+Contributions share a list, so a failed contributed file cannot be attributed to a particular mod.
 The original pack trees remain separate from the launcher's code-only horizon-mixins input.
 
 Client-side asset reads use [client asset reload listeners](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/client/client_reload.rs); server
 listeners cannot read `assets/`. Client listeners return the same once-only action, which runs on
-the game thread after the new packs are published. Packaged assets also participate in the game's
-normal resource packs.
+the game thread, on the declared side of model publication. With no dependency linking
+it to the vanilla anchor, a mod listener runs after model publication by default.
+Packaged assets also participate in the game's normal resource packs.
 
 Both prepare contexts lend converted IDs through `context.list()` and bytes through
 `context.read(&id)`. These views and reload errors stay in-process, not on `Wire`. To abort on
 an invalid file, return `Err(ReloadResourceError::new(id, cause))` with the original error, not
 its message. `error.resource()` borrows the failing resource ID,
-`std::error::Error::source(&error)` exposes its original cause, and formatting `error` walks the
-`Error::source()` chain in logs and `/reload` replies, stopping at a circular reference and
-marking it. Handle an invalid registration's `Err(ReloadOrderError)` in the registration hook;
+`std::error::Error::source(&error)` exposes its original cause, and its `Display` is just the
+resource ID. The reload diagnostic walks the `Error::source()` chain once for both the log
+and `/reload` reply, stopping at a circular reference and marking it. Handle an invalid registration's `Err(ReloadOrderError)` in the registration hook;
 the failed call leaves the existing registry unchanged. To fail a reload, return a
 `ReloadResourceError` from a listener's prepare step. No listener applies until every prepare
 succeeds.

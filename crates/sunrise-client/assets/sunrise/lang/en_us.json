@@ -544,7 +544,7 @@
   "sunrise.mods.browse.search": "Search mods...",
   "sunrise.mods.browse.title": "Browse Mods",
   "sunrise.mods.browse.update": "Update",
-  "sunrise.mods.callback_panicked.description": "%s failed in %s and was disabled",
+  "sunrise.mods.callback_panicked.description": "%s panicked in %s",
   "sunrise.mods.callback_panicked.title": "Mod error",
   "sunrise.mods.dev": " (Dev)",
   "sunrise.mods.empty": "No mods: put .smod files in the sunrise-mods folder",

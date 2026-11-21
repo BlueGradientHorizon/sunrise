@@ -9,6 +9,8 @@ pub trait Hooks {
     /// the advancement name. Existing recipe/system toasts updated in place
     /// do not fire another add event. Client-lib and title producers prepare
     /// candidates for the game to admit with a `ClientHost` before applying.
+    /// Mandatory mod-panic diagnostics enter the toast manager directly and
+    /// cannot be cancelled or edited by this hook.
     #[hook(
         receiver = "read",
         dispatch = "flat",
@@ -16,7 +18,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "cancel",
         neoforge = "ToastAddEvent",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn toast_add(
         kind: mod_api::ToastKind,

@@ -64,22 +64,25 @@ impl IPayloadHandler for Reply {
                 // deferred nor rolled back when an inner child transaction aborts.
                 let child = context.server_host().unwrap().transaction_open();
                 context.finish_configuration_task(&kind("first")).unwrap();
-                assert_eq!(
-                    context.server_host().unwrap().configuration_send_payload(
-                        connection,
-                        &PayloadId(CHANNEL.into()),
-                        PayloadBytes(vec![77]),
-                    ),
-                    Err(ConfigurationTaskError::NotRunning)
-                );
-                assert_eq!(
-                    context.finish_configuration_task(&kind("first")),
-                    Err(ConfigurationTaskError::NotRunning)
-                );
                 context
                     .server_host()
                     .unwrap()
                     .transaction_close(&child, false);
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::NotRunning)
+                );
+                // Sending is scoped to the live configuration connection, not
+                // to whether a task is running on it.
+                context
+                    .server_host()
+                    .unwrap()
+                    .configuration_send_payload(
+                        connection,
+                        &PayloadId(CHANNEL.into()),
+                        PayloadBytes(vec![77]),
+                    )
+                    .unwrap();
                 8
             }
             [9] => {
@@ -486,7 +489,7 @@ fn serving_game_drives_configuration_tasks() {
                 c.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
                     .unwrap();
                 let mut replies = match case {
-                    Case::Reply => &[7_u8, 8][..],
+                    Case::Reply => &[7_u8, 77, 8][..],
                     Case::NetworkReply => &[18, 19, 20, 21],
                     Case::Stale => &[9, 10, 11, 12, 13],
                     _ => &[],

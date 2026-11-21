@@ -9,7 +9,8 @@ pub trait Hooks {
     /// The listener's `prepare` then reads the merged asset view with
     /// resource-pack overrides resolved, and its returned apply publishes the
     /// parsed state, all applies after all prepares, before
-    /// `client_resources_reloaded`. A listener that returns an error
+    /// `client_resources_reloaded`. Dependencies on the model manager order
+    /// both its real model build and its publication. A listener that returns an error
     /// aborts the reload and keeps every listener's previous assets.
     /// Client-side, in Reloading nested in Setup initially and World later.
     /// Later registration is on the render thread, prepare on the loader,
@@ -21,7 +22,7 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         neoforge = "AddClientReloadListenersEvent",
-        version = 2
+        version = 3
     )]
     fn add_client_reload_listeners(listeners: &mut dyn ClientReloadListeners);
 }

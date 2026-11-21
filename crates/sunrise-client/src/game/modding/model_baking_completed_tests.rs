@@ -236,6 +236,135 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
     });
 }
 
+/// The production pack build and model publication each occupy the anchor in
+/// their respective phase, with neither apply running before all prepares.
+#[test]
+#[ignore = "daily"]
+fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
+    use super::{Progress, packs::stage_pack};
+    use mod_api::{
+        AddClientReloadListenersEvent, ClientReloadContext, ClientReloadListener,
+        FileToIdConverter, RegisterVillagerProfessionsEvent, ReloadResourceError,
+        VanillaClientListeners,
+    };
+
+    struct Listener {
+        trace: Arc<Mutex<Vec<&'static str>>>,
+        prepare: &'static str,
+        apply: &'static str,
+    }
+    impl ClientReloadListener for Listener {
+        fn prepare(
+            &self,
+            _: &ClientReloadContext,
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+            self.trace.lock().unwrap().push(self.prepare);
+            let trace = self.trace.clone();
+            let apply = self.apply;
+            Ok(Box::new(move || trace.lock().unwrap().push(apply)))
+        }
+    }
+    struct Probe(Arc<Mutex<Vec<&'static str>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Probe {
+        fn add_client_reload_listeners(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut AddClientReloadListenersEvent<'_>,
+        ) {
+            for (name, prepare, apply) in [
+                ("anchor:before", "prepare before", "apply before"),
+                ("anchor:after", "prepare after", "apply after"),
+            ] {
+                event
+                    .listeners
+                    .add_listener(
+                        id(name),
+                        FileToIdConverter::json("anchor").unwrap(),
+                        Arc::new(Listener {
+                            trace: self.0.clone(),
+                            prepare,
+                            apply,
+                        }),
+                    )
+                    .unwrap();
+            }
+            event
+                .listeners
+                .add_dependency(id("anchor:before"), VanillaClientListeners::first())
+                .unwrap();
+            event
+                .listeners
+                .add_dependency(VanillaClientListeners::last(), id("anchor:after"))
+                .unwrap();
+        }
+        fn standalone_models(
+            &self,
+            _: &RegistrationContext,
+            event: &mut StandaloneModelsEvent<'_>,
+        ) {
+            let trace = self.0.clone();
+            event.register("anchor:stone", ["minecraft:block/stone"], move |bake| {
+                trace.lock().unwrap().push("bake model");
+                bake.append_dependency("minecraft:block/stone", [0; 3], false)
+            });
+        }
+        fn register_villager_professions(
+            &self,
+            _: &RegistrationContext,
+            _: &mut RegisterVillagerProfessionsEvent<'_>,
+        ) {
+            // apply_staged_pack refreshes the renderer's professions after
+            // replacing its pack and villager hat models.
+            self.0.lock().unwrap().push("install model generation");
+        }
+    }
+    let trace = Arc::new(Mutex::new(Vec::new()));
+    with_mods(
+        vec![ModEntry::new("anchor", Box::new(Probe(trace.clone())))].into(),
+        || {
+            let mut registrations = Vec::new();
+            super::Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
+            let _fixture =
+                sunrise_client::models::StandaloneFixture::from_registrations(registrations);
+            with_client_game(|game| {
+                trace.lock().unwrap().clear();
+                let staged = stage_pack(
+                    &game.vanilla_root(),
+                    &[],
+                    &[],
+                    &game.mods,
+                    game.register_client_reload_listeners(),
+                    &[],
+                    &game.pack.assets,
+                    &game.res,
+                    &game.pack.context,
+                    game.settings.force_unicode,
+                    game.settings.japanese_glyphs,
+                    &Progress::new(),
+                )
+                .unwrap();
+                assert_eq!(
+                    *trace.lock().unwrap(),
+                    ["prepare before", "bake model", "prepare after"]
+                );
+                game.apply_staged_pack(staged).unwrap();
+                assert_eq!(
+                    *trace.lock().unwrap(),
+                    [
+                        "prepare before",
+                        "bake model",
+                        "prepare after",
+                        "apply before",
+                        "install model generation",
+                        "apply after",
+                    ]
+                );
+            });
+        },
+    );
+}
+
 /// A reload whose application is refused fires nothing: the mod hears no
 /// `model_baking_completed`, and the handle from the last successful load stays right.
 #[test]

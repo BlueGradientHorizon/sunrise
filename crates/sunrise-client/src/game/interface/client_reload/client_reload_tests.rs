@@ -68,8 +68,13 @@ fn stage_reads_resolved_asset_bytes_without_a_directory() {
     listeners
         .add_listener(id("test_mod:hats"), hats(), listener.clone())
         .unwrap();
-    let prepared =
-        stage_client_reload(&source, listeners, mod_api::__private::ModPhase::World).unwrap();
+    let ((), prepared) = stage_client_reload(
+        &source,
+        listeners,
+        mod_api::__private::ModPhase::World,
+        || Ok::<_, ReloadStageError>(()),
+    )
+    .unwrap();
     assert_eq!(
         listener.seen.lock().unwrap().as_slice(),
         ["test_mod:top=selected"]
@@ -78,7 +83,9 @@ fn stage_reads_resolved_asset_bytes_without_a_directory() {
     apply_client_reload(
         &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
         prepared,
-    );
+        || Ok::<_, std::convert::Infallible>(()),
+    )
+    .unwrap();
     assert_eq!(applied.lock().unwrap().as_slice(), ["hats"]);
 }
 
@@ -94,10 +101,11 @@ fn stage_reads_the_merged_assets_and_apply_publishes_after_all_prepares() {
     listeners
         .add_listener(id("test_mod:hats"), hats(), listener.clone())
         .unwrap();
-    let prepared = stage_client_reload(
+    let ((), prepared) = stage_client_reload(
         &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
         listeners,
         mod_api::__private::ModPhase::World,
+        || Ok::<_, ReloadStageError>(()),
     )
     .unwrap();
     assert_eq!(
@@ -108,7 +116,9 @@ fn stage_reads_the_merged_assets_and_apply_publishes_after_all_prepares() {
     apply_client_reload(
         &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
         prepared,
-    );
+        || Ok::<_, std::convert::Infallible>(()),
+    )
+    .unwrap();
     assert_eq!(applied.lock().unwrap().as_slice(), ["hats"]);
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -154,11 +164,12 @@ fn a_listener_error_retains_its_cause_and_discards_pending_applies() {
         &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
         listeners,
         mod_api::__private::ModPhase::World,
+        || Ok::<_, ReloadStageError>(()),
     ) else {
         panic!("a failing listener stops the whole reload")
     };
     assert_eq!(
-        error.to_string(),
+        error.diagnostic(),
         "reload listener test_mod:failing: test_mod:broken: not a hat"
     );
     let resource_error = error
@@ -197,6 +208,7 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
         &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
         listeners,
         mod_api::__private::ModPhase::World,
+        || Ok::<_, ReloadStageError>(()),
     )
     .unwrap();
     assert_eq!(
@@ -309,8 +321,13 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                 !applied.load(Ordering::SeqCst),
                 "nothing applied before handoff"
             );
-            // The same call `start_game` makes once the game owns the assets.
-            apply_client_reload(&game.mod_phase, std::mem::take(&mut loaded.client_applies));
+            // Its model step is already installed in this fixture's game.
+            apply_client_reload(
+                &game.mod_phase,
+                std::mem::take(&mut loaded.client_applies),
+                || Ok::<_, std::convert::Infallible>(()),
+            )
+            .unwrap();
             assert!(applied.load(Ordering::SeqCst), "the first load applies");
             assert!(
                 count.load(Ordering::SeqCst) >= 5,
@@ -482,17 +499,20 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             // The mod's packaged asset over nothing, with the real root's own
             // assets in the same view.
             let root = merged(&[]);
-            let prepared = stage_client_reload(
+            let ((), prepared) = stage_client_reload(
                 &root,
                 game.register_client_reload_listeners(),
                 mod_api::__private::ModPhase::World,
+                || Ok::<_, ReloadStageError>(()),
             )
             .unwrap();
             assert!(live.lock().unwrap().is_empty(), "nothing published yet");
             apply_client_reload(
                 &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
                 prepared,
-            );
+                || Ok::<_, std::convert::Infallible>(()),
+            )
+            .unwrap();
             assert_eq!(live.lock().unwrap().as_slice(), ["mod"]);
             assert!(
                 vanilla.load(Ordering::SeqCst) >= 5,
@@ -505,16 +525,19 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             );
             assert_eq!(packs.len(), 1);
             let root = merged(&packs);
-            let prepared = stage_client_reload(
+            let ((), prepared) = stage_client_reload(
                 &root,
                 game.register_client_reload_listeners(),
                 mod_api::__private::ModPhase::World,
+                || Ok::<_, ReloadStageError>(()),
             )
             .unwrap();
             apply_client_reload(
                 &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
                 prepared,
-            );
+                || Ok::<_, std::convert::Infallible>(()),
+            )
+            .unwrap();
             assert_eq!(live.lock().unwrap().as_slice(), ["mod", "pack"]);
             // A rejected prepare aborts the reload and keeps the previous state.
             reject.store(true, Ordering::Relaxed);
@@ -523,6 +546,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
                 &root,
                 game.register_client_reload_listeners(),
                 mod_api::__private::ModPhase::World,
+                || Ok::<_, ReloadStageError>(()),
             ) else {
                 panic!("a failing listener stops the whole reload")
             };

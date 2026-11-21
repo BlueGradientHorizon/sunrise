@@ -2020,8 +2020,8 @@ changing live state and returns a `Box<dyn FnOnce() + Send + 'static>` using
 `Box::new(move || { /* publish parsed state */ })`. The action owns its prepared state and the
 runner consumes it once on the server's owning thread. All listeners prepare before **any** apply
 runs. Do not read another listener's new published state in prepare: dependencies order both
-phases but do not remove this barrier. Publication cannot report an error, and a later server
-table refusal does not roll back actions that already ran. As vanilla's
+phases but do not remove this barrier. Listener actions cannot report an error. A refusal
+while preparing world tables comes before any listener applies. As vanilla's
 `SimpleJsonResourceReloadListener.scanDirectory`, a listener that parses its files logs and
 skips one that will not parse, carrying the rest through. Returning `Err` from `prepare` — or
 introducing a dependency cycle — aborts the whole reload: all pending actions are dropped
@@ -2031,10 +2031,10 @@ registration error from `add_listener`, `add_retained_listener` or `add_dependen
 return a `ReloadResourceError` in a listener's prepare step to fail the reload. A panic in `prepare` or an apply is not recovered:
 it stops the server, and the crash report names the listener and the mod that registered it.
 Wrap the original error in `ReloadResourceError::new(id, cause)` to keep its source chain;
-`resource()` borrows the resource ID, `std::error::Error::source` exposes the cause, and
-formatting the error walks the `Error::source()` chain, marking a circular reference and
-stopping there. The diagnostic names the listener, the resource and the causes; world open
-fails, and `/reload` reports the failure. A
+`resource()` borrows the resource ID and `std::error::Error::source` exposes the cause.
+`Display` gives just the resource ID. Reload diagnostics walk the source chain once, marking
+a circular reference and stopping there. The log and `/reload` reply name the listener, the
+resource and the causes. A
 failed `/datapack` change also preserves the selected packs on disk.
 
 `event.listeners.add_dependency(first, second)` orders named listeners. `ReloadOrderError` retains the
@@ -2043,8 +2043,9 @@ after registration. `VanillaServerListeners::functions()` names Sunrise's functi
 listener; `first()` and `last()` alias `functions()` (matching NeoForge's
 `VanillaServerListeners.FIRST`/`LAST`), with no synthetic `minecraft:first` or `minecraft:last`
 boundary nodes or automatic edges. These anchors and dependency ends use `Identifier`. Mod
-listeners run after vanilla by default, in registration order; explicit dependencies before
-`first()` or after `last()` work without cycles. Use these anchors rather than their string
+listeners run after vanilla by default, in registration order. Dependencies before
+`first()` or after `last()` order both the real function-file read and the function-library
+admission. Use these anchors rather than their string
 values. `event.listeners.get_registry().iter()` borrows the registered names in registration
 order, starting with the vanilla anchor. `event.listeners.get_graph().iter()` borrows
 `(first, second)` name pairs in edge insertion order. These views borrow the registration in
@@ -2141,16 +2142,13 @@ A panic names the listener and its registering mod in the crash report.
 reload anchor; `first()` and `last()` alias `model_manager()` (the Sunrise counterparts of
 NeoForge's `VanillaClientListeners.FIRST`/`LAST`), with no synthetic boundary nodes or automatic
 edges. Only dangling non-`minecraft` listeners are linked after the anchor during topological
-sorting (matching NeoForge's `ReloadListenerSort`). Mod applies run on the main thread after the staged pack is
-published, before `client_resources_reloaded`. Listeners are registered fresh for every
-load: the initial resource load registers them once, before any prepare runs (as
-NeoForge's construction-time event does — no game exists yet, and a host read during
-registration panics), prepares them beside the rest of the load on the loading thread —
-the title screen's loader worker or the direct launch, one path — and the game applies
-them once it owns the assets; every later reload — F3+T, a pack change, a server's
-packs — registers through the game the same way. A listener whose prepare fails on the
-initial load leaves the game running without mod reload listeners, logged as a
-warning. NeoForge's client event offers no
+sorting (matching NeoForge's `ReloadListenerSort`). Dependencies on that anchor run mod
+prepares before or after the actual build, and applies on the corresponding side of
+model publication on the game thread. All applies precede `client_resources_reloaded`.
+On the initial load, registration uses an empty host because no game exists yet; a host
+read during registration panics. The first load, F3+T, pack changes and server packs all
+respect the same prepare/apply ordering. A failed initial prepare refuses the load,
+rather than publishing a generation with its listener state missing. NeoForge's client event offers no
 retained listeners, and Sunrise has none: the `Arc` the mod registers with is the listener's
 own live state.
 

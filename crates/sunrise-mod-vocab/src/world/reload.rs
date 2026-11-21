@@ -11,9 +11,8 @@ use std::{
 };
 
 /// An error loading a resource, with its ID and the original cause available
-/// through [`Self::resource`] and [`std::error::Error::source`]. Formatting
-/// includes the `Error::source()` chain in logs and `/reload` replies, marking
-/// a circular source instead of following it repeatedly.
+/// through [`Self::resource`] and [`std::error::Error::source`]. Its display
+/// text names the resource; reload diagnostics report the complete source chain.
 // no wire: retains the native error and its source chain in this process.
 #[derive(Debug)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
@@ -40,19 +39,7 @@ impl ReloadResourceError {
 }
 impl std::fmt::Display for ReloadResourceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.resource)?;
-        let mut seen = HashSet::new();
-        let mut next: Option<&(dyn std::error::Error + 'static)> = Some(self.source.as_ref());
-        while let Some(cause) = next {
-            // Keep the trait object's metadata as well as its address: nested zero-sized
-            // errors of different types can share the same address.
-            if !seen.insert(std::ptr::from_ref(cause)) {
-                return f.write_str(": [circular error source]");
-            }
-            write!(f, ": {cause}")?;
-            next = cause.source();
-        }
-        Ok(())
+        write!(f, "{}", self.resource)
     }
 }
 impl std::error::Error for ReloadResourceError {
@@ -236,6 +223,31 @@ impl std::fmt::Display for ReloadStageError {
         }
     }
 }
+impl ReloadStageError {
+    /// Format a staging failure for the log or command reply. Each listener
+    /// error contributes its own message once, even across nested resources.
+    pub fn diagnostic(&self) -> String {
+        use std::{error::Error, fmt::Write};
+
+        let mut message = self.to_string();
+        let Self::Listener { source, .. } = self else {
+            return message;
+        };
+        let mut seen = HashSet::new();
+        seen.insert(std::ptr::from_ref(source as &dyn Error));
+        let mut next = source.source();
+        while let Some(cause) = next {
+            // Keep the trait metadata: distinct zero-sized errors can share an address.
+            if !seen.insert(std::ptr::from_ref(cause)) {
+                message.push_str(": [circular error source]");
+                break;
+            }
+            let _ = write!(message, ": {cause}");
+            next = cause.source();
+        }
+        message
+    }
+}
 impl std::error::Error for ReloadStageError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(match self {
@@ -249,8 +261,7 @@ impl std::error::Error for ReloadStageError {
 
 // no wire: process-local listener or callback storage; trait objects are invoked through host dispatch, not serialized.
 /// One mod listener's prepared step, between its `prepare` and its `apply`.
-/// The server's vanilla function library rides along as the `Vanilla` step of
-/// its own reload; the client's has none.
+/// The vanilla anchor stands for the function library or model manager.
 #[non_exhaustive]
 pub enum PreparedStep<V = ()> {
     /// A mod listener's prepared step.
@@ -262,32 +273,27 @@ pub enum PreparedStep<V = ()> {
         /// The listener's name.
         id: Identifier,
     },
-    /// The server's vanilla function library step.
+    /// The side's prepared vanilla anchor.
     Vanilla(V),
 }
 
 /// Orders the registered listeners, then prepares each with a converter
 /// against the reload's own view: the shared loop of both sides' reloads.
 /// `context_of` builds the side's context for one listener from its converter,
-/// `prepare_of` calls the side's listener trait, and `vanilla` turns a
-/// converter-less vanilla anchor into its own step (the server's function
-/// library); the boundaries prepare nothing. Runs on the side's staging thread.
-/// If a prepare fails, the already prepared actions are dropped without running.
-pub fn prepare_listeners<L: ?Sized, C, V>(
+/// `prepare_of` calls the side's listener trait, and `vanilla` prepares a
+/// converter-less vanilla anchor. Runs on the side's staging thread.
+/// If any prepare fails, the already prepared actions are dropped without running.
+pub fn prepare_listeners<L: ?Sized, C, V, E: From<ReloadStageError>>(
     ordered: Vec<RegisteredListener<L>>,
     phase: &'static str,
-    vanilla: impl Fn(&RegisteredListener<L>) -> Option<V>,
+    mut vanilla: impl FnMut() -> Result<V, E>,
     context_of: impl Fn(&Identifier, &FileToIdConverter) -> C,
     prepare_of: impl Fn(&L, &C) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError>,
-) -> Result<Vec<PreparedStep<V>>, ReloadStageError> {
+) -> Result<Vec<PreparedStep<V>>, E> {
     let mut prepared = Vec::new();
     for listener in ordered {
-        if let Some(step) = vanilla(&listener) {
-            prepared.push(PreparedStep::Vanilla(step));
-            continue;
-        }
-        // Converter-less anchors have no mod work to prepare.
         let Some(converter) = &listener.converter else {
+            prepared.push(PreparedStep::Vanilla(vanilla()?));
             continue;
         };
         let context = context_of(&listener.id, converter);
@@ -310,20 +316,25 @@ pub fn prepare_listeners<L: ?Sized, C, V>(
 /// Consumes the prepared steps in order on the thread that owns the game,
 /// attributing each mod listener's apply to its registering mod. `vanilla`
 /// publishes the side's own step.
-pub fn apply_listeners<V>(
+pub fn apply_listeners<V, E>(
     prepared: Vec<PreparedStep<V>>,
+    phase_owner: &crate::world::phase::PhaseOwner,
     phase: &'static str,
-    mut vanilla: impl FnMut(V),
-) {
+    mut vanilla: impl FnMut(V) -> Result<(), E>,
+) -> Result<(), E> {
     for step in prepared {
         match step {
             PreparedStep::Mod { apply, owner, id } => {
+                let _reload = phase_owner
+                    .reloading()
+                    .expect("reload apply on its owning thread");
                 let _mark = ReloadMark::enter(owner, &id, phase);
                 apply();
             }
-            PreparedStep::Vanilla(step) => vanilla(step),
+            PreparedStep::Vanilla(step) => vanilla(step)?,
         }
     }
+    Ok(())
 }
 
 /// The files one converter selected from a reload's packs, shared by both
@@ -372,7 +383,7 @@ mod tests {
                     prepare_listeners(
                         ordered,
                         "reload_prepare",
-                        |entry| entry.converter.is_none().then_some("apply vanilla"),
+                        || Ok::<_, ReloadStageError>("apply vanilla"),
                         |_, _| (),
                         |&name, _| {
                             trace.lock().unwrap().push(format!("prepare {name}"));
@@ -394,9 +405,12 @@ mod tests {
             trace.lock().unwrap().as_slice(),
             ["prepare first", "prepare last"]
         );
-        apply_listeners(prepared, "reload_apply", |vanilla| {
+        let phase = crate::world::phase::PhaseOwner::new(crate::world::phase::ModPhase::World);
+        apply_listeners(prepared, &phase, "reload_apply", |vanilla| {
             trace.lock().unwrap().push(vanilla.into());
-        });
+            Ok::<_, std::convert::Infallible>(())
+        })
+        .unwrap();
         assert_eq!(
             trace.lock().unwrap().as_slice(),
             [
@@ -410,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn reload_resource_error_display_walks_the_full_source_chain() {
+    fn reload_diagnostic_visits_each_nested_resource_and_cause_once() {
         #[derive(Debug)]
         struct Inner;
         impl std::fmt::Display for Inner {
@@ -448,19 +462,49 @@ mod tests {
 
         let resource_error = ReloadResourceError::new(
             Identifier::parse("test:machine").unwrap(),
-            Outer(Middle(Inner)),
+            ReloadResourceError::new(
+                Identifier::parse("test:recipe").unwrap(),
+                Outer(Middle(Inner)),
+            ),
         );
-        assert_eq!(
-            resource_error.to_string(),
-            "test:machine: outer: middle: inner"
-        );
+        assert_eq!(resource_error.to_string(), "test:machine");
         let stage_error = ReloadStageError::Listener {
             listener: Identifier::parse("test:listener").unwrap(),
             source: resource_error,
         };
         assert_eq!(
-            stage_error.to_string(),
-            "reload listener test:listener: test:machine: outer: middle: inner"
+            stage_error.diagnostic(),
+            "reload listener test:listener: test:machine: test:recipe: outer: middle: inner"
+        );
+    }
+
+    #[test]
+    fn reload_diagnostic_stops_cycles_that_cross_a_resource_wrapper() {
+        #[derive(Debug)]
+        struct Circular(&'static str);
+        static CYCLE: std::sync::LazyLock<ReloadResourceError> = std::sync::LazyLock::new(|| {
+            ReloadResourceError::new(Identifier::parse("test:loop").unwrap(), Circular("repeat"))
+        });
+        impl std::fmt::Display for Circular {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.0)
+            }
+        }
+        impl std::error::Error for Circular {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&*CYCLE)
+            }
+        }
+        let stage_error = ReloadStageError::Listener {
+            listener: Identifier::parse("test:listener").unwrap(),
+            source: ReloadResourceError::new(
+                Identifier::parse("test:machine").unwrap(),
+                Circular("enter"),
+            ),
+        };
+        assert_eq!(
+            stage_error.diagnostic(),
+            "reload listener test:listener: test:machine: enter: test:loop: repeat: [circular error source]"
         );
     }
 }

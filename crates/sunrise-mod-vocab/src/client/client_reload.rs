@@ -28,8 +28,9 @@ impl VanillaClientListeners {
     pub fn first() -> Identifier {
         Self::model_manager()
     }
-    /// Vanilla's model manager. Use this anchor rather than its string value,
-    /// which need not match NeoForge's identifier.
+    /// Vanilla's model manager: building the next models in prepare and publishing
+    /// them in apply. Use this anchor rather than its string value, which need not
+    /// match NeoForge's identifier.
     pub fn model_manager() -> Identifier {
         static ID: LazyLock<Identifier> =
             LazyLock::new(|| Identifier::parse("minecraft:model_manager").unwrap());

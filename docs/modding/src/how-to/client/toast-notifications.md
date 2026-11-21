@@ -26,3 +26,5 @@ narrator notices, pack download/failure and chunk IO notices all use the same
 admission point. Candidates produced during the initial resource loading screen wait until
 the game can invoke the hook with a `ClientHost`. The pause screen's persistent song label
 is HUD content, not a queued toast, and is not filtered by this hook.
+Mandatory mod-panic diagnostics use the same toast slots and animation but bypass
+`toast_add`, so they always retain the name of the failing mod.

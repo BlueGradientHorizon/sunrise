@@ -540,130 +540,139 @@ impl Game<'_> {
                 return Err(error);
             }
         };
-        // Everything loaded: switch over.
-        [
-            self.frame_model,
-            self.glow_frame_model,
-            self.map_frame_model,
-            self.glow_map_frame_model,
-        ] = frame_models;
-        self.waypoint_styles = waypoint_styles;
-        self.armor_stand_assets.apply_resources(armor_stand_assets);
-        self.random_tick_sections.clear();
-        self.portals.sections.clear();
-        self.options.resources = root.clone();
-        self.falling_vertices.get_mut().clear();
-        self.pack = pack;
-        // The joined level's environment for the frame has the packs' layers over its type.
-        self.build_level_environments();
-        let skip = self
-            .settings
-            .extras
-            .skip_modded_splashes_if_vanilla_modified;
-        self.gui = gui.with_splashes(&self.pack.source, &self.vanilla_root(), skip);
-        self.standalone_geometry = standalone_geometry;
-        self.instance_groups.borrow_mut().clear();
-        // The new atlas's skin and map slots are blank: players and maps
-        // upload into it again instead of naming sprites it does not have.
-        self.skin_slots.forget();
-        self.skin_downloads
-            .borrow_mut()
-            .set_resource_root(self.pack.source.clone());
-        self.maps.slots.forget();
-        self.map_patches.clear();
-        self.text_patches.get_mut().clear();
-        // Mods' dynamic textures keep their names and slots in the new atlas's pool, and their
-        // kept pixels upload into it again.
-        let (pool, mut names) = self.gui.atlas.dynamic_names();
-        self.dynamic_textures.rebind(pool, &mut names);
-        // Kept mod block entities name the old atlas's sprites, and their view distances the old
-        // registry's states.
-        self.kept_block_entities.get_mut().clear();
-        self.live_scenes.get_mut().clear();
-        self.mod_view_distances.take();
-        // The atlas's sprites moved: the particle engine re-reads every rect
-        // and the packs' sprite sets, or every particle draws a stale region.
-        self.particles.reload(
-            &self.pack.source,
-            &self.gui.atlas.sprites,
-            &self.gui.atlas.translucent,
-        );
-        sunrise_client::ui_theme::reset_atlas();
-        // Villager hats come from the pack's texture metadata (shared data, swapped in place).
-        *self
-            .res
-            .mob_data()
-            .villager_hats
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            sunrise_client::mobs::villager_hats::VillagerHats::load(&self.pack.source);
-        self.client_professions()?;
-        *self
-            .res
-            .mob_data()
-            .cem
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = cem;
-        self.res
-            .block_entity_render()
-            .set_shapes(block_entity_shapes);
-        // The random entity textures and emissive overlays the new atlas packs. A new scan is
-        // a new generation: every mob chooses again on its next tick.
-        *self
-            .res
-            .mob_data()
-            .random_textures
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            std::mem::take(&mut self.gui.atlas.random_textures);
-        *self
-            .res
-            .mob_data()
-            .emissive
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = self.gui.atlas.emissive.clone();
-        *self
-            .res
-            .mob_data()
-            .blinks
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            std::mem::take(&mut self.gui.atlas.blinks);
-        // Read with the language in use when the reload started: one picked since then wins.
-        let code = lang::code_snapshot();
-        lang::set(if language.code == code {
-            language
-        } else {
-            lang::Language::load(&[&self.pack.source], &code)
-        });
-        // Book search terms and resolved result icons belong to these resources.
-        self.recipe_ui.reset_screen();
-        self.refresh_remote_language();
-        self.audio.reload_with(&self.pack.source, sounds);
-        self.clear_lod();
-        // A pack that may replace leaf models falls back to `Off` before the
-        // reload marks every section dirty.
-        self.streaming.leaf_culling = self.effective_leaf_culling();
-        let context = self.worker_context();
-        self.streaming.reload_resources(&mut self.world, context);
-        self.pending_uploads.clear();
-        // New GPU textures: a renderer built from the reloaded resources; the
-        // sections are uploaded again as they are meshed.
-        if let Some(mut renderer) = renderer {
-            // Keep the current framebuffer size across the reload.
-            if let Some(old) = &self.renderer {
-                renderer.resize(old.config.width, old.config.height);
-            }
-            self.renderer = Some(renderer);
-            self.apply_ui_settings();
-        }
-        // Sunrise's own shader pack is built again: its sprite tags name the old atlas's
-        // layers, and a new renderer runs no pack.
-        self.native_shaders = super::native_shaders::NativeShaders::picking(&std::mem::take(
-            &mut self.native_shaders.picked,
-        ));
-        self.ui.chat.rescale(&self.gui.atlas);
-        super::client_reload::apply_client_reload(&self.mod_phase, client_applies);
+        // Everything loaded. Swap the models, sprites and renderer at the
+        // model manager's point in the order, not before the mod applies.
+        let phase = self.mod_phase.clone();
+        super::client_reload::apply_client_reload(
+            &phase,
+            client_applies,
+            || -> sunrise_client::Result<()> {
+                [
+                    self.frame_model,
+                    self.glow_frame_model,
+                    self.map_frame_model,
+                    self.glow_map_frame_model,
+                ] = frame_models;
+                self.waypoint_styles = waypoint_styles;
+                self.armor_stand_assets.apply_resources(armor_stand_assets);
+                self.random_tick_sections.clear();
+                self.portals.sections.clear();
+                self.options.resources = root.clone();
+                self.falling_vertices.get_mut().clear();
+                self.pack = pack;
+                // The joined level's environment for the frame has the packs' layers over its type.
+                self.build_level_environments();
+                let skip = self
+                    .settings
+                    .extras
+                    .skip_modded_splashes_if_vanilla_modified;
+                self.gui = gui.with_splashes(&self.pack.source, &self.vanilla_root(), skip);
+                self.standalone_geometry = standalone_geometry;
+                self.instance_groups.borrow_mut().clear();
+                // The new atlas's skin and map slots are blank: players and maps
+                // upload into it again instead of naming sprites it does not have.
+                self.skin_slots.forget();
+                self.skin_downloads
+                    .borrow_mut()
+                    .set_resource_root(self.pack.source.clone());
+                self.maps.slots.forget();
+                self.map_patches.clear();
+                self.text_patches.get_mut().clear();
+                // Mods' dynamic textures keep their names and slots in the new atlas's pool, and their
+                // kept pixels upload into it again.
+                let (pool, mut names) = self.gui.atlas.dynamic_names();
+                self.dynamic_textures.rebind(pool, &mut names);
+                // Kept mod block entities name the old atlas's sprites, and their view distances the old
+                // registry's states.
+                self.kept_block_entities.get_mut().clear();
+                self.live_scenes.get_mut().clear();
+                self.mod_view_distances.take();
+                // The atlas's sprites moved: the particle engine re-reads every rect
+                // and the packs' sprite sets, or every particle draws a stale region.
+                self.particles.reload(
+                    &self.pack.source,
+                    &self.gui.atlas.sprites,
+                    &self.gui.atlas.translucent,
+                );
+                sunrise_client::ui_theme::reset_atlas();
+                // Villager hats come from the pack's texture metadata (shared data, swapped in place).
+                *self
+                    .res
+                    .mob_data()
+                    .villager_hats
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    sunrise_client::mobs::villager_hats::VillagerHats::load(&self.pack.source);
+                self.client_professions()?;
+                *self
+                    .res
+                    .mob_data()
+                    .cem
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = cem;
+                self.res
+                    .block_entity_render()
+                    .set_shapes(block_entity_shapes);
+                // The random entity textures and emissive overlays the new atlas packs. A new scan is
+                // a new generation: every mob chooses again on its next tick.
+                *self
+                    .res
+                    .mob_data()
+                    .random_textures
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    std::mem::take(&mut self.gui.atlas.random_textures);
+                *self
+                    .res
+                    .mob_data()
+                    .emissive
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    self.gui.atlas.emissive.clone();
+                *self
+                    .res
+                    .mob_data()
+                    .blinks
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    std::mem::take(&mut self.gui.atlas.blinks);
+                // Read with the language in use when the reload started: one picked since then wins.
+                let code = lang::code_snapshot();
+                lang::set(if language.code == code {
+                    language
+                } else {
+                    lang::Language::load(&[&self.pack.source], &code)
+                });
+                // Book search terms and resolved result icons belong to these resources.
+                self.recipe_ui.reset_screen();
+                self.refresh_remote_language();
+                self.audio.reload_with(&self.pack.source, sounds);
+                self.clear_lod();
+                // A pack that may replace leaf models falls back to `Off` before the
+                // reload marks every section dirty.
+                self.streaming.leaf_culling = self.effective_leaf_culling();
+                let context = self.worker_context();
+                self.streaming.reload_resources(&mut self.world, context);
+                self.pending_uploads.clear();
+                // New GPU textures: a renderer built from the reloaded resources; the
+                // sections are uploaded again as they are meshed.
+                if let Some(mut renderer) = renderer {
+                    // Keep the current framebuffer size across the reload.
+                    if let Some(old) = &self.renderer {
+                        renderer.resize(old.config.width, old.config.height);
+                    }
+                    self.renderer = Some(renderer);
+                    self.apply_ui_settings();
+                }
+                // Sunrise's own shader pack is built again: its sprite tags name the old atlas's
+                // layers, and a new renderer runs no pack.
+                self.native_shaders = super::native_shaders::NativeShaders::picking(
+                    &std::mem::take(&mut self.native_shaders.picked),
+                );
+                self.ui.chat.rescale(&self.gui.atlas);
+                Ok(())
+            },
+        )?;
         self.install_loop_context(loop_context);
         // A reload from the title can apply before the start's world-rest worker is done.
         self.join_world_rest()?;
@@ -699,92 +708,96 @@ pub(super) fn stage_pack(
     let root = resource_root.prepared().to_path_buf();
     let source = resource_root.source().clone();
     progress.set(1);
-    // The mod listeners prepare against the merged root before the heavy
-    // staging builds run: a listener that fails aborts the reload without the
-    // renderer work, keeping every listener's previous assets.
-    let client_applies = super::client_reload::stage_client_reload(
+    let (staged, client_applies) = super::client_reload::stage_client_reload(
         &source,
         client_listeners,
         mod_api::__private::ModPhase::World,
+        || -> sunrise_client::Result<_> {
+            // The world's models and sprites and the GUI atlas read the same root and nothing of
+            // each other: about a second each, side by side.
+            let pool = super::resource_tables::dynamic_texture_pool();
+            // The sound events and the language are read here too, not in
+            // the frame that applies the reload (about 20 ms of it).
+            let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
+                let atlas = super::resource_load::named_scope(s, "pack-assets", || {
+                    let game = sunrise_assets::resource_source::ResourceSource::directory(
+                        vanilla_root.to_path_buf(),
+                    );
+                    HudAtlas::build_over_with_dynamic_textures(&source, &source, &game, pool)
+                        .map_err(|e| e.to_string())
+                });
+                let panorama = super::resource_load::named_scope(s, "pack-assets", || {
+                    sunrise_client::gfx::panorama::Faces::load(&source, &source)
+                });
+                let small = super::resource_load::named_scope(s, "pack-assets", || {
+                    (
+                        sunrise_client::sound_events::SoundRegistry::load(&source),
+                        lang::Language::load(&[&source], &lang::code()),
+                    )
+                });
+                (
+                    assets.reload(&resource_root),
+                    atlas.join(),
+                    panorama.join(),
+                    small
+                        .join()
+                        .unwrap_or_else(|p| std::panic::resume_unwind(p)),
+                )
+            });
+            let render = Arc::new(render?);
+            let mut atlas = atlas.unwrap_or_else(|p| std::panic::resume_unwind(p))?;
+            atlas.font.uniform = force_unicode;
+            atlas.font.japanese = japanese;
+            let gui = UiResources {
+                atlas,
+                panorama: Arc::new(panorama.unwrap_or_else(|p| std::panic::resume_unwind(p))),
+                // `Game::apply_staged_pack` fills it with the client's setting.
+                splashes: Arc::from(""),
+                plain_texts: Default::default(),
+            };
+            progress.set(2);
+            let mut pack = PackResources::load(
+                &resource_root,
+                assets.clone(),
+                render,
+                res.facts(),
+                context.biomes.clone(),
+                context.light.clone(),
+                &res.core.item_data,
+            )?;
+            pack.additional_data = super::pack_finders::data_packs(mod_sources).into();
+            let textures = prepare_renderer_textures(&pack);
+            let cem = Arc::new(sunrise_client::mobs::cem::CemModels::load(
+                &source,
+                res.mob_types(),
+            ));
+            let block_entity_shapes = res.block_entity_render().shapes_for(&source);
+            let waypoint_styles = sunrise_client::locator_bar::WaypointStyles::load(&source);
+            let armor_stand_assets = super::armor_stands::ArmorStandAssets::load(&source, None);
+            let frame_models = super::frames::bake_frames(&source);
+            progress.set(3);
+            Ok(move |client_applies| StagedPack {
+                root,
+                client_applies,
+                gui,
+                pack,
+                textures,
+                cem,
+                block_entity_shapes,
+                waypoint_styles,
+                armor_stand_assets,
+                frame_models,
+                sounds,
+                language,
+            })
+        },
     )
-    .map_err(|e| e.to_string())?;
-    // The world's models and sprites and the GUI atlas read the same root and nothing of
-    // each other: about a second each, side by side.
-    let pool = super::resource_tables::dynamic_texture_pool();
-    // The sound events and the language are read here too, not in
-    // the frame that applies the reload (about 20 ms of it).
-    let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
-        let atlas = super::resource_load::named_scope(s, "pack-assets", || {
-            let game = sunrise_assets::resource_source::ResourceSource::directory(
-                vanilla_root.to_path_buf(),
-            );
-            HudAtlas::build_over_with_dynamic_textures(&source, &source, &game, pool)
-                .map_err(|e| e.to_string())
-        });
-        let panorama = super::resource_load::named_scope(s, "pack-assets", || {
-            sunrise_client::gfx::panorama::Faces::load(&source, &source)
-        });
-        let small = super::resource_load::named_scope(s, "pack-assets", || {
-            (
-                sunrise_client::sound_events::SoundRegistry::load(&source),
-                lang::Language::load(&[&source], &lang::code()),
-            )
-        });
-        (
-            assets.reload(&resource_root),
-            atlas.join(),
-            panorama.join(),
-            small
-                .join()
-                .unwrap_or_else(|p| std::panic::resume_unwind(p)),
-        )
-    });
-    let render = Arc::new(render?);
-    let mut atlas = atlas.unwrap_or_else(|p| std::panic::resume_unwind(p))?;
-    atlas.font.uniform = force_unicode;
-    atlas.font.japanese = japanese;
-    let gui = UiResources {
-        atlas,
-        panorama: Arc::new(panorama.unwrap_or_else(|p| std::panic::resume_unwind(p))),
-        // `Game::apply_staged_pack` fills it with the client's setting.
-        splashes: Arc::from(""),
-        plain_texts: Default::default(),
-    };
-    progress.set(2);
-    let mut pack = PackResources::load(
-        &resource_root,
-        assets.clone(),
-        render,
-        res.facts(),
-        context.biomes.clone(),
-        context.light.clone(),
-        &res.core.item_data,
-    )?;
-    pack.additional_data = super::pack_finders::data_packs(mod_sources).into();
-    let textures = prepare_renderer_textures(&pack);
-    let cem = Arc::new(sunrise_client::mobs::cem::CemModels::load(
-        &source,
-        res.mob_types(),
-    ));
-    let block_entity_shapes = res.block_entity_render().shapes_for(&source);
-    let waypoint_styles = sunrise_client::locator_bar::WaypointStyles::load(&source);
-    let armor_stand_assets = super::armor_stands::ArmorStandAssets::load(&source, None);
-    let frame_models = super::frames::bake_frames(&source);
-    progress.set(3);
-    Ok(StagedPack {
-        root,
-        client_applies,
-        gui,
-        pack,
-        textures,
-        cem,
-        block_entity_shapes,
-        waypoint_styles,
-        armor_stand_assets,
-        frame_models,
-        sounds,
-        language,
-    })
+    .map_err(|error| {
+        error
+            .downcast::<mod_api::__private::reload::ReloadStageError>()
+            .map_or_else(|error| error.to_string(), |error| error.diagnostic())
+    })?;
+    Ok(staged(client_applies))
 }
 
 /// Everything a pack reload builds on the CPU (`apply_staged_pack` finishes
@@ -794,8 +807,8 @@ pub(super) struct StagedPack {
     pub waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
     pub armor_stand_assets: super::armor_stands::ArmorStandAssets,
     pub frame_models: [super::frames::FrameModel; 4],
-    /// The mod reload listeners' prepared applies, run when the rest of the
-    /// staged pack is published.
+    /// The mod reload listeners' prepared applies, ordered around publication
+    /// of the staged models.
     pub client_applies: Vec<super::client_reload::PreparedClientReload>,
     pub gui: UiResources,
     pub pack: PackResources,

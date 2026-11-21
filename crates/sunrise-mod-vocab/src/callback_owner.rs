@@ -3,10 +3,24 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static MOD_ERROR_TOASTS: Mutex<Vec<(&'static str, &'static str)>> = Mutex::new(Vec::new());
+static HAS_TOAST_MANAGER: AtomicBool = AtomicBool::new(true);
+
+/// Disable toast storage at process startup when there is no client.
+pub fn set_mod_error_toasts_enabled(enabled: bool) {
+    HAS_TOAST_MANAGER.store(enabled, Ordering::Relaxed);
+}
 
 /// Report a contained callback panic to the log and queue its mod error toast.
-pub fn report_mod_panic(mod_id: &'static str, kind: &'static str, operation: &'static str) {
+pub(crate) fn report_mod_panic(mod_id: &'static str, kind: &'static str, operation: &'static str) {
     log::error!("mod {mod_id}: {kind} `{operation}` panicked; it is disabled for this session");
+    queue_mod_error_toast(mod_id, operation);
+}
+
+/// Queue a mod error for an in-process client's toast manager.
+pub fn queue_mod_error_toast(mod_id: &'static str, operation: &'static str) {
+    if !HAS_TOAST_MANAGER.load(Ordering::Relaxed) {
+        return;
+    }
     MOD_ERROR_TOASTS
         .lock()
         .unwrap_or_else(|e| e.into_inner())

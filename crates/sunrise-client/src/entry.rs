@@ -123,6 +123,8 @@ pub fn start(
     );
     // The log's first line names the build, so a bug report that carries the log says which one it was.
     log::info!("Sunrise {}", crash::version());
+    // Dedicated servers report mod panics to the log without building up client toasts.
+    mod_api::__private::game::set_mod_error_toasts_enabled(side != "server");
     // Mods' startup bars and lines (`RegistrationContext::progress`), before they register.
     game::startup_progress::install(side == "server");
     // Mod loading emits refusals; both client and dedicated logs must exist first.
