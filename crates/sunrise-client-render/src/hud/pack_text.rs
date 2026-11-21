@@ -1000,6 +1000,8 @@ mod tests {
             depth: 0.0,
             glint_uv: [0.0; 2],
             text,
+            repeat_x: [0; 4],
+            repeat_y: [0; 3],
         };
         let vertices: Vec<HudVertex> = [0, 0, 1, 1, 1, 0].into_iter().map(vertex).collect();
         assert_eq!(

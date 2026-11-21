@@ -96,6 +96,8 @@ impl HudBatch {
             depth: 0.0,
             glint_uv: [0.0, 0.0],
             text: 0,
+            repeat_x: [0; 4],
+            repeat_y: [0; 3],
         });
     }
 

@@ -2144,6 +2144,9 @@ pub struct HudVertex {
     /// 1 for the GUI's text (`RenderPipelines.GUI_TEXT`), which a resource
     /// pack's text shader draws when it has one.
     pub text: u32,
+    /// Fixed-point repeat phase per device pixel, zero for an ordinary vertex.
+    pub repeat_x: [u32; 4],
+    pub repeat_y: [u32; 3],
 }
 /// Sutherland-Hodgman against one half plane, interpolating every attribute.
 fn clip_polygon(poly: &[HudVertex], axis: usize, limit: f32, keep_below: bool) -> Vec<HudVertex> {
@@ -2377,6 +2380,8 @@ impl HudBatch {
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
                 text: 0,
+                repeat_x: [0; 4],
+                repeat_y: [0; 3],
             });
         }
     }
@@ -2397,6 +2402,8 @@ impl HudBatch {
                 depth: 0.0,
                 glint_uv: glint_uv[i],
                 text: 0,
+                repeat_x: [0; 4],
+                repeat_y: [0; 3],
             });
         }
     }
@@ -2409,6 +2416,8 @@ impl HudBatch {
                 depth: p[i][2],
                 glint_uv: [0.0, 0.0],
                 text: 0,
+                repeat_x: [0; 4],
+                repeat_y: [0; 3],
             });
         }
     }
@@ -2433,6 +2442,8 @@ impl HudBatch {
                 depth: p[i][2],
                 glint_uv: glint_uv[i],
                 text: 0,
+                repeat_x: [0; 4],
+                repeat_y: [0; 3],
             });
         }
     }
@@ -2678,6 +2689,8 @@ impl HudBatch {
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
                 text: 0,
+                repeat_x: [0; 4],
+                repeat_y: [0; 3],
             });
         }
     }
