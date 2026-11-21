@@ -785,7 +785,7 @@ impl Game<'_> {
         let light = &self.pack.context.light;
         if light.is_dynamic(state.0)
             && let Some(answer) = self
-                .query_dynamic_light_emission(Some(level), block_pos(pos), state, || {
+                .query_dynamic_light_emission(block_pos(pos), state, || {
                     Self::light_emission_dimension(level)
                 })
                 .ok_or(LevelReadError::Unavailable)?

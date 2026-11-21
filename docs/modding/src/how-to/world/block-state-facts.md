@@ -63,8 +63,9 @@ not be placed there, and the query doesn't load its chunk. A block declaring `dy
 can answer through its [Part](../../concepts/parts/block-parts.md#light-emission); a static state
 or a Part that declines uses the declared emission. The query returns the raw value, including
 `Ok(0)` for zero emission. `LevelReadError::Stale` means a stale level handle;
-`Unavailable` means the level, state, view or phase is unavailable, or the query repeats an
-active provider query. The read neither publishes light nor requests a relight.
+`Unavailable` means the level, state, view or phase is unavailable, or a light-emission
+provider is already answering for this state. That refusal applies even at another level or
+position; a provider can still ask another state. The read neither publishes light nor requests a relight.
 
 `host.block_states().light_emission(state)` reads only the declared value. To read the light
 already propagated to a position, use `level.brightness(host, layer, pos)` instead.
@@ -75,10 +76,11 @@ already propagated to a position, use `level.brightness(host, layer, pos)` inste
 `state` on either side. To ask the placed block, get its state from `level.block_state(host, pos)`
 first. `table_pos` is context for the [Part](../../concepts/parts/block-parts.md#enchanting-power),
 not a block the read validates. The default is 1.0 for a provider-tagged block and 0.0 otherwise.
-The read preserves signed fractional answers. Apply your own scan and transmitter checks if
-summing powers for a table; the read doesn't round or cap them. It refuses stale handles and
-unavailable views, states or phases, and refuses an exact repeated active query without loading
-chunks or writing to the world.
+The read preserves the Part's answer, including signed fractions, NaN and infinity. Apply
+your own scan and transmitter checks if summing powers for a table; the read doesn't round or
+cap them. It doesn't load chunks or write to the world. A stale handle or unavailable view,
+state or phase refuses the query. A nested enchanting-power query for an active provider state
+is also refused, even at another level or position; it can still ask a different state.
 
 ## Block classes
 

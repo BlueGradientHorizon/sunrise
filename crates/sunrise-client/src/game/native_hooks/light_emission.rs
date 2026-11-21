@@ -12,7 +12,6 @@ impl Game<'_> {
     /// the state's own value. Publication is separate from reading this raw answer.
     pub(in crate::game) fn query_dynamic_light_emission(
         &self,
-        level: Option<mod_api::LevelRef>,
         pos: BlockPos,
         state: BlockStateId,
         dimension: impl FnOnce() -> LevelDimension,
@@ -23,7 +22,7 @@ impl Game<'_> {
         ) {
             return Some(None);
         }
-        self.with_block_provider_query(level, pos, state, BlockProviderQuery::LightEmission, || {
+        self.with_block_provider_query(state, BlockProviderQuery::LightEmission, || {
             let mut emission = None;
             self.native_light_emission(dimension(), pos, state, &mut emission);
             emission

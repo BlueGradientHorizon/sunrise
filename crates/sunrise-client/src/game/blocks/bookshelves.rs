@@ -23,11 +23,11 @@ impl Game<'_> {
                     pos[2] + o[2] / 2,
                 ))
             })
-            // Only an exact nested call refuses; it contributes nothing to the offer sum.
+            // An already-active provider contributes nothing to the offer sum.
             .filter_map(|o| {
                 let at = BlockPos::new(pos[0] + o[0], pos[1] + o[1], pos[2] + o[2]);
                 let state = self.world.block(at.x, at.y, at.z);
-                self.enchant_power(level, state, at, table)
+                self.enchant_power_for_table(level, state, at, table)
             })
             .sum();
         // A negative sum would make vanilla's `nextInt(bookcases + 1)` throw.
@@ -41,8 +41,7 @@ impl Game<'_> {
             .is_some_and(|tag| tag.contains(&*self.res.facts().get(state).name))
     }
 
-    /// Shared enchant-power answer: block parts may override the provider-tag default;
-    /// both offers and the client particle-table rebuild use this answer.
+    /// Raw provider answer. The explicit read returns it as given.
     pub(in crate::game) fn enchant_power(
         &self,
         level: Option<LevelRef>,
@@ -50,24 +49,37 @@ impl Game<'_> {
         pos: BlockPos,
         table: BlockPos,
     ) -> Option<f32> {
-        let own = self
-            .items()
-            .default_enchant_power(&self.res.facts().get(state).name);
+        let mut power = self.default_enchant_power(state);
         if !super::api_values::block_state::block_listens(mod_api::HookId::EnchantPowerBonus, state)
         {
-            return Some(own);
+            return Some(power);
         }
-        self.with_block_provider_query(
-            level,
-            pos,
-            state,
-            BlockProviderQuery::EnchantPower { table },
-            || {
-                let mut power = own;
-                self.native_enchant_power_bonus(level, state, pos, table, &mut power);
-                if power.is_finite() { power } else { own }
-            },
-        )
+        self.with_block_provider_query(state, BlockProviderQuery::EnchantPower, || {
+            self.native_enchant_power_bonus(level, state, pos, table, &mut power);
+            power
+        })
+    }
+
+    fn default_enchant_power(&self, state: BlockStateId) -> f32 {
+        self.items()
+            .default_enchant_power(&self.res.facts().get(state).name)
+    }
+
+    /// Offers and particles ignore non-finite overrides and keep the tag default.
+    fn enchant_power_for_table(
+        &self,
+        level: Option<LevelRef>,
+        state: BlockStateId,
+        pos: BlockPos,
+        table: BlockPos,
+    ) -> Option<f32> {
+        self.enchant_power(level, state, pos, table).map(|power| {
+            if power.is_finite() {
+                power
+            } else {
+                self.default_enchant_power(state)
+            }
+        })
     }
 
     /// Snapshot at world entry/parts reload, or after received tags and tag-update listeners
@@ -80,8 +92,8 @@ impl Game<'_> {
             self.pack.assets.registry.len(),
             |state| {
                 let origin = BlockPos::new(0, 0, 0);
-                // Only an exact nested call refuses; the snapshot then has no particle source.
-                self.enchant_power(None, state, origin, origin)
+                // An already-active provider supplies no particle source.
+                self.enchant_power_for_table(None, state, origin, origin)
                     .unwrap_or_default()
             },
             |state| self.enchant_transmits(state),

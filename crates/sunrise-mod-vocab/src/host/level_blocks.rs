@@ -25,9 +25,12 @@ pub trait LevelBlocksBackend {
     /// The enchanting power of the supplied `state` at `pos` (`IBlockStateExtension.getEnchantPowerBonus`).
     /// The state need not occupy that position; `table_pos` is context passed to the Part,
     /// not a block that the query looks up. The tag default is 1.0 for providers, 0.0 otherwise.
-    /// This read never loads chunks or applies transmitter, bookshelf offset or offer-cost rules.
-    /// Returns `Stale` for a stale handle, or `Unavailable` for an unreadable view or phase,
-    /// an unknown state, or a repeat of an active provider query.
+    /// Returns the Part's answer unchanged, even if it is non-finite. This read never loads
+    /// chunks or applies transmitter, bookshelf offset or offer-cost rules.
+    /// Returns `Stale` for a stale handle, or `Unavailable` for an unreadable view or phase
+    /// or an unknown state. If an enchanting-power provider for this state is already active
+    /// on this thread in this game, returns `Unavailable` even at a different level or position.
+    /// Delegation to another state is allowed.
     #[access(WorldOnly)]
     fn level_get_enchant_power_bonus(
         &self,

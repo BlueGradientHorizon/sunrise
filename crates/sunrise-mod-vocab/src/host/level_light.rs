@@ -23,8 +23,10 @@ pub trait LevelLightBackend {
     /// the propagated light there. The state need not occupy `pos`. A dynamic state's Part
     /// answer is returned unchanged; a static state or a Part that declines uses the state's
     /// declared emission. No chunks are loaded or relit. A stale handle returns `Stale`;
-    /// an unavailable level, host, phase or state, or a repeated active query, returns
-    /// `Unavailable`. `Ok(0)` is zero emission.
+    /// an unavailable level, host, phase or state returns `Unavailable`. If a light-emission
+    /// provider for this state is already active on this thread in this game, the read returns
+    /// `Unavailable` even at a different level or position. Delegation to another state is
+    /// allowed. `Ok(0)` is zero emission.
     #[access(WorldOnly)]
     fn level_get_light_emission(
         &self,

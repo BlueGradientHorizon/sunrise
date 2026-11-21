@@ -30,10 +30,10 @@ impl Game<'_> {
         if cells.is_empty() && !pending {
             return;
         }
-        let context = self.light_emission_context();
+        let dimension = self.current_light_emission_dimension();
         let mut answers = FxHashMap::default();
         for (cell, [x, y, z], state) in cells {
-            if let Some(emission) = self.ask_light_emission(context, x, y, z, state) {
+            if let Some(emission) = self.ask_light_emission(dimension, x, y, z, state) {
                 answers.insert(cell, emission);
             }
         }
@@ -60,14 +60,14 @@ impl Game<'_> {
         if self.world.light_edits.is_empty() || !self.pack.context.light.any_dynamic() {
             return;
         }
-        let context = self.light_emission_context();
+        let dimension = self.current_light_emission_dimension();
         for i in 0..self.world.light_edits.len() {
             let ((x, y, z), _, _) = self.world.light_edits[i];
             let state = self.world.block(x, y, z).0;
             if !self.pack.context.light.is_dynamic(state) {
                 continue;
             }
-            let emission = self.ask_light_emission(context, x, y, z, state);
+            let emission = self.ask_light_emission(dimension, x, y, z, state);
             let key = (x >> 4, z >> 4);
             if let Some(cell) = self
                 .world
@@ -96,9 +96,9 @@ impl Game<'_> {
             .context
             .light
             .dynamic_cells(chunk, |s| sections.contains(&s));
-        let context = self.light_emission_context();
+        let dimension = self.current_light_emission_dimension();
         for (cell, [x, y, z], state) in cells {
-            let emission = self.ask_light_emission(context, x, y, z, state);
+            let emission = self.ask_light_emission(dimension, x, y, z, state);
             self.store_light_emission(key, cell, emission);
         }
     }
@@ -117,30 +117,23 @@ impl Game<'_> {
             None => answers.remove(&cell),
         };
     }
-    /// The current level identity once per publication batch. Before the level has a handle,
-    /// preserve the dimension of the engine ask, which cannot yet be queried by a mod.
-    fn light_emission_context(&self) -> (Option<mod_api::LevelRef>, LevelDimension) {
-        let level = self.native_current_level();
-        let dimension = level.map_or_else(|| self.dim.level(), Self::light_emission_dimension);
-        (level, dimension)
+    /// Use the dimension of the level in play, even for a client's custom dimension.
+    fn current_light_emission_dimension(&self) -> LevelDimension {
+        self.native_current_level()
+            .map_or_else(|| self.dim.level(), Self::light_emission_dimension)
     }
 
     /// One cell's answer, clamped to a light level as `LightTables` clamps a state's.
     fn ask_light_emission(
         &self,
-        (level, dimension): (Option<mod_api::LevelRef>, LevelDimension),
+        dimension: LevelDimension,
         x: i32,
         y: i32,
         z: i32,
         state: u32,
     ) -> Option<u8> {
-        self.query_dynamic_light_emission(
-            level,
-            BlockPos::new(x, y, z),
-            BlockStateId(state),
-            || dimension,
-        )
-        .flatten()
-        .map(|emission| emission.min(15))
+        self.query_dynamic_light_emission(BlockPos::new(x, y, z), BlockStateId(state), || dimension)
+            .flatten()
+            .map(|emission| emission.min(15))
     }
 }

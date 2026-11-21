@@ -79,7 +79,7 @@ impl BlockPart for Proxy {
         let pos = [event.pos.x, event.pos.y, event.pos.z];
         if event.pos.y == 66 {
             assert_eq!(
-                level.get_light_emission(host, pos, event.state),
+                level.get_light_emission(host, [pos[0], pos[1] + 1, pos[2]], event.state),
                 Err(LevelReadError::Unavailable)
             );
             None
@@ -316,7 +316,7 @@ fn light_providers_can_delegate_but_an_active_cycle_refuses() {
             let proxy = host.block_state_id(PROXY).unwrap();
             assert_eq!(level.get_light_emission(host, [1, 64, 2], proxy), Ok(12));
             assert_eq!(depth.take(), [[1, 64, 2]]);
-            // The callback's repeated query refuses instead of reading static light.
+            // Asking the same state at another position refuses instead of reading static light.
             assert_eq!(level.get_light_emission(host, [1, 66, 2], proxy), Ok(4));
             assert_eq!(calls.load(Ordering::Relaxed), 2);
 
