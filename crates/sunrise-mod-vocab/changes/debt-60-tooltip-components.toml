@@ -1,0 +1,76 @@
+ids = [
+    "hook:tooltip_component",
+    "method:ItemPart::tooltip_component",
+    "type:TooltipComponentEvent",
+    "hook:tooltip_component_draw",
+    "method:ItemPart::tooltip_component_draw",
+    "type:TooltipComponentDrawEvent",
+    "type:TooltipImage",
+    "type:TooltipImageSource",
+    "type:TooltipElement",
+    "hook:render_tooltip_gather_components",
+    "hook:render_tooltip_pre",
+    "hook:render_tooltip_pre.screen_width",
+    "hook:render_tooltip_pre.screen_height",
+    "hook:render_tooltip_pre.elements",
+    "hook:render_tooltip_pre.components",
+    "hook:render_tooltip_pre.screen",
+    "hook:render_tooltip_pre.positioner",
+    "hook:render_tooltip_pre.font",
+    "type:RenderTooltipPreEvent.screen_width",
+    "type:RenderTooltipPreEvent.screen_height",
+    "type:RenderTooltipPreEvent.elements",
+    "type:RenderTooltipPreEvent.components",
+    "type:RenderTooltipPreEvent.screen",
+    "type:RenderTooltipPreEvent.positioner",
+    "type:RenderTooltipPreEvent.font",
+    "hook:register_client_tooltip_component_factories",
+    "method:Hooks::register_client_tooltip_component_factories",
+    "type:RegisterClientTooltipComponentFactoriesEvent",
+    "hook:tooltip_image",
+    "method:ItemPart::tooltip_image",
+    "type:TooltipImageEvent",
+    "trait:TooltipComponentData",
+    "type:TooltipComponent",
+    "handle:TooltipComponent::bundle",
+    "handle:TooltipComponent::custom",
+    "handle:TooltipComponent::as_bundle",
+    "handle:TooltipComponent::downcast_ref",
+    "handle:TooltipComponent::type_id",
+    "handle:TooltipComponent::type_name",
+    "trait:TooltipFont",
+    "trait:ClientTooltipComponent",
+    "type:TooltipComponentFactory",
+    "handle:TooltipComponentFactory::new",
+    "trait:ClientTooltipComponentFactoriesRegistrar",
+    "handle:ClientTooltipComponentFactoriesRegistrar::register",
+    "trait:ClientTooltipPositioner",
+    "type:DefaultTooltipPositioner",
+    "type:PreparedTooltipComponent",
+    "handle:PreparedTooltipComponent::width",
+    "handle:PreparedTooltipComponent::height",
+    "handle:PreparedTooltipComponent::show_tooltip_with_item_in_hand",
+    "handle:PreparedTooltipComponent::as_text",
+    "handle:PreparedTooltipComponent::as_bundle",
+    "handle:PreparedTooltipComponent::downcast_ref",
+    "method:DrawContext::text_with_font",
+    "handle:DrawContext::with_tooltip_font",
+]
+why = "Tooltip components now measure and draw themselves as typed in-process ClientTooltipComponent implementations prepared after RenderTooltipEvent.GatherComponents, matching vanilla 26.3 (Item.getTooltipImage, TooltipComponent, ClientTooltipComponent, ClientTooltipPositioner, DefaultTooltipPositioner, GuiGraphicsExtractor.tooltip) and NeoForge 26.3 (RegisterClientTooltipComponentFactoriesEvent, ClientTooltipComponentManager, ClientHooks.gatherTooltipComponentsFromElements, RenderTooltipEvent.GatherComponents, RenderTooltipEvent.Pre, RenderTooltipEvent.Texture) instead of item-keyed size/draw redispatch and closed TooltipImage records. RenderTooltipEvent.Pre lends the prepared components, active positioner, and a replaceable font identifier used for measurement and drawing without rewrapping already-split text lines. Zero-width and zero-height components remain in the gathered list and still run both draw passes, and tooltips are cancelled only when a listener explicitly cancels (never on a conversion error). Unregistered custom component types log a warning and are skipped without latching; any panic in a mod's factory, measurement, draw pass, or drop disables that mod's tooltip component callbacks for the session with a log and error toast and discards staged paint from the panicking pass."
+migrate = '''
+Replace `ItemPart::tooltip_component` and `ItemPart::tooltip_component_draw` with a typed `TooltipComponentData` payload and a `ClientTooltipComponent` renderer:
+
+1. Define your payload struct implementing `TooltipComponentData` and your client renderer struct implementing `ClientTooltipComponent` (`width`, `height`, optional `show_tooltip_with_item_in_hand`, `draw_text`, and `draw_image` receiving `&dyn TooltipFont` and `&mut dyn DrawContext`, with `DrawContext::text_with_font` available for formatted text in the active font).
+2. In `Hooks::register_client_tooltip_component_factories(&self, _cx, event)`, register the factory once at client startup with `event.factories.register::<MyData, MyClient>(|data| MyClient::from(data))`. A later registration for the same data type replaces the earlier one.
+3. On your `ItemPart`, replace `tooltip_component` and `tooltip_component_draw` with `ItemPart::tooltip_image(&self, host, event) -> Option<TooltipComponent>`, returning `Some(TooltipComponent::custom(my_data))` (or `Some(TooltipComponent::bundle(stack))`), or `None` to keep vanilla's tooltip image.
+
+Update `Hooks::render_tooltip_gather_components` (version 2):
+- Replace `TooltipElement::Image(TooltipImage { source: TooltipImageSource::Bundle(stack), .. })` with `TooltipElement::Component(TooltipComponent::bundle(stack))` and `TooltipElement::Image(TooltipImage { source: TooltipImageSource::ItemPart(..), .. })` with `TooltipElement::Component(TooltipComponent::custom(data))`. Remove all references to `TooltipImage` and `TooltipImageSource`. `TooltipElement` is no longer `Wire`.
+- Text lines now wrap using NeoForge's screen-edge wrapping logic before preparation, tightened further when `*event.max_width > 0`.
+
+Update `Hooks::render_tooltip_pre` (version 2):
+- Replace `event.elements` with `event.components: &[PreparedTooltipComponent]`. Inspect entries via `as_text()`, `as_bundle()`, or `downcast_ref::<MyClient>()`, and measure them with `event.draw.with_tooltip_font(event.font, |font| component.width(font))`.
+- Replace `event.screen_width` and `event.screen_height` with `event.screen[0]` and `event.screen[1]`.
+- Use `event.positioner` (`&dyn ClientTooltipPositioner`) to compute placement if needed, and modify `*event.font` (`&mut Identifier`) to measure and draw the tooltip with a replacement font without rewrapping already-split lines.
+- `event.place`, `event.stack`, `event.draw`, `Flow::Cancel`, and `Hooks::render_tooltip_texture` keep their existing roles.
+'''
