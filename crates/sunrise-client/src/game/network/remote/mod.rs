@@ -708,6 +708,7 @@ pub(super) struct Remote {
     /// The dimension of the client level the mods heard made
     /// (`native_client_level_load`), to be told dropped once.
     pub(super) heard_level: Option<String>,
+    pub(in crate::game) datapacks: sunrise_client::datapack_net::Receiver,
     /// The constructor's level is visible by name during Load, before Minecraft.setLevel.
     pub(super) constructing_level: Option<ConstructingClientLevel>,
     /// `ClientPacketListener.levelLoadTracker`: the loading screen after a login
@@ -1319,6 +1320,7 @@ impl Game<'_> {
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
+            datapacks: Default::default(),
             constructing_level: None,
             level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
@@ -1574,6 +1576,7 @@ impl Game<'_> {
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
+            datapacks: Default::default(),
             constructing_level: None,
             level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
@@ -3439,7 +3442,9 @@ impl Game<'_> {
             C::Ping(p) => self.send(S::Pong(p)),
             // The server's next generation of mod registries: all of it or the connection.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
-                sunrise_client::datapack_net::accept_chunk(&p.data)?;
+                if let Some(remote) = &mut self.remote {
+                    remote.datapacks.accept_chunk(&p.data)?;
+                }
             }
             C::CustomPayload(p)
                 if p.channel == sunrise_client::lan::commands::selector_sync::CHANNEL =>

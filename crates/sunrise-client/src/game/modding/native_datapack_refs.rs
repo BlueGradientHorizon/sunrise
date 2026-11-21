@@ -14,10 +14,11 @@ impl Game<'_> {
                 .then_some(())?;
             self.mods.datapack_registries.clone()
         } else {
+            let remote = self.remote.as_ref()?;
             if self.client_own_level() != Some(level) {
-                self.remote.as_ref()?.constructing(level)?;
+                remote.constructing(level)?;
             }
-            sunrise_client::datapack_net::received()
+            remote.datapacks.received().cloned()
         }
     }
 

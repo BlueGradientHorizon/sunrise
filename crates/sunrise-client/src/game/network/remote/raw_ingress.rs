@@ -102,9 +102,13 @@ impl Game<'_> {
                 }
                 Event::Joined {
                     registries,
+                    datapacks,
                     name,
                     uuid,
                 } => {
+                    if let Some(remote) = &mut self.remote {
+                        remote.datapacks = datapacks;
+                    }
                     self.set_registries(registries);
                     self.connection_joined();
                     self.close_dialogs();
@@ -157,6 +161,7 @@ impl Game<'_> {
                     // offers its own far terrain, or none, and announces its
                     // own features again.
                     if let Some(remote) = &mut self.remote {
+                        remote.datapacks = Default::default();
                         remote.viewed.clear();
                         remote.far_terrain = None;
                         remote.quiet_commands = false;
@@ -179,7 +184,10 @@ impl Game<'_> {
                         r.chat_tree_received = false;
                     }
                 }
-                Event::Reconfigured(registries) => {
+                Event::Reconfigured {
+                    registries,
+                    datapacks,
+                } => {
                     // handleConfigurationStart → clearClientLevel, and the next
                     // ClientPacketListener starts with no players or scoreboard,
                     // no waypoints (its own ClientWaypointManager: a proxy's next
@@ -191,6 +199,7 @@ impl Game<'_> {
                     self.score.board = Default::default();
                     self.clear_waypoints();
                     if let Some(r) = self.remote.as_mut() {
+                        r.datapacks = datapacks;
                         r.clear_attachments();
                         r.players.clear();
                         r.tab_players.clear();

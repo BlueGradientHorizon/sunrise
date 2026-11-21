@@ -152,8 +152,10 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                     RemoteDimensionEntry::Login,
                     sunrise_client::level_loading::Reason::Other,
                 );
-                sunrise_client::datapack_net::clear_received();
-                sunrise_client::datapack_net::accept(&bytes).unwrap();
+                let receiver = &mut game.remote.as_mut().unwrap().datapacks;
+                for chunk in sunrise_client::datapack_net::chunks(&bytes).unwrap() {
+                    receiver.accept_chunk(&chunk).unwrap();
+                }
                 let level = game.level("minecraft:overworld").unwrap();
                 assert_eq!(
                     level.datapack_entries(game, "registry_test:spell"),
@@ -165,13 +167,12 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 let mut visits = 0;
                 level
                     .datapack_read(game, &client_handle, &mut |entry| {
-                        // Clearing takes the publication lock and drops its reference to the set.
-                        sunrise_client::datapack_net::clear_received();
                         assert_eq!(entry.get("power"), Some(&DatapackValue::Int(19)));
                         visits += 1;
                     })
                     .unwrap();
                 assert_eq!(visits, 1);
+                game.remote.as_mut().unwrap().datapacks = Default::default();
                 assert_eq!(
                     level.datapack_read(game, &client_handle, &mut unexpected_visit),
                     Err(E::UnknownRegistry)

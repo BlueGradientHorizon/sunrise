@@ -62,7 +62,6 @@ fn begin() -> MutexGuard<'static, ()> {
     let turn = TURN.lock().unwrap_or_else(|e| e.into_inner());
     mod_api::__private::install_process_datapack_registry_declarations(declarations());
     datapack_net::serve(None);
-    datapack_net::clear_received();
     turn
 }
 
@@ -241,12 +240,12 @@ fn drive<T>(
     }
 }
 
-fn join(host: &mut Host, session: &Session) {
+fn join(host: &mut Host, session: &Session) -> datapack_net::Receiver {
     drive(host, session, |_, event| match event {
-        Event::Joined { .. } => Some(()),
+        Event::Joined { datapacks, .. } => Some(datapacks),
         Event::Disconnected { reason, .. } => panic!("the join ended: {reason}"),
         _ => None,
-    });
+    })
 }
 
 #[test]
@@ -257,10 +256,12 @@ fn a_client_that_offers_the_registry_joins_and_reads_the_entry() {
     let (_resources, data) = Resources::new("offers");
     let mut host = Host::start();
     let session = connect(host.port(), "Mage", &data);
-    join(&mut host, &session);
-    let received = datapack_net::received().expect("the snapshot arrived before the join ended");
+    let datapacks = join(&mut host, &session);
+    let received = datapacks
+        .received()
+        .expect("the snapshot arrived before the join ended");
     assert_eq!(received.generation(), 1);
-    assert_eq!(power(&received), Some(DatapackValue::Int(7)));
+    assert_eq!(power(received), Some(DatapackValue::Int(7)));
 }
 
 /// What a client without the mod sees: the reason it is refused with, and whether any
@@ -378,8 +379,8 @@ fn a_reload_snapshot_gives_the_client_generation_two_and_stales_old_handles() {
     let (_resources, data) = Resources::new("reload");
     let mut host = Host::start();
     let session = connect(host.port(), "Mage", &data);
-    join(&mut host, &session);
-    let joined = datapack_net::received().unwrap();
+    let mut datapacks = join(&mut host, &session);
+    let joined = datapacks.received().unwrap();
     assert_eq!(joined.generation(), 1);
     let held = joined.handle("example:spell", "addon:fire").unwrap();
     assert_eq!(
@@ -420,11 +421,11 @@ fn a_reload_snapshot_gives_the_client_generation_two_and_stales_old_handles() {
             }),
         );
     }
-    // The game keeps what its play packet carries with `datapack_net::accept`.
+    // The game keeps what its play packet carries in its configuration receiver.
     drive(&mut host, &session, |_, event| match event {
         Event::Packet(packet) => match *packet {
             play::Clientbound::CustomPayload(p) if p.channel == datapack_net::CHANNEL => {
-                datapack_net::accept_chunk(&p.data).unwrap();
+                datapacks.accept_chunk(&p.data).unwrap();
                 Some(())
             }
             _ => None,
@@ -432,9 +433,9 @@ fn a_reload_snapshot_gives_the_client_generation_two_and_stales_old_handles() {
         Event::Disconnected { reason, .. } => panic!("the connection ended: {reason}"),
         _ => None,
     });
-    let next = datapack_net::received().unwrap();
+    let next = datapacks.received().unwrap();
     assert_eq!(next.generation(), 2);
-    assert_eq!(power(&next), Some(DatapackValue::Int(9)));
+    assert_eq!(power(next), Some(DatapackValue::Int(9)));
     assert_eq!(next.get(&held), Err(DatapackReadError::StaleGeneration));
 }
 

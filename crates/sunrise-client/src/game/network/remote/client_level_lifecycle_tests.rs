@@ -128,8 +128,14 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                     .snapshot(declarations, |_| true)
                     .encode()
                     .unwrap();
-                datapack_net::clear_received();
-                datapack_net::accept(&snapshot).unwrap();
+                for chunk in datapack_net::chunks(&snapshot).unwrap() {
+                    game.remote
+                        .as_mut()
+                        .unwrap()
+                        .datapacks
+                        .accept_chunk(&chunk)
+                        .unwrap();
+                }
                 game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
                 let overworld = game.level(&login.dimension).unwrap();
                 game.world
@@ -175,7 +181,6 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 game.begin_closing_save(true).unwrap();
                 assert!(game.poll_closing_save().unwrap());
                 game.save_for_exit().unwrap();
-                datapack_net::clear_received();
             });
         },
     );
