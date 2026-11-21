@@ -24,14 +24,14 @@ use crate::{
     BlockSide, Capability, CapabilityKey, ITEMS, ItemResource, ResourceHandler, ServerHost,
     Transaction,
 };
-use std::{marker::PhantomData, ops::ControlFlow};
+use std::{collections::HashSet, marker::PhantomData, ops::ControlFlow};
 
 /// Why a [`STORAGE`] question or move was refused.
 // no wire: reports refusals from in-process storage reads and transfers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum StorageError {
-    /// A total, an amount or an entry count does not fit in 64 bits.
+    /// A total or an amount does not fit in 64 bits.
     Overflow,
     /// A handler answered more than it was asked: a mod bug, warned once naming the mod. The
     /// move it was part of is undone.
@@ -381,13 +381,10 @@ pub fn transfer(
 
 /// Moves up to `max` of what `filter` accepts out of `from` into `to` (NeoForge's
 /// `ResourceHandlerUtil.move`, by kind), in transaction `tx`: how much moved. A zero `max` does
-/// not read the source. Visit the source in provider order and stop at the next matching
-/// entry. After the read succeeds and the provider's read borrow has ended, run the journaled
-/// [`transfer`] by kind. The move can take more than the amount in that one entry.
-///
-/// A zero move advances past that occurrence. After a positive move, rescan from the first
-/// entry: extraction can remove an entry and shift those after it. The filter can therefore
-/// see the same kind more than once, even if that kind previously failed to move.
+/// not read the source. Visits the source once in provider order to collect matching kinds
+/// (deduplicated by kind, since [`transfer`] moves across the whole storage by kind). After the
+/// visit returns and the provider's read borrow has ended, transfers each collected kind once in
+/// first-seen order until `max` items have moved or the list ends.
 pub fn transfer_matching(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ItemStorage>,
@@ -396,30 +393,25 @@ pub fn transfer_matching(
     max: u64,
     tx: &Transaction,
 ) -> Result<u64, StorageError> {
+    if max == 0 {
+        return Ok(0);
+    }
+    let mut seen = HashSet::new();
+    let mut matched = Vec::new();
+    from.visit_entries(host, &mut |resource, _| {
+        if filter(resource) && !seen.contains(resource) {
+            let owned = resource.clone();
+            seen.insert(owned.clone());
+            matched.push(owned);
+        }
+        ControlFlow::Continue(())
+    })?;
     let mut moved = 0;
-    let mut tried_prefix = 0;
-    while moved < max {
-        let mut seen = 0u64;
-        let mut selected = Ok(None);
-        from.visit_entries(host, &mut |resource, _| {
-            let Some(occurrence) = seen.checked_add(1) else {
-                selected = Err(StorageError::Overflow);
-                return ControlFlow::Break(());
-            };
-            seen = occurrence;
-            if seen > tried_prefix && filter(resource) {
-                selected = Ok(Some(resource.clone()));
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })?;
-        let Some(resource) = selected? else {
+    for resource in matched {
+        if moved == max {
             break;
-        };
-        let went = transfer(host, from, to, &resource, max - moved, tx)?;
-        moved += went;
-        tried_prefix = if went == 0 { seen } else { 0 };
+        }
+        moved += transfer(host, from, to, &resource, max - moved, tx)?;
     }
     Ok(moved)
 }
@@ -726,10 +718,11 @@ mod tests {
     }
 
     #[test]
-    fn transfer_matching_ends_reads_and_rescans_after_compaction() {
+    fn transfer_matching_ends_reads_and_visits_once_across_compaction() {
         struct Ordered {
             entries: Rc<RefCell<Vec<(ItemResource, u64)>>>,
             refuses: Option<ItemResource>,
+            visits: Rc<Cell<u32>>,
         }
 
         // These fixtures only make full moves or refuse during planning, so no journal is
@@ -744,8 +737,9 @@ mod tests {
                     .entries
                     .borrow()
                     .iter()
-                    .find(|(held, _)| held == kind)
-                    .map_or(0, |(_, amount)| *amount))
+                    .filter(|(held, _)| held == kind)
+                    .map(|(_, amount)| *amount)
+                    .sum())
             }
             fn space_for(
                 &self,
@@ -781,22 +775,28 @@ mod tests {
             ) -> u64 {
                 assert_eq!(host.transaction_current().as_ref(), Some(tx));
                 let mut entries = self.entries.borrow_mut();
-                let Some(index) = entries.iter().position(|(held, _)| held == kind) else {
-                    return 0;
-                };
-                let held = &mut entries[index].1;
-                let moved = amount.min(*held);
-                *held -= moved;
-                if *held == 0 {
-                    entries.remove(index);
+                let mut left = amount;
+                let mut index = 0;
+                while index < entries.len() && left > 0 {
+                    if entries[index].0 == *kind {
+                        let moved = left.min(entries[index].1);
+                        entries[index].1 -= moved;
+                        left -= moved;
+                        if entries[index].1 == 0 {
+                            entries.remove(index);
+                            continue;
+                        }
+                    }
+                    index += 1;
                 }
-                moved
+                amount - left
             }
             fn visit_entries(
                 &self,
                 _: &mut dyn ServerHost,
                 visitor: &mut dyn FnMut(&ItemResource, u64) -> ControlFlow<()>,
             ) -> Result<(), StorageError> {
+                self.visits.set(self.visits.get() + 1);
                 let entries = self.entries.borrow();
                 for (kind, amount) in entries.iter() {
                     if visitor(kind, *amount).is_break() {
@@ -813,12 +813,15 @@ mod tests {
             (r[0].clone(), 3),
             (r[1].clone(), 5),
             (r[2].clone(), 7),
+            (r[1].clone(), 4),
         ]));
         let destination = Rc::new(RefCell::new(Vec::new()));
+        let visits = Rc::new(Cell::new(0));
         let from = Capability::<dyn ItemStorage> {
             handler: Box::new(Ordered {
                 entries: Rc::clone(&source),
                 refuses: None,
+                visits: Rc::clone(&visits),
             }),
             owner: None,
         };
@@ -826,17 +829,52 @@ mod tests {
             handler: Box::new(Ordered {
                 entries: Rc::clone(&destination),
                 refuses: Some(r[0].clone()),
+                visits: Rc::new(Cell::new(0)),
             }),
             owner: None,
         };
         let host: &mut dyn ServerHost = &mut host;
-        let moved =
-            host.transaction(|host, tx| transfer_matching(host, &from, &to, |_| true, 99, tx));
-        assert_eq!(moved, Ok(12));
+        let filtered = RefCell::new(Vec::new());
+        let zero = host.transaction(|host, tx| {
+            transfer_matching(
+                host,
+                &from,
+                &to,
+                |res| {
+                    filtered.borrow_mut().push(res.clone());
+                    true
+                },
+                0,
+                tx,
+            )
+        });
+        assert_eq!(zero, Ok(0));
+        assert_eq!(visits.get(), 0);
+        assert!(filtered.borrow().is_empty());
+
+        let moved = host.transaction(|host, tx| {
+            transfer_matching(
+                host,
+                &from,
+                &to,
+                |res| {
+                    filtered.borrow_mut().push(res.clone());
+                    true
+                },
+                99,
+                tx,
+            )
+        });
+        assert_eq!(moved, Ok(16));
+        assert_eq!(visits.get(), 1);
+        assert_eq!(
+            filtered.borrow().as_slice(),
+            &[r[0].clone(), r[1].clone(), r[2].clone(), r[1].clone()]
+        );
         assert_eq!(source.borrow().as_slice(), &[(r[0].clone(), 3)]);
         assert_eq!(
             destination.borrow().as_slice(),
-            &[(r[1].clone(), 5), (r[2].clone(), 7)]
+            &[(r[1].clone(), 9), (r[2].clone(), 7)]
         );
     }
 

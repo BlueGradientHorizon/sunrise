@@ -73,7 +73,7 @@ impl Game<'_> {
         Some(())
     }
 
-    /// Why a write to this player's inventory, ender chest, hands or saved data is refused
+    /// Why a write to this player's inventory, ender chest or hands is refused
     /// before it starts: a client, a handle with no online player, a dead player.
     pub(super) fn player_write_gate(&self, player: PlayerRef) -> Result<(), PlayerWriteRefusal> {
         if self.remote.is_some() {

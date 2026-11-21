@@ -152,8 +152,10 @@ pub trait PlayerSessionBackendMut {
     /// This is for ports; new mods should use attachments.
     ///
     /// Refuses with [`PlayerPersistentDataError`] and writes nothing if the player cannot be
-    /// written or the entry cannot be saved. An open transaction journals the edit; aborting
-    /// restores the previous value, including absence of the compound.
+    /// written or the entry cannot be saved. Both living and dead online players on the server
+    /// accept edits, matching NeoForge's `Entity.getPersistentData()` and
+    /// `ServerPlayer.restoreFrom()`. An open transaction journals the edit; aborting restores
+    /// the previous value, including absence of the compound.
     #[access(WorldOnly)]
     fn player_set_persistent_data_key(
         &mut self,

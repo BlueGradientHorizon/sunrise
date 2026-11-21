@@ -258,6 +258,9 @@ pub(super) struct Level {
     players: HashMap<u128, KeptPlayer>,
     /// Ender storage has one journal shared by player and menu writes.
     ender_items: HashMap<u128, Vec<Option<ItemStack>>>,
+    /// Saved player extra NBT (`level.player_extra` / `guest.saved`), shared by player and
+    /// persistent-data writes, including dead players.
+    player_extra: HashMap<u128, Option<sunrise_core::nbt::Tag>>,
     /// Synced player health and its unpublished update events before set_health.
     player_health: HashMap<u128, KeptPlayerHealth>,
     /// Mob health and synchronization dirtiness before set_health.
@@ -405,7 +408,6 @@ struct KeptMobEffects {
 
 #[derive(Clone)]
 struct KeptPlayer {
-    player_extra: Option<sunrise_core::nbt::Tag>,
     inventory: Vec<Option<ItemStack>>,
     armor: [Option<ItemStack>; 4],
     offhand: Option<ItemStack>,
@@ -568,11 +570,15 @@ impl Level {
         &mut self,
         uuid: u128,
         ender_items: &[Option<ItemStack>],
+        player_extra: Option<&sunrise_core::nbt::Tag>,
         capture: impl FnOnce() -> KeptPlayer,
     ) {
         self.ender_items
             .entry(uuid)
             .or_insert_with(|| ender_items.to_vec());
+        self.player_extra
+            .entry(uuid)
+            .or_insert_with(|| player_extra.cloned());
         self.players.entry(uuid).or_insert_with(capture);
     }
 
@@ -892,6 +898,9 @@ impl Game<'_> {
                 for (uuid, kept) in level.ender_items {
                     outer.ender_items.entry(uuid).or_insert(kept);
                 }
+                for (uuid, kept) in level.player_extra {
+                    outer.player_extra.entry(uuid).or_insert(kept);
+                }
                 for (conn, kept) in level.menus {
                     outer.menus.entry(conn).or_insert(kept);
                 }
@@ -1169,14 +1178,18 @@ impl Game<'_> {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
-        level.keep_player(uuid, &self.ender_items, || KeptPlayer {
-            player_extra: self.level.player_extra.clone(),
-            inventory: self.inventory.clone(),
-            armor: self.armor.clone(),
-            offhand: self.offhand.clone(),
-            equipment: self.equipment.clone(),
-            carried: self.carried.clone(),
-        });
+        level.keep_player(
+            uuid,
+            &self.ender_items,
+            self.level.player_extra.as_ref(),
+            || KeptPlayer {
+                inventory: self.inventory.clone(),
+                armor: self.armor.clone(),
+                offhand: self.offhand.clone(),
+                equipment: self.equipment.clone(),
+                carried: self.carried.clone(),
+            },
+        );
     }
     /// The same journal for a player resolved to their own parked record at `index`.
     pub(super) fn journal_parked_player(&mut self, uuid: u128, index: usize) {
@@ -1184,14 +1197,37 @@ impl Game<'_> {
             return;
         };
         let guest = &self.lan.as_ref().expect("resolved guest").hub.guests[index];
-        level.keep_player(uuid, &guest.ender_items, || KeptPlayer {
-            player_extra: guest.saved.clone(),
-            inventory: guest.inventory.clone(),
-            armor: guest.armor.clone(),
-            offhand: guest.offhand.clone(),
-            equipment: guest.equipment.clone(),
-            carried: guest.carried.clone(),
+        level.keep_player(uuid, &guest.ender_items, guest.saved.as_ref(), || {
+            KeptPlayer {
+                inventory: guest.inventory.clone(),
+                armor: guest.armor.clone(),
+                offhand: guest.offhand.clone(),
+                equipment: guest.equipment.clone(),
+                carried: guest.carried.clone(),
+            }
         });
+    }
+    /// Keeps the saved player extra NBT (`level.player_extra`) of `uuid`, whose state is
+    /// acting in `Game` now, on its first write in the open frame.
+    pub(super) fn journal_player_extra(&mut self, uuid: u128) {
+        let Some(level) = self.transactions.player_write() else {
+            return;
+        };
+        level
+            .player_extra
+            .entry(uuid)
+            .or_insert_with(|| self.level.player_extra.clone());
+    }
+    /// The same journal for a player resolved to their own parked record at `index`.
+    pub(super) fn journal_parked_player_extra(&mut self, uuid: u128, index: usize) {
+        let Some(level) = self.transactions.player_write() else {
+            return;
+        };
+        let guest = &self.lan.as_ref().expect("resolved guest").hub.guests[index];
+        level
+            .player_extra
+            .entry(uuid)
+            .or_insert_with(|| guest.saved.clone());
     }
     /// Called with the target player's body swapped in, before set_health changes it.
     pub(super) fn journal_player_health(&mut self) {
@@ -2056,12 +2092,32 @@ impl Game<'_> {
                 host.hub.guests.update(index, |g| g.ender_items = kept);
             }
         }
+        for (uuid, kept) in level.player_extra {
+            if self.lan_acting_uuid == Some(uuid) {
+                self.level.player_extra = kept;
+            } else if let Some(host) = self.lan.as_mut()
+                && let Some(index) = host
+                    .hub
+                    .guests
+                    .iter()
+                    .position(|g| g.placed && g.uuid == uuid)
+            {
+                host.hub.guests.update(index, |g| g.saved = kept);
+            } else if self.lan_acting_uuid.is_none()
+                && self
+                    .level
+                    .player_uuid
+                    .map(sunrise_client::lan::playerdata::ints_uuid)
+                    == Some(uuid)
+            {
+                self.level.player_extra = kept;
+            }
+        }
         for (uuid, kept) in level.players {
             // A player's storage can move between the game and its row between writes.
             // Resolve its current home without entering a turn just to restore it.
             match self.native_item_place_player(uuid) {
                 Some(PlayerRead::Acting { .. }) => {
-                    self.level.player_extra = kept.player_extra;
                     self.inventory = kept.inventory;
                     self.armor = kept.armor;
                     self.offhand = kept.offhand;
@@ -2072,7 +2128,6 @@ impl Game<'_> {
                     if let Some(index) = self.guest_index(guest.conn) {
                         let host = self.lan.as_mut().expect("resolved guest");
                         host.hub.guests.update(index, |g| {
-                            g.saved = kept.player_extra;
                             g.inventory = kept.inventory;
                             g.armor = kept.armor;
                             g.offhand = kept.offhand;
