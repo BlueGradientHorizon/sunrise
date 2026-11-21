@@ -2552,8 +2552,12 @@ mod credits_respawn_tests {
         );
         assert!(game.spectator_use_portal(2, 0, portal));
         assert!(
-            game.on_server_trip(2),
-            "the saved point is still being searched"
+            game.has_pending_travel(2),
+            "still searching the saved point"
+        );
+        assert!(
+            !game.on_server_trip(2),
+            "the spectator stays active in the End"
         );
         assert_eq!(game.command_guest(2).unwrap().dimension, Dim::End.id());
         game.enter_level(Dim::Nether).unwrap();
@@ -2565,7 +2569,7 @@ mod credits_respawn_tests {
             Dim::Nether.id(),
             "a spectator's exit from the End goes to its resolved point's level"
         );
-        assert!(!game.on_server_trip(2));
+        assert!(!game.has_pending_travel(2));
     }
 }
 
