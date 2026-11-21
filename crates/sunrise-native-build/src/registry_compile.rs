@@ -113,19 +113,10 @@ pub fn compile(
     let mut members = Vec::new();
     let mut wrapper_deps = toml::Table::new();
     let deps = game.join("deps");
-    // A mod library's link arguments: only the rpath ones, putting the library's own folder on
-    // its search path (not the game executable's link policy).
-    let mod_link_args = || {
-        let mut link_args = Vec::new();
-        if cfg!(target_os = "linux") {
-            link_args.push("-Wl,--disable-new-dtags".into());
-            link_args.push("-Wl,-rpath,$ORIGIN".into());
-        }
-        if cfg!(target_os = "macos") {
-            link_args.push("-Wl,-rpath,@loader_path".into());
-        }
-        link_args
-    };
+    let link_args: Vec<_> = prebuilt::dylib_rpath_args(std::env::consts::OS)
+        .iter()
+        .map(|arg| (*arg).to_owned())
+        .collect();
     // Each mod's staged folder and library root, for the shared registry library.
     let mut mod_dirs = BTreeMap::new();
     let mut mod_roots = BTreeMap::new();
@@ -315,7 +306,7 @@ pub fn compile(
             dest,
             registry_rustc::Bindings {
                 externs,
-                link_args: mod_link_args(),
+                link_args: link_args.clone(),
             },
         );
         members.push(relative);
@@ -493,7 +484,7 @@ pub fn compile(
             out.join(registry_shared::RELATIVE),
             registry_rustc::Bindings {
                 externs,
-                link_args: mod_link_args(),
+                link_args: link_args.clone(),
             },
         );
         // Cargo records the new local package in the lock, offline: every crate it names is
@@ -516,18 +507,9 @@ pub fn compile(
     if inventory.added_crates > 0 && !options.consent.is_some_and(|ask| ask(&inventory)) {
         return Err(crate::host::tr("The mods' crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; their build scripts and proc macros then run on this computer").into());
     }
-    let mut externs = prebuilt::wrapper_externs(&deps)?;
-    externs.insert("mod_vocab".into(), prebuilt::library(&deps, "mod_vocab")?);
+    let externs = prebuilt::wrapper_externs(&deps)?;
     for (name, path) in &externs {
         prebuilt::refuse_closure_rlib("sunrise_patch", name, path)?;
-    }
-    let mut link_args = Vec::new();
-    if cfg!(target_os = "linux") {
-        link_args.push("-Wl,--disable-new-dtags".into());
-        link_args.push("-Wl,-rpath,$ORIGIN".into());
-    }
-    if cfg!(target_os = "macos") {
-        link_args.push("-Wl,-rpath,@executable_path".into());
     }
     bindings.insert(
         out.to_path_buf(),
@@ -610,11 +592,7 @@ pub fn compile(
         );
         return Err(super::advised(error, blocked, libraries));
     }
-    let binary = game.join("bin").join(if cfg!(windows) {
-        "sunrise-client.exe"
-    } else {
-        "sunrise-client"
-    });
+    let binary = game.join("bin").join(crate::CLIENT);
     let release = target_dir.join(rust.target()).join("release");
     let mut runtime = prebuilt::runtime_libraries(rust, &sdk, game)?;
     for &index in &resolution.order {
