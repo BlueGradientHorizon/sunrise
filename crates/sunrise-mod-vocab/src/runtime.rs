@@ -198,6 +198,10 @@ pub(crate) fn report_mod_panic(mod_id: &'static str, kind: &'static str, operati
     crate::callback_owner::report_mod_panic(mod_id, kind, operation);
 }
 
+pub(crate) fn enter_contained() -> crate::content::crash::ContainGuard {
+    crate::content::crash::enter_contained()
+}
+
 pub(crate) fn first_output_refusal(hook: generated::HookId, id: &'static str) -> bool {
     crate::dispatch_scope::backend()
         .is_none_or(|backend| (backend.diagnostics.first_output_refusal)(hook, id))

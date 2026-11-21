@@ -9,10 +9,11 @@ dependency pairs `(first, second)`. Both lend IDs from the registry, so clone on
 need after the borrow ends. `event.listeners.get_last_vanilla_listener()` always borrows
 `VanillaServerListeners::functions()` (matching NeoForge's
 `SortedReloadListenerEvent.getLastVanillaListener`); the built-in `neoforge:loot_modifiers`
-listener is registered before mod hooks without replacing it. `VanillaServerListeners::first()`
-and `last()` alias `functions()` (and `VanillaClientListeners::first()` / `last()` alias
-`model_manager()`), with no synthetic `minecraft:first` or `minecraft:last` boundary nodes or
-automatic edges.
+listener is registered before mod hooks without replacing it. `VanillaServerListeners::first()` and `last()` alias `functions()`, and
+`VanillaClientListeners::first()` / `last()` alias `model_manager()` (Sunrise's single modeled
+vanilla client reload anchor), with no synthetic `minecraft:first` or `minecraft:last` boundary
+nodes or automatic edges. During sorting, only dangling non-`minecraft` listeners are linked after
+the anchor (matching NeoForge's `ReloadListenerSort`).
 
 A listener's `ServerReloadContext` lists namespaced IDs and reads the
 winning bytes from selected datapacks and the mod's own `data/`. Parse once in `prepare`, then return

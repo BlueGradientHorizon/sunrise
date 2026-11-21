@@ -15,6 +15,32 @@ thread_local! {
     static CURRENT_CRASH_OWNER: Cell<CrashOwner> = const { Cell::new(CrashOwner {
         call: None, frame: 0, next_frame: 0,
     }) };
+    /// How many caught recovery boundaries this thread is inside.
+    static CONTAINED: Cell<u32> = const { Cell::new(0) };
+}
+// hidden: platform-owned panic-containment guard shared across crates.
+#[doc(hidden)]
+// no wire: thread-local panic-containment bookkeeping.
+// exhaustive: only `enter_contained` builds it
+pub struct ContainGuard(());
+impl Drop for ContainGuard {
+    fn drop(&mut self) {
+        let _ = CONTAINED.try_with(|c| c.set(c.get().saturating_sub(1)));
+    }
+}
+// hidden: mark this thread as inside a caught recovery boundary so the
+// installed crash hook logs panics without writing a fatal report or exiting.
+#[doc(hidden)]
+#[inline(never)]
+pub fn enter_contained() -> ContainGuard {
+    let _ = CONTAINED.try_with(|c| c.set(c.get() + 1));
+    ContainGuard(())
+}
+// hidden: whether this thread is currently inside a caught recovery boundary.
+#[doc(hidden)]
+#[inline(never)]
+pub fn is_contained() -> bool {
+    CONTAINED.try_with(Cell::get).unwrap_or(0) > 0
 }
 // hidden: platform-owned instrumentation plumbing, not a mod authoring surface.
 #[doc(hidden)]

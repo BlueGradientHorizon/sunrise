@@ -66,9 +66,13 @@ pub(crate) fn call<T>(
     }
     let _guard = crate::mark_mod(owner, operation);
     // A refusal by the phase gate refuses this call and nothing more; a real panic disables the owner.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::world::phase_refusal::contain_refusal(owner, invoke)
-    })) {
+    let result = {
+        let _contained = crate::content::crash::enter_contained();
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::world::phase_refusal::contain_refusal(owner, invoke)
+        }))
+    };
+    match result {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(refusal)) => {
             log::warn!("mod {owner}: {kind} `{operation}` refused: {refusal}");

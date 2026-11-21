@@ -5,7 +5,8 @@ pub trait Hooks {
     /// `RegisterRenderPipelinesEvent`; 1.21.1 mods used `RegisterShadersEvent`): call
     /// `event.register(pipeline)` with each [`RenderPipeline`]. The game builds them with its own
     /// at startup and again on every resource reload. Any valid pipeline id is accepted; duplicate
-    /// pipeline ids fail client startup (matching NeoForge's
+    /// pipeline ids — including collisions with vanilla's built-in required or optional pipeline
+    /// registries — fail client startup (matching NeoForge's
     /// `RenderPipelines.registerCustomPipelines`). A required pipeline whose shader is missing or
     /// doesn't build fails the load: the game does not start, and a reload fails and keeps the
     /// previous resources. An [optional](RenderPipeline::optional()) one is logged and resolves to

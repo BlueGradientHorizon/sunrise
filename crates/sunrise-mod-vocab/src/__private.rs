@@ -35,6 +35,8 @@ pub mod native {
     }
 }
 
+pub use crate::content::crash::{ContainGuard, enter_contained, is_contained};
+
 /// Switch an installed mod's dispatches on or off, returning whether it was found.
 pub fn set_mod_enabled(id: &str, on: bool) -> bool {
     crate::set_mod_enabled(id, on)

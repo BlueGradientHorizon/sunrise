@@ -1184,7 +1184,7 @@ pub(super) fn emit<'a>(
             None if mod_cancel && hook.isolate => (
                 String::new(),
                 format!(
-                    "{{ {isolate_snapshot} {validated_start} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) || ({event}.cancelled && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ {validated_arms}Ok(Err(refusal)) => {{ refusal.report(); {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} Err(_unwound) => {{ {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
+                    "{{ {isolate_snapshot} {validated_start} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) || ({event}.cancelled && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); match {{ let _contained = super::runtime::enter_contained(); std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) }} {{ {validated_arms}Ok(Err(refusal)) => {{ refusal.report(); {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} Err(_unwound) => {{ {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
                     o = out.unwrap()
                 ),
             ),
@@ -1215,7 +1215,7 @@ pub(super) fn emit<'a>(
                 (
                     String::new(),
                     format!(
-                        "for {binding} in {each} {{ if super::runtime::poisoned(HookId::{hook_id}, mod_id) {{ continue; }} {local_event} let __len = {event}.{output}.len(); {previous_stmt}match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ Ok(Ok(())) => {{ {on_ok} {local_write_back} {stack_after} }} Ok(Err(refusal)) => {{ {event}.{output}.truncate(__len); {clear_batch}refusal.report(); }} Err(_unwound) => {{ {event}.{output}.truncate(__len); {clear_batch}super::runtime::poison(HookId::{hook_id}, mod_id); super::runtime::report_mod_panic(mod_id, \"hook\", \"{name}\"); }} }} }}"
+                        "for {binding} in {each} {{ if super::runtime::poisoned(HookId::{hook_id}, mod_id) {{ continue; }} {local_event} let __len = {event}.{output}.len(); {previous_stmt}match {{ let _contained = super::runtime::enter_contained(); std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) }} {{ Ok(Ok(())) => {{ {on_ok} {local_write_back} {stack_after} }} Ok(Err(refusal)) => {{ {event}.{output}.truncate(__len); {clear_batch}refusal.report(); }} Err(_unwound) => {{ {event}.{output}.truncate(__len); {clear_batch}super::runtime::poison(HookId::{hook_id}, mod_id); super::runtime::report_mod_panic(mod_id, \"hook\", \"{name}\"); }} }} }}"
                     ),
                 )
             }
@@ -2406,6 +2406,7 @@ mod runtime {{
     impl Refusal {{ pub fn report(&self) {{}} }}
     pub fn outside_world() -> bool {{ false }}
     pub fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {{ Ok(call()) }}
+    pub fn enter_contained() {{}}
     pub struct ListenerScope;
     impl ListenerScope {{
         pub fn new() -> Self {{ Self }}
@@ -2660,6 +2661,7 @@ mod runtime {{
     impl Refusal {{ pub fn report(&self) {{}} }}
     pub fn outside_world() -> bool {{ false }}
     pub fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {{ Ok(call()) }}
+    pub fn enter_contained() {{}}
 }}
 impl Gatherer {{ fn gather(&self, _: &mut dyn generated::ServerHost, event: &mut generated::GatherEvent<'_>) {{ assert!(event.entries.is_empty()); event.entries.extend(self.pushes); }} }}
 mod generated {{

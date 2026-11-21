@@ -22,8 +22,9 @@ use std::sync::{Arc, LazyLock};
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct VanillaClientListeners;
 impl VanillaClientListeners {
-    /// First registered vanilla client reload listener, matching NeoForge's
-    /// `VanillaClientListeners.FIRST` (currently aliases [`Self::model_manager`]).
+    /// First registered vanilla client reload listener, corresponding to NeoForge's
+    /// `VanillaClientListeners.FIRST`. Sunrise currently models a single vanilla client
+    /// reload anchor, so this aliases [`Self::model_manager`].
     pub fn first() -> Identifier {
         Self::model_manager()
     }
@@ -34,8 +35,9 @@ impl VanillaClientListeners {
             LazyLock::new(|| Identifier::parse("minecraft:model_manager").unwrap());
         ID.clone()
     }
-    /// Last registered vanilla client reload listener, matching NeoForge's
-    /// `VanillaClientListeners.LAST` (currently aliases [`Self::model_manager`]).
+    /// Last registered vanilla client reload listener, corresponding to NeoForge's
+    /// `VanillaClientListeners.LAST`. Sunrise currently models a single vanilla client
+    /// reload anchor, so this aliases [`Self::model_manager`].
     pub fn last() -> Identifier {
         Self::model_manager()
     }

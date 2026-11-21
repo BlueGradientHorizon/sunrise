@@ -2135,10 +2135,11 @@ those of [server listeners](#server-data-reload-listeners). Client registry read
 dependency cycle aborts the reload and drops pending actions without running them, while a
 handled registration error leaves the registry unmutated and does not poison the reload.
 A panic names the listener and its registering mod in the crash report.
-`VanillaClientListeners::model_manager()` names vanilla's model manager, the anchor of the
-26.3 `Minecraft` registration order; `first()` and `last()` alias `model_manager()` (matching
+`VanillaClientListeners::model_manager()` names Sunrise's single modeled vanilla client
+reload anchor; `first()` and `last()` alias `model_manager()` (the Sunrise counterparts of
 NeoForge's `VanillaClientListeners.FIRST`/`LAST`), with no synthetic boundary nodes or automatic
-edges. Mod applies run on the main thread after the staged pack is
+edges. Only dangling non-`minecraft` listeners are linked after the anchor during topological
+sorting (matching NeoForge's `ReloadListenerSort`). Mod applies run on the main thread after the staged pack is
 published, before `client_resources_reloaded`. Listeners are registered fresh for every
 load: the initial resource load registers them once, before any prepare runs (as
 NeoForge's construction-time event does — no game exists yet, and a host read during

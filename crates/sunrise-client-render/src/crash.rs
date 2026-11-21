@@ -17,7 +17,7 @@ pub use mod_api::content::crash::{clear_detail, enter_native_mod, set_detail};
 use mod_platform::content::crash::details;
 #[cfg(test)]
 pub use mod_platform::content::crash::{clear_detail, enter_native_mod, set_detail};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -30,8 +30,6 @@ use sunrise_system::{command_output, machine_arch};
 static REPORTED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
-    /// How many `contain` calls this thread is inside.
-    static CONTAINED: Cell<u32> = const { Cell::new(0) };
     /// The message of the last panic `contain` caught on this thread, from the hook.
     static CAUGHT: RefCell<Option<String>> = const { RefCell::new(None) };
 }
@@ -72,14 +70,14 @@ fn attributed(message: String) -> String {
 /// to the log with its stack, and no crash report is made for it. A mod's Host call refused by
 /// the load phase comes back as an error that names it.
 pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
-    CONTAINED.with(|c| c.set(c.get() + 1));
+    let _contained = mod_api::__private::enter_contained();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         mod_api::__private::contain_refusal(
             mod_api::content::crash::current_native_mod().unwrap_or("unknown"),
             f,
         )
     }));
-    CONTAINED.with(|c| c.set(c.get() - 1));
+    drop(_contained);
     match result {
         Ok(Ok(value)) => Ok(value),
         // A mod's Host call the load phase does not admit: named, not a panic, and no crash report.
@@ -96,7 +94,7 @@ pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
 /// For the hook: a panic inside `contain` is logged with its stack and kept for `contain` to
 /// return. False for any other panic.
 fn contained_panic(info: &std::panic::PanicHookInfo) -> bool {
-    if CONTAINED.with(Cell::get) == 0 {
+    if !mod_api::__private::is_contained() {
         return false;
     }
     let message = panic_message(info);
@@ -1364,7 +1362,141 @@ mod tests {
         // Nested, and the thread is no longer inside one after.
         let outer = contain(|| contain(|| -> u8 { panic!("inner") }));
         assert!(outer.unwrap().unwrap_err().contains("inner"));
-        assert_eq!(CONTAINED.with(Cell::get), 0);
+        assert!(!mod_api::__private::is_contained());
+    }
+
+    #[test]
+    fn registration_and_retained_callback_panics_are_contained_under_installed_crash_hook() {
+        use mod_api::{
+            __private::game::{CallbackOwner, RegistrationContextNew, take_mod_error_toasts},
+            Hooks, Identifier, ModEntry, RegisterTextureAtlasesEvent, RegistrationContext,
+            TextureAtlasRegistration,
+        };
+
+        struct BrokenAtlas;
+        #[mod_api::__subscriptions]
+        impl Hooks for BrokenAtlas {
+            fn register_texture_atlases(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterTextureAtlasesEvent<'_>,
+            ) {
+                event.register(TextureAtlasRegistration {
+                    atlas: Identifier::parse("broken_atlas:staged").unwrap(),
+                    definition: Identifier::parse("broken_atlas:staged").unwrap(),
+                });
+                panic!("broken atlas listener panic");
+            }
+        }
+
+        struct GoodAtlas;
+        #[mod_api::__subscriptions]
+        impl Hooks for GoodAtlas {
+            fn register_texture_atlases(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterTextureAtlasesEvent<'_>,
+            ) {
+                event.register(TextureAtlasRegistration {
+                    atlas: Identifier::parse("good_atlas:icons").unwrap(),
+                    definition: Identifier::parse("good_atlas:icons").unwrap(),
+                });
+            }
+        }
+
+        let _lock = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
+        let scratch = tempfile::tempdir().unwrap();
+        let home = scratch.path().to_path_buf();
+        let previous = std::panic::take_hook();
+        REPORTED.store(false, Ordering::SeqCst);
+        install(home.clone(), "client");
+        let _ = take_mod_error_toasts();
+
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            mod_platform::testing::with_mods(
+                vec![
+                    ModEntry::new("broken_atlas", Box::new(BrokenAtlas)),
+                    ModEntry::new("good_atlas", Box::new(GoodAtlas)),
+                ]
+                .into(),
+                || {
+                    // 1. Registration hook panic on "main": rolls back broken_atlas, runs
+                    //    good_atlas, writes no crash report, leaves REPORTED false, and queues toast.
+                    let run_main = mod_api::testing::inherit_mods(|_: &()| {
+                        let mut atlases = Vec::new();
+                        mod_api::dispatch_register_texture_atlases(
+                            &RegistrationContext::new(),
+                            &mut atlases,
+                        );
+                        atlases
+                    });
+                    let atlases = std::thread::Builder::new()
+                        .name("main".into())
+                        .spawn(move || run_main(&()))
+                        .unwrap()
+                        .join()
+                        .unwrap();
+                    assert_eq!(atlases.len(), 1);
+                    assert_eq!(
+                        atlases[0].atlas,
+                        Identifier::parse("good_atlas:icons").unwrap()
+                    );
+                    assert!(!REPORTED.load(Ordering::SeqCst));
+                    assert!(
+                        !home.join("crash-reports").exists()
+                            || std::fs::read_dir(home.join("crash-reports"))
+                                .unwrap()
+                                .next()
+                                .is_none(),
+                        "contained registration panic must not write a fatal crash report"
+                    );
+                    let toasts = take_mod_error_toasts();
+                    assert!(
+                        toasts.contains(&("broken_atlas", "register_texture_atlases")),
+                        "expected toast for broken_atlas, got {toasts:?}"
+                    );
+
+                    // 2. Retained CallbackOwner panic on a streaming worker thread: must not
+                    //    exit(101) or write a crash report, must poison the callback and queue toast.
+                    let run_worker = mod_api::testing::inherit_mods(|_: &()| {
+                        let owner = CallbackOwner::new("broken_atlas").unwrap();
+                        let first = owner.call("test callback", "worker_op", || -> u32 {
+                            panic!("worker callback panic");
+                        });
+                        let second = owner.call("test callback", "worker_op", || 7u32);
+                        (first, second)
+                    });
+                    let (first, second) = std::thread::Builder::new()
+                        .name("sunrise-worker-0".into())
+                        .spawn(move || run_worker(&()))
+                        .unwrap()
+                        .join()
+                        .unwrap();
+                    assert!(first.unwrap_err().contains("panicked"));
+                    assert!(second.unwrap_err().contains("disabled"));
+                    assert!(!REPORTED.load(Ordering::SeqCst));
+                    assert!(
+                        !home.join("crash-reports").exists()
+                            || std::fs::read_dir(home.join("crash-reports"))
+                                .unwrap()
+                                .next()
+                                .is_none(),
+                        "contained worker callback panic must not write a fatal crash report"
+                    );
+                    let toasts = take_mod_error_toasts();
+                    assert!(
+                        toasts.contains(&("broken_atlas", "worker_op")),
+                        "expected toast for worker_op, got {toasts:?}"
+                    );
+                },
+            );
+        }));
+
+        REPORTED.store(false, Ordering::SeqCst);
+        std::panic::set_hook(previous);
+        if let Err(payload) = outcome {
+            std::panic::resume_unwind(payload);
+        }
     }
 
     #[test]
