@@ -13,12 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 class ScreenMouseFocusTests(unittest.TestCase):
     def test_cancel_precedes_widget_focus(self):
         game = (ROOT / "crates/sunrise-client/src/game.rs").read_text()
-        pre = game.index("// ScreenEvent.MouseButtonPressed.Pre")
-        focus = game.index("self.key_focus_mouse_press(&event)")
+        pre = game.index("self.native_screen_mouse_button_pressed_pre(")
+        canceled = game.index("if canceled {", pre)
+        focus = game.index("self.key_focus_mouse_press(&event)", pre)
         self.assertLess(game.index("self.key_focus_mouse("), pre)
-        self.assertLess(game.index("if canceled {", pre), focus)
-        self.assertIn("return Ok(());", game[game.index("if canceled {", pre):focus])
-        self.assertLess(focus, game.index("match event {", pre))
+        self.assertLess(canceled, focus)
+        self.assertIn("return Ok(());", game[canceled:focus])
+        self.assertLess(focus, game.index("self.route_screen_button(", pre))
 
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
     def test_accepted_press_focus(self):
