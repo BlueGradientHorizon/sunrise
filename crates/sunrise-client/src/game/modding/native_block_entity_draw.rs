@@ -3259,7 +3259,7 @@ mod tests {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 crate::game::mods::register_layer_definitions(
                     crate::game::execution_role::ExecutionRole::Client,
-                    std::path::Path::new("."),
+                    &game.vanilla_root(),
                 )
                 .unwrap();
                 assert_eq!(drawn(game), face);

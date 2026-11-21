@@ -43,30 +43,35 @@ pub fn register(
     layers: Vec<Answered<LayerDefinitionRegistration>>,
     vanilla_root: &Path,
 ) -> Result<(), String> {
-    if REGISTERED.get().is_some() {
+    register_into(&REGISTERED, layers, vanilla_root)
+}
+
+fn load_vanilla_models(vanilla_root: &Path) -> Result<super::EntityModelDocument, String> {
+    let path = vanilla_root.join("entity-models.json");
+    let doc = super::EntityModelDocument::load(vanilla_root).map_err(|error| {
+        format!(
+            "failed to load vanilla layer definitions from {}: {error}",
+            path.display()
+        )
+    })?;
+    if !doc.value().is_object() {
+        return Err(format!(
+            "invalid vanilla layer definitions in {}: expected a top-level JSON object",
+            path.display()
+        ));
+    }
+    Ok(doc)
+}
+
+fn register_into(
+    slot: &OnceLock<HashMap<String, LayerDefinition>>,
+    layers: Vec<Answered<LayerDefinitionRegistration>>,
+    vanilla_root: &Path,
+) -> Result<(), String> {
+    if slot.get().is_some() {
         log::warn!("model layers were registered already; these are left out");
         return Ok(());
     }
-    let vanilla = if layers.is_empty() {
-        None
-    } else {
-        super::EntityModelDocument::load(vanilla_root).ok()
-    };
-    let definitions = assemble(&layers, |id| {
-        vanilla
-            .as_ref()
-            .is_some_and(|doc| doc.value().get(id).is_some())
-    })?;
-    if REGISTERED.set(definitions).is_err() {
-        log::warn!("model layers were registered already; these are left out");
-    }
-    Ok(())
-}
-
-fn assemble(
-    layers: &[Answered<LayerDefinitionRegistration>],
-    is_vanilla: impl Fn(&str) -> bool,
-) -> Result<HashMap<String, LayerDefinition>, String> {
     let mut by_id: HashMap<&str, usize> = HashMap::new();
     let mut order: Vec<&str> = Vec::new();
     for (index, entry) in layers.iter().enumerate() {
@@ -80,31 +85,40 @@ fn assemble(
             order.push(id);
         }
     }
-    for &id in &order {
-        if is_vanilla(id) {
-            let mod_id = layers[by_id[id]].mod_id;
-            return Err(format!(
-                "Mod {mod_id}: model layer {id} collides with a vanilla layer definition"
-            ));
-        }
-    }
-    let mut definitions = HashMap::new();
-    for id in order {
-        let entry = &layers[by_id[id]];
-        let LayerDefinitionRegistration { id, supplier, .. } = &entry.answer;
-        let mod_id = entry.mod_id;
-        let Some(owner) = CallbackOwner::new(mod_id) else {
-            log::warn!("Model layer {id} has no installed owner {mod_id}");
-            continue;
-        };
-        match owner.call("model layer supplier", "build_layer_definition", supplier) {
-            Ok(definition) => {
-                definitions.insert(id.clone(), definition);
+    let definitions = if order.is_empty() {
+        HashMap::new()
+    } else {
+        let vanilla = load_vanilla_models(vanilla_root)?;
+        for &id in &order {
+            if vanilla.value().get(id).is_some() {
+                let mod_id = layers[by_id[id]].mod_id;
+                return Err(format!(
+                    "Mod {mod_id}: model layer {id} collides with a vanilla layer definition"
+                ));
             }
-            Err(error) => log::warn!("Model layer {id}: {error}"),
         }
+        let mut definitions = HashMap::new();
+        for id in order {
+            let entry = &layers[by_id[id]];
+            let LayerDefinitionRegistration { id, supplier, .. } = &entry.answer;
+            let mod_id = entry.mod_id;
+            let Some(owner) = CallbackOwner::new(mod_id) else {
+                log::warn!("Model layer {id} has no installed owner {mod_id}");
+                continue;
+            };
+            match owner.call("model layer supplier", "build_layer_definition", supplier) {
+                Ok(definition) => {
+                    definitions.insert(id.clone(), definition);
+                }
+                Err(error) => log::warn!("Model layer {id}: {error}"),
+            }
+        }
+        definitions
+    };
+    if slot.set(definitions).is_err() {
+        log::warn!("model layers were registered already; these are left out");
     }
-    Ok(definitions)
+    Ok(())
 }
 
 /// The realized definition of the layer a native mod registered as `id`.
@@ -116,19 +130,7 @@ fn is_valid_layer_id(id: &str) -> bool {
     let Some((location, layer)) = id.split_once('#') else {
         return false;
     };
-    let Some((namespace, path)) = location.split_once(':') else {
-        return false;
-    };
-    let ok = |s: &str, extra: &[char]| {
-        !s.is_empty()
-            && s.chars().all(|c| {
-                c.is_ascii_lowercase()
-                    || c.is_ascii_digit()
-                    || "_.-".contains(c)
-                    || extra.contains(&c)
-            })
-    };
-    ok(namespace, &[]) && ok(path, &['/']) && !layer.is_empty() && !layer.contains(['#', ':'])
+    mod_api::Identifier::parse_namespaced(location).is_some() && !layer.is_empty()
 }
 
 #[cfg(test)]
@@ -168,7 +170,7 @@ mod tests {
         }
 
         let vanilla_root =
-            std::env::temp_dir().join(format!("model-layers-{}", std::process::id()));
+            std::env::temp_dir().join(format!("model-layers-freeze-{}", std::process::id()));
         std::fs::create_dir_all(&vanilla_root).unwrap();
         std::fs::write(
             vanilla_root.join("entity-models.json"),
@@ -182,7 +184,11 @@ mod tests {
                 ModEntry::new(
                     "first",
                     Box::new(Layers(
-                        &[("minecraft:golem#main", 1), ("first:golem#main", 6)],
+                        &[
+                            ("minecraft:golem#main", 1),
+                            ("first:golem#main", 6),
+                            ("first:golem#armor:outer", 4),
+                        ],
                         calls.clone(),
                     )),
                 ),
@@ -203,10 +209,12 @@ mod tests {
                 );
                 assert!(calls.lock().unwrap().is_empty());
                 register(suppliers, &vanilla_root).unwrap();
-                assert_eq!(*calls.lock().unwrap(), [1, 9, 12]);
+                assert_eq!(*calls.lock().unwrap(), [1, 9, 4, 12]);
 
                 let custom_mc = registered("minecraft:golem#main").unwrap().bake_root();
                 assert_eq!(custom_mc.get_child("head").unwrap().y, 1.0);
+                let colon_layer = registered("first:golem#armor:outer").unwrap().bake_root();
+                assert_eq!(colon_layer.get_child("head").unwrap().y, 4.0);
                 for _ in 0..2 {
                     let model = registered("first:golem#main").unwrap().bake_root();
                     assert_eq!(model.get_child("head").unwrap().y, 9.0);
@@ -220,14 +228,14 @@ mod tests {
                     &mut late,
                 );
                 register(late, &vanilla_root).unwrap();
-                assert_eq!(*calls.lock().unwrap(), [1, 9, 12]);
+                assert_eq!(*calls.lock().unwrap(), [1, 9, 4, 12]);
             },
         );
         let _ = std::fs::remove_dir_all(&vanilla_root);
     }
 
     #[test]
-    fn vanilla_layer_collision_fails_without_calling_suppliers() {
+    fn vanilla_layer_collision_and_invalid_document_fail_without_calling_suppliers() {
         use mod_api::__private::game::RegistrationContextNew;
         use mod_api::{Hooks, ModEntry, RegisterLayerDefinitionsEvent, RegistrationContext};
         use std::sync::{Arc, Mutex};
@@ -250,6 +258,26 @@ mod tests {
             }
         }
 
+        let base = std::env::temp_dir().join(format!("model-layers-errors-{}", std::process::id()));
+        let missing = base.join("missing");
+        let malformed = base.join("malformed");
+        let wrong_shape = base.join("wrong-shape");
+        let valid = base.join("valid");
+        for dir in [&missing, &malformed, &wrong_shape, &valid] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        std::fs::write(malformed.join("entity-models.json"), "{not json").unwrap();
+        std::fs::write(
+            wrong_shape.join("entity-models.json"),
+            r#"["not-an-object"]"#,
+        )
+        .unwrap();
+        std::fs::write(
+            valid.join("entity-models.json"),
+            r#"{"minecraft:zombie#main": {}}"#,
+        )
+        .unwrap();
+
         let calls = Arc::new(Mutex::new(Vec::new()));
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
@@ -261,17 +289,36 @@ mod tests {
             )]
             .into(),
             || {
-                let mut suppliers = Vec::new();
-                mod_api::dispatch_register_layer_definitions(
-                    &RegistrationContext::new(),
-                    &mut suppliers,
-                );
-                let error = assemble(&suppliers, |id| id == "minecraft:zombie#main").unwrap_err();
+                let collect = || {
+                    let mut suppliers = Vec::new();
+                    mod_api::dispatch_register_layer_definitions(
+                        &RegistrationContext::new(),
+                        &mut suppliers,
+                    );
+                    suppliers
+                };
+
+                for (dir, expected) in [
+                    (&missing, "entity-models.json"),
+                    (&malformed, "entity-models.json"),
+                    (&wrong_shape, "top-level JSON object"),
+                ] {
+                    let slot = OnceLock::new();
+                    let error = register_into(&slot, collect(), dir).unwrap_err();
+                    assert!(error.contains(expected), "{error}");
+                    assert!(slot.get().is_none());
+                    assert!(calls.lock().unwrap().is_empty());
+                }
+
+                let slot = OnceLock::new();
+                let error = register_into(&slot, collect(), &valid).unwrap_err();
                 assert!(error.contains("minecraft:zombie#main"), "{error}");
                 assert!(error.contains("first"), "{error}");
+                assert!(slot.get().is_none());
                 assert!(calls.lock().unwrap().is_empty());
             },
         );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
@@ -280,13 +327,14 @@ mod tests {
         assert!(is_valid_layer_id("my_mod:mobs/golem.v2#outer_armor"));
         assert!(is_valid_layer_id("minecraft:zombie#main"));
         assert!(is_valid_layer_id("minecraft:golem#main"));
+        assert!(is_valid_layer_id("mymod:golem#armor:outer"));
+        assert!(is_valid_layer_id("mymod:golem#a#b"));
         for bad in [
             "mymod:golem",
             "golem#main",
             "mymod:#main",
             "mymod:golem#",
             "MyMod:golem#main",
-            "mymod:golem#a#b",
         ] {
             assert!(!is_valid_layer_id(bad), "{bad}");
         }
