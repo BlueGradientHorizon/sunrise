@@ -276,9 +276,9 @@ mod tests {
         use sunrise_world::level::Ticks;
 
         // Alternating states defeat the old mask builder's consecutive-state
-        // shortcut. Include single, list palettes at four, three and eight
-        // bits (three bits leave the last storage word partial) and global.
-        for distinct in [1, 2, 3, 5, 16, 256, 300] {
+        // shortcut. Include single, list palettes at four, five and eight
+        // bits (five bits leave the last storage word partial) and global.
+        for distinct in [1, 2, 3, 16, 17, 256, 300] {
             let states = std::array::from_fn::<_, 4096, _>(|i| (i % distinct) as u32);
             let mut section = Section {
                 blocks: Section::from_blocks(&states),
