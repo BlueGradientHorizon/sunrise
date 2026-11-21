@@ -85,8 +85,19 @@ sunrise-prepare --prepare --server-jar /path/to/server.jar
 Add `--minecraft-dir PATH` if your launcher keeps the game elsewhere. The prepared files go to
 `game-files`, which updates keep.
 
-**On a headless machine** (a VPS, a home server), prepare on your own computer instead, with the launcher or
-`sunrise-prepare`, and copy the prepared `26.3` folder to the server with `sunrise-server import-resources DIR` (it checks the
+**On a headless machine** (a VPS, a home server) with no Minecraft install, the launcher's command line can
+download the game for your account and set the server up there:
+
+```sh
+sunrise-launcher install latest
+sunrise-launcher account sign-in        # shows a code: enter it at the address it prints, on any device
+sunrise-launcher prepare --download     # Mojang's files, for the signed-in account that owns Minecraft
+sunrise-launcher servers set-up
+sunrise-launcher servers create --name "My server" --accept-eula
+sunrise-launcher servers run "My server" -- start
+```
+
+Or prepare on your own computer instead, with the launcher or `sunrise-prepare`, and copy the prepared `26.3` folder to the server with `sunrise-server import-resources DIR` (it checks the
 folder and its version first), or by hand: into
 `~/.local/share/sunrise/game-files/sunrise-client/26.3`, or into `resources/` in the server folder, or anywhere
 `[engine] resources` in `server.toml` names. A folder copied this way needs release v2026.10.17.07 or
