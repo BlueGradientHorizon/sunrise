@@ -1610,10 +1610,14 @@ mod tests {
                 event: &mut RegisterItemModelsEvent<'_>,
             ) {
                 let decodes = Arc::clone(&self.0);
-                event.register(Identifier::parse("loadtest:cell").unwrap(), move |_| {
-                    decodes.fetch_add(1, Ordering::Relaxed);
-                    Ok(|_, _, _| {})
-                });
+                event.register(
+                    Identifier::parse("loadtest:cell").unwrap(),
+                    move |_, children| {
+                        decodes.fetch_add(1, Ordering::Relaxed);
+                        children.add_named_models()?;
+                        Ok(|_, _, _| {})
+                    },
+                );
             }
         }
 

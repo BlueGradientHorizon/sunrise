@@ -333,12 +333,12 @@ fn registered_select_property_picks_the_case_the_mod_answers_per_stack() {
             property: &RegisteredSelectProperty,
             stack: &StackView,
             _ctx: &Context,
-        ) -> Option<String> {
-            assert_eq!(property.0.downcast_ref::<&str>(), Some(&"mode"));
+        ) -> Option<RegisteredSelectKey> {
+            assert_eq!(property.payload.downcast_ref::<&str>(), Some(&"mode"));
             match stack.count {
-                1 => Some("dig".into()),
-                2 => Some("build".into()),
-                3 => Some("unlisted".into()),
+                1 => Some(RegisteredSelectKey::new("dig".to_owned())),
+                2 => Some(RegisteredSelectKey::new("build".to_owned())),
+                3 => Some(RegisteredSelectKey::new("unlisted".to_owned())),
                 _ => None,
             }
         }
@@ -348,7 +348,15 @@ fn registered_select_property_picks_the_case_the_mod_answers_per_stack() {
             if kind != "selecttest:mode" {
                 return Ok(None);
             }
-            Ok(Some(RegisteredSelectProperty(Arc::new("mode"))))
+            Ok(Some(RegisteredSelectProperty::new(
+                Arc::new("mode"),
+                |value| {
+                    value
+                        .as_str()
+                        .map(|s| RegisteredSelectKey::new(s.to_owned()))
+                        .ok_or_else(|| "expected string".to_owned())
+                },
+            )))
         };
     let decoders = ItemModelDecoders {
         select_property: Some(&load_select),
@@ -488,12 +496,27 @@ fn registered_node_draws_the_models_the_mod_answers_per_stack() {
             models.extend(names.iter().map(|name| choice(name)));
         }
     }
-    let load_model = |kind: &str, fields: &Map<String, Value>| -> std::result::Result<_, String> {
+    let load_model = |kind: &str,
+                      fields: &Map<String, Value>,
+                      decode_child: &dyn Fn(&Value) -> Result<ItemModelNode>|
+     -> std::result::Result<_, String> {
         if kind != "nodetest:charge" {
             return Ok(None);
         }
         let glow = fields.get("glow").and_then(Value::as_bool).unwrap_or(false);
-        Ok(Some(RegisteredItemModel(Arc::new(glow))))
+        let models = match fields.get("models") {
+            Some(Value::Object(entries)) => entries
+                .iter()
+                .map(|(name, node)| {
+                    Ok((name.clone(), decode_child(node).map_err(|e| e.to_string())?))
+                })
+                .collect::<std::result::Result<Vec<_>, String>>()?,
+            _ => Vec::new(),
+        };
+        Ok(Some(DecodedItemModel {
+            model: RegisteredItemModel(Arc::new(glow)),
+            models,
+        }))
     };
     let decoders = ItemModelDecoders {
         item_model: Some(&load_model),

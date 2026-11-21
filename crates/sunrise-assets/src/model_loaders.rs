@@ -1,56 +1,15 @@
 //! Model loaders native mods register (NeoForge's `ModelEvent.RegisterLoaders`): a model whose
-//! `loader` names one keeps its JSON object, and the geometry its mod answers is baked with the
-//! model's elements. The answer comes through [`LoaderGeometry`], which the client supplies, so
-//! this crate never reaches the mod API.
+//! `loader` names a custom loader keeps its JSON object, and when a [`LoaderGeometry`] provider
+//! recognizes that loader id, the geometry it answers is baked with the model's elements. The
+//! provider comes from the client, so this crate never reaches the mod API or keeps a second
+//! registration table.
 use crate::model::Direction;
 use serde_json::Value;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::RwLock,
-};
+use std::collections::BTreeMap;
 
 #[cfg(test)]
 #[path = "model_loaders_tests.rs"]
 mod tests;
-
-static TYPES: RwLock<BTreeSet<String>> = RwLock::new(BTreeSet::new());
-
-/// Whether `id` is a valid canonical `<namespace>:<path>` identifier with non-empty namespace and
-/// path.
-fn is_valid_id(id: &str) -> bool {
-    let Some((namespace, path)) = id.split_once(':') else {
-        return false;
-    };
-    !namespace.is_empty()
-        && !path.is_empty()
-        && crate::json::identifier(id).is_ok_and(|parsed| parsed == id)
-}
-
-/// Keeps the loader ids native mods registered, before resources load: any valid canonical
-/// `<namespace>:<path>` identifier (including `minecraft:`) is accepted; malformed ids, built-in
-/// loader collisions (`neoforge:composite`, `neoforge:obj`), and duplicates are logged as errors
-/// and left out. Returns the ids kept, in registration order.
-pub fn register(ids: Vec<String>) -> Vec<String> {
-    let mut kept = Vec::new();
-    let mut set = TYPES.write().unwrap_or_else(|e| e.into_inner());
-    for id in ids {
-        if !is_valid_id(&id) {
-            log::error!("model loader {id:?} is not a valid <namespace>:<path> identifier");
-        } else if matches!(id.as_str(), "neoforge:composite" | "neoforge:obj") {
-            log::error!("model loader {id} collides with a built-in model loader");
-        } else if !set.insert(id.clone()) {
-            log::error!("model loader {id} is registered twice");
-        } else {
-            kept.push(id);
-        }
-    }
-    kept
-}
-
-/// Whether a native mod registered `id` as a model loader.
-pub fn is_registered(id: &str) -> bool {
-    TYPES.read().unwrap_or_else(|e| e.into_inner()).contains(id)
-}
 
 /// One quad a registered loader adds, checked by the client before it gets here.
 #[derive(Clone, Debug, PartialEq)]
@@ -67,9 +26,12 @@ pub struct LoaderQuad {
     pub shade: bool,
 }
 
-/// The quads a registered loader answers for a model, asked once per model each time a library
-/// resolves it. `model` names the model for the log and `textures` carries its resolved texture
-/// slots (`slot -> sprite identifier`).
+/// The quads a registered loader answers for a model, asked once per `(model, config, resolved
+/// textures)` in a library. `model` names the model for the log and `textures` carries its
+/// resolved texture slots (`slot -> sprite identifier`).
+///
+/// Returns `None` when no loader is registered for `loader` (unknown loader), and `Some(quads)`
+/// when a registered loader handled the model (even if it produced zero quads or refused/failed).
 pub trait LoaderGeometry: Send + Sync {
     fn quads(
         &self,
@@ -77,5 +39,5 @@ pub trait LoaderGeometry: Send + Sync {
         model: &str,
         config: &Value,
         textures: &BTreeMap<String, String>,
-    ) -> Vec<LoaderQuad>;
+    ) -> Option<Vec<LoaderQuad>>;
 }

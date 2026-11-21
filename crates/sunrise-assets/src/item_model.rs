@@ -373,10 +373,22 @@ pub type SpecialModelLoader<'a> = dyn Fn(
 pub type TintSourceLoader<'a> = dyn Fn(&str, &Map<String, Value>) -> std::result::Result<Option<RegisteredTintSource>, String>
     + 'a;
 
+/// Result returned by [`ItemModelLoader`] when a registered decoder handles an item model node.
+#[derive(Clone, Debug)]
+pub struct DecodedItemModel {
+    pub model: RegisteredItemModel,
+    pub models: Vec<(String, ItemModelNode)>,
+}
+
 /// Engine callback for a registered item model node type, called while loading the item definition.
-/// `kind` is canonical. `Ok(None)` lets the built-in decoder handle the type; `Err` rejects the
+/// `kind` is canonical. `decode_child` decodes any nested item model JSON value using the same
+/// provider tables. `Ok(None)` lets the built-in decoder handle the type; `Err` refuses the
 /// enclosing definition, even if the type is also built-in.
-pub type ItemModelLoader<'a> = dyn Fn(&str, &Map<String, Value>) -> std::result::Result<Option<RegisteredItemModel>, String>
+pub type ItemModelLoader<'a> = dyn Fn(
+        &str,
+        &Map<String, Value>,
+        &dyn Fn(&Value) -> std::result::Result<ItemModelNode, DecodeError>,
+    ) -> std::result::Result<Option<DecodedItemModel>, String>
     + 'a;
 
 /// Engine callback for a registered `range_dispatch` numeric property, called while loading the
@@ -451,10 +463,72 @@ impl PartialEq for RegisteredRangeProperty {
     }
 }
 
+trait RegisteredSelectKeyOps: std::any::Any + std::fmt::Debug + Send + Sync {
+    fn as_any(&self) -> &dyn std::any::Any;
+    fn dyn_eq(&self, other: &dyn RegisteredSelectKeyOps) -> bool;
+}
+
+impl<T: Eq + std::fmt::Debug + Send + Sync + 'static> RegisteredSelectKeyOps for T {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn dyn_eq(&self, other: &dyn RegisteredSelectKeyOps) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<T>()
+            .is_some_and(|rhs| self == rhs)
+    }
+}
+
+/// A type-erased `when` case value decoded by a [`RegisteredSelectProperty`] and compared by
+/// equality against the property's per-stack result.
+#[derive(Clone, Debug)]
+pub struct RegisteredSelectKey(Arc<dyn RegisteredSelectKeyOps>);
+
+impl RegisteredSelectKey {
+    pub fn new<T: Eq + std::fmt::Debug + Send + Sync + 'static>(value: T) -> Self {
+        Self(Arc::new(value))
+    }
+
+    pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
+        self.0.as_any().downcast_ref::<T>()
+    }
+}
+
+impl PartialEq for RegisteredSelectKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.dyn_eq(&*other.0)
+    }
+}
+impl Eq for RegisteredSelectKey {}
+
+type RegisteredSelectCaseDecoder =
+    dyn Fn(&Value) -> std::result::Result<RegisteredSelectKey, String> + Send + Sync;
+
 /// A registered `select` categorical property bound at decode time. The payload is opaque to
-/// assets; the decoder and draw host agree on its type. Clones retain the same instance identity.
+/// assets; the decoder and draw host agree on its type, and `decode_case` validates and decodes
+/// each `when` entry into a [`RegisteredSelectKey`]. Clones retain the same instance identity.
 #[derive(Clone)]
-pub struct RegisteredSelectProperty(pub Arc<dyn std::any::Any + Send + Sync>);
+pub struct RegisteredSelectProperty {
+    pub payload: Arc<dyn std::any::Any + Send + Sync>,
+    decode_case: Arc<RegisteredSelectCaseDecoder>,
+}
+impl RegisteredSelectProperty {
+    pub fn new<C>(payload: Arc<dyn std::any::Any + Send + Sync>, decode_case: C) -> Self
+    where
+        C: Fn(&Value) -> std::result::Result<RegisteredSelectKey, String> + Send + Sync + 'static,
+    {
+        Self {
+            payload,
+            decode_case: Arc::new(decode_case),
+        }
+    }
+
+    pub fn decode_case(&self, value: &Value) -> std::result::Result<RegisteredSelectKey, String> {
+        (self.decode_case)(value)
+    }
+}
 impl std::fmt::Debug for RegisteredSelectProperty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("RegisteredSelectProperty")
@@ -462,7 +536,7 @@ impl std::fmt::Debug for RegisteredSelectProperty {
 }
 impl PartialEq for RegisteredSelectProperty {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+        Arc::ptr_eq(&self.payload, &other.payload)
     }
 }
 
@@ -566,10 +640,18 @@ pub enum ItemModelNode {
         models: Vec<(String, ItemModelNode)>,
     },
 }
+/// One `when` value on a [`SwitchCase`]: canonical JSON for built-in properties, or a typed
+/// [`RegisteredSelectKey`] decoded by a registered select property's case decoder.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SwitchCaseValue {
+    Json(Value),
+    Registered(RegisteredSelectKey),
+}
+
 #[derive(Clone, Debug)]
 pub struct SwitchCase {
-    /// Property values, in their canonical JSON form.
-    pub values: Vec<Value>,
+    /// Property values, in their canonical form.
+    pub values: Vec<SwitchCaseValue>,
     pub model: ItemModelNode,
 }
 
@@ -583,21 +665,15 @@ impl ItemModelNode {
         let m = object(v)?;
         let kind = ident(required(m, "type")?)?;
         // Registered item model decoders run ahead of built-ins (including vanilla arms and
-        // `neoforge:fluid_container`) so overrides take effect. An error rejects the enclosing
+        // `neoforge:fluid_container`) so overrides take effect. An error refuses the enclosing
         // item definition and never falls back to a built-in.
         if let Some(load) = decoders.item_model
-            && let Some(model) = load(&kind, m).map_err(DecodeError)?
+            && let Some(decoded) = load(&kind, m, &decode).map_err(DecodeError)?
         {
             return Ok(Self::Registered {
-                model,
+                model: decoded.model,
                 transformation: optional_transformation(m)?,
-                models: match get(m, "models") {
-                    None => Vec::new(),
-                    Some(models) => object(models)?
-                        .iter()
-                        .map(|(name, node)| Ok((name.clone(), decode(node)?)))
-                        .collect::<Result<_>>()?,
-                },
+                models: decoded.models,
             });
         }
         if kind == "minecraft:condition" {
@@ -658,7 +734,7 @@ impl ItemModelNode {
                 if cases.is_empty() {
                     return Err(err("empty case list"));
                 }
-                let mut seen: Vec<&Value> = Vec::new();
+                let mut seen: Vec<&SwitchCaseValue> = Vec::new();
                 for value in cases.iter().flat_map(|c| &c.values) {
                     if seen.contains(&value) {
                         return Err(err("duplicate case conditions"));
@@ -968,13 +1044,20 @@ impl SelectProperty {
             _ => return Err(err("unknown select property")),
         }))
     }
-    /// A `when` value in canonical form (identifiers normalised).
-    fn decode_value(&self, v: &Value) -> Result<Value> {
-        Ok(match self {
-            Self::Registered(_)
-            | Self::CustomModelData(_)
-            | Self::BlockState(_)
-            | Self::LocalTime { .. } => Value::String(string(v)?),
+    /// A `when` value in canonical form (identifiers normalised, or parsed through a registered
+    /// property's case decoder).
+    fn decode_value(&self, v: &Value) -> Result<SwitchCaseValue> {
+        if let Self::Registered(property) = self {
+            return property
+                .decode_case(v)
+                .map(SwitchCaseValue::Registered)
+                .map_err(DecodeError);
+        }
+        Ok(SwitchCaseValue::Json(match self {
+            Self::Registered(_) => unreachable!(),
+            Self::CustomModelData(_) | Self::BlockState(_) | Self::LocalTime { .. } => {
+                Value::String(string(v)?)
+            }
             Self::MainHand => match string(v)?.as_str() {
                 s @ ("left" | "right") => Value::String(s.to_owned()),
                 _ => return Err(err("invalid arm")),
@@ -992,7 +1075,7 @@ impl SelectProperty {
                 Value::String(s)
             }
             Self::Component(_) => v.clone(),
-        })
+        }))
     }
 }
 
@@ -1293,7 +1376,7 @@ pub trait ItemEnv {
         _property: &RegisteredSelectProperty,
         _stack: &StackView,
         _ctx: &Context,
-    ) -> Option<String> {
+    ) -> Option<RegisteredSelectKey> {
         None
     }
     /// A mod's bound tint source for `stack`: ARGB, white when no mod answers.
@@ -1928,13 +2011,16 @@ impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
             }
         }
     }
-    fn select_value(&self, property: &SelectProperty) -> Option<Value> {
+    fn select_value(&self, property: &SelectProperty) -> Option<SwitchCaseValue> {
         let owner = self.ctx.owner;
-        match property {
-            SelectProperty::Registered(property) => self
+        if let SelectProperty::Registered(property) = property {
+            return self
                 .env
                 .item_model_select_property(property, self.stack, self.ctx)
-                .map(Value::String),
+                .map(SwitchCaseValue::Registered);
+        }
+        let json = match property {
+            SelectProperty::Registered(_) => unreachable!(),
             SelectProperty::CustomModelData(i) => self
                 .component("minecraft:custom_model_data")
                 .and_then(|d| custom_data_at(d, "strings", *i))
@@ -1991,7 +2077,8 @@ impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
                 self.ctx.level.map(|l| Value::String(l.dimension.clone()))
             }
             SelectProperty::Component(component) => self.component(component).cloned(),
-        }
+        };
+        json.map(SwitchCaseValue::Json)
     }
     fn numeric(&self, property: &NumericProperty) -> f32 {
         let owner = self.ctx.owner;

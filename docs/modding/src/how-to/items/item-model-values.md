@@ -12,9 +12,9 @@ item being drawn.
 | Feature | Registration / Hook | Decode input | Runtime callback input | Answer |
 | --- | --- | --- | --- | --- |
 | Item tint source (`tints`) | `Hooks::register_item_tint_sources` via `event.register(id, decode)` | `&Tag` (tint JSON object) | `ItemTintInput { stack, bundle_selected }` | `u32` (ARGB colour) |
-| Custom item model type | `Hooks::register_item_models` via `event.register(id, decode)` | `&Tag` (model node JSON object) | `ItemModelUpdateInput { stack, bundle_selected, context }` + `&mut Vec<ItemModelLayer>` | Push `ItemModelLayer` values |
+| Custom item model type | `Hooks::register_item_models` via `event.register(id, decode)` | `&Tag` + `&mut dyn ItemModelChildren` | `ItemModelUpdateInput { stack, bundle_selected, context }` + `&mut Vec<ItemModelLayer>` | Push `ItemModelLayer` values |
 | Numeric `range_dispatch` property | `Hooks::register_range_select_item_model_property` via `event.register(id, decode)` | `&Tag` (`range_dispatch` JSON object) | `ItemModelPropertyInput { stack, bundle_selected, context }` | `f32` |
-| Categorical `select` property | `Hooks::register_select_item_model_property` via `event.register(id, decode)` | `&Tag` (`select` JSON object) | `ItemModelPropertyInput { stack, bundle_selected, context }` | `Option<String>` |
+| Categorical `select` property | `Hooks::register_select_item_model_property` via `event.register(id, decode)` | `&Tag` (`select` JSON object) + per-case `when` decoder (`&Tag -> Result<SelectCaseKey, String>`) | `ItemModelPropertyInput { stack, bundle_selected, context }` | `Option<SelectCaseKey>` |
 | Conditional `condition` property | `Hooks::item_model_property` | none | `ItemModelPropertyEvent { property, stack, bundle_selected, value }` | `event.value: &mut bool` |
 
 ## Bind providers at registration
@@ -34,7 +34,7 @@ use mod_api::prelude::*;
 use mod_api::{
     Identifier, ItemModelLayer, ItemTransformMode, RegisterItemModelsEvent,
     RegisterItemTintSourcesEvent, RegisterRangeSelectItemModelPropertyEvent,
-    RegisterSelectItemModelPropertyEvent, RegistrationContext, Tag,
+    RegisterSelectItemModelPropertyEvent, RegistrationContext, SelectCaseKey, Tag,
 };
 
 fn register_item_tint_sources(
@@ -59,14 +59,18 @@ fn register_item_models(
     _context: &RegistrationContext,
     event: &mut RegisterItemModelsEvent<'_>,
 ) {
-    event.register(Identifier::parse("example:charge").unwrap(), |_config| {
-        Ok(|_host, input, layers| {
-            let name = if input.stack.count() > 1 { "full" } else { "empty" };
-            layers.push(
-                ItemModelLayer::new(name).with_item_transform(ItemTransformMode::Model),
-            );
-        })
-    });
+    event.register(
+        Identifier::parse("example:charge").unwrap(),
+        |_config, children| {
+            children.add_named_models("models")?;
+            Ok(|_host, input, layers| {
+                let name = if input.stack.count() > 1 { "full" } else { "empty" };
+                layers.push(
+                    ItemModelLayer::new(name).with_item_transform(ItemTransformMode::Model),
+                );
+            })
+        },
+    );
 }
 
 fn register_range_select_item_model_property(
@@ -85,14 +89,20 @@ fn register_select_item_model_property(
     event: &mut RegisterSelectItemModelPropertyEvent<'_>,
 ) {
     event.register(Identifier::parse("example:mode").unwrap(), |_config| {
-        Ok(|_host, _input| Some("dig".into()))
+        Ok((
+            |when: &Tag| match when {
+                Tag::String(mode) => Ok(SelectCaseKey::new(mode.clone())),
+                _ => Err("expected string mode".into()),
+            },
+            |_host, _input| Some(SelectCaseKey::new("dig".to_owned())),
+        ))
     });
 }
 ```
 
 ### Namespace, override, and failure rules
 
-- Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted.
+- Any valid `Identifier` (including `minecraft:`) is accepted.
 - Duplicate registrations use last-writer-wins replacement (matching NeoForge's
   `LateBoundIdMapper`).
 - Registered providers are checked ahead of hardcoded vanilla built-ins during item

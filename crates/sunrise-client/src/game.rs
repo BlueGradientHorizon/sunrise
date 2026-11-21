@@ -11766,7 +11766,9 @@ impl Game<'_> {
             let title_text = control::title_owns_text(&self.screen, self.title.is_some());
             if self.screen_hooks_open()
                 && self.screen != Screen::Options
-                && (!title_text || self.title.as_mut().is_some_and(|t| t.has_caret_field()))
+                && (!title_text
+                    || self.preset_editor_title().is_some()
+                    || self.title.as_mut().is_some_and(|t| t.has_caret_field()))
             {
                 typed = key_event.text.take().map(|text| text.to_string());
             }
@@ -11807,6 +11809,25 @@ impl Game<'_> {
                 }
                 return;
             }
+        }
+        // A bound world preset editor handles keys before menu focus navigation
+        // (`key_focus_key`), while still letting printable characters flow through
+        // `screen_chars_typed` (`ScreenCharTypedPre` -> `PresetEditor::char_typed`
+        // -> `ScreenCharTypedPost`) just like any other screen.
+        if let WindowEvent::KeyboardInput {
+            event: key_event, ..
+        } = &event
+            && key_event.state == ElementState::Pressed
+            && self.preset_editor_key_pressed(key_event.physical_key)
+        {
+            if let Some(text) = typed.as_deref() {
+                self.screen_chars_typed(Some(text));
+            } else if self.types_text()
+                && let Some(text) = key_event.text.as_deref()
+            {
+                let _ = self.preset_editor_type_text(text);
+            }
+            return;
         }
         // Screen.keyPressed: Tab, the arrows and Enter move and press the
         // menu's focus, unless the focused widget or the screen keeps them.
@@ -12659,14 +12680,6 @@ impl Game<'_> {
                 }
                 WindowEvent::KeyboardInput { event, .. } if self.title_input_active() => {
                     if event.state == ElementState::Pressed {
-                        if self.preset_editor_key_pressed(event.physical_key) {
-                            if self.types_text()
-                                && let Some(text) = event.text.as_deref()
-                            {
-                                self.preset_editor_type_text(text);
-                            }
-                            return Ok(());
-                        }
                         if let Some(shortcut) = self.edit_shortcut(&event) {
                             self.title_shortcut(shortcut);
                             return Ok(());
@@ -12756,6 +12769,13 @@ impl Game<'_> {
                             PhysicalKey::Code(KeyCode::F5) => {
                                 if let Some(t) = self.title.as_mut() {
                                     t.refresh_servers();
+                                }
+                            }
+                            _ if self.preset_editor_title().is_some() => {
+                                if self.types_text()
+                                    && let Some(text) = event.text.as_deref()
+                                {
+                                    let _ = self.preset_editor_type_text(text);
                                 }
                             }
                             _ => self.title_edit(event.text.as_deref(), false),

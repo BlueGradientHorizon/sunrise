@@ -29,8 +29,10 @@ pub struct ModelLibrary {
     objs: Mutex<BTreeMap<(String, Option<String>), Option<Arc<ObjModel>>>>,
     /// What registered loaders add ([`crate::model_loaders`]).
     loaders: Option<Arc<dyn LoaderGeometry>>,
-    /// A registered loader's quads, keyed by the loader data they were asked for.
-    loader_quads: Mutex<BTreeMap<(String, usize), Arc<[LoaderQuad]>>>,
+    /// A registered loader's quads, keyed by `(model, config pointer, resolved textures)`.
+    /// `None` means no loader was registered for that model's custom loader id.
+    loader_quads:
+        Mutex<BTreeMap<(String, usize, BTreeMap<String, String>), Option<Arc<[LoaderQuad]>>>>,
     /// Models whose unknown loader was already logged.
     unknown_loaders: Mutex<BTreeSet<String>>,
 }
@@ -403,21 +405,23 @@ impl ModelLibrary {
                         .collect(),
                 })
             }
-            Some(Loader::Registered { kind, config }) => Some(ResolvedLoader::Registered(
-                self.loader_quads(&names[0], kind, config, &textures),
-            )),
-            Some(Loader::Unknown(kind)) => {
-                let mut logged = self
-                    .unknown_loaders
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                if logged.insert(names[0].clone()) {
-                    log::error!(
-                        "model {}: unknown loader {kind}; only its elements are drawn",
-                        names[0]
-                    );
+            Some(Loader::Custom { kind, config }) => {
+                match self.loader_quads(&names[0], kind, config, &textures) {
+                    Some(quads) => Some(ResolvedLoader::Registered(quads)),
+                    None => {
+                        let mut logged = self
+                            .unknown_loaders
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        if logged.insert(names[0].clone()) {
+                            log::error!(
+                                "model {}: unknown loader {kind}; only its elements are drawn",
+                                names[0]
+                            );
+                        }
+                        None
+                    }
                 }
-                None
             }
             None => None,
         };
@@ -433,34 +437,34 @@ impl ModelLibrary {
             loader,
         })
     }
-    /// A registered loader's quads for `config`, asked once per library.
+    /// A registered loader's quads for `(model, config, resolved textures)`, asked once per
+    /// distinct combination in a library. Returns `None` when no loader provider is registered for
+    /// `kind`.
     fn loader_quads(
         &self,
         model: &str,
         kind: &str,
         config: &Arc<serde_json::Value>,
         textures: &BTreeMap<String, Material>,
-    ) -> Arc<[LoaderQuad]> {
-        let key = (model.to_owned(), Arc::as_ptr(config) as usize);
+    ) -> Option<Arc<[LoaderQuad]>> {
+        let resolved: BTreeMap<String, String> = textures
+            .iter()
+            .map(|(slot, material)| (slot.clone(), material.sprite.clone()))
+            .collect();
+        let key = (model.to_owned(), Arc::as_ptr(config) as usize, resolved);
         let cache = self.loader_quads.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(found) = cache.get(&key) {
-            return Arc::clone(found);
+            return found.clone();
         }
         drop(cache);
-        let quads: Arc<[LoaderQuad]> = match &self.loaders {
-            Some(loaders) => {
-                let resolved: BTreeMap<String, String> = textures
-                    .iter()
-                    .map(|(slot, material)| (slot.clone(), material.sprite.clone()))
-                    .collect();
-                loaders.quads(kind, model, config, &resolved).into()
-            }
-            None => Arc::new([]),
-        };
+        let quads: Option<Arc<[LoaderQuad]>> = self
+            .loaders
+            .as_ref()
+            .and_then(|loaders| loaders.quads(kind, model, config, &key.2).map(Into::into));
         self.loader_quads
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(key, Arc::clone(&quads));
+            .insert(key, quads.clone());
         quads
     }
     /// Parse an obj and its materials once; a failure warns once and yields no geometry.

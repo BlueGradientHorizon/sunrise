@@ -81,12 +81,13 @@ pub enum SpriteOrigin {
     Pixels(Image),
 }
 
-/// `Identifier.parse` default namespace.
+/// `Identifier.parse` default namespace: bare names and leading-colon names (`:single`) resolve
+/// into `minecraft:`.
 pub fn qualified(id: &str) -> String {
-    if id.contains(':') {
-        id.to_owned()
-    } else {
-        format!("minecraft:{id}")
+    match id.split_once(':') {
+        Some(("", path)) => format!("minecraft:{path}"),
+        Some(_) => id.to_owned(),
+        None => format!("minecraft:{id}"),
     }
 }
 fn string(v: &Value, key: &str) -> Option<String> {
@@ -154,7 +155,11 @@ pub fn decode(text: &str, mods: &dyn ModSources) -> Result<Vec<SpriteSource>, De
         .iter()
         .enumerate()
         .map(|(index, source)| {
-            let kind = source.get("type").and_then(Value::as_str).map(qualified);
+            let kind = source
+                .get("type")
+                .and_then(Value::as_str)
+                .and_then(|raw| Identifier::parse(raw).ok())
+                .map(|id| id.to_string());
             decode_source(source, mods).ok_or_else(|| match kind {
                 Some(kind) if !known(&kind, mods) => DefinitionError::UnknownType { index, kind },
                 _ => DefinitionError::Malformed { index },
@@ -178,7 +183,9 @@ fn known(kind: &str, mods: &dyn ModSources) -> bool {
     is_builtin_type(kind) || mods.is_registered(kind)
 }
 fn decode_source(s: &Value, mods: &dyn ModSources) -> Option<SpriteSource> {
-    let kind = qualified(s.get("type")?.as_str()?);
+    let kind = Identifier::parse(s.get("type")?.as_str()?)
+        .ok()?
+        .to_string();
     if mods.is_registered(&kind) {
         return Some(SpriteSource::Registered {
             kind,

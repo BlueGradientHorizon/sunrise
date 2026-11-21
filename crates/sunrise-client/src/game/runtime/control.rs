@@ -305,8 +305,12 @@ impl Game<'_> {
         // or an open bound preset editor. A screen opened over the title
         // (Options, say) keeps its own text.
         if title_owns_text(&self.screen, self.title.is_some()) {
-            if self.preset_editor_type_text(text) {
-                return Ok(());
+            if self.preset_editor_title().is_some() {
+                return if self.preset_editor_type_text(text) {
+                    Ok(())
+                } else {
+                    Err("preset editor did not consume character".into())
+                };
             }
             if let Some(title) = &mut self.title {
                 title.type_text(text);
@@ -348,7 +352,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn control_command(
+    pub(super) fn control_command(
         &mut self,
         line: &str,
         reply: &Sender<String>,
@@ -732,6 +736,48 @@ impl Game<'_> {
                 if self.dialog_open() {
                     if arg(2)? != "up" {
                         self.dialog_key(key, None, None)?;
+                    }
+                    return ok();
+                }
+                // A bound world preset editor handles keys even when no world is loaded.
+                if self.preset_editor_title().is_some() {
+                    if action == "up" {
+                        let _ = self.screen_key_released(key);
+                    } else {
+                        let repeat = action == "repeat";
+                        let canceled = self.screen_key_pressed(key, repeat);
+                        if !canceled
+                            && !self
+                                .preset_editor_key_pressed(winit::keyboard::PhysicalKey::Code(key))
+                            && !self.key_focus_key(event_loop, key)
+                        {
+                            let (w, h) = self.gui_size();
+                            match key {
+                                KeyCode::Escape => {
+                                    if let Some(t) = self.title.as_mut() {
+                                        t.escape();
+                                        self.reopen_data_packs(event_loop)?;
+                                    }
+                                    self.save_title_options();
+                                }
+                                KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
+                                    let (title_action, sound) = self.title.as_mut().map_or(
+                                        (sunrise_client::title::Action::None, false),
+                                        |t| t.confirm_key_size((w, h)),
+                                    );
+                                    self.save_title_options();
+                                    if sound {
+                                        self.audio.play_button_click();
+                                    }
+                                    self.title_action(event_loop, title_action)?;
+                                }
+                                _ => {}
+                            }
+                            let _ = self.screen_key_post(key, true, repeat);
+                        }
+                        if action == "tap" {
+                            let _ = self.screen_key_released(key);
+                        }
                     }
                     return ok();
                 }

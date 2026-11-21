@@ -74,7 +74,7 @@ impl ServerPackState {
             .filter_map(|n| n.toast.as_ref())
             .chain(self.load_fail.as_ref())
             .chain(self.chunk_io.iter().flatten())
-            .chain(self.mod_fault.as_ref())
+            .chain(self.mod_faults.iter())
             .filter_map(|t| t.slot)
     }
 }
@@ -99,8 +99,8 @@ pub(super) struct ServerPackState {
     /// `SystemToastId.LOW_DISK_SPACE`, `CHUNK_LOAD_FAILURE` and `CHUNK_SAVE_FAILURE`:
     /// the toasts the integrated server's chunk IO reports add (`chunk_io`).
     pub(super) chunk_io: [Option<SystemToast>; 3],
-    /// Toast reporting a mod callback disabled after panicking in this session.
-    pub(super) mod_fault: Option<SystemToast>,
+    /// Pending toasts reporting mod callbacks disabled after panicking in this session.
+    pub(super) mod_faults: Vec<SystemToast>,
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
@@ -544,29 +544,20 @@ impl Game<'_> {
         let multiplier = self.settings.notification_display_time;
         self.add_chunk_io_toasts();
         for (mod_id, kind) in mod_api::__private::game::take_callback_panic_notices() {
-            let toast = Self::mod_callback_disabled_toast(mod_id, kind);
-            if let Some(shown) = &mut self.server_packs.mod_fault {
-                shown.reset_from(toast);
-            } else {
-                self.server_packs.mod_fault = self.add_system_toast(toast);
+            if let Some(toast) =
+                self.add_system_toast(Self::mod_callback_disabled_toast(mod_id, kind))
+            {
+                self.server_packs.mod_faults.push(toast);
             }
         }
         let mut used = self.toast_slots_used();
         let packs = &mut self.server_packs;
-        for slot_toast in packs
-            .notifiers
-            .iter_mut()
-            .map(|n| &mut n.toast)
-            .chain(std::iter::once(&mut packs.load_fail))
-            .chain(packs.chunk_io.iter_mut())
-            .chain(std::iter::once(&mut packs.mod_fault))
-        {
-            let Some(toast) = slot_toast else {
-                continue;
-            };
+        let audio = &mut self.audio;
+        let atlas = &self.gui.atlas;
+        let mut step = |toast: &mut SystemToast| -> bool {
             if toast.slot.is_none() {
                 let Some(slot) = (0..Self::TOAST_SLOTS).find(|s| used & (1 << s) == 0) else {
-                    continue;
+                    return true;
                 };
                 used |= 1 << slot;
                 toast.slot = Some(slot);
@@ -574,17 +565,31 @@ impl Game<'_> {
             let (sound, finished) = toast.update(multiplier);
             if let Some(show) = sound {
                 let event = if show { "ui.toast.in" } else { "ui.toast.out" };
-                self.audio
-                    .play(&format!("minecraft:{event}"), None, 1.0, 1.0);
+                audio.play(&format!("minecraft:{event}"), None, 1.0, 1.0);
             }
             if finished {
-                *slot_toast = None;
-                continue;
+                return false;
             }
             if let (false, Some(slot)) = (hidden, toast.slot) {
-                toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
+                toast.draw(atlas, batch, 32.0 * slot as f32);
+            }
+            true
+        };
+        for slot_toast in packs
+            .notifiers
+            .iter_mut()
+            .map(|n| &mut n.toast)
+            .chain(std::iter::once(&mut packs.load_fail))
+            .chain(packs.chunk_io.iter_mut())
+        {
+            let Some(toast) = slot_toast else {
+                continue;
+            };
+            if !step(toast) {
+                *slot_toast = None;
             }
         }
+        packs.mod_faults.retain_mut(&mut step);
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.
@@ -692,5 +697,41 @@ mod tests {
         let (send, receive) = std::sync::mpsc::channel::<download::Progress>();
         drop(send);
         assert!(!PackNotifier::new(receive, 1).poll(Some));
+    }
+
+    #[test]
+    fn multiple_mod_fault_notices_before_one_frame_are_all_preserved() {
+        let mut state = ServerPackState::default();
+        for (mod_id, kind) in [("mod_a", "model loader"), ("mod_b", "sprite source")] {
+            state
+                .mod_faults
+                .push(Game::mod_callback_disabled_toast(mod_id, kind));
+        }
+        assert_eq!(state.mod_faults.len(), 2);
+        assert_eq!(
+            state.mod_faults[0].title.component(),
+            serde_json::json!({
+                "translate": "sunrise.mod.callback_disabled.title",
+                "with": [{"text": "mod_a"}]
+            })
+        );
+        assert_eq!(
+            state.mod_faults[1].title.component(),
+            serde_json::json!({
+                "translate": "sunrise.mod.callback_disabled.title",
+                "with": [{"text": "mod_b"}]
+            })
+        );
+        // Assigning distinct slots tracks both in toast_slots without overwriting either.
+        let mut used = 0u32;
+        for toast in &mut state.mod_faults {
+            let slot = (0..Game::TOAST_SLOTS)
+                .find(|s| used & (1 << s) == 0)
+                .unwrap();
+            used |= 1 << slot;
+            toast.slot = Some(slot);
+        }
+        let slots: Vec<usize> = state.toast_slots().collect();
+        assert_eq!(slots, vec![0, 1]);
     }
 }

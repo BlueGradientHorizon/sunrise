@@ -1104,15 +1104,6 @@ impl Game<'_> {
                 title.take_pending_toast()
             })
             .or_else(|| {
-                if self.title.is_none() {
-                    return None;
-                }
-                let (mod_id, kind) = mod_api::__private::game::take_callback_panic_notices()
-                    .into_iter()
-                    .last()?;
-                Some(Self::mod_callback_disabled_toast(mod_id, kind))
-            })
-            .or_else(|| {
                 // The launcher's "Playing offline" can sit behind this window: say it here too, once
                 // the toast slot is free.
                 let reason = self

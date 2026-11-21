@@ -53,6 +53,7 @@ mod tests {
 
     struct IslandsEditor {
         clicks: Arc<AtomicUsize>,
+        keys: Arc<AtomicUsize>,
         typed: Arc<Mutex<String>>,
     }
 
@@ -94,12 +95,30 @@ mod tests {
             true
         }
 
+        fn key_pressed(
+            &mut self,
+            key_code: u32,
+            _scan_code: u32,
+            _modifiers: u32,
+            _draft: &mut PresetEditorDraft<'_>,
+        ) -> bool {
+            // Consume Tab (GLFW 258) ahead of menu focus navigation.
+            if key_code == 258 {
+                self.keys.fetch_add(1, Ordering::Relaxed);
+                return true;
+            }
+            false
+        }
+
         fn char_typed(
             &mut self,
             ch: char,
             _modifiers: u32,
             _draft: &mut PresetEditorDraft<'_>,
         ) -> bool {
+            if ch == 'x' {
+                return false;
+            }
             self.typed
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -110,6 +129,7 @@ mod tests {
 
     struct EditorMod {
         clicks: Arc<AtomicUsize>,
+        keys: Arc<AtomicUsize>,
         typed: Arc<Mutex<String>>,
     }
     #[mod_api::__subscriptions]
@@ -120,12 +140,14 @@ mod tests {
             event: &mut RegisterPresetEditorsEvent<'_>,
         ) {
             let clicks = Arc::clone(&self.clicks);
+            let keys = Arc::clone(&self.keys);
             let typed = Arc::clone(&self.typed);
             event.register(Identifier::parse("example:islands").unwrap(), move |ctx| {
                 assert_eq!(ctx.preset(), &Identifier::parse("example:islands").unwrap());
                 assert_eq!(ctx.seed(), "1");
                 Ok(Box::new(IslandsEditor {
                     clicks: Arc::clone(&clicks),
+                    keys: Arc::clone(&keys),
                     typed: Arc::clone(&typed),
                 }))
             });
@@ -166,13 +188,21 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn preset_editor_test_mod_draws_and_edits_through_real_client_hooks() {
+        struct NoopLoop;
+        impl crate::game::event_loop::EventLoopCtl for NoopLoop {
+            fn exit(&self) {}
+            fn set_control_flow(&self, _: winit::event_loop::ControlFlow) {}
+        }
+
         let clicks = Arc::new(AtomicUsize::new(0));
+        let keys = Arc::new(AtomicUsize::new(0));
         let typed = Arc::new(Mutex::new(String::new()));
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
                 "example",
                 Box::new(EditorMod {
                     clicks: Arc::clone(&clicks),
+                    keys: Arc::clone(&keys),
                     typed: Arc::clone(&typed),
                 }),
             )]
@@ -244,7 +274,16 @@ mod tests {
                     game.native_screen_render_post(&mut batch, &view);
                     assert!(batch.vertices.len() > after_editor_vertices);
                     assert!(game.preset_editor_mouse_clicked(MouseButton::Left));
-                    assert!(game.preset_editor_type_text("a"));
+                    // Consumed char returns Ok; declined char returns Err rather than falling
+                    // through to title.type_text.
+                    assert!(game.type_chars_into_screen("a").is_ok());
+                    assert!(game.type_chars_into_screen("x").is_err());
+                    // Control `key` routes to the preset editor even with no world loaded,
+                    // delivering Tab to `PresetEditor::key_pressed` ahead of `key_focus_key`.
+                    let (reply, _) = std::sync::mpsc::channel();
+                    game.control_command("key tab tap", &reply, &NoopLoop)
+                        .unwrap();
+                    assert_eq!(keys.load(Ordering::Relaxed), 1);
                     assert_eq!(clicks.load(Ordering::Relaxed), 1);
                     assert_eq!(
                         typed

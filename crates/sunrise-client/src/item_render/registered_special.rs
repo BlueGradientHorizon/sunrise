@@ -190,9 +190,15 @@ impl ItemRenderer {
         let tint = |kind: &str, fields: &Map<String, Value>| {
             decode_tint_source(providers.tint, kind, fields)
         };
-        let item_model = |kind: &str, fields: &Map<String, Value>| {
-            decode_item_model(providers.item_model, kind, fields)
-        };
+        let item_model =
+            |kind: &str,
+             fields: &Map<String, Value>,
+             decode_child: &dyn Fn(
+                &Value,
+            ) -> Result<
+                sunrise_assets::item_model::ItemModelNode,
+                DecodeError,
+            >| { decode_item_model(providers.item_model, kind, fields, decode_child) };
         let range_property = |kind: &str, fields: &Map<String, Value>| {
             decode_range_property(providers.range_property, kind, fields)
         };

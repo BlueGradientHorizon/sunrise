@@ -1768,6 +1768,12 @@ impl Game<'_> {
                         }
                     }
                 }
+                if self.preset_editor_title().is_some() {
+                    if text != "\\b" {
+                        self.screen_chars_typed(Some(text));
+                    }
+                    return ok(json!({ "ok": true, "menu": self.title_value() }));
+                }
                 if replace {
                     for _ in 0..64 {
                         title.backspace();

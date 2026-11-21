@@ -85,10 +85,33 @@ pub struct ItemModelUpdateInput<'a> {
 pub type ItemModelFn =
     dyn Fn(&dyn ClientHost, &ItemModelUpdateInput<'_>, &mut Vec<ItemModelLayer>) + Send + Sync;
 
+/// Decode-time builder passed to a registered item model decoder (`register_item_models`) so it
+/// can decode child item model nodes from any JSON field, list, object, or model identifier
+/// without losing JSON fidelity through an NBT round-trip.
+// no wire: engine-owned decode-time builder for child item models.
+pub trait ItemModelChildren {
+    /// Decode one child item model node from the JSON field `field` on this node and bind it
+    /// under `name` for [`ItemModelLayer::new`].
+    fn add_field(&mut self, name: &str, field: &str) -> Result<(), String>;
+    /// Decode every child item model node in the JSON array at `field` (for example vanilla
+    /// `minecraft:composite`'s `"models": [...]`), returning their bound layer names in order.
+    fn add_list(&mut self, field: &str) -> Result<Vec<String>, String>;
+    /// Decode every child item model node in the JSON object at `field`, binding each under its
+    /// JSON key and returning the keys in order.
+    fn add_object(&mut self, field: &str) -> Result<Vec<String>, String>;
+    /// Decode every child item model node in the optional `"models"` JSON object if present,
+    /// binding each under its JSON key and returning the keys in order (empty when absent).
+    fn add_named_models(&mut self) -> Result<Vec<String>, String>;
+    /// Bind a plain `minecraft:model` leaf referencing `model` under `name`.
+    fn add_model(&mut self, name: &str, model: Identifier) -> Result<(), String>;
+}
+
 /// A decode-time factory bound at `register_item_models` that parses an item model node's JSON
-/// object (as a [`Tag`]) once at resource load and returns the per-stack update callback.
+/// object (as a [`Tag`]), declares any child models on [`ItemModelChildren`], and returns the
+/// per-stack update callback.
 // no wire: retained process-local item model decoder callback.
-pub type ItemModelDecoder = dyn Fn(&Tag) -> Result<Arc<ItemModelFn>, String> + Send + Sync;
+pub type ItemModelDecoder =
+    dyn Fn(&Tag, &mut dyn ItemModelChildren) -> Result<Arc<ItemModelFn>, String> + Send + Sync;
 
 /// A staged item model decoder; dispatch attributes it to the registering mod.
 // no wire: retained process-local item model decoder registration.
@@ -105,17 +128,19 @@ impl RegisterItemModelsEvent<'_> {
     /// Register an item model node decoder under `id` (NeoForge's
     /// `RegisterItemModelsEvent::register`).
     ///
-    /// Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted; a later
-    /// registration for the same id replaces the earlier one (last-writer-wins, matching
-    /// NeoForge's `LateBoundIdMapper`), and registering a built-in vanilla or engine item model
-    /// type id overrides that built-in when decoding item definitions.
+    /// Any valid [`Identifier`] (including `minecraft:`) is accepted; a later registration for the
+    /// same id replaces the earlier one (last-writer-wins, matching NeoForge's
+    /// `LateBoundIdMapper`), and registering a built-in vanilla or engine item model type id
+    /// overrides that built-in when decoding item definitions.
     ///
     /// `decode` runs once per matching node on each resource load and reload with the node's JSON
-    /// object converted to a [`Tag`], returning the bound per-stack layer callback (or
-    /// `Err(reason)` to reject the enclosing item definition without falling back to a built-in).
+    /// object converted to a [`Tag`] and an [`ItemModelChildren`] builder for decoding child item
+    /// models from any schema (`models` array, `on_true`/`on_false`, `model` id, named `models`
+    /// map, etc.), returning the bound per-stack layer callback (or `Err(reason)` to refuse the
+    /// enclosing item definition without falling back to a built-in).
     pub fn register<D, F>(&mut self, id: Identifier, decode: D)
     where
-        D: Fn(&Tag) -> Result<F, String> + Send + Sync + 'static,
+        D: Fn(&Tag, &mut dyn ItemModelChildren) -> Result<F, String> + Send + Sync + 'static,
         F: Fn(&dyn ClientHost, &ItemModelUpdateInput<'_>, &mut Vec<ItemModelLayer>)
             + Send
             + Sync
@@ -123,8 +148,8 @@ impl RegisterItemModelsEvent<'_> {
     {
         self.models.push(ItemModelRegistration {
             id,
-            decode: Arc::new(move |config| {
-                let bound: Arc<ItemModelFn> = Arc::new(decode(config)?);
+            decode: Arc::new(move |config, children| {
+                let bound: Arc<ItemModelFn> = Arc::new(decode(config, children)?);
                 Ok(bound)
             }),
         });
@@ -196,18 +221,66 @@ impl RegisterRangeSelectItemModelPropertyEvent<'_> {
     }
 }
 
+trait SelectCaseKeyOps: std::any::Any + std::fmt::Debug + Send + Sync {
+    fn as_any(&self) -> &dyn std::any::Any;
+    fn dyn_eq(&self, other: &dyn SelectCaseKeyOps) -> bool;
+}
+
+impl<T: Eq + std::fmt::Debug + Send + Sync + 'static> SelectCaseKeyOps for T {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn dyn_eq(&self, other: &dyn SelectCaseKeyOps) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<T>()
+            .is_some_and(|rhs| self == rhs)
+    }
+}
+
+/// An opaque, type-erased `when` case value decoded by a registered `select` property
+/// (`register_select_item_model_property`) and compared by equality against the property's
+/// per-stack result.
+// no wire: retained process-local select item model case key.
+#[derive(Clone, Debug)]
+pub struct SelectCaseKey(Arc<dyn SelectCaseKeyOps>);
+
+impl SelectCaseKey {
+    /// Wrap any `'static + Eq + Debug + Send + Sync` value as a `select` case key.
+    pub fn new<T: Eq + std::fmt::Debug + Send + Sync + 'static>(value: T) -> Self {
+        Self(Arc::new(value))
+    }
+
+    /// Borrow the inner value when its concrete type matches `T`.
+    pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
+        self.0.as_any().downcast_ref::<T>()
+    }
+}
+
+impl PartialEq for SelectCaseKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.dyn_eq(&*other.0)
+    }
+}
+impl Eq for SelectCaseKey {}
+
+/// A decode-time parser for one `when` value of a bound `select` property instance.
+// no wire: retained process-local select item model case decoder callback.
+pub type SelectCaseDecoder = dyn Fn(&Tag) -> Result<SelectCaseKey, String> + Send + Sync;
+
 /// A bound categorical `select` property instance produced at item definition decode time and
 /// invoked per stack (`SelectItemModelProperty.get`).
 // no wire: retained process-local select item model property callback.
 pub type SelectPropertyFn =
-    dyn Fn(&dyn ClientHost, &ItemModelPropertyInput<'_>) -> Option<String> + Send + Sync;
+    dyn Fn(&dyn ClientHost, &ItemModelPropertyInput<'_>) -> Option<SelectCaseKey> + Send + Sync;
 
 /// A decode-time factory bound at `register_select_item_model_property` that parses a `select`
-/// node's JSON object (as a [`Tag`]) once at resource load and returns the per-stack categorical
-/// property callback.
+/// node's JSON object (as a [`Tag`]) once at resource load and returns both its `when` case
+/// decoder and its per-stack property callback.
 // no wire: retained process-local select item model property decoder callback.
 pub type SelectPropertyDecoder =
-    dyn Fn(&Tag) -> Result<Arc<SelectPropertyFn>, String> + Send + Sync;
+    dyn Fn(&Tag) -> Result<(Arc<SelectCaseDecoder>, Arc<SelectPropertyFn>), String> + Send + Sync;
 
 /// A staged categorical item model property decoder; dispatch attributes it to the registering mod.
 // no wire: retained process-local select item model property registration.
@@ -224,28 +297,33 @@ impl RegisterSelectItemModelPropertyEvent<'_> {
     /// Register a categorical `select` property decoder under `id` (NeoForge's
     /// `RegisterSelectItemModelPropertyEvent::register`).
     ///
-    /// Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted; a later
-    /// registration for the same id replaces the earlier one (last-writer-wins, matching
-    /// NeoForge's `LateBoundIdMapper`), and registering a built-in vanilla property id overrides
-    /// that built-in when decoding item definitions.
+    /// Any valid [`Identifier`] (including `minecraft:`) is accepted; a later registration for the
+    /// same id replaces the earlier one (last-writer-wins, matching NeoForge's
+    /// `LateBoundIdMapper`), and registering a built-in vanilla property id overrides that
+    /// built-in when decoding item definitions.
     ///
     /// `decode` runs once per matching `select` node on each resource load and reload with the
-    /// node's JSON object converted to a [`Tag`], returning the bound per-stack categorical
-    /// callback (or `Err(reason)` to reject the enclosing item definition without falling back to
-    /// a built-in).
-    pub fn register<D, F>(&mut self, id: Identifier, decode: D)
+    /// node's JSON object converted to a [`Tag`], returning a pair `(decode_case, eval)`:
+    /// `decode_case` validates and decodes each `cases[*].when` entry (as a [`Tag`]) into the
+    /// property's case type `T`, and `eval` evaluates the stack into `Option<T>` for equality
+    /// comparison against the decoded `when` values. Returning `Err(reason)` from `decode` or
+    /// `decode_case` refuses the enclosing item definition without falling back to a built-in.
+    pub fn register<T, D, C, F>(&mut self, id: Identifier, decode: D)
     where
-        D: Fn(&Tag) -> Result<F, String> + Send + Sync + 'static,
-        F: Fn(&dyn ClientHost, &ItemModelPropertyInput<'_>) -> Option<String>
-            + Send
-            + Sync
-            + 'static,
+        T: Eq + std::fmt::Debug + Send + Sync + 'static,
+        D: Fn(&Tag) -> Result<(C, F), String> + Send + Sync + 'static,
+        C: Fn(&Tag) -> Result<T, String> + Send + Sync + 'static,
+        F: Fn(&dyn ClientHost, &ItemModelPropertyInput<'_>) -> Option<T> + Send + Sync + 'static,
     {
         self.properties.push(SelectPropertyRegistration {
             id,
             decode: Arc::new(move |config| {
-                let bound: Arc<SelectPropertyFn> = Arc::new(decode(config)?);
-                Ok(bound)
+                let (decode_case, eval) = decode(config)?;
+                let case_decoder: Arc<SelectCaseDecoder> =
+                    Arc::new(move |when| decode_case(when).map(SelectCaseKey::new));
+                let property_fn: Arc<SelectPropertyFn> =
+                    Arc::new(move |host, input| eval(host, input).map(SelectCaseKey::new));
+                Ok((case_decoder, property_fn))
             }),
         });
     }

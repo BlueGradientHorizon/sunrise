@@ -33,12 +33,6 @@ fn freeze(
     let mut kept = Vec::new();
     for Answered { answer, mod_id, .. } in definitions {
         let id = answer.id;
-        if id.namespace().is_empty() || id.path().is_empty() {
-            log::warn!(
-                "Mod {mod_id}: block state definition type {id:?} must have a nonempty namespace and path"
-            );
-            continue;
-        }
         let Some(owner) = CallbackOwner::new(mod_id) else {
             log::warn!("Block state definition type {id} has no installed owner {mod_id}");
             continue;
@@ -63,7 +57,7 @@ fn freeze(
 }
 
 /// Binds the block-state definition providers native mods registered once at start, before
-/// resources load. Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted;
+/// resources load. Any valid `Identifier` (including `minecraft:` and empty-path ids) is accepted;
 /// a later registration for the same id replaces the earlier one (last-writer-wins) with a warning
 /// naming both mods. Returns the unique ids kept, in first-registration order.
 pub fn register(definitions: Vec<Answered<BlockStateDefinitionRegistration>>) -> Vec<String> {

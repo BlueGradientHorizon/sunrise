@@ -86,14 +86,13 @@ pub enum Loader {
         shade_quads: Option<bool>,
         mtl_override: Option<String>,
     },
-    /// A loader a native mod registered ([`crate::model_loaders`]): the model's JSON object,
-    /// which its mod reads.
-    Registered {
+    /// A non-built-in loader ([`crate::model_loaders`]): keeps the canonicalized loader id and
+    /// the model's JSON object so resolution can ask the bound [`crate::model_loaders::LoaderGeometry`]
+    /// table without a global pre-registration list.
+    Custom {
         kind: String,
         config: Arc<serde_json::Value>,
     },
-    /// A loader nobody registered: it adds no geometry.
-    Unknown(String),
 }
 /// NeoForge's `neoforge_data` of an element or a face; a face's keys win.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -356,19 +355,18 @@ impl Loader {
                         .transpose()?,
                 })
             }
-            kind if crate::model_loaders::is_registered(kind) => {
+            _ => {
                 let mut config = serde_json::Map::new();
                 for (key, raw) in obj {
                     let value = serde_json::from_str(raw.get())
                         .map_err(|_| error("invalid model loader data"))?;
                     config.insert(key.clone(), value);
                 }
-                Ok(Self::Registered {
+                Ok(Self::Custom {
                     kind: canonical,
                     config: Arc::new(serde_json::Value::Object(config)),
                 })
             }
-            _ => Ok(Self::Unknown(name)),
         }
     }
 }

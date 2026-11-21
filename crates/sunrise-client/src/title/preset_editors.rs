@@ -76,12 +76,7 @@ fn freeze(
 ) -> BTreeMap<String, BoundPresetEditorFactory> {
     let mut table: BTreeMap<String, BoundPresetEditorFactory> = BTreeMap::new();
     for Answered { answer, mod_id, .. } in editors {
-        let id = answer.preset;
-        if id.namespace().is_empty() || id.path().is_empty() {
-            log::warn!("Mod {mod_id}: invalid world preset editor id: {id:?}");
-            continue;
-        }
-        let key = id.to_string();
+        let key = answer.preset.to_string();
         let Some(owner) = CallbackOwner::new(mod_id) else {
             log::error!("Preset editor {key} has no installed owner {mod_id}");
             continue;
@@ -103,7 +98,7 @@ fn freeze(
 }
 
 /// Install the client registration-phase table (last registration per preset wins, accepting any
-/// valid `<namespace>:<path>` identifier including `minecraft:` overrides).
+/// valid `Identifier`, including `minecraft:` overrides and empty-path ids).
 pub fn register(editors: Vec<Answered<PresetEditorFactoryRegistration>>) {
     let table = freeze(editors);
     *EDITORS

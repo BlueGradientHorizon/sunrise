@@ -10,7 +10,8 @@ use std::{cell::RefCell, collections::HashMap};
 use sunrise_assets::item_model::{
     Components, ComponentsView, DisplayContext, FluidAppearance, GlobalPos, ItemEnv,
     LayerTransform, LevelState, ModelChoice, OwnerState, RegisteredItemModel,
-    RegisteredRangeProperty, RegisteredSelectProperty, RegisteredTintSource, StackView,
+    RegisteredRangeProperty, RegisteredSelectKey, RegisteredSelectProperty, RegisteredTintSource,
+    StackView,
 };
 use sunrise_client::{
     block_entity_render::{diffuse_lights, vertex_light},
@@ -139,9 +140,9 @@ impl ItemEnv for Env<'_, '_> {
         property: &RegisteredSelectProperty,
         stack: &StackView,
         ctx: &sunrise_assets::item_model::Context<'_>,
-    ) -> Option<String> {
+    ) -> Option<RegisteredSelectKey> {
         let Some(bound) = property
-            .0
+            .payload
             .downcast_ref::<item_render::BoundSelectProperty>()
         else {
             return None;
@@ -166,6 +167,7 @@ impl ItemEnv for Env<'_, '_> {
                 || (bound.eval)(self.game, &input),
             )
             .unwrap_or(None)
+            .map(RegisteredSelectKey::new)
     }
     fn item_tint_source(&self, source: &RegisteredTintSource, stack: &StackView) -> i32 {
         let Some(bound) = source.0.downcast_ref::<item_render::BoundTintSource>() else {
@@ -1277,16 +1279,22 @@ mod tests {
             event: &mut mod_api::RegisterSelectItemModelPropertyEvent<'_>,
         ) {
             event.register(mod_api::Identifier::parse("example:mode").unwrap(), |_| {
-                Ok(|_, input| {
-                    Some(
-                        if input.stack.count() > 1 {
-                            "build"
-                        } else {
-                            "dig"
-                        }
-                        .into(),
-                    )
-                })
+                Ok((
+                    |when: &sunrise_core::nbt::Tag| match when {
+                        sunrise_core::nbt::Tag::String(s) => Ok(s.clone()),
+                        _ => Err("expected string case".into()),
+                    },
+                    |_: &dyn mod_api::ClientHost, input: &mod_api::ItemModelPropertyInput<'_>| {
+                        Some(
+                            if input.stack.count() > 1 {
+                                "build"
+                            } else {
+                                "dig"
+                            }
+                            .to_owned(),
+                        )
+                    },
+                ))
             });
         }
     }
@@ -1348,14 +1356,16 @@ mod tests {
                 let one = StackView::new("minecraft:stick", 1);
                 let two = StackView::new("minecraft:stick", 2);
                 assert_eq!(
-                    env.item_model_select_property(&bound, &one, &ctx)
-                        .as_deref(),
-                    Some("dig")
+                    env.item_model_select_property(&bound, &one, &ctx),
+                    Some(RegisteredSelectKey::new(mod_api::SelectCaseKey::new(
+                        "dig".to_owned()
+                    )))
                 );
                 assert_eq!(
-                    env.item_model_select_property(&bound, &two, &ctx)
-                        .as_deref(),
-                    Some("build")
+                    env.item_model_select_property(&bound, &two, &ctx),
+                    Some(RegisteredSelectKey::new(mod_api::SelectCaseKey::new(
+                        "build".to_owned()
+                    )))
                 );
             });
         });
@@ -1443,36 +1453,40 @@ mod tests {
             _: &mod_api::RegistrationContext,
             event: &mut mod_api::RegisterItemModelsEvent<'_>,
         ) {
-            event.register(mod_api::Identifier::parse("cellmod:cell").unwrap(), |_| {
-                Ok(|_, input, layers| {
-                    let place = match input.context.display {
-                        mod_api::ItemDisplayContext::Gui => "gui",
-                        _ => "ground",
-                    };
-                    let fill = if input.stack.count() > 1 {
-                        "full"
-                    } else {
-                        "empty"
-                    };
-                    layers.push(mod_api::ItemModelLayer::new(format!("{place}/{fill}")));
-                    layers.push(
-                        mod_api::ItemModelLayer::new(format!("seed {}", input.context.seed))
-                            .with_item_transform(mod_api::ItemTransformMode::None),
-                    );
-                    if let Some(owner) = &input.context.owner {
-                        layers.push(mod_api::ItemModelLayer::new(format!(
-                            "owner {}",
-                            owner.entity_type
-                        )));
-                    }
-                    if let Some(level) = &input.context.level {
-                        layers.push(mod_api::ItemModelLayer::new(format!(
-                            "level {}",
-                            level.dimension
-                        )));
-                    }
-                })
-            });
+            event.register(
+                mod_api::Identifier::parse("cellmod:cell").unwrap(),
+                |_, children| {
+                    children.add_named_models()?;
+                    Ok(|_, input, layers| {
+                        let place = match input.context.display {
+                            mod_api::ItemDisplayContext::Gui => "gui",
+                            _ => "ground",
+                        };
+                        let fill = if input.stack.count() > 1 {
+                            "full"
+                        } else {
+                            "empty"
+                        };
+                        layers.push(mod_api::ItemModelLayer::new(format!("{place}/{fill}")));
+                        layers.push(
+                            mod_api::ItemModelLayer::new(format!("seed {}", input.context.seed))
+                                .with_item_transform(mod_api::ItemTransformMode::None),
+                        );
+                        if let Some(owner) = &input.context.owner {
+                            layers.push(mod_api::ItemModelLayer::new(format!(
+                                "owner {}",
+                                owner.entity_type
+                            )));
+                        }
+                        if let Some(level) = &input.context.level {
+                            layers.push(mod_api::ItemModelLayer::new(format!(
+                                "level {}",
+                                level.dimension
+                            )));
+                        }
+                    })
+                },
+            );
         }
     }
 
@@ -1528,13 +1542,24 @@ mod tests {
             Game::native_register_item_models(&mod_api::RegistrationContext::new(), &mut types);
             let (factories, kept) = item_render::bind_item_model_factories(types);
             assert_eq!(kept, ["cellmod:cell"]);
-            let bound = item_render::decode_item_model(Some(&factories), "cellmod:cell", &fields)
-                .unwrap()
-                .expect("registered item model");
+            let bound = item_render::decode_item_model(
+                Some(&factories),
+                "cellmod:cell",
+                &fields,
+                &sunrise_assets::item_model::ItemModelNode::decode,
+            )
+            .unwrap()
+            .expect("registered item model")
+            .model;
             assert!(
-                item_render::decode_item_model(Some(&factories), "othermod:cell", &fields)
-                    .unwrap()
-                    .is_none()
+                item_render::decode_item_model(
+                    Some(&factories),
+                    "othermod:cell",
+                    &fields,
+                    &sunrise_assets::item_model::ItemModelNode::decode,
+                )
+                .unwrap()
+                .is_none()
             );
             super::super::native_entity_refs::tests::with_game(|game| {
                 let env = Env { game };
@@ -1558,9 +1583,14 @@ mod tests {
             Game::native_register_item_models(&mod_api::RegistrationContext::new(), &mut types);
             let (factories, _) = item_render::bind_item_model_factories(types);
             assert!(
-                item_render::decode_item_model(Some(&factories), "cellmod:cell", &fields)
-                    .unwrap()
-                    .is_none()
+                item_render::decode_item_model(
+                    Some(&factories),
+                    "cellmod:cell",
+                    &fields,
+                    &sunrise_assets::item_model::ItemModelNode::decode,
+                )
+                .unwrap()
+                .is_none()
             );
         });
     }

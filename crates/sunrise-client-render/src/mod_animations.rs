@@ -38,12 +38,6 @@ fn freeze(types: Vec<Answered<JsonAnimationTypeRegistration>>) -> BoundAnimation
     for Answered { answer, mod_id, .. } in types {
         match answer {
             JsonAnimationTypeRegistration::Target { id, apply, convert } => {
-                if id.namespace().is_empty() || id.path().is_empty() {
-                    log::error!(
-                        "Mod {mod_id}: animation target {id:?} must have a nonempty namespace and path"
-                    );
-                    continue;
-                }
                 let key = id.to_string();
                 if matches!(
                     key.as_str(),
@@ -68,12 +62,6 @@ fn freeze(types: Vec<Answered<JsonAnimationTypeRegistration>>) -> BoundAnimation
                 targets.insert(key, bind_animation_target(id, owner, apply, convert));
             }
             JsonAnimationTypeRegistration::Interpolation { id, interpolate } => {
-                if id.namespace().is_empty() || id.path().is_empty() {
-                    log::error!(
-                        "Mod {mod_id}: animation interpolation {id:?} must have a nonempty namespace and path"
-                    );
-                    continue;
-                }
                 let key = id.to_string();
                 if matches!(key.as_str(), "minecraft:linear" | "minecraft:catmullrom") {
                     log::error!(
@@ -104,9 +92,9 @@ fn freeze(types: Vec<Answered<JsonAnimationTypeRegistration>>) -> BoundAnimation
 }
 
 /// Binds the animation targets and interpolations native mods registered once at start, before
-/// resources load. Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted;
-/// invalid ids, collisions with the five built-ins (`minecraft:position`, `minecraft:rotation`,
-/// `minecraft:scale`, `minecraft:linear`, `minecraft:catmullrom`), and duplicates are logged as
+/// resources load. Any valid `Identifier` (including `minecraft:` and empty-path ids) is accepted;
+/// collisions with the five built-ins (`minecraft:position`, `minecraft:rotation`,
+/// `minecraft:scale`, `minecraft:linear`, `minecraft:catmullrom`) and duplicates are logged as
 /// registration errors and left out (the first registration wins).
 pub fn register(types: Vec<Answered<JsonAnimationTypeRegistration>>) {
     let bound = freeze(types);
@@ -240,14 +228,11 @@ fn finite(value: &Value) -> Option<f64> {
     (value as f32).is_finite().then_some(value)
 }
 
-/// A namespaced id, `minecraft:` when it names none (`Identifier.parse`).
+/// A namespaced id parsed with `Identifier::parse` (`minecraft:` for bare or leading `:` names).
 fn id(value: &Value) -> Option<String> {
-    let text = value.as_str()?;
-    Some(if text.contains(':') {
-        text.to_owned()
-    } else {
-        format!("minecraft:{text}")
-    })
+    Identifier::parse(value.as_str()?)
+        .ok()
+        .map(|id| id.to_string())
 }
 
 fn parse_vec3(value: &Value, field: &str) -> Result<[f64; 3], String> {
@@ -404,6 +389,20 @@ mod tests {
             !read(r#"{"length":1,"animations":[]}"#).unwrap().looping,
             "loop defaults to false"
         );
+        // Leading colon resolves into minecraft: just like vanilla Identifier.parse.
+        let leading_colon = read(
+            r#"{"length":1,"animations":[{"bone":"arm","target":":position",
+                "keyframes":[{"timestamp":0,"target":[1,2,3],"interpolation":":linear"}]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            leading_colon.bones[0].1[0].target,
+            AnimationTarget::Position
+        );
+        assert_eq!(
+            key(&leading_colon, 0, 0, 0).interpolation,
+            Interpolation::Linear
+        );
     }
 
     #[test]
@@ -472,6 +471,15 @@ mod tests {
                     Identifier::parse("animreg:glow").unwrap(),
                     |part, v| part.offset_pos(v),
                     |v| v,
+                );
+                event.register_target(
+                    Identifier::parse("animreg:").unwrap(),
+                    |part, v| part.offset_pos(v),
+                    |v| v,
+                );
+                event.register_interpolation(
+                    Identifier::parse("animreg:").unwrap(),
+                    |k, _, prev, _, scale| k[prev].post.map(|c| c * scale),
                 );
                 // All 5 built-ins must be rejected.
                 for builtin in [
@@ -548,6 +556,7 @@ mod tests {
             assert_eq!(
                 target_keys,
                 [
+                    ("animreg:", "first_anim"),
                     ("animreg:glow", "first_anim"),
                     ("minecraft:custom_target", "first_anim"),
                 ]
@@ -555,6 +564,7 @@ mod tests {
             assert_eq!(
                 interp_keys,
                 [
+                    ("animreg:", "first_anim"),
                     ("animreg:glow", "second_anim"),
                     ("minecraft:custom_interp", "first_anim"),
                 ]
@@ -774,12 +784,18 @@ mod tests {
             assert!(read(panic_convert_json).is_err());
             assert_eq!(panic_convert_calls.load(Ordering::Relaxed), 1);
 
-            // Panicking playback target and interpolation disable on first panic with notices.
-            let playback_json = r#"{"length":1,"animations":[{"bone":"head","target":"animfault:panic_apply",
-                "keyframes":[
+            // Panicking playback interpolation skips its channel (never invoking its target),
+            // and a separate channel with a panicking target disables on first panic with notices.
+            let playback_json = r#"{"length":1,"animations":[
+                {"bone":"head","target":"animfault:panic_apply","keyframes":[
                     {"timestamp":0,"target":[0,0,0],"interpolation":"linear"},
                     {"timestamp":1,"target":[1,1,1],"interpolation":"animfault:panic_interp"}
-                ]}]}"#;
+                ]},
+                {"bone":"head","target":"animfault:panic_apply","keyframes":[
+                    {"timestamp":0,"target":[0,0,0],"interpolation":"linear"},
+                    {"timestamp":1,"target":[1,1,1],"interpolation":"linear"}
+                ]}
+            ]}"#;
             let holder = read(playback_json).unwrap();
             let root = ModelPart::new(
                 Vec::new(),

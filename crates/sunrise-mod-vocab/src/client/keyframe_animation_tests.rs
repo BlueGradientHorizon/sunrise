@@ -389,7 +389,7 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
                     key(1.0, [1.0; 3], Interpolation::Custom(bad_interp)),
                 ],
             );
-            assert_eq!(ch.sample(0.5, 1.0), Some([0.0; 3]));
+            assert_eq!(ch.sample(0.5, 1.0), None);
             assert_eq!(interp_panic_calls.load(Ordering::Relaxed), 1);
             let notices = take_callback_panic_notices();
             assert!(
@@ -397,7 +397,7 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
                 "expected interpolation panic notice, got {notices:?}"
             );
             // Disabled for the session: second sample does not re-enter the panicked callback.
-            assert_eq!(ch.sample(0.5, 1.0), Some([0.0; 3]));
+            assert_eq!(ch.sample(0.5, 1.0), None);
             assert_eq!(interp_panic_calls.load(Ordering::Relaxed), 1);
 
             let tp = Arc::clone(&target_panic_calls);
@@ -423,7 +423,7 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
             AnimationTarget::Custom(bad_target).apply(&mut root, [4.0, 5.0, 6.0]);
             assert_eq!(target_panic_calls.load(Ordering::Relaxed), 1);
 
-            // Non-finite interpolation output falls back to [0.0; 3] without latching.
+            // Non-finite interpolation output returns None without latching.
             let fi = Arc::clone(&flaky_interp_calls);
             let flaky_interp = bind_animation_interpolation(
                 Identifier::from_parts("faulty", "flaky_interp").unwrap(),
@@ -443,7 +443,7 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
                     key(1.0, [1.0; 3], Interpolation::Custom(flaky_interp)),
                 ],
             );
-            assert_eq!(flaky_ch.sample(0.5, 1.0), Some([0.0; 3]));
+            assert_eq!(flaky_ch.sample(0.5, 1.0), None);
             assert!(take_callback_panic_notices().is_empty());
             assert_eq!(flaky_ch.sample(0.5, 1.0), Some([1.0, 2.0, 3.0]));
             assert_eq!(flaky_interp_calls.load(Ordering::Relaxed), 2);
@@ -469,6 +469,102 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
                 [1.0, 2.0, 3.0]
             );
             assert_eq!(flaky_convert_calls.load(Ordering::Relaxed), 2);
+        },
+    );
+}
+
+/// A panicking, disabled, or non-finite custom interpolation returns `None` so `apply_at` skips
+/// only that channel and never calls its target with a fabricated zero vector, while other
+/// channels on the same bone still apply.
+#[test]
+fn failed_custom_interpolation_skips_only_that_channel_and_never_calls_target() {
+    let _notice_lock = PANIC_NOTICE_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let target_calls = Arc::new(AtomicUsize::new(0));
+
+    with_dispatch(
+        vec![ModEntry::new("faulty", Box::new(QuietMod))].into(),
+        || {
+            let _ = take_callback_panic_notices();
+            let calls_ref = Arc::clone(&target_calls);
+            // Distinguishes an applied zero from no call: writes a non-zero marker even for [0; 3].
+            let overwriting_target = bind_animation_target(
+                Identifier::from_parts("faulty", "overwrite").unwrap(),
+                CallbackOwner::new("faulty").unwrap(),
+                Arc::new(move |part: &mut ModelPart, value: [f32; 3]| {
+                    calls_ref.fetch_add(1, Ordering::Relaxed);
+                    part.x = value[0] + 100.0;
+                }),
+                Arc::new(|v| v),
+            );
+            let panicking_interp = bind_animation_interpolation(
+                Identifier::from_parts("faulty", "panic_interp").unwrap(),
+                CallbackOwner::new("faulty").unwrap(),
+                Arc::new(|_, _, _, _, _| panic!("boom")),
+            );
+            let nan_interp = bind_animation_interpolation(
+                Identifier::from_parts("faulty", "nan_interp").unwrap(),
+                CallbackOwner::new("faulty").unwrap(),
+                Arc::new(|_, _, _, _, _| [f32::NAN, 0.0, 0.0]),
+            );
+
+            let holder = AnimationHolder {
+                id: animation_id(),
+                length: 1.0,
+                looping: false,
+                bones: vec![(
+                    "head".into(),
+                    vec![
+                        channel(
+                            AnimationTarget::Custom(overwriting_target.clone()),
+                            vec![
+                                key(0.0, [0.0; 3], Interpolation::Linear),
+                                key(1.0, [1.0; 3], Interpolation::Custom(panicking_interp)),
+                            ],
+                        ),
+                        channel(
+                            AnimationTarget::Custom(overwriting_target),
+                            vec![
+                                key(0.0, [0.0; 3], Interpolation::Linear),
+                                key(1.0, [1.0; 3], Interpolation::Custom(nan_interp)),
+                            ],
+                        ),
+                        channel(
+                            AnimationTarget::Rotation,
+                            vec![
+                                key(0.0, [0.0; 3], Interpolation::Linear),
+                                key(1.0, [2.0, 0.0, 0.0], Interpolation::Linear),
+                            ],
+                        ),
+                    ],
+                )],
+            };
+
+            let root = part(vec![("head", part(vec![]))]);
+            let baked = holder.bake(&root);
+            let mut state = AnimationState::new();
+            state.start(0);
+
+            // First apply: panicking channel panics (disabled), NaN channel fails, rotation applies.
+            let mut posed = root.clone();
+            baked.apply(&mut posed, &state, 10.0);
+            assert_eq!(target_calls.load(Ordering::Relaxed), 0);
+            let head = posed.get_child("head").unwrap();
+            assert_eq!(
+                head.x, 0.0,
+                "failed channels must not call overwriting target"
+            );
+            assert_eq!(head.x_rot, 1.0, "healthy channel still applies");
+            assert!(take_callback_panic_notices().contains(&("faulty", "animation interpolation")));
+
+            // Second apply: disabled channel skips without calling target either.
+            let mut posed2 = root.clone();
+            baked.apply(&mut posed2, &state, 10.0);
+            assert_eq!(target_calls.load(Ordering::Relaxed), 0);
+            let head2 = posed2.get_child("head").unwrap();
+            assert_eq!(head2.x, 0.0);
+            assert_eq!(head2.x_rot, 1.0);
         },
     );
 }

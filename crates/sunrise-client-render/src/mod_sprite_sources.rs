@@ -34,12 +34,6 @@ fn bind_into(
     let mut seen = BTreeSet::new();
     for Answered { answer, mod_id, .. } in sources {
         let id = answer.id;
-        if id.namespace().is_empty() || id.path().is_empty() {
-            log::warn!(
-                "Mod {mod_id}: sprite source type {id:?} must have a nonempty namespace and path"
-            );
-            continue;
-        }
         let Some(owner) = CallbackOwner::new(mod_id) else {
             log::warn!("Sprite source type {id} has no installed owner {mod_id}");
             continue;
@@ -67,7 +61,7 @@ fn bind_into(
 }
 
 /// Binds the sprite source providers native mods registered once at start, before resources load.
-/// Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted; a later
+/// Any valid `Identifier` (including `minecraft:` and empty-path ids) is accepted; a later
 /// registration for the same id replaces the earlier one (last-writer-wins) with a warning naming
 /// both mods, and overriding a built-in vanilla source type logs a warning naming the mod.
 /// Returns the unique ids kept in this batch, in first-registration order.
@@ -476,10 +470,22 @@ mod tests {
             decode(text, &Mods::none()).unwrap_err().to_string(),
             "sources[1]: unknown sprite source type srcfree:nobody"
         );
-        let registered = Mods::new(&["srcfree:nobody"], |_, _, _, _| Vec::new());
+        let registered = Mods::new(&["srcfree:nobody", "srcfree:"], |_, _, _, _| Vec::new());
         assert!(matches!(
             decode(text, &registered).unwrap().as_slice(),
             [_, SpriteSource::Registered { kind, .. }] if kind == "srcfree:nobody"
+        ));
+        // Leading colon resolves into minecraft:, and valid empty-path ids are accepted.
+        let leading_and_empty = r#"{"sources":[
+            {"type":":single","resource":":item/stick"},
+            {"type":"srcfree:"}
+        ]}"#;
+        assert!(matches!(
+            decode(leading_and_empty, &registered).unwrap().as_slice(),
+            [
+                SpriteSource::Single { resource, .. },
+                SpriteSource::Registered { kind, .. },
+            ] if resource == "minecraft:item/stick" && kind == "srcfree:"
         ));
     }
 

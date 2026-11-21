@@ -243,15 +243,29 @@ fn registered_tint_model_range_and_select_decoders_override_builtins() {
     let custom_model = RegisteredItemModel(Arc::new("model"));
     let custom_fluid = RegisteredItemModel(Arc::new("fluid"));
     let custom_range = RegisteredRangeProperty(Arc::new("range"));
-    let custom_select = RegisteredSelectProperty(Arc::new("select"));
+    let custom_select = RegisteredSelectProperty::new(Arc::new("select"), |value| {
+        value
+            .as_str()
+            .map(|s| RegisteredSelectKey::new(s.to_owned()))
+            .ok_or_else(|| "expected string".to_owned())
+    });
 
     let load_tint = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
         Ok((kind == "minecraft:constant").then(|| custom_tint.clone()))
     };
-    let load_model = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
+    let load_model = |kind: &str,
+                      _: &Map<String, Value>,
+                      _: &dyn Fn(&Value) -> Result<ItemModelNode>|
+     -> std::result::Result<_, String> {
         match kind {
-            "minecraft:model" => Ok(Some(custom_model.clone())),
-            "neoforge:fluid_container" => Ok(Some(custom_fluid.clone())),
+            "minecraft:model" => Ok(Some(DecodedItemModel {
+                model: custom_model.clone(),
+                models: Vec::new(),
+            })),
+            "neoforge:fluid_container" => Ok(Some(DecodedItemModel {
+                model: custom_fluid.clone(),
+                models: Vec::new(),
+            })),
             _ => Ok(None),
         }
     };
@@ -395,7 +409,10 @@ fn registered_override_errors_reject_enclosing_item_without_builtin_fallback() {
         "tint override rejected"
     );
 
-    let fail_model = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
+    let fail_model = |kind: &str,
+                      _: &Map<String, Value>,
+                      _: &dyn Fn(&Value) -> Result<ItemModelNode>|
+     -> std::result::Result<_, String> {
         match kind {
             "minecraft:model" => Err("model override rejected".into()),
             "neoforge:fluid_container" => Err("fluid container override rejected".into()),

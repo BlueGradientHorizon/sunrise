@@ -1,11 +1,14 @@
 pub use item::item_model_providers::{
-    ItemModelDecoder, ItemModelFn, ItemModelPropertyInput, ItemModelUpdateInput, ItemTintInput,
-    ItemTintSourceDecoder, ItemTintSourceFn, RangeSelectPropertyDecoder, RangeSelectPropertyFn,
-    SelectPropertyDecoder, SelectPropertyFn,
+    ItemModelChildren, ItemModelDecoder, ItemModelFn, ItemModelPropertyInput, ItemModelUpdateInput,
+    ItemTintInput, ItemTintSourceDecoder, ItemTintSourceFn,
 };
 use item::item_model_providers::{
     ItemModelRegistration, ItemTintSourceRegistration, RangeSelectPropertyRegistration,
     SelectPropertyRegistration,
+};
+pub use item::item_model_providers::{
+    RangeSelectPropertyDecoder, RangeSelectPropertyFn, SelectCaseDecoder, SelectCaseKey,
+    SelectPropertyDecoder, SelectPropertyFn,
 };
 mod __private {
     mod game {

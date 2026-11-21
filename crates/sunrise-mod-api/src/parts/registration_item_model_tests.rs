@@ -29,10 +29,16 @@ impl Hooks for Selected {
         event: &mut RegisterSelectItemModelPropertyEvent<'_>,
     ) {
         event.register(Identifier::parse("example:selected").unwrap(), |_| {
-            Ok(|_, input| {
-                (input.bundle_selected >= 0)
-                    .then(|| format!("{}:{}", input.bundle_selected, input.stack.count()))
-            })
+            Ok((
+                |when: &crate::Tag| match when {
+                    crate::Tag::String(s) => Ok(s.clone()),
+                    _ => Err("expected string".into()),
+                },
+                |_: &dyn ClientHost, input: &ItemModelPropertyInput<'_>| {
+                    (input.bundle_selected >= 0)
+                        .then(|| format!("{}:{}", input.bundle_selected, input.stack.count()))
+                },
+            ))
         });
     }
     fn register_item_tint_sources(
@@ -73,7 +79,7 @@ fn model_callbacks_receive_owned_counts_and_the_exact_runtime_selection() {
         dispatch_register_item_tint_sources(&RegistrationContext::new(), &mut tint_sources);
         let config = crate::Tag::compound([] as [(&str, crate::Tag); 0]);
         let range_eval = (range_props[0].answer.decode)(&config).unwrap();
-        let select_eval = (select_props[0].answer.decode)(&config).unwrap();
+        let (select_case_decode, select_eval) = (select_props[0].answer.decode)(&config).unwrap();
         let tint_eval = (tint_sources[0].answer.decode)(&config).unwrap();
         let context = ItemModelContext {
             display: ItemDisplayContext::Gui,
@@ -100,7 +106,10 @@ fn model_callbacks_receive_owned_counts_and_the_exact_runtime_selection() {
                 context: &context,
             };
             assert_eq!(range_eval(&NoClient, &prop_input), number);
-            assert_eq!(select_eval(&NoClient, &prop_input).as_deref(), text);
+            assert_eq!(
+                select_eval(&NoClient, &prop_input),
+                text.map(|s| select_case_decode(&crate::Tag::String(s.to_owned())).unwrap())
+            );
             let tint_input = ItemTintInput {
                 stack: &stack,
                 bundle_selected: selected,

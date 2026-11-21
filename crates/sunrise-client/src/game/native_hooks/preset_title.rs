@@ -81,8 +81,8 @@ impl Game<'_> {
         )
     }
 
-    /// Forward printable characters to the open bound preset editor. Returns whether a preset
-    /// editor was open to receive them.
+    /// Forward printable characters to the open bound preset editor. Returns `true` if the editor
+    /// consumed any character.
     pub(in crate::game) fn preset_editor_type_text(&self, text: &str) -> bool {
         let Some(session) = self
             .preset_editor_title()
@@ -91,9 +91,10 @@ impl Game<'_> {
             return false;
         };
         let modifiers = crate::game::glfw_modifiers(self.modifiers);
+        let mut handled = false;
         for ch in text.chars().filter(|c| !c.is_control()) {
-            session.char_typed(ch, modifiers);
+            handled |= session.char_typed(ch, modifiers);
         }
-        true
+        handled
     }
 }

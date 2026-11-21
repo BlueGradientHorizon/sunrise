@@ -251,7 +251,7 @@ impl AnimationChannel {
     ///
     /// For a custom interpolation, invokes the bound callback through its owner's panic
     /// containment; if the callback is disabled, panics, or returns a non-finite vector,
-    /// returns `Some([0.0; 3])`.
+    /// returns `None` so [`KeyframeAnimation`] skips only this channel.
     pub fn sample(&self, seconds: f32, scale: f32) -> Option<[f32; 3]> {
         let k = &self.keyframes;
         if k.is_empty() {
@@ -282,25 +282,24 @@ impl AnimationChannel {
             }
             Interpolation::Custom(bound) => {
                 if !bound.0.owner.is_enabled() {
-                    [0.0; 3]
-                } else {
-                    match bound
-                        .0
-                        .owner
-                        .call("animation interpolation", "interpolate", || {
-                            (bound.0.interpolate)(k, alpha, prev, next, scale)
-                        }) {
-                        Ok(v) if v.iter().all(|c| c.is_finite()) => v,
-                        Ok(v) => {
-                            log::warn!(
-                                "Sunrise: mod {}: animation interpolation {} returned non-finite vector {v:?}",
-                                bound.0.owner.id(),
-                                bound.0.id
-                            );
-                            [0.0; 3]
-                        }
-                        Err(_) => [0.0; 3],
+                    return None;
+                }
+                match bound
+                    .0
+                    .owner
+                    .call("animation interpolation", "interpolate", || {
+                        (bound.0.interpolate)(k, alpha, prev, next, scale)
+                    }) {
+                    Ok(v) if v.iter().all(|c| c.is_finite()) => v,
+                    Ok(v) => {
+                        log::warn!(
+                            "Sunrise: mod {}: animation interpolation {} returned non-finite vector {v:?}",
+                            bound.0.owner.id(),
+                            bound.0.id
+                        );
+                        return None;
                     }
+                    Err(_) => return None,
                 }
             }
         };
