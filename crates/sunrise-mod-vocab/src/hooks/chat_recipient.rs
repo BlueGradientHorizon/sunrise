@@ -7,7 +7,8 @@ pub trait Hooks {
     /// command source, `sender` is zero and `sender_name` is the source's display name.
     /// `message` is the text after decoration or command expansion, without the chat-type prefix.
     /// Return [`Flow::Cancel`](crate::Flow::Cancel) to omit just this delivery. Other recipients
-    /// and the server log still have the line; the veto does not alter the signed body, or add
+    /// still have the line, which was logged before the first recipient was asked. A player who
+    /// disconnects before their turn is not asked. The veto does not alter the signed body, or add
     /// an index or pending acknowledgement for the omitted copy. Whispers (`/msg`) are not public.
     /// A command run from this hook that sends public chat goes through the same delivery checks,
     /// including this hook. A panicking listener is reported and is disabled for the session;
@@ -22,7 +23,7 @@ pub trait Hooks {
         cancellable = true,
         isolate = true,
         event_per_listener = true,
-        version = 2
+        version = 3
     )]
     fn chat_recipient(
         sender: u128,

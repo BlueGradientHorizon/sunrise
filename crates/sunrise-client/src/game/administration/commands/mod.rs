@@ -4080,35 +4080,22 @@ impl Game<'_> {
             Some(Arg::Str(s)) => s.clone(),
             _ => String::new(),
         };
-        let message = self.expand_selectors(&raw);
-        let name = self.source_display_name();
         let line = match id {
             "say" | "me" => {
-                let (chat_type, key) = if id == "say" {
-                    ("say_command", "chat.type.announcement")
-                } else {
-                    ("emote_command", "chat.type.emote")
-                };
-                self.lan_broadcast_source_chat(chat_type, &name, &message);
-                let line = Text::translate(key, &[name, message]);
-                if self.lan.is_some() {
-                    if self.is_dedicated_server() {
-                        self.lan_log_event(sunrise_client::lan::hub::HostEvent::Chat {
-                            line: line.plain(),
-                            secure: false,
-                        });
-                    } else {
-                        log::info!("[Not Secure] {}", line.plain());
-                        if self.chat_capture.is_none() {
-                            self.player_message(line);
-                        }
+                let message = self.resolve_chat_message(&raw);
+                let name = self.source_display_name();
+                let sender = match self.source_entity() {
+                    Some(Target::Player) => self.lan_acting_uuid.unwrap_or_else(|| self.own_uuid()),
+                    Some(Target::Guest(conn)) => {
+                        self.command_guest(conn).map_or(0, |guest| guest.uuid)
                     }
-                } else {
-                    self.player_message(line);
-                }
+                    _ => 0,
+                };
+                self.lan_broadcast_command_chat(sender, &name, id, &message, None);
                 return Ok(1);
             }
             _ => {
+                let message = self.expand_selectors(&raw);
                 let _ = self.entities(ctx, "targets", true)?;
                 // Whispering to yourself: the incoming and outgoing lines.
                 let out = Text::translate(
@@ -4140,6 +4127,16 @@ impl Game<'_> {
         );
         Ok(1)
     }
+    /// `MessageArgument.resolveChatMessage`: only sources with entity selector permission
+    /// resolve selectors. Other players' text remains literal.
+    pub(super) fn resolve_chat_message(&mut self, raw: &str) -> Text {
+        if self.ui.registries.permission >= 2 {
+            self.expand_selectors(raw)
+        } else {
+            Text::literal(raw)
+        }
+    }
+
     /// MessageArgument: `@p`-style selectors in a message become names.
     pub(super) fn expand_selectors(&mut self, raw: &str) -> Text {
         let mut out = Text::empty();

@@ -126,22 +126,27 @@ impl Game<'_> {
         holds.sync(self.hold_incarnation());
         holds.take(hold).map(|_| ())
     }
-    pub(in crate::game) fn send_or_hold_play(&self, packet: S) {
-        let Some(remote) = &self.remote else {
-            return;
-        };
+    fn send_or_hold_play(
+        &self,
+        remote: &crate::game::remote::Remote,
+        packet: S,
+    ) -> Result<(), String> {
         let mut holds = self.native_net.holds.borrow_mut();
         holds.sync(self.hold_incarnation());
         if holds.active.is_none() {
-            remote.session.send(packet);
-            return;
+            return remote
+                .session
+                .try_send(packet)
+                .map_err(|error| error.to_string());
         }
         let incarnation = holds.incarnation.expect("active hold has an incarnation");
-        if let Ok(body) = packet.try_encode() {
-            let _ = holds.queue(body, |body| {
+        let body = packet.try_encode().map_err(|error| error.to_string())?;
+        holds
+            .queue(body, |body| {
                 remote.session.send_held_body(body, incarnation)
-            });
-        }
+            })
+            .map(|_| ())
+            .map_err(|error| format!("held packet could not be sent: {error:?}"))
     }
     pub(in crate::game) fn publish_mod_held(
         &self,
@@ -180,11 +185,20 @@ impl Game<'_> {
     /// `Connection.send` for the game's play packets: a mod may cancel one
     /// (`client_packet_send`), and the server never hears of it. True when queued.
     pub(in crate::game) fn send_play(&self, packet: S) -> bool {
-        let queued = self.remote.is_some() && !self.client_packet_send_canceled(&packet);
-        if queued {
-            self.send_or_hold_play(packet);
+        self.try_send_play(packet).unwrap_or_else(|error| {
+            log::warn!("Play packet refused: {error}");
+            false
+        })
+    }
+
+    /// False means a listener intentionally canceled the send; a local failure is an error.
+    pub(in crate::game) fn try_send_play(&self, packet: S) -> Result<bool, String> {
+        let remote = self.remote.as_ref().ok_or("not connected to a server")?;
+        if self.client_packet_send_canceled(&packet) {
+            return Ok(false);
         }
-        queued
+        self.send_or_hold_play(remote, packet)?;
+        Ok(true)
     }
 }
 

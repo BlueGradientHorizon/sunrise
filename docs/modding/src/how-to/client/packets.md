@@ -49,10 +49,13 @@ returns `PacketBuildError::Unavailable`. `validate_container_click_limits` is al
 for preflighting the ID, slot and changed-slot-count wire limits.
 
 For chat and commands, call `ClientHost::send_chat`; a leading `/` selects the command path. The play
-connection owns signing. This is a direct send, not chat-box input: it doesn't trim, check the local Chat
-setting or add history, and the server's own policy still applies. To let the player edit and submit a draft
-instead, use `ClientHost::open_chat`; it can replace the current screen through normal screen hooks and sends
-nothing. There are no typed builders
+listener dispatches client commands first and runs `client_chat` on ordinary messages before signing. Edits go
+on the wire; cancellation or an empty result sends nothing and is not a transport error. Direct sends do not
+normalize or truncate text, check the local Chat setting, or add history. Invalid wire input or a failed local
+publication returns `Err`. The server's own policy still applies. To let the player edit a draft instead, use
+`ClientHost::open_chat`. It sends nothing and can replace the foreground screen, including a prompt or a chat
+box, through `screen_opening`, `screen_closing`, and `screen_init_post`. A veto leaves the old screen intact.
+There are no typed builders
 for chat, signed commands, chat sessions, login/configuration, keep-alive, pong or custom
 payload packets. Registered and engine-reserved custom-payload channels use their payload
 or service API.

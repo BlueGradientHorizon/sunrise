@@ -7,7 +7,8 @@ pub trait NetworkClientHost {
     /// Side: client.
     /// Opens the chat screen with `text` typed in for the player to finish and
     /// send; nothing is sent. It can replace an open screen, including another
-    /// chat screen. Normal screen-opening hooks may cancel or replace it.
+    /// chat screen or foreground prompt. A new chat instance fires normal opening,
+    /// closing and initialization hooks; a veto leaves the old screen untouched.
     /// Returns an error when there is no local player.
     #[access(WorldOnly)]
     fn open_chat(&mut self, text: &str) -> Result<(), String>;
@@ -24,10 +25,12 @@ pub trait NetworkClientHost {
     fn chat_line(&mut self, line: Text) -> Result<(), TextFormError>;
     /// Side: client.
     /// Sends directly through `ClientPacketListener.sendChat` or `sendCommand`
-    /// (strip the initial `/` for a command). This does not trim the input,
-    /// check the client's Chat setting, add to history or fire `client_chat`.
-    /// The server still checks signatures, permissions and chat policy.
-    /// Returns an error without a joined play connection. API 404.
+    /// (a leading `/` selects the command path). Chat passes through `client_chat`
+    /// before signing; commands go to client command listeners before the server.
+    /// This does not normalize input, check the client's Chat setting or add history.
+    /// `Ok(())` means queued, handled locally or intentionally canceled; `Err` means
+    /// the play listener was unavailable or local encoding or publication failed.
+    /// The server still checks signatures, permissions and chat policy. API 404.
     #[access(WorldOnly)]
     fn send_chat(&mut self, message: &str) -> Result<(), String>;
     /// Side: client.

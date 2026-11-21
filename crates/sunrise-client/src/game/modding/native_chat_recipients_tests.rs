@@ -53,7 +53,7 @@ impl Hooks for Echo {
             event.message.to_owned(),
             event.recipient,
         ));
-        if event.message == "outer" && event.recipient == 12 {
+        if event.message == "outer" && event.recipient == 13 {
             let result = host
                 .commands()
                 .run_command_with_output("execute run say nested");
@@ -210,9 +210,13 @@ fn a_chat_line_hidden_from_one_receiver_reaches_the_others() {
                 target: None,
             };
             let say = |game: &mut super::Game<'_>, content: &str| {
-                let line = format!("<guest12> {content}");
-                game.lan_broadcast_chat(&signed(content), &bound, line, "guest12", content)
-                    .unwrap();
+                game.lan_broadcast_chat(
+                    (12, "guest12"),
+                    content,
+                    Text::literal(format!("<guest12> {content}")),
+                    &bound,
+                    super::lan_chat::ChatDelivery::Player(&signed(content)),
+                );
             };
             say(game, "a secret");
             let play::Clientbound::PlayerChat(chat) = packets(&sender).next().unwrap() else {
@@ -305,7 +309,7 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
             lines(&first);
             lines(&second);
 
-            game.dedicated_console_say("console secret".into());
+            assert!(game.as_console_in_spawn_level(|game| game.run_command("say console secret")));
             assert_eq!(lines(&first), 1);
             assert_eq!(lines(&second), 0);
             game.command_block_tick(block);
@@ -314,7 +318,9 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
             game.lan.as_mut().unwrap().hub.update_guest(13, |guest| {
                 guest.info.chat_visibility = 1; // Commands Only
             });
-            game.dedicated_console_say("public announcement".into());
+            assert!(
+                game.as_console_in_spawn_level(|game| game.run_command("say public announcement"))
+            );
             assert_eq!(lines(&first), 1);
             assert_eq!(lines(&second), 0, "Commands Only does not show /say");
             assert_eq!(
@@ -456,17 +462,39 @@ fn nested_say_passes_through_the_same_recipient_checks() {
             let (first, second) = two_guests(game);
             lines(&first);
             lines(&second);
-            game.dedicated_console_say("outer".into());
+            assert!(game.as_console_in_spawn_level(|game| game.run_command("say outer")));
             let result = nested.lock().unwrap().take().unwrap();
             assert!(result.success, "nested /say is a normal command");
-            assert_eq!(lines(&first), 2);
+            assert!(
+                result.feedback.is_empty(),
+                "the public message is not command feedback"
+            );
+            use sunrise_client::scoreboard::{comp_text, tag_to_json};
+            let messages: Vec<_> = packets(&first)
+                .filter_map(|packet| match packet {
+                    play::Clientbound::DisguisedChat(chat) => {
+                        Some(comp_text(&tag_to_json(&chat.message)).plain())
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                messages,
+                ["outer", "nested"],
+                "the first delivery already happened when the second listener runs"
+            );
             assert_eq!(lines(&second), 1, "the nested veto still applies");
+            let recorded = game.ui.chat.recent_lines(2);
+            assert!(
+                recorded[0].ends_with("nested") && recorded[1].ends_with("outer"),
+                "outer is recorded before nested: {recorded:?}"
+            );
             let seen = asked.lock().unwrap();
             assert_eq!(
                 seen.iter()
                     .map(|row| (row.2.as_str(), row.3))
                     .collect::<Vec<_>>(),
-                [("outer", 12), ("nested", 12), ("nested", 13), ("outer", 13)],
+                [("outer", 12), ("outer", 13), ("nested", 12), ("nested", 13)],
             );
         });
     });
@@ -499,8 +527,8 @@ fn panicking_chat_filter_is_reported_without_losing_other_vetoes() {
             let (first, second) = two_guests(game);
             lines(&first);
             lines(&second);
-            game.dedicated_console_say("first secret".into());
-            game.dedicated_console_say("second secret".into());
+            assert!(game.as_console_in_spawn_level(|game| game.run_command("say first secret")));
+            assert!(game.as_console_in_spawn_level(|game| game.run_command("say second secret")));
             assert_eq!(lines(&first), 2);
             assert_eq!(lines(&second), 0);
             let notices = mod_api::__private::game::take_callback_panic_notices();
@@ -513,4 +541,99 @@ fn panicking_chat_filter_is_reported_without_losing_other_vetoes() {
             assert!(reports[0].message.contains("chat filter failed"));
         });
     });
+}
+
+/// MessageArgument uses the command source's permission and selectors; its result is unsigned display only.
+#[test]
+#[ignore = "daily"]
+fn guest_public_command_selectors_change_display_not_the_signed_body() {
+    use play::Clientbound as C;
+    use sunrise_client::scoreboard::{comp_text, tag_to_json};
+    let asked = Asked::default();
+    mod_platform::testing::with_mods(
+        vec![mod_api::ModEntry::new(
+            "chat_selectors",
+            Box::new(Ignorer(asked.clone())),
+        )]
+        .into(),
+        || {
+            with_game(|game| {
+                let (first, second) = two_guests(game);
+                lines(&first);
+                lines(&second);
+                let plain = |tag| comp_text(&tag_to_json(&tag)).plain();
+                let body = "hello @s";
+                let signed_message = signed(body);
+                assert!(game.guest_message_command(
+                    12,
+                    "say hello @s",
+                    Some(&[("message".into(), signed_message.clone())])
+                ));
+                for receiver in [&first, &second] {
+                    let C::PlayerChat(chat) = packets(receiver)
+                        .find(|p| matches!(p, C::PlayerChat(_)))
+                        .unwrap()
+                    else {
+                        unreachable!()
+                    };
+                    assert_eq!(
+                        chat.signature.as_deref(),
+                        signed_message
+                            .signature
+                            .as_ref()
+                            .map(|signature| signature.as_slice())
+                    );
+                    assert_eq!(chat.content, body);
+                    assert_eq!(plain(chat.unsigned_content.unwrap()), "hello guest12");
+                }
+                assert_eq!(asked.lock().unwrap().len(), 2);
+                assert!(
+                    asked
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .all(|row| row.2 == "hello guest12")
+                );
+                asked.lock().unwrap().clear();
+                assert!(game.guest_message_command(12, "me waves to @s", None));
+                let C::DisguisedChat(chat) = packets(&second)
+                    .find(|p| matches!(p, C::DisguisedChat(_)))
+                    .unwrap()
+                else {
+                    unreachable!()
+                };
+                assert_eq!(plain(chat.message), "waves to guest12");
+                assert_eq!(asked.lock().unwrap().len(), 2);
+                assert!(
+                    asked
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .all(|row| row.2 == "waves to guest12")
+                );
+                asked.lock().unwrap().clear();
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(12, |guest| guest.permission = 0);
+                assert!(game.guest_message_command(12, "me waves to @s", None));
+                let C::DisguisedChat(chat) = packets(&second)
+                    .find(|p| matches!(p, C::DisguisedChat(_)))
+                    .unwrap()
+                else {
+                    unreachable!()
+                };
+                assert_eq!(plain(chat.message), "waves to @s");
+                assert_eq!(asked.lock().unwrap().len(), 2);
+                assert!(
+                    asked
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .all(|row| row.2 == "waves to @s")
+                );
+            });
+        },
+    );
 }

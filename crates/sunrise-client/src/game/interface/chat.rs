@@ -215,7 +215,7 @@ pub(super) enum ChatExit {
     Interrupted,
     /// The player closed it (Escape).
     Intentional,
-    /// A message was sent.
+    /// The message was sent or transferred into the replacement chat screen.
     Done,
 }
 /// `ChatScreen.shouldDiscardDraft`.
@@ -964,14 +964,18 @@ impl Game<'_> {
     /// Returns false without a local player. Otherwise the ordinary screen lifecycle
     /// can open, cancel, or replace the requested screen.
     pub(super) fn begin_chat_screen(&mut self, initial: &str, is_draft: bool) -> bool {
+        self.replace_chat_screen(initial, is_draft, ChatExit::Interrupted)
+    }
+
+    fn replace_chat_screen(&mut self, initial: &str, is_draft: bool, reason: ChatExit) -> bool {
         if self.player.is_none() {
             return false;
         }
         self.transition_screen(Screen::Chat, true, |game, accepted| {
+            game.remove_chat_screen(reason);
             if accepted != Some(Screen::Chat) {
                 return;
             }
-            game.remove_chat_screen(ChatExit::Interrupted);
             game.refresh_dynamic_registries();
             let size = game
                 .renderer
@@ -1062,31 +1066,30 @@ impl Game<'_> {
     /// woken (`onPlayerWokeUp`) it closes, or turns into the plain chat
     /// screen if something was typed.
     pub(super) fn tick_in_bed_chat(&mut self) {
-        // Another screen took over the open chat (death, a container the
-        // server opened): `ChatScreen.removed` runs with the INTERRUPTED reason.
         if self.screen != Screen::Chat {
             self.remove_chat_screen(ChatExit::Interrupted);
-        }
-        if self.screen != Screen::Chat {
             self.ui.in_bed_chat = false;
         }
-        if self.ui.in_bed_chat {
-            if self.sleeping.is_none() {
-                self.ui.in_bed_chat = false;
-                let text = self
-                    .ui
-                    .chat_screen
-                    .as_ref()
-                    .map_or_else(String::new, |s| s.value().to_owned());
+        if self.ui.in_bed_chat && self.sleeping.is_none() && !self.screen_over_playing() {
+            // InBedChatScreen.onPlayerWokeUp: replace once, discarding the
+            // outgoing draft only when the typed text transfers into ordinary chat.
+            let typed = self
+                .ui
+                .chat_screen
+                .as_ref()
+                .map(|screen| screen.value())
+                .filter(|text| !self.ui.chat_draft_shown && !text.is_empty());
+            if let Some(text) = typed.map(str::to_owned) {
+                self.replace_chat_screen(&text, false, ChatExit::Done);
+            } else {
                 self.close_chat(ChatExit::Interrupted);
-                if !text.is_empty() {
-                    // InBedChatScreen.onPlayerWokeUp: a new ChatScreen with
-                    // the typed text, not a draft.
-                    self.begin_chat_screen(&text, false);
-                }
             }
-        } else if self.sleeping.is_some() && self.screen == Screen::Playing {
-            self.begin_chat_screen("", false);
+        } else if self.sleeping.is_some()
+            && self.screen == Screen::Playing
+            && !self.screen_over_playing()
+        {
+            let draft = self.ui.chat_draft.as_ref().map(|draft| draft.text.clone());
+            self.begin_chat_screen(draft.as_deref().unwrap_or(""), draft.is_some());
             self.ui.in_bed_chat = self.screen == Screen::Chat;
         }
     }
@@ -1160,15 +1163,11 @@ impl Game<'_> {
         }
     }
     /// A player's chat line on the window's own chat: a guest's message on
-    /// the server's own chat (`HostEvent::Chat`). `ChatListener`
+    /// the server's own chat. `ChatListener`
     /// checks `canReceivePlayerMessages` for these, so Commands Only and
     /// Hidden drop them; command feedback (`/list`, `/tp`) is a system
     /// message and takes the system-message permission instead.
     pub(super) fn player_message(&mut self, text: Text) {
-        if let Some(capture) = self.chat_capture.as_mut() {
-            capture.push(text);
-            return;
-        }
         // A server's client receives the line as a packet (PlayerChat or
         // DisguisedChat) and filters it there.
         if self.remote.is_none() {
@@ -1347,15 +1346,8 @@ impl Game<'_> {
             self.profiler_chat(args);
             return;
         }
-        // On a server (single player's own included) the server runs it,
-        // unless a client mod owns the command.
         if self.remote.is_some() {
-            if let Some(command) = message.strip_prefix('/')
-                && self.client_mod_command(command)
-            {
-                return;
-            }
-            self.send_chat_from_screen(&message);
+            self.send_signed_chat_input(&message);
             return;
         }
         if let Some(command) = message.strip_prefix('/') {
@@ -1614,12 +1606,9 @@ impl Game<'_> {
     /// commands take it.
     pub(super) fn click_command(&mut self, command: &str) {
         let command = command.strip_prefix('/').unwrap_or(command);
-        if self.client_mod_command(command) {
-            return;
-        }
         if self.remote.is_some() {
             self.send_unattended_command(command);
-        } else {
+        } else if !self.client_mod_command(command) {
             self.run_command(command);
         }
     }
