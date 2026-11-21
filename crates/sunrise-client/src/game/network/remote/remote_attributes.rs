@@ -45,6 +45,7 @@ impl Game<'_> {
     ) {
         let max_health = self.remote_attribute_value("minecraft:max_health", values);
         let scale = self.remote_attribute_value("minecraft:scale", values);
+        let camera_distance = self.remote_attribute_value("minecraft:camera_distance", values);
         let speed = self.remote_attribute_value("minecraft:movement_speed", values);
         let jump = self.remote_attribute_value("minecraft:jump_strength", values);
         let nameplate = self.remote_nameplate_values(values);
@@ -82,6 +83,9 @@ impl Game<'_> {
         }
         if let Some(scale) = scale {
             m.extra.model_scale = scale as f32;
+        }
+        if let Some(value) = camera_distance {
+            m.set_camera_distance(value);
         }
         if let Some(value) = nameplate.name_tag {
             m.set_name_tag_distance(value);

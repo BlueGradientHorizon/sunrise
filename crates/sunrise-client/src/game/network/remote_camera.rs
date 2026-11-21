@@ -5,17 +5,19 @@
 //! (`LocalPlayer.isControlledCamera`); the server keeps its player on the
 //! camera and lets go when the player sneaks.
 #[cfg(test)]
-#[path = "tests/remote_camera_tests.rs"]
-mod camera_tests;
-#[cfg(test)]
 #[path = "tests/camera_mount_tests.rs"]
 mod camera_mount_tests;
+#[cfg(test)]
+#[path = "tests/remote_camera_tests.rs"]
+mod camera_tests;
 
-use super::Game;
+use super::{Game, remote::Remote};
+use std::collections::HashMap;
 use sunrise_client::{
     camera::{CameraEntity, LivingCamera},
     entities::{ArmorStand, ItemFrame},
     mobs::{Mob, Species, render, villager},
+    motion::PlayerMotion,
 };
 
 /// `Minecraft.setCameraEntity` from a ClientboundSetCameraPacket: the player's
@@ -55,8 +57,7 @@ fn sleeping_view(m: &Mob) -> Option<Option<f32>> {
 /// its scale and camera distance for a detached view. A living entity's
 /// `getViewYRot` is its head's yaw (`yHeadRot`), not its body's `yRot`.
 pub(super) fn mob_camera_entity(m: &Mob) -> CameraEntity {
-    let attribute =
-        |name: &str, default: f64| m.kind.attributes.get(name).copied().unwrap_or(default);
+    let (scale, camera_distance) = m.camera_scale_and_distance();
     CameraEntity {
         position: [m.position.x, m.position.y, m.position.z],
         previous: [m.previous.x, m.previous.y, m.previous.z],
@@ -66,8 +67,8 @@ pub(super) fn mob_camera_entity(m: &Mob) -> CameraEntity {
         y_rot_o: m.previous_head_yaw,
         eye_height: m.eye_height() as f32,
         living: Some(LivingCamera {
-            scale: attribute("minecraft:scale", 1.0) as f32,
-            camera_distance: attribute("minecraft:camera_distance", 4.0),
+            scale,
+            camera_distance,
             sleeping: sleeping_view(m),
             dead: (m.health <= 0.0).then_some(m.death_time),
         }),
@@ -175,6 +176,10 @@ pub(super) struct CameraEntities<'a> {
     pub boats: &'a [super::boats::Boat],
     pub frames: &'a [ItemFrame],
     pub tnts: &'a [super::tnt::PrimedTnt],
+    /// `Entity.getVehicle` of every entity (the `SetPassengers` graph).
+    pub vehicles: &'a HashMap<u32, super::remote_vehicles::PassengerSeat>,
+    /// The local player's id and body, when a camera entity can ride it.
+    pub player: Option<(u32, &'a PlayerMotion)>,
 }
 
 impl CameraEntities<'_> {
@@ -189,6 +194,31 @@ impl CameraEntities<'_> {
     /// `Camera.alignWithEntity`: the view out of the entity, `None` when the
     /// level does not hold it.
     pub(super) fn view(&self, id: u32) -> Option<CameraEntity> {
+        let mut entity = self.entity_view(id)?;
+        entity.mount = self.living_vehicle(id);
+        Some(entity)
+    }
+    /// `Camera.alignWithEntity`: `isPassenger() && getVehicle() instanceof LivingEntity`, the
+    /// vehicle's scale and camera distance.
+    fn living_vehicle(&self, id: u32) -> Option<(f32, f64)> {
+        let vehicle = self.vehicles.get(&id)?.vehicle;
+        if let Some(m) = self.mobs.iter().find(|m| m.id == vehicle) {
+            return Some(m.camera_scale_and_distance());
+        }
+        if let Some(a) = self.stands.iter().find(|a| a.id == vehicle) {
+            return stand_camera_entity(a)
+                .living
+                .map(|l| (l.scale, l.camera_distance));
+        }
+        let (_, p) = self.player.filter(|(player, _)| *player == vehicle)?;
+        let attribute =
+            |name: &str, default: f64| p.attributes.computed_value_of(name).unwrap_or(default);
+        Some((
+            attribute("minecraft:scale", 1.0) as f32,
+            attribute("minecraft:camera_distance", 4.0),
+        ))
+    }
+    fn entity_view(&self, id: u32) -> Option<CameraEntity> {
         if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
             return Some(mob_camera_entity(m));
         }
@@ -216,11 +246,10 @@ impl Game<'_> {
     /// `ClientPacketListener.handleSetCamera`.
     pub(in crate::game) fn remote_set_camera(&mut self, camera_id: i32) {
         let id = camera_id as u32;
-        let in_level = self.camera_entities().holds(id)
-            || self
-                .remote
-                .as_ref()
-                .is_some_and(|r| r.tracked_entity(camera_id).is_some());
+        let in_level = self
+            .remote
+            .as_ref()
+            .is_some_and(|r| self.camera_entities(r).holds(id) || r.tracked_entity(camera_id).is_some());
         let player = self
             .remote
             .as_ref()
@@ -258,16 +287,18 @@ impl Game<'_> {
     /// level still holds it.
     pub(super) fn spectated_camera_snapshot(&self) -> Option<CameraEntity> {
         let id = self.remote_camera_id()?;
-        self.camera_entities().view(id)
+        self.camera_entities(self.remote.as_ref()?).view(id)
     }
     /// The level's entities a server camera may name.
-    fn camera_entities(&self) -> CameraEntities<'_> {
+    fn camera_entities<'a>(&'a self, remote: &'a Remote) -> CameraEntities<'a> {
         CameraEntities {
             mobs: &self.mobs,
             stands: &self.armor_stands,
             boats: &self.boats,
             frames: &self.item_frames,
             tnts: &self.tnts,
+            vehicles: &remote.passenger_vehicles,
+            player: self.player.as_ref().map(|p| (remote.entity_id as u32, p)),
         }
     }
     /// The entity under a spectator's crosshair (`Minecraft.hitResult` as an

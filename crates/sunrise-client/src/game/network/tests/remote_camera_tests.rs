@@ -74,6 +74,8 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
         boats: std::slice::from_ref(&boat),
         frames: std::slice::from_ref(&frame),
         tnts: std::slice::from_ref(&tnt),
+        vehicles: &std::collections::HashMap::new(),
+        player: None,
     };
 
     let view = entities.view(9).expect("a boat is a camera");
@@ -111,6 +113,8 @@ fn a_frame_camera_turns_with_its_facing() {
             boats: &[],
             frames: std::slice::from_ref(&frame),
             tnts: &[],
+            vehicles: &std::collections::HashMap::new(),
+            player: None,
         };
         let view = entities.view(1).unwrap();
         (view.y_rot, view.x_rot)
