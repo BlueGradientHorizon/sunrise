@@ -214,7 +214,7 @@ impl Uses {
     /// The table a package carries for a mod made for `made_for` (a build id).
     pub fn table(&self, made_for: impl Into<String>) -> UsesTable {
         UsesTable {
-            schema: USES_SCHEMA,
+            schema: PLAIN_SCHEMA,
             made_for: made_for.into(),
             entries: self.entries().cloned().collect(),
         }
@@ -2915,10 +2915,13 @@ fn fit_report<'a>(
     }
 }
 
-/// The schema [`UsesTable`] writes, which adds split game-code fingerprints.
-pub const USES_SCHEMA: u32 = GAME_CODE_SCHEMA;
+/// The newest schema [`UsesTable::read`] takes, which adds split game-code fingerprints. Only a
+/// list that holds one is written with it.
+pub const USES_SCHEMA: u32 = 4;
 
-const GAME_CODE_SCHEMA: u32 = 4;
+/// The schema of a list with no split fingerprint, so the tools of builds published before
+/// [`USES_SCHEMA`] still read it.
+pub const PLAIN_SCHEMA: u32 = 3;
 
 /// The first schema, which [`UsesTable::read`] still reads because published packages carry it.
 /// Its lists recorded a build wherever the scan was in doubt, with nothing to tell a doubt from a
@@ -3005,8 +3008,7 @@ impl UsesTable {
         }
         let mut table: Self =
             serde_json::from_slice(bytes).map_err(|e| UsesError::Json(e.to_string()))?;
-        if table.schema < GAME_CODE_SCHEMA
-            && table.entries.iter().any(|entry| entry.game_code.is_some())
+        if table.schema < USES_SCHEMA && table.entries.iter().any(|entry| entry.game_code.is_some())
         {
             return Err(UsesError::Json("game_code requires uses schema 4".into()));
         }

@@ -1,6 +1,7 @@
 //! How native mods stand against one game build before anything compiles: each mod's refusal and fit (SDK design §10), and the route the usable ones take.
 use crate::{api, game_uses, prebuilt, scan_bundles};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -275,7 +276,7 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
         match judged {
             Ok(mut verdict) => {
                 if let Verdict::DoesNotFit { misfits, .. } = &mut verdict {
-                    for misfit in misfits {
+                    for misfit in misfits.iter_mut() {
                         if matches!(
                             misfit.change,
                             Change::Refused { .. }
@@ -289,6 +290,9 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
                             misfit.change = Change::Changed;
                         }
                     }
+                    // A function declared as both a mixin target and an internal reads the same.
+                    let mut seen = BTreeSet::new();
+                    misfits.retain(|misfit| seen.insert(misfit.clone()));
                 }
                 if verdict.usable() {
                     usable.push(project);

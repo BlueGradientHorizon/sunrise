@@ -103,6 +103,9 @@ pub(crate) fn table(uses: &Uses, root: &Path, sdk: &PinnedSdk) -> Result<UsesTab
                 .into_iter()
                 .filter_map(|(id, now)| now.into_entry(id)),
         );
+        if table.entries.iter().any(|entry| entry.game_code.is_some()) {
+            table.schema = mod_surface::uses::USES_SCHEMA;
+        }
     }
     Ok(table)
 }

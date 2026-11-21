@@ -78,7 +78,7 @@ reads source, and what it leaves to the compile, is in
 
 | Field | What it is |
 |---|---|
-| `schema` | The table's schema number (4). A reader also takes schemas 1–3 ([Lists an older tool wrote](#lists-an-older-tool-wrote)). It refuses any other number, unknown fields, repeated ids and a table over 4 MiB. |
+| `schema` | The table's schema number: 4 when an entry has `game_code`, otherwise 3, which the tools of earlier builds read. A reader also takes schemas 1 and 2 ([Lists an older tool wrote](#lists-an-older-tool-wrote)). It refuses any other number, unknown fields, repeated ids and a table over 4 MiB. |
 | `made_for` | The build id the hashes come from: the mod's pin. |
 | `entries[].id`, `entries[].hash` | A record the mod uses, and its hash at `made_for`. |
 | `entries[].game_code` | Where the pinned `functions.json` provides split digests: `functions` maps each declared function path to `declaration` and `body` SHA-256 digests. For a loop, `loop_contract` also records how the loop is published and its slot trait's hash. |

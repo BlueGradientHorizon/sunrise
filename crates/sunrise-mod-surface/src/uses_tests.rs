@@ -1025,6 +1025,8 @@ fn the_list_does_not_depend_on_the_order_of_sources() {
 fn a_table_reads_back_and_judges_like_the_list() {
     let uses = scan(MOD);
     let table = UsesTable::read(uses.table("afe471c").to_json().as_bytes()).unwrap();
+    // No split game-code fingerprint: the schema published tools read.
+    assert_eq!(table.schema, 3);
     assert_eq!(table.made_for, "afe471c");
     assert_eq!(table.entries, uses.entries().cloned().collect::<Vec<_>>());
     let mut target = base();
