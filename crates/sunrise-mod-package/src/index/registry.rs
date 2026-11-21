@@ -14,6 +14,7 @@ use super::{
 };
 use crate::manifest::{parse_version, revision};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
@@ -190,6 +191,15 @@ pub fn valid_repo(repo: &str) -> bool {
 }
 
 impl Entry {
+    fn source_url(&self) -> Cow<'_, str> {
+        if self.source.is_empty()
+            && let Some(repo) = &self.repo
+        {
+            return Cow::Owned(format!("https://github.com/{repo}"));
+        }
+        Cow::Borrowed(&self.source)
+    }
+
     /// The entry with the repository's page filling what it leaves out.
     pub fn resolved(&self, page: &Page) -> Entry {
         let mut e = self.clone();
@@ -205,10 +215,8 @@ impl Entry {
         if e.authors.is_empty() {
             e.authors = page.authors.clone();
         }
-        if e.source.is_empty()
-            && let Some(repo) = &self.repo
-        {
-            e.source = format!("https://github.com/{repo}");
+        if let Cow::Owned(source) = self.source_url() {
+            e.source = source;
         }
         e
     }

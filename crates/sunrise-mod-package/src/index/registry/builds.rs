@@ -104,7 +104,7 @@ fn submissions<'a>(
         .key
         .as_deref()
         .ok_or("builds need a project signing key")?;
-    let source_repo = super::github_repo(&entry.source)
+    let source_repo = super::github_repo(&entry.source_url())
         .ok_or("builds need the project's GitHub repository in `source`")?;
     let mut seen = BTreeSet::new();
     version

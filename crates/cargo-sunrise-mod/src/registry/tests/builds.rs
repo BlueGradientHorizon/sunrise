@@ -412,6 +412,13 @@ fn descriptor_authentication_binds_version_build_and_host_before_listing_archive
 #[test]
 fn list_supplies_descriptor_then_each_verified_archive_url() {
     let release = Release::new("source.smod");
+    release.0.edit(ID, |t| {
+        t.replace(
+            "source='https://github.com/Test-Author/Release_Probe'",
+            "repo='Test-Author/Release_Probe'",
+        )
+    });
+    release.0.make_base();
     release.use_descriptor("valid");
     let root = release.0.0.path();
     let head = registry::load(&root.join("head")).unwrap();
@@ -432,6 +439,14 @@ fn list_supplies_descriptor_then_each_verified_archive_url() {
         assert_eq!(asset.size, Some(bytes.len() as u64));
         assert_eq!(asset.sha256, sha256(&bytes));
     }
+    release.check().unwrap();
+    let built = release.build();
+    let project = built.project(ID).unwrap();
+    assert_eq!(
+        project.source,
+        "https://github.com/Test-Author/Release_Probe"
+    );
+    assert_eq!(project.versions[0].native_binaries.len(), 2);
 }
 
 #[test]
