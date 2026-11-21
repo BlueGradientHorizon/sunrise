@@ -84,7 +84,7 @@ drawn with the next stage the game reaches."#]
         collect_validator = "crate::client::render_pipeline::validate_render_pipelines",
         context = "registration",
         neoforge = "RegisterRenderPipelinesEvent",
-        version = 2
+        version = 3
     )]
     fn register_render_pipelines(pipelines: &mut Vec<mod_api::RenderPipeline>);
 }

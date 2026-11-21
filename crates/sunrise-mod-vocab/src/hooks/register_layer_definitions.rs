@@ -50,7 +50,7 @@ The sprite is the entity texture ID and the tint is `0xRRGGBB`."#]
         answered_by = "mod",
         registration_append = "custom",
         neoforge = "EntityRenderersEvent.RegisterLayerDefinitions",
-        version = 2
+        version = 3
     )]
     fn register_layer_definitions(layers: &mut Vec<Answered<LayerDefinitionRegistration>>);
 }
