@@ -3925,10 +3925,13 @@ impl Game<'_> {
     ) {
         self.fire_food_level_changed(player, name, from, to, cancel);
     }
-    /// Before `player` picks up orb `orb` in `dimension`. Mutations to `value`
-    /// and `count` take effect only when not canceled. Value keeps vanilla
-    /// signed integer semantics; count is kept at least one.
-    /// Canceling leaves the orb and pickup delay unchanged. Server-side.
+    /// Before `player` picks up orb `orb` in `dimension` (`ExperienceOrb.playerTouch`,
+    /// NeoForge's `PlayerXpEvent.PickupXp`). Mutations to `value` and `count` take
+    /// effect on the live orb only when not canceled: `value` keeps vanilla signed
+    /// integer semantics (zero or negative values repair nothing and award no XP),
+    /// and setting `count` to `0` discards the orb without awarding XP or setting the
+    /// 2-tick pickup delay. Canceling leaves the orb and pickup delay unchanged.
+    /// Server-side.
     pub(in crate::game) fn native_pickup_xp(
         &mut self,
         player: u128,

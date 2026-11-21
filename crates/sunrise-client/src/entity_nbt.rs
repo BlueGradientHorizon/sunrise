@@ -3040,7 +3040,11 @@ pub fn orbs_from_nbt(tag: &Tag) -> Vec<ExperienceOrb> {
     let Some(position) = position(tag) else {
         return Vec::new();
     };
-    let count = number(tag.get("Count")).unwrap_or(1).max(1) as u32;
+    // `ExperienceOrb.readAdditionalSaveData`: `input.read("Count", ExtraCodecs.POSITIVE_INT).orElse(1)`.
+    let count = number(tag.get("Count"))
+        .map(|n| n as i32)
+        .filter(|&n| n >= 1)
+        .unwrap_or(1) as u32;
     let orb = ExperienceOrb {
         fire_ticks: number(tag.get("Fire")).unwrap_or(0) as i16 as i32,
         attachment_lifetime: Default::default(),
@@ -3053,7 +3057,7 @@ pub fn orbs_from_nbt(tag: &Tag) -> Vec<ExperienceOrb> {
         previous: position,
         velocity: motion(tag),
         // `getShortOr("Value", 0)`, unclamped.
-        value: tag.get("Value").and_then(int_value).unwrap_or(0) as i16 as i32,
+        value: number(tag.get("Value")).unwrap_or(0) as i16 as i32,
         // `getShortOr("Age", 0)`: a signed short, unclamped.
         age: tag.get("Age").and_then(int_value).unwrap_or(0) as i16 as i32,
         on_ground: flag(tag, "OnGround"),
@@ -6518,6 +6522,34 @@ mod tests {
             (o.value, o.count) = (value, count);
             let back = orbs_from_nbt(&orb_to_nbt(&o, [0; 4])).remove(0);
             assert_eq!((back.value, back.count), (value, count));
+        }
+    }
+    /// `ExperienceOrb.addAdditionalSaveData` writes `(short) getValue()` and `int count`;
+    /// `readAdditionalSaveData` reads `Value` with `getShortOr(..., 0)` and `Count` with
+    /// `ExtraCodecs.POSITIVE_INT.orElse(1)`.
+    #[test]
+    fn orb_nbt_validates_persisted_value_and_count_representations() {
+        let at = ("Pos", doubles(&[1.0, 2.0, 3.0]));
+        let mut o = orbs_from_nbt(&Tag::compound([at.clone()])).remove(0);
+        for (value, saved) in [(0, 0), (-5, -5), (40_000, -25_536)] {
+            o.value = value;
+            o.count = 2;
+            let tag = orb_to_nbt(&o, [0; 4]);
+            assert_eq!(tag.get("Value"), Some(&Tag::Short(saved)));
+            assert_eq!(orbs_from_nbt(&tag)[0].value, i32::from(saved));
+        }
+        o.value = 7;
+        o.count = i32::MAX as u32 + 5;
+        let tag = orb_to_nbt(&o, [0; 4]);
+        assert_eq!(tag.get("Count"), Some(&Tag::Int(i32::MAX)));
+        assert_eq!(orbs_from_nbt(&tag)[0].count, i32::MAX as u32);
+        for bad_count in [
+            Tag::Int(0),
+            Tag::Int(-5),
+            Tag::Long(i64::from(i32::MAX) + 1),
+        ] {
+            let loaded = orbs_from_nbt(&Tag::compound([at.clone(), ("Count", bad_count)]));
+            assert_eq!(loaded[0].count, 1);
         }
     }
     /// `Entity.saveWithoutId` writes `Fire` for every entity and `Entity.load`

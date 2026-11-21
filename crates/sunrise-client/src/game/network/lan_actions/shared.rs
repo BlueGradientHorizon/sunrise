@@ -2378,8 +2378,14 @@ mod respawn_position_tests {
 mod pickup_xp_tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
     use sunrise_client::entities::ExperienceOrb;
+    use sunrise_client::entity_nbt::{orb_to_nbt, orbs_from_nbt};
     use sunrise_core::geometry::Vec3;
+    use sunrise_core::nbt::Tag;
 
     /// Listens to `pickup_xp`, canceling it when told to.
     struct Listen(bool);
@@ -2398,6 +2404,71 @@ mod pickup_xp_tests {
         }
     }
 
+    struct Edit {
+        value: Option<i32>,
+        count: Option<u32>,
+        cancel: bool,
+        calls: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Edit {
+        fn pickup_xp(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::PickupXpEvent<'_>,
+        ) -> mod_api::Flow {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            if let Some(value) = self.value {
+                event.value = value;
+            }
+            if let Some(count) = self.count {
+                event.count = count;
+            }
+            if self.cancel {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
+            }
+        }
+    }
+
+    struct DirectOrbEdit;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for DirectOrbEdit {
+        fn pickup_xp(
+            &self,
+            host: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::PickupXpEvent<'_>,
+        ) -> mod_api::Flow {
+            assert!(host.set_experience_orb(event.dimension, event.orb, Some(15), Some(3), None));
+            mod_api::Flow::Continue
+        }
+    }
+
+    fn make_orb(value: i32, count: u32) -> ExperienceOrb {
+        let p = Vec3::new(0.5, 70.0, 0.5);
+        ExperienceOrb {
+            attachment_lifetime: Default::default(),
+            rotation: [0.0, 0.0],
+            join: Default::default(),
+            id: 40,
+            position: p,
+            previous: p,
+            velocity: Vec3::ZERO,
+            value,
+            age: 0,
+            on_ground: true,
+            count,
+            fire_ticks: 0,
+            ticks: 0,
+            air: 300,
+            health: 5,
+            no_gravity: true,
+            following: None,
+            fall_distance: 0.0,
+        }
+    }
+
     /// A guest takes the orb it stands in: the orb's id left in the level and the
     /// guest's total experience after.
     fn take_orb() -> (bool, i32) {
@@ -2408,30 +2479,40 @@ mod pickup_xp_tests {
             g.loaded = true;
             g.position = [0.5, 70.0, 0.5];
             game.lan.as_mut().unwrap().hub.guests.push(g);
-            let p = Vec3::new(0.5, 70.0, 0.5);
-            game.orbs.push(ExperienceOrb {
-                attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                id: 40,
-                position: p,
-                previous: p,
-                velocity: Vec3::ZERO,
-                value: 7,
-                age: 0,
-                on_ground: true,
-                count: 1,
-                fire_ticks: 0,
-                ticks: 0,
-                air: 300,
-                health: 5,
-                no_gravity: true,
-                following: None,
-                fall_distance: 0.0,
-            });
+            game.orbs.push(make_orb(7, 1));
             game.guest_orbs(0);
             let left = game.orbs.iter().any(|o| o.id == 40);
             out = (left, game.lan.as_ref().unwrap().hub.guests[0].xp_total);
+        });
+        out
+    }
+
+    fn run_pickup(
+        initial_value: i32,
+        initial_count: u32,
+        initial_xp: i32,
+        hooks: impl mod_api::Hooks + 'static,
+    ) -> (Option<(i32, u32)>, i32, u32, Option<Tag>) {
+        let mut out = (None, 0, 0, None);
+        let mods = vec![mod_api::ModEntry::new("pickup-xp", Box::new(hooks))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                open_to_lan(game);
+                let mut g = guest(1);
+                g.loaded = true;
+                g.position = [0.5, 70.0, 0.5];
+                g.xp_total = initial_xp;
+                game.lan.as_mut().unwrap().hub.guests.push(g);
+                game.orbs.push(make_orb(initial_value, initial_count));
+                game.guest_orbs(0);
+                let surviving = game.orbs.iter().find(|o| o.id == 40);
+                let saved = surviving.map(|o| orb_to_nbt(o, [0; 4]));
+                let state = surviving.map(|o| (o.value, o.count));
+                let host = game.lan.as_ref().unwrap();
+                let xp = host.hub.guests[0].xp_total;
+                let delay = host.play.get(&1).map_or(0, |p| p.xp_delay);
+                out = (state, xp, delay, saved);
+            });
         });
         out
     }
@@ -2447,6 +2528,170 @@ mod pickup_xp_tests {
         mod_platform::testing::with_mods(mods, || assert_eq!(take_orb(), none));
         let mods = vec![mod_api::ModEntry::new("cancel", Box::new(Listen(true)))].into();
         mod_platform::testing::with_mods(mods, || assert_eq!(take_orb(), (true, 0)));
+    }
+
+    /// `value` edits keep vanilla `ExperienceOrb.DATA_VALUE` signed `int` semantics without
+    /// clamping `<= 0` to 1; surviving orbs persist `Value` as a signed short.
+    #[test]
+    #[ignore = "daily"]
+    fn pickup_xp_value_edits_keep_signed_vanilla_semantics_independently_of_count() {
+        let (orb, xp, delay, saved) = run_pickup(
+            7,
+            2,
+            10,
+            Edit {
+                value: Some(0),
+                count: None,
+                cancel: false,
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+        );
+        assert_eq!((orb, xp, delay), (Some((0, 1)), 10, 2));
+        let back = orbs_from_nbt(&saved.unwrap());
+        assert_eq!((back[0].value, back[0].count), (0, 1));
+
+        let (orb, xp, delay, saved) = run_pickup(
+            7,
+            2,
+            10,
+            Edit {
+                value: Some(-5),
+                count: None,
+                cancel: false,
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+        );
+        assert_eq!((orb, xp, delay), (Some((-5, 1)), 10, 2));
+        let back = orbs_from_nbt(&saved.unwrap());
+        assert_eq!((back[0].value, back[0].count), (-5, 1));
+
+        let (orb, xp, delay, saved) = run_pickup(
+            7,
+            2,
+            0,
+            Edit {
+                value: Some(40_000),
+                count: None,
+                cancel: false,
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+        );
+        assert_eq!((orb, xp, delay), (Some((40_000, 1)), 40_000, 2));
+        let tag = saved.unwrap();
+        assert_eq!(tag.get("Value"), Some(&Tag::Short(40_000_i32 as i16)));
+        assert_eq!(tag.get("Count"), Some(&Tag::Int(1)));
+    }
+
+    /// `count` edits are not floored to one: `0` discards the orb with no pickup or delay,
+    /// `1` takes one pickup and discards, and `> 1` takes one pickup and leaves `count - 1`.
+    #[test]
+    #[ignore = "daily"]
+    fn pickup_xp_count_edits_do_not_floor_zero_and_delay_only_when_taken() {
+        let (orb, xp, delay, saved) = run_pickup(
+            7,
+            3,
+            0,
+            Edit {
+                value: None,
+                count: Some(0),
+                cancel: false,
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+        );
+        assert_eq!((orb, xp, delay, saved), (None, 0, 0, None));
+
+        let (orb, xp, delay, _) = run_pickup(
+            7,
+            3,
+            0,
+            Edit {
+                value: None,
+                count: Some(1),
+                cancel: false,
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+        );
+        assert_eq!((orb, xp, delay), (None, 7, 2));
+
+        let (orb, xp, delay, saved) = run_pickup(
+            7,
+            1,
+            0,
+            Edit {
+                value: None,
+                count: Some(4),
+                cancel: false,
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+        );
+        assert_eq!((orb, xp, delay), (Some((7, 3)), 7, 2));
+        let back = orbs_from_nbt(&saved.unwrap());
+        assert_eq!((back[0].value, back[0].count), (7, 3));
+    }
+
+    /// Veto discards event edits and leaves `takeXpDelay` at 0; `takeXpDelay > 0` skips
+    /// firing `pickup_xp` until it reaches 0; direct writes to the live orb survive when
+    /// the event fields are left untouched.
+    #[test]
+    #[ignore = "daily"]
+    fn pickup_xp_cancel_and_cooldown_preserve_veto_ordering_and_live_orb_edits() {
+        let cancel_calls = Arc::new(AtomicUsize::new(0));
+        let (orb, xp, delay, _) = run_pickup(
+            7,
+            2,
+            0,
+            Edit {
+                value: Some(99),
+                count: Some(5),
+                cancel: true,
+                calls: Arc::clone(&cancel_calls),
+            },
+        );
+        assert_eq!(cancel_calls.load(Ordering::Relaxed), 1);
+        assert_eq!((orb, xp, delay), (Some((7, 2)), 0, 0));
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mods = vec![mod_api::ModEntry::new(
+            "pickup-cooldown",
+            Box::new(Edit {
+                value: None,
+                count: None,
+                cancel: false,
+                calls: Arc::clone(&calls),
+            }),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                open_to_lan(game);
+                let mut g = guest(1);
+                g.loaded = true;
+                g.position = [0.5, 70.0, 0.5];
+                game.lan.as_mut().unwrap().hub.guests.push(g);
+                game.orbs.push(make_orb(7, 2));
+
+                game.guest_orbs(0);
+                assert_eq!(calls.load(Ordering::Relaxed), 1);
+                assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].xp_total, 7);
+                assert_eq!(game.lan.as_ref().unwrap().play[&1].xp_delay, 2);
+
+                // Tick while delayed: takeXpDelay drops 2 -> 1 and pickup_xp does not fire.
+                game.guest_orbs(0);
+                assert_eq!(calls.load(Ordering::Relaxed), 1);
+                assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].xp_total, 7);
+                assert_eq!(game.lan.as_ref().unwrap().play[&1].xp_delay, 1);
+
+                // Next tick: takeXpDelay drops 1 -> 0, pickup_xp fires and takes the last orb.
+                game.guest_orbs(0);
+                assert_eq!(calls.load(Ordering::Relaxed), 2);
+                assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].xp_total, 14);
+                assert_eq!(game.lan.as_ref().unwrap().play[&1].xp_delay, 2);
+                assert!(game.orbs.is_empty());
+            });
+        });
+
+        let (orb, xp, delay, _) = run_pickup(7, 1, 0, DirectOrbEdit);
+        assert_eq!((orb, xp, delay), (Some((15, 2)), 15, 2));
     }
 }
 
