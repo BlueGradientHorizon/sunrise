@@ -465,12 +465,15 @@ impl<'a> Index<'a> {
         let krate = self.modules[module].krate.clone();
         let root = self.module(&krate, &[])?;
         let spelling = self.modules[root].items.iter().find_map(|item| {
-            let Item::ExternCrate(item) = item else {
+            let Item::ExternCrate(extern_item) = item else {
                 return None;
             };
-            let alias = item.rename.as_ref().map_or(&item.ident, |(_, name)| name);
-            (self.default_build(root, &item.attrs) && *alias == name)
-                .then(|| item.ident.to_string())
+            let alias = extern_item
+                .rename
+                .as_ref()
+                .map_or(&extern_item.ident, |(_, name)| name);
+            (*alias == name && self.item_active(root, item, &extern_item.attrs))
+                .then(|| extern_item.ident.to_string())
         });
         if spelling.as_deref() == Some("self") {
             return Ok(Some(krate));
@@ -811,8 +814,8 @@ impl<'a> Index<'a> {
         let mut shadowed = false;
         for (item, definition_item) in items.iter().enumerate() {
             if let Some((attrs, visibility)) = definition(definition_item)
-                && self.item_active(module, definition_item, attrs)
                 && defines(definition_item, name, namespace)
+                && self.item_active(module, definition_item, attrs)
             {
                 if reachable(visibility) {
                     if let Item::Mod(child) = definition_item {
@@ -831,33 +834,41 @@ impl<'a> Index<'a> {
         let mut named = Vec::new();
         for item in items {
             match item {
-                Item::Use(use_item) if self.item_active(module, item, &use_item.attrs) => {
-                    let item = use_item;
-                    let open = reachable(&item.vis);
+                Item::Use(use_item) => {
+                    let open = reachable(&use_item.vis);
+                    let leading_colon = use_item.leading_colon.is_some();
+                    let mut matched_named = Vec::new();
+                    let mut matched_globs = Vec::new();
                     uses(
-                        &item.tree,
+                        &use_item.tree,
                         &mut Vec::new(),
                         &mut |path, alias| match alias {
                             Some(alias) if alias == name => {
-                                named.push((path, item.leading_colon.is_some(), open));
+                                matched_named.push((path, leading_colon, open));
                             }
-                            None if open => globs.push((path, item.leading_colon.is_some())),
+                            None if open => matched_globs.push((path, leading_colon)),
                             _ => {}
                         },
                     );
+                    if (!matched_named.is_empty() || !matched_globs.is_empty())
+                        && self.item_active(module, item, &use_item.attrs)
+                    {
+                        named.extend(matched_named);
+                        globs.extend(matched_globs);
+                    }
                 }
-                Item::ExternCrate(extern_item)
-                    if self.item_active(module, item, &extern_item.attrs) =>
-                {
-                    let item = extern_item;
-                    let alias = item.rename.as_ref().map_or(&item.ident, |(_, alias)| alias);
-                    if *alias == name {
-                        let (source, rooted) = if item.ident == "self" {
+                Item::ExternCrate(extern_item) => {
+                    let alias = extern_item
+                        .rename
+                        .as_ref()
+                        .map_or(&extern_item.ident, |(_, alias)| alias);
+                    if *alias == name && self.item_active(module, item, &extern_item.attrs) {
+                        let (source, rooted) = if extern_item.ident == "self" {
                             ("crate".to_owned(), false)
                         } else {
-                            (item.ident.to_string(), true)
+                            (extern_item.ident.to_string(), true)
                         };
-                        named.push((vec![source], rooted, reachable(&item.vis)));
+                        named.push((vec![source], rooted, reachable(&extern_item.vis)));
                     }
                 }
                 _ => {}
