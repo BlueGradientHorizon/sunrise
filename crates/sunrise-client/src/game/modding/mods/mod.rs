@@ -539,8 +539,8 @@ pub(super) fn register_select_item_model_properties(role: ExecutionRole) {
 /// definitions' entries on them list the mod's sprites; model loaders
 /// (`native_register_model_loaders`), so models naming one get the mod's quads; item model node
 /// types (`native_register_item_models`), so item definitions' nodes of them draw what the mod
-/// answers; and animation targets and interpolations (`native_register_json_animation_types`), so
-/// animation files may name them.
+/// answers; and animation targets and interpolations (`native_register_json_animation_types`),
+/// bound directly to their callbacks so animation files resolve and convert them at parse time.
 /// Block-state
 /// definition types (`native_register_block_state_models`), so blockstate files naming one get
 /// the models the mod picks; and special item model factories

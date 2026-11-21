@@ -27,8 +27,9 @@ use super::{
     native_panel_recipes::RecipePage,
 };
 use mod_api::__private::game::{
-    BlockStateDefinitionRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
-    ParticleGroupRegistration, SpriteSourceRegistration, StandaloneModelRegistration,
+    BlockStateDefinitionRegistration, JsonAnimationTypeRegistration, LayerDefinitionRegistration,
+    ModelLoaderRegistration, ParticleGroupRegistration, SpriteSourceRegistration,
+    StandaloneModelRegistration,
 };
 use mod_api::CommandSource;
 use mod_api::GameMode;
@@ -40,9 +41,9 @@ use mod_api::{
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, CommandInvocation, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers,
     EntityRef, EntityRenderers, GameRuleActor, HandRender, InsideEffects, InteractionAttempt,
-    InteractionKey, ItemEntityRef, JsonAnimationType, LifecycleContext, LivingRef, LoadConditions,
-    NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
-    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
+    InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
+    ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
+    RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
     ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
     VillagerProfessions, WorldPhase,
 };
