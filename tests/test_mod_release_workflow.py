@@ -10,7 +10,7 @@ from unittest.mock import patch
 TEMPLATES = pathlib.Path(__file__).resolve().parents[1] / "crates/cargo-sunrise-mod/template/native"
 sys.path.insert(0, str(TEMPLATES))
 from sunrise_release import Batch, LINUX, REPO, confirmed_rebuild, json_read, json_write, sha, sign
-from sunrise_release_github import missing_assets, upload
+from sunrise_release_github import missing_assets, submit, upload
 sys.path.pop(0)
 
 
@@ -174,6 +174,45 @@ binaries = "{self.base}/{descriptor}"
         json_write(self.published, index)
         with self.assertRaisesRegex(SystemExit, "taken down"):
             self.confirm()
+
+    def test_live_stable_pins_stop_publication_even_if_registry_pages_is_stale(self):
+        stage = self.work / "submission"
+        (stage / "mods").mkdir(parents=True)
+        (stage / "PULL_REQUEST.md").write_text("Append build\n", encoding="utf-8")
+        (stage / "mods" / "example.toml").write_bytes(self.entry.read_bytes())
+        stale_releases = self.batch.releases.read_bytes()
+        stale_index = self.published.read_bytes()
+        for role in ("source", "target"):
+            for withdrawn in (False, True):
+                with self.subTest(role=role, withdrawn=withdrawn):
+                    tag = self.batch.plan[role]["tag"]
+                    live = [row for row in json_read(self.batch.releases) if row["tag"] != tag]
+                    if not withdrawn:
+                        live.append({"tag": tag, "commit": "f" * 40})
+
+                    def fresh(*args):
+                        self.assertEqual(args[:3], ("registry", "releases", "--out"))
+                        json_write(args[3], live)
+
+                    with (patch.object(self.batch, "check_tool"),
+                          patch("sunrise_release_github.registry"),
+                          patch("sunrise_release_github.stage"),
+                          patch("sunrise_release_github.tag_commit", return_value="9" * 40),
+                          patch("sunrise_release_github.release", return_value={"draft": False}),
+                          patch("sunrise_release_github.remote_files", return_value=[self.batch.descriptor]),
+                          patch("sunrise_release_github.tool", side_effect=fresh) as releases,
+                          patch("sunrise_release_github.call") as call,
+                          patch("sunrise_release_github.api") as api,
+                          patch.dict("os.environ", GH_TOKEN="unused-fixture-token")):
+                        with self.assertRaisesRegex(SystemExit, f"Sunrise {role} tag {tag}"):
+                            upload(self.batch)
+                        with self.assertRaisesRegex(SystemExit, f"Sunrise {role} tag {tag}"):
+                            submit(self.batch, self.registry, stage, "test/registry")
+                        self.assertEqual(releases.call_count, 2)
+                        call.assert_not_called()
+                        api.assert_not_called()
+                    self.assertEqual(self.batch.releases.read_bytes(), stale_releases)
+                    self.assertEqual(self.published.read_bytes(), stale_index)
 
     def test_upload_never_uploads_or_recreates_a_missing_original_source(self):
         with (patch.object(self.batch, "check_tool"), patch("sunrise_release_github.registry"),

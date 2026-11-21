@@ -12,7 +12,7 @@ import tempfile
 import tomllib
 from urllib.parse import quote, urlencode
 
-from sunrise_release import Batch, REGISTRY, REPO, SHA, call, plan, plan_outputs, require, sha, stage, tool
+from sunrise_release import Batch, REGISTRY, REPO, SHA, call, json_read, plan, plan_outputs, require, sha, stage, tool
 
 
 SAVED = "sunrise-release-signed"
@@ -81,6 +81,18 @@ def remote_files(batch, released, expected):
         return missing_assets(expected, rows, digest)
 
 
+def recheck_stable_tags(batch):
+    """Registry Pages can still describe a release that has moved or been withdrawn."""
+    with tempfile.TemporaryDirectory(dir=batch.work) as scratch:
+        output = Path(scratch) / "releases.json"
+        tool("registry", "releases", "--out", output)
+        commits = {row["tag"]: row["commit"] for row in json_read(output)}
+    for role in ("source", "target"):
+        tag = batch.plan[role]["tag"]
+        require(commits.get(tag) == batch.plan[role]["commit"],
+                f"Sunrise {role} tag {tag} moved or was withdrawn since planning; replan the rebuild")
+
+
 def upload(batch):
     batch.check_tool()
     expected = batch.check_signed()
@@ -106,6 +118,8 @@ def upload(batch):
     remote_expected = {**expected, **original}
     pending = remote_files(batch, released, remote_expected)
     require(not set(pending).intersection(original), "the original reviewed source is missing from the author release")
+    if not batch.initial:
+        recheck_stable_tags(batch)
     if pending:
         call("gh", "release", "upload", batch.tag, *(batch.assets / name for name in pending), "--repo", batch.repo)
     require(not remote_files(batch, released, remote_expected), "the author release is missing assets after upload")
@@ -160,6 +174,8 @@ def submit(batch, checkout, staged, fork):
     batch.check_tool()
     if (staged / "ALREADY_LISTED").exists():
         return
+    if not batch.initial:
+        recheck_stable_tags(batch)
     draft = (staged / "PULL_REQUEST.md").read_text(encoding="utf-8")
     relative = [Path("mods") / f"{batch.id}.toml"]
     icon = Path("icons") / f"{batch.id}.png"
