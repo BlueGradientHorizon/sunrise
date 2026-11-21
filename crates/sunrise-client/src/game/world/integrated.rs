@@ -732,8 +732,7 @@ impl Game<'_> {
         ready: &Sender<Ready>,
         opening: Opening,
     ) -> Result<()> {
-        let result = self.run_server_lifecycle(false, |game, startup_began| {
-            *startup_began = true;
+        let result = self.run_server_lifecycle(false, |game| {
             game.run_integrated_inner(launch, flags, tasks, ready, opening)
         });
         self.finish_server_capture();
@@ -747,20 +746,24 @@ impl Game<'_> {
         tasks: Receiver<OwnerRequest>,
         ready: &Sender<Ready>,
         opening: Opening,
-    ) -> Result<()> {
-        self.integrated_open(&launch, &flags, tasks, ready, opening)?;
+    ) -> Result<super::server_lifecycle::ServerRunOutcome> {
+        let (pipe, world_name) = self.integrated_open(&launch, &flags, tasks, opening)?;
         // IntegratedServer.initServer ends with `ServerStartingEvent`, right before
         // `MinecraftServer.runServer` fires `ServerStartedEvent`.
         self.native_server_starting(false);
         // The server thread's `server_started` site, before the tick loop.
         self.native_lifecycle_world_ready();
+        // Hand the local connection pipe to the client only after `server_started`,
+        // so a failed or panicking startup never hands out a live pipe.
+        let _ = ready.send(Ok((pipe, world_name)));
         if let (Some(script), Some(output)) = (
             std::env::var_os("SUNRISE_COMMAND_SCRIPT"),
             std::env::var_os("SUNRISE_COMMAND_OUTPUT"),
         ) {
             // The script owns the clock: connection setup and terrain loading
             // cannot add wall-clock-dependent world ticks to oracle output.
-            return self.run_command_harness(script.as_ref(), output.as_ref());
+            self.run_command_harness(script.as_ref(), output.as_ref())?;
+            return Ok(super::server_lifecycle::ServerRunOutcome::Orderly);
         }
         let slow_ms = self
             .options
@@ -769,7 +772,8 @@ impl Game<'_> {
         self.profile
             .server
             .get_or_insert_with(|| capture::ServerSide::new(slow_ms));
-        self.integrated_tick_loop(&flags)
+        self.integrated_tick_loop(&flags)?;
+        Ok(super::server_lifecycle::ServerRunOutcome::Orderly)
     }
 
     fn integrated_tick_loop(&mut self, flags: &Flags) -> Result<()> {
@@ -886,15 +890,14 @@ impl Game<'_> {
     }
 
     /// The integrated server's world open: `IntegratedServer.initServer`'s segment
-    /// from `load_world` through `settle_spawn`.
+    /// from `load_world` through `settle_spawn` and the initial `saveEverything`.
     fn integrated_open(
         &mut self,
         launch: &Launch,
         flags: &Arc<Flags>,
         tasks: Receiver<OwnerRequest>,
-        ready: &Sender<Ready>,
         opening: Opening,
-    ) -> Result<()> {
+    ) -> Result<(Pipe, String)> {
         // The mods' server configs, read before the server starts.
         if let Ok(dir) = std::env::current_dir() {
             self.native_configs_server_start(&dir.join("saves").join(&launch.folder), false);
@@ -997,12 +1000,15 @@ impl Game<'_> {
         view.start(Stage::LoadInitialChunks, 0);
         startup::time("server.prepare_levels", || self.prepare_levels())?;
         view.finish(Stage::LoadInitialChunks);
-        let _ = ready.send(Ok((pipe, self.level.name.clone())));
-        startup::time("server.settle_spawn", || self.settle_spawn())
+        startup::time("server.settle_spawn", || self.settle_spawn())?;
+        // IntegratedServer.initServer calls saveEverything(false, true, true)
+        // before ServerLifecycleHooks.handleServerStarting(this).
+        startup::time("server.initial_save", || self.save_game())?;
+        Ok((pipe, self.level.name.clone()))
     }
 
-    /// `MinecraftServer.stopServer`: the players are saved and sent away,
-    /// then the world is saved.
+    /// `MinecraftServer.stopServer`: abort generation, fire config unload,
+    /// then run the shared server shutdown sequence.
     pub(super) fn stop_integrated(&mut self, crashed: bool) -> Result<()> {
         // Abort background terrain generation/decoration on shutdown, matching vanilla behavior.
         self.streaming.abort_generation();
@@ -1010,28 +1016,7 @@ impl Game<'_> {
         // The close request: lifecycle observation stops.
         self.native_lifecycle.begin_close();
         self.native_configs_server_stop();
-        self.native_players_leaving();
-        // IntegratedServer.stopServer: teardownPublishedState.
-        self.stop_serving();
-        // PlayerList.removeAll: the owner and every guest leave the game.
-        if !crashed {
-            self.award_leave_game_to_all();
-            self.save_leaving_guests();
-        }
-        if let Some(host) = self.lan.as_mut() {
-            let conns: Vec<u32> = host.hub.guests.iter().map(|g| g.conn).collect();
-            for conn in conns {
-                host.hub.kick(
-                    conn,
-                    translatable("multiplayer.disconnect.server_shutdown", &[]),
-                );
-            }
-            let has_remote_guests = host.hub.guests.iter().any(|g| g.conn != 0);
-            if has_remote_guests {
-                std::thread::sleep(Duration::from_millis(50));
-            }
-        }
-        self.finish_server_save(crashed)
+        self.finish_server_save(false, crashed)
     }
 }
 
@@ -1651,8 +1636,7 @@ pub(super) mod tests {
                 )
                 .unwrap();
                 server.save = window.save.clone();
-                let result = server.run_server_lifecycle(false, |server, began| {
-                    *began = true;
+                let result = server.run_server_lifecycle(false, |server| {
                     // Model publication at open_world_tables, before later steps can fail.
                     let maps = BlockMaps::from_values(
                         [],
@@ -1671,7 +1655,7 @@ pub(super) mod tests {
                         Err("open failed after map publication".into())
                     } else {
                         server.world_adopted = true;
-                        Ok(())
+                        Ok(super::server_lifecycle::ServerRunOutcome::Orderly)
                     }
                 });
                 if failed_open {
@@ -1780,9 +1764,9 @@ pub(super) mod tests {
                 load: LoadPhase::default(),
             });
             let error = game
-                .run_server_lifecycle(false, |game, began| {
-                    *began = true;
-                    game.integrated_tick_loop(&flags)
+                .run_server_lifecycle(false, |game| {
+                    game.integrated_tick_loop(&flags)?;
+                    Ok(super::server_lifecycle::ServerRunOutcome::Orderly)
                 })
                 .unwrap_err();
             assert_eq!(
@@ -1796,6 +1780,169 @@ pub(super) mod tests {
             assert_eq!(flags.published.load(Ordering::Relaxed), 0);
             assert!(game.session_lock.is_none());
             std::fs::remove_dir_all(&root).ok();
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn integrated_startup_saves_and_starts_before_handing_out_ready() {
+        use mod_api::{Hooks, ModEntry, ServerHost};
+        use mod_platform::testing::with_mods;
+        use std::sync::Mutex;
+
+        struct Order {
+            events: Arc<Mutex<Vec<String>>>,
+            ready_rx: Arc<Mutex<Receiver<Ready>>>,
+            flags: Arc<Flags>,
+        }
+        #[mod_api::__subscriptions]
+        impl Hooks for Order {
+            fn server_about_to_start(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &mut mod_api::ServerAboutToStartEvent,
+            ) {
+                assert!(
+                    self.ready_rx.lock().unwrap().try_recv().is_err(),
+                    "ready must not be sent before server_started"
+                );
+                self.events.lock().unwrap().push("about-to-start".into());
+            }
+            fn level_load(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelLoadEvent<'_>) {
+                self.events
+                    .lock()
+                    .unwrap()
+                    .push(format!("level-load:{}", e.dimension));
+            }
+            fn level_save(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelSaveEvent<'_>) {
+                self.events
+                    .lock()
+                    .unwrap()
+                    .push(format!("level-save:{}", e.dimension));
+            }
+            fn world_saved(&self, _: &mut dyn ServerHost, _: &mut mod_api::WorldSavedEvent) {
+                if self.events.lock().unwrap().iter().all(|e| e != "started") {
+                    assert!(
+                        self.ready_rx.lock().unwrap().try_recv().is_err(),
+                        "ready must not be sent during initial save"
+                    );
+                }
+                self.events.lock().unwrap().push("saved".into());
+            }
+            fn server_starting(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &mut mod_api::ServerStartingEvent,
+            ) {
+                assert!(
+                    self.ready_rx.lock().unwrap().try_recv().is_err(),
+                    "ready must not be sent before server_started"
+                );
+                self.events.lock().unwrap().push("starting".into());
+            }
+            fn server_started(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStartedEvent) {
+                assert!(
+                    self.ready_rx.lock().unwrap().try_recv().is_err(),
+                    "ready is sent only after server_started"
+                );
+                self.events.lock().unwrap().push("started".into());
+                self.flags.stop.store(true, Ordering::Relaxed);
+            }
+            fn server_stopping(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &mut mod_api::ServerStoppingEvent,
+            ) {
+                self.events.lock().unwrap().push("stopping".into());
+            }
+            fn level_unload(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelUnloadEvent<'_>) {
+                self.events
+                    .lock()
+                    .unwrap()
+                    .push(format!("level-unload:{}", e.dimension));
+            }
+            fn server_stopped(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppedEvent) {
+                self.events.lock().unwrap().push("stopped".into());
+            }
+        }
+
+        super::super::native_entity_refs::tests::with_client_game(|window| {
+            window.join_world_rest().unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let folder = dir.path().to_string_lossy().into_owned();
+            let flags = Arc::new(Flags::default());
+            let (ready_tx, ready_rx) = channel();
+            let ready_rx = Arc::new(Mutex::new(ready_rx));
+            let (_tasks_tx, tasks_rx) = channel();
+            let events = Arc::new(Mutex::new(Vec::new()));
+            let mut options = window.options.clone();
+            options.dedicated = Some(Vec::new());
+            options.execution_role = ExecutionRole::IntegratedServer;
+            options.headless = true;
+            let mut settings = window.settings.clone();
+            settings.render_distance = 2;
+            settings.simulation_distance = 2;
+            let launch = Launch {
+                rule_registry: Arc::new(crate::game::api_values::game_rule_registry()),
+                folder,
+                name: Some("Integrated Startup Order".into()),
+                seed: Some(1),
+                creative: true,
+                create: None,
+                owner: offline_uuid("Tester"),
+                player: "Tester".into(),
+                owner_profile: None,
+            };
+            with_mods(
+                vec![ModEntry::new(
+                    "order",
+                    Box::new(Order {
+                        events: events.clone(),
+                        ready_rx: ready_rx.clone(),
+                        flags: flags.clone(),
+                    }),
+                )]
+                .into(),
+                || {
+                    serve(
+                        &window.res,
+                        window.pack.clone(),
+                        options,
+                        settings,
+                        launch,
+                        flags.clone(),
+                        tasks_rx,
+                        &ready_tx,
+                    )
+                    .unwrap();
+                },
+            );
+            let received = ready_rx.lock().unwrap().try_recv().unwrap();
+            assert_eq!(received.unwrap().1, "Integrated Startup Order");
+            assert_eq!(
+                *events.lock().unwrap(),
+                [
+                    "about-to-start",
+                    "level-load:minecraft:overworld",
+                    "level-load:minecraft:the_nether",
+                    "level-load:minecraft:the_end",
+                    "level-save:minecraft:overworld",
+                    "level-save:minecraft:the_nether",
+                    "level-save:minecraft:the_end",
+                    "saved",
+                    "starting",
+                    "started",
+                    "stopping",
+                    "level-save:minecraft:overworld",
+                    "level-save:minecraft:the_nether",
+                    "level-save:minecraft:the_end",
+                    "saved",
+                    "level-unload:minecraft:overworld",
+                    "level-unload:minecraft:the_nether",
+                    "level-unload:minecraft:the_end",
+                    "stopped",
+                ]
+            );
         });
     }
 

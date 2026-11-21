@@ -1798,6 +1798,11 @@ impl Streaming {
             ("meshing", self.meshing.len()),
         ]
     }
+    /// Request an unload sweep on the next `begin_plan_update`, even if the
+    /// view center and radius did not change and fewer than 8 ticks elapsed.
+    pub fn force_unload_sweep(&mut self) {
+        self.scan_age = 8;
+    }
     /// Advance streaming: collect finished work, then schedule more.
     /// Returns meshes ready for upload and columns that were unloaded.
     pub fn update(

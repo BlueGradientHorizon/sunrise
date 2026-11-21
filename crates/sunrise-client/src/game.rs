@@ -8985,7 +8985,7 @@ impl Game<'_> {
         if self.remote.is_none() {
             self.load_scoreboard();
         }
-        self.open_builtin_levels()?;
+        self.open_configured_levels()?;
         Ok(stack)
     }
     fn finish_close_world(&mut self) -> Result<()> {

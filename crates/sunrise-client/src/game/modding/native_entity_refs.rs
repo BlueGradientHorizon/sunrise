@@ -199,7 +199,9 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return Some(LevelRef::new(epoch, self.client_level_key(dimension)?));
         }
-        let dim = std::iter::once(self.dim)
+        let dim = (!self.levels.active_closed)
+            .then_some(self.dim)
+            .into_iter()
             .chain(self.levels.parked_dims())
             .find(|d| d.id() == dimension)?;
         Some(self.level_ref(epoch, dim.key()))

@@ -460,6 +460,13 @@ pub(super) struct TickTiming {
 #[derive(Default)]
 pub(super) struct Levels {
     pub(super) parked: HashMap<Dim, Parked>,
+    /// Loaded server levels in creation order (`MinecraftServer.levels`'s
+    /// insertion-ordered `LinkedHashMap`), so saving and shutdown iterate them
+    /// in vanilla's level order regardless of which level is swapped into `Game`.
+    order: Vec<Dim>,
+    /// Whether the level held in `Game`'s own fields has been closed by server
+    /// shutdown (`close_loaded_levels_for_stop`).
+    pub(in crate::game) active_closed: bool,
     /// The levels whose open the mods heard (`native_level_load`), each to
     /// be told closed once.
     heard_open: Vec<Dim>,
@@ -506,9 +513,28 @@ impl Levels {
         self.requested_saves.retain(|saved| *saved != dim);
     }
 
+    /// Record `dim` in server level creation order (`MinecraftServer.levels`).
+    pub(super) fn record_creation(&mut self, dim: Dim) {
+        if !self.order.contains(&dim) {
+            self.order.push(dim);
+        }
+    }
+
+    /// Forget `dim` from server level creation order once its level has closed.
+    pub(super) fn forget_creation(&mut self, dim: Dim) {
+        self.order.retain(|d| *d != dim);
+    }
+
+    /// Whether any server level has fired `level_load` without yet closing.
+    pub(in crate::game) fn has_heard_open(&self) -> bool {
+        !self.heard_open.is_empty()
+    }
+
     /// Clear every parked level and dimensions recorded as heard open.
     pub(super) fn clear(&mut self) {
         self.parked.clear();
+        self.order.clear();
+        self.active_closed = false;
         self.heard_open.clear();
         self.requested_saves.clear();
         self.runtime.clear();
@@ -728,7 +754,7 @@ impl Levels {
 
 impl Game<'_> {
     /// A new level for `dim`, opened from the save (`MinecraftServer.createLevels`).
-    fn open_level(&self, dim: Dim) -> Result<Parked> {
+    pub(super) fn open_level(&self, dim: Dim) -> Result<Parked> {
         // A level a mod opened has the seed and generator it asked for.
         let (generate, seed) = match self.runtime_terrain(dim) {
             Some((generate, seed)) => (Some(generate), seed),
@@ -816,12 +842,59 @@ impl Game<'_> {
         })
     }
 
-    /// `MinecraftServer.createLevels`: open the built-in levels in registry
-    /// order before `prepare_levels`, which waits for their saved tickets.
-    pub(super) fn open_builtin_levels(&mut self) -> Result<()> {
+    /// Every level configured by the world's `LEVEL_STEM` registry at server
+    /// startup: the three built-ins in vanilla order, followed by any datapack
+    /// dimensions (excluding runtime levels opened later by mods).
+    pub(super) fn configured_startup_levels(&self) -> Vec<Dim> {
+        let mut dims =
+            Vec::with_capacity(BUILTIN_LEVEL_ORDER.len() + self.level_shapes.extra.len());
+        dims.extend(BUILTIN_LEVEL_ORDER);
+        for level in self.level_shapes.extra {
+            if self.levels.runtime.holds(level.id) {
+                continue;
+            }
+            if let Some(dim) = Dim::extra(level.id)
+                && !dims.contains(&dim)
+            {
+                dims.push(dim);
+            }
+        }
+        dims
+    }
+
+    /// Every currently loaded server level in creation order
+    /// (`MinecraftServer.levels`'s `LinkedHashMap` order). Levels inserted
+    /// outside startup/open (such as unit tests) follow in deterministic order.
+    pub(in crate::game) fn loaded_level_order(&self) -> Vec<Dim> {
+        let mut present = Vec::with_capacity(self.levels.parked.len() + 1);
+        if !self.levels.active_closed {
+            present.push(self.dim);
+        }
+        present.extend(self.levels.parked.keys().copied());
+
+        let mut ordered = Vec::with_capacity(present.len());
+        for &dim in &self.levels.order {
+            if present.contains(&dim) && !ordered.contains(&dim) {
+                ordered.push(dim);
+            }
+        }
+        let mut rest: Vec<Dim> = present
+            .into_iter()
+            .filter(|dim| !ordered.contains(dim))
+            .collect();
+        rest.sort_by(|a, b| dim_fallback_key(*a).cmp(&dim_fallback_key(*b)));
+        ordered.extend(rest);
+        ordered
+    }
+
+    /// `MinecraftServer.createLevels`: open every configured level from the
+    /// `LEVEL_STEM` registry in order before `prepare_levels`, which restores
+    /// and waits for their saved tickets.
+    pub(super) fn open_configured_levels(&mut self) -> Result<()> {
         if self.options.execution_role.is_client() {
             return Ok(());
         }
+        let configured = self.configured_startup_levels();
         let starting_dim = self.dim;
         // World preparation can build the owner's starting level before the
         // Overworld. Keep it out of both the current and parked slots until
@@ -836,7 +909,7 @@ impl Game<'_> {
             None
         };
         self.native_level_opened(Dim::Overworld);
-        for dim in BUILTIN_LEVEL_ORDER.into_iter().skip(1) {
+        for dim in configured.into_iter().skip(1) {
             if dim == starting_dim
                 && let Some(level) = starting_level.take()
             {
@@ -852,7 +925,8 @@ impl Game<'_> {
             self.native_level_opened(dim);
         }
         // Switching back to the owner's level is separate from publishing the
-        // built-ins. A saved custom starting level, if any, is published here.
+        // configured levels. A saved starting level not in the configured stem
+        // table (if any) is published here.
         let publish_starting_level = starting_level.is_some();
         if let Some(level) = starting_level {
             self.levels.parked.insert(starting_dim, level);
@@ -864,9 +938,9 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// `MinecraftServer.prepareLevels`: after all built-ins are published,
-    /// activate their saved tickets, then wait for the chunks they hold
-    /// (`ChunkLoadCounter`). The first tick finds them ticking and unpacks
+    /// `MinecraftServer.prepareLevels`: after all configured levels are
+    /// published, activate their saved tickets, then wait for the chunks they
+    /// hold (`ChunkLoadCounter`). The first tick finds them ticking and unpacks
     /// their saved block and fluid ticks at the saved game time
     /// (`startTickingChunk`), not at whichever tick they finish streaming in.
     pub(super) fn prepare_levels(&mut self) -> Result<()> {
@@ -874,10 +948,11 @@ impl Game<'_> {
             return Ok(());
         }
         let back = self.dim;
-        let dims = BUILTIN_LEVEL_ORDER
-            .into_iter()
-            .chain(matches!(back, Dim::Extra(_)).then_some(back));
-        for dim in dims.clone() {
+        let mut dims = self.configured_startup_levels();
+        if !dims.contains(&back) {
+            dims.push(back);
+        }
+        for &dim in &dims {
             self.enter_level(dim)?;
             Self::load_saved_level_tickets(&self.save, &mut self.streaming, &mut self.tickets);
             self.validate_mod_chunk_tickets(dim);
@@ -1436,15 +1511,15 @@ impl Game<'_> {
         result?;
         // The levels mods asked to open or close: now that no level is in the middle of a tick.
         self.apply_runtime_levels();
-        let closed = {
-            let _span = sunrise_client::spans::guard("close_idle_levels");
-            self.close_idle_levels()
+        let evicted = {
+            let _span = sunrise_client::spans::guard("evict_idle_levels");
+            self.evict_idle_levels()
         };
-        if let Err(error) = closed {
+        if let Err(error) = evicted {
             self.native_lifecycle.cancel_server_tick();
             return Err(error);
         }
-        // `ServerTickEnd`: an errored tick or an idle-close failure (at
+        // `ServerTickEnd`: an errored tick or an idle-eviction failure (at
         // the `?` above) never reaches this site.
         {
             let _span = sunrise_client::spans::guard("mods_server_tick_end");
@@ -1611,12 +1686,21 @@ impl Game<'_> {
             .collect()
     }
 
-    /// Count the parked levels' empty ticks, and save and close the ones
-    /// (other than the Overworld) nobody has been in for a while.
-    pub(super) fn close_idle_levels(&mut self) -> Result<()> {
+    /// Count the parked levels' empty ticks, and evict chunks and entities from
+    /// idle non-Overworld levels without closing or unloading the level itself.
+    /// In vanilla (`MinecraftServer.levels`), levels stay open until server
+    /// shutdown (or explicit runtime-level unload), so idle eviction must not
+    /// fire `level_unload`, `level_save`, or a second `level_load` on revisit.
+    pub(super) fn evict_idle_levels(&mut self) -> Result<()> {
         let mut occupied = self.levels_to_tick();
         // A level a viewed area names, ticked or not, or one a client still holds chunks of.
-        occupied.extend(Dim::all().into_iter().filter(|d| self.needs_view_pass(*d)));
+        occupied.extend(
+            self.levels
+                .parked
+                .keys()
+                .copied()
+                .filter(|d| self.needs_view_pass(*d)),
+        );
         // A vehicle waiting there for its rider's arrival in another level.
         let waiting: Vec<Dim> = self
             .levels
@@ -1625,7 +1709,7 @@ impl Game<'_> {
             .copied()
             .filter(|d| self.vehicle_waits_in(*d))
             .collect();
-        let mut closing = Vec::new();
+        let mut evicting = Vec::new();
         for (dim, p) in &mut self.levels.parked {
             if occupied.contains(dim) || waiting.contains(dim) {
                 p.idle = 0;
@@ -1633,20 +1717,47 @@ impl Game<'_> {
             }
             p.idle += 1;
             if *dim != Dim::Overworld && p.idle >= IDLE_TICKS {
-                closing.push(*dim);
+                if !p.world.chunks.is_empty() || !p.persist.uuids.is_empty() {
+                    evicting.push(*dim);
+                } else {
+                    p.idle = 0;
+                }
             }
         }
-        if closing.is_empty() {
+        if evicting.is_empty() {
             return Ok(());
         }
-        for dim in closing {
-            self.close_parked_level(dim)?;
+        for dim in evicting {
+            self.evict_idle_level_chunks(dim)?;
         }
         Ok(())
     }
 
-    /// Save the parked level `dim` and drop it: the mods hear its chunks and the level unload. A
-    /// level a mod opened at run time stays known, and opens again when entered, as any other.
+    /// Evict non-forced chunks and entities from an idle parked level while
+    /// keeping the level open in `self.levels.parked`.
+    pub(super) fn evict_idle_level_chunks(&mut self, dim: Dim) -> Result<()> {
+        let back = self.dim;
+        self.enter_level(dim)?;
+        let prev_radius = self.streaming.radius;
+        let prev_paused = self.streaming.paused;
+        let prev_extra = std::mem::take(&mut self.streaming.extra);
+        self.streaming.radius = -1;
+        self.streaming.paused = false;
+        self.streaming.force_unload_sweep();
+        self.update_world();
+        self.streaming.radius = prev_radius;
+        self.streaming.paused = prev_paused;
+        self.streaming.extra = prev_extra;
+        let flushed = self.save.flush();
+        self.enter_level(back)?;
+        if let Some(parked) = self.levels.parked.get_mut(&dim) {
+            parked.idle = 0;
+        }
+        flushed
+    }
+
+    /// Save the parked level `dim` and drop it on explicit runtime-level
+    /// unload: the mods hear its chunks and the level unload.
     pub(super) fn close_parked_level(&mut self, dim: Dim) -> Result<()> {
         let back = self.dim;
         self.enter_level(dim)?;
@@ -1666,12 +1777,17 @@ impl Game<'_> {
         }
         self.enter_level(back)?;
         self.levels.parked.remove(&dim);
+        self.levels.forget_creation(dim);
         self.native_level_closed(dim);
         Ok(())
     }
 
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
     pub(super) fn native_level_opened(&mut self, dim: Dim) {
+        if dim == self.dim {
+            self.levels.active_closed = false;
+        }
+        self.levels.record_creation(dim);
         if self.remote.is_some()
             || self.options.execution_role.is_client()
             || self.levels.heard_open.contains(&dim)
@@ -1706,17 +1822,43 @@ impl Game<'_> {
         self.passages.retire_level(dim.key());
     }
 
-    /// Every level still open closes with the server, however it ends
-    /// (`MinecraftServer.stopServer`'s `level.close()` loop), in vanilla's
-    /// order of its levels: the Overworld, the Nether, the End, followed by
-    /// any runtime dimensions still open.
-    pub(super) fn native_levels_closing(&mut self) {
-        for dim in Dim::all() {
-            self.native_level_closed(dim);
-        }
-        let extra = self.levels.heard_open.clone();
-        for dim in extra {
-            self.native_level_closed(dim);
+    /// `MinecraftServer.stopServer`'s `level.close()` loop: close every loaded
+    /// level in creation order, firing `LevelEvent.Unload` only after that
+    /// level's own close (`save.flush()`) completes without error. A failure
+    /// closing one level is logged and skips its unload event while continuing
+    /// to close the remaining levels.
+    pub(in crate::game) fn close_loaded_levels_for_stop(&mut self) {
+        let dims = self.loaded_level_order();
+        for dim in dims {
+            if dim == self.dim {
+                if self.levels.active_closed {
+                    continue;
+                }
+                match self.save.flush() {
+                    Ok(()) => {
+                        self.streaming.abort_generation();
+                        self.levels.active_closed = true;
+                        self.levels.forget_creation(dim);
+                        self.native_level_closed(dim);
+                    }
+                    Err(error) => {
+                        log::error!("Exception closing the level {}: {error}", dim.id());
+                    }
+                }
+            } else if let Some(mut parked) = self.levels.parked.remove(&dim) {
+                match parked.save.flush() {
+                    Ok(()) => {
+                        parked.streaming.abort_generation();
+                        drop(parked);
+                        self.levels.forget_creation(dim);
+                        self.native_level_closed(dim);
+                    }
+                    Err(error) => {
+                        log::error!("Exception closing the level {}: {error}", dim.id());
+                        self.levels.parked.insert(dim, parked);
+                    }
+                }
+            }
         }
     }
 
@@ -1746,19 +1888,60 @@ impl Game<'_> {
         }
     }
 
-    /// Save every parked level (`MinecraftServer.saveAllChunks`); the level
-    /// in place is the caller's to save.
+    /// Save every loaded level in creation order (`MinecraftServer.saveAllChunks`),
+    /// restoring whichever level was in place afterwards.
+    pub(super) fn save_all_levels(&mut self, wait: bool) -> Result<()> {
+        let back = self.dim;
+        let dims = self.loaded_level_order();
+        let mut saved = Ok(());
+        for dim in dims {
+            if let Err(error) = self.enter_level(dim).and_then(|()| self.save_level(wait)) {
+                saved = Err(error);
+                break;
+            }
+        }
+        let restored = if self.dim != back {
+            self.enter_level(back)
+        } else {
+            Ok(())
+        };
+        saved.and(restored)
+    }
+
+    /// Save every parked level in creation order (`MinecraftServer.saveAllChunks`);
+    /// the level in place is the caller's to save.
     pub(super) fn save_parked_levels(&mut self, wait: bool) -> Result<()> {
         if self.levels.parked.is_empty() {
             return Ok(());
         }
         let back = self.dim;
-        let dims: Vec<Dim> = self.levels.parked.keys().copied().collect();
+        let dims: Vec<Dim> = self
+            .loaded_level_order()
+            .into_iter()
+            .filter(|&dim| dim != back)
+            .collect();
+        let mut saved = Ok(());
         for dim in dims {
-            self.enter_level(dim)?;
-            self.save_level(wait)?;
+            if let Err(error) = self.enter_level(dim).and_then(|()| self.save_level(wait)) {
+                saved = Err(error);
+                break;
+            }
         }
-        self.enter_level(back)
+        let restored = if self.dim != back {
+            self.enter_level(back)
+        } else {
+            Ok(())
+        };
+        saved.and(restored)
+    }
+}
+
+fn dim_fallback_key(dim: Dim) -> (u8, &'static str) {
+    match dim {
+        Dim::Overworld => (0, ""),
+        Dim::Nether => (1, ""),
+        Dim::End => (2, ""),
+        Dim::Extra(_) => (3, dim.id()),
     }
 }
 

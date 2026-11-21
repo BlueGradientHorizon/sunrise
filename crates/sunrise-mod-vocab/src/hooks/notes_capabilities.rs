@@ -320,16 +320,19 @@ pub trait Notes {
 - Server lifecycle hooks run once per start, on both the single-player server thread and a dedicated server,
   matching NeoForge 26.3 and vanilla's `MinecraftServer` order.
   `server_about_to_start(dedicated)` runs before worlds load (`ServerAboutToStartEvent`).
-  After world and level loading (`level_load`), adopted datapack/text setup, and spawn preparation,
-  `server_starting(dedicated)` (`ServerStartingEvent`) runs on both dedicated and integrated servers, before
-  accepting play.
-  `server_started(dedicated)` runs after initialization completes and before the first tick (`ServerStartedEvent`).
+  After configured world and level loading (`level_load` in `LEVEL_STEM` order), adopted datapack/text setup,
+  spawn preparation, and the initial world save, `server_starting(dedicated)` (`ServerStartingEvent`) runs on both
+  dedicated and integrated servers, before accepting play.
+  `server_started(dedicated)` runs after initialization completes and before the first tick (`ServerStartedEvent`),
+  and before the integrated client receives its ready connection.
   On an orderly shutdown (when the tick loop exits normally), `server_stopping(dedicated)` (`ServerStoppingEvent`)
-  runs before `stopServer` (config unloading, player cleanup, final world save, network teardown, level unloads via
-  `level_unload`, and storage release) and `server_stopped(dedicated)` (`ServerStoppedEvent`).
-  On a failed open or a tick error/panic, `server_stopping` is skipped; `stopServer` still runs (saving adopted
-  worlds only, unloading any opened levels via `level_unload`, logging stop errors, and releasing storage) and
-  `server_stopped` still fires, even if the final save failed or a shutdown listener panicked.
+  runs before `stopServer` (config unloading, network admission stop, player save/disconnect, final world save in
+  level creation order, per-level close and `level_unload`, and storage release) and `server_stopped(dedicated)`
+  (`ServerStoppedEvent`).
+  On a failed open (including a dedicated TCP port bind failure before `server_about_to_start`) or a tick
+  error/panic, `server_stopping` is skipped; `stopServer` still runs (saving adopted worlds only, closing levels
+  with `level_unload` only after a successful save and per-level close, logging stop errors, and releasing storage)
+  and `server_stopped` still fires unconditionally, even if the final save failed or a shutdown listener panicked.
   A failed open never overwrites a world the server did not successfully adopt: the session lock is taken before the
   prepared level is installed, and only that installation allows the final save. The first failure is retained if
   cleanup also fails. These are server-side, mutable `ServerHost` notifications, not cancellable. No tick-time cost:

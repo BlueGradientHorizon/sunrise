@@ -1342,15 +1342,30 @@ impl Game<'_> {
         self.lan_disconnect(announce);
     }
 
+    /// `ServerConnectionListener.stop`: stop accepting new connections and
+    /// refuse incoming logins before player and world shutdown saves run,
+    /// while keeping connected guest entries alive for `save_leaving_guests`
+    /// and `lan_disconnect`.
+    pub(super) fn stop_network_transport(&mut self) {
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.lan.shared.refuse_logins();
+            host.hub.lan.stop();
+            let _ = host.hub.lan.poll();
+        }
+    }
+
     /// The transport close, separate from player callbacks and saves so that
     /// server shutdown can still disconnect after one of those unwinds.
     pub(super) fn lan_disconnect(&mut self, announce: bool) {
         let Some(mut host) = self.lan.take() else {
             return;
         };
+        let had_guests = !host.hub.guests.is_empty();
         host.hub.disconnect_all();
-        // Give the network threads a moment to flush the disconnect packets.
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        if had_guests {
+            // Give the network threads a moment to flush the disconnect packets.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
         self.world.block_log = None;
         self.world.light_log = None;
         self.audio.capture = None;

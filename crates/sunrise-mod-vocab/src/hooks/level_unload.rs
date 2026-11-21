@@ -4,12 +4,15 @@
 pub trait Hooks {
     /// `dimension`'s level closed (NeoForge's `LevelEvent.Unload`, posted after
     /// `level.close()` in `MinecraftServer.stopServer`): drop what the mod kept
-    /// for it. Fires once per level that previously fired `level_load`, either
-    /// when a non-Overworld dimension unloads after nobody has been in it for
-    /// 300 ticks (after its chunks' unloads) or during `MinecraftServer.stopServer`
-    /// after the final save attempt and network teardown, before releasing
-    /// storage and firing `server_stopped` (including after a failed open, tick
-    /// crash, or failed save). Don't read its blocks. Server-side.
+    /// for it. Fires when an explicitly unloaded runtime level closes or during
+    /// `MinecraftServer.stopServer`'s per-level close loop (in creation order,
+    /// after network shutdown, player save/disconnect, and a successful final
+    /// world save), only after that level's own close (`save.flush()`)
+    /// succeeds. Idle non-Overworld levels evict chunks/entities without
+    /// closing or firing `level_unload`. If the final world save fails/panics
+    /// or a level's own close fails, its `level_unload` does not fire;
+    /// `server_stopped` still fires unconditionally after retiring storage.
+    /// Don't read its blocks. Server-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_level_unload",
         dispatch = "flat",
@@ -17,7 +20,7 @@ pub trait Hooks {
         contract = "listen",
         neoforge = "LevelEvent.Unload",
         cancellable = false,
-        version = 2
+        version = 3
     )]
     fn level_unload(dimension: &str);
 }

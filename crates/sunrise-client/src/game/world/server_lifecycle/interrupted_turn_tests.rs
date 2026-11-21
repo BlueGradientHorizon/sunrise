@@ -150,10 +150,7 @@ fn scenario(nested: bool, callback: bool) {
             mod_api::ModEntry::new("logouts", Box::new(Logouts(logouts.clone())))
         };
         mod_platform::testing::with_mods(vec![entry].into(), || {
-            let result = game.run_server_lifecycle(true, |_, began| {
-                *began = true;
-                Ok(())
-            });
+            let result = game.run_server_lifecycle(true, |_| Ok(super::ServerRunOutcome::Orderly));
             assert_eq!(result.is_err(), callback, "{result:?}");
         });
         if !callback {

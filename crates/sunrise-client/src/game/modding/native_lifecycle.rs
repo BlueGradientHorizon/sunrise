@@ -96,6 +96,7 @@ impl NativeLifecycle {
     }
 
     /// Whether a world open is still in progress (before `world_open_ready`).
+    #[cfg(test)]
     pub(super) fn is_opening(&self) -> bool {
         self.attempt
             .as_ref()
@@ -198,6 +199,7 @@ impl Game<'_> {
     }
 
     pub(super) fn native_lifecycle_open_started(&mut self) {
+        self.levels.active_closed = false;
         self.clear_composter_randoms();
         self.reset_entity_residency();
         self.entity_initialization = Default::default();
@@ -220,15 +222,15 @@ impl Game<'_> {
         }
     }
 
-    /// Retire the current world epoch and unload any still-open server levels.
+    /// Retire the current world epoch and clear per-world mod state without
+    /// synthesizing `LevelEvent.Unload` events (which only fire when
+    /// `close_loaded_levels_for_stop` closes each loaded level).
     /// Idempotent and safe on every exit path (orderly close, failed open,
     /// tick failure or panic, save failure, and client disconnect).
     pub(super) fn native_lifecycle_world_closed(&mut self) {
         self.instance_groups.borrow_mut().clear();
-        // Each server level still open closes after the final save attempt (`LevelEvent.Unload`).
-        if self.remote.is_none() {
-            self.native_levels_closing();
-        }
+        self.levels.clear();
+        self.world.water_tickets.clear();
         self.native_lifecycle.retire();
         self.attachment_indexes.clear();
         self.passages.retire_world();

@@ -19,6 +19,7 @@ struct StoppedProbe {
     lan: std::sync::Weak<sunrise_client::lan::Shared>,
     root: std::path::PathBuf,
     save: Arc<sunrise_client::save::SaveDir>,
+    expected_last: &'static str,
 }
 
 /// Exercise the real stop/save paths, not just direct calls to hook dispatch.
@@ -115,7 +116,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                 );
                 assert_eq!(
                     self.0.lock().unwrap().last().map(String::as_str),
-                    Some("level-unload:minecraft:overworld")
+                    Some(probe.expected_last)
                 );
                 // Storage is released before the notification, even if the
                 // final-save listener itself panicked after writing metadata.
@@ -144,6 +145,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                     "normal",
                     "startup-error",
                     "opening-early-ok",
+                    "bind-failed-early-ok",
                     "runtime-extra-level",
                     "tick-error",
                     "panic",
@@ -155,7 +157,6 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                     "config-unloading-panic",
                     "config-unloading-save-panic",
                     "config-unloading-logout-panic",
-                    "before-start",
                 ] {
                     log.lock().unwrap().clear();
                     panic_at
@@ -194,8 +195,10 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             Some(Default::default()),
                         ));
                         game.level.name = "lifecycle final save".into();
-                        let adopted =
-                            !matches!(case, "unopened" | "before-start" | "locked-unadopted");
+                        let adopted = !matches!(
+                            case,
+                            "unopened" | "bind-failed-early-ok" | "locked-unadopted"
+                        );
                         if adopted || case == "locked-unadopted" {
                             game.session_lock =
                                 Some(sunrise_client::save::SessionLock::acquire(&root).unwrap());
@@ -203,7 +206,10 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         // The lock is held while tags are readable, before the prepared
                         // level replaces the placeholder. Only adoption may save.
                         game.world_adopted = adopted;
-                        if matches!(case, "unopened" | "locked-unadopted") {
+                        if matches!(
+                            case,
+                            "unopened" | "bind-failed-early-ok" | "locked-unadopted"
+                        ) {
                             // A failed open must not overwrite an existing, unreadable save.
                             std::fs::write(root.join("level.dat"), b"unadopted save").unwrap();
                         }
@@ -241,13 +247,17 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 lan,
                                 root: root.clone(),
                                 save: game.save.clone(),
+                                expected_last: if case == "config-unloading-save-panic" {
+                                    "saved"
+                                } else {
+                                    "level-unload:minecraft:overworld"
+                                },
                             });
                         }
-                        let result = game.run_server_lifecycle(dedicated, |game, began| {
-                            if case == "before-start" {
-                                return Err("before startup".into());
+                        let result = game.run_server_lifecycle(dedicated, |game| {
+                            if case == "bind-failed-early-ok" {
+                                return Ok(super::ServerRunOutcome::FailedInit);
                             }
-                            *began = true;
                             game.native_configs_server_start(&root, dedicated);
                             game.native_server_about_to_start(dedicated);
                             game.native_lifecycle_open_started();
@@ -259,15 +269,17 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 return Err("failed init".into());
                             }
                             if case == "opening-early-ok" {
-                                // Models dedicated port-bind failure returning Ok(()) while still Opening.
-                                return Ok(());
+                                return Ok(super::ServerRunOutcome::FailedInit);
                             }
                             game.native_server_starting(dedicated);
                             game.native_lifecycle_world_ready();
                             if case == "runtime-extra-level" {
-                                game.native_level_opened(Dim::Extra(
-                                    mod_api::__private::dimension_key("test:pocket"),
-                                ));
+                                game.join_world_rest().unwrap();
+                                Dim::add_extra("test:pocket");
+                                let pocket = Dim::extra("test:pocket").unwrap();
+                                let parked = game.open_level(pocket).unwrap();
+                                game.levels.parked.insert(pocket, parked);
+                                game.native_level_opened(pocket);
                             }
                             match case {
                                 "tick-error" => Err("failed tick".into()),
@@ -276,14 +288,20 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                     let file = root.join("not-a-directory");
                                     std::fs::write(&file, b"occupied").unwrap();
                                     game.world_root = file;
-                                    Ok(())
+                                    Ok(super::ServerRunOutcome::Orderly)
                                 }
-                                _ => Ok(()),
+                                _ => Ok(super::ServerRunOutcome::Orderly),
                             }
                         });
                         assert_eq!(
                             result.is_ok(),
-                            matches!(case, "normal" | "opening-early-ok" | "runtime-extra-level"),
+                            matches!(
+                                case,
+                                "normal"
+                                    | "opening-early-ok"
+                                    | "bind-failed-early-ok"
+                                    | "runtime-extra-level"
+                            ),
                             "{dedicated} {case}"
                         );
                         if config_panic || matches!(case, "stopping-panic" | "save-panic") {
@@ -304,7 +322,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             }
                         }
                         let expected: &[&str] = match case {
-                            "before-start" => &[],
+                            "bind-failed-early-ok" => &["stopped"],
                             "unopened" => &["about-to-start", "config-unloading", "stopped"],
                             "locked-unadopted" => &[
                                 "about-to-start",
@@ -341,7 +359,17 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 "stopping",
                                 "config-unloading",
                                 "level-save:minecraft:overworld",
-                                "level-unload:minecraft:overworld",
+                                "stopped",
+                            ],
+                            "save-panic" => &[
+                                "about-to-start",
+                                "level-load:minecraft:overworld",
+                                "starting",
+                                "started",
+                                "stopping",
+                                "config-unloading",
+                                "level-save:minecraft:overworld",
+                                "saved",
                                 "stopped",
                             ],
                             "runtime-extra-level" => &[
@@ -353,6 +381,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 "stopping",
                                 "config-unloading",
                                 "level-save:minecraft:overworld",
+                                "level-save:test:pocket",
                                 "saved",
                                 "level-unload:minecraft:overworld",
                                 "level-unload:test:pocket",
@@ -365,10 +394,21 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 "started",
                                 "stopping",
                                 "config-unloading",
+                                "logout",
                                 "level-save:minecraft:overworld",
                                 "saved",
-                                "logout",
                                 "level-unload:minecraft:overworld",
+                                "stopped",
+                            ],
+                            "config-unloading-save-panic" => &[
+                                "about-to-start",
+                                "level-load:minecraft:overworld",
+                                "starting",
+                                "started",
+                                "stopping",
+                                "config-unloading",
+                                "level-save:minecraft:overworld",
+                                "saved",
                                 "stopped",
                             ],
                             _ => &[
@@ -404,15 +444,21 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 registry.default_state("minecraft:stone").unwrap()
                             );
                         }
-                        if matches!(case, "unopened" | "locked-unadopted") {
+                        if matches!(
+                            case,
+                            "unopened" | "bind-failed-early-ok" | "locked-unadopted"
+                        ) {
                             assert_eq!(
                                 std::fs::read(root.join("level.dat")).unwrap(),
                                 b"unadopted save",
                                 "{dedicated} {case}"
                             );
-                        } else if !matches!(case, "save-error" | "before-start") {
+                        } else if case != "save-error" {
                             let saved = sunrise_client::save::Level::read(&root).unwrap();
                             assert_eq!(saved.name, "lifecycle final save");
+                        }
+                        if case == "runtime-extra-level" {
+                            Dim::set_extra(std::iter::empty());
                         }
                         std::fs::remove_dir_all(root).unwrap();
                     };
@@ -424,5 +470,219 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                 }
             }
         },
+    );
+}
+
+/// `DedicatedServer.initServer` binds the TCP port before `ServerAboutToStartEvent`
+/// and world preparation; a bind failure emits only `server_stopped` and leaves
+/// the world directory untouched.
+#[test]
+#[ignore = "daily"]
+fn dedicated_port_bind_failure_emits_only_stopped_without_touching_world() {
+    use sunrise_client::server::properties::{ServerProperties, SystemEntropy};
+    use sunrise_java_properties::Properties;
+
+    struct Log(Arc<Mutex<Vec<&'static str>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Log {
+        fn server_about_to_start(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &mut mod_api::ServerAboutToStartEvent,
+        ) {
+            self.0.lock().unwrap().push("about-to-start");
+        }
+        fn level_load(&self, _: &mut dyn ServerHost, _: &mut mod_api::LevelLoadEvent<'_>) {
+            self.0.lock().unwrap().push("level-load");
+        }
+        fn server_starting(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStartingEvent) {
+            self.0.lock().unwrap().push("starting");
+        }
+        fn server_started(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStartedEvent) {
+            self.0.lock().unwrap().push("started");
+        }
+        fn server_stopping(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppingEvent) {
+            self.0.lock().unwrap().push("stopping");
+        }
+        fn level_unload(&self, _: &mut dyn ServerHost, _: &mut mod_api::LevelUnloadEvent<'_>) {
+            self.0.lock().unwrap().push("level-unload");
+        }
+        fn server_stopped(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppedEvent) {
+            self.0.lock().unwrap().push("stopped");
+        }
+    }
+
+    let occupied = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = occupied.local_addr().unwrap().port();
+    let universe = tempfile::tempdir().unwrap();
+    let world_dir = universe.path().join("untouched_world");
+    let mut properties = Properties::default();
+    properties.put("online-mode", "false".into());
+    properties.put("server-ip", "127.0.0.1".into());
+    properties.put("server-port", port.to_string());
+    let props = ServerProperties::new(properties, &mut SystemEntropy::default()).unwrap();
+    let log = Arc::new(Mutex::new(Vec::new()));
+    with_mods(
+        vec![ModEntry::new("log", Box::new(Log(log.clone())))].into(),
+        || {
+            with_game(|game| {
+                game.options.execution_role = ExecutionRole::DedicatedServer;
+                let setup = crate::game::dedicated::Setup {
+                    props,
+                    universe: universe.path().to_path_buf(),
+                    level_name: "untouched_world".into(),
+                    port: Some(port),
+                    allow_missing_mods: false,
+                };
+                game.run_dedicated_with_setup(setup).unwrap();
+            });
+        },
+    );
+    assert_eq!(*log.lock().unwrap(), ["stopped"]);
+    assert!(
+        !world_dir.exists(),
+        "failed port bind must not create or write world files"
+    );
+    drop(occupied);
+}
+
+/// Configured datapack dimensions open at startup in `LEVEL_STEM` order even
+/// when the saved player is in another dimension, and save/close follow that
+/// creation order regardless of which level is currently active.
+#[test]
+#[ignore = "daily"]
+fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
+    use sunrise_client::chunk::{ExtraLevel, LevelShape, LevelShapes};
+
+    struct Log(Arc<Mutex<Vec<String>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Log {
+        fn level_load(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelLoadEvent<'_>) {
+            self.0.lock().unwrap().push(format!("load:{}", e.dimension));
+        }
+        fn level_save(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelSaveEvent<'_>) {
+            self.0.lock().unwrap().push(format!("save:{}", e.dimension));
+        }
+        fn level_unload(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelUnloadEvent<'_>) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("unload:{}", e.dimension));
+        }
+    }
+
+    let log = Arc::new(Mutex::new(Vec::new()));
+    with_mods(
+        vec![ModEntry::new("log", Box::new(Log(log.clone())))].into(),
+        || {
+            with_game(|game| {
+                game.join_world_rest().unwrap();
+                let root = tempfile::tempdir().unwrap();
+                game.world_root = root.path().to_path_buf();
+                game.save = Arc::new(sunrise_client::save::SaveDir::new(
+                    game.world_root.clone(),
+                    LevelShape::OVERWORLD,
+                    Some(Default::default()),
+                ));
+                let extra: &'static [ExtraLevel] = Box::leak(Box::new([ExtraLevel {
+                    id: "test:datapack",
+                    dimension_type: "minecraft:overworld",
+                    shape: LevelShape::OVERWORLD,
+                }]));
+                let prev_shapes = game.level_shapes;
+                game.level_shapes = LevelShapes {
+                    extra,
+                    ..prev_shapes
+                };
+                Dim::set_extra(["test:datapack"].into_iter());
+                // Start with the Nether active to verify startup, save, and close
+                // all follow `LEVEL_STEM` / creation order rather than active-first.
+                game.dim = Dim::Nether;
+                game.native_lifecycle_open_started();
+                game.open_configured_levels().unwrap();
+                assert_eq!(game.dim, Dim::Nether);
+                game.prepare_levels().unwrap();
+                game.save_game().unwrap();
+                assert_eq!(game.dim, Dim::Nether);
+                game.close_loaded_levels_for_stop();
+                game.native_lifecycle_world_closed();
+                game.level_shapes = prev_shapes;
+                Dim::set_extra(std::iter::empty());
+            });
+        },
+    );
+    assert_eq!(
+        *log.lock().unwrap(),
+        [
+            "load:minecraft:overworld",
+            "load:minecraft:the_nether",
+            "load:minecraft:the_end",
+            "load:test:datapack",
+            "save:minecraft:overworld",
+            "save:minecraft:the_nether",
+            "save:minecraft:the_end",
+            "save:test:datapack",
+            "unload:minecraft:overworld",
+            "unload:minecraft:the_nether",
+            "unload:minecraft:the_end",
+            "unload:test:datapack",
+        ]
+    );
+}
+
+/// In `MinecraftServer.stopServer`, a per-level close (`save.flush()`) error
+/// logs and skips `level_unload` for that level while still closing and firing
+/// `level_unload` for the other loaded levels.
+#[test]
+#[ignore = "daily"]
+fn per_level_close_failure_skips_only_that_levels_unload() {
+    struct Log(Arc<Mutex<Vec<String>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Log {
+        fn level_unload(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelUnloadEvent<'_>) {
+            self.0.lock().unwrap().push(e.dimension.to_owned());
+        }
+    }
+
+    let log = Arc::new(Mutex::new(Vec::new()));
+    with_mods(
+        vec![ModEntry::new("log", Box::new(Log(log.clone())))].into(),
+        || {
+            with_game(|game| {
+                game.join_world_rest().unwrap();
+                let root = tempfile::tempdir().unwrap();
+                game.world_root = root.path().to_path_buf();
+                game.save = Arc::new(sunrise_client::save::SaveDir::new(
+                    game.world_root.clone(),
+                    sunrise_client::save::LevelShape::OVERWORLD,
+                    Some(Default::default()),
+                ));
+                game.native_lifecycle_open_started();
+                game.open_configured_levels().unwrap();
+                // Point the parked Nether's SaveDir at a directory whose `region`
+                // path is a regular file and queue an async chunk write so its
+                // close (`save.flush()`) fails with an IO error.
+                let broken = root.path().join("broken_nether");
+                std::fs::create_dir_all(&broken).unwrap();
+                std::fs::write(broken.join("region"), b"not a directory").unwrap();
+                let bad_save = Arc::new(sunrise_client::save::SaveDir::new(
+                    broken,
+                    sunrise_client::save::LevelShape::NETHER,
+                    Some(Default::default()),
+                ));
+                let chunk = Arc::new(sunrise_client::chunk::Chunk::empty(0, 0));
+                bad_save
+                    .save_later(&[chunk], game.pack.assets.registry, world_biomes!(game))
+                    .unwrap();
+                game.levels.parked.get_mut(&Dim::Nether).unwrap().save = bad_save;
+
+                game.close_loaded_levels_for_stop();
+                game.native_lifecycle_world_closed();
+            });
+        },
+    );
+    assert_eq!(
+        *log.lock().unwrap(),
+        ["minecraft:overworld", "minecraft:the_end"]
     );
 }

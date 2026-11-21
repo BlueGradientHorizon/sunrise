@@ -1,0 +1,4 @@
+sunrise-client game::integrated::tests::integrated_startup_saves_and_starts_before_handing_out_ready lib daily resources
+sunrise-client game::server_lifecycle::tests::datapack_dimensions_open_prepare_save_and_close_in_creation_order lib daily resources
+sunrise-client game::server_lifecycle::tests::dedicated_port_bind_failure_emits_only_stopped_without_touching_world lib daily resources
+sunrise-client game::server_lifecycle::tests::per_level_close_failure_skips_only_that_levels_unload lib daily resources

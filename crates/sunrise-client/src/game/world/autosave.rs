@@ -136,8 +136,7 @@ impl Game<'_> {
         if dedicated {
             dedicated::events::record_server("saving", serde_json::json!({}));
         }
-        self.save_level(wait)?;
-        self.save_parked_levels(wait)?;
+        self.save_all_levels(wait)?;
         self.save_game_metadata()?;
         let _ = self.finish_player_autosaves(wait);
         self.native_world_saved(wait);

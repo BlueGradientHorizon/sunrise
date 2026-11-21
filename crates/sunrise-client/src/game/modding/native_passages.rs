@@ -633,7 +633,7 @@ pub(in crate::game) mod tests {
                 game.level_register_passage(level, doorway()),
                 Ok(PassageId::from_raw(1))
             );
-            game.native_levels_closing();
+            game.close_loaded_levels_for_stop();
             assert!(game.passages.index.is_empty() && game.passages.dirty.is_empty());
             assert!(!game.level_remove_passage(level, PassageId::from_raw(1)));
             game.native_level_opened(game.dim);

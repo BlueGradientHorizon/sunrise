@@ -5,10 +5,13 @@ pub trait Hooks {
     /// `dimension`'s level opened on the server (NeoForge's `LevelEvent.Load`,
     /// posted in `MinecraftServer.createLevels`): before any of its chunks
     /// (`chunk_load`), so a mod sets up what it keeps for the level
-    /// here. Before `server_started`, this fires in Overworld, Nether, End
-    /// order, with the level in place, regardless of the saved player's dimension.
-    /// The next built-in is not available until after the current notification.
-    /// It fires again if a built-in level closes and later reopens.
+    /// here. Before `server_started`, this fires for every configured level
+    /// in `LEVEL_STEM` registry order (Overworld, Nether, End, then any
+    /// datapack dimensions), regardless of the saved player's dimension.
+    /// The next configured level is not available until after the current
+    /// notification. Levels stay open while idle (only their chunks and
+    /// entities evict), so idle levels do not fire `level_unload` or a second
+    /// `level_load` on revisit.
     /// Explicitly opened runtime levels can fire this while parked:
     /// `event.dimension` names the opened level, not the Host's current level.
     /// Server-side.
@@ -19,7 +22,7 @@ pub trait Hooks {
         contract = "listen",
         neoforge = "LevelEvent.Load",
         cancellable = false,
-        version = 2
+        version = 3
     )]
     fn level_load(dimension: &str);
 }
