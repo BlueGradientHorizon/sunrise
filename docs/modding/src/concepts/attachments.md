@@ -191,15 +191,14 @@ and the copy is not synced on its own (the new mob's spawn carries its synced en
 
 `player_clone` supplies `event.original: OriginalPlayer<'_>` alongside the replacement's
 `event.player` UUID. During that hook, `event.original.attachment(&COUNTER)` reads the old
-player's value even when `copy_on_death` is false or the type has no codec, inserting its
-default on the old player if absent; `COUNTER.get(host, Holder::Player(event.player))` reads
+player's value even when `copy_on_death` is false or the type has no codec, returning its
+default without inserting it if absent; `COUNTER.get(host, Holder::Player(event.player))` reads
 the replacement's retained value or fresh default. This works on death and on return from
 the End. The original's `has_attachment`, `existing_attachment` (decoding and caching a
 saved entry once without inserting a default), `with_decoded_attachment`, `set_attachment`,
-and `remove_attachment` follow normal attachment-holder semantics on the retained old player
-without touching the replacement, and participate in `host.transaction` so an aborted
-transaction rolls back writes, removals, default insertions and decode caching on both
-holders together. The replacement is already assigned its final respawn level, including
+and `remove_attachment` work on the retained old player without touching the replacement.
+Cache writes, explicit writes and removals on the original are journaled to `host.transaction`,
+so an aborted transaction restores both holders together. The replacement is already assigned its final respawn level, including
 any `player_respawn_position` redirect. It has not been placed or published in the bulk
 attachment index yet. Requery after placement: a bulk write token for the old player is
 stale even though the replacement reuses that player's UUID.

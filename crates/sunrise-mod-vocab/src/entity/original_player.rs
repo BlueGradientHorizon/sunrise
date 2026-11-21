@@ -98,14 +98,16 @@ impl<'a> OriginalPlayer<'a> {
         self.data.persistent_data()
     }
 
-    /// Read an attachment on the original player, inserting its default on the original
-    /// if absent and caching a decoded saved entry once. Never touches the replacement
-    /// player, and rolls back if an enclosing `host.transaction` aborts.
+    /// Read an attachment on the original player, returning its default without inserting it
+    /// if absent. A saved entry decodes and caches once; that cache write rolls back if an
+    /// enclosing `host.transaction` aborts. Never touches the replacement player.
     pub fn attachment<T: Clone + Send + Sync + 'static>(
         &mut self,
         key: &AttachmentType<T>,
     ) -> Result<T, AttachmentError> {
-        key.get(self.data.attachments(), Holder::Level)
+        Ok(key
+            .get_existing(self.data.attachments(), Holder::Level)?
+            .unwrap_or_else(key.default))
     }
 
     /// Whether the original player carries an entry for `key`, saved or decoded,
@@ -327,18 +329,13 @@ mod tests {
         assert_eq!(hotbar_count, 3);
         assert_eq!(offhand_damage, Some(2));
 
-        // Default insertion on the retained original updates has_attachment and decoded view.
+        // Reading a default leaves the original attachment absent.
+        assert_eq!(original.attachment(&DEFAULT_KEY), Ok(41));
         assert_eq!(original.has_attachment(&DEFAULT_KEY), Ok(false));
         assert_eq!(original.existing_attachment(&DEFAULT_KEY), Ok(None));
         assert_eq!(
             original.with_decoded_attachment(&DEFAULT_KEY, |value| value.copied()),
             Ok(None)
-        );
-        assert_eq!(original.attachment(&DEFAULT_KEY), Ok(41));
-        assert_eq!(original.has_attachment(&DEFAULT_KEY), Ok(true));
-        assert_eq!(
-            original.with_decoded_attachment(&DEFAULT_KEY, |value| value.copied()),
-            Ok(Some(41))
         );
 
         // Saved entry decodes once on existing_attachment and caches for subsequent reads.

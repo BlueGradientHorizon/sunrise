@@ -500,7 +500,8 @@ mod tests {
                 })
             );
 
-            // Declared-but-absent key inserts its default on original only, never replacement.
+            // A declared but absent key yields its default without writing either holder.
+            assert_eq!(event.original.attachment(&DEFAULTED), Ok(41));
             assert_eq!(event.original.has_attachment(&DEFAULTED), Ok(false));
             assert_eq!(event.original.existing_attachment(&DEFAULTED), Ok(None));
             assert_eq!(
@@ -508,14 +509,6 @@ mod tests {
                     .original
                     .with_decoded_attachment(&DEFAULTED, |value| value.copied()),
                 Ok(None)
-            );
-            assert_eq!(event.original.attachment(&DEFAULTED), Ok(41));
-            assert_eq!(event.original.has_attachment(&DEFAULTED), Ok(true));
-            assert_eq!(
-                event
-                    .original
-                    .with_decoded_attachment(&DEFAULTED, |value| value.copied()),
-                Ok(Some(41))
             );
             assert_eq!(DEFAULTED.has(host, Holder::Player(event.player)), Ok(false));
 

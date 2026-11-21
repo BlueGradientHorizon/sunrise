@@ -8,10 +8,10 @@ pub trait Hooks {
     /// (`respawn` with `keepAllPlayerData`). `original` is a direct,
     /// callback-scoped loan ([`OriginalPlayer`]) of the retained original
     /// player, enforced at compile time so it cannot outlive the hook. It
-    /// supports normal attachment holder operations on the old player
-    /// (including default insertion, decode-once caching, writes and removals
-    /// without touching the replacement, all journaled to `host.transaction`
-    /// so aborts roll back both holders), `with_inventory` over the 43-slot
+    /// supports attachment reads on the old player without default insertion.
+    /// Saved values decode once, and cache writes, explicit writes and removals
+    /// are journaled to `host.transaction` without touching the replacement.
+    /// It also provides `with_inventory` over the 43-slot
     /// vanilla inventory, `persistent_data`, health, experience, active
     /// effects, position, source dimension and source level. `player` is the
     /// replacement's UUID, already assigned its final level, including any
