@@ -11,6 +11,7 @@ type Tooltip =
 /// that opening closes. Capture owned values from [`MenuScreenOpen`] in the
 /// callbacks; read current pointer coordinates and live menu data from each
 /// [`MenuScreenFrame`]. Opening bytes do not persist on the client host.
+// exhaustive: private fields keep the layout and its window-owned callbacks together behind the builder.
 pub struct MenuScreen {
     layout: MenuScreenLayout,
     draw: Option<RefCell<Box<Draw>>>,
@@ -89,6 +90,7 @@ pub struct MenuScreenFrame<'a> {
 
 // no wire: game-side ownership and panic state for a single client opening.
 /// An installed screen with the owner resolved at construction time. Engine only.
+// exhaustive: private fields bind the screen to the installed mod and its per-opening panic state.
 pub struct OwnedMenuScreen {
     screen: MenuScreen,
     owner: &'static str,
