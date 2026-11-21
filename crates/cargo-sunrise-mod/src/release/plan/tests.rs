@@ -196,32 +196,24 @@ fn a_nonstandalone_project_gets_one_source_only_job() {
 }
 
 #[test]
-fn required_mod_dependencies_block_a_tag_while_optional_ones_can_ship_source() {
+fn mod_dependencies_plan_a_source_only_release() {
     let scratch = tempfile::tempdir().unwrap();
     let at = scratch.path().join(ID);
     project(&at);
     let releases = stable_list(&[(GAME_TAG, SOURCE)]);
     let path = at.join(sunrise_mod_package::manifest::MANIFEST);
     let text = fs::read_to_string(&path).unwrap();
-    fs::write(
-        &path,
-        format!("{text}\n[dependencies]\nlibrary_mod = '1'\n"),
-    )
-    .unwrap();
-    let error = initial(&at, "v0.1.0", &releases).unwrap_err();
-    assert!(
-        error.contains("library_mod") && error.contains("required [dependencies]"),
-        "{error}"
-    );
-    fs::write(
-        &path,
-        format!("{text}\n[dependencies]\nlibrary_mod = {{version = '1', optional = true}}\n"),
-    )
-    .unwrap();
-    assert!(matches!(
-        initial(&at, "v0.1.0", &releases).unwrap().mode,
-        Mode::SourceOnly { .. }
-    ));
+    for dependency in ["'1'", "{version = '1', optional = true}"] {
+        fs::write(
+            &path,
+            format!("{text}\n[dependencies]\nbase_mod = {dependency}\n"),
+        )
+        .unwrap();
+        assert!(matches!(
+            initial(&at, "v0.1.0", &releases).unwrap().mode,
+            Mode::SourceOnly { .. }
+        ));
+    }
 }
 
 struct Registry {

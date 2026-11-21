@@ -807,7 +807,20 @@ pub(crate) fn check_mod(entry: ChildEntry, show_uses: bool) -> Result<(), String
         .status()
         .map_err(|e| format!("cargo check: {e}"))?;
     if !status.success() {
-        return Err(format!("cargo check failed: {status}"));
+        let mut error = format!("cargo check failed: {status}");
+        let required: Vec<_> = package
+            .manifest
+            .dependencies
+            .iter()
+            .filter_map(|(id, dependency)| (!dependency.details().optional).then_some(id.as_str()))
+            .collect();
+        if !required.is_empty() {
+            error.push_str(&format!(
+                "\nRequired mods: {}. A standalone build does not supply library mods.",
+                required.join(", ")
+            ));
+        }
+        return Err(error);
     }
     match uses_table::scan(entry, root, &surface)? {
         Scanned::Uses(uses) => {
