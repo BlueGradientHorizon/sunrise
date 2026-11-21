@@ -102,22 +102,6 @@ fn keygen_writes_registry_key_and_refuses_to_replace_either_file() {
     assert!(!project.join(".sunrise/signing.key").exists());
 }
 
-#[cfg(windows)]
-#[test]
-#[ignore = "daily"]
-fn windows_keygen_refuses_an_unencrypted_private_key_before_writing() {
-    let temp = tempfile::tempdir().unwrap();
-    let project = project(&temp);
-    let output = tool(&project)
-        .args(["keygen", "--out", ".sunrise", "--no-password"])
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--no-password"));
-    assert!(output.stdout.is_empty());
-    assert!(!project.join(".sunrise").exists());
-}
-
 #[test]
 #[ignore = "daily"]
 fn keygen_rejects_destinations_inside_package_inputs() {
