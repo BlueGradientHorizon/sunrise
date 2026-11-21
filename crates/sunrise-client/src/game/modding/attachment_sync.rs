@@ -136,19 +136,12 @@ impl Game<'_> {
                 hub.attachment_snapshots.push(snapshot);
                 continue;
             }
-            // A guest is a player holder, whose entity another player tracks.
-            let holder = match holder {
-                Holder::Entity(id) => hub
-                    .guests
-                    .iter()
-                    .find(|g| g.entity_id == id as i32)
-                    .map_or(holder, |g| Holder::Player(g.uuid)),
-                _ => holder,
-            };
-            // Non-player entities' initial non-empty synced attachments were already sent
+            // Both non-player entities' (`Holder::Entity`) and tracked players'
+            // (`Holder::Player`) initial non-empty synced attachments were already sent
             // atomically inside `ServerEntity::pairing`'s `BundleDelimiter` bundle; keep
-            // `Holder::Entity` snapshots here for collider sync and guest-to-`Holder::Player`
-            // mapping.
+            // `Holder::Entity` snapshots here for collider sync only. The recipient's own
+            // `Holder::Player(uuid)` from `send_level_info` still sends with `replace: true`
+            // even when empty, clearing stale replica fields on join or respawn.
             let messages = if reads && !matches!(holder, Holder::Entity(_)) {
                 self.attachment_snapshot(holder)
             } else {

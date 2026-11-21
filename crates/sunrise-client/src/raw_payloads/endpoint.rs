@@ -69,6 +69,14 @@ impl Prepared {
             }
         }
     }
+    /// Extract a server `PreparedPayload` as a `Body::Prepared` for inclusion inside
+    /// an entity pairing bundle.
+    pub(crate) fn into_prepared_body(self) -> Option<crate::lan::Body> {
+        match self {
+            Self::Server(prepared) => Some(prepared.into_prepared_body()),
+            Self::Client(_) | Self::Droppable(..) => None,
+        }
+    }
 }
 impl Endpoint {
     pub(crate) fn client(

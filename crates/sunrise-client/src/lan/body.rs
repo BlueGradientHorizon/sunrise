@@ -10,6 +10,9 @@ use std::sync::Arc;
 pub enum Body {
     Owned(Vec<u8>),
     Shared(Arc<[u8]>),
+    /// Already framed and compressed payload bytes (`PreparedPayload`), written
+    /// straight into the outgoing wire buffer without re-framing.
+    Prepared(Vec<u8>),
 }
 
 impl Body {
@@ -17,17 +20,25 @@ impl Body {
     pub fn shared(bytes: Vec<u8>) -> Self {
         Self::Shared(bytes.into())
     }
+    /// Already framed and compressed payload bytes.
+    pub fn prepared(bytes: Vec<u8>) -> Self {
+        Self::Prepared(bytes)
+    }
+    /// Whether this body was already framed by `PreparedPayload`.
+    pub fn is_prepared(&self) -> bool {
+        matches!(self, Self::Prepared(_))
+    }
     /// The bytes this body keeps alive: an owned vector's capacity, a shared copy's length.
     pub fn retained(&self) -> usize {
         match self {
-            Self::Owned(bytes) => bytes.capacity(),
+            Self::Owned(bytes) | Self::Prepared(bytes) => bytes.capacity(),
             Self::Shared(bytes) => bytes.len(),
         }
     }
     /// The bytes as a vector of their own (copied when shared).
     pub fn into_vec(self) -> Vec<u8> {
         match self {
-            Self::Owned(bytes) => bytes,
+            Self::Owned(bytes) | Self::Prepared(bytes) => bytes,
             Self::Shared(bytes) => bytes.to_vec(),
         }
     }
@@ -37,7 +48,7 @@ impl std::ops::Deref for Body {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
         match self {
-            Self::Owned(bytes) => bytes,
+            Self::Owned(bytes) | Self::Prepared(bytes) => bytes,
             Self::Shared(bytes) => bytes,
         }
     }

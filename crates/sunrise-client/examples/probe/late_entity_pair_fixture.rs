@@ -51,7 +51,7 @@ pub fn main() -> Result<()> {
                     entity_id: 1,
                     sunrise: true,
                     general_entity: false,
-                    attachment_sync: false,
+                    attachment_sender: None,
                     spectator: false,
                     permission: 0,
                     moved: false,
@@ -63,7 +63,7 @@ pub fn main() -> Result<()> {
                     out: &mut packets,
                 }];
                 let riding = Riding::default();
-                level.tick(&[], &riding, &mut viewers, |_| Some(kind));
+                level.tick(&[], &riding, &mut viewers, None, |_| Some(kind));
                 let mut e = EntityState {
                     id: 37,
                     uuid: 37,
@@ -72,18 +72,22 @@ pub fn main() -> Result<()> {
                     velocity,
                     ..EntityState::default()
                 };
-                level.pair_after_tick(std::slice::from_ref(&e), &riding, &mut viewers, |_| {
-                    Some(kind)
-                });
+                level.pair_after_tick(
+                    std::slice::from_ref(&e),
+                    &riding,
+                    &mut viewers,
+                    None,
+                    |_| Some(kind),
+                );
                 dump(&mut out, index, "pair", viewers[0].out)?;
                 e.position[0] += 0.25;
                 e.velocity = [0.0; 3];
                 if landed {
                     e.meta.push((10, serializer::BOOLEAN, Value::Bool(true)));
                 }
-                level.tick(&[&e], &riding, &mut viewers, |_| Some(kind));
+                level.tick(&[&e], &riding, &mut viewers, None, |_| Some(kind));
                 dump(&mut out, index, "change", viewers[0].out)?;
-                level.tick(&[&e], &riding, &mut viewers, |_| Some(kind));
+                level.tick(&[&e], &riding, &mut viewers, None, |_| Some(kind));
                 dump(&mut out, index, "again", viewers[0].out)?;
                 index += 1;
             }

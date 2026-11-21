@@ -42,7 +42,7 @@ fn a_trident_joining_after_tracking_is_paired_before_its_throw_sound() {
         border: &border,
         streaming: None,
     };
-    hub.track_entities(&mut ctx);
+    hub.track_entities(&mut ctx, None);
     while rx.try_recv().is_ok() {}
     let trident = EntityState {
         id: 37,
@@ -52,7 +52,7 @@ fn a_trident_joining_after_tracking_is_paired_before_its_throw_sound() {
         velocity: [0.25, 0.0, 0.0],
         ..EntityState::default()
     };
-    hub.note_joined(std::slice::from_ref(&trident));
+    hub.note_joined(std::slice::from_ref(&trident), None);
     hub.captured_sound(
         &crate::audio::CapturedSound {
             event: "minecraft:item.trident.throw".into(),
@@ -103,7 +103,7 @@ fn a_trident_joining_after_tracking_is_paired_before_its_throw_sound() {
     );
     hub.native_tracking.clear();
     hub.attachment_snapshots.clear();
-    hub.note_joined(std::slice::from_ref(&trident));
+    hub.note_joined(std::slice::from_ref(&trident), None);
     hub.collect_tracking();
     assert!(hub.native_tracking.is_empty());
     assert!(hub.attachment_snapshots.is_empty());
@@ -147,7 +147,7 @@ fn a_captured_sound_reaches_the_client_before_its_emitter_is_removed() {
         border: &border,
         streaming: None,
     };
-    hub.track_entities(&mut ctx);
+    hub.track_entities(&mut ctx, None);
     assert!(hub.guests[0].tracker.is_tracking(37));
     while rx.try_recv().is_ok() {}
     // This is the current game's end-of-tick order: tracking sees the
@@ -166,7 +166,7 @@ fn a_captured_sound_reaches_the_client_before_its_emitter_is_removed() {
     };
     let mut sounds = vec![sound];
     hub.prepare_captured_sounds(&mut sounds, ctx.entities);
-    hub.track_entities(&mut ctx);
+    hub.track_entities(&mut ctx, None);
     for sound in sounds {
         hub.captured_sound(&sound, None);
     }
@@ -243,7 +243,7 @@ fn a_new_pair_does_not_reorder_sounds_or_remove_an_old_emitter_early() {
                 border: &border,
                 streaming: None,
             };
-            hub.track_entities(&mut ctx);
+            hub.track_entities(&mut ctx, None);
             assert!(hub.guests[0].tracker.is_tracking(37));
             assert!(hub.guests[0].tracker.is_tracking(39));
             while rx.try_recv().is_ok() {}
@@ -275,7 +275,7 @@ fn a_new_pair_does_not_reorder_sounds_or_remove_an_old_emitter_early() {
             ctx.entities = &current;
             hub.prepare_captured_sounds(&mut sounds, ctx.entities);
             assert_eq!(sounds.len(), if new_first { 2 } else { 1 });
-            hub.track_entities(&mut ctx);
+            hub.track_entities(&mut ctx, None);
             for sound in sounds {
                 hub.captured_sound(&sound, None);
             }

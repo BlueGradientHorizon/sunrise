@@ -2662,8 +2662,8 @@ impl Game<'_> {
                 self.lan_entities(&mut states, false, next, None);
                 self.lan_hook_states(&mut states);
                 self.lan_entity_uuids(&mut states);
-                self.lan_entity_attachments(&mut states);
-                host.hub.note_joined(states.as_slice());
+                host.hub
+                    .note_joined(states.as_slice(), Some(&*self.entity_attachments));
             }
             host.states_next_entity = Some(self.next_entity);
         }
@@ -2781,7 +2781,6 @@ impl Game<'_> {
                     }
                     self.lan_hook_states(&mut states);
                     self.lan_entity_uuids(&mut states);
-                    self.lan_entity_attachments(&mut states);
                 });
                 let Some(host) = self.lan.as_mut() else {
                     return;
@@ -2906,9 +2905,13 @@ impl Game<'_> {
                 let mut events = Vec::new();
                 events.extend(sunrise_client::spans::time("lan_tick_level", || {
                     if defer_connections {
-                        host.hub.tick_level_before_connections(&mut ctx)
+                        host.hub.tick_level_before_connections(
+                            &mut ctx,
+                            Some(&*self.entity_attachments),
+                        )
                     } else {
-                        host.hub.tick_level(&mut ctx)
+                        host.hub
+                            .tick_level(&mut ctx, Some(&*self.entity_attachments))
                     }
                 }));
                 (events, pass.last && !defer_connections)
@@ -3141,7 +3144,6 @@ impl Game<'_> {
             self.lan_entities(&mut theirs, false, 0, None);
             self.lan_hook_states(&mut theirs);
             self.lan_entity_uuids(&mut theirs);
-            self.lan_entity_attachments(&mut theirs);
             theirs.as_slice()
         } else {
             entities

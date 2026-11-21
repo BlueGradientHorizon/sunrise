@@ -722,7 +722,7 @@ mod tests {
                     permission: 0,
                     sunrise: true,
                     general_entity: true,
-                    attachment_sync: false,
+                    attachment_sender: None,
                     moved: true,
                     position: [0.0; 3],
                     view_distance: 10,
@@ -731,6 +731,7 @@ mod tests {
                     tracker: &mut tracker,
                     out: &mut packets,
                 }],
+                None,
                 |_| Some(100),
             );
             let mut sent = Vec::new();
@@ -887,7 +888,7 @@ mod tests {
                     permission: 0,
                     sunrise: true,
                     general_entity: true,
-                    attachment_sync: false,
+                    attachment_sender: None,
                     moved: true,
                     position: [0.0; 3],
                     view_distance: 10,
@@ -896,6 +897,7 @@ mod tests {
                     tracker: &mut tracker,
                     out: &mut packets,
                 }],
+                None,
                 |_| Some(100),
             );
             let mut sent = Vec::new();

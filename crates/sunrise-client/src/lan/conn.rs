@@ -415,6 +415,12 @@ impl PlayerSender {
         };
         (sender, move || inspect.queued_contents())
     }
+    /// Override framing on a test sender (e.g. `Framing::Network(None)` for TCP frame limits).
+    #[cfg(test)]
+    pub fn with_framing(mut self, framing: sunrise_protocol::connection::Framing) -> Self {
+        self.framing = framing;
+        self
+    }
     /// A connectionless actor has no writer, queue or packet delivery.
     pub fn disabled() -> Self {
         Self {
@@ -637,6 +643,15 @@ impl PreparedPayload {
         } else {
             Err(PayloadSendError::Disconnected)
         }
+    }
+    /// Hand these already-framed bytes to an entity-pairing bundle so `send_many`
+    /// queues them in order between `BundleDelimiter` packets. Drops the reservation
+    /// taken at `prepare_payload` because `send_many` / `Outbox::push` re-charges the
+    /// returned `Body::Prepared`.
+    pub(crate) fn into_prepared_body(mut self) -> Body {
+        let bytes = self.bytes.take().expect("prepared bytes");
+        self.sender.pending.fetch_sub(self.cost, Ordering::Relaxed);
+        Body::prepared(bytes)
     }
 }
 impl Drop for PreparedPayload {

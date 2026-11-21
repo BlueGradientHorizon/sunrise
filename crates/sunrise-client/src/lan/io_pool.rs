@@ -174,8 +174,8 @@ impl Outbox {
             .into_iter()
             .map(|body| Queued {
                 cost: charge(body.retained()),
+                prepared: body.is_prepared(),
                 body,
-                prepared: false,
                 pending: self.pending.clone(),
             })
             .collect();
