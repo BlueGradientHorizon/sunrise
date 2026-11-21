@@ -1,6 +1,8 @@
 //! Delayed server tasks (`ModStateServerHost::schedule_task`), modeled on vanilla's
 //! `MinecraftServer.schedule(TickTask)` taking a callable.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 // no wire: only the running world's scheduler can use its cancellation ids.
 /// A scheduled task's opaque capability id: unique across worlds and never reused.
 /// Holding it suffices to cancel the task while it is still waiting.
@@ -9,12 +11,12 @@
 pub struct TaskId(u64);
 
 impl TaskId {
-    pub(crate) const fn of(id: u64) -> Self {
-        Self(id)
-    }
-
-    pub(crate) const fn raw(self) -> u64 {
-        self.0
+    pub(crate) fn allocate() -> Option<Self> {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        NEXT_ID
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .ok()
+            .map(Self)
     }
 }
 
@@ -26,7 +28,8 @@ pub enum ScheduleError {
     /// The scheduling mod already has `MAX_PENDING_TASKS` tasks waiting; a warning naming the mod
     /// is logged.
     TooMany,
-    /// The current phase disallows world access, or the server world is not open or opening.
+    /// The current phase disallows world access, the server world is not open or opening,
+    /// or all task IDs have been used.
     Unavailable,
 }
 

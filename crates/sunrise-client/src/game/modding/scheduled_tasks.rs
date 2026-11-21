@@ -2,20 +2,12 @@
 //! server ticks, owned by the world's lifecycle and dropped with it.
 
 use mod_api::{
-    __private::game::{Fields, task_id},
-    MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId,
+    __private::game::allocate_task_id, MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId,
 };
 use std::{
     collections::{BTreeMap, HashMap},
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
-    sync::atomic::{AtomicU64, Ordering},
 };
-
-static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(1);
-
-fn next_task_id() -> u64 {
-    NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed)
-}
 
 pub(super) type ServerTask = Box<dyn FnOnce(&mut dyn ServerHost)>;
 /// The owning mod's `[mod] id` (when scheduled inside a mod call) and its callable, detached from
@@ -50,9 +42,9 @@ pub(super) struct ScheduledTasks {
     /// Ticks advanced since the world opened.
     now: u64,
     /// Waiting tasks by due tick, then id (the order they were scheduled).
-    queue: BTreeMap<(u64, u64), PendingTask>,
+    queue: BTreeMap<(u64, TaskId), PendingTask>,
     /// Each waiting task's due tick, to find it again on cancel.
-    due: HashMap<u64, u64>,
+    due: HashMap<TaskId, u64>,
     /// How many tasks each named mod has waiting.
     pending: HashMap<&'static str, usize>,
 }
@@ -65,30 +57,34 @@ impl ScheduledTasks {
         delay_ticks: u32,
         task: ServerTask,
     ) -> Result<TaskId, ScheduleError> {
-        if let Some(mod_id) = owner {
-            let waiting = self.pending.entry(mod_id).or_insert(0);
-            if *waiting >= MAX_PENDING_TASKS {
+        let waiting = if let Some(mod_id) = owner {
+            let count = self.pending.entry(mod_id).or_insert(0);
+            if *count >= MAX_PENDING_TASKS {
                 log::warn!(
                     "mod `{mod_id}` reached MAX_PENDING_TASKS ({MAX_PENDING_TASKS}) pending scheduled tasks"
                 );
                 return Err(ScheduleError::TooMany);
             }
-            *waiting += 1;
+            Some(count)
+        } else {
+            None
+        };
+        let id = allocate_task_id().ok_or(ScheduleError::Unavailable)?;
+        if let Some(count) = waiting {
+            *count += 1;
         }
-        let id = next_task_id();
         let due = self.now.saturating_add(u64::from(delay_ticks));
         self.queue.insert((due, id), (owner, task));
         self.due.insert(id, due);
-        Ok(task_id(id))
+        Ok(id)
     }
 
     /// Withdraw `id` if it is still waiting. `TaskId` is an opaque capability, so holding it
     /// suffices to cancel the task. The caller gets the detached owner and callable back only once
     /// all bookkeeping is updated, so dropping captures under the scheduling owner's scope is safe.
     pub(super) fn cancel(&mut self, id: TaskId) -> Option<PendingTask> {
-        let raw = id.fields();
-        let &due = self.due.get(&raw)?;
-        self.remove(due, raw)
+        let &due = self.due.get(&id)?;
+        self.remove(due, id)
     }
 
     /// A server tick starts: "now" moves to it before any hook of the tick runs, so tasks
@@ -119,7 +115,7 @@ impl ScheduledTasks {
         }
     }
 
-    fn remove(&mut self, due: u64, id: u64) -> Option<PendingTask> {
+    fn remove(&mut self, due: u64, id: TaskId) -> Option<PendingTask> {
         let task = self.queue.remove(&(due, id))?;
         self.due.remove(&id);
         if let Some(mod_id) = task.0
@@ -192,12 +188,13 @@ mod tests {
             .schedule(A, 3, Box::new(move |_| drop(owned)))
             .unwrap();
         assert_eq!(Rc::strong_count(&capture), 2);
+        let unused_id = allocate_task_id().unwrap();
+        assert!(tasks.cancel(unused_id).is_none());
         let (owner, detached) = tasks.cancel(id).unwrap();
         assert_eq!(owner, A);
         drop(detached);
         assert_eq!(Rc::strong_count(&capture), 1);
         assert!(tasks.cancel(id).is_none());
-        assert!(tasks.cancel(task_id(0)).is_none());
         for _ in 0..3 {
             assert!(advance(&mut tasks).is_empty());
         }

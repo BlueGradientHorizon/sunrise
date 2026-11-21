@@ -519,15 +519,9 @@ pub mod game {
         }
     }
 
-    /// A delayed task id the game allocates for `schedule_task`.
-    pub fn task_id(id: u64) -> TaskId {
-        TaskId::of(id)
-    }
-    impl Fields for TaskId {
-        type Fields<'a> = u64;
-        fn fields(&self) -> u64 {
-            self.raw()
-        }
+    /// Allocate a fresh delayed task id for `schedule_task`, without exposing its raw value.
+    pub fn allocate_task_id() -> Option<TaskId> {
+        TaskId::allocate()
     }
 
     pub struct ModEntryFields<'a> {
