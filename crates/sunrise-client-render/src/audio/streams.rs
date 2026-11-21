@@ -24,27 +24,71 @@ use std::sync::{
 const RING_MAX_MS: u64 = 1_000;
 /// Minimum ring capacity in frames so the resampler has room for a frame and lookahead.
 const MIN_RING_FRAMES: u64 = 2;
-/// Maximum ring capacity in frames so extreme sample rates cannot OOM the ring allocation.
+/// Maximum ring capacity in frames so one extreme sample rate cannot blow the ring budget alone.
 const MAX_RING_FRAMES: u64 = 384_000;
+/// Aggregate PCM buffer memory cap across all live voices and pending worker jobs (64 MiB).
+const MAX_POOL_PCM_BYTES: usize = 64 * 1024 * 1024;
+
+fn try_reserve_pcm_bytes(counter: &AtomicUsize, limit: usize, bytes: usize) -> bool {
+    let mut current = counter.load(Acquire);
+    loop {
+        let Some(next) = current.checked_add(bytes) else {
+            return false;
+        };
+        if next > limit {
+            return false;
+        }
+        match counter.compare_exchange_weak(current, next, AcqRel, Acquire) {
+            Ok(_) => return true,
+            Err(actual) => current = actual,
+        }
+    }
+}
 
 /// A stream's samples: written by one producer, read by the output callback.
 pub(super) struct Ring {
-    samples: Box<[AtomicI16]>,
+    samples: Vec<AtomicI16>,
     /// Samples written and consumed since the stream opened; the index is the count modulo the
     /// length. Only the producer moves `tail`, only the callback moves `head`.
     head: AtomicU64,
     tail: AtomicU64,
     channels: usize,
+    pool_bytes: Arc<AtomicUsize>,
+    bytes: usize,
+}
+
+impl Drop for Ring {
+    fn drop(&mut self) {
+        self.pool_bytes.fetch_sub(self.bytes, Release);
+    }
 }
 
 impl Ring {
-    fn new(frames: usize, channels: usize) -> Self {
-        Self {
-            samples: (0..frames * channels).map(|_| AtomicI16::new(0)).collect(),
+    fn try_new(
+        frames: usize,
+        channels: usize,
+        pool_bytes: Arc<AtomicUsize>,
+        limit: usize,
+    ) -> Option<Self> {
+        let sample_count = frames.checked_mul(channels)?;
+        let bytes = sample_count.checked_mul(std::mem::size_of::<AtomicI16>())?;
+        if !try_reserve_pcm_bytes(&pool_bytes, limit, bytes) {
+            return None;
+        }
+        let mut samples = Vec::new();
+        if samples.try_reserve_exact(sample_count).is_err() {
+            pool_bytes.fetch_sub(bytes, Release);
+            return None;
+        }
+        samples.resize_with(sample_count, || AtomicI16::new(0));
+        Some(Self {
+            samples,
             head: AtomicU64::new(0),
             tail: AtomicU64::new(0),
             channels,
-        }
+            pool_bytes,
+            bytes,
+        })
     }
 
     /// The producer's tail (in samples), queued frames and free frames, in that order.
@@ -95,6 +139,12 @@ pub(super) struct Control {
     owner: String,
     volume: AtomicU32,
     closed: AtomicBool,
+    /// Set by `PullJob`'s retirement guard once the worker has dropped the source and ring.
+    /// Quota accounting retains this control until both `closed` and `job_retired` hold.
+    job_retired: AtomicBool,
+    /// Set by `StreamPool::reap` once this stopped control's voice has been scheduled for removal
+    /// from `mixer.streams`.
+    voice_reaped: AtomicBool,
     pull: Arc<Demand>,
     /// The placement as set. Writers (a mod's `set_placement`, the frame's entity follow)
     /// take it for the whole of a change, so the newest always wins; the callback never does.
@@ -269,12 +319,21 @@ pub(super) struct StreamVoice {
 }
 
 /// The main thread's list of open streams, with the caps. Shared by every `Audio` on one output.
-#[derive(Default)]
 pub(super) struct StreamPool {
     state: Mutex<PoolState>,
-    /// How many controls there are, so that with no stream open the main thread's calls and the
-    /// tick take no lock at all.
+    /// How many controls there are (live or awaiting worker retirement), so that with no stream
+    /// open or pending the main thread's calls and the tick take no lock at all.
     open: AtomicUsize,
+    /// Aggregate PCM bytes held across all live voices and unretired worker jobs.
+    pcm_bytes: Arc<AtomicUsize>,
+    /// Aggregate PCM byte cap across the pool.
+    max_pcm_bytes: usize,
+}
+
+impl Default for StreamPool {
+    fn default() -> Self {
+        Self::with_pcm_budget(MAX_POOL_PCM_BYTES)
+    }
 }
 
 #[derive(Default)]
@@ -304,6 +363,15 @@ impl Drop for StreamPool {
 }
 
 impl StreamPool {
+    fn with_pcm_budget(max_pcm_bytes: usize) -> Self {
+        Self {
+            state: Mutex::new(PoolState::default()),
+            open: AtomicUsize::new(0),
+            pcm_bytes: Arc::new(AtomicUsize::new(0)),
+            max_pcm_bytes,
+        }
+    }
+
     fn state(&self) -> MutexGuard<'_, PoolState> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -359,7 +427,25 @@ impl StreamPool {
         let channels = spec.channels as usize;
         let ring_frames = (u64::from(spec.rate) * RING_MAX_MS / 1000)
             .clamp(MIN_RING_FRAMES, MAX_RING_FRAMES) as usize;
-        let ring = Arc::new(Ring::new(ring_frames, channels));
+        let Some(ring) = Ring::try_new(
+            ring_frames,
+            channels,
+            self.pcm_bytes.clone(),
+            self.max_pcm_bytes,
+        ) else {
+            let requested = ring_frames
+                .saturating_mul(channels)
+                .saturating_mul(std::mem::size_of::<AtomicI16>());
+            let used = self.pcm_bytes.load(Relaxed);
+            let max_pcm_bytes = self.max_pcm_bytes;
+            drop(state);
+            log::warn!(
+                "mod `{owner}` could not open audio stream: PCM buffer memory limit or allocation \
+                 failure (requested {requested} bytes, used {used}/{max_pcm_bytes} bytes)"
+            );
+            return Err(AudioRefusal::MemoryLimit);
+        };
+        let ring = Arc::new(ring);
         let worker = match &mut state.worker {
             Some(worker) => worker,
             slot @ None => match Worker::start() {
@@ -381,18 +467,16 @@ impl StreamPool {
             owner: owner.to_owned(),
             volume: AtomicU32::new(spec.volume.clamp(0.0, 1.0).to_bits()),
             closed: AtomicBool::new(false),
+            job_retired: AtomicBool::new(false),
+            voice_reaped: AtomicBool::new(false),
             pull: demand.clone(),
             held: Mutex::new(Held::Flat),
             sequence: AtomicU64::new(0),
             positional: AtomicBool::new(false),
             position: Default::default(),
         });
-        if let Err(job) = worker.admit(PullJob {
-            control: control.clone(),
-            demand,
-            ring: ring.clone(),
-            source,
-        }) {
+        if let Err(job) = worker.admit(PullJob::new(control.clone(), demand, ring.clone(), source))
+        {
             drop(state);
             drop(job);
             log::warn!(
@@ -436,18 +520,27 @@ impl StreamPool {
         Ok(Arc::new(handle))
     }
 
-    /// Lets go of the streams a mod stopped or dropped: their voices leave the mixer, and with
-    /// the last of them their rings are freed.
+    /// Lets go of the streams a mod stopped or dropped: their voices leave the mixer right away,
+    /// and their controls release their owner and total quota slots once the worker retires their
+    /// `PullJob` and drops the last reference to their rings.
     pub(super) fn reap(&self, mixer: &Mutex<Mixer>) {
         if self.idle() {
             return;
         }
         let mut state = self.state();
-        let controls = &mut state.controls;
-        let before = controls.len();
-        controls.retain(|c| !c.closed.load(Acquire));
-        self.open.store(controls.len(), Relaxed);
-        if controls.len() != before {
+        let before = state.controls.len();
+        let mut need_mixer_reap = false;
+        state.controls.retain(|c| {
+            if !c.closed.load(Acquire) {
+                return true;
+            }
+            if !c.voice_reaped.swap(true, AcqRel) {
+                need_mixer_reap = true;
+            }
+            !c.job_retired.load(Acquire)
+        });
+        self.open.store(state.controls.len(), Relaxed);
+        if need_mixer_reap {
             // The voices leave into a list made before the lock, with room for every voice there
             // was (a mod may stop another stream meanwhile): nothing allocates under the lock,
             // and the rings drop after it is released, never in the callback.
@@ -765,8 +858,8 @@ mod tests {
             Ok(stream)
         }
         fn reap(&self) {
-            self.pool.reap(&self.mixer);
             self.drain_jobs();
+            self.pool.reap(&self.mixer);
         }
         /// Publishes whole interleaved frames straight into the last opened voice's ring.
         fn feed_last(&self, samples: &[i16]) -> usize {
@@ -1234,13 +1327,13 @@ mod tests {
     }
 
     #[test]
-    fn entity_streams_are_followed_again_before_they_are_heard_after_mod_audio_returns() {
+    fn losing_a_tracked_entity_while_muted_stops_the_stream_without_unmuting() {
         let mut audio = Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
             std::path::PathBuf::from("/nonexistent/sunrise-test-audio"),
         ));
         audio.backend_live_for_bench();
         let entity = mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 7);
-        let _stream = audio
+        let stream = audio
             .open_stream(
                 "mod",
                 &spec().with_placement(StreamPlacement::Entity(entity)),
@@ -1251,23 +1344,28 @@ mod tests {
         let heard = |audio: &Audio| {
             audio.backend.mixer.lock().unwrap().stream_gain[SoundSource::Voice.index()]
         };
+        audio.sync_stream_gain(0.0);
+        assert_eq!(heard(&audio), 0.0);
+        assert_eq!(stream.state(), AudioStreamState::Playing);
+
+        // While muted, entity movement is still tracked and keeps the stream Playing in silence.
         let mut asked = 0;
-        // Off: nothing is followed, and when it is back the mixer still hears nothing...
-        audio.follow_entities_at(0.0, |_| {
+        audio.follow_stream_entities(|e| {
+            asked += 1;
+            (e == entity).then_some([0.0, 0.0, 4.0])
+        });
+        assert_eq!(asked, 1);
+        assert_eq!(stream.state(), AudioStreamState::Playing);
+        assert_eq!(heard(&audio), 0.0);
+
+        // Losing the entity while still muted stops the stream immediately without unmuting.
+        audio.follow_stream_entities(|_| {
             asked += 1;
             None
         });
-        assert_eq!(asked, 0);
-        audio.sync_stream_gain(1.0);
+        assert_eq!(asked, 2);
+        assert_eq!(stream.state(), AudioStreamState::Stopped);
         assert_eq!(heard(&audio), 0.0);
-        // ...until a frame has followed the entities.
-        audio.follow_entities_at(1.0, |_| {
-            asked += 1;
-            Some([0.0, 0.0, 1.0])
-        });
-        assert_eq!(asked, 1);
-        audio.sync_stream_gain(1.0);
-        assert!(heard(&audio) > 0.0);
     }
 
     #[test]
@@ -1365,16 +1463,174 @@ mod tests {
     #[test]
     fn controls_from_another_thread_never_wait_on_the_mixer() {
         let rig = Rig::new();
-        let stream = rig.open("mod", &spec()).unwrap();
+        let stream = mod_api::AudioStreamRef::new(rig.open("mod", &spec()).unwrap());
         // The mixer is locked, as the output callback holds it, for the whole of the calls.
         let _callback = rig.mixer.lock().unwrap();
         let caller = std::thread::spawn(move || {
             assert!(stream.set_volume(0.5));
-            assert!(stream.set_placement(&StreamPlacement::Flat, None));
+            assert!(stream.set_position([0.0, 0.0, 8.0]));
+            assert!(stream.set_flat());
             assert_eq!(stream.state(), AudioStreamState::Playing);
             stream.stop();
             stream.state()
         });
         assert_eq!(caller.join().unwrap(), AudioStreamState::Stopped);
+    }
+
+    #[test]
+    fn moving_to_a_fixed_point_from_a_thread_without_a_host() {
+        let rig = Rig::new();
+        let stream =
+            mod_api::AudioStreamRef::new(rig.open("mod", &spec().with_range(16.0)).unwrap());
+        rig.feed_last(&half(2_000));
+        let moved = std::thread::spawn(move || {
+            assert!(!stream.set_position([f64::NAN, 0.0, 0.0]));
+            assert!(stream.set_position([0.0, 0.0, 8.0]));
+            stream
+        })
+        .join()
+        .unwrap();
+        let mut mono = [0.0; 1];
+        mix_output(&mut rig.mixer.lock().unwrap(), &mut mono, 1, 48_000);
+        // At half of range = 16 blocks, half-scale PCM (0.5) attenuates to 0.25.
+        assert!((mono[0] - 0.25).abs() < 1e-6, "got {}", mono[0]);
+
+        let flattened = std::thread::spawn(move || {
+            assert!(moved.set_flat());
+            moved
+        })
+        .join()
+        .unwrap();
+        mix_output(&mut rig.mixer.lock().unwrap(), &mut mono, 1, 48_000);
+        assert_eq!(mono, [0.5]);
+        flattened.stop();
+    }
+
+    #[test]
+    fn churning_one_owners_streams_while_worker_is_held_never_starves_another_owner() {
+        let mixer = Mutex::new(Mixer {
+            stream_gain: [1.0; 11],
+            ..Mixer::default()
+        });
+        let pool = StreamPool::default();
+        let (worker, receiver) = Worker::test_pair();
+        pool.state().worker = Some(worker);
+        let low_rate = StreamSpec::new(SoundSource::Voice, 1, 1_000);
+
+        // Hold worker progress (never drain `receiver`) while one owner repeatedly opens, stops,
+        // and reaps streams. Pending unretired jobs must stay charged to that owner's quota so
+        // it hits ModStreamLimit instead of filling the shared admission queue.
+        for _ in 0..AUDIO_STREAMS_PER_MOD {
+            let stream = pool
+                .open(&mixer, "churner", &low_rate, None, Box::new(Silent))
+                .unwrap();
+            stream.stop();
+            pool.reap(&mixer);
+        }
+        assert_eq!(mixer.lock().unwrap().streams.len(), 0);
+        assert_eq!(
+            pool.open(&mixer, "churner", &low_rate, None, Box::new(Silent))
+                .err(),
+            Some(AudioRefusal::ModStreamLimit)
+        );
+
+        // An unrelated owner can still open a stream while the worker is held.
+        let other = pool
+            .open(&mixer, "other", &low_rate, None, Box::new(Silent))
+            .unwrap();
+        assert_eq!(other.state(), AudioStreamState::Playing);
+        assert_eq!(mixer.lock().unwrap().streams.len(), 1);
+
+        // Once the worker catches up and retires the canceled jobs, the churner's quota frees.
+        let mut live_jobs = Vec::new();
+        while let Ok(job) = receiver.try_recv() {
+            if !job.control.closed.load(Acquire) {
+                live_jobs.push(job);
+            }
+        }
+        assert_eq!(live_jobs.len(), 1);
+        let recovered = pool
+            .open(&mixer, "churner", &low_rate, None, Box::new(Silent))
+            .unwrap();
+        assert_eq!(recovered.state(), AudioStreamState::Playing);
+        other.stop();
+        recovered.stop();
+    }
+
+    #[test]
+    fn aggregate_pcm_budget_bounds_live_and_pending_jobs_and_ring_allocation_is_fallible() {
+        // Budget of 4 MiB fits two maximum-size stereo rings (2 * 1,536,000 = 3,072,000 bytes)
+        // but refuses a third (4,608,000 > 4,194,304).
+        let budget = 4 * 1024 * 1024;
+        let max_stereo_ring_bytes = MAX_RING_FRAMES as usize * 2 * std::mem::size_of::<AtomicI16>();
+        let mixer = Mutex::new(Mixer {
+            stream_gain: [1.0; 11],
+            ..Mixer::default()
+        });
+        let pool = StreamPool::with_pcm_budget(budget);
+        let (worker, receiver) = Worker::test_pair();
+        pool.state().worker = Some(worker);
+
+        let extreme_stereo = StreamSpec::new(SoundSource::Voice, 2, u32::MAX);
+        let s1 = pool
+            .open(&mixer, "mod_a", &extreme_stereo, None, Box::new(Silent))
+            .unwrap();
+        let s2 = pool
+            .open(&mixer, "mod_a", &extreme_stereo, None, Box::new(Silent))
+            .unwrap();
+        assert_eq!(pool.pcm_bytes.load(Acquire), 2 * max_stereo_ring_bytes);
+        assert_eq!(
+            pool.open(&mixer, "mod_b", &extreme_stereo, None, Box::new(Silent))
+                .err(),
+            Some(AudioRefusal::MemoryLimit)
+        );
+
+        // Stopping and reaping s1 while its PullJob is still queued does not release its ring
+        // bytes until the worker retires the job.
+        s1.stop();
+        pool.reap(&mixer);
+        assert_eq!(pool.pcm_bytes.load(Acquire), 2 * max_stereo_ring_bytes);
+        assert_eq!(
+            pool.open(&mixer, "mod_b", &extreme_stereo, None, Box::new(Silent))
+                .err(),
+            Some(AudioRefusal::MemoryLimit)
+        );
+
+        // Smaller streams that fit inside the remaining budget still open.
+        let small = pool
+            .open(
+                &mixer,
+                "mod_b",
+                &StreamSpec::new(SoundSource::Voice, 2, 48_000),
+                None,
+                Box::new(Silent),
+            )
+            .unwrap();
+        small.stop();
+        pool.reap(&mixer);
+
+        // Retiring canceled jobs on the worker drops their Arc<Ring> and frees the budget.
+        let mut live_jobs = Vec::new();
+        while let Ok(job) = receiver.try_recv() {
+            if !job.control.closed.load(Acquire) {
+                live_jobs.push(job);
+            }
+        }
+        assert_eq!(live_jobs.len(), 1);
+        assert_eq!(pool.pcm_bytes.load(Acquire), max_stereo_ring_bytes);
+
+        let s3 = pool
+            .open(&mixer, "mod_b", &extreme_stereo, None, Box::new(Silent))
+            .unwrap();
+        assert_eq!(pool.pcm_bytes.load(Acquire), 2 * max_stereo_ring_bytes);
+        s2.stop();
+        s3.stop();
+
+        // Fallible allocation returns None and rolls back the byte counter on impossible sizes.
+        let counter = Arc::new(AtomicUsize::new(0));
+        assert!(Ring::try_new(usize::MAX / 8, 1, counter.clone(), usize::MAX).is_none());
+        assert_eq!(counter.load(Acquire), 0);
+        assert!(Ring::try_new(usize::MAX, 2, counter.clone(), usize::MAX).is_none());
+        assert_eq!(counter.load(Acquire), 0);
     }
 }

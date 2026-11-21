@@ -49,9 +49,9 @@ pub enum StreamPlacement {
     /// OpenAL).
     At([f64; 3]),
     /// At an entity, followed each frame. The entity must be tracked when opening the stream or
-    /// calling `set_placement`; if the entity becomes untracked, unloaded or removed, the stream
-    /// stops (matching vanilla `EntityBoundSoundInstance.tick`). Stereo streams play
-    /// un-spatialized.
+    /// calling [`AudioStreamRef::set_entity`]; if the entity becomes untracked, unloaded or
+    /// removed, the stream stops (matching vanilla `EntityBoundSoundInstance.tick`), even while
+    /// mod audio is muted. Stereo streams play un-spatialized.
     Entity(EntityRef),
 }
 
@@ -178,6 +178,9 @@ pub enum AudioRefusal {
     ModStreamLimit,
     /// [`AUDIO_STREAMS_TOTAL`] streams are open across every mod: stop one first.
     TooManyStreams,
+    /// The stream pool's PCM buffer memory budget is exhausted or ring allocation failed: stop a
+    /// stream first.
+    MemoryLimit,
     /// The pull worker could not start or admit this source.
     WorkerUnavailable,
 }
@@ -194,6 +197,9 @@ impl std::fmt::Display for AudioRefusal {
             ),
             Self::TooManyStreams => {
                 write!(f, "{AUDIO_STREAMS_TOTAL} audio streams are already open")
+            }
+            Self::MemoryLimit => {
+                f.write_str("the audio stream pool cannot allocate another PCM buffer")
             }
             Self::WorkerUnavailable => f.write_str("the audio pull worker cannot accept a source"),
         }
@@ -236,10 +242,16 @@ pub trait AudioStreamSource: Send + Sync + 'static {
 /// The controls for an open mod audio stream.
 ///
 /// Keep the handle while the stream should play. Dropping it stops the stream, as [`stop`]
-/// does. `set_volume`, `state` and `stop` work from any thread, including a `Network`-thread
-/// payload handler, without waiting on the mixer or a client tick; `set_placement` takes a
-/// [`ClientHost`] to resolve entity placements eagerly.
+/// does. [`set_flat`], [`set_position`], [`set_volume`], [`state`] and [`stop`] work from any
+/// thread, including a `Network`-thread payload handler, without a [`ClientHost`] and without
+/// waiting on the mixer or a client tick. [`set_entity`] takes a [`ClientHost`] on the client
+/// thread to resolve entity placement eagerly.
 ///
+/// [`set_flat`]: AudioStreamRef::set_flat
+/// [`set_position`]: AudioStreamRef::set_position
+/// [`set_entity`]: AudioStreamRef::set_entity
+/// [`set_volume`]: AudioStreamRef::set_volume
+/// [`state`]: AudioStreamRef::state
 /// [`stop`]: AudioStreamRef::stop
 // no wire: the handle controls a stream on this client's mixer.
 // exhaustive: its field is private, so mods cannot build or destructure it
@@ -254,23 +266,32 @@ impl AudioStreamRef {
     pub fn new(source: Arc<dyn AudioStreamSource>) -> Self {
         Self { source }
     }
-    /// Moves the stream. False, changing nothing, for a position that is not finite, for a
-    /// [`StreamPlacement::Entity`] the client does not currently track, and once the stream has
-    /// stopped. Stereo streams accept any valid placement and play un-spatialized.
-    pub fn set_placement(&self, host: &dyn ClientHost, placement: &StreamPlacement) -> bool {
-        let entity_pos = match *placement {
-            StreamPlacement::Entity(entity) => {
-                let Some(at) = host
-                    .backend()
-                    .and_then(|b| b.open().entity_position(entity))
-                else {
-                    return false;
-                };
-                Some(at)
-            }
-            StreamPlacement::Flat | StreamPlacement::At(_) => None,
+    /// Moves the stream to [`StreamPlacement::Flat`] (at the listener, with no panning or
+    /// distance fade). Callable from any thread without a [`ClientHost`] and never waits on the
+    /// mixer. False once the stream has stopped.
+    pub fn set_flat(&self) -> bool {
+        self.source.set_placement(&StreamPlacement::Flat, None)
+    }
+    /// Moves the stream to [`StreamPlacement::At(at)`]. Callable from any thread without a
+    /// [`ClientHost`] and never waits on the mixer. False, changing nothing, when any coordinate
+    /// is not finite or once the stream has stopped. Stereo streams accept any finite position
+    /// and play un-spatialized.
+    pub fn set_position(&self, at: [f64; 3]) -> bool {
+        self.source.set_placement(&StreamPlacement::At(at), None)
+    }
+    /// Moves the stream to follow `entity` on the client thread, resolving its position eagerly
+    /// through `host`. False, changing nothing, when the client does not currently track
+    /// `entity`, its position is not finite, or once the stream has stopped. Stereo streams
+    /// accept any tracked entity and play un-spatialized.
+    pub fn set_entity(&self, host: &dyn ClientHost, entity: EntityRef) -> bool {
+        let Some(at) = host
+            .backend()
+            .and_then(|b| b.open().entity_position(entity))
+        else {
+            return false;
         };
-        self.source.set_placement(placement, entity_pos)
+        self.source
+            .set_placement(&StreamPlacement::Entity(entity), Some(at))
     }
     /// Sets the stream's own volume (clamped to `0.0..=1.0`), from the next output buffer. False,
     /// changing nothing, for NaN and once the stream has stopped.

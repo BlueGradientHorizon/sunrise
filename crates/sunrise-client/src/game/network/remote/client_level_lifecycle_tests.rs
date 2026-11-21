@@ -89,3 +89,81 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
     let (music, _) = game.situational_music();
     assert!(music.is_some_and(|m| m != Music::menu()));
 }
+
+/// Vanilla ClientPacketListener.handleConfigurationStart -> Minecraft.clearClientLevel ->
+/// updateLevelInEngines(null): entering configuration stops sound immediately, so a flat mod
+/// audio stream is Stopped at configuration entry without waiting for a new login.
+#[test]
+#[ignore = "daily"]
+fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
+    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use mod_api::{AudioStream, AudioStreamSource, AudioStreamState, SoundSource, StreamSpec};
+    use sunrise_client::net::{Event, ingress};
+
+    struct Silent;
+    impl AudioStream for Silent {
+        fn read(&mut self, _pcm: &mut [i16]) -> usize {
+            1
+        }
+    }
+
+    let root = std::path::PathBuf::from(
+        std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
+    );
+    let settings = Settings::default();
+    let loaded = load_resources(
+        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        Vec::new(),
+        None,
+        &root,
+        &settings,
+        std::time::Instant::now(),
+        false,
+        crate::game::execution_role::ExecutionRole::Client,
+        &Progress::new(),
+        &mut |_, _| unreachable!(),
+    )
+    .unwrap();
+    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+    options.resources = root.clone();
+    let mut audio = Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+        root.clone(),
+    ));
+    audio.backend_live_for_bench();
+    let mut game = Game::new(
+        &loaded.resources,
+        loaded.pack,
+        loaded.gui.unwrap(),
+        options,
+        settings,
+        audio,
+        None,
+    )
+    .unwrap();
+    game.init_remote_for_replay().unwrap();
+    game.remote.as_mut().unwrap().logged_in = true;
+
+    let stream = game
+        .audio
+        .open_stream(
+            "test_mod",
+            &StreamSpec::new(SoundSource::Music, 1, 48_000),
+            None,
+            Box::new(Silent),
+        )
+        .unwrap();
+    assert_eq!(stream.state(), AudioStreamState::Playing);
+
+    let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
+    tx.send(Event::Reconfiguring).unwrap();
+    let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
+    game.remote
+        .as_mut()
+        .unwrap()
+        .backlog
+        .push_back(super::super::Received::Event(event, credit));
+    game.poll_remote_events(true).unwrap();
+
+    assert!(game.remote.as_ref().unwrap().reconfiguring.is_some());
+    assert_eq!(stream.state(), AudioStreamState::Stopped);
+}

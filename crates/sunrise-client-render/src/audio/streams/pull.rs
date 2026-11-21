@@ -12,7 +12,7 @@ use std::{
 };
 
 const CAPACITY: usize = AUDIO_STREAMS_TOTAL as usize;
-const ADMIT_CAPACITY: usize = CAPACITY * 2;
+const ADMIT_CAPACITY: usize = CAPACITY;
 const SCRATCH_SAMPLES: usize = 96_000;
 
 /// Pair the thread's park token with a flag: source code runs on this thread and may use
@@ -130,14 +130,51 @@ impl Worker {
     }
 }
 
+/// Runs last when a [`PullJob`] drops, after its source and PCM ring have been released.
+pub(super) struct JobRetirement {
+    control: Arc<Control>,
+    demand: Arc<Demand>,
+}
+
+impl Drop for JobRetirement {
+    fn drop(&mut self) {
+        // A job that leaves without EOF (invalid count, shutdown or worker unwinding) cannot
+        // produce again. Only an EOF voice should stay open to drain.
+        if !self.demand.eof.load(Relaxed) {
+            self.control.stop();
+        }
+        self.control.job_retired.store(true, Release);
+    }
+}
+
 pub(super) struct PullJob {
-    pub(super) control: Arc<Control>,
-    pub(super) demand: Arc<Demand>,
-    pub(super) ring: Arc<Ring>,
     pub(super) source: Box<dyn AudioStream>,
+    pub(super) ring: Arc<Ring>,
+    pub(super) demand: Arc<Demand>,
+    pub(super) control: Arc<Control>,
+    _retire: JobRetirement,
 }
 
 impl PullJob {
+    pub(super) fn new(
+        control: Arc<Control>,
+        demand: Arc<Demand>,
+        ring: Arc<Ring>,
+        source: Box<dyn AudioStream>,
+    ) -> Self {
+        let retire = JobRetirement {
+            control: control.clone(),
+            demand: demand.clone(),
+        };
+        Self {
+            source,
+            ring,
+            demand,
+            control,
+            _retire: retire,
+        }
+    }
+
     /// At most one read per pass, using only the missing whole frames. False retires the job
     /// and its source on the worker; only the mixer decides when an EOF voice has drained.
     fn refill(&mut self, scratch: &mut [i16]) -> bool {
@@ -180,16 +217,6 @@ impl PullJob {
                 );
                 false
             }
-        }
-    }
-}
-
-impl Drop for PullJob {
-    fn drop(&mut self) {
-        // A job that leaves without EOF (invalid count, shutdown or worker unwinding) cannot
-        // produce again. Only an EOF voice should stay open to drain.
-        if !self.demand.eof.load(Relaxed) {
-            self.control.stop();
         }
     }
 }

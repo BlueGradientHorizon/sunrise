@@ -49,7 +49,7 @@ For audio that arrives independently of the mixer — such as proximity voice ch
 
 ## Format and controls
 
-`ClientHost::open_audio_stream` is available to the calling mod from client setup onward. It refuses with `AudioRefusal`, without opening anything, if the client has no sound output, the call is unavailable in this context, the spec is invalid, the pool reaches `AUDIO_STREAMS_PER_MOD` open streams for the calling mod or `AUDIO_STREAMS_TOTAL` across all mods, or the pull worker cannot start or admit the source (`AudioRefusal::WorkerUnavailable`).
+`ClientHost::open_audio_stream` is available to the calling mod from client setup onward. It refuses with `AudioRefusal`, without opening anything, if the client has no sound output, the call is unavailable in this context, the spec is invalid, the pool reaches `AUDIO_STREAMS_PER_MOD` open or unretired streams for the calling mod or `AUDIO_STREAMS_TOTAL` across all mods, the pool's aggregate PCM buffer budget is exhausted or ring allocation fails (`AudioRefusal::MemoryLimit`), or the pull worker cannot start or admit the source (`AudioRefusal::WorkerUnavailable`).
 
 | `StreamSpec` field | Meaning |
 |---|---|
@@ -60,21 +60,21 @@ For audio that arrives independently of the mixer — such as proximity voice ch
 | `range` | Positive, finite distance in blocks at which a positioned mono stream fades to silence, in a straight line (`AL_LINEAR_DISTANCE`, as a sound's range). |
 | `volume` | The stream's own volume before the group's and the master's. Finite values are clamped to `0.0..=1.0`; `NaN` is refused with `SpecFault::Volume`. |
 
-Use the `AudioStreamRef` handle to set placement (`set_placement(host, &placement)`), set volume (`set_volume`), read state (`state`), or stop playback (`stop`). **Dropping the handle stops the stream**, so keep it for as long as you want playback. A stopped stream frees its place in the pool even if you keep its handle. Muffling (`muffle_sounds`) applies to mod streams as it does to vanilla sounds.
+Use the `AudioStreamRef` handle to set placement (`set_flat`, `set_position(at)`, `set_entity(host, entity)`), set volume (`set_volume`), read state (`state`), or stop playback (`stop`). **Dropping the handle stops the stream**, so keep it for as long as you want playback. A stopped stream frees its voice immediately and frees its quota slot and PCM buffer once the pull worker retires its job, even if you keep its handle. Muffling (`muffle_sounds`) applies to mod streams as it does to vanilla sounds.
 
 - `Playing`: open and playing, even if silent because it is muted or has no PCM ready.
-- `Stopped`: stopped explicitly, dropped, ended after `read` returned `0` and queued frames drained, stopped after an invalid frame count or panic, stopped because its followed entity became untracked or removed, stopped by leaving the level, changing dimensions, or sound engine reload/stop, or stopped when sound output was lost. It never plays again; open a new stream once playback can resume.
+- `Stopped`: stopped explicitly, dropped, ended after `read` returned `0` and queued frames drained, stopped after an invalid frame count or panic, stopped because its followed entity became untracked or removed, stopped by leaving the level, re-entering configuration, changing dimensions, or sound engine reload/stop, or stopped when sound output was lost. It never plays again; open a new stream once playback can resume.
 
 ## The player's switch
 
-With Sunrise Extras' “Mod audio streams” switch off, streams still open and advance in silence. A mod needs no special case, and switching it back on does not play a backlog. The Extras switch is in `crates/sunrise-official/src/mod_audio.rs`; the engine only owns the gain it sets.
+With Sunrise Extras' “Mod audio streams” switch off, streams still open, advance in silence, and check tracked entity lifetime (so losing a tracked entity stops the stream even while muted). A mod needs no special case, and switching it back on does not play a backlog. The Extras switch is in `crates/sunrise-official/src/mod_audio.rs`; the engine only owns the gain it sets.
 
 ## Placement
 
 - A **mono** stream may be `Flat` (at the listener, no panning and no fading), `At([x, y, z])` with any finite coordinates, or `Entity(entity)`. Positioned mono streams are panned and fade linearly to silence at `range`.
 - A **stereo** stream accepts any valid placement (`Flat`, `At`, or `Entity`) and plays un-spatialized with no panning or distance attenuation, matching OpenAL. `At` coordinates are still validated to be finite and `Entity` must still be currently tracked.
-- An `Entity` stream resolves its entity's position eagerly at `open_audio_stream` and at `AudioStreamRef::set_placement(host, &placement)`. If the entity is not currently tracked, `open_audio_stream` refuses with `SpecFault::Position` and `set_placement` returns `false` without changing placement. Each frame the mixer follows the entity; if the entity becomes untracked, unloaded or removed, the stream stops.
-- Leaving the level, changing dimensions, or reloading/stopping the sound engine stops all open streams. Open a new stream in the new level if playback should continue.
+- An `Entity` stream resolves its entity's position eagerly at `open_audio_stream` and at `AudioStreamRef::set_entity(host, entity)`. If the entity is not currently tracked, `open_audio_stream` refuses with `SpecFault::Position` and `set_entity` returns `false` without changing placement. Each frame the mixer follows the entity even while muted; if the entity becomes untracked, unloaded or removed, the stream stops.
+- Leaving the level, re-entering configuration, changing dimensions, or reloading/stopping the sound engine stops all open streams. Open a new stream in the new level if playback should continue.
 
 ## Network audio
 
@@ -94,16 +94,17 @@ struct VoiceFrame {
 Put the emitter's `entity.id()` in the clientbound frame, not its `EntityRef`: the handle belongs to
 its own world epoch. On the receiving client's main thread, use `host.entity(frame.emitter_id)` to
 resolve a handle in the current level. If it returns `None`, skip the frame. Otherwise, use
-`StreamPlacement::Entity(entity)` when opening the local stream or calling
-`stream.set_placement(host, &StreamPlacement::Entity(entity))`. Scope the IDs and any cached handles
+`StreamPlacement::Entity(entity)` when opening the local stream or call
+`stream.set_entity(host, entity)`. Scope the IDs and any cached handles
 to the current level and connection; do not carry pending frames into a new level. A network-thread
-handler can feed a mod-owned buffer read by an already-opened `AudioStream` on the pull worker.
+handler can feed a mod-owned buffer read by an already-opened `AudioStream` on the pull worker and
+can call `set_flat`, `set_position`, `set_volume`, `state` and `stop` directly without a host.
 
 ## Threading
 
-- **Client host:** Open streams and call `AudioStreamRef::set_placement(host, &placement)` where `&dyn ClientHost` is available. The client tracks entity placements and reaps stopped streams; it does not have to refill PCM on a tick.
+- **Client host:** Open streams (`open_audio_stream`) and attach a stream to an entity (`AudioStreamRef::set_entity(host, entity)`) where `&dyn ClientHost` is available. The client tracks entity placements and reaps stopped streams; it does not have to refill PCM on a tick.
 - **Pull worker:** Calls each source's `read` serially without holding mixer or pool locks. The device callback requests PCM for the next buffer; if several requests arrive before the worker reads, the latest wins.
-- **Any thread:** `AudioStreamRef` is `Send`: `set_volume`, `state` and `stop` work from any thread without taking the mixer's lock. Async producers write decoded PCM into their own nonblocking buffer read by `AudioStream::read`.
+- **Any thread:** `AudioStreamRef` is `Send`: `set_flat`, `set_position`, `set_volume`, `state` and `stop` work from any thread (including a `Network`-thread payload handler) without a `ClientHost` and without taking the mixer's lock. Async producers write decoded PCM into their own nonblocking buffer read by `AudioStream::read`.
 - **Device callback:** Drains the queued PCM and mixes it. It does not call your source or wait for a refill. If the source falls behind, the missing audio is silent.
 
 ## Known limits
