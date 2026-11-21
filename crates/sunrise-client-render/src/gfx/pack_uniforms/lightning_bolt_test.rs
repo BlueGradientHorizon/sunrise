@@ -1,4 +1,5 @@
-//! `lightningBoltPosition` (spec 5.2): the newest drawn bolt in player space, w = 1.
+//! `lightningBoltPosition` (spec 5.2): the last bolt in Sunrise's draw list, in player space,
+//! w = 1.
 
 use glam::DVec3;
 
@@ -16,9 +17,9 @@ fn bolt_position(u: &FrameUniforms) -> [f32; 4] {
 
 /// No bolt reads zeros, w included; a bolt reads its position minus the camera's with w = 1,
 /// worked out in doubles: at x = 29 999 000.25 a float can't hold the quarter, so subtracting
-/// floats would give 10 or 11, not 10.25. Of two bolts, the one drawn last (the newest) counts.
+/// floats would give 10 or 11, not 10.25. Of two bolts, the last in the draw list counts.
 #[test]
-fn the_newest_drawn_bolt_reaches_the_pack_in_player_space() {
+fn the_last_bolt_in_the_draw_list_reaches_the_pack_in_player_space() {
     let hud = HudBatch::scratch([800, 450]);
     let mut f = frame(&hud);
     f.camera = DVec3::new(29_999_000.25, 64.5, -30.75);
@@ -53,12 +54,14 @@ fn the_newest_drawn_bolt_reaches_the_pack_in_player_space() {
     assert_eq!(bolt_position(&u), [0.0; 4]);
 }
 
-/// It is a `vec4`: a program declaring it so reads it, one declaring a `vec3` reads 0 as for
-/// the other built-ins, and custom uniforms see four components before the first frame.
+/// It is a `vec4`: a program declaring it so reads it, one declaring a `vec3` or a `bool` reads
+/// 0 as for the other built-ins (a `bool` doesn't take its first component, unlike a scalar
+/// float's), and custom uniforms see four components before the first frame.
 #[test]
 fn the_bolt_position_is_a_vec4() {
     let v = Value::f(&[1.0, 2.0, 3.0, 1.0]);
     assert!(v.read_as("lightningBoltPosition", "vec4"));
     assert!(!v.read_as("lightningBoltPosition", "vec3"));
+    assert!(!v.read_as("lightningBoltPosition", "bool"));
     assert_eq!(zero("lightningBoltPosition").unwrap().n, 4);
 }

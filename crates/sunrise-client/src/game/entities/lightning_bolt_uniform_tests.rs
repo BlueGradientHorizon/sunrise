@@ -1,5 +1,5 @@
 //! A summoned bolt reaches a shader pack's `lightningBoltPosition` through the frame's bolts
-//! (`bolt_instances`, what the renderer draws): the newest drawn one, camera-relative, w = 1.
+//! (`bolt_instances`, Sunrise's draw list): the last in the list, camera-relative, w = 1.
 use crate::game::native_entity_refs::tests::with_game;
 use sunrise_client::gfx::pack_uniforms::lightning_bolt_position;
 
@@ -19,8 +19,8 @@ fn a_summoned_bolt_reaches_the_pack_in_player_space() {
             lightning_bolt_position(&game.bolt_instances(camera), camera),
             [10.25, -6.5, -6.0, 1.0]
         );
-        // A newer bolt past every draw distance (`shouldRenderAtSqrDistance`) isn't drawn, so
-        // the drawn one still counts; a newer one in range takes over.
+        // A bolt past every draw distance (`shouldRenderAtSqrDistance`) isn't in the draw
+        // list, so the listed one still counts; one summoned in range goes last and takes over.
         assert!(game.run_command("summon minecraft:lightning_bolt 1000.5 64 0.5"));
         assert_eq!(
             lightning_bolt_position(&game.bolt_instances(camera), camera),

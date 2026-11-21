@@ -182,13 +182,15 @@ impl Value {
     /// type ... Disabling that uniform"), and the program reads 0. Our probe packs saw it for a
     /// float declared `int` or `vec2`, an int `float`, an `ivec2` `vec2`, `int` or `ivec3`, a
     /// `vec3` `vec2` or `vec4`, a `mat4` `mat3`, and any `uint`; an int or a bool built-in
-    /// declared `bool` or `int` was kept. A float declared `bool` is left as it was: Iris warned,
-    /// but our probe read true.
+    /// declared `bool` or `int` was kept. A scalar float declared `bool` is left as it was: Iris
+    /// warned, but our probe read true. A float vector or matrix declared `bool` (a `vec4` such as
+    /// `lightningBoltPosition`) is a mismatch like any other and reads 0, not its first component.
     pub fn read_as(&self, name: &str, ty: &str) -> bool {
         let int = matches!(self, Value::I(_));
+        let name = name.strip_prefix("gbuffers.").unwrap_or(name);
         let (declared_int, size) = match ty {
             "float" => (false, 1),
-            "bool" if !int => return true,
+            "bool" if !int && components(name) == 1 => return true,
             "int" | "bool" => (true, 1),
             "mat2" => (false, 4),
             "mat3" => (false, 9),
@@ -198,7 +200,6 @@ impl Value {
             t if let Some(n) = t.strip_prefix("vec") => (false, n.parse().unwrap_or(0)),
             _ => return true,
         };
-        let name = name.strip_prefix("gbuffers.").unwrap_or(name);
         declared_int == int && size == components(name)
     }
 
@@ -1120,17 +1121,18 @@ fn status_value(name: &str, inputs: &PackInputs) -> Option<Value> {
     })
 }
 
-/// `lightningBoltPosition` (spec 5.2): the last of the bolts drawn this frame, in player space
-/// (its position minus `camera`, the `cameraPosition` of the frame), with w = 1; zeros when no
-/// bolt is drawn. `bolts` are the frame's, in the order they are drawn: vanilla draws entities
-/// in the order the level added them (`ClientLevel.entitiesForRendering`, `EntityLookup`'s
-/// linked map), so the last is the newest. A bolt never moves, so its interpolated render
-/// position (`EntityRenderer.extractRenderState`) is where it struck. Recorded as decision D-1
+/// `lightningBoltPosition` (spec 5.2): the last bolt in Sunrise's draw list (`bolts`, the
+/// frame's `lightning.bolts`), in player space (its offset from `camera`, the `cameraPosition`
+/// of the frame, as the renderer draws it), with w = 1; zeros when the list is empty. The
+/// order bolts are submitted in doesn't decide whose pixels end up on screen last; the value
+/// only follows the list, and which bolts are visible or how they sort is the renderer's
+/// business. A bolt never moves, so its interpolated render position
+/// (`EntityRenderer.extractRenderState`) is where it struck. Recorded as decision D-1
 /// (`docs/cleanroom/decisions.md`).
 pub fn lightning_bolt_position(bolts: &[super::lightning::Bolt], camera: DVec3) -> [f32; 4] {
     bolts.last().map_or([0.0; 4], |bolt| {
-        let at = (DVec3::from_array(bolt.at) - camera).as_vec3();
-        [at.x, at.y, at.z, 1.0]
+        let [x, y, z] = super::lightning::offset(bolt, camera);
+        [x, y, z, 1.0]
     })
 }
 
@@ -1224,6 +1226,10 @@ mod tests {
             (&Value::i(&[2048, 2048]), "atlasSize", "ivec3", false),
             (&float, "sunAngle", "float", true),
             (&float, "sunAngle", "vec2", false),
+            // A scalar float declared `bool` is kept; a float vector or matrix isn't.
+            (&float, "sunAngle", "bool", true),
+            (&Value::f(&[1.0, 2.0, 3.0]), "cameraPosition", "bool", false),
+            (&matrix, "gbufferModelView", "bool", false),
             (&float, "viewWidth", "int", false),
             (&Value::f(&[1.0, 2.0, 3.0]), "cameraPosition", "vec3", true),
             (&Value::f(&[1.0, 2.0, 3.0]), "cameraPosition", "vec4", false),
