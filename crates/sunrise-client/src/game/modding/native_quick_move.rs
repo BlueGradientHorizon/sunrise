@@ -125,6 +125,13 @@ impl Game<'_> {
             return None;
         }
         let (size, window, menu_type) = (menu.size, menu.window, menu.mod_type);
+        // Linked storage and craft results are not slots of `entity.items`, which is what
+        // MenuQuickMove can edit. The machine route handles those slots directly.
+        if let (Some(layout), MenuSlot::Container(slot)) = (menu_type, at)
+            && (!layout.owns_slot(slot) || layout.crafting.is_some_and(|c| c.result == slot))
+        {
+            return None;
+        }
         // A mod menu type keeps its drag in the connection's machine menu
         // (`lan_machine_click`), not in `menu.drag`: a shift-click during it
         // goes there too, to only end the drag.
@@ -341,32 +348,6 @@ impl Game<'_> {
         true
     }
 
-    /// `Slot.mayPickup` of the clicked slot, which `doClick` asks before the menu's
-    /// `quickMoveStack`: a slot of a mod menu type its parts refuse (`menu_slot_rules`) asks no
-    /// mod, and the game's own routing refuses it with the same answer. The answers go to that
-    /// routing (`Menu::click_asked`), which does not ask again.
-    fn mod_menu_quick_move_gives(
-        &self,
-        pos: Pos,
-        menu_type: Option<&'static ModMenuType>,
-        slot: usize,
-        at: MenuSlot,
-    ) -> (bool, Asked) {
-        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get(&pos) else {
-            return (true, Asked::default());
-        };
-        let held = match at {
-            MenuSlot::Container(k) => m.items.get(k).and_then(Option::as_ref),
-            MenuSlot::Inventory(i) => self.inventory.get(i).and_then(Option::as_ref),
-        };
-        match (menu_type, held.filter(|s| s.count > 0)) {
-            (Some(t), Some(stack)) => {
-                self.mod_menu_slot_gives(t, slot, stack, [pos.0, pos.1, pos.2], &m.items)
-            }
-            _ => (true, Asked::default()),
-        }
-    }
-
     /// Route a mod menu quick move as one decided action, after asking the slot rules.
     /// `Some((handled, asked))`: the decision stood (a mod took the click), or no mod did and the
     /// action was cancelled with every write of the listeners undone, so the game routes the
@@ -385,9 +366,17 @@ impl Game<'_> {
         window: i32,
     ) -> Option<(bool, Asked)> {
         let (actor, route) = (self.guest_actor(conn)?, self.guest_route(conn)?);
-        let (gives, asked) = self.as_guest(conn, |g| {
-            g.mod_menu_quick_move_gives(pos, menu_type, slot, at)
-        })?;
+        let (gives, asked) = if menu_type.is_some() {
+            self.as_guest(conn, |game| {
+                let guest = game.lan.as_ref()?.hub.guest(conn)?;
+                let backing = game.menu_slot_backing_for(guest, slot)?;
+                game.with_live_slot_rules(guest, backing, slot, |rules, env, held| {
+                    rules.ask_pickup(env, slot, held)
+                })
+            })??
+        } else {
+            (true, Asked::default())
+        };
         if !gives {
             return Some((false, asked));
         }

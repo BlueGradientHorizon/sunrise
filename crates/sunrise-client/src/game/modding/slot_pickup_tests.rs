@@ -14,7 +14,9 @@ use std::{
 };
 use sunrise_client::{
     chunk::Chunk,
-    containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModMenuType},
+    containers::{
+        BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModCrafting, ModMenuType,
+    },
     items::ItemStack,
     lan::{Out, PlayerSender, menu::Slots},
     menu::{Input, Kind, Menu},
@@ -63,6 +65,21 @@ impl MenuPart for Pot {
             event.may_place = false;
         }
         event.may_pickup &= event.slot != KEEPS;
+        if event.container == mod_api::MenuContainer::Main
+            && event.slot == 0
+            && event
+                .context
+                .slot(mod_api::MenuContainer::Grid, 0)
+                .is_some()
+        {
+            event.may_pickup &= event
+                .context
+                .slot(mod_api::MenuContainer::Result, 0)
+                .is_some_and(|stack| {
+                    mod_api::__private::item_key_id(stack.item()) == Some("minecraft:oak_planks")
+                        && stack.count() == 4
+                });
+        }
     }
 }
 /// The pot block's shift-click: heard, and left to the game.
@@ -83,6 +100,7 @@ impl BlockEntityPart for PotBlock {
 /// The pot's mod, with the block's `menu_quick_move` listener or without it.
 struct PotMod {
     quick_move: bool,
+    crafting: bool,
 }
 #[mod_api::__subscriptions]
 impl Hooks for PotMod {
@@ -93,9 +111,23 @@ impl Hooks for PotMod {
             r.block_entity_part(&kind, PotBlock).unwrap();
         }
     }
+
+    fn prepare_item_craft(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        _: &mut mod_api::PrepareItemCraftEvent<'_>,
+    ) -> Option<mod_api::ItemStack> {
+        self.crafting.then(|| {
+            mod_api::ItemStack::new(
+                mod_api::__private::item_key("minecraft:diamond").unwrap(),
+                1,
+            )
+            .unwrap()
+        })
+    }
 }
 
-fn pot_type() -> &'static ModMenuType {
+fn pot_type(crafting: bool) -> &'static ModMenuType {
     Box::leak(Box::new(ModMenuType {
         id: MENU,
         owner: "test",
@@ -105,7 +137,11 @@ fn pot_type() -> &'static ModMenuType {
         owned_slots: None,
         results: vec![RESULT],
         inputs: Vec::new(),
-        crafting: None,
+        crafting: crafting.then_some(ModCrafting {
+            grid: 5,
+            size: 3,
+            result: 14,
+        }),
         links: None,
     }))
 }
@@ -125,15 +161,23 @@ fn times(asks: &Asks, (slot, item, count): (usize, &str, u32)) -> usize {
 
 /// Guest 12 with the pot at `POS` open, and what their client is sent.
 fn with_pot(test: impl FnOnce(&mut crate::game::Game<'_>, &mpsc::Receiver<Out>)) {
-    with_pot_mod(true, test);
+    with_pot_mod(true, false, test);
 }
 
 /// `with_pot`, with the block's `menu_quick_move` listener when `quick_move`.
 fn with_pot_mod(
     quick_move: bool,
+    crafting: bool,
     test: impl FnOnce(&mut crate::game::Game<'_>, &mpsc::Receiver<Out>),
 ) {
-    let mods: Mods = vec![ModEntry::new("pot", Box::new(PotMod { quick_move }))].into();
+    let mods: Mods = vec![ModEntry::new(
+        "pot",
+        Box::new(PotMod {
+            quick_move,
+            crafting,
+        }),
+    )]
+    .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     crate::entry::install_client_hooks();
     mod_platform::testing::with_mods(mods, || {
@@ -170,7 +214,7 @@ fn with_pot_mod(
             let items = vec![None; SLOTS];
             host.hub
                 .open_container(12, MENU, title, POS, Slots::Block(POS), items, None);
-            let menu_type = pot_type();
+            let menu_type = pot_type(crafting);
             host.hub.guests.update(0, |guest| {
                 guest.menu.as_mut().unwrap().mod_type = Some(menu_type);
                 guest.sender = PlayerSender::new(tx, Arc::default());
@@ -184,7 +228,7 @@ fn with_pot_mod(
 
 /// A client's copy of the pot's menu: `slots` by menu index, `carried` on the cursor.
 fn prediction(slots: &[(usize, Option<ItemStack>)], carried: Option<ItemStack>) -> Menu {
-    let mut menu = Menu::new(Kind::Mod(pot_type()));
+    let mut menu = Menu::new(Kind::Mod(pot_type(false)));
     menu.set_registry_id(Some(MENU));
     for (slot, stack) in slots {
         menu.load_slot(*slot, stack.clone());
@@ -466,7 +510,7 @@ fn a_refused_quick_move_moves_nothing_and_asks_before_menu_quick_move() {
 #[test]
 #[ignore = "daily"]
 fn a_quick_move_without_menu_quick_move_asks_once() {
-    with_pot_mod(false, |game, rx| {
+    with_pot_mod(false, false, |game, rx| {
         // No listener: the game's routing asks alone, once for the clicked stack, as the
         // prediction does, refused or not.
         let (menu, client_asks, server_asks) =
@@ -856,5 +900,36 @@ fn a_drag_and_a_creative_clone_never_ask_the_pickup_rule() {
         assert_eq!(menu.carried.as_ref().map(|c| c.count), Some(64));
         assert_eq!(served(game), predicted(&menu));
         assert!(asked().is_empty());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn quick_move_and_live_rules_see_the_same_prepared_result_until_the_grid_changes() {
+    with_pot_mod(true, true, |game, rx| {
+        let entity = game.world.block_entities.get_mut(&POS).unwrap();
+        entity.slots_mut()[0] = stone(8);
+        entity.slots_mut()[5] = stone(1); // No vanilla recipe; the prepare hook supplies a diamond.
+        game.lan_mod_crafting_tick();
+        let player = game.player(12).unwrap();
+        let menu = player.container_menu(game).unwrap();
+        let result = menu.slot(game, 14).unwrap().unwrap();
+        assert_eq!(
+            mod_api::__private::item_key_id(result.item()),
+            Some("minecraft:diamond")
+        );
+        assert_eq!(menu.slot_gives(game, 0), Some(false));
+        MOVED.with(|moved| moved.borrow_mut().clear());
+        click(game, rx, (0, 0, Input::QuickMove), vec![], None);
+        assert!(MOVED.with(|moved| moved.borrow().is_empty()));
+        assert_eq!(served(game)[0], Some(("minecraft:stone".to_owned(), 8)));
+
+        // Before the next sync, the live grid crafts oak planks, not the old preview.
+        game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[5] =
+            Some(ItemStack::new("minecraft:oak_log", 1));
+        assert_eq!(menu.slot_gives(game, 0), Some(true));
+        click(game, rx, (0, 0, Input::QuickMove), vec![], None);
+        assert!(MOVED.with(|moved| moved.borrow().as_slice() == [0]));
+        assert_eq!(served(game)[0], None);
     });
 }

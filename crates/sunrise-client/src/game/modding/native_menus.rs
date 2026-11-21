@@ -270,25 +270,44 @@ impl Game<'_> {
         }
         let player = menu.fields().player;
         let window = menu.fields().window;
-        let guest = self
-            .native_menu_player(player)
-            .ok_or(MenuItemsRefusal::NoPlayer)?;
+        let Some(guest) = self.native_menu_guest(menu) else {
+            return Err(if self.native_menu_player(player).is_some() {
+                MenuItemsRefusal::NotOpen
+            } else {
+                MenuItemsRefusal::NoPlayer
+            });
+        };
         let conn = guest.conn;
-        let open = self
-            .native_menu_guest(menu)
-            .and_then(|g| g.menu.as_ref())
+        let open = guest
+            .menu
+            .as_ref()
             .filter(|m| m.slots == Slots::Native)
             .ok_or(MenuItemsRefusal::NotOpen)?;
         if open.owned_slots().is_some() {
             return Err(MenuItemsRefusal::OwnedSlots);
         }
+        let size = open.size;
+        let gi = self.guest_index(conn).ok_or(MenuItemsRefusal::NoPlayer)?;
+        let mut items = items;
+        items.resize(size, None);
         let transactional = !self.transactions.is_empty();
         if transactional {
             self.journal_menus(player);
+            self.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(gi, |g| g.native_menu = items);
+        } else {
+            self.with_own_record(gi, |host, _, _| {
+                host.hub
+                    .guests
+                    .update(gi, |g| g.native_menu = items.clone());
+                host.hub.send_menu_content(gi, items);
+                Some(())
+            });
         }
-        let host = self.lan.as_mut().ok_or(MenuItemsRefusal::NoPlayer)?;
-        host.hub
-            .set_native_menu_items(conn, window, items, !transactional)?;
         // The scoped click reconciles its own window on both override and refusal.
         if transactional
             && !self
@@ -1075,6 +1094,85 @@ mod tests {
             assert!(content.carried.is_some(), "the cursor is sent with it");
             let host: &mut dyn ServerHost = game;
             assert_eq!(menu.container_id(host), Some(window), "still the open menu");
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn bulk_menu_updates_send_the_live_owner_and_abort_without_packets() {
+        with_game(|game| {
+            let rx = watched_guest(game);
+            let menu = open(game, 1, "display", MenuReplace::CloseFirst);
+            let window = menu.container_id(game).unwrap();
+            let mut outer = guest(2);
+            outer.inventory[3] = Some(ItemStack::new("minecraft:diamond", 7));
+            outer.carried = Some(ItemStack::new("minecraft:dirt", 9));
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            hub.guests.push(outer);
+            hub.guests.update(0, |g| {
+                g.inventory[5] = Some(ItemStack::new("minecraft:gold_ingot", 2));
+                g.carried = Some(ItemStack::new("minecraft:stone", 4));
+            });
+            sent(&rx);
+            let items = |count| {
+                vec![Some(
+                    ItemStack::new("minecraft:stick", count)
+                        .try_into_api()
+                        .unwrap(),
+                )]
+            };
+            let check = |count| {
+                let packets = sent(&rx);
+                let contents: Vec<_> = packets
+                    .iter()
+                    .filter_map(|p| match p {
+                        C::ContainerSetContent(content) => Some(content),
+                        _ => None,
+                    })
+                    .collect();
+                let [content] = contents.as_slice() else {
+                    panic!("{packets:?}");
+                };
+                assert_eq!(content.container, window);
+                assert_eq!(content.items[0].as_ref().map(|s| s.count), Some(count));
+                assert_eq!(content.items[9 + 27 + 5].as_ref().map(|s| s.count), Some(2));
+                assert!(content.items[9 + 27 + 3].is_none());
+                assert_eq!(content.carried.as_ref().map(|s| s.count), Some(4));
+            };
+            game.as_guest(2, |game| {
+                game.as_guest(1, |game| {
+                    assert_eq!(menu.set_items(game, items(1)), Ok(()));
+                    check(1);
+                    let aborted: Result<(), ()> = game.transaction(|game, _| {
+                        assert_eq!(menu.set_items(game, items(3)), Ok(()));
+                        Err(())
+                    });
+                    assert_eq!(aborted, Err(()));
+                    assert!(sent(&rx).is_empty());
+                    assert_eq!(
+                        menu.slot(game, 0).flatten().map(|stack| stack.count()),
+                        Some(1)
+                    );
+                    let committed: Result<(), ()> = game.transaction(|game, _| {
+                        assert_eq!(menu.set_items(game, items(5)), Ok(()));
+                        assert!(sent(&rx).is_empty());
+                        Ok(())
+                    });
+                    assert_eq!(committed, Ok(()));
+                    check(5);
+                })
+                .unwrap();
+                assert_eq!(game.carried.as_ref().unwrap().count, 9);
+            })
+            .unwrap();
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0]
+                    .carried
+                    .as_ref()
+                    .unwrap()
+                    .count,
+                4
+            );
         });
     }
 

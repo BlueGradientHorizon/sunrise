@@ -54,6 +54,7 @@ pub struct SlotContext<'a> {
     pub container: MenuContainer,
     pub(crate) slots: &'a [Option<ItemStack>],
     pub(crate) slots_second: &'a [Option<ItemStack>],
+    pub(crate) linked: Option<crate::lan::menu::LinkedSlots<'a>>,
     /// A flattened LAN container stores grid/result values in Main's unused positions.
     /// These positions are empty in the prediction's separate Main container.
     pub(crate) main_crafting: Option<crate::containers::ModCrafting>,

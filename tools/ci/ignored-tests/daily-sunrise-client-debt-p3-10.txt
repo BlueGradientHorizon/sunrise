@@ -1,2 +1,5 @@
 sunrise-client game::slot_rules_tests::live_slot_queries_read_live_siblings_limits_acting_armor_and_stale_handles lib daily resources
 sunrise-client game::slot_rules_tests::mod_menu_slot_gives_reuses_recorded_answer_in_click_asked lib daily resources
+sunrise-client game::native_menu_places::tests::backed_slot_rules_ask_the_live_handler_not_the_display_copy lib daily resources
+sunrise-client game::native_menus::tests::bulk_menu_updates_send_the_live_owner_and_abort_without_packets lib daily resources
+sunrise-client game::slot_pickup_tests::quick_move_and_live_rules_see_the_same_prepared_result_until_the_grid_changes lib daily resources

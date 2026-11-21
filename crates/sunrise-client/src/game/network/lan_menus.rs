@@ -117,7 +117,12 @@ impl super::Game<'_> {
                         .inventory_clicked(conn, &packet, &self.world, &changed);
                 }
             }
-            ClickReply::Resend(window) => host.hub.resend_menu(conn, window, &self.world),
+            ClickReply::Resend(window) => {
+                self.with_own_record(i, |host, _, world| {
+                    host.hub.resend_menu(conn, window, world);
+                    Some(())
+                });
+            }
             ClickReply::Inventory => host.hub.send_inventory(i),
             ClickReply::Offhand => {
                 let offhand = guest.offhand.clone();

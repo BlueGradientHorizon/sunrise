@@ -295,6 +295,9 @@ struct LiveSiblingPart;
 #[mod_api::sunrise_part]
 impl MenuPart for LiveSiblingPart {
     fn menu_slot_rules(&self, _: &dyn mod_api::Host, event: &mut MenuSlotRulesEvent<'_>) {
+        if event.container == mod_api::MenuContainer::Main && event.slot == 1 {
+            event.may_pickup = event.stack.count() == 3;
+        }
         if event.container == mod_api::MenuContainer::Main && event.slot == 0 {
             assert_eq!(event.context.player, Some(12));
             assert_eq!(event.context.pos, Some([1, 64, 1]));
@@ -314,20 +317,90 @@ struct LiveSiblingListener;
 impl Hooks for LiveSiblingListener {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
         r.menu_part("minecraft:generic_9x1", LiveSiblingPart);
+        let helmet = r.item_key("minecraft:iron_helmet");
+        r.item_part(helmet, GuestFeetOnly);
     }
+}
+
+struct GuestFeetOnly;
+#[mod_api::sunrise_part]
+impl mod_api::ItemPart for GuestFeetOnly {
+    fn can_equip(&self, host: &dyn mod_api::Host, event: &mut mod_api::CanEquipEvent<'_>) {
+        assert_eq!(host.player(12).unwrap().entity(), event.entity.entity());
+        event.can_equip = event.slot == "feet";
+    }
+}
+
+/// An admitted block-backed menu, with registration and storage scoped to this game.
+fn open_live_rules_fixture(
+    game: &mut crate::game::Game<'_>,
+    menu_type: &'static sunrise_client::containers::ModMenuType,
+    items: Vec<Option<ItemStack>>,
+) {
+    use std::sync::Arc;
+    use sunrise_client::{
+        chunk::Chunk,
+        containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer},
+        lan::menu::Slots,
+    };
+    let pos = (1, 64, 1);
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+    let stone_state = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stone")
+        .unwrap();
+    game.world.set(pos.0, pos.1, pos.2, stone_state).unwrap();
+    let state = game.world.block(pos.0, pos.1, pos.2).0;
+    game.world.block_entities.set_mod_containers(
+        [(
+            state,
+            Arc::new(ModContainer {
+                slots: menu_type.slots,
+                ..Default::default()
+            }),
+        )]
+        .into_iter()
+        .collect(),
+    );
+    let entity = ModBlockEntity::new(
+        "test:box".into(),
+        ModBlockEntityFields {
+            items,
+            ..Default::default()
+        },
+    );
+    game.world
+        .block_entities
+        .insert(pos, BlockEntity::Mod(Box::new(entity)));
+
+    let host = game.lan.as_mut().unwrap();
+    host.hub.open_container(
+        12,
+        menu_type.id,
+        sunrise_core::nbt::Tag::String("box".into()),
+        pos,
+        Slots::Block(pos),
+        vec![None; menu_type.slots],
+        None,
+    );
+    host.hub
+        .update_guest(12, |guest| {
+            guest.menu.as_mut().unwrap().mod_type = Some(menu_type);
+        })
+        .unwrap();
 }
 
 #[test]
 #[ignore = "daily"]
 fn live_slot_queries_read_live_siblings_limits_acting_armor_and_stale_handles() {
     use crate::game::api_values::TryIntoApi;
-    use std::sync::Arc;
     use sunrise_client::{
-        chunk::Chunk,
         command::args::GameMode,
-        containers::{
-            BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModMenuType,
-        },
+        containers::{BlockEntity, ModLinks, ModMenuType},
         lan::menu::Slots,
     };
 
@@ -341,7 +414,7 @@ fn live_slot_queries_read_live_siblings_limits_acting_armor_and_stale_handles() 
         results: Vec::new(),
         inputs: Vec::new(),
         crafting: None,
-        links: None,
+        links: Some(ModLinks { from: 1, count: 2 }),
     }));
 
     with_mods(
@@ -349,56 +422,22 @@ fn live_slot_queries_read_live_siblings_limits_acting_armor_and_stale_handles() 
         || {
             with_guests(|game| {
                 let pos = (1, 64, 1);
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                let stone_state = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:stone")
-                    .unwrap();
-                game.world.set(pos.0, pos.1, pos.2, stone_state).unwrap();
-                let state = game.world.block(pos.0, pos.1, pos.2).0;
-                game.world.block_entities.set_mod_containers(
-                    [(
-                        state,
-                        Arc::new(ModContainer {
-                            slots: 9,
-                            ..Default::default()
-                        }),
-                    )]
-                    .into_iter()
-                    .collect(),
-                );
                 let mut items = vec![None; 9];
                 items[0] = Some(ItemStack::new("minecraft:stone", 2));
-                items[1] = Some(ItemStack::new("minecraft:oak_planks", 3));
-                let entity = ModBlockEntity::new(
-                    "test:box".into(),
-                    ModBlockEntityFields {
-                        items,
-                        ..Default::default()
-                    },
+                items[1] = Some(ItemStack::new("minecraft:oak_planks", 55)); // raw, not the linked stack
+                items[2] = Some(ItemStack::new("minecraft:stone", 7)); // unbound, not a click target
+                open_live_rules_fixture(game, menu_type, items);
+                let linked = (1, 64, 2);
+                game.world.block_entities.insert(
+                    linked,
+                    BlockEntity::Chest(vec![Some(ItemStack::new("minecraft:oak_planks", 3))]),
                 );
-                game.world
-                    .block_entities
-                    .insert(pos, BlockEntity::Mod(Box::new(entity)));
-
-                let title = sunrise_core::nbt::Tag::String("box".into());
-                let host = game.lan.as_mut().unwrap();
-                host.hub.open_container(
-                    12,
-                    "minecraft:generic_9x1",
-                    title.clone(),
-                    pos,
-                    Slots::Block(pos),
-                    vec![None; 9],
-                    None,
-                );
-                host.hub
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
                     .update_guest(12, |guest| {
-                        guest.menu.as_mut().unwrap().mod_type = Some(menu_type);
+                        guest.menu.as_mut().unwrap().links.push(linked);
                     })
                     .unwrap();
 
@@ -409,10 +448,15 @@ fn live_slot_queries_read_live_siblings_limits_acting_armor_and_stale_handles() 
                 // Block-backed mod menu queries observe live sibling slots without reopening.
                 assert_eq!(menu.slot_holds(game, 0, &stone_api), Some(3));
                 assert_eq!(menu.slot_gives(game, 0), Some(false));
+                assert_eq!(menu.slot_gives(game, 1), Some(true));
 
-                if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&pos) {
-                    entity.items[1] = Some(ItemStack::new("minecraft:oak_planks", 5));
-                }
+                assert_eq!(menu.slot_holds(game, 2, &stone_api), Some(0));
+                assert_eq!(menu.slot_gives(game, 2), Some(false));
+                game.world
+                    .block_entities
+                    .get_mut(&linked)
+                    .unwrap()
+                    .slots_mut()[0] = Some(ItemStack::new("minecraft:oak_planks", 5));
                 assert_eq!(menu.slot_holds(game, 0, &stone_api), Some(5));
                 assert_eq!(menu.slot_gives(game, 0), Some(true));
 
@@ -436,7 +480,7 @@ fn live_slot_queries_read_live_siblings_limits_acting_armor_and_stale_handles() 
                 game.lan.as_mut().unwrap().hub.open_container(
                     12,
                     "minecraft:generic_9x6",
-                    title,
+                    sunrise_core::nbt::Tag::String("double".into()),
                     left,
                     Slots::Double(left, right),
                     vec![None; 54],
@@ -459,6 +503,11 @@ fn live_slot_queries_read_live_siblings_limits_acting_armor_and_stale_handles() 
                 let mut bound_helmet = ItemStack::new("minecraft:diamond_helmet", 1);
                 bound_helmet.set_crafting_enchantments(vec![("minecraft:binding_curse".into(), 1)]);
                 game.as_guest(12, |game| {
+                    let helmet = ItemStack::new("minecraft:iron_helmet", 1)
+                        .try_into_api()
+                        .unwrap();
+                    assert_eq!(inv.slot_holds(game, 5, &helmet), Some(0));
+                    assert_eq!(inv.slot_holds(game, 8, &helmet), Some(1));
                     game.armor[0] = Some(bound_helmet);
                     assert_eq!(inv.slot_gives(game, 5), Some(false));
                     assert_eq!(inv.slot_gives(game, 6), Some(true));
@@ -523,7 +572,7 @@ fn mod_menu_slot_gives_reuses_recorded_answer_in_click_asked() {
     with_mods(
         vec![ModEntry::new("live_reuse", Box::new(LiveReuseListener))],
         || {
-            with_game(|game| {
+            with_guests(|game| {
                 let pos = [1, 64, 1];
                 let stone = ItemStack::new("minecraft:stone", 8);
 
@@ -532,13 +581,24 @@ fn mod_menu_slot_gives_reuses_recorded_answer_in_click_asked() {
                 let mut items = vec![None; 9];
                 items[0] = Some(stone.clone());
                 items[1] = Some(ItemStack::new("minecraft:oak_planks", 2));
-                let (gives, asked_refused) =
-                    game.mod_menu_slot_gives(menu_type, 0, &stone, pos, &items);
+                open_live_rules_fixture(game, menu_type, items.clone());
+                let ask_pickup = |game: &crate::game::Game<'_>| {
+                    let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                    let backing = game.menu_slot_backing_for(guest, 0).unwrap();
+                    game.with_live_slot_rules(guest, backing, 0, |rules, env, held| {
+                        rules.ask_pickup(env, 0, held)
+                    })
+                    .unwrap()
+                };
+                let (gives, asked_refused) = ask_pickup(game);
                 assert!(!gives);
                 assert!(!asked_refused.is_empty());
                 assert_eq!(asked(), [(0, "minecraft:stone".to_owned(), 8)]);
 
-                let env = game.menu_env();
+                let env = sunrise_client::menu::Env {
+                    player: Some(12),
+                    ..game.menu_env()
+                };
                 let mut menu = Menu::new(Kind::Mod(menu_type));
                 menu.set_registry_id(Some(menu_type.id));
                 menu.set_block_pos(Some(pos));
@@ -552,8 +612,16 @@ fn mod_menu_slot_gives_reuses_recorded_answer_in_click_asked() {
                 // without invoking menu_slot_rules a second time.
                 reset(None, false);
                 items[1] = Some(ItemStack::new("minecraft:oak_planks", 5));
-                let (gives, asked_allowed) =
-                    game.mod_menu_slot_gives(menu_type, 0, &stone, pos, &items);
+                game.world
+                    .block_entities
+                    .get_mut(&(1, 64, 1))
+                    .unwrap()
+                    .slots_mut()[1] = items[1].clone();
+                let (gives, asked_allowed) = ask_pickup(game);
+                let env = sunrise_client::menu::Env {
+                    player: Some(12),
+                    ..game.menu_env()
+                };
                 assert!(gives);
                 assert!(!asked_allowed.is_empty());
                 assert_eq!(asked(), [(0, "minecraft:stone".to_owned(), 8)]);
@@ -570,8 +638,7 @@ fn mod_menu_slot_gives_reuses_recorded_answer_in_click_asked() {
 
                 // Changing the read sibling slot invalidates the recorded answer and re-asks.
                 reset(None, false);
-                let (gives, asked_stale) =
-                    game.mod_menu_slot_gives(menu_type, 0, &stone, pos, &items);
+                let (gives, asked_stale) = ask_pickup(game);
                 assert!(gives);
                 assert_eq!(asked().len(), 1);
 

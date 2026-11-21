@@ -19,8 +19,9 @@ pub trait Hooks {
     /// crafting grid's slots are `Grid`'s and its result `Result`'s slot 0.
     /// `context` lends the player, the menu's block position and the menu's
     /// staged slots for this ask ([`MenuSlotContext`]). Read slots on demand
-    /// with `context.slot(container, index)`; player inventory slots are not
-    /// exposed there.
+    /// with `context.slot(container, index)`. Linked slots read the linked
+    /// storage; the prepared result stays current only while its grid matches.
+    /// Player inventory slots are not exposed there.
     /// A client without this mod predicts vanilla here; the server corrects it.
     ///
     /// `may_pickup` is `Slot.mayPickup`, answered only for a registered mod

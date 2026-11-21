@@ -292,7 +292,11 @@ menu (`PlayerRef::open_chest_menu`, reached through its returned `MenuRef` or `p
 `menu.slot_holds(host, slot, &stack)` is how many of a stack it holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`: a
 furnace's fuel slot one bucket, an armour slot one piece that fits it, a shulker box's slot no shulker box, a result
 slot none), and `menu.slot_gives(host, slot)` whether it gives up what it holds (`Slot.mayPickup`: bound armour stays
-on outside creative). An insert fills that slot alone, and what doesn't fit stays out. A crafting grid a transaction
+on outside creative). Both queries take a mutable `ServerHost`, because checking a handler-backed slot can run a
+simulated extraction that is rolled back. They use the live handler, not the display copy. A hidden handler slot or
+the locked backpack hotbar slot takes no click, but an explicit transfer through a hidden slot's `ItemPlace` still
+reaches its handler. Slot rules see live linked storage and only see a prepared result while its crafting grid still
+matches. An insert fills the named slot alone, and what doesn't fit stays out. A crafting grid a transaction
 changed has its result made again at the outermost commit, once for each player however many writes it took
 (`InventoryMenu.slotsChanged`, with `prepare_item_craft`); the result slot takes nothing and gives nothing,
 since taking it is a craft. A menu closed, replaced or reopened since the `MenuRef` was made, or one whose player left,
@@ -317,9 +321,11 @@ The client still predicts the default action. After an override or refusal the s
 cursor and any predicted swap target omitted from the menu. A display-only menu has no default moves.
 
 A click action cannot replace a screen: `PlayerRef::open_chest_menu` and `PlayerRef::open_mod_menu`
-return `Err(OpenMenuError::ClickInProgress)`. `MenuRef::close_container` waits for a
-successful commit. An abort leaves the window and its items in place and sends no close packet.
-`MenuRef::set_items` changes also roll back without sending a packet if the action aborts.
+return `Err(OpenMenuError::ClickInProgress)`. The acting player can close their active `MenuRef` with
+`menu.close_container(host)`; during a click action it waits for a successful commit. `false` means the
+menu could not be closed (for example, it was replaced). An aborted click leaves the window and its items in
+place and sends no close packet. `MenuRef::set_items` sends the live owner's inventory and cursor on success;
+its changes also roll back without sending a packet if the action aborts.
 
 `menu_quick_move` v3 runs as one action too. An invalid answer, or a Host write to a player's inventory, cursor or
 menu storage, refuses that move instead of falling back to the game's routing. An answer's optional remainder

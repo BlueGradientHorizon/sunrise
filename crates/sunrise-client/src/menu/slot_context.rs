@@ -48,7 +48,7 @@ pub fn lan_container(i: usize, container: Option<&[Option<ItemStack>]>) -> MenuC
     }
 }
 
-impl SlotContext<'_> {
+impl<'a> SlotContext<'a> {
     pub(super) fn record<R>(self, ask: impl FnOnce(SlotContext<'_>) -> R) -> (R, SlotReads) {
         let reads = RefCell::new(Vec::new());
         let trace = |container, index, stack: Option<&ItemStack>| {
@@ -74,13 +74,15 @@ impl SlotContext<'_> {
     }
 
     /// What slot `index` of `container` holds, keyed as `MenuSlotContext::slot`.
-    pub fn slot(&self, container: MenuContainer, index: usize) -> Option<&ItemStack> {
+    pub fn slot(&self, container: MenuContainer, index: usize) -> Option<&'a ItemStack> {
         let stack = match container {
             MenuContainer::Main => {
                 if self.main_crafting.is_some_and(|crafting| {
                     crafting.grid_slots().contains(&index) || index == crafting.result
                 }) {
                     None
+                } else if let Some(linked) = self.linked.and_then(|linked| linked.get(index)) {
+                    linked
                 } else if index < self.slots.len() {
                     self.slots.get(index)
                 } else {
@@ -115,6 +117,7 @@ impl Menu {
             container: key(container),
             slots: &self.state.containers[MAIN],
             slots_second: &[],
+            linked: None,
             main_crafting: None,
             grid: &self.state.containers[GRID],
             result: &self.state.containers[RESULT],
@@ -132,6 +135,7 @@ pub struct LiveSlotRules<'a> {
     pub pos: Option<[i32; 3]>,
     pub main: &'a [Option<ItemStack>],
     pub main_second: &'a [Option<ItemStack>],
+    pub linked: Option<crate::lan::menu::LinkedSlots<'a>>,
     pub grid: &'a [Option<ItemStack>],
     pub result: &'a [Option<ItemStack>],
     pub container_limit: Option<u32>,
@@ -147,6 +151,7 @@ impl<'a> LiveSlotRules<'a> {
             container: key(slot.container),
             slots: self.main,
             slots_second: self.main_second,
+            linked: self.linked,
             main_crafting: match self.kind {
                 Kind::Mod(t) => t.crafting,
                 _ => None,
@@ -177,11 +182,22 @@ impl<'a> LiveSlotRules<'a> {
         )
     }
 
+    pub(super) fn excludes(&self, s: usize) -> bool {
+        matches!(self.linked.and_then(|linked| linked.get(s)), Some(None))
+    }
+
+    /// What this menu's resolved container slot currently holds, in menu order.
+    pub fn held_container_slot(&self, env: &Env, s: usize) -> Option<&'a ItemStack> {
+        let slot = self.kind.slot(s)?;
+        self.slot_context(env, slot)
+            .slot(key(slot.container), slot.index)
+    }
+
     /// The maximum count allowed by the live slot, or zero if it refuses placement.
     /// `None` means the index is not part of this menu layout.
     pub fn slot_holds(&self, env: &Env, s: usize, stack: &ItemStack) -> Option<u32> {
         let slot = self.kind.slot(s)?;
-        if slot.role == Role::Hidden {
+        if slot.role == Role::Hidden || self.excludes(s) {
             return Some(0);
         }
         let own = self.vanilla_answers(env, slot, stack);

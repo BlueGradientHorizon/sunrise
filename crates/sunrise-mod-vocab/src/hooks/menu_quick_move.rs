@@ -8,6 +8,8 @@ pub trait Hooks {
     /// move the stack where your block wants it. `slot` is the menu's index:
     /// below `container_slots` it is the block's own slot (`entity.items`),
     /// from there on the player's inventory (27 main slots, then the hotbar).
+    /// Linked storage and a crafting result are not slots of `entity.items`; their
+    /// quick moves go through the menu's normal routing.
     /// `stack` is a copy of what the slot holds; take what you move out of
     /// it (put it in `entity.items`, or in another block through its
     /// `ITEMS` capability) and set `handled`: the slot then holds what is

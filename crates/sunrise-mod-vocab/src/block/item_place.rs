@@ -789,16 +789,27 @@ impl ItemPlace {
         spills: bool,
     ) -> u32 {
         let _ = tx;
-        // A menu slot's own rules come before its storage's: `Slot.mayPlace` and
-        // `getMaxStackSize` for what goes in, `Slot.mayPickup` for what comes out.
-        let amount = match self {
-            ItemPlace::MenuSlot { menu, slot } if insert => {
+        // An ordinary menu slot's own rules come before its storage's. A handler-backed
+        // ItemPlace transfers directly through that handler, including deliberate writes to
+        // hidden slots; the menu's click path has already checked eligibility for clicks.
+        let (amount, backing) = if let ItemPlace::MenuSlot { menu, slot } = self {
+            let Some(backing) = menu.slot_backing(host, *slot) else {
+                return 0;
+            };
+            let allowed = if matches!(backing, MenuSlotBacking::Place(_)) {
+                amount
+            } else if insert {
                 let holds = menu.slot_holds(host, *slot, resource.as_stack());
                 let room = holds.unwrap_or(0).saturating_sub(self.amount(host));
                 amount.min(room)
-            }
-            ItemPlace::MenuSlot { menu, slot } if menu.slot_gives(host, *slot) != Some(true) => 0,
-            _ => amount,
+            } else if menu.slot_gives(host, *slot) == Some(true) {
+                amount
+            } else {
+                0
+            };
+            (allowed, Some(backing))
+        } else {
+            (amount, None)
         };
         if amount == 0 {
             return 0;
@@ -853,8 +864,8 @@ impl ItemPlace {
                 let handler = entity.capability(host, &ENTITY_ITEMS, ()).ok_or(())?;
                 through(handler, host, tx, *slot, false)
             }
-            ItemPlace::MenuSlot { menu, slot } => {
-                let (handler, index) = match menu.slot_backing(host, *slot).ok_or(())? {
+            ItemPlace::MenuSlot { menu, .. } => {
+                let (handler, index) = match backing.ok_or(())? {
                     MenuSlotBacking::Player(index) => {
                         let player = menu.player.entity();
                         (player.capability(host, &ENTITY_ITEMS, ()), index)

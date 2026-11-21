@@ -16,7 +16,7 @@ use sunrise_client::{
     items::{ItemStack, Items},
     lan::{
         guest::Guest,
-        menu::{ModCraft, Slots, linked_slot_count, read_links, write_links},
+        menu::{LinkedSlots, ModCraft, Slots, linked_slot_count, write_links},
     },
     menu::{
         Asked, Env, Input, Kind, Menu,
@@ -226,6 +226,27 @@ impl Game<'_> {
         }
     }
 
+    /// Slot rules use the resolved player's recipe book and equipment target in both edits and
+    /// queries. The acting player's recipe book is swapped into the game along with their items.
+    pub(super) fn guest_slot_env<'s>(
+        &'s self,
+        guest: &'s Guest,
+        parts: &'s dyn sunrise_client::mobs::equip::CanEquip,
+    ) -> Env<'s> {
+        Env {
+            player: Some(guest.uuid),
+            player_entity_id: Some(guest.entity_id),
+            limited_crafting: self.lan.as_ref().unwrap().hub.limited_crafting,
+            can_equip: Some(parts),
+            known_recipes: Some(if self.lan_acting == Some(guest.conn) {
+                &self.level.recipe_book
+            } else {
+                &guest.recipe_book
+            }),
+            ..self.menu_env()
+        }
+    }
+
     /// Runs `op` on the guest's menu with their inventory copied in and back.
     pub(super) fn guest_menu_op<R>(
         &mut self,
@@ -287,18 +308,9 @@ impl Game<'_> {
         let host = self.lan.as_ref()?;
         // `ArmorSlot.mayPlace` asks the parts with the game as `Host`: the menu is the guest's own.
         let parts = self.menu_can_equip();
+        let env = self.guest_slot_env(&host.hub.guests[gi], &parts);
         let env = Env {
-            crafting_remainder: Some(self),
-            player: Some(host.hub.guests[gi].uuid),
-            player_entity_id: Some(host.hub.guests[gi].entity_id),
-            loop_context: &self.loop_context,
             maps: maps.as_ref().map(|m| m as &dyn sunrise_client::menu::Maps),
-            limited_crafting: host.hub.limited_crafting,
-            can_equip: Some(&parts),
-            known_recipes: Some(&host.hub.guests[gi].recipe_book),
-            ..self.menu_env()
-        };
-        let env = Env {
             slot_rules: rules.or(env.slot_rules),
             stacked,
             ..env
@@ -610,54 +622,38 @@ impl Game<'_> {
         asked: Asked,
     ) -> Option<bool> {
         use super::lan_menus::ClickReply;
-        let host = self.lan.as_mut()?;
+        let host = self.lan.as_ref()?;
         let gi = host.hub.guests.connection_index(conn)?;
-        let (pos, mod_type, hidden, menu_id) = host.hub.guests[gi]
+        let open = host.hub.guests[gi]
             .menu
             .as_ref()
-            .filter(|m| p.container != 0 && m.window == p.container)
-            .and_then(|m| match m.slots {
-                Slots::Block(pos) => Some((
-                    pos,
-                    m.mod_type,
-                    m.hidden.clone(),
-                    host.hub.registry_name("minecraft:menu", m.kind)?.to_owned(),
-                )),
-                _ => None,
-            })?;
-        // A mod menu type's linked slots show their containers' slots
-        // (`native_menu_links`); those with nothing behind them are left out
-        // of the click, as a hidden slot is.
-        let linked = mod_type.and_then(|t| t.links).map(|l| {
-            let links = host.hub.guests[gi]
-                .menu
-                .as_ref()
-                .map(|m| m.links.clone())
-                .unwrap_or_default();
-            (l, links)
-        });
-        let mut hidden = hidden;
-        if let Some((l, links)) = &linked {
-            let bound = linked_slot_count(&self.world, links);
-            hidden.extend(l.slots().skip(bound));
-        }
+            .filter(|m| p.container != 0 && m.window == p.container)?;
+        let Slots::Block(pos) = open.slots else {
+            return None;
+        };
+        let menu_id = host
+            .hub
+            .registry_name("minecraft:menu", open.kind)?
+            .to_owned();
+        let mut hidden = open.hidden.clone();
+        let linked = open
+            .mod_type
+            .and_then(|t| t.links)
+            .map(|l| (l, open.links.clone()));
         let entity = self.world.block_entities.get(&pos)?;
-        let (kind, mut items) = machine_menu(entity, mod_type)?;
+        let (kind, mut items) = machine_menu(entity, open.mod_type)?;
+        if let Some(projection) = open.linked_slots(&self.world) {
+            hidden.extend(projection.unbound());
+            projection.overlay(&mut items);
+        }
         let heard = matches!((kind, entity), (Kind::Mod(_), BlockEntity::Mod(entity))
             if mod_api::__private::block_entity_type_listens(mod_api::HookId::MenuSlotTake, entity.id()));
         let overlay_links = |world: &sunrise_client::world::World,
                              items: &mut [Option<ItemStack>]| {
             if let Some((l, links)) = &linked {
-                for (k, stack) in l.slots().zip(
-                    read_links(world, links, l.count)
-                        .into_iter()
-                        .chain(std::iter::repeat(None)),
-                ) {
-                    items[k] = stack;
-                }
+                LinkedSlots::new(world, *l, links).overlay(items);
             }
         };
-        overlay_links(&self.world, &mut items);
         let furnace = matches!(kind, Kind::Furnace(_));
         // CrafterBlockEntity.containerData: the disabled slots, then triggered.
         let crafter_data = match self.world.block_entities.get(&pos) {
@@ -670,7 +666,9 @@ impl Game<'_> {
             self.reply_menu_click(conn, ClickReply::Resend(p.container));
             return Some(true);
         }
-        let mut menu = host
+        let mut menu = self
+            .lan
+            .as_mut()?
             .menus
             .entry(conn)
             .or_default()
@@ -1757,9 +1755,8 @@ impl Game<'_> {
     ) -> Option<(usize, Option<ItemStack>)> {
         let menu = host.hub.guests[gi].menu.as_ref()?;
         let c = menu.mod_type?.crafting?;
-        let craft = menu.craft.as_ref()?;
-        (items.get(c.grid_slots()) == Some(&craft.grid[..]))
-            .then(|| (c.result, craft.result.clone()))
+        menu.shown_craft_result(items.get(c.grid_slots())?)
+            .map(|result| (c.result, result.clone()))
     }
 
     /// After the menu engine ran on guest `gi`'s mod crafting menu at `pos`:

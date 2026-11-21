@@ -45,18 +45,6 @@ pub trait MenusBackend {
     /// or a mod's chest or transient container slot.
     #[access(WorldOnly)]
     fn menu_slot_backing(&self, menu: MenuRef, slot: usize) -> Option<MenuSlotBacking>;
-    /// Side: server.
-    /// How many of `stack` menu slot `slot` holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`):
-    /// a furnace's fuel slot one bucket, an armour slot one piece that fits it, a crafting result
-    /// none. For an owned transient slot, this is the declared limit or the item's own
-    /// limit, whichever is lower; its mod decides what a click moves.
-    #[access(WorldOnly)]
-    fn menu_slot_holds(&self, menu: MenuRef, slot: usize, stack: &ItemStack) -> Option<u32>;
-    /// Side: server.
-    /// Whether menu slot `slot` gives up what it holds (`Slot.mayPickup`): bound armour stays
-    /// on outside creative.
-    #[access(WorldOnly)]
-    fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool>;
 }
 /// The handles' client reads of the `menus` area, implemented by the game and reached through [`ClientBackend`].
 // hidden: a handle's backend, reached through `ClientBackend`; mods call the handle, never this trait
@@ -141,10 +129,25 @@ pub trait MenusClientBackendMut {
 #[sunrise_mod_api_macros::host_area]
 pub trait MenusBackendMut {
     /// Side: server.
+    /// How many of `stack` the live menu slot holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`).
+    /// An armour slot asks the item's `can_equip` part for this menu's player; a crafting result
+    /// takes nothing. A handler-backed slot uses the live handler's validity and capacity, not its
+    /// display mirror. An owned transient slot uses its declared limit or the item's own limit,
+    /// whichever is lower. Excluded targets (such as a backpack's locked hotbar slot) take nothing.
+    #[access(WorldOnly)]
+    #[forward_api_inputs]
+    fn menu_slot_holds(&mut self, menu: MenuRef, slot: usize, stack: &ItemStack) -> Option<u32>;
+    /// Side: server.
+    /// Whether the live menu slot gives up what it holds (`Slot.mayPickup`). Bound armour stays
+    /// on outside creative. A handler-backed slot simulates one extraction in a rolled-back
+    /// transaction, as NeoForge's `ResourceHandlerSlot.mayPickup` does.
+    #[access(WorldOnly)]
+    fn menu_slot_gives(&mut self, menu: MenuRef, slot: usize) -> Option<bool>;
+    /// Side: server.
     /// Close a player's open menu as `ServerPlayer.closeContainer` does. The server queues
     /// `ContainerClose`, then removes the menu, returns the carried stack to the inventory,
-    /// and fires `player_container_close`. Refuses stale menus, clients, a player whose state
-    /// is swapped in for a turn, a pending disconnect, and the player's own inventory menu.
+    /// and fires `player_container_close`. The owning player can close it during their own turn.
+    /// Refuses stale menus, clients, a pending disconnect, and the player's own inventory menu.
     /// During a click action, true accepts a request to close that same window at commit; an
     /// aborted action leaves it open. A client closes its own screen with `close`.
     #[access(WorldOnly)]

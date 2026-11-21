@@ -80,23 +80,23 @@ impl MenuSlotPlace {
         host: &mut dyn ServerHost,
         player: PlayerRef,
     ) -> Option<(Capability<dyn ResourceHandler<ItemResource>>, usize)> {
-        match self {
+        let (handler, index) = match self {
             Self::HeldItem { hand, slot } => {
                 let held = ItemPlace::PlayerHand {
                     player: player.uuid(),
                     hand,
                 };
-                Some((held.capability(host, &ITEM_ITEMS)?, slot))
+                (held.capability(host, &ITEM_ITEMS)?, slot)
             }
             Self::EntityItems { entity, slot } => {
-                Some((entity.capability(host, &ENTITY_ITEMS, ())?, slot))
+                (entity.capability(host, &ENTITY_ITEMS, ())?, slot)
             }
-        }
+        };
+        (index < handler.size(host)).then_some((handler, index))
     }
 
     /// Whether this place still names storage, for the menu of `player`: false closes the menu.
     pub fn resolves(self, host: &mut dyn ServerHost, player: PlayerRef) -> bool {
-        self.handler(host, player)
-            .is_some_and(|(handler, slot)| slot < handler.size(host))
+        self.handler(host, player).is_some()
     }
 }

@@ -237,15 +237,24 @@ impl Menu {
         self.linked().map(|(range, _)| range)
     }
 
-    /// The linked slots (`links`) no container stands behind, which hold
-    /// nothing and take nothing: they are left out of clicks as a hidden
-    /// slot is.
+    /// The linked region of this menu, borrowing the containers that stand behind it.
+    pub fn linked_slots<'a>(&'a self, world: &'a World) -> Option<LinkedSlots<'a>> {
+        Some(LinkedSlots::new(world, self.mod_type?.links?, &self.links))
+    }
+
+    /// The linked slots no container stands behind, excluded just as hidden slots are.
     pub fn unlinked_slots(&self, world: &World) -> Vec<usize> {
-        let Some((range, links)) = self.linked() else {
-            return Vec::new();
-        };
-        let bound = linked_slot_count(world, links);
-        range.skip(bound).collect()
+        self.linked_slots(world)
+            .into_iter()
+            .flat_map(|linked| linked.unbound())
+            .collect()
+    }
+
+    /// A prepared result belongs to the grid that was shown with it. A prepared empty
+    /// result stays empty too, until the grid changes.
+    pub fn shown_craft_result(&self, grid: &[Option<ItemStack>]) -> Option<&Option<ItemStack>> {
+        let shown = self.craft.as_ref()?;
+        (grid == shown.grid.as_slice()).then_some(&shown.result)
     }
 
     /// The container slot of a mod menu type's crafting result, and what it shows.
@@ -588,6 +597,66 @@ fn shown(world: &World, k: (i32, i32, i32)) -> Option<&[Option<ItemStack>]> {
     Some(&slots[..count.min(slots.len())])
 }
 
+/// A menu's linked storage in menu order. An index in the linked range without backing
+/// storage is empty and unavailable, never a slot of the opening block.
+#[derive(Clone, Copy)]
+pub struct LinkedSlots<'a> {
+    world: &'a World,
+    layout: crate::containers::ModLinks,
+    links: &'a [(i32, i32, i32)],
+}
+
+impl<'a> LinkedSlots<'a> {
+    pub fn new(
+        world: &'a World,
+        layout: crate::containers::ModLinks,
+        links: &'a [(i32, i32, i32)],
+    ) -> Self {
+        Self {
+            world,
+            layout,
+            links,
+        }
+    }
+
+    pub fn unbound(self) -> std::ops::Range<usize> {
+        let range = self.layout.slots();
+        range.start + linked_slot_count(self.world, self.links).min(range.len())..range.end
+    }
+
+    /// Outer None means outside the linked range; Some(None) means there is no backing.
+    pub(crate) fn get(self, slot: usize) -> Option<Option<&'a Option<ItemStack>>> {
+        let range = self.layout.slots();
+        range
+            .contains(&slot)
+            .then(|| linked_stacks(self.world, self.links).nth(slot - range.start))
+    }
+
+    /// Stage the same live projection in the click's working storage.
+    pub fn overlay(self, items: &mut [Option<ItemStack>]) {
+        let slots = items
+            .iter_mut()
+            .skip(self.layout.from)
+            .take(self.layout.count);
+        for (slot, stack) in slots.zip(
+            linked_stacks(self.world, self.links)
+                .cloned()
+                .chain(std::iter::repeat(None)),
+        ) {
+            *slot = stack;
+        }
+    }
+}
+
+fn linked_stacks<'a>(
+    world: &'a World,
+    links: &'a [(i32, i32, i32)],
+) -> impl Iterator<Item = &'a Option<ItemStack>> {
+    links
+        .iter()
+        .flat_map(|&k| shown(world, k).unwrap_or_default().iter())
+}
+
 /// How many slots the linked containers `links` have between them.
 pub fn linked_slot_count(world: &World, links: &[(i32, i32, i32)]) -> usize {
     links
@@ -603,11 +672,7 @@ pub fn read_links(
     links: &[(i32, i32, i32)],
     count: usize,
 ) -> Vec<Option<ItemStack>> {
-    links
-        .iter()
-        .flat_map(|&k| shown(world, k).unwrap_or_default().iter().cloned())
-        .take(count)
-        .collect()
+    linked_stacks(world, links).take(count).cloned().collect()
 }
 
 /// Stores `stacks` in the linked containers `links`, their slots in order

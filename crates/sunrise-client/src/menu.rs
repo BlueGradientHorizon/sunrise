@@ -141,6 +141,29 @@ pub struct Env<'a> {
     pub stacked: Option<&'a StackedOutcome>,
 }
 
+impl Env<'_> {
+    /// `CraftingMenu.slotChangedCraftingGrid`'s recipe result for this player and grid.
+    pub fn crafting_result(&self, grid: &[Option<ItemStack>], size: usize) -> Option<ItemStack> {
+        self.recipes
+            .find_with(self.loop_context, grid, size, &|id| {
+                self.maps
+                    .and_then(|maps| maps.state(id))
+                    .map(|(_, scale)| scale)
+            })
+            .and_then(|(id, stack)| {
+                if self.limited_crafting {
+                    // `RecipeCraftingHolder.setRecipeUsed`: special recipes or known recipes craft.
+                    let is_special = self.recipes.recipe(id).is_some_and(|r| r.is_special());
+                    let known = self.known_recipes.is_some_and(|book| book.knows(id));
+                    if !is_special && !known {
+                        return None;
+                    }
+                }
+                Some(stack)
+            })
+    }
+}
+
 /// The maps of the level a menu is in.
 pub trait Maps {
     /// Stage derived maps and id reservations with a menu edit.
@@ -1992,30 +2015,8 @@ impl Menu {
         if self.state.grid_size == 0 || self.state.on_client {
             return;
         }
-        let result = env
-            .recipes
-            .find_with(
-                env.loop_context,
-                &self.state.containers[GRID],
-                self.state.grid_size,
-                &|id| {
-                    env.maps
-                        .and_then(|maps| maps.state(id))
-                        .map(|(_, scale)| scale)
-                },
-            )
-            .and_then(|(id, stack)| {
-                if env.limited_crafting {
-                    // `RecipeCraftingHolder.setRecipeUsed`: special recipes or known recipes craft.
-                    let is_special = env.recipes.recipe(id).is_some_and(|r| r.is_special());
-                    let known = env.known_recipes.is_some_and(|book| book.knows(id));
-                    if !is_special && !known {
-                        return None;
-                    }
-                }
-                Some(stack)
-            });
-        self.state.containers[RESULT][0] = result;
+        self.state.containers[RESULT][0] =
+            env.crafting_result(&self.state.containers[GRID], self.state.grid_size);
     }
 
     /// `FurnaceResultSlot.checkTakeAchievements`: what `carried` and

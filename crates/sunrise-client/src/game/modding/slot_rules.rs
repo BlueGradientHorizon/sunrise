@@ -5,10 +5,7 @@
 //! converted for it.
 use super::*;
 use crate::game::api_values::TryIntoApi;
-use sunrise_client::{
-    containers::ModMenuType,
-    menu::{Asked, Kind, LiveSlotRules, SlotContext, SlotRules},
-};
+use sunrise_client::menu::{SlotContext, SlotRules};
 
 impl SlotRules for Game<'_> {
     fn listens(&self, menu: &str) -> bool {
@@ -69,65 +66,5 @@ impl SlotRules for Game<'_> {
                 "menu_slot_rules: a listener failed for {menu} slot {slot}; the slot's own answers stand"
             ),
         }
-    }
-}
-
-impl Game<'_> {
-    /// `Slot.mayPickup` of slot `slot` (the menu's index) of mod menu type `menu` while it holds
-    /// `stack`, as the click itself answers it: the slot's own answer, then the parts' `may_pickup`.
-    /// For the server's own steps that run before the click, as `menu_quick_move` does; the
-    /// answers go to the click (`Menu::click_asked`), which does not ask again.
-    pub(super) fn mod_menu_slot_gives(
-        &self,
-        menu: &'static ModMenuType,
-        slot: usize,
-        stack: &ItemStack,
-        pos: [i32; 3],
-        items: &[Option<ItemStack>],
-    ) -> (bool, Asked) {
-        let env = self.menu_env();
-        let main = &items[..items.len().min(menu.slots)];
-        let (grid, computed_result) = match menu.crafting {
-            Some(c) => {
-                let grid = main.get(c.grid_slots()).unwrap_or_default();
-                let found = env
-                    .recipes
-                    .find_with(env.loop_context, grid, c.size, &|id| {
-                        env.maps
-                            .and_then(|maps| maps.state(id))
-                            .map(|(_, scale)| scale)
-                    })
-                    .and_then(|(id, crafted)| {
-                        if env.limited_crafting {
-                            let is_special = env.recipes.recipe(id).is_some_and(|r| r.is_special());
-                            let known = env.known_recipes.is_some_and(|book| book.knows(id));
-                            if !is_special && !known {
-                                return None;
-                            }
-                        }
-                        Some(crafted)
-                    });
-                (grid, [found])
-            }
-            None => (&[][..], [None]),
-        };
-        let result = if menu.crafting.is_some() {
-            &computed_result[..]
-        } else {
-            &[][..]
-        };
-        let rules = LiveSlotRules {
-            kind: Kind::Mod(menu),
-            registry_id: Some(menu.id),
-            pos: Some(pos),
-            main,
-            main_second: &[],
-            grid,
-            result,
-            container_limit: None,
-            crafter_disabled: false,
-            creative: self.instabuild(),
-        };
-        rules.ask_pickup(&env, slot, Some(stack))
     }
 }

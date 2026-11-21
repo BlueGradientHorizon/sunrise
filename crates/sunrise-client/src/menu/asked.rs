@@ -35,17 +35,19 @@ impl LiveSlotRules<'_> {
         asked: Option<&mut Asked>,
     ) -> Option<bool> {
         let slot = self.kind.slot(s)?;
-        if !vanilla_may_pickup_for_role(
-            slot.role,
-            self.kind,
-            env,
-            held,
-            self.creative,
-            self.grid,
-            self.kind.grid_size(),
-            None,
-            false,
-        ) {
+        if self.excludes(s)
+            || !vanilla_may_pickup_for_role(
+                slot.role,
+                self.kind,
+                env,
+                held,
+                self.creative,
+                self.grid,
+                self.kind.grid_size(),
+                None,
+                false,
+            )
+        {
             return Some(false);
         }
         if matches!(self.kind, Kind::Mod(_))

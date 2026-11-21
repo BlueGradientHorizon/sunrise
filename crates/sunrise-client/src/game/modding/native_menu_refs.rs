@@ -1,9 +1,9 @@
 //! Handles to supported menus: shared reads, server storage and client clicks.
-use super::{Game, lan_crafting::machine_menu_kind};
+use super::{Game, api_values::stack_value, lan_crafting::machine_menu_kind};
 use mod_api::__private::game::*;
 use mod_api::{
-    DragKind, EntityRef, LevelReadError, MenuClick, MenuRef, MenuSlotBacking, MouseButton,
-    PlayerRef, SwapWith,
+    DragKind, EntityRef, HostTransaction, ItemResource, LevelReadError, MenuClick, MenuRef,
+    MenuSlotBacking, MouseButton, PlayerRef, ResourceHandler, SwapWith,
 };
 use sunrise_client::{
     containers::BlockEntity,
@@ -56,7 +56,7 @@ impl Game<'_> {
 
     /// `ServerPlayer.closeContainer` of a guest's menu: queue the client's close before
     /// running normal server teardown. Refuses clients, stale menus, a guest with a pending
-    /// disconnect or an active turn, and the inventory menu (window 0). While a click action
+    /// disconnect, and the inventory menu (window 0). While a click action
     /// is active, true accepts a close at commit.
     pub(super) fn menu_close_container(&mut self, menu: MenuRef) -> bool {
         let window = menu.fields().window;
@@ -66,7 +66,7 @@ impl Game<'_> {
         let Some(guest) = self.native_menu_guest(menu) else {
             return false;
         };
-        if guest.disconnect_pending || self.lan_acting == Some(guest.conn) {
+        if guest.disconnect_pending {
             return false;
         }
         self.request_menu_close(guest.conn, window, guest.menu_generation);
@@ -330,7 +330,11 @@ impl Game<'_> {
         self.menu_slot_backing_for(guest, slot)
     }
 
-    fn menu_slot_backing_for(&self, guest: &Guest, slot: usize) -> Option<MenuSlotBacking> {
+    pub(super) fn menu_slot_backing_for(
+        &self,
+        guest: &Guest,
+        slot: usize,
+    ) -> Option<MenuSlotBacking> {
         let Some(open) = &guest.menu else {
             return match slot {
                 0 => Some(MenuSlotBacking::CraftResult),
@@ -449,20 +453,60 @@ impl Game<'_> {
     /// a furnace's fuel slot one bucket, an armour slot one piece that fits it, a crafting result
     /// none.
     pub(super) fn menu_slot_holds(
-        &self,
+        &mut self,
         menu: MenuRef,
         slot: usize,
-        stack: &ItemStack,
+        stack: &mod_api::ItemStack,
     ) -> Option<u32> {
-        let (rules, env, _) = self.resolve_live_slot_rules(menu, slot, false)?;
-        rules.slot_holds(&env, slot, stack)
+        let guest = self.native_menu_guest(menu)?;
+        let backing = self.menu_slot_backing_for(guest, slot)?;
+        if !self.backed_menu_slot_enabled(guest, slot) {
+            return Some(0);
+        }
+        if let MenuSlotBacking::Place(place) = backing {
+            if !self.held_places_bound(guest.conn, menu.fields().player) {
+                return None;
+            }
+            let (handler, index) = menu_slot_place_handler(place, self, menu.fields().player)?;
+            let resource = ItemResource::of(stack);
+            return Some(if handler.is_valid(self, index, &resource) {
+                handler.capacity(self, index, Some(&resource))
+            } else {
+                0
+            });
+        }
+        let stack = stack_value(stack).ok()?;
+        self.with_live_slot_rules(guest, backing, slot, |rules, env, _| {
+            rules.slot_holds(env, slot, &stack)
+        })?
     }
 
     /// Whether menu slot `slot` gives up what it holds (`Slot.mayPickup`): bound armour stays
-    /// on outside creative.
-    pub(super) fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool> {
-        let (rules, env, held) = self.resolve_live_slot_rules(menu, slot, true)?;
-        rules.slot_gives(&env, slot, held)
+    /// on outside creative, and handler-backed slots simulate taking one item.
+    pub(super) fn menu_slot_gives(&mut self, menu: MenuRef, slot: usize) -> Option<bool> {
+        let guest = self.native_menu_guest(menu)?;
+        let backing = self.menu_slot_backing_for(guest, slot)?;
+        if !self.backed_menu_slot_enabled(guest, slot) {
+            return Some(false);
+        }
+        if let MenuSlotBacking::Place(place) = backing {
+            if !self.held_places_bound(guest.conn, menu.fields().player) {
+                return None;
+            }
+            let (handler, index) = menu_slot_place_handler(place, self, menu.fields().player)?;
+            let Some(resource) = handler.resource(self, index) else {
+                return Some(false);
+            };
+            // NeoForge ResourceHandlerSlot.mayPickup: simulate extracting one, without
+            // publishing any writes or change notices from the handler.
+            let result: Result<(), bool> = self.transaction(|game, tx| {
+                Err(handler.extract_at(game, tx, index, &resource, 1) == 1)
+            });
+            return result.err();
+        }
+        self.with_live_slot_rules(guest, backing, slot, |rules, env, held| {
+            rules.slot_gives(env, slot, held)
+        })?
     }
 
     pub(super) fn menu_owned_slot_limit(&self, menu: MenuRef, slot: usize) -> Option<u32> {
@@ -471,50 +515,41 @@ impl Game<'_> {
         (!open.hidden.contains(&slot)).then_some(u32::from(limit))
     }
 
-    /// Resolve `menu` once and borrow the live slot rules, env, and optionally the slot's
-    /// held stack without constructing a temporary `Menu`.
-    fn resolve_live_slot_rules(
+    /// Lend the admitted player's live slots and crafting result to a rule ask, without
+    /// constructing a scratch menu or cloning the container, inventory, or cursor.
+    pub(super) fn with_live_slot_rules<R>(
         &self,
-        menu: MenuRef,
+        guest: &Guest,
+        backing: MenuSlotBacking,
         slot: usize,
-        need_held: bool,
-    ) -> Option<(LiveSlotRules<'_>, Env<'_>, Option<&ItemStack>)> {
-        let guest = self.native_menu_guest(menu)?;
-        let backing = self.menu_slot_backing_for(guest, slot)?;
+        ask: impl FnOnce(&LiveSlotRules<'_>, &Env<'_>, Option<&ItemStack>) -> R,
+    ) -> Option<R> {
         let acting = self.lan_acting == Some(guest.conn);
         let creative = if acting {
             self.instabuild()
         } else {
             guest.creative()
         };
-        let env = Env {
-            player: Some(guest.uuid),
-            player_entity_id: Some(guest.entity_id),
-            ..self.menu_env()
-        };
-        let (rules, world) = match &guest.menu {
-            None => (
-                LiveSlotRules {
-                    kind: Kind::Inventory,
-                    registry_id: None,
-                    pos: None,
-                    main: &[],
-                    main_second: &[],
-                    grid: &guest.craft_grid,
-                    result: std::slice::from_ref(&guest.craft_result),
-                    container_limit: None,
-                    crafter_disabled: false,
-                    creative,
-                },
-                None,
-            ),
+        let parts = self.menu_can_equip();
+        let env = self.guest_slot_env(guest, &parts);
+        let computed;
+        let rules = match &guest.menu {
+            None => LiveSlotRules {
+                kind: Kind::Inventory,
+                registry_id: None,
+                pos: None,
+                main: &[],
+                main_second: &[],
+                linked: None,
+                grid: &guest.craft_grid,
+                result: std::slice::from_ref(&guest.craft_result),
+                container_limit: None,
+                crafter_disabled: false,
+                creative,
+            },
             Some(open) => {
                 let world = self.native_level_world(self.level(&guest.dimension)?)?;
-                let registry_id = self
-                    .lan
-                    .as_ref()?
-                    .hub
-                    .registry_name("minecraft:menu", open.kind);
+                let registry_id = Some(open.registry_id.as_ref());
                 let entity = match open.slots {
                     Slots::Block(pos) => world.block_entities.get(&pos),
                     _ => None,
@@ -540,102 +575,55 @@ impl Game<'_> {
                 let (grid, result) = if let Kind::Mod(layout) = kind
                     && let Some(crafting) = layout.crafting
                 {
-                    (
-                        open.craft.as_ref().map_or_else(
-                            || main.get(crafting.grid_slots()).unwrap_or_default(),
-                            |c| c.grid.as_slice(),
-                        ),
-                        open.craft
-                            .as_ref()
-                            .map_or(&[][..], |c| std::slice::from_ref(&c.result)),
-                    )
+                    let grid = main.get(crafting.grid_slots()).unwrap_or_default();
+                    let result = if let Some(shown) = open.shown_craft_result(grid) {
+                        shown
+                    } else {
+                        computed = env.crafting_result(grid, crafting.size);
+                        &computed
+                    };
+                    (grid, std::slice::from_ref(result))
                 } else {
                     (&[][..], &[][..])
                 };
-                let container_limit = (slot < open.size)
-                    .then(|| open.slots.slot_stack_limit(world, slot))
-                    .flatten();
-                // `CrafterSlot.mayPlace`: a disabled slot takes nothing.
-                let crafter_disabled = matches!(
-                    entity,
-                    Some(BlockEntity::Crafter(c))
-                        if c.disabled.get(slot).copied().unwrap_or(false)
-                );
-                (
-                    LiveSlotRules {
-                        kind,
-                        registry_id,
-                        pos: open.pos.map(|(x, y, z)| [x, y, z]),
-                        main,
-                        main_second,
-                        grid,
-                        result,
-                        container_limit,
-                        crafter_disabled,
-                        creative,
-                    },
-                    Some(world),
-                )
+                LiveSlotRules {
+                    kind,
+                    registry_id,
+                    pos: open.pos.map(|(x, y, z)| [x, y, z]),
+                    main,
+                    main_second,
+                    linked: open.linked_slots(world),
+                    grid,
+                    result,
+                    container_limit: (slot < open.size)
+                        .then(|| open.slots.slot_stack_limit(world, slot))
+                        .flatten(),
+                    crafter_disabled: matches!(entity, Some(BlockEntity::Crafter(c))
+                        if c.disabled.get(slot).copied().unwrap_or(false)),
+                    creative,
+                }
             }
         };
-        let held = if need_held {
-            match backing {
-                MenuSlotBacking::Player(n @ 0..36) => (if acting {
-                    &self.inventory
-                } else {
-                    &guest.inventory
-                })
-                .get(n)
-                .and_then(Option::as_ref),
-                MenuSlotBacking::Player(n @ 36..40) => {
-                    (if acting { &self.armor } else { &guest.armor })[39 - n].as_ref()
-                }
-                MenuSlotBacking::Player(_) => {
-                    if acting {
-                        self.offhand.as_ref()
-                    } else {
-                        guest.offhand.as_ref()
-                    }
-                }
-                MenuSlotBacking::CraftGrid(n) => guest.craft_grid.get(n).and_then(Option::as_ref),
-                MenuSlotBacking::CraftResult => guest.craft_result.as_ref(),
-                MenuSlotBacking::Ender(n) => (if acting {
-                    &self.ender_items
-                } else {
-                    &guest.ender_items
-                })
-                .get(n)
-                .and_then(Option::as_ref),
-                MenuSlotBacking::Native(n) | MenuSlotBacking::Owned(n) => {
-                    guest.native_menu.get(n).and_then(Option::as_ref)
-                }
-                MenuSlotBacking::Place(_) => guest.native_menu.get(slot).and_then(Option::as_ref),
-                MenuSlotBacking::BlockEntity { .. } | MenuSlotBacking::Entity { .. } => {
-                    let open = guest.menu.as_ref()?;
-                    let world = world?;
-                    if open
-                        .mod_type
-                        .and_then(|t| t.crafting)
-                        .is_some_and(|c| c.result == slot)
-                    {
-                        open.craft.as_ref().and_then(|c| c.result.as_ref())
-                    } else if let Some((pos, idx)) = open.slots.held_block_slot(world, guest, slot)
-                    {
-                        world
-                            .block_entities
-                            .get(&pos)
-                            .and_then(|e| e.slots().get(idx))
-                            .and_then(Option::as_ref)
-                    } else {
-                        None
-                    }
-                }
-                _ => unreachable!("MenuSlotBacking: unhandled variant"),
+        let held = match backing {
+            MenuSlotBacking::Player(n @ 0..36) => (if acting {
+                &self.inventory
+            } else {
+                &guest.inventory
+            })
+            .get(n)
+            .and_then(Option::as_ref),
+            MenuSlotBacking::Player(n @ 36..40) => {
+                (if acting { &self.armor } else { &guest.armor })[39 - n].as_ref()
             }
-        } else {
-            None
+            MenuSlotBacking::Player(_) => (if acting {
+                &self.offhand
+            } else {
+                &guest.offhand
+            })
+            .as_ref(),
+            _ => rules.held_container_slot(&env, slot),
         };
-        Some((rules, env, held))
+        Some(ask(&rules, &env, held))
     }
 
     /// The game's own storage menu slot `slot` shows, for a write: the ender chest's, the
@@ -1194,7 +1182,24 @@ mod tests {
             assert_eq!(hub.guests[0].carried.as_ref(), Some(&stone));
             hub.guests
                 .update(0, |guest| guest.disconnect_pending = false);
-            assert!(menu.close_container(game));
+            game.as_guest(1, |game| {
+                assert_eq!(player.container_menu(game), Some(menu));
+                assert!(menu.close_container(game));
+                assert!(
+                    !menu.close_container(game),
+                    "the generation retired in the turn"
+                );
+                assert!(game.carried.is_none(), "close returned the live cursor");
+                assert_eq!(
+                    game.inventory
+                        .iter()
+                        .flatten()
+                        .map(|s| s.count)
+                        .sum::<u32>(),
+                    4
+                );
+            })
+            .unwrap();
             let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.menu.is_none(), "the menu is gone");
             assert!(guest.carried.is_none(), "the cursor stack went back");
