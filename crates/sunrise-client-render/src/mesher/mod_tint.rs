@@ -347,15 +347,7 @@ impl BlockAndTintGetter for Region<'_, '_, '_> {
         lighting::cardinal(self.nether, face)
     }
     fn block_tint(&self, [x, y, z]: [i32; 3], resolver: ColorResolver) -> u32 {
-        let resolver = match resolver {
-            ColorResolver::Grass => Resolver::Grass,
-            ColorResolver::Foliage => Resolver::Foliage,
-            ColorResolver::DryFoliage => Resolver::Dry,
-            ColorResolver::Water => Resolver::Water,
-            ColorResolver::Mod(resolver) => {
-                Resolver::Mod(mod_api::__private::mod_color_resolver_index(resolver))
-            }
-        };
+        let resolver = Resolver::from(resolver);
         let mut tints = self.tints.borrow_mut();
         let [cx, cz, base_y] = tints.origin;
         let section = [x >> 4, (y - base_y) >> 4, z >> 4];

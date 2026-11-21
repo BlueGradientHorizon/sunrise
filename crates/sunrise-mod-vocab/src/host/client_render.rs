@@ -117,13 +117,25 @@ pub trait ClientRenderClientHost {
     /// `NotOwned` when no mod is calling.
     #[access(WorldOnly)]
     fn dynamic_texture_budget(&self) -> Result<DynamicTextureBudget, DynamicTextureError>;
+    /// The resolver's blended colour at `pos` in the current client level, as opaque ARGB.
+    /// Like `ClientLevel.getBlockTint` (`BiomeColors.getAverageGrassColor` and its counterparts),
+    /// this samples a square at the block's height using the client's biome blend radius and the
+    /// same biome colours as the mesher, including updates from [`Self::refresh_biome_colors`].
+    /// Use [`ColorResolver::Grass`] or [`ColorResolver::Foliage`] without looking up a block state or
+    /// a model. For a specific block or fluid face, use [`Self::block_tint_color`].
+    /// Returns [`LevelReadError::Unavailable`] outside the World phase or when the host has
+    /// no client level to read.
+    #[access(WorldOnly)]
+    fn biome_tint(&self, pos: [i32; 3], resolver: ColorResolver) -> Result<u32, LevelReadError>;
     /// Side: client.
     /// For a client mod drawing a block's faces itself (a copycat drawing its material's, from
     /// `block_sprites`): the 0xRRGGBB colour a face of `state` with tint index `tint_index`
     /// (`FaceSprite::tint_index`) is multiplied by at `pos`, as the chunk mesher tints it there
-    /// (`BlockColors.getColor`, biome blend included: grass, foliage and water follow the biome
-    /// around `pos`). None for an untinted face (-1, or an index past the state's tints). Reads
-    /// this client's copy of the world.
+    /// (biome blend included). Grass, foliage and water use the client's current biome colours,
+    /// including updates from [`Self::refresh_biome_colors`]. A face's own tint source or a pack
+    /// colormap can give it a different colour. Returns `None` for an untinted face (-1, or an
+    /// index past the state's tints). For a biome colour independent of the face's tint source,
+    /// use [`Self::biome_tint`].
     #[access(WorldOnly)]
     fn block_tint_color(&self, state: BlockState, tint_index: i32, pos: [i32; 3]) -> Option<u32>;
     /// Side: client.

@@ -1747,6 +1747,31 @@ enum Resolver {
     Water,
     Mod(u32),
 }
+impl From<mod_api::ColorResolver> for Resolver {
+    fn from(resolver: mod_api::ColorResolver) -> Self {
+        use mod_api::ColorResolver;
+        match resolver {
+            ColorResolver::Grass => Self::Grass,
+            ColorResolver::Foliage => Self::Foliage,
+            ColorResolver::DryFoliage => Self::Dry,
+            ColorResolver::Water => Self::Water,
+            ColorResolver::Mod(key) => Self::Mod(mod_api::__private::mod_color_resolver_index(key)),
+        }
+    }
+}
+impl Resolver {
+    fn color(self, biomes: &Biomes, biome: u16, x: i32, z: i32) -> u32 {
+        match self {
+            Self::Grass => biomes.grass(biome, f64::from(x), f64::from(z)),
+            Self::Foliage => biomes.get(biome).foliage,
+            Self::Dry => biomes.get(biome).dry_foliage,
+            Self::Water => biomes.get(biome).water,
+            Self::Mod(index) => {
+                mod_tint::resolve(index, biomes.get(biome), f64::from(x), f64::from(z))
+            }
+        }
+    }
+}
 /// One mod resolver's caches in a [`Layer`], as `cells` and `colors` hold vanilla's.
 struct ModCells {
     cells: Vec<u32>,
@@ -1960,9 +1985,7 @@ impl<'a> Tints<'a> {
     ) -> u16 {
         let (rx, rz) = ((q[0] >> 2) - cx + 1, (q[2] >> 2) - cz + 1);
         if (0..3).contains(&rx) && (0..3).contains(&rz) {
-            region[rz as usize][rx as usize].map_or(plains, |c| {
-                c.biome((q[0] & 3) * 4, q[1] * 4, (q[2] & 3) * 4)
-            })
+            region[rz as usize][rx as usize].map_or(plains, |c| c.biome_quart(q))
         } else {
             plains
         }
@@ -2043,71 +2066,84 @@ impl<'a> Tints<'a> {
         }
         let [cx, cz, base_y] = self.origin;
         let (bx, by, bz) = (cx * 16, base_y + y, cz * 16);
-        let (mut red, mut green, mut blue) = (0, 0, 0);
         if cells.is_empty() {
             cells.resize(dim * dim, UNSET);
         }
-        for dz in -r..=r {
-            for dx in -r..=r {
-                let cell = ((z + dz + r) as usize) * dim + (x + dx + r) as usize;
-                let known = cells[cell];
-                if known != UNSET {
-                    red += known >> 16 & 255;
-                    green += known >> 8 & 255;
-                    blue += known & 255;
-                    continue;
-                }
-                let mut biome = layer.zoomed[cell];
-                if biome == NO_BIOME {
-                    // BiomeManager.getBiome over the loaded chunks (plains
-                    // where there is none): `quart_at_block`, its cell's
-                    // corner jitter mixed once per layer.
-                    let block = BlockPos::new(bx + x + dx, by, bz + z + dz);
-                    let base = [block.x, block.y, block.z].map(|v| v.wrapping_sub(2) >> 2);
-                    let first = [bx - r, bz - r].map(|v| v.wrapping_sub(2) >> 2);
-                    let span = dim / 4 + 2;
-                    let at = (base[2] - first[1]) as usize * span + (base[0] - first[0]) as usize;
-                    if layer.jitter.is_empty() {
-                        layer.jitter.resize(span * span, None);
-                    }
-                    let jitter =
-                        layer.jitter[at].get_or_insert_with(|| self.zoom.corner_jitter(base));
-                    let corner = BiomeZoom::select_corner(block, jitter);
-                    let q = [
-                        base[0].wrapping_add((corner >> 2 & 1) as i32),
-                        base[1].wrapping_add((corner >> 1 & 1) as i32),
-                        base[2].wrapping_add((corner & 1) as i32),
-                    ];
-                    biome = Self::quart_biome(self.region, self.plains, [cx, cz], q);
-                    layer.zoomed[cell] = biome;
-                }
-                let c = match resolver {
-                    Resolver::Grass => {
-                        self.biomes
-                            .grass(biome, f64::from(bx + x + dx), f64::from(bz + z + dz))
-                    }
-                    Resolver::Foliage => self.biomes.get(biome).foliage,
-                    Resolver::Dry => self.biomes.get(biome).dry_foliage,
-                    Resolver::Water => self.biomes.get(biome).water,
-                    Resolver::Mod(index) => mod_tint::resolve(
-                        index,
-                        self.biomes.get(biome),
-                        f64::from(bx + x + dx),
-                        f64::from(bz + z + dz),
-                    ),
-                };
-                cells[cell] = c;
-                red += c >> 16 & 255;
-                green += c >> 8 & 255;
-                blue += c & 255;
+        let color = blend_biome_colors(r, |dx, dz| {
+            let cell = ((z + dz + r) as usize) * dim + (x + dx + r) as usize;
+            let known = cells[cell];
+            if known != UNSET {
+                return known;
             }
-        }
-        let n = ((2 * r + 1) * (2 * r + 1)) as u32;
-        let color = (red / n) << 16 | (green / n) << 8 | (blue / n);
+            let block = BlockPos::new(bx + x + dx, by, bz + z + dz);
+            let mut biome = layer.zoomed[cell];
+            if biome == NO_BIOME {
+                // BiomeManager.getBiome over the loaded chunks (plains
+                // where there is none): `quart_at_block`, its cell's
+                // corner jitter mixed once per layer.
+                let base = [block.x, block.y, block.z].map(|v| v.wrapping_sub(2) >> 2);
+                let first = [bx - r, bz - r].map(|v| v.wrapping_sub(2) >> 2);
+                let span = dim / 4 + 2;
+                let at = (base[2] - first[1]) as usize * span + (base[0] - first[0]) as usize;
+                if layer.jitter.is_empty() {
+                    layer.jitter.resize(span * span, None);
+                }
+                let jitter = layer.jitter[at].get_or_insert_with(|| self.zoom.corner_jitter(base));
+                let corner = BiomeZoom::select_corner(block, jitter);
+                let q = [
+                    base[0].wrapping_add((corner >> 2 & 1) as i32),
+                    base[1].wrapping_add((corner >> 1 & 1) as i32),
+                    base[2].wrapping_add((corner & 1) as i32),
+                ];
+                biome = Self::quart_biome(self.region, self.plains, [cx, cz], q);
+                layer.zoomed[cell] = biome;
+            }
+            let color = resolver.color(self.biomes, biome, block.x, block.z);
+            cells[cell] = color;
+            color
+        });
         colors[slot] = color;
         color
     }
 }
+
+/// `ClientLevel.getBlockTint`: sample a resolver (not a block model) in the loaded region centred
+/// on `pos`'s chunk. This one-position read uses the mesher's blend without building its caches.
+pub fn biome_tint(
+    [x, y, z]: [i32; 3],
+    resolver: mod_api::ColorResolver,
+    region: &[[Option<&Chunk>; 3]; 3],
+    biomes: &Biomes,
+    zoom: BiomeZoom,
+    blend_radius: i32,
+) -> u32 {
+    let resolver = Resolver::from(resolver);
+    let center = [x >> 4, z >> 4];
+    let plains = biomes.id("minecraft:plains");
+    let color = blend_biome_colors(blend_radius.clamp(0, 7), |dx, dz| {
+        let (bx, bz) = (x.wrapping_add(dx), z.wrapping_add(dz));
+        let q = zoom.quart_at_block(BlockPos::new(bx, y, bz));
+        let biome = Tints::quart_biome(region, plains, center, q);
+        resolver.color(biomes, biome, bx, bz)
+    });
+    0xFF00_0000 | color
+}
+
+/// `ClientLevel.calculateBlockTint`: mean each RGB channel over the same horizontal square.
+fn blend_biome_colors(radius: i32, mut sample: impl FnMut(i32, i32) -> u32) -> u32 {
+    let (mut red, mut green, mut blue) = (0, 0, 0);
+    for dz in -radius..=radius {
+        for dx in -radius..=radius {
+            let color = sample(dx, dz);
+            red += color >> 16 & 255;
+            green += color >> 8 & 255;
+            blue += color & 255;
+        }
+    }
+    let n = ((2 * radius + 1) * (2 * radius + 1)) as u32;
+    (red / n) << 16 | (green / n) << 8 | (blue / n)
+}
+
 /// Packs 8-bit RGB into the vertex's RGBA8 (red in the low byte), opaque.
 fn pack_rgb([r, g, b]: [u32; 3]) -> u32 {
     0xFF00_0000 | b << 16 | g << 8 | r

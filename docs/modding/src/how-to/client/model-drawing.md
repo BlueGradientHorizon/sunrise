@@ -442,6 +442,7 @@ that cannot be represented by a rectangle; use another drawing route rather than
 substituting an upright texture.
 
 Multiply tinted faces by `block_tint_color(state, face.tint_index, pos)` at their world
-position. Untinted faces return `None`. Water faces use tint index 0 and the world's
-water colour, including resource-pack water colormaps; other water indices return
-`None`. This differs from `fluid_box`, whose colour comes from its fluid stack.
+position. Untinted faces return `None`. Both block and fluid faces use the mesher's current
+biome colours, including updates from `refresh_biome_colors`. Water faces use tint index 0
+and honour resource-pack water colormaps; other water indices return `None`. This differs
+from `fluid_box`, whose colour comes from its fluid stack.

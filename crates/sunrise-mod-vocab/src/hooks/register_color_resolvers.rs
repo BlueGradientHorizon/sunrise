@@ -3,8 +3,8 @@
 pub trait Hooks {
     /// The colour resolvers block tints blend over the biomes around a block (NeoForge's
     /// `RegisterColorHandlersEvent.ColorResolvers`): `register(resolver)` adds the mod's own
-    /// `BiomeColorResolver` and returns the `ColorResolver` its block tint sources pass to
-    /// `BlockAndTintGetter::block_tint`. The game blends a mod's resolver over the biome blend
+    /// `BiomeColorResolver` and returns the `ColorResolver` to pass to `ClientHost::biome_tint`
+    /// or `BlockAndTintGetter::block_tint`. The game blends a mod's resolver over the biome blend
     /// radius and caches it per section while it meshes, as it does vanilla's grass, foliage and
     /// water. Asked once at start on the client, before `register_block_tint_sources` and before
     /// resources load.
@@ -14,8 +14,8 @@ A colour resolver (vanilla's `ColorResolver`, NeoForge's `RegisterColorHandlersE
 calculated from a biome and a block column, which the game blends over the biomes around a block as it blends
 grass, foliage and water: each block averages the resolver's colour over the `(2r+1)^2` columns of the biome blend
 radius, each column in the biome the game zooms it to. `Hooks::register_color_resolvers` registers the mod's own
-`BiomeColorResolver` once at start and gets back the `ColorResolver` to ask for, and the mod's `BlockTintSource`
-reads it with `level.block_tint(pos, resolver)`:
+`BiomeColorResolver` once at start and gets back the `ColorResolver` to pass to `host.biome_tint(pos, resolver)`
+from a client hook or `level.block_tint(pos, resolver)` from a `BlockTintSource`:
 
 ```rust,ignore
 static FROST: OnceLock<ColorResolver> = OnceLock::new();
