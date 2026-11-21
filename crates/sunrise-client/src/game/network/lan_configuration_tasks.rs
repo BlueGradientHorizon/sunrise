@@ -23,29 +23,32 @@ impl Game<'_> {
         session: &Arc<Session>,
         callback: impl FnOnce(&mut Self) -> Result<Option<usize>, String>,
     ) -> bool {
-        let seal = self.transaction_open();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(self)))
-            .unwrap_or_else(|_| Err("Configuration task callback panicked".into()));
-        let ordinal = match result {
-            Ok(ordinal) => ordinal,
+        let outcome = self.storage_scope(|game, frame| {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(game)))
+                .unwrap_or_else(|_| Err("Configuration task callback panicked".into()));
+            let ordinal = match result {
+                Ok(ordinal) => ordinal,
+                Err(reason) => return (Err(reason), false),
+            };
+            let commit = !session.closed()
+                && !matches!(session.result(), Some(Err(_)))
+                && ordinal.is_none_or(|ordinal| {
+                    session
+                        .prepare_finish(ordinal, None)
+                        .is_ok_and(|completion| {
+                            // A task can leave a child open; its rollback must not drop this request.
+                            game.journal_configuration_completion(Some(frame), completion)
+                        })
+                });
+            (Ok(commit), commit)
+        });
+        match outcome {
+            Ok(commit) => commit,
             Err(reason) => {
-                self.transaction_close(&seal, false);
                 session.fail(reason);
-                return false;
+                false
             }
-        };
-        let commit = !session.closed()
-            && !matches!(session.result(), Some(Err(_)))
-            && ordinal.is_none_or(|ordinal| {
-                session
-                    .prepare_finish(ordinal, None)
-                    .is_ok_and(|completion| {
-                        // A task can leave a child open; its rollback must not drop this request.
-                        self.journal_configuration_completion(Some(&seal), completion)
-                    })
-            });
-        self.transaction_close(&seal, commit);
-        commit
+        }
     }
     pub(super) fn take_lan_for_packet_tick(&mut self) -> Option<LanHost> {
         if self.level_pass.first {

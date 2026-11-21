@@ -26,8 +26,7 @@ pub(super) struct JournalLevelWrite<'g, 'a> {
 
 impl<'g, 'a> JournalLevelWrite<'g, 'a> {
     pub(super) fn new(game: &'g mut Game<'a>, level: LevelRef) -> Option<Self> {
-        (game.level_in_place(level) && game.transaction_current().is_some())
-            .then_some(Self { game, level })
+        (game.level_in_place(level) && game.has_open_transaction()).then_some(Self { game, level })
     }
 
     fn read(&self) -> ReadLevel<'_, 'a> {
@@ -339,11 +338,11 @@ impl Game<'_> {
         mod_api::dispatch_place_liquid_with(write.pos, state, fluid, &mut answer, |part, event| {
             // For a player bucket this can be the root scope; the fluid
             // utility already has an outer transaction.
-            let seal = self.transaction_open();
-            let reply = JournalLevelWrite::new(self, level)
-                .and_then(|mut host| part.place_liquid(&mut host, event));
-            self.transaction_close(&seal, reply == Some(true));
-            reply
+            self.storage_scope(|game, _| {
+                let reply = JournalLevelWrite::new(game, level)
+                    .and_then(|mut host| part.place_liquid(&mut host, event));
+                (reply, reply == Some(true))
+            })
         });
         answer
     }

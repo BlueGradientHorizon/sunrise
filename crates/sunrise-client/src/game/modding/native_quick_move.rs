@@ -452,17 +452,13 @@ impl Game<'_> {
             )
         };
         let applied = if take_menu.is_some() {
-            mod_api::run_transaction(self, |game, _| {
+            self.storage_scope(|game, _| {
                 // `decided_action` closes its own savepoint into this one. If the apply was
                 // entered but the notice failed, also abort the earlier quick-move writes.
                 let applied = decide(game);
-                if applied && handled.get() != Some(false) {
-                    Ok(true)
-                } else {
-                    Err(())
-                }
+                let commit = applied && handled.get() != Some(false);
+                (commit, commit)
             })
-            .is_ok()
         } else {
             decide(self)
         };

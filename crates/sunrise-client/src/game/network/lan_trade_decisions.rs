@@ -164,26 +164,22 @@ impl Game<'_> {
             .or_default()
             .merchant
             .id();
-        let seal = self.transaction_open();
-        self.journal_guest_merchant(conn);
-        let level = self.transactions.last_mut().unwrap();
-        level.trades.active = Some(conn);
-        level.trades.correct_on_abort.insert((conn, p.container));
-        if level.packets.is_none() {
-            level.packets = Some(Scope::begin());
-        }
-        // The coordinator contains listener unwinds; this guard also closes the click if a
-        // lower menu rule panics during planning or a provisional guest turn unwinds.
-        let accepted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.run_merchant_take(conn, p, input, identity, route)
-        }))
-        .unwrap_or(false);
-        if Scope::refused() {
-            log::warn!(
-                "trade_with_villager: merchant packet batch exceeded its retained-byte budget"
-            );
-        }
-        self.transaction_close(&seal, accepted && !Scope::refused());
+        self.storage_scope(|game, _| {
+            game.journal_guest_merchant(conn);
+            let level = game.transactions.last_mut().unwrap();
+            level.trades.active = Some(conn);
+            level.trades.correct_on_abort.insert((conn, p.container));
+            if level.packets.is_none() {
+                level.packets = Some(Scope::begin());
+            }
+            // The coordinator contains listener unwinds; this guard also closes the click if a
+            // lower menu rule panics during planning or a provisional guest turn unwinds.
+            let accepted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                game.run_merchant_take(conn, p, input, identity, route)
+            }))
+            .unwrap_or(false);
+            ((), accepted)
+        });
         true
     }
 
@@ -390,7 +386,7 @@ impl Game<'_> {
                 },
                 |game| game.apply_merchant_take(&reads, plan.take().expect("one frozen take")),
             );
-            if !accepted || Scope::refused() {
+            if !accepted {
                 return false;
             }
             traded = true;

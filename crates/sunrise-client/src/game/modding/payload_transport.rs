@@ -3,7 +3,8 @@ use super::Game;
 use mod_api::{
     ConfigurationTaskError, ConfigurationTaskRef, HandlerThread, IPayloadContext, PayloadAccepted,
     PayloadBytes, PayloadContextError, PayloadDirection, PayloadId, PayloadProtocol,
-    PayloadSendError, PayloadWork, PayloadWorkStatus, PlayerRef, Text,
+    PayloadSendError, PayloadWork, PayloadWorkStatus, PlayerRef, Text, TransactionContext,
+    TransactionUnavailable,
 };
 use std::sync::Arc;
 use sunrise_client::raw_payloads::{Body, Endpoint, Incoming, Prepared, Side, connection::Epoch};
@@ -94,33 +95,35 @@ impl Game<'_> {
         if !incoming.epoch.active() {
             return;
         }
-        let seal = self.transaction_open();
-        let mut context = MainContext {
-            game: self,
-            epoch: &incoming.epoch,
-            endpoint: endpoint.clone(),
-            receiver: &incoming.receiver,
-            disconnect: None,
-            failure: None,
-        };
-        let result = match incoming.body {
-            Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => incoming
-                .receiver
-                .handle(bytes, &mut context)
-                .map_err(|mod_api::PayloadHandleError::Failed(error)| error),
-            Body::Payload(_) => {
-                Err("payload was not dispatched on its declared network executor".into())
+        let (failure, reason) = self.storage_scope(|game, frame| {
+            let mut context = MainContext {
+                game,
+                epoch: Arc::clone(&incoming.epoch),
+                endpoint: endpoint.clone(),
+                receiver: incoming.receiver.clone(),
+                disconnect: None,
+                failure: None,
+            };
+            let result = match incoming.body {
+                Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => incoming
+                    .receiver
+                    .handle(bytes, &mut context)
+                    .map_err(|mod_api::PayloadHandleError::Failed(error)| error),
+                Body::Payload(_) => {
+                    Err("payload was not dispatched on its declared network executor".into())
+                }
+                Body::Work(work) => incoming.receiver.run_work(work.as_ref(), &mut context),
+            };
+            let reason = context.disconnect.take();
+            let failure = context.failure.take().or_else(|| result.err());
+            if reason.is_some() {
+                // An explicit disconnect still commits ordinary work on success, but cannot
+                // advance configuration in the gap before the physical connection closes.
+                context.game.discard_configuration_completions(frame);
             }
-            Body::Work(work) => incoming.receiver.run_work(work.as_ref(), &mut context),
-        };
-        let reason = context.disconnect.take();
-        let failure = context.failure.take().or_else(|| result.err());
-        if reason.is_some() {
-            // An explicit disconnect still commits ordinary work on success, but cannot
-            // advance configuration in the gap before the physical connection closes.
-            context.game.discard_configuration_completions(&seal);
-        }
-        context.game.transaction_close(&seal, failure.is_none());
+            let commit = failure.is_none();
+            ((failure, reason), commit)
+        });
         if let Some(error) = failure.as_ref().filter(|_| incoming.raw) {
             // A raw channel's bytes come from any client; one declaring mod's
             // refusal rolls back its own work only, and the next mod still runs.
@@ -147,9 +150,9 @@ impl Game<'_> {
 }
 struct MainContext<'a, 'resources> {
     game: &'a mut Game<'resources>,
-    epoch: &'a Arc<Epoch>,
+    epoch: Arc<Epoch>,
     endpoint: Endpoint,
-    receiver: &'a mod_api::__private::game::PayloadReceiver,
+    receiver: mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
     failure: Option<String>,
 }
@@ -249,7 +252,7 @@ impl IPayloadContext for MainContext<'_, '_> {
         }
         if transport
             .epoch()
-            .is_none_or(|epoch| !Arc::ptr_eq(&epoch, self.epoch))
+            .is_none_or(|epoch| !Arc::ptr_eq(&epoch, &self.epoch))
         {
             return Err(ConfigurationTaskError::Disconnected);
         }
@@ -275,6 +278,50 @@ impl IPayloadContext for MainContext<'_, '_> {
             return Err(PayloadContextError::Disconnected);
         }
         Ok(PayloadWorkStatus::Complete)
+    }
+    fn with_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn IPayloadContext,
+            &'loan TransactionContext,
+        ) -> bool,
+    ) -> Result<(), TransactionUnavailable> {
+        if !self.epoch.active()
+            || self.disconnect.is_some()
+            || self.endpoint.side() != Side::Server
+            || !mod_api::__private::access_allowed(
+                "with_transaction_scope",
+                mod_api::__private::LoadAccess::WorldOnly,
+            )
+        {
+            return Err(TransactionUnavailable);
+        }
+        let epoch = Arc::clone(&self.epoch);
+        let endpoint = self.endpoint.clone();
+        let receiver = self.receiver.clone();
+        if let Ok((disconnect, failure)) = self.game.storage_transaction(|game, tx| {
+            let mut inner = MainContext {
+                game,
+                epoch,
+                endpoint,
+                receiver,
+                disconnect: None,
+                failure: None,
+            };
+            if callback(&mut inner, tx) {
+                Ok((inner.disconnect, inner.failure))
+            } else {
+                Err(())
+            }
+        }) {
+            if let Some(reason) = disconnect {
+                self.disconnect = Some(reason);
+            }
+            if let Some(error) = failure {
+                self.failure = Some(error);
+            }
+        }
+        Ok(())
     }
 }
 #[cfg(test)]
