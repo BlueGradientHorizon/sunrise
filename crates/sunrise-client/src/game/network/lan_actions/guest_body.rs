@@ -2,6 +2,7 @@
 use super::*;
 use sunrise_client::{
     lan::guest::Guest,
+    landing::PlayerLandingPause,
     motion::{MotionResources, PlayerMotion, ServerTravel},
 };
 use sunrise_core::geometry::Vec3;
@@ -33,7 +34,9 @@ macro_rules! motion_world {
 macro_rules! settle_guest_hit {
     ($game:ident, $side:ident, $world:ident, $id:ident) => {
         if $world.player.health.totem_used || $world.player.health.pending_damage_post.is_some() {
-            $game.finish_guest_damage();
+            if let Err(collected) = $game.finish_guest_damage_before_resume() {
+                return (collected, None, ServerTravel::Continue);
+            }
             let Some(player) = $game.player.as_mut().filter(|p| p.entity_id as u32 == $id) else {
                 return (Vec::new(), None, ServerTravel::Continue);
             };
@@ -268,22 +271,45 @@ impl Game<'_> {
                     let state = w.block_state(pos)?;
                     w.check_guest_fall_damage(movement.y, accepted.on_ground, state, pos)
                 })();
-                settle_guest_hit!(game, side, w, id);
-                let Ok(landed) = landed else { break };
-                if let Some(trample) = landed {
-                    let mut collected = std::mem::take(&mut w.player.events);
-                    game.trample_farmland(id, true, trample);
+                let tail = match landed {
+                    Ok(Some(PlayerLandingPause::Trample(trample))) => {
+                        let mut collected = std::mem::take(&mut w.player.events);
+                        game.trample_farmland(id, true, trample);
+                        let Some(player) =
+                            game.player.as_mut().filter(|p| p.entity_id as u32 == id)
+                        else {
+                            return (collected, None, ServerTravel::Continue);
+                        };
+                        collected.append(&mut player.events);
+                        player.events = collected;
+                        side = game_side!(game);
+                        w = motion_world!(game, side, player);
+                        match w.finish_trample_fall(trample) {
+                            Ok(tail) => tail,
+                            Err(_) => {
+                                settle_guest_hit!(game, side, w, id);
+                                break;
+                            }
+                        }
+                    }
+                    Ok(Some(PlayerLandingPause::Damage(tail))) => Some(tail),
+                    Ok(None) => None,
+                    Err(_) => {
+                        settle_guest_hit!(game, side, w, id);
+                        break;
+                    }
+                };
+                if let Some(tail) = tail {
+                    if let Err(collected) = game.finish_guest_damage_before_resume() {
+                        return (collected, None, ServerTravel::Continue);
+                    }
                     let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id)
                     else {
-                        return (collected, None, ServerTravel::Continue);
+                        return (Vec::new(), None, ServerTravel::Continue);
                     };
-                    collected.append(&mut player.events);
-                    player.events = collected;
                     side = game_side!(game);
                     w = motion_world!(game, side, player);
-                    let landed = w.finish_trample_fall(trample);
-                    settle_guest_hit!(game, side, w, id);
-                    if landed.is_err() {
+                    if w.finish_guest_landing(tail).is_err() {
                         break;
                     }
                 }

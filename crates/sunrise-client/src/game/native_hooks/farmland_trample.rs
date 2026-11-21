@@ -737,8 +737,8 @@ mod tests {
                     }
                     lent.give_back(&mut game.world);
 
-                    // The guest motion pass finishes a short fall by itself:
-                    // `None` means no continuation and no return to the owning host.
+                    // A short fall needs neither the trample owner nor the hurt owner;
+                    // the motion pass also finishes the ground-hit tail itself.
                     let mut guest =
                         PlayerMotion::new(game.motion, Vec3::new(1.5, LANDING_Y, 1.5)).unwrap();
                     guest.fall_distance = 0.125;
@@ -757,12 +757,15 @@ mod tests {
                         damage_hooks: &game.damage_hooks,
                         block_registries: Some(&game.pack.block_registries),
                     };
-                    assert!(
-                        motion
-                            .check_guest_fall_damage(-0.125, true, farmland, BlockPos::new(x, y, z))
-                            .unwrap()
-                            .is_none()
-                    );
+                    assert!(matches!(
+                        motion.check_guest_fall_damage(
+                            -0.125,
+                            true,
+                            farmland,
+                            BlockPos::new(x, y, z)
+                        ),
+                        Ok(None)
+                    ));
                     assert_eq!(guest.fall_distance, 0.0);
                     assert_eq!(game.world.block(x, y, z), farmland);
                     assert!(trace.lock().unwrap().is_empty());

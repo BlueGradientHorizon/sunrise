@@ -6,8 +6,10 @@ use super::render_tick::player_tracking_body;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
     block_entity_render::vertex_light,
+    health::HealthEvent,
     items::ItemStack,
     mesher::Vertex,
+    motion::MotionEvent,
     particles::{ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
 };
 
@@ -142,42 +144,46 @@ impl Game<'_> {
     /// Finish a hit before its caller can hurt the acting player again. Protection and
     /// `ServerPlayer.die` both run on the current body, not its between-turn projection.
     pub(in crate::game) fn finish_guest_damage(&mut self) {
+        let _ = self.finish_guest_damage_before_resume();
+    }
+
+    /// Settle the hit, returning the remaining events instead of resuming if the acting body is gone.
+    pub(in crate::game) fn finish_guest_damage_before_resume(
+        &mut self,
+    ) -> Result<(), Vec<MotionEvent>> {
         let (Some(conn), Some(player)) = (self.lan_acting, self.player.as_mut()) else {
-            return;
+            return Err(Vec::new());
         };
         let entity = player.entity_id;
+        // Keep queued motion and packet effects with this body across the owning callbacks.
+        let mut events;
         if player.health.totem_used {
+            events = std::mem::take(&mut player.events);
             if let Some(body) = self.apply_totem()
                 && self.serving.is_none()
                 && !self.is_dedicated_server()
             {
                 self.totem_event(TrackingTarget::Entity(entity), body);
             }
-            return;
-        }
-        if !player.health.dead || player.health.health() > 0.0 {
-            return;
-        }
-        let post = player.health.pending_damage_post.take();
-        let Some(index) = self.guest_index(conn) else {
-            return;
-        };
-        if self
-            .lan
-            .as_ref()
-            .is_some_and(|host| host.hub.guests[index].dead)
-        {
-            return;
-        }
-        // The killing blow and its weapon must reach the combat tracker before die reads it.
-        // Packet and motion events still belong to the normal turn drain.
-        use sunrise_client::{health::HealthEvent, motion::MotionEvent};
-        let events: Vec<_> = self
-            .player
-            .as_mut()
-            .into_iter()
-            .flat_map(|body| {
-                body.events.extract_if(.., |event| {
+        } else {
+            if !player.health.dead || player.health.health() > 0.0 {
+                return Ok(());
+            }
+            let post = player.health.pending_damage_post.take();
+            let Some(host) = self.lan.as_ref() else {
+                return Err(std::mem::take(&mut player.events));
+            };
+            let Some(index) = host.hub.guests.connection_index(conn) else {
+                return Err(std::mem::take(&mut player.events));
+            };
+            if host.hub.guests[index].dead {
+                return Ok(());
+            }
+            // The killing blow and its weapon must reach the combat tracker before die reads it.
+            // Packet and motion events still belong to the normal turn drain.
+            events = std::mem::take(&mut player.events);
+            let combat: Vec<_> = events
+                .extract_if(.., |event| {
                     matches!(
                         event,
                         MotionEvent::Health(
@@ -189,15 +195,24 @@ impl Game<'_> {
                         )
                     )
                 })
-            })
-            .collect();
-        if !events.is_empty() {
-            self.record_combat(&events);
-            self.wear_armor(&events);
+                .collect();
+            if !combat.is_empty() {
+                self.record_combat(&combat);
+                self.wear_armor(&combat);
+            }
+            self.guest_die(index, conn);
+            if let Some(post) = post {
+                self.finish_damage_post(entity, "minecraft:player", &post);
+            }
         }
-        self.guest_die(index, conn);
-        if let Some(post) = post {
-            self.finish_damage_post(entity, "minecraft:player", &post);
+        if self.lan_acting == Some(conn)
+            && let Some(player) = self.player.as_mut().filter(|p| p.entity_id == entity)
+        {
+            events.append(&mut player.events);
+            player.events = events;
+            Ok(())
+        } else {
+            Err(events)
         }
     }
 

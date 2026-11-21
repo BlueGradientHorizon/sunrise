@@ -934,6 +934,145 @@ fn guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick() {
     });
 }
 
+#[derive(Debug, PartialEq)]
+enum GuestLandingMoment {
+    Death(u32, Option<[f64; 3]>, Option<mod_api::Tag>),
+    Post(i32),
+    NextMove(u32, Option<mod_api::Tag>),
+}
+
+struct GuestLandingProbe(Arc<Mutex<Vec<GuestLandingMoment>>>);
+
+#[mod_api::__subscriptions]
+impl Hooks for GuestLandingProbe {
+    fn living_death(
+        &self,
+        host: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::LivingDeathEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.source.damage_type != "minecraft:fall" {
+            return mod_api::Flow::Continue;
+        }
+        let player = host.entity(event.entity).unwrap();
+        let position = player.position(host);
+        // This projection reads the acting body, not the guest's stored record.
+        let distance = player
+            .nbt(host)
+            .unwrap()
+            .get(&"fall_distance".into())
+            .cloned();
+        self.0
+            .lock()
+            .unwrap()
+            .push(GuestLandingMoment::Death(event.entity, position, distance));
+        // Let the following accepted move run on the same body.
+        assert!(host.living(player).unwrap().set_health(host, 5.0));
+        mod_api::Flow::Cancel
+    }
+
+    fn living_damage_post(&self, _: &mut dyn HitHost, event: &mut LivingDamagePostEvent<'_>) {
+        self.0
+            .lock()
+            .unwrap()
+            .push(GuestLandingMoment::Post(event.entity));
+    }
+
+    fn entity_entering_section(
+        &self,
+        host: mod_api::HostSide<'_>,
+        event: &mut mod_api::EntityEnteringSectionEvent,
+    ) {
+        if let mod_api::HostSide::Server(host) = host
+            && event.chunk_changed
+        {
+            let distance = event
+                .entity
+                .nbt(host)
+                .unwrap()
+                .get(&"fall_distance".into())
+                .cloned();
+            self.0
+                .lock()
+                .unwrap()
+                .push(GuestLandingMoment::NextMove(event.entity.id(), distance));
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn guest_landing_posts_before_its_ground_hit() {
+    use crate::game::native_player_death::tests::add_guest;
+    use sunrise_client::{chunk::Chunk, lan::guest::GuestMove};
+
+    let trace = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "landing-order",
+        Box::new(GuestLandingProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            add_guest(game);
+            for x in [0, 1] {
+                game.streaming
+                    .insert_remote(&mut game.world, Chunk::empty(x, 0));
+            }
+            let honey = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:honey_block")
+                .unwrap();
+            game.world.set(15, 78, 1, honey).unwrap();
+            let landing = Vec3::new(15.5, 78.9375, 1.5);
+            let next = [16.5, landing.y, landing.z];
+            let mut body = PlayerMotion::new(game.motion, landing).unwrap();
+            body.fall_distance = 10.0;
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.loaded = true;
+                guest.load_timeout = 0;
+                guest.place(next);
+                // Even honey's reduced hit kills this body.
+                guest.health = 0.5;
+                guest.motion = Some(Box::new(body));
+                guest.moves.extend([
+                    GuestMove {
+                        position: landing.components(),
+                        delta: [0.0, -0.25, 0.0],
+                        on_ground: true,
+                        sneaking: false,
+                    },
+                    GuestMove {
+                        position: next,
+                        delta: [1.0, 0.0, 0.0],
+                        on_ground: false,
+                        sneaking: false,
+                    },
+                ]);
+            });
+            let entity = game.lan.as_ref().unwrap().hub.guests[0].entity_id;
+            game.guest_server_tick(1, true);
+            assert_eq!(
+                *trace.lock().unwrap(),
+                [
+                    GuestLandingMoment::Death(
+                        entity as u32,
+                        Some(landing.components()),
+                        Some(mod_api::Tag::Double(10.25_f64.to_bits())),
+                    ),
+                    GuestLandingMoment::Post(entity),
+                    GuestLandingMoment::NextMove(entity as u32, Some(mod_api::Tag::Double(0))),
+                ],
+                "death sees the landing before its fall reset; the next move sees the finished tail",
+            );
+            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            assert_eq!(guest.position, next);
+            assert_eq!(guest.motion.as_ref().unwrap().fall_distance, 0.0);
+        });
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn player_pre_keeps_live_damage_when_resistance_does_not_record_a_reduction() {

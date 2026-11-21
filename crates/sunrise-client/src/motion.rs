@@ -1673,7 +1673,7 @@ impl MotionWorld<'_, '_, '_> {
         }))
     }
 
-    fn hit_needs_owner(&self) -> bool {
+    pub(crate) fn hit_needs_owner(&self) -> bool {
         self.player.health.totem_used || self.player.health.pending_damage_post.is_some()
     }
     /// The block effects and the frost of a window's own player while a vehicle carries it. Its
@@ -2346,7 +2346,7 @@ impl MotionWorld<'_, '_, '_> {
         grounded: bool,
         state: BlockStateId,
         position: BlockPos,
-    ) -> Result<Option<sunrise_world::block_landing::FarmlandTrample>> {
+    ) -> Result<Option<crate::landing::PlayerLandingPause>> {
         self.before_fall_check(dy, grounded, state, position);
         sunrise_world::living_landing::check_living_fall_damage_until(
             self,

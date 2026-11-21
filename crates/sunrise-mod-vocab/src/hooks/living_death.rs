@@ -7,6 +7,7 @@ pub trait Hooks {
     /// `kind` its type (`minecraft:zombie`, `minecraft:player`). `source` and
     /// `weapon` are the complete killing blow, as `living_incoming_damage` saw
     /// it, including the causing player, direct projectile and weapon components.
+    /// A server player's lethal fall is heard on the landing body before its fall distance is reset.
     /// Cancellation skips death and loot without changing the listener's health:
     /// heal it to keep it alive; at health <= 0 its body is removed after 20 ticks.
     /// Armor stands, boats and other non-mob entities are not told.

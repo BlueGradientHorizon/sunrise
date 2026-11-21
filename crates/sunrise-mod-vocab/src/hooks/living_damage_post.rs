@@ -8,6 +8,8 @@ pub trait Hooks {
     /// at the end of `hurtServer`: after the hurt sounds and after that hit's death processing
     /// (even if vetoed) or totem protection. For a queued mob effect hurt this is before the next
     /// queued action, and for a dolphin's dry-out hurt it is before the dolphin's land hop.
+    /// A server player's landing hurt finishes before the landing's `HIT_GROUND` and fall reset,
+    /// and before the next accepted move.
     /// `container.inflicted()` is the amount before absorption;
     /// `container.health_damage()` is the amount applied to health. A hit that took no
     /// health (a shield, absorption, armor or a `living_damage_pre` listener took it all) fires
