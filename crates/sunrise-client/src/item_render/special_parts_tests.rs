@@ -396,7 +396,10 @@ fn renderer(
         true,
         &data,
         None,
-        Some(factories),
+        ItemProviderTables {
+            special: Some(factories),
+            ..Default::default()
+        },
     )
     .unwrap()
 }
@@ -637,7 +640,10 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
         true,
         &item_data,
         None,
-        Some(&factories),
+        ItemProviderTables {
+            special: Some(&factories),
+            ..Default::default()
+        },
     )
     .unwrap();
     let definitions = &renderer.models.definitions;

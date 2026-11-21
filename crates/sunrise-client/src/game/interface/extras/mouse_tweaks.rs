@@ -195,8 +195,8 @@ impl Game<'_> {
         owned
     }
     /// The button went up: the drag ends.
-    pub(in crate::game) fn tweak_release(&mut self) {
-        self.tweaks.drag = None;
+    pub(in crate::game) fn tweak_release(&mut self) -> bool {
+        self.tweaks.drag.take().is_some()
     }
     /// The wheel over an inventory screen: true when the tweaks used it.
     pub(in crate::game) fn tweak_scroll(&mut self, delta: f32, slot: Option<usize>) -> bool {

@@ -48,15 +48,16 @@ impl ItemEnv for BoundTintEnv {
         };
         let input = ItemTintInput::new(&snapshot, stack.bundle_selected);
         bound
-            .owner
+            .eval
+            .owner()
             .call("item tint source", "item_tint_source", || {
-                (bound.eval)(&self.0, &input)
+                (bound.eval.value())(&self.0, &input)
             })
             .map_or(-1, |color| color as i32)
     }
 }
 
-fn renderer(root: &std::path::Path) -> ItemRenderer {
+fn renderer(root: &std::path::Path, providers: ItemProviderTables<'_>) -> ItemRenderer {
     let write = |name: &str, data: &str| {
         let path = root.join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -88,7 +89,16 @@ fn renderer(root: &std::path::Path) -> ItemRenderer {
         sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
     )
     .unwrap();
-    ItemRenderer::load(&ResourceRoot::directory(root.to_path_buf()), &data).unwrap()
+    let root = ResourceRoot::directory(root.to_path_buf());
+    ItemRenderer::load_tables(
+        &root,
+        crate::model_library::ParsedModels::load(root.source()).into_item_library(),
+        true,
+        &data,
+        None,
+        providers,
+    )
+    .unwrap()
 }
 
 fn rect() -> Rect {
@@ -119,9 +129,15 @@ fn a_registered_source_tints_each_stack_in_hand_and_in_the_inventory() {
     mod_platform::testing::with_mods(mods, || {
         let mut sources = Vec::new();
         mod_api::dispatch_register_item_tint_sources(&RegistrationContext::new(), &mut sources);
-        let (_fixture, kept) = registered_providers::ItemProvidersFixture::tint(sources);
+        let (factories, kept) = bind_item_tint_factories(sources);
         assert_eq!(kept, ["tintdraw:charge"]);
-        let renderer = renderer(&root);
+        let renderer = renderer(
+            &root,
+            ItemProviderTables {
+                tint: Some(&factories),
+                ..Default::default()
+            },
+        );
         let env = BoundTintEnv(FakeHost::new());
         let sprites = HashMap::from([(
             "tintdraw:item/grey".to_owned(),

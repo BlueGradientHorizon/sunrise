@@ -29,7 +29,6 @@ use crate::{
 };
 use glam::{Mat3, Mat4, Vec3};
 use mod_api::{ClientHost, ItemDisplayContext, ItemKey, SpecialModelContext, SpecialModelTints};
-use registered_providers::ActiveItemProviders;
 pub use registered_providers::{
     BoundItemModel, BoundRangeProperty, BoundSelectProperty, BoundTintSource, ItemModelFactories,
     ItemProviderEntry, ItemProviderTables, ItemTintFactories, RangePropertyFactories,
@@ -866,7 +865,14 @@ impl ItemRenderer {
         library: std::result::Result<Arc<ModelLibrary>, String>,
         item_data: &sunrise_world::item_defaults::ItemData,
     ) -> crate::Result<Self> {
-        Self::load_tables(root, library, true, item_data, None, FACTORIES.get())
+        Self::load_tables(
+            root,
+            library,
+            true,
+            item_data,
+            None,
+            ItemProviderTables::installed(FACTORIES.get()),
+        )
     }
     /// What a dedicated server reads: the item prototypes (the stacks'
     /// default components) and ids, without the client item definitions,
@@ -877,7 +883,14 @@ impl ItemRenderer {
         library: std::result::Result<Arc<ModelLibrary>, String>,
         item_data: &sunrise_world::item_defaults::ItemData,
     ) -> crate::Result<Self> {
-        Self::load_tables(root, library, false, item_data, None, None)
+        Self::load_tables(
+            root,
+            library,
+            false,
+            item_data,
+            None,
+            ItemProviderTables::default(),
+        )
     }
     pub fn load_with_library_and_entity_models(
         root: &sunrise_assets::resource_source::ResourceRoot,
@@ -891,7 +904,7 @@ impl ItemRenderer {
             true,
             item_data,
             Some(document),
-            FACTORIES.get(),
+            ItemProviderTables::installed(FACTORIES.get()),
         )
     }
     fn load_tables(
@@ -900,7 +913,7 @@ impl ItemRenderer {
         drawn: bool,
         item_data: &sunrise_world::item_defaults::ItemData,
         entity_models: Option<&crate::mobs::EntityModelDocument>,
-        factories: Option<&SpecialModelFactories>,
+        providers: ItemProviderTables<'_>,
     ) -> crate::Result<Self> {
         let prototypes = Arc::clone(item_data.prototypes()?);
         // CIT models and glint textures only affect drawing. A server still
@@ -967,8 +980,6 @@ impl ItemRenderer {
             cit,
         };
         if drawn {
-            let active = ActiveItemProviders::current();
-            let providers = active.tables(factories);
             renderer.models.definitions = load_definitions(root.source(), |text| {
                 renderer.decode_definition(text, &providers)
             });
@@ -1637,8 +1648,11 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             let mut registered = Vec::new();
             mod_api::dispatch_register_item_models(&RegistrationContext::new(), &mut registered);
-            let (_fixture, kept) =
-                registered_providers::ItemProvidersFixture::item_models(registered);
+            let (factories, kept) = bind_item_model_factories(registered);
+            let providers = ItemProviderTables {
+                item_model: Some(&factories),
+                ..Default::default()
+            };
             assert_eq!(kept, ["loadtest:cell"]);
 
             let source = |full: &str| {
@@ -1657,8 +1671,6 @@ mod tests {
                 ]))
             };
             let models = |full: &str| {
-                let active = ActiveItemProviders::current();
-                let providers = active.tables(None);
                 let loaded = load_definitions(&source(full), |text| {
                     registered_providers::decode_definition_without_specials(text, &providers)
                 });

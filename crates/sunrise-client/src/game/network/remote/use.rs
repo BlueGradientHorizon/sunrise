@@ -613,17 +613,17 @@ impl Game<'_> {
     }
 
     /// A container click: the server answers with the authoritative slots.
-    pub(in crate::game) fn remote_click(&mut self, right: bool) {
+    pub(in crate::game) fn remote_click(&mut self, right: bool) -> bool {
         let Some(size) = self
             .renderer
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
-            return;
+            return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         let Some(internal) = self.slot_at(&batch, self.cursor.0, self.cursor.1) else {
-            return;
+            return false;
         };
         let input = if self.has_shift_down() {
             Input::QuickMove
@@ -636,8 +636,9 @@ impl Game<'_> {
             // changed (SetCreativeModeSlot). No ContainerClick: a server holding the carried
             // stack would give it back after the Destroy Item slot cleared it (#3307).
             self.click_open_inventory(Some(internal), i32::from(right), input);
-            return;
+            return true;
         }
         self.remote_menu_ops(&[(Some(internal), i32::from(right), input)]);
+        true
     }
 }

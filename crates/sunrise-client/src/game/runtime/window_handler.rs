@@ -243,22 +243,33 @@ impl Game<'_> {
         if let Some((button, pressed, modifiers)) = mouse {
             let mut canceled = false;
             self.native_mouse_button_pre(button, pressed, modifiers, &mut canceled);
+            // This is release cleanup, not gameplay dispatch. Even a consumed release
+            // must not leave a mod's mapping down; presses wait for the screen outcome.
+            if let WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button,
+                ..
+            } = &event
+            {
+                self.mod_mappings_button(*button, false);
+            }
             if canceled {
                 return;
             }
         }
-        if mouse.is_some()
-            && let WindowEvent::MouseInput { state, button, .. } = &event
-        {
-            self.mod_mappings_button(*button, *state == ElementState::Pressed);
-        }
         let resized = matches!(event, WindowEvent::Resized(_));
-        self.handle_window_event_inner(event_loop, event, cursor_sample);
+        let mouse_press_millis = (origin == input_trace::InputOrigin::User
+            && mouse.is_some_and(|(_, pressed, _)| pressed))
+        .then(|| self.millis());
+        let title_settled =
+            self.handle_window_event_inner(event_loop, event, cursor_sample, mouse_press_millis);
         if resized {
             self.notify_window_resize();
         }
-        // A title screen the event asked for opens before the next event.
-        self.settle_title_mode();
+        // Button receivers settle before their Post; other events settle here.
+        if !title_settled {
+            self.settle_title_mode();
+        }
         if let Some((button, pressed, modifiers)) = mouse {
             self.native_mouse_button_post(button, pressed, modifiers);
         }

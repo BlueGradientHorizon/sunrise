@@ -1096,9 +1096,10 @@ impl Game<'_> {
     /// where the pointer is (so there is no position of its own), `button` the
     /// button's GLFW index (0 left, 1 right, 2 middle, 3 back, 4 forward; a
     /// button past those is the platform's own number, which differs between
-    /// systems) and `modifiers` GLFW's bits (shift 1, control 2,
-    /// alt 4, super 8). Set `canceled` and the press goes no further: no slot,
-    /// no screen button, no drag, no hotbar key, no sort or header button.
+    /// systems), and `modifiers` GLFW's bits (shift 1, control 2,
+    /// alt 4, super 8). `double_click` comes from the last handled press on
+    /// the same screen instance and button. Cancel to skip the screen and
+    /// Post; the press still counts as handled for double-click detection.
     ///
     /// It fires before anything the screen does with the press, on the window
     /// only, and while a screen of the game's or the title's is open (Options
@@ -1115,9 +1116,16 @@ impl Game<'_> {
         screen: &ScreenView<'_>,
         button: i32,
         modifiers: u32,
+        double_click: bool,
         canceled: &mut bool,
     ) {
-        self.fire_screen_mouse_button_pressed_pre(screen, button, modifiers, canceled);
+        self.fire_screen_mouse_button_pressed_pre(
+            screen,
+            button,
+            modifiers,
+            double_click,
+            canceled,
+        );
     }
     /// A mouse button went up over the open screen
     /// (`ScreenEvent.MouseButtonReleased.Pre`, vanilla's

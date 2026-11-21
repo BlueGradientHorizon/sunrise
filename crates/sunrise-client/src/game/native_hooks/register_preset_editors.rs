@@ -46,16 +46,38 @@ mod tests {
         DrawContext, Hooks, Identifier, ModEntry, PresetEditor, PresetEditorDraft,
         RegisterPresetEditorsEvent, ScreenCharTypedPostEvent, ScreenCharTypedPreEvent,
         ScreenKeyPressedPostEvent, ScreenKeyPressedPreEvent, ScreenKeyReleasedPreEvent,
-        ScreenOpening, ScreenOpeningEvent, ScreenRenderPostEvent,
+        ScreenMouseButtonPressedPostEvent, ScreenMouseButtonPressedPreEvent,
+        ScreenMouseButtonReleasedPostEvent, ScreenOpening, ScreenOpeningEvent,
+        ScreenRenderPostEvent, TriState,
     };
     use std::sync::{
         Mutex,
         atomic::{AtomicUsize, Ordering},
     };
     use sunrise_client::title::{Mode, WorldOptions};
-    use winit::{event::ElementState, keyboard::PhysicalKey};
+    use winit::{
+        event::{DeviceId, ElementState, WindowEvent},
+        keyboard::PhysicalKey,
+    };
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum MouseStep {
+        Pre(i32, bool),
+        Editor(i32, bool),
+        // Original screen, GLFW button, double click, handled, editor still open.
+        Post(&'static str, i32, bool, bool, bool),
+        Release(&'static str, i32, bool),
+    }
+
+    #[derive(Default)]
+    struct MouseProbe {
+        events: Vec<MouseStep>,
+        cancel_press: bool,
+        press_result: TriState,
+    }
 
     struct IslandsEditor {
+        mouse: Arc<Mutex<MouseProbe>>,
         clicks: Arc<AtomicUsize>,
         keys: Arc<AtomicUsize>,
         typed: Arc<Mutex<String>>,
@@ -79,11 +101,17 @@ mod tests {
             &mut self,
             _x: f32,
             _y: f32,
-            button: u8,
+            button: i32,
+            double_click: bool,
             draft: &mut PresetEditorDraft<'_>,
         ) -> bool {
+            self.mouse
+                .lock()
+                .unwrap()
+                .events
+                .push(MouseStep::Editor(button, double_click));
             if button != 0 {
-                return false;
+                return button == 1;
             }
             self.clicks.fetch_add(1, Ordering::Relaxed);
             let mut dimensions = draft.dimensions().clone();
@@ -135,6 +163,7 @@ mod tests {
     }
 
     struct EditorMod {
+        mouse: Arc<Mutex<MouseProbe>>,
         clicks: Arc<AtomicUsize>,
         keys: Arc<AtomicUsize>,
         typed: Arc<Mutex<String>>,
@@ -145,6 +174,50 @@ mod tests {
     }
     #[mod_api::__subscriptions]
     impl Hooks for EditorMod {
+        fn screen_mouse_button_pressed_pre(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut ScreenMouseButtonPressedPreEvent<'_>,
+        ) -> mod_api::Flow {
+            let mut mouse = self.mouse.lock().unwrap();
+            mouse
+                .events
+                .push(MouseStep::Pre(event.button, event.double_click));
+            if mouse.cancel_press {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
+            }
+        }
+
+        fn screen_mouse_button_pressed_post(
+            &self,
+            host: &dyn mod_api::ClientHost,
+            event: &mut ScreenMouseButtonPressedPostEvent<'_>,
+        ) {
+            let mut mouse = self.mouse.lock().unwrap();
+            mouse.events.push(MouseStep::Post(
+                event.screen.id,
+                event.button,
+                event.double_click,
+                event.was_click_handled,
+                host.preset_editor_dimensions().is_some(),
+            ));
+            *event.result = mouse.press_result;
+        }
+
+        fn screen_mouse_button_released_post(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut ScreenMouseButtonReleasedPostEvent<'_>,
+        ) {
+            self.mouse.lock().unwrap().events.push(MouseStep::Release(
+                event.screen.id,
+                event.button,
+                event.was_release_handled,
+            ));
+        }
+
         fn screen_char_typed_pre(
             &self,
             _: &dyn mod_api::ClientHost,
@@ -206,6 +279,7 @@ mod tests {
             _: &mod_api::RegistrationContext,
             event: &mut RegisterPresetEditorsEvent<'_>,
         ) {
+            let mouse = Arc::clone(&self.mouse);
             let clicks = Arc::clone(&self.clicks);
             let keys = Arc::clone(&self.keys);
             let typed = Arc::clone(&self.typed);
@@ -213,6 +287,7 @@ mod tests {
                 assert_eq!(ctx.preset(), &Identifier::parse("example:islands").unwrap());
                 assert_eq!(ctx.seed(), "1");
                 Ok(Box::new(IslandsEditor {
+                    mouse: Arc::clone(&mouse),
                     clicks: Arc::clone(&clicks),
                     keys: Arc::clone(&keys),
                     typed: Arc::clone(&typed),
@@ -254,6 +329,128 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn failed_preset_editor_paint_leaves_stock_frame_and_post() {
+        struct PaintFailure;
+        impl PresetEditor for PaintFailure {
+            fn render(
+                &mut self,
+                draw: &mut dyn DrawContext,
+                _rect: [f32; 4],
+                _draft: &mut PresetEditorDraft<'_>,
+            ) {
+                draw.push_clip([8.0, 20.0, 32.0, 24.0]).unwrap();
+                draw.fill([12.0, 24.0, 10.0, 10.0], 0xFFFF00FF);
+                panic!("preset editor failed after painting");
+            }
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for PaintFailure {
+            fn register_preset_editors(
+                &self,
+                _: &mod_api::RegistrationContext,
+                event: &mut RegisterPresetEditorsEvent<'_>,
+            ) {
+                event.register(Identifier::parse("minecraft:flat").unwrap(), |_| {
+                    Ok(Box::new(PaintFailure))
+                });
+            }
+        }
+
+        struct PostPainter;
+        #[mod_api::__subscriptions]
+        impl Hooks for PostPainter {
+            fn screen_render_post(
+                &self,
+                _: &dyn mod_api::ClientHost,
+                event: &mut ScreenRenderPostEvent<'_>,
+            ) {
+                if event.screen.id == "world_preset_editor" {
+                    event.draw.fill([56.0, 24.0, 10.0, 10.0], 0xFF00FF00);
+                }
+            }
+        }
+
+        use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
+        use mod_api::__private::game::RegistrationContextNew;
+        use sunrise_client::title::preset_editors::PresetEditorFactories;
+
+        // The real-game resource fixture also initializes process-wide engine tables.
+        const TEST: &str = "game::native_hooks::register_preset_editors::tests::failed_preset_editor_paint_leaves_stock_frame_and_post";
+        in_own_process(TEST, || {
+            let mods = vec![
+                ModEntry::new("editor_paint_failure", Box::new(PaintFailure)),
+                ModEntry::new("editor_post_painter", Box::new(PostPainter)),
+            ];
+            mod_platform::testing::with_mods(mods.into(), || {
+                with_client_game(|game| {
+                    let mut editors = Vec::new();
+                    Game::native_register_preset_editors(
+                        &mod_api::RegistrationContext::new(),
+                        &mut editors,
+                    );
+                    let mut title = game.new_title(game.save.root.join("editor-saves"));
+                    title.set_preset_editor_factories(PresetEditorFactories::bind(editors));
+                    title.set_preset_data_source(game.pack.data_changes.clone());
+                    title.set_mode(Mode::Create {
+                        name: "Test".into(),
+                        seed: "1".into(),
+                        creative: false,
+                        focus: 0,
+                        options: WorldOptions {
+                            world_type: sunrise_client::save::WorldPreset::Flat,
+                            tab: 1,
+                            ..Default::default()
+                        },
+                    });
+                    title.focused_button = Some(26);
+                    title.confirm_key_size((320.0, 240.0));
+                    assert_eq!(title.mode.id(), "world_preset_editor");
+
+                    let size = [640, 480];
+                    let mut stock = HudBatch::new(size, game.settings.gui_scale_inputs());
+                    title.draw(
+                        &game.gui.atlas,
+                        &mut stock,
+                        game.cursor,
+                        false,
+                        &mut |_, _| {},
+                    );
+                    assert!(!stock.vertices.is_empty());
+                    game.title = Some(title);
+                    game.screen = Screen::Playing;
+                    let frame = game.hud_layers(size);
+                    let (prefix, later) = frame.vertices.split_at(stock.vertices.len());
+                    assert!(
+                        prefix
+                            .iter()
+                            .zip(&stock.vertices)
+                            .all(|(a, b)| a.pos == b.pos && a.uv == b.uv && a.color == b.color),
+                        "stock screen paint changed"
+                    );
+                    assert!(frame.vertices.iter().all(|v| v.color != 0xFFFF00FF));
+                    assert!(
+                        later
+                            .iter()
+                            .any(|v| v.color == 0xFF00FF00 && v.pos == [56.0, 24.0]),
+                        "Render.Post did not paint outside the failed editor's clip"
+                    );
+                    assert!(
+                        mod_api::__private::game::take_callback_panic_notices()
+                            .iter()
+                            .any(|notice| notice.mod_id == "editor_paint_failure"
+                                && notice.operation == "render"
+                                && notice
+                                    .message
+                                    .contains("preset editor failed after painting"))
+                    );
+                });
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn preset_editor_test_mod_draws_and_edits_through_real_client_hooks() {
         struct NoopLoop;
         impl crate::game::event_loop::EventLoopCtl for NoopLoop {
@@ -261,6 +458,7 @@ mod tests {
             fn set_control_flow(&self, _: winit::event_loop::ControlFlow) {}
         }
 
+        let mouse = Arc::new(Mutex::new(MouseProbe::default()));
         let clicks = Arc::new(AtomicUsize::new(0));
         let keys = Arc::new(AtomicUsize::new(0));
         let typed = Arc::new(Mutex::new(String::new()));
@@ -272,6 +470,7 @@ mod tests {
             vec![ModEntry::new(
                 "example",
                 Box::new(EditorMod {
+                    mouse: Arc::clone(&mouse),
                     clicks: Arc::clone(&clicks),
                     keys: Arc::clone(&keys),
                     typed: Arc::clone(&typed),
@@ -294,37 +493,43 @@ mod tests {
                     );
                     assert_eq!(editors.len(), 1);
                     let mut title = game.new_title(game.save.root.join("editor-saves"));
-                    title.set_preset_data_source(game.pack.data_changes.clone());
-                    let dimensions = sunrise_core::nbt::Tag::compound([(
-                        "minecraft:overworld",
-                        sunrise_core::nbt::Tag::compound([
-                            (
-                                "type",
-                                sunrise_core::nbt::Tag::String("minecraft:overworld".into()),
-                            ),
-                            (
-                                "generator",
-                                sunrise_core::nbt::Tag::compound([(
-                                    "type",
-                                    sunrise_core::nbt::Tag::String("minecraft:debug".into()),
-                                )]),
-                            ),
-                        ]),
-                    )]);
-                    sunrise_client::title::preset_editors::register(editors);
-                    title.mode = Mode::Create {
+                    // Keep the data preset available when returning to Create World reloads its
+                    // available presets, so the fixture reopens a freshly constructed editor.
+                    let data = tempfile::tempdir().unwrap();
+                    let preset = data.path().join("data/example/worldgen/world_preset");
+                    std::fs::create_dir_all(&preset).unwrap();
+                    std::fs::write(
+                        preset.join("islands.json"),
+                        r#"{"dimensions":{"minecraft:overworld":{"type":"minecraft:overworld","generator":{"type":"minecraft:debug"}}}}"#,
+                    ).unwrap();
+                    let tags = data
+                        .path()
+                        .join("data/minecraft/tags/worldgen/world_preset");
+                    std::fs::create_dir_all(&tags).unwrap();
+                    std::fs::write(
+                        tags.join("normal.json"),
+                        r#"{"values":["example:islands"]}"#,
+                    )
+                    .unwrap();
+                    title.set_preset_data_source(
+                        sunrise_assets::resource_source::ResourceSource::directory(
+                            data.path().to_owned(),
+                        ),
+                    );
+                    title.set_preset_editor_factories(
+                        sunrise_client::title::preset_editors::PresetEditorFactories::bind(editors),
+                    );
+                    title.set_mode(Mode::Create {
                         name: "Test".into(),
                         seed: "1".into(),
                         creative: false,
                         focus: 0,
                         options: WorldOptions {
                             custom_preset: Some("example:islands".into()),
-                            presets: [("example:islands".into(), dimensions)].into(),
-                            preset_order: vec!["example:islands".into()],
                             tab: 1,
                             ..Default::default()
                         },
-                    };
+                    });
                     title.focused_button = Some(26);
                     title.confirm_key_size((320.0, 240.0));
                     assert_eq!(title.mode.id(), "world_preset_editor");
@@ -351,7 +556,7 @@ mod tests {
                     assert_eq!(view.id, "world_preset_editor");
                     game.native_screen_render_post(&mut batch, &view);
                     assert!(batch.vertices.len() > after_editor_vertices);
-                    assert!(game.preset_editor_mouse_clicked(MouseButton::Left));
+                    assert!(game.preset_editor_mouse_clicked(0, false));
                     // The window's keyboard gate must swallow the IME's composing key (e.g.
                     // Enter accepting the candidate) before it can reach the footer.
                     game.handle_window_event_inner(
@@ -360,6 +565,7 @@ mod tests {
                             "e".into(),
                             Some((0, 1)),
                         )),
+                        None,
                         None,
                     );
                     let window_press = |game: &mut Game<'_>, key| {
@@ -382,6 +588,7 @@ mod tests {
                     game.handle_window_event_inner(
                         &NoopLoop,
                         winit::event::WindowEvent::Ime(winit::event::Ime::Commit("é!x".into())),
+                        None,
                         None,
                     );
                     assert_eq!(typed.lock().unwrap().as_str(), "é");
@@ -475,7 +682,104 @@ mod tests {
                             ("world_create", "key.keyboard.q", 0),
                         ]
                     );
-                    sunrise_client::title::preset_editors::register(Vec::new());
+
+                    use MouseStep::{Editor, Post, Pre, Release};
+                    const PRESET: &str = "world_preset_editor";
+                    let open_editor = |game: &mut Game<'_>| {
+                        let size = game.gui_size();
+                        let title = game.title.as_mut().unwrap();
+                        title.focused_button = Some(26);
+                        title.confirm_key_size(size);
+                        game.settle_title_mode();
+                        assert_eq!(game.title.as_ref().unwrap().mode.id(), PRESET);
+                    };
+                    let button_event = |game: &mut Game<'_>, state, button, millis| {
+                        game.handle_window_event_inner(
+                            &NoopLoop,
+                            WindowEvent::MouseInput {
+                                device_id: DeviceId::dummy(),
+                                state,
+                                button,
+                            },
+                            None,
+                            millis,
+                        );
+                        std::mem::take(&mut mouse.lock().unwrap().events)
+                    };
+                    let press = |game: &mut Game<'_>, button, millis| {
+                        button_event(game, ElementState::Pressed, button, millis)
+                    };
+                    let editor_press =
+                        |game: &mut Game<'_>, button, millis, code, double, handled| {
+                            assert_eq!(
+                                press(game, button, millis),
+                                [
+                                    Pre(code, double),
+                                    Editor(code, double),
+                                    Post(PRESET, code, double, handled, true)
+                                ]
+                            );
+                        };
+                    let left = MouseButton::Left;
+                    let right = MouseButton::Right;
+                    let other = MouseButton::Other(300);
+                    mouse.lock().unwrap().events.clear(); // The direct edit above is not a window press.
+                    open_editor(game);
+                    game.cursor = (20.0, 30.0);
+
+                    // Post sees the original answer even when it forces unhandled. The next
+                    // press is not a double-click: the first press was not recorded.
+                    mouse.lock().unwrap().press_result = TriState::False;
+                    editor_press(game, left, Some(1000), 0, false, true);
+                    mouse.lock().unwrap().press_result = TriState::Default;
+                    editor_press(game, left, Some(1010), 0, false, true);
+                    game.handle_window_event_inner(
+                        &NoopLoop,
+                        WindowEvent::Resized(winit::dpi::PhysicalSize::new(360, 260)),
+                        None,
+                        None,
+                    );
+                    game.build_screen();
+                    editor_press(game, left, Some(1259), 0, true, true);
+                    editor_press(game, left, Some(1509), 0, false, true);
+                    editor_press(game, right, Some(1510), 1, false, true);
+                    editor_press(game, other, Some(1511), 300, false, false);
+                    // A synthetic press passes false and does not enter the real press history.
+                    editor_press(game, left, None, 0, false, true);
+                    editor_press(game, right, Some(1512), 1, true, true);
+                    mouse.lock().unwrap().press_result = TriState::True;
+                    editor_press(game, other, Some(1513), 300, false, false);
+                    mouse.lock().unwrap().press_result = TriState::Default;
+                    editor_press(game, other, Some(1514), 300, true, false);
+
+                    mouse.lock().unwrap().cancel_press = true;
+                    assert_eq!(press(game, right, Some(2000)), [Pre(1, false)]);
+                    mouse.lock().unwrap().cancel_press = false;
+                    editor_press(game, right, Some(2001), 1, true, true);
+
+                    // Done and Cancel are taken by the footer, not the editor callback. The
+                    // release resolves its own receiver on the screen they have just opened.
+                    let (w, h) = game.gui_size();
+                    game.cursor = (w / 2.0 - 80.0, h - 18.0);
+                    assert_eq!(
+                        press(game, left, Some(2010)),
+                        [Pre(0, false), Post(PRESET, 0, false, true, false)]
+                    );
+                    assert_eq!(game.title.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(
+                        button_event(game, ElementState::Released, left, None),
+                        [Release("world_create", 0, false)]
+                    );
+                    open_editor(game);
+                    game.cursor = (20.0, 30.0);
+                    // Same hook ID and button as Done, but a different editor instance.
+                    editor_press(game, left, Some(2020), 0, false, true);
+                    game.cursor = (w / 2.0 + 80.0, h - 18.0);
+                    assert_eq!(
+                        press(game, left, Some(2030)),
+                        [Pre(0, true), Post(PRESET, 0, true, true, false)]
+                    );
+                    assert_eq!(game.title.as_ref().unwrap().mode.id(), "world_create");
                 });
             },
         );

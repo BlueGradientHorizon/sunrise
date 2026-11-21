@@ -555,25 +555,28 @@ fn preset_row(state: &State, cursor: (f32, f32), size: (f32, f32)) -> Option<usi
 }
 
 /// A press on the list, the share box or its scrollbar.
-pub(super) fn click(state: &mut State, cursor: (f32, f32), size: (f32, f32)) {
+pub(super) fn click(state: &mut State, cursor: (f32, f32), size: (f32, f32)) -> bool {
     let (top, bottom, left, content) = list_area(state, size);
     let bar = left + ROW_WIDTH + 6.0;
     match state.page {
         Page::Layers => {
             if state.scroll.press(cursor, bar, top, bottom, content) {
-                return;
+                return true;
             }
             state.selected = layer_row(state, cursor, size);
+            state.selected.is_some()
         }
         Page::Presets => {
             let field = share_field(size);
             state.share_focused = ui::hovered(cursor, field[0], field[1], field[2], field[3]);
             if state.preset_scroll.press(cursor, bar, top, bottom, content) {
-                return;
+                return true;
             }
             if let Some(row) = preset_row(state, cursor, size) {
                 state.select_preset(row);
+                return true;
             }
+            state.share_focused
         }
     }
 }
@@ -630,9 +633,11 @@ pub(super) fn drag(state: &mut State, cursor: (f32, f32), size: (f32, f32)) {
         Page::Presets => state.preset_scroll.drag(cursor.1, top, bottom, content),
     }
 }
-pub(super) fn release(state: &mut State) {
+pub(super) fn release(state: &mut State) -> bool {
+    let handled = state.scroll.held() || state.preset_scroll.held();
     state.scroll.release();
     state.preset_scroll.release();
+    handled
 }
 
 pub(super) fn draw(

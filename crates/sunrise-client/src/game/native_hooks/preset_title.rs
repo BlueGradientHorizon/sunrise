@@ -24,15 +24,16 @@ impl Game<'_> {
     ) {
         title.set_additional_data_packs(self.pack.additional_data.clone());
         title.set_preset_data_source(self.pack.data_changes.clone());
-        if !self.screen_hooks_heard() {
-            self.screen_state.build.reopened();
-            self.title = Some(title);
-            self.build_screen();
-            return;
-        }
-        let answer = self.title_change(Some(title.mode.id()));
+        let answer = self
+            .screen_hooks_heard()
+            .then(|| self.title_change(Some(title.mode.id())));
         self.screen_state.build.reopened();
         self.title = Some(title);
+        self.screen_activation = self.screen_activation.wrapping_add(1);
+        let Some(answer) = answer else {
+            self.build_screen();
+            return;
+        };
         match self.screen_decision(answer) {
             ScreenDecision::ModScreen(mod_id) => self.apply_screen(Screen::Mod, Some(mod_id)),
             ScreenDecision::Vanilla(target) => self.open_screen_target(target),
@@ -56,22 +57,25 @@ impl Game<'_> {
         let rendered = {
             let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
             session.render(&mut draw, rect)
-        };
+        }; // Close any open clips before removing the editor's paint.
         if !rendered {
             paint.discard(batch);
         }
     }
 
     /// Forward a mouse press to the open bound preset editor.
-    pub(in crate::game) fn preset_editor_mouse_clicked(&self, button: MouseButton) -> bool {
+    pub(in crate::game) fn preset_editor_mouse_clicked(
+        &self,
+        button: i32,
+        double_click: bool,
+    ) -> bool {
         let Some(session) = self
             .preset_editor_title()
             .and_then(|title| title.preset_editor_session())
         else {
             return false;
         };
-        let button = u8::try_from(crate::game::glfw_button(button)).unwrap_or(0);
-        session.mouse_clicked(self.cursor.0, self.cursor.1, button)
+        session.mouse_clicked(self.cursor.0, self.cursor.1, button, double_click)
     }
 
     /// `KeyboardHandler.keyPress` for the bound preset screen: Pre, the editor and its normal

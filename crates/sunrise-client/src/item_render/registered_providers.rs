@@ -9,7 +9,7 @@
 use super::SpecialModelFactories;
 use mod_api::{
     __private::game::{
-        CallbackOwner, ItemModelRegistration, ItemTintSourceRegistration,
+        CallbackOwner, CallbackValue, ItemModelRegistration, ItemTintSourceRegistration,
         RangeSelectPropertyRegistration, SelectPropertyRegistration, new_item_model_config,
     },
     Answered, Identifier, ItemModelChildren, ItemModelDecoder, ItemModelFn, ItemTintSourceDecoder,
@@ -33,8 +33,7 @@ use sunrise_core::nbt::Tag;
 
 /// One installed decode-time factory paired with the mod owner that registered it.
 pub struct ItemProviderEntry<D: ?Sized> {
-    owner: Arc<CallbackOwner>,
-    decode: Arc<D>,
+    decode: CallbackValue<Arc<D>>,
 }
 
 pub type ItemTintFactories = BTreeMap<String, ItemProviderEntry<ItemTintSourceDecoder>>;
@@ -45,29 +44,25 @@ pub type SelectPropertyFactories = BTreeMap<String, ItemProviderEntry<SelectProp
 /// Bound item tint source stored inside [`RegisteredTintSource`].
 pub struct BoundTintSource {
     pub kind: Box<str>,
-    pub owner: Arc<CallbackOwner>,
-    pub eval: Arc<ItemTintSourceFn>,
+    pub eval: CallbackValue<Arc<ItemTintSourceFn>>,
 }
 
 /// Bound item model node stored inside [`RegisteredItemModel`].
 pub struct BoundItemModel {
     pub kind: Box<str>,
-    pub owner: Arc<CallbackOwner>,
-    pub eval: Arc<ItemModelFn>,
+    pub eval: CallbackValue<Arc<ItemModelFn>>,
 }
 
 /// Bound numeric `range_dispatch` property stored inside [`RegisteredRangeProperty`].
 pub struct BoundRangeProperty {
     pub kind: Box<str>,
-    pub owner: Arc<CallbackOwner>,
-    pub eval: Arc<RangeSelectPropertyFn>,
+    pub eval: CallbackValue<Arc<RangeSelectPropertyFn>>,
 }
 
 /// Bound categorical `select` property stored inside [`RegisteredSelectProperty`].
 pub struct BoundSelectProperty {
     pub kind: Box<str>,
-    pub owner: Arc<CallbackOwner>,
-    eval: Arc<SelectPropertyFn>,
+    pub eval: CallbackValue<Arc<SelectPropertyFn>>,
 }
 
 impl BoundSelectProperty {
@@ -77,15 +72,17 @@ impl BoundSelectProperty {
         input: &mod_api::ItemModelPropertyInput<'_>,
         keys: &mut dyn Iterator<Item = (usize, &RegisteredSelectKey)>,
     ) -> Option<usize> {
-        self.owner
+        self.eval
+            .owner()
             .call(
                 "item model select property",
                 "item_model_select_property",
                 || {
                     let mut keys = Iterator::filter_map(keys, |(index, key)| {
-                        key.downcast_ref::<SelectCaseKey>().map(|key| (index, key))
+                        key.downcast_ref::<CallbackValue<SelectCaseKey>>()
+                            .map(|key| (index, key.value()))
                     });
-                    (self.eval)(host, input, &mut keys)
+                    (self.eval.value())(host, input, &mut keys)
                 },
             )
             .ok()
@@ -108,115 +105,14 @@ static ITEM_MODEL_FACTORIES: OnceLock<Arc<ItemModelFactories>> = OnceLock::new()
 static RANGE_PROPERTY_FACTORIES: OnceLock<Arc<RangePropertyFactories>> = OnceLock::new();
 static SELECT_PROPERTY_FACTORIES: OnceLock<Arc<SelectPropertyFactories>> = OnceLock::new();
 
-#[cfg(test)]
-#[derive(Default)]
-pub(super) struct ProvidersFixtureState {
-    pub(super) tint: Option<Arc<ItemTintFactories>>,
-    pub(super) item_model: Option<Arc<ItemModelFactories>>,
-    pub(super) range_property: Option<Arc<RangePropertyFactories>>,
-    pub(super) select_property: Option<Arc<SelectPropertyFactories>>,
-}
-
-#[cfg(test)]
-static PROVIDERS_FIXTURE: std::sync::Mutex<Option<ProvidersFixtureState>> =
-    std::sync::Mutex::new(None);
-
-#[cfg(test)]
-static FIXTURE_CHANGED: std::sync::Condvar = std::sync::Condvar::new();
-
-#[cfg(test)]
-pub(super) struct ItemProvidersFixture;
-
-#[cfg(test)]
-impl ItemProvidersFixture {
-    pub(super) fn install(state: ProvidersFixtureState) -> Self {
-        let mut fixture = PROVIDERS_FIXTURE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        while fixture.is_some() {
-            fixture = FIXTURE_CHANGED
-                .wait(fixture)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-        }
-        *fixture = Some(state);
-        Self
-    }
-
-    pub(super) fn tint(sources: Vec<Answered<ItemTintSourceRegistration>>) -> (Self, Vec<String>) {
-        let (factories, kept) = bind_item_tint_factories(sources);
-        (
-            Self::install(ProvidersFixtureState {
-                tint: Some(Arc::new(factories)),
-                ..Default::default()
-            }),
-            kept,
-        )
-    }
-
-    pub(super) fn item_models(models: Vec<Answered<ItemModelRegistration>>) -> (Self, Vec<String>) {
-        let (factories, kept) = bind_item_model_factories(models);
-        (
-            Self::install(ProvidersFixtureState {
-                item_model: Some(Arc::new(factories)),
-                ..Default::default()
-            }),
-            kept,
-        )
-    }
-}
-
-#[cfg(test)]
-impl Drop for ItemProvidersFixture {
-    fn drop(&mut self) {
-        let mut fixture = PROVIDERS_FIXTURE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *fixture = None;
-        FIXTURE_CHANGED.notify_all();
-    }
-}
-
-#[derive(Default)]
-pub(super) struct ActiveItemProviders {
-    tint: Option<Arc<ItemTintFactories>>,
-    item_model: Option<Arc<ItemModelFactories>>,
-    range_property: Option<Arc<RangePropertyFactories>>,
-    select_property: Option<Arc<SelectPropertyFactories>>,
-}
-
-impl ActiveItemProviders {
-    pub(super) fn current() -> Self {
-        #[cfg(test)]
-        if let Some(fixture) = PROVIDERS_FIXTURE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-        {
-            return Self {
-                tint: fixture.tint.clone(),
-                item_model: fixture.item_model.clone(),
-                range_property: fixture.range_property.clone(),
-                select_property: fixture.select_property.clone(),
-            };
-        }
+impl<'a> ItemProviderTables<'a> {
+    pub(super) fn installed(special: Option<&'a SpecialModelFactories>) -> Self {
         Self {
-            tint: TINT_FACTORIES.get().cloned(),
-            item_model: ITEM_MODEL_FACTORIES.get().cloned(),
-            range_property: RANGE_PROPERTY_FACTORIES.get().cloned(),
-            select_property: SELECT_PROPERTY_FACTORIES.get().cloned(),
-        }
-    }
-
-    pub(super) fn tables<'a>(
-        &'a self,
-        special: Option<&'a SpecialModelFactories>,
-    ) -> ItemProviderTables<'a> {
-        ItemProviderTables {
             special,
-            tint: self.tint.as_deref(),
-            item_model: self.item_model.as_deref(),
-            range_property: self.range_property.as_deref(),
-            select_property: self.select_property.as_deref(),
+            tint: TINT_FACTORIES.get().map(Arc::as_ref),
+            item_model: ITEM_MODEL_FACTORIES.get().map(Arc::as_ref),
+            range_property: RANGE_PROPERTY_FACTORIES.get().map(Arc::as_ref),
+            select_property: SELECT_PROPERTY_FACTORIES.get().map(Arc::as_ref),
         }
     }
 }
@@ -292,17 +188,17 @@ fn bind_factories<D: ?Sized>(
     for (mod_id, id, decode) in entries {
         let Some(owner) = CallbackOwner::new(mod_id) else {
             log::warn!("{label} {id} has no installed owner {mod_id}");
+            CallbackOwner::for_mod(mod_id).dispose(label, "drop_decoder", decode);
             continue;
         };
         let key = id.to_string();
         let entry = ItemProviderEntry {
-            owner: Arc::new(owner),
-            decode,
+            decode: CallbackValue::new(owner, label, "drop_decoder", decode),
         };
         if let Some(earlier) = bound.insert(key.clone(), entry) {
             log::warn!(
                 "Sunrise: {label} {key} registered by {} is replaced by {mod_id}'s registration",
-                earlier.owner.id()
+                earlier.decode.owner().id()
             );
         } else if is_builtin(&key) {
             log::warn!(
@@ -423,7 +319,7 @@ fn decode_entry<D, F>(
     kind: &str,
     fields: &Map<String, Value>,
     callback_kind: &'static str,
-) -> Result<Option<(Arc<CallbackOwner>, Arc<F>)>, String>
+) -> Result<Option<CallbackValue<Arc<F>>>, String>
 where
     D: Fn(&Tag) -> Result<Arc<F>, String> + ?Sized,
     F: ?Sized,
@@ -437,14 +333,16 @@ where
             format!("{callback_kind} {kind}: its JSON doesn't convert to NBT: {error}")
         })?;
     let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-    match entry
-        .owner
-        .call(callback_kind, "decode", || (entry.decode)(&config))
-    {
-        Ok(Ok(eval)) => Ok(Some((Arc::clone(&entry.owner), eval))),
+    let owner = entry.decode.owner();
+    // The owner boundary may drop even a successful decode if a phase refusal latched.
+    match owner.call(callback_kind, "decode", || {
+        (entry.decode.value())(&config)
+            .map(|eval| CallbackValue::new(owner.clone(), callback_kind, "drop_evaluator", eval))
+    }) {
+        Ok(Ok(eval)) => Ok(Some(eval)),
         Ok(Err(reason)) => Err(format!(
             "mod {} {callback_kind} {kind} refused it: {reason}",
-            entry.owner.id()
+            owner.id()
         )),
         Err(error) => Err(format!("{callback_kind} {kind}: {error}")),
     }
@@ -457,10 +355,9 @@ pub fn decode_tint_source(
     fields: &Map<String, Value>,
 ) -> Result<Option<RegisteredTintSource>, String> {
     decode_entry(factories, kind, fields, "item tint source").map(|bound| {
-        bound.map(|(owner, eval)| {
+        bound.map(|eval| {
             RegisteredTintSource(Arc::new(BoundTintSource {
                 kind: kind.into(),
-                owner,
                 eval,
             }))
         })
@@ -570,13 +467,14 @@ pub fn decode_item_model(
         next_generated: 0,
         transformation: None,
     };
-    match entry.owner.call("item model", "decode", || {
-        (entry.decode)(&config, &mut children)
+    let owner = entry.decode.owner();
+    match owner.call("item model", "decode", || {
+        (entry.decode.value())(&config, &mut children)
+            .map(|eval| CallbackValue::new(owner.clone(), "item model", "drop_evaluator", eval))
     }) {
         Ok(Ok(eval)) => Ok(Some(DecodedItemModel {
             model: RegisteredItemModel(Arc::new(BoundItemModel {
                 kind: kind.into(),
-                owner: Arc::clone(&entry.owner),
                 eval,
             })),
             transformation: children.transformation,
@@ -584,7 +482,7 @@ pub fn decode_item_model(
         })),
         Ok(Err(reason)) => Err(format!(
             "mod {} item model {kind} refused it: {reason}",
-            entry.owner.id()
+            owner.id()
         )),
         Err(error) => Err(format!("item model {kind}: {error}")),
     }
@@ -597,10 +495,9 @@ pub fn decode_range_property(
     fields: &Map<String, Value>,
 ) -> Result<Option<RegisteredRangeProperty>, String> {
     decode_entry(factories, kind, fields, "item model range property").map(|bound| {
-        bound.map(|(owner, eval)| {
+        bound.map(|eval| {
             RegisteredRangeProperty(Arc::new(BoundRangeProperty {
                 kind: kind.into(),
-                owner,
                 eval,
             }))
         })
@@ -613,36 +510,44 @@ pub fn decode_select_property(
     kind: &str,
     fields: &Map<String, Value>,
 ) -> Result<Option<RegisteredSelectProperty>, String> {
+    const CALLBACK_KIND: &str = "item model select property";
     let Some(entry) = factories.and_then(|table| table.get(kind)) else {
         return Ok(None);
     };
     let config = sunrise_core::json_nbt::json_to_compound(fields)
         .map(Tag::Compound)
         .map_err(|error| {
-            format!("item model select property {kind}: its JSON doesn't convert to NBT: {error}")
+            format!("{CALLBACK_KIND} {kind}: its JSON doesn't convert to NBT: {error}")
         })?;
     let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-    let (decode_case, eval) = match entry
-        .owner
-        .call("item model select property", "decode", || {
-            (entry.decode)(&config)
-        }) {
+    let owner = entry.decode.owner();
+    let (decode_case, eval) = match owner.call(CALLBACK_KIND, "decode", || {
+        (entry.decode.value())(&config).map(|(decode_case, eval)| {
+            (
+                CallbackValue::new(
+                    owner.clone(),
+                    CALLBACK_KIND,
+                    "drop_case_decoder",
+                    decode_case,
+                ),
+                CallbackValue::new(owner.clone(), CALLBACK_KIND, "drop_evaluator", eval),
+            )
+        })
+    }) {
         Ok(Ok(pair)) => pair,
         Ok(Err(reason)) => {
             return Err(format!(
-                "mod {} item model select property {kind} refused it: {reason}",
-                entry.owner.id()
+                "mod {} {CALLBACK_KIND} {kind} refused it: {reason}",
+                owner.id()
             ));
         }
-        Err(error) => return Err(format!("item model select property {kind}: {error}")),
+        Err(error) => return Err(format!("{CALLBACK_KIND} {kind}: {error}")),
     };
-    let owner = Arc::clone(&entry.owner);
+    let compare_owner = owner.clone();
     let kind_owned: Box<str> = kind.into();
-    let case_owner = Arc::clone(&owner);
     let case_kind = kind_owned.clone();
     let bound = BoundSelectProperty {
         kind: kind_owned,
-        owner: Arc::clone(&owner),
         eval,
     };
     Ok(Some(RegisteredSelectProperty::new(
@@ -650,29 +555,36 @@ pub fn decode_select_property(
         move |value| {
             let tag = sunrise_core::json_nbt::json_to_tag(value).map_err(|error| {
                 SelectCaseDecodeError::Mismatch(format!(
-                    "item model select property {case_kind}: case value doesn't convert to NBT: {error}"
+                    "{CALLBACK_KIND} {case_kind}: case value doesn't convert to NBT: {error}"
                 ))
             })?;
             let _phase =
                 mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-            match case_owner.call("item model select property", "decode_case", || {
-                (decode_case)(&tag)
+            let owner = decode_case.owner();
+            match owner.call(CALLBACK_KIND, "decode_case", || {
+                (decode_case.value())(&tag).map(|key| {
+                    CallbackValue::new(owner.clone(), CALLBACK_KIND, "drop_case_key", key)
+                })
             }) {
                 Ok(Ok(key)) => Ok(RegisteredSelectKey::new(key)),
                 Ok(Err(reason)) => Err(SelectCaseDecodeError::Mismatch(format!(
-                    "mod {} item model select property {case_kind} refused case: {reason}",
-                    case_owner.id()
+                    "mod {} {CALLBACK_KIND} {case_kind} refused case: {reason}",
+                    owner.id()
                 ))),
                 Err(error) => Err(SelectCaseDecodeError::Callback(format!(
-                    "item model select property {case_kind}: {error}"
+                    "{CALLBACK_KIND} {case_kind}: {error}"
                 ))),
             }
         },
         move |left, right| {
             let _phase =
                 mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-            owner.call("item model select property", "compare_case", || {
-                left.downcast_ref::<SelectCaseKey>() == right.downcast_ref::<SelectCaseKey>()
+            compare_owner.call(CALLBACK_KIND, "compare_case", || {
+                left.downcast_ref::<CallbackValue<SelectCaseKey>>()
+                    .map(CallbackValue::value)
+                    == right
+                        .downcast_ref::<CallbackValue<SelectCaseKey>>()
+                        .map(CallbackValue::value)
             })
         },
     )))
@@ -811,7 +723,7 @@ mod tests {
                         panic!("expected bound tint source");
                     };
                     let bound = registered.0.downcast_ref::<BoundTintSource>().unwrap();
-                    (bound.eval)(&host, &input)
+                    (bound.eval.value())(&host, &input)
                 })
                 .collect();
             assert_eq!(colors, [0xFF33_3333, 0xFF22_2222]);
@@ -978,7 +890,7 @@ mod tests {
                     mod_api::ItemModelContext::new(mod_api::ItemDisplayContext::Gui, None, None, 0);
                 let input = mod_api::ItemModelUpdateInput::new(&stack, -1, &ctx);
                 let mut layers = Vec::new();
-                (bound.eval)(&FakeHost::new(), &input, &mut layers);
+                (bound.eval.value())(&FakeHost::new(), &input, &mut layers);
                 out.extend(layers.into_iter().map(|layer| ModelChoice {
                     model: layer.model,
                     transform: LayerTransform::Model,
@@ -1336,8 +1248,10 @@ mod tests {
                     error.contains("eq_panicker") && error.contains("panicked"),
                     "{error}"
                 );
-                assert!(!factories["selecttest:panic_in_load"].owner.is_enabled());
-                assert!(factories["selecttest:panic_in_draw"].owner.is_enabled());
+                let load_owner = factories["selecttest:panic_in_load"].decode.owner();
+                let draw_owner = factories["selecttest:panic_in_draw"].decode.owner();
+                assert!(!load_owner.is_enabled());
+                assert!(draw_owner.is_enabled());
                 let item = decode_definition_without_specials(
                 r#"{"model":{"type":"minecraft:select","property":"selecttest:panic_in_draw",
                     "cases":[{"when":1,"model":{"type":"minecraft:model","model":"minecraft:item/apple"}}],
@@ -1345,7 +1259,7 @@ mod tests {
                 &providers,
             ).unwrap();
                 assert_eq!(selected_model(item.clone(), 1), "minecraft:item/bone");
-                assert!(!factories["selecttest:panic_in_draw"].owner.is_enabled());
+                assert!(!draw_owner.is_enabled());
                 assert_eq!(selected_model(item, 1), "minecraft:item/bone");
             },
         );

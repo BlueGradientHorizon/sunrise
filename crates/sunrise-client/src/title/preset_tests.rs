@@ -108,7 +108,7 @@ fn world_preset_narration_matches_the_cycle_and_only_hints_actual_amplified() {
         tab: 1,
         ..Default::default()
     };
-    let button = create_world::buttons(480.0, 262.0, false, &options, true)
+    let button = create_world::buttons(480.0, 262.0, false, &options, None)
         .into_iter()
         .find(|b| b.id == 25)
         .unwrap();
@@ -240,7 +240,8 @@ fn registered_world_preset_editor_commits_only_on_done_and_saves_its_dimensions(
 
         let mut editors = Vec::new();
         mod_api::dispatch_register_preset_editors(&RegistrationContext::new(), &mut editors);
-        let guard = preset_editors::EditorsFixture::install(editors);
+        f.title
+            .set_preset_editor_factories(PresetEditorFactories::bind(editors));
 
         let Mode::Create { options, .. } = &mut f.title.mode else {
             panic!("create")
@@ -345,8 +346,8 @@ fn registered_world_preset_editor_commits_only_on_done_and_saves_its_dimensions(
         refused.preset_dimensions = Some(Tag::Compound(Default::default()));
         assert!(refused.write_world_gen(&save, 999).is_err());
         assert_eq!(crate::save::world_gen_settings(&save), saved);
-        drop(guard);
-        let _empty = preset_editors::EditorsFixture::install(Vec::new());
+        f.title
+            .set_preset_editor_factories(PresetEditorFactories::default());
         assert!(
             !f.title
                 .buttons(320.0, 240.0)
@@ -407,9 +408,9 @@ fn minecraft_preset_editor_override_and_vanilla_fallback() {
     mod_platform::testing::with_mods(mods, || {
         let mut editors = Vec::new();
         mod_api::dispatch_register_preset_editors(&RegistrationContext::new(), &mut editors);
-        let guard = preset_editors::EditorsFixture::install(editors);
-
         let mut f = Fixture::new();
+        f.title
+            .set_preset_editor_factories(PresetEditorFactories::bind(editors));
         f.title
             .set_preset_data_source(crate::resource_source::ResourceSource::directory(
                 f.root.join("no-mods"),
@@ -445,8 +446,8 @@ fn minecraft_preset_editor_override_and_vanilla_fallback() {
         f.title.escape();
 
         // Removing the minecraft:flat override restores vanilla's CreateFlat screen.
-        drop(guard);
-        let _empty = preset_editors::EditorsFixture::install(Vec::new());
+        f.title
+            .set_preset_editor_factories(PresetEditorFactories::default());
         {
             let Mode::Create { options, .. } = &mut f.title.mode else {
                 panic!("create")
@@ -460,11 +461,10 @@ fn minecraft_preset_editor_override_and_vanilla_fallback() {
 }
 
 #[test]
-fn preset_editor_factory_refusal_does_not_latch_and_panics_disable_with_notice() {
+fn preset_editor_factory_refusal_does_not_latch_and_panics_disable_callbacks() {
     use mod_api::{
-        __private::game::{RegistrationContextNew, take_callback_panic_notices},
-        Hooks, Identifier, ModEntry, PresetEditor, PresetEditorDraft, RegisterPresetEditorsEvent,
-        RegistrationContext,
+        __private::game::RegistrationContextNew, Hooks, Identifier, ModEntry, PresetEditor,
+        PresetEditorDraft, RegisterPresetEditorsEvent, RegistrationContext,
     };
     use std::sync::Arc;
 
@@ -589,10 +589,9 @@ fn preset_editor_factory_refusal_does_not_latch_and_panics_disable_with_notice()
     .into();
 
     mod_platform::testing::with_mods(mods, || {
-        let _ = take_callback_panic_notices();
         let mut editors = Vec::new();
         mod_api::dispatch_register_preset_editors(&RegistrationContext::new(), &mut editors);
-        let _guard = preset_editors::EditorsFixture::install(editors);
+        let factories = PresetEditorFactories::bind(editors);
 
         let Tag::Compound(dimensions) = Tag::compound([(
             "minecraft:overworld",
@@ -607,52 +606,176 @@ fn preset_editor_factory_refusal_does_not_latch_and_panics_disable_with_notice()
             unreachable!()
         };
 
-        // Non-panic factory error does not latch and produces no panic notice.
-        assert!(preset_editors::open_session("example:flaky", dimensions.clone(), "7").is_err());
-        assert!(take_callback_panic_notices().is_empty());
-        let recovered = preset_editors::open_session("example:flaky", dimensions.clone(), "7")
+        // Non-panic factory errors do not latch.
+        assert_eq!(
+            factories
+                .open_session("example:flaky", dimensions.clone(), "7")
+                .unwrap_err(),
+            "temporary refusal"
+        );
+        let recovered = factories
+            .open_session("example:flaky", dimensions.clone(), "7")
             .unwrap()
             .unwrap();
         assert_eq!(recovered.title(), Some("Recovered"));
         assert_eq!(refusing_attempts.load(Ordering::Relaxed), 2);
 
-        // Factory panic disables that mod's factory and queues one panic notice.
-        assert!(
-            preset_editors::open_session("example:factory_boom", dimensions.clone(), "7").is_err()
+        // Check the local owner's result and call count, not the shared notice queue.
+        assert_eq!(
+            factories
+                .open_session("example:factory_boom", dimensions.clone(), "7")
+                .unwrap_err(),
+            "mod panicking_factory: preset editor callback panicked; it is disabled: factory boom"
         );
         assert_eq!(
-            take_callback_panic_notices()
-                .iter()
-                .map(|notice| (notice.mod_id, notice.kind))
-                .collect::<Vec<_>>(),
-            [("panicking_factory", "preset editor")]
+            factories
+                .open_session("example:factory_boom", dimensions.clone(), "7")
+                .unwrap_err(),
+            "mod panicking_factory: preset editor owner is disabled"
         );
         assert_eq!(factory_calls.load(Ordering::Relaxed), 1);
-        assert!(
-            preset_editors::open_session("example:factory_boom", dimensions.clone(), "7").is_err()
-        );
-        assert_eq!(factory_calls.load(Ordering::Relaxed), 1);
-        assert!(take_callback_panic_notices().is_empty());
 
-        // Editor callback panic disables that mod's editor, preserves prior draft, and queues notice.
-        let session = preset_editors::open_session("example:editor_boom", dimensions.clone(), "7")
+        // Editor callback panic disables the bound owner and preserves the prior draft.
+        let session = factories
+            .open_session("example:editor_boom", dimensions.clone(), "7")
             .unwrap()
             .unwrap();
         assert!(!session.key_pressed(44, 0, 0));
-        assert_eq!(
-            take_callback_panic_notices()
-                .iter()
-                .map(|notice| (notice.mod_id, notice.kind))
-                .collect::<Vec<_>>(),
-            [("panicking_editor", "preset editor")]
-        );
-        assert_eq!(editor_calls.load(Ordering::Relaxed), 1);
-        assert_eq!(session.dimensions(), Tag::Compound(dimensions));
+        assert_eq!(session.dimensions(), Tag::Compound(dimensions.clone()));
         assert!(!session.key_pressed(44, 0, 0));
         assert_eq!(editor_calls.load(Ordering::Relaxed), 1);
-        assert!(take_callback_panic_notices().is_empty());
+        assert_eq!(
+            factories
+                .open_session("example:editor_boom", dimensions, "7")
+                .unwrap_err(),
+            "mod panicking_editor: preset editor owner is disabled"
+        );
     });
 }
+
+#[test]
+fn preset_editor_destructor_is_contained_on_last_session_drop_and_title_failure() {
+    use mod_api::{
+        __private::game::RegistrationContextNew, Hooks, Identifier, ModEntry, PresetEditor,
+        RegisterPresetEditorsEvent, RegistrationContext,
+    };
+    use std::sync::Arc;
+
+    struct PanickingDropEditor {
+        drops: Arc<AtomicUsize>,
+        fail_title: bool,
+    }
+    impl PresetEditor for PanickingDropEditor {
+        fn title(&self) -> Option<String> {
+            assert!(!self.fail_title, "title boom");
+            Some("Live editor".into())
+        }
+    }
+    impl Drop for PanickingDropEditor {
+        fn drop(&mut self) {
+            self.drops.fetch_add(1, Ordering::Relaxed);
+            panic!("editor destructor boom");
+        }
+    }
+
+    struct DroppingMod {
+        preset: &'static str,
+        drops: Arc<AtomicUsize>,
+        fail_title: bool,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for DroppingMod {
+        fn register_preset_editors(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterPresetEditorsEvent<'_>,
+        ) {
+            let drops = Arc::clone(&self.drops);
+            let fail_title = self.fail_title;
+            event.register(Identifier::parse(self.preset).unwrap(), move |_| {
+                Ok(Box::new(PanickingDropEditor {
+                    drops: Arc::clone(&drops),
+                    fail_title,
+                }))
+            });
+        }
+    }
+
+    struct HealthyEditor;
+    impl PresetEditor for HealthyEditor {
+        fn title(&self) -> Option<String> {
+            Some("Healthy editor".into())
+        }
+    }
+
+    struct HealthyMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for HealthyMod {
+        fn register_preset_editors(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterPresetEditorsEvent<'_>,
+        ) {
+            event.register(Identifier::parse("example:healthy").unwrap(), |_| {
+                Ok(Box::new(HealthyEditor))
+            });
+        }
+    }
+
+    let live_drops = Arc::new(AtomicUsize::new(0));
+    let failed_drops = Arc::new(AtomicUsize::new(0));
+    let mods = vec![
+        ModEntry::new(
+            "editor_drop_panics",
+            Box::new(DroppingMod {
+                preset: "example:drop_panics",
+                drops: Arc::clone(&live_drops),
+                fail_title: false,
+            }),
+        ),
+        ModEntry::new(
+            "editor_title_panics",
+            Box::new(DroppingMod {
+                preset: "example:title_panics",
+                drops: Arc::clone(&failed_drops),
+                fail_title: true,
+            }),
+        ),
+        ModEntry::new("editor_healthy", Box::new(HealthyMod)),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        let mut editors = Vec::new();
+        mod_api::dispatch_register_preset_editors(&RegistrationContext::new(), &mut editors);
+        let factories = PresetEditorFactories::bind(editors);
+        let open = |preset: &str| factories.open_session(preset, Default::default(), "7");
+
+        let session = open("example:drop_panics").unwrap().unwrap();
+        drop(session.clone());
+        assert_eq!(live_drops.load(Ordering::Relaxed), 0);
+        drop(session);
+        assert_eq!(live_drops.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            open("example:drop_panics").unwrap_err(),
+            "mod editor_drop_panics: preset editor owner is disabled"
+        );
+
+        assert_eq!(
+            open("example:title_panics").unwrap_err(),
+            "mod editor_title_panics: preset editor callback panicked; it is disabled: title boom"
+        );
+        assert_eq!(failed_drops.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            open("example:title_panics").unwrap_err(),
+            "mod editor_title_panics: preset editor owner is disabled"
+        );
+        assert_eq!(failed_drops.load(Ordering::Relaxed), 1);
+
+        let healthy = open("example:healthy").unwrap().unwrap();
+        assert_eq!(healthy.title(), Some("Healthy editor"));
+    });
+}
+
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);

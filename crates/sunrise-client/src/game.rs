@@ -3329,6 +3329,8 @@ struct Game<'a> {
     rejected_keys: HashSet<KeyCode>,
     physical_buttons: HashSet<MouseButton>,
     drag_button: Option<MouseButton>,
+    screen_activation: u64,
+    last_screen_press: Option<native_hooks::ScreenPress>,
     /// Control + left click as a right click (macOS).
     right_click_emulation: sunrise_client_input::mouse::RightClickEmulation,
     left: bool,
@@ -11823,6 +11825,219 @@ impl Game<'_> {
         false
     }
 
+    /// Dispatch the button to the top screen, not to the gameplay mappings underneath it.
+    fn route_screen_button(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        button: MouseButton,
+        code: i32,
+        pressed: bool,
+        double_click: bool,
+    ) -> Result<bool> {
+        let left = button == MouseButton::Left;
+        let left_press = pressed && left;
+        if self.command_prompt.is_some() {
+            return Ok(left_press && self.command_prompt_click());
+        }
+        if self.link_prompt.is_some() {
+            return Ok(left_press && self.link_prompt_click());
+        }
+        if self.code_of_conduct.is_some() {
+            return Ok(left_press && self.code_of_conduct_click()?);
+        }
+        if self.server_packs.prompt.is_some() {
+            return Ok(left_press && self.pack_prompt_click()?);
+        }
+        if self.dialog_open() {
+            return if !left {
+                Ok(false)
+            } else if pressed {
+                self.dialog_click()
+            } else {
+                Ok(self.dialog_release())
+            };
+        }
+        // ConnectScreen's Cancel, under the prompts and dialogs above.
+        if self.remote_loading() {
+            return Ok(left_press && self.connect_screen_click()?);
+        }
+        if self.screen == Screen::Win {
+            return Ok(false);
+        }
+        if self.screen == Screen::Options {
+            return if self.options_waiting_for_key() && pressed {
+                self.options_bind_mouse(button)?;
+                Ok(true)
+            } else if matches!(button, MouseButton::Left | MouseButton::Right) {
+                self.options_mouse(pressed, !left)
+            } else {
+                Ok(false)
+            };
+        }
+        if self.title_input_active() {
+            if !pressed {
+                return Ok(left
+                    && self.title.as_mut().is_some_and(|title| {
+                        let released = title.release();
+                        title.release_field() || released
+                    }));
+            }
+            if !matches!(button, MouseButton::Left | MouseButton::Middle) {
+                return Ok(self.preset_editor_mouse_clicked(code, double_click));
+            }
+            let size = self
+                .renderer
+                .as_ref()
+                .map_or([1, 1], |r| [r.config.width, r.config.height]);
+            let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+            if button == MouseButton::Middle {
+                // The world list takes any button; middle selects without joining.
+                return Ok(self.preset_editor_mouse_clicked(code, double_click)
+                    || self.title.as_mut().is_some_and(|title| {
+                        title.select_world_at(self.cursor.0, self.cursor.1, (b.width, b.height))
+                    }));
+            }
+            let atlas = &self.gui.atlas;
+            let shift = self.has_shift_down();
+            let (action, sound, widget) =
+                self.title
+                    .as_mut()
+                    .map_or((Action::None, false, false), |title| {
+                        let (action, sound, widget) = title.click_with_outcome(
+                            self.cursor.0,
+                            self.cursor.1,
+                            (b.width, b.height),
+                        );
+                        let field =
+                            title.press_field(atlas, self.cursor, (b.width, b.height), shift);
+                        let (rule_sound, rules) =
+                            title.press_rules_with_outcome(atlas, self.cursor, (b.width, b.height));
+                        (action, sound || rule_sound, widget || field || rules)
+                    });
+            // Done/Cancel are the bound editor's normal widgets. They take the click even
+            // when the actual mode change is deferred to `settle_title_mode`.
+            let handled = widget || self.preset_editor_mouse_clicked(code, double_click);
+            self.save_title_options();
+            if sound {
+                self.audio.play_button_click();
+            }
+            self.title_action(event_loop, action)?;
+            self.reopen_data_packs(event_loop)?;
+            return Ok(handled);
+        }
+        if self.book.is_some() || self.sign_edit.is_some() {
+            if !left_press {
+                return Ok(false);
+            }
+            let size = self
+                .renderer
+                .as_ref()
+                .map_or([1, 1], |r| [r.config.width, r.config.height]);
+            return Ok(if self.book.is_some() {
+                self.book_click(size)
+            } else {
+                self.sign_edit_click(size)
+            });
+        }
+        if self.studio_mouse_input(pressed, button) {
+            return Ok(true);
+        }
+        if matches!(self.screen, Screen::Inventory | Screen::Creative)
+            && let Some(key) = self
+                .settings
+                .keys
+                .container_mouse_key(button, self.creative)
+        {
+            if pressed && self.carried.is_none() {
+                self.inventory_hotkey(key);
+            }
+            // Neither edge of a bound button is an ordinary slot click.
+            return Ok(true);
+        }
+        if pressed
+            && (self.sort_mouse_press(button)
+                || self.hud_editor_key_press(&sunrise_client::keybinds::mouse_name(button)))
+        {
+            return Ok(true);
+        }
+        Ok(match self.screen {
+            Screen::Inventory | Screen::Creative
+                if !matches!(button, MouseButton::Left | MouseButton::Right) =>
+            {
+                // The container only takes another button as its pick block key.
+                if self.settings.keys.get("key.pickItem")
+                    != sunrise_client::keybinds::mouse_name(button)
+                {
+                    return Ok(false);
+                }
+                let handled = if pressed {
+                    self.inventory_pick_press()
+                } else {
+                    self.inventory_pick_release()
+                };
+                if let Some(key) = self.container {
+                    self.container_changed(key);
+                }
+                handled
+            }
+            Screen::Inventory if pressed => {
+                let handled = self.inventory_press(!left);
+                if let Some(key) = self.container {
+                    self.container_changed(key);
+                }
+                handled
+            }
+            Screen::Inventory => {
+                self.inventory_mouse_release(!left)
+                    | self.station_release()
+                    | self.recipe_book_release()
+            }
+            Screen::Chat if left_press => self.chat_click(),
+            Screen::Creative if pressed => self.click_creative(!left),
+            Screen::Creative => {
+                let released = left && self.creative_screen.release();
+                self.inventory_mouse_release(!left) || released
+            }
+            Screen::Paused if left_press && self.pause_menu => self.pause_click()?,
+            Screen::WorldOptions if left_press => self.world_options_click(),
+            Screen::ServerLinks if left_press => self.server_links_click()?,
+            Screen::DebugOptions if left_press => self.debug_options_click(),
+            Screen::DebugOptions if left => self.debug_options_release(),
+            Screen::HudEditor
+                if pressed && matches!(button, MouseButton::Left | MouseButton::Right) =>
+            {
+                self.hud_editor_press(!left)
+            }
+            Screen::HudEditor if left => self.hud_editor_release(),
+            Screen::ConfirmLink if left_press => self.confirm_link_click(),
+            Screen::DialogWarning if left_press => self.dialog_warning_click()?,
+            Screen::WorldOptions if left => self.world_options_release(),
+            Screen::Friends if left_press => self.friends_screen_click(),
+            Screen::Social if left_press => self.social_click(),
+            Screen::CommandBlock if left_press => self.command_block_click(),
+            Screen::BlockEditor if left_press => self.block_editor_click(),
+            Screen::BlockEditor if left => self.block_editor_release(),
+            Screen::Dead if left_press => self.death_click()?,
+            Screen::Advancements if left => {
+                let size = self
+                    .renderer
+                    .as_ref()
+                    .map_or([1, 1], |r| [r.config.width, r.config.height]);
+                self.advancements_mouse(pressed, size)
+            }
+            Screen::Stats if left_press => {
+                let size = self
+                    .renderer
+                    .as_ref()
+                    .map_or([1, 1], |r| [r.config.width, r.config.height]);
+                self.stats_click(size)
+            }
+            Screen::Stats if left => self.stats_release(),
+            Screen::GameModeSwitcher if !pressed => self.switcher_release(button),
+            _ => false,
+        })
+    }
+
     /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
     ///
     /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
@@ -11830,12 +12045,16 @@ impl Game<'_> {
     /// shortcut, a special case) never reaches a controller. If a player could want it on one, give
     /// it a handler both can call and a `gamepad::Route` (screenshot and fullscreen do this). A
     /// screen's own raw keys, text and mods' key hooks stay raw on purpose.
+    /// `mouse_press_millis` is the monotonic timestamp of a physical press, absent for synthetic
+    /// inputs and all other events.
+    /// Returns true when button routing already settled the title before its Post.
     fn handle_window_event_inner(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         mut event: WindowEvent,
         cursor_sample: Option<sunrise_client::window::PointerSample>,
-    ) {
+        mouse_press_millis: Option<u64>,
+    ) -> bool {
         let before_screen =
             |game: &mut Self| game.prepare_window_event(event_loop, &event, cursor_sample);
         let handled = match &event {
@@ -11852,7 +12071,7 @@ impl Game<'_> {
             _ => before_screen(self),
         };
         if handled {
-            return;
+            return false;
         }
         // ScreenEvent.KeyPressed.Pre: the open screen hears of the key before
         // it acts on it, and a cancelled press goes no further — no focus
@@ -11919,7 +12138,7 @@ impl Game<'_> {
                         let _ = self.type_chars_into_screen(&text);
                     }
                 }
-                return;
+                return false;
             }
         }
         // Screen.keyPressed: Tab, the arrows and Enter move and press the
@@ -11934,12 +12153,10 @@ impl Game<'_> {
             // The keyboard's focus took the key; its characters are a separate
             // callback and still come (`KeyboardHandler.charTyped`).
             self.screen_chars_typed(typed.as_deref());
-            return;
+            return false;
         }
-        // The Post a mouse input owes once the screen's arms below have handled
-        // it (`ScreenEvent.MouseButtonPressed.Post` and its siblings): set where
-        // the Pre lets the input through, fired after the arms ran.
         let mut mouse_post: Option<native_hooks::ScreenMousePost> = None;
+        let mut title_settled = false;
         let result: Result<()> = (|| {
             if let WindowEvent::MouseInput { state, button, .. } = &event
                 && !self.pad_synthetic_input()
@@ -11965,53 +12182,6 @@ impl Game<'_> {
                 let events = self.ui.options.key_released(&mut self.settings, key);
                 self.handle_option_events(events)?;
             }
-            // ScreenEvent.MouseButtonPressed.Pre / MouseButtonReleased.Pre:
-            // the open screen hears of the press before anything reads it, and
-            // a cancelled one goes no further — no hotbar key, no slot, no
-            // button, no sort, no drag. First in the event, so none of the
-            // arms below (which hold the container hotkey and the sort and
-            // header buttons too) see it. A click the pad or the keyboard's
-            // focus made up is not the mouse: it fires nothing.
-            // Set by the outer handler at the physical button-up (`container_owned_up`).
-            let owned_release = matches!(&event, WindowEvent::MouseInput { .. })
-                && std::mem::take(&mut self.container_owned_up);
-            if let WindowEvent::MouseInput { state, button, .. } = &event
-                && !self.pad_synthetic_input()
-                && let Some(screen) = self.screen_view_now()
-            {
-                let (pressed, winit_button) = (*state == ElementState::Pressed, *button);
-                let (button, modifiers) = (glfw_button(*button), glfw_modifiers(self.modifiers));
-                let mut canceled = false;
-                if *state == ElementState::Pressed {
-                    self.native_screen_mouse_button_pressed_pre(
-                        &screen,
-                        button,
-                        modifiers,
-                        &mut canceled,
-                    );
-                } else {
-                    self.native_screen_mouse_button_released_pre(
-                        &screen,
-                        button,
-                        modifiers,
-                        &mut canceled,
-                    );
-                }
-                if canceled {
-                    return Ok(());
-                }
-                if self.container_mouse(winit_button, pressed, owned_release) {
-                    return Ok(());
-                }
-                mouse_post = Some(native_hooks::ScreenMousePost::Button {
-                    button,
-                    pressed: *state == ElementState::Pressed,
-                });
-            }
-            if owned_release {
-                return Ok(());
-            }
-            self.key_focus_mouse_press(&event);
             match event {
                 WindowEvent::CloseRequested => {
                     if !self.settings.quit_shortcuts
@@ -12301,298 +12471,126 @@ impl Game<'_> {
                         self.advancements_scroll(scaled(raw_x) as f32, d);
                     }
                 }
-                WindowEvent::MouseInput { state, button, .. } if self.command_prompt.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.command_prompt_click();
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } if self.link_prompt.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.link_prompt_click();
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } if self.code_of_conduct.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.code_of_conduct_click()?;
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. }
-                    if self.server_packs.prompt.is_some() =>
-                {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.pack_prompt_click()?;
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } if self.dialog_open() => {
-                    if button == MouseButton::Left {
-                        if state == ElementState::Pressed {
-                            self.dialog_click()?;
-                        } else {
-                            self.dialog_release();
-                        }
-                    }
-                }
-                // ConnectScreen's Cancel, under the prompts and dialogs above.
-                WindowEvent::MouseInput { state, button, .. } if self.remote_loading() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.connect_screen_click()?;
-                    }
-                }
-                WindowEvent::MouseInput { .. } if self.screen == Screen::Win => {}
-                WindowEvent::MouseInput { state, button, .. } if self.screen == Screen::Options => {
-                    if self.options_waiting_for_key() && state == ElementState::Pressed {
-                        self.options_bind_mouse(button)?;
-                    } else if matches!(button, MouseButton::Left | MouseButton::Right) {
-                        self.options_mouse(
-                            state == ElementState::Pressed,
-                            button == MouseButton::Right,
-                        )?;
-                    }
-                }
-                WindowEvent::MouseInput {
-                    state: ElementState::Released,
-                    button: MouseButton::Left,
-                    ..
-                } if self.title_input_active() && self.screen != Screen::Options => {
-                    if let Some(title) = &mut self.title {
-                        title.release();
-                        title.release_field();
-                    }
-                }
-                WindowEvent::MouseInput {
-                    state,
-                    button: MouseButton::Left,
-                    ..
-                } if self.title_input_active() && state == ElementState::Pressed => {
-                    let size = self
-                        .renderer
-                        .as_ref()
-                        .map(|r| [r.config.width, r.config.height])
-                        .unwrap_or([1, 1]);
-                    let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-                    let atlas = &self.gui.atlas;
-                    let shift = self.has_shift_down();
-                    let (action, sound) = self.title.as_mut().map_or((Action::None, false), |t| {
-                        let clicked = t.click(self.cursor.0, self.cursor.1, (b.width, b.height));
-                        t.press_field(atlas, self.cursor, (b.width, b.height), shift);
-                        let rules = t.press_rules(atlas, self.cursor, (b.width, b.height));
-                        (clicked.0, clicked.1 || rules)
-                    });
-                    if !sound {
-                        self.preset_editor_mouse_clicked(MouseButton::Left);
-                    }
-                    self.save_title_options();
-                    if sound {
-                        self.audio.play_button_click();
-                    }
-                    self.title_action(event_loop, action)?;
-                    self.reopen_data_packs(event_loop)?;
-                }
-                // AbstractSelectionList.mouseClicked: the world list takes a
-                // click of any button, so the middle one selects its row
-                // without joining (only the left click's play icon or its
-                // click on the selected row does that).
-                WindowEvent::MouseInput {
-                    state: ElementState::Pressed,
-                    button: MouseButton::Middle,
-                    ..
-                } if self.title_input_active() && self.screen != Screen::Options => {
-                    let size = self
-                        .renderer
-                        .as_ref()
-                        .map(|r| [r.config.width, r.config.height])
-                        .unwrap_or([1, 1]);
-                    let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-                    if !self.preset_editor_mouse_clicked(MouseButton::Middle)
-                        && let Some(title) = self.title.as_mut()
-                    {
-                        title.select_world_at(self.cursor.0, self.cursor.1, (b.width, b.height));
-                    }
-                }
-                WindowEvent::MouseInput {
-                    state: ElementState::Pressed,
-                    button,
-                    ..
-                } if self.title_input_active() && self.screen != Screen::Options => {
-                    self.preset_editor_mouse_clicked(button);
-                }
-                WindowEvent::MouseInput { .. } if self.title_input_active() => {}
-                WindowEvent::MouseInput { state, button, .. } if self.book.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        let size = self
-                            .renderer
-                            .as_ref()
-                            .map(|r| [r.config.width, r.config.height])
-                            .unwrap_or([1, 1]);
-                        self.book_click(size);
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } if self.sign_edit.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        let size = self
-                            .renderer
-                            .as_ref()
-                            .map(|r| [r.config.width, r.config.height])
-                            .unwrap_or([1, 1]);
-                        self.sign_edit_click(size);
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } => {
+                event @ WindowEvent::MouseInput { state, button, .. } => {
                     let pressed = state == ElementState::Pressed;
-                    if self.studio_mouse_input(pressed, button) {
-                        return Ok(());
-                    }
-                    if matches!(self.screen, Screen::Inventory | Screen::Creative)
-                        && let Some(key) = self
-                            .settings
-                            .keys
-                            .container_mouse_key(button, self.creative)
+                    let code = glfw_button(button);
+                    // Set by the outer handler at physical button-up.
+                    let owned_release = std::mem::take(&mut self.container_owned_up);
+                    let had_screen = self.mod_mappings_screen_open() || self.remote_loading();
+                    let mut container_handled = owned_release;
+                    let mut button_post = None;
+                    let mut screen_press = None;
+                    let mut double_click = false;
+                    // A controller or a click made by keyboard focus does not fire screen hooks.
+                    if !self.pad_synthetic_input()
+                        && let Some(screen) = self.screen_view_now()
                     {
-                        if pressed && self.carried.is_none() {
-                            self.inventory_hotkey(key);
-                        }
-                        // Neither edge of a bound button is an ordinary slot click.
-                        return Ok(());
-                    }
-                    if pressed
-                        && (self.sort_mouse_press(button)
-                            || self.hud_editor_key_press(&sunrise_client::keybinds::mouse_name(
-                                button,
-                            )))
-                    {
-                        return Ok(());
-                    }
-                    match self.screen {
-                        Screen::Playing => {
-                            if pressed && !self.captured {
-                                self.capture(true);
-                                return Ok(());
-                            }
-                            let input = sunrise_client::keybinds::mouse_name(button);
-                            if self.key_mapping_canceled(Some(input.as_str()), pressed) {
-                                self.physical_buttons.remove(&button);
-                                return Ok(());
-                            }
-                            self.extras_mouse(button, pressed);
-                            if pressed
-                                && self.settings.keys.get("key.smoothCamera")
-                                    == sunrise_client::keybinds::mouse_name(button)
-                            {
-                                self.smooth_camera_action();
-                            }
-                            self.mapped_mouse_event(button, &input, pressed)?;
-                        }
-                        Screen::Inventory | Screen::Creative
-                            if !matches!(button, MouseButton::Left | MouseButton::Right) =>
-                        {
-                            // AbstractContainerScreen: another button clicks
-                            // a slot only as the pick block key (its hotbar
-                            // keys were handled above).
-                            if self.settings.keys.get("key.pickItem")
-                                == sunrise_client::keybinds::mouse_name(button)
-                            {
-                                if pressed {
-                                    self.inventory_pick_press();
+                        if let Some(millis) = mouse_press_millis {
+                            let press = native_hooks::ScreenPress {
+                                activation: self.screen_activation,
+                                screen: self.screen,
+                                title_mode: if self.screen == Screen::Playing {
+                                    self.title
+                                        .as_ref()
+                                        .map(sunrise_client::title::Title::mode_activation)
                                 } else {
-                                    self.inventory_pick_release();
-                                }
-                                if let Some(key) = self.container {
-                                    self.container_changed(key);
-                                }
+                                    None
+                                },
+                                button: code,
+                                millis,
+                            };
+                            double_click = press.is_double_click(self.last_screen_press);
+                            screen_press = Some(press);
+                        }
+                        let modifiers = glfw_modifiers(self.modifiers);
+                        let mut canceled = false;
+                        let hook = if pressed {
+                            self.native_screen_mouse_button_pressed_pre(
+                                &screen,
+                                code,
+                                modifiers,
+                                double_click,
+                                &mut canceled,
+                            );
+                            mod_api::HookId::ScreenMouseButtonPressedPost
+                        } else {
+                            self.native_screen_mouse_button_released_pre(
+                                &screen,
+                                code,
+                                modifiers,
+                                &mut canceled,
+                            );
+                            mod_api::HookId::ScreenMouseButtonReleasedPost
+                        };
+                        if canceled {
+                            // NeoForge treats a cancelled Pre as handled without running Post.
+                            if let Some(press) = screen_press {
+                                self.last_screen_press = Some(press);
                             }
+                            return Ok(());
                         }
-                        Screen::Inventory if pressed => {
-                            self.inventory_press(button == MouseButton::Right);
-                            if let Some(key) = self.container {
-                                self.container_changed(key);
-                            }
+                        if mod_api::__private::listened(hook) {
+                            button_post = Some(native_hooks::ScreenButtonPost {
+                                screen: self.observe_view(screen),
+                                button: code,
+                                pressed,
+                                modifiers,
+                                double_click,
+                            });
                         }
-                        Screen::Inventory => {
-                            self.inventory_mouse_release(button == MouseButton::Right);
-                            self.station_release();
-                            self.recipe_book_release();
-                        }
-                        Screen::Chat if pressed && button == MouseButton::Left => self.chat_click(),
-                        Screen::Creative if pressed => {
-                            self.click_creative(button == MouseButton::Right);
-                        }
-                        Screen::Creative => {
-                            if button == MouseButton::Left {
-                                self.creative_screen.release();
-                            }
-                            self.inventory_mouse_release(button == MouseButton::Right);
-                        }
-                        Screen::Paused
-                            if pressed && button == MouseButton::Left && self.pause_menu =>
-                        {
-                            self.pause_click()?
-                        }
-                        Screen::WorldOptions if pressed && button == MouseButton::Left => {
-                            self.world_options_click()
-                        }
-                        Screen::ServerLinks if pressed && button == MouseButton::Left => {
-                            self.server_links_click()?
-                        }
-                        Screen::DebugOptions if pressed && button == MouseButton::Left => {
-                            self.debug_options_click()
-                        }
-                        Screen::DebugOptions if button == MouseButton::Left => {
-                            self.debug_options_release()
-                        }
-                        Screen::HudEditor
-                            if pressed
-                                && matches!(button, MouseButton::Left | MouseButton::Right) =>
-                        {
-                            self.hud_editor_press(button == MouseButton::Right)
-                        }
-                        Screen::HudEditor if button == MouseButton::Left => {
-                            self.hud_editor_release()
-                        }
-                        Screen::ConfirmLink if pressed && button == MouseButton::Left => {
-                            self.confirm_link_click()
-                        }
-                        Screen::DialogWarning if pressed && button == MouseButton::Left => {
-                            self.dialog_warning_click()?
-                        }
-                        Screen::WorldOptions if button == MouseButton::Left => {
-                            self.world_options_release()
-                        }
-                        Screen::Friends if pressed && button == MouseButton::Left => {
-                            self.friends_screen_click()
-                        }
-                        Screen::Social if pressed && button == MouseButton::Left => {
-                            self.social_click()
-                        }
-                        Screen::CommandBlock if pressed && button == MouseButton::Left => {
-                            self.command_block_click()
-                        }
-                        Screen::BlockEditor if pressed && button == MouseButton::Left => {
-                            self.block_editor_click()
-                        }
-                        Screen::BlockEditor if button == MouseButton::Left => {
-                            self.block_editor_release()
-                        }
-                        Screen::Dead if pressed && button == MouseButton::Left => {
-                            self.death_click()?
-                        }
-                        Screen::Advancements if button == MouseButton::Left => {
-                            let size = self
-                                .renderer
-                                .as_ref()
-                                .map_or([1, 1], |r| [r.config.width, r.config.height]);
-                            self.advancements_mouse(pressed, size);
-                        }
-                        Screen::Stats if pressed && button == MouseButton::Left => {
-                            let size = self
-                                .renderer
-                                .as_ref()
-                                .map_or([1, 1], |r| [r.config.width, r.config.height]);
-                            self.stats_click(size);
-                        }
-                        Screen::Stats if button == MouseButton::Left => self.stats_release(),
-                        Screen::GameModeSwitcher if !pressed => self.switcher_release(button),
-                        _ => {}
+                        container_handled = self.container_mouse(button, pressed, owned_release);
                     }
+                    if !container_handled {
+                        self.key_focus_mouse_press(&event);
+                    }
+                    let mut handled = container_handled
+                        || self.route_screen_button(
+                            event_loop,
+                            button,
+                            code,
+                            pressed,
+                            double_click,
+                        )?;
+                    if had_screen {
+                        self.settle_title_mode();
+                        title_settled = true;
+                    }
+                    if let Some(post) = button_post {
+                        handled = self.screen_button_post(&post, handled);
+                    }
+                    if handled && let Some(press) = screen_press {
+                        self.last_screen_press = Some(press);
+                    }
+                    // MouseHandler.onButton: only an unhandled edge goes through to the
+                    // gameplay mappings, and only once the settled state has no screen.
+                    if handled
+                        || self.mod_mappings_screen_open()
+                        || self.remote_loading()
+                        || self.reload_overlay.is_some()
+                        || self.pending_entry.is_some()
+                        || self.integrated_starting.is_some()
+                        || self.pending_save.is_some()
+                    {
+                        return Ok(());
+                    }
+                    if pressed && !self.pad_synthetic_input() {
+                        self.mod_mappings_button(button, true);
+                    }
+                    // A click that merely closed a screen is not a new click into the world.
+                    if pressed && !self.captured && !had_screen {
+                        self.capture(true);
+                        return Ok(());
+                    }
+                    let input = sunrise_client::keybinds::mouse_name(button);
+                    if self.key_mapping_canceled(Some(input.as_str()), pressed) {
+                        self.physical_buttons.remove(&button);
+                        return Ok(());
+                    }
+                    self.extras_mouse(button, pressed);
+                    if pressed && self.settings.keys.get("key.smoothCamera") == input {
+                        self.smooth_camera_action();
+                    }
+                    self.mapped_mouse_event(button, &input, pressed)?;
                 }
                 // ConfirmScreen.keyPressed: Escape answers no, once its delay is over.
                 WindowEvent::KeyboardInput { event, .. }
@@ -13162,6 +13160,7 @@ impl Game<'_> {
             self.error = Some(e);
             event_loop.exit();
         }
+        title_settled
     }
 }
 /// misc/forcefield.png for the world border wall (square, power of two).
@@ -13343,6 +13342,8 @@ impl<'a> Game<'a> {
             rejected_keys: HashSet::new(),
             physical_buttons: HashSet::new(),
             drag_button: None,
+            screen_activation: 0,
+            last_screen_press: None,
             right_click_emulation: Default::default(),
             left: false,
             right: false,

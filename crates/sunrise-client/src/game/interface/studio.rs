@@ -178,7 +178,7 @@ impl Game<'_> {
             TopBarAction::None => {}
             TopBarAction::OpenPauseMenu => {
                 self.pause_focus = None;
-                self.screen = Screen::Paused;
+                self.activate_screen(Screen::Paused);
                 self.pause_menu = true;
                 self.capture(false);
             }
@@ -626,7 +626,7 @@ impl Game<'_> {
             }
             KeyCode::KeyP => {
                 self.pause_focus = None;
-                self.screen = Screen::Paused;
+                self.activate_screen(Screen::Paused);
                 self.pause_menu = true;
                 self.capture(false);
             }

@@ -49,12 +49,33 @@ the sign's block position and whether its front side is being edited. It returns
 editor open, or outside a world. A close of the sign editor always sends the sign update, however it
 closes; there is no close that skips it, because the vanilla client never omits that packet.
 
-## Input in a world preset editor
+## World preset editors
 
-Bind a `PresetEditor` to a world preset with `register_preset_editors`. While `world_preset_editor`
-is open, keys consumed by the input method during composition do not reach `PresetEditor::key_pressed`
-or the editor's Done and Cancel buttons. Committed characters go through the usual character hooks
-and `PresetEditor::char_typed`, separately from key presses.
+Bind a `PresetEditor` to a world preset with `register_preset_editors`. The stock frame draws first,
+then `PresetEditor::render` adds the editor's paint, followed by `screen_render_post` and toasts.
+If the render callback fails, its paint and draft edits are discarded without removing the stock
+frame or skipping Post. A panic disables the bound editor callbacks for the session and reports the
+mod's name in the log and an error toast.
+
+While `world_preset_editor` is open, keys consumed by the input method during composition do not
+reach `PresetEditor::key_pressed` or the editor's Done and Cancel buttons. Committed characters go
+through the usual character hooks and `PresetEditor::char_typed`, separately from key presses.
+
+The editor's Done and Cancel buttons take a left click before `PresetEditor::mouse_clicked(x, y,
+button, double_click, draft)`. The editor receives the same `i32` GLFW button index as the screen
+hooks. Press Pre, the editor, and press Post get the same `double_click`: the last handled press
+must have been on the same screen instance with the same button, less than 250 ms earlier.
+Synthetic clicks pass `false` and do not change the history.
+
+If Pre allows a press or release, its button Post runs whether the original screen took or declined
+that event. Done and Cancel report `world_preset_editor` with `event.was_click_handled = true`, even
+when Create World is already open. A release instead reports its own receiving screen and
+`event.was_release_handled`. Post listeners may write `*event.result = TriState::True` to force
+handled or `*event.result = TriState::False` to force unhandled; `TriState::Default` keeps the
+original answer. The final answer decides whether to record a press for double-click detection and
+whether the event can reach gameplay mappings with no screen open. A cancelled mouse Pre reaches
+neither the editor nor Post, but a cancelled real press counts as handled. Key and character Post
+still run only for unhandled input.
 
 The control socket sends `screen_key_released_pre` to the currently open title screen, even if
 that screen did not receive the matching press. For example, when Escape closes the preset editor,

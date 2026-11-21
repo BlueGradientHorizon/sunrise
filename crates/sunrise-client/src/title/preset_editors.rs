@@ -7,7 +7,7 @@ use crate::save::{
 };
 use mod_api::{
     __private::game::{
-        CallbackOwner, PresetEditorFactoryRegistration, new_preset_editor_context,
+        CallbackOwner, CallbackValue, PresetEditorFactoryRegistration, new_preset_editor_context,
         new_preset_editor_draft,
     },
     Answered, Compound, DrawContext, Identifier, PresetEditor, PresetEditorFactoryFn,
@@ -20,122 +20,141 @@ use std::{
 };
 use sunrise_core::nbt::Tag;
 
-#[derive(Clone)]
 struct BoundPresetEditorFactory {
-    owner: Arc<CallbackOwner>,
-    factory: Arc<PresetEditorFactoryFn>,
+    preset: Identifier,
+    factory: CallbackValue<Arc<PresetEditorFactoryFn>>,
 }
 
-static EDITORS: LazyLock<RwLock<BTreeMap<String, BoundPresetEditorFactory>>> =
-    LazyLock::new(Default::default);
+/// The registration snapshot used by a title screen.
+#[derive(Default)]
+pub struct PresetEditorFactories(BTreeMap<String, BoundPresetEditorFactory>);
 
-#[cfg(test)]
-static EDITORS_FIXTURE: Mutex<Option<BTreeMap<String, BoundPresetEditorFactory>>> =
-    Mutex::new(None);
+static EDITORS: LazyLock<RwLock<Arc<PresetEditorFactories>>> = LazyLock::new(Default::default);
 
-#[cfg(test)]
-static FIXTURE_CHANGED: std::sync::Condvar = std::sync::Condvar::new();
-
-#[cfg(test)]
-pub(super) struct EditorsFixture;
-
-#[cfg(test)]
-impl EditorsFixture {
-    pub(super) fn install(editors: Vec<Answered<PresetEditorFactoryRegistration>>) -> Self {
-        let table = freeze(editors);
-        let mut fixture = EDITORS_FIXTURE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        while fixture.is_some() {
-            fixture = FIXTURE_CHANGED
-                .wait(fixture)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+impl PresetEditorFactories {
+    /// Bind the client registration answers (last registration per preset wins, including
+    /// `minecraft:` overrides).
+    pub fn bind(editors: Vec<Answered<PresetEditorFactoryRegistration>>) -> Self {
+        let mut table = BTreeMap::new();
+        for Answered { answer, mod_id, .. } in editors {
+            let key = answer.preset.to_string();
+            let Some(owner) = CallbackOwner::new(mod_id) else {
+                log::error!("Preset editor {key} has no installed owner {mod_id}");
+                CallbackOwner::for_mod(mod_id).dispose(
+                    "preset editor",
+                    "drop factory",
+                    answer.factory,
+                );
+                continue;
+            };
+            let entry = BoundPresetEditorFactory {
+                preset: answer.preset,
+                factory: CallbackValue::new(owner, "preset editor", "drop factory", answer.factory),
+            };
+            if let Some(previous) = table.insert(key.clone(), entry) {
+                log::debug!(
+                    "PresetEditor {key} from mod {} overridden by mod {mod_id}",
+                    previous.factory.owner().id()
+                );
+            } else if matches!(
+                key.as_str(),
+                "minecraft:flat" | "minecraft:single_biome_surface"
+            ) {
+                log::debug!("PresetEditor {key} (vanilla) overridden by mod {mod_id}");
+            }
         }
-        *fixture = Some(table);
-        Self
+        Self(table)
     }
-}
 
-#[cfg(test)]
-impl Drop for EditorsFixture {
-    fn drop(&mut self) {
-        let mut fixture = EDITORS_FIXTURE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *fixture = None;
-        FIXTURE_CHANGED.notify_all();
+    pub(super) fn installed() -> Arc<Self> {
+        EDITORS
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
-}
 
-fn is_vanilla_preset_editor(id: &str) -> bool {
-    matches!(id, "minecraft:flat" | "minecraft:single_biome_surface")
-}
+    fn lookup(&self, preset: &str) -> Option<&BoundPresetEditorFactory> {
+        self.0.get(preset)
+    }
 
-fn freeze(
-    editors: Vec<Answered<PresetEditorFactoryRegistration>>,
-) -> BTreeMap<String, BoundPresetEditorFactory> {
-    let mut table: BTreeMap<String, BoundPresetEditorFactory> = BTreeMap::new();
-    for Answered { answer, mod_id, .. } in editors {
-        let key = answer.preset.to_string();
-        let Some(owner) = CallbackOwner::new(mod_id) else {
-            log::error!("Preset editor {key} has no installed owner {mod_id}");
-            continue;
+    pub(super) fn has_editor(&self, preset: &str) -> bool {
+        self.lookup(preset).is_some()
+    }
+
+    /// Invoke the bound factory for `preset`; no registration is `Ok(None)`, a failed open is
+    /// `Err`, and a successful open returns the session.
+    pub(super) fn open_session(
+        &self,
+        preset: &str,
+        dimensions: Compound,
+        seed: &str,
+    ) -> Result<Option<PresetEditorSession>, String> {
+        let Some(entry) = self.lookup(preset) else {
+            return Ok(None);
         };
-        let entry = BoundPresetEditorFactory {
-            owner: Arc::new(owner),
-            factory: answer.factory,
+        let owner = entry.factory.owner();
+        let ctx = new_preset_editor_context(&entry.preset, &dimensions, seed);
+        let created = owner.call("preset editor", "open", || {
+            (entry.factory.value())(&ctx).map(|editor| {
+                // The callback can return a value after a caught phase refusal. It still
+                // belongs to the owner when the refusal fence discards it.
+                CallbackValue::new(
+                    owner.clone(),
+                    "preset editor",
+                    "drop editor",
+                    Mutex::new(editor),
+                )
+            })
+        })?;
+        let editor = match created {
+            Ok(editor) => editor,
+            Err(reason) => {
+                log::warn!(
+                    "Mod {}: preset editor factory for {preset} refused to open: {reason}",
+                    owner.id()
+                );
+                return Err(reason);
+            }
         };
-        if let Some(previous) = table.insert(key.clone(), entry) {
-            log::debug!(
-                "PresetEditor {key} from mod {} overridden by mod {mod_id}",
-                previous.owner.id()
-            );
-        } else if is_vanilla_preset_editor(&key) {
-            log::debug!("PresetEditor {key} (vanilla) overridden by mod {mod_id}");
-        }
+        let title = editor.owner().call("preset editor", "title", || {
+            editor
+                .value()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .title()
+        })?;
+        Ok(Some(PresetEditorSession {
+            preset: preset.to_owned(),
+            preset_id: entry.preset.clone(),
+            dimensions: RefCell::new(dimensions),
+            title,
+            live: LivePresetEditor {
+                editor: Arc::new(editor),
+            },
+        }))
     }
-    table
 }
 
-/// Install the client registration-phase table (last registration per preset wins, accepting any
-/// valid `Identifier`, including `minecraft:` overrides and empty-path ids).
+/// Install the client registration-phase table for subsequently created title screens.
 pub fn register(editors: Vec<Answered<PresetEditorFactoryRegistration>>) {
-    let table = freeze(editors);
-    *EDITORS
+    let table = Arc::new(PresetEditorFactories::bind(editors));
+    let mut installed = EDITORS
         .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = table;
-}
-
-fn lookup(preset: &str) -> Option<BoundPresetEditorFactory> {
-    #[cfg(test)]
-    if let Some(fixture) = EDITORS_FIXTURE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .as_ref()
-    {
-        return fixture.get(preset).cloned();
-    }
-    EDITORS
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(preset)
-        .cloned()
-}
-
-pub(super) fn has_editor(preset: &str) -> bool {
-    lookup(preset).is_some()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let displaced = std::mem::replace(&mut *installed, table);
+    drop(installed);
+    drop(displaced);
 }
 
 #[derive(Clone)]
 struct LivePresetEditor {
-    owner: Arc<CallbackOwner>,
-    editor: Arc<Mutex<Box<dyn PresetEditor>>>,
+    editor: Arc<CallbackValue<Mutex<Box<dyn PresetEditor>>>>,
 }
 
 impl fmt::Debug for LivePresetEditor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LivePresetEditor")
-            .field("owner", &self.owner.id())
+            .field("owner", &self.editor.owner().id())
             .finish()
     }
 }
@@ -181,10 +200,10 @@ impl PresetEditorSession {
     ) -> Option<R> {
         let mut working = self.dimensions.borrow().clone();
         let validator = valid_dimension_stems;
-        let result = self.live.owner.call("preset editor", operation, || {
-            let mut guard = self
-                .live
-                .editor
+        let editor = &self.live.editor;
+        let result = editor.owner().call("preset editor", operation, || {
+            let mut guard = editor
+                .value()
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut draft = new_preset_editor_draft(&self.preset_id, &mut working, &validator);
@@ -199,16 +218,16 @@ impl PresetEditorSession {
         }
     }
 
-    /// Render the bound editor into `draw` inside `rect`; returns whether it completed.
+    /// Render the bound editor into `draw` inside `rect`, returning whether the call succeeded.
     pub fn render(&self, draw: &mut dyn DrawContext, rect: [f32; 4]) -> bool {
         self.with_editor("render", |editor, draft| editor.render(draw, rect, draft))
             .is_some()
     }
 
-    /// Forward a mouse press (`button`: GLFW index) to the bound editor.
-    pub fn mouse_clicked(&self, x: f32, y: f32, button: u8) -> bool {
+    /// Forward a mouse press (`button`: GLFW index) and its double-click flag to the bound editor.
+    pub fn mouse_clicked(&self, x: f32, y: f32, button: i32, double_click: bool) -> bool {
         self.with_editor("mouse_clicked", |editor, draft| {
-            editor.mouse_clicked(x, y, button, draft)
+            editor.mouse_clicked(x, y, button, double_click, draft)
         })
         .unwrap_or(false)
     }
@@ -230,54 +249,16 @@ impl PresetEditorSession {
     }
 }
 
-/// Invoke the bound factory for `preset`, returning `Ok(None)` when no mod registered an editor
-/// for `preset`, `Ok(Some(session))` on success, or `Err(reason)` if the factory refused or
-/// panicked.
-pub fn open_session(
-    preset: &str,
-    dimensions: Compound,
-    seed: &str,
-) -> Result<Option<PresetEditorSession>, String> {
-    let Some(entry) = lookup(preset) else {
-        return Ok(None);
-    };
-    let preset_id = Identifier::parse(preset)
-        .map_err(|err| format!("invalid world preset identifier {preset:?}: {err}"))?;
-    let ctx = new_preset_editor_context(&preset_id, &dimensions, seed);
-    let factory = Arc::clone(&entry.factory);
-    let created = entry
-        .owner
-        .call("preset editor", "open", move || factory(&ctx))?;
-    let editor = match created {
-        Ok(editor) => editor,
-        Err(reason) => {
-            log::warn!(
-                "Mod {}: preset editor factory for {preset} refused to open: {reason}",
-                entry.owner.id()
-            );
-            return Err(reason);
-        }
-    };
-    let title = entry
-        .owner
-        .call("preset editor", "title", || editor.title())?;
-    Ok(Some(PresetEditorSession {
-        preset: preset.to_owned(),
-        preset_id,
-        dimensions: RefCell::new(dimensions),
-        title,
-        live: LivePresetEditor {
-            owner: entry.owner,
-            editor: Arc::new(Mutex::new(editor)),
-        },
-    }))
-}
-
 pub(super) fn preset_label(id: &str) -> String {
     lang::get(&format!("generator.{}", id.replace([':', '/'], ".")))
 }
 
 impl Title {
+    /// Use an explicit registration snapshot for this title, without changing other titles.
+    pub fn set_preset_editor_factories(&mut self, factories: PresetEditorFactories) {
+        self.preset_editors = Arc::new(factories);
+    }
+
     /// The already-enabled mod data layer, below the world's selectable packs.
     pub fn set_preset_data_source(&mut self, source: crate::resource_source::ResourceSource) {
         self.preset_data = Some(std::sync::Arc::new(crate::datapack::DataPack::from_source(
