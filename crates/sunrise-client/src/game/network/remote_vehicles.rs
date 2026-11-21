@@ -881,7 +881,7 @@ impl Game<'_> {
     /// Whether this client moves `m`, the mount the player rides: as its
     /// first passenger (`AbstractHorse.getControllingPassenger`), on its
     /// saddle (`isLocalInstanceAuthoritative`).
-    fn drives(&self, m: &Mob) -> bool {
+    pub(super) fn drives(&self, m: &Mob) -> bool {
         self.riding == Some(m.id)
             && client_moves(
                 m,
