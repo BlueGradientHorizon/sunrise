@@ -4,6 +4,7 @@
 //! uniform (set 1) that the vertex inputs read. `gbuffers_skytextured` draws the frame's sun and
 //! moon quads, textured from the shared atlas.
 
+use super::CelestialBody;
 use std::{ops::Range, sync::Mutex};
 
 use wgpu::util::DeviceExt;
@@ -335,9 +336,9 @@ impl PackSky {
     /// camera low, the void. `tilt` is the pack's `sunPathRotation` (degrees): the sun, moon
     /// and stars turn with it (7.1). In the End under the dragon fight's fog, only the End's fan,
     /// in the fog colour (`fogColor`), as stage SKY. A part the pack's `switches` turn off is left
-    /// out: `sky` the disc, the sunset fan, the void and the End's fan; `stars`, `sun` and `moon`
-    /// their own. The End's flash is not drawn here: the End has no skybox, so the pack's sky runs
-    /// there only under the dragon fight's fog (`PackPost::draw_opaque`), as the End's fan alone.
+    /// out: `sky` the disc, the sunset fan and the void; `stars`, `sun` and `moon` their own. The
+    /// End's flash is not drawn here: the End has no skybox, so the pack's sky runs there only
+    /// under the dragon fight's fog (`PackPost::draw_opaque`), as the End's fan alone.
     pub fn prepare(
         &self,
         queue: &wgpu::Queue,
@@ -369,12 +370,14 @@ impl PackSky {
             ],
         };
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
-        // The sun's quad, then the moon's (Game::celestial_geometry), as triangles.
+        // The sun's and the moon's quads (Game::celestial_geometry), each with what it is
+        // (`Frame::celestial_bodies`), as triangles.
         let quads = frame
             .celestial
             .as_chunks::<4>()
             .0
             .iter()
+            .zip(frame.celestial_bodies)
             .take(CELESTIAL_QUADS);
         let mut triangles = self
             .celestial_scratch
@@ -384,7 +387,7 @@ impl PackSky {
         triangles.extend(
             quads
                 .clone()
-                .flat_map(|q| [0, 1, 2, 0, 2, 3].map(|i| q[i]))
+                .flat_map(|(q, _)| [0, 1, 2, 0, 2, 3].map(|i| q[i]))
                 .map(|v| Celestial {
                     pos: turn.transform_vector3(v.pos.into()).into(),
                     uv: v.uv,
@@ -399,11 +402,7 @@ impl PackSky {
             range,
         };
         if end_fan {
-            return switches
-                .sky
-                .then(|| part("SKY", false, fan))
-                .into_iter()
-                .collect();
+            return vec![part("SKY", false, fan)];
         }
         let mut parts = Vec::new();
         if switches.sky {
@@ -412,10 +411,15 @@ impl PackSky {
         if switches.sky && frame.sky.sunrise_color[3] > 0.001 {
             parts.push(part("SUNSET", false, sunset));
         }
-        let bodies = [("SUN", switches.sun), ("MOON", switches.moon)];
-        for (i, (stage, on)) in bodies.into_iter().enumerate().take(quads.len()) {
+        for (i, (_, body)) in (0u32..).zip(quads) {
+            let (stage, on) = match body {
+                CelestialBody::Sun => ("SUN", switches.sun),
+                CelestialBody::Moon => ("MOON", switches.moon),
+                // Never in a frame the pack's sky draws: see the doc above.
+                CelestialBody::EndFlash => continue,
+            };
             if on {
-                parts.push(part(stage, true, i as u32 * 6..i as u32 * 6 + 6));
+                parts.push(part(stage, true, i * 6..i * 6 + 6));
             }
         }
         if switches.stars && frame.stars.is_some() {

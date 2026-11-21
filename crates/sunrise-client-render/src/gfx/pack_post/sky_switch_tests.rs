@@ -4,6 +4,7 @@
 //! and paint it a red of its own.
 use super::depth_test::{Gpu, SIZE, VERTEX, fixture_frame};
 use super::*;
+use crate::gfx::CelestialBody::{self, Moon, Sun};
 use crate::hud::HudBatch;
 use wgpu::TextureFormat as T;
 
@@ -70,10 +71,9 @@ fn quad() -> [crate::mesher::Vertex; 4] {
 }
 
 /// Each two-pixel band of the pack's picture with `properties`, every pixel of a band the same:
-/// a part's red, or the world's picture (`CLEAR`) where no part drew. `end_fog` sets the End
-/// under the dragon fight's fog, as the game sets it: no skybox, so the pack draws only the End's
-/// fan; otherwise the Overworld with every part.
-fn bands(gpu: &Gpu, properties: &str, end_fog: bool) -> [[u8; 4]; 8] {
+/// a part's red, or the world's picture (`CLEAR`) where no part drew. The frame is the
+/// Overworld's with every part, and one quad for each of `bodies`, which says what it is.
+fn bands(gpu: &Gpu, properties: &str, bodies: &[CelestialBody]) -> [[u8; 4]; 8] {
     let color = gpu.texture(T::Rgba8Unorm);
     let depth = gpu.texture(T::Depth32Float);
     // The world drew nothing: the far plane (reverse-Z) everywhere.
@@ -109,19 +109,14 @@ fn bands(gpu: &Gpu, properties: &str, end_fog: bool) -> [[u8; 4]; 8] {
     let hud = HudBatch::scratch(SIZE);
     let mut frame = fixture_frame(&hud);
     frame.title = false;
-    let [sun, moon] = [quad(), quad()];
-    let bodies = [sun, moon].concat();
-    if end_fog {
-        frame.end_sky = true;
-        frame.boss_world_fog = true;
-    } else {
-        frame.skybox = true;
-        // Every part this frame: the sunset fan, the stars, the void.
-        frame.sky.sunrise_color = [1.0, 0.5, 0.0, 1.0];
-        frame.stars = Some((glam::Mat4::IDENTITY, 1.0));
-        frame.dark_disc = true;
-        frame.celestial = &bodies;
-    }
+    let quads: Vec<_> = bodies.iter().flat_map(|_| quad()).collect();
+    frame.skybox = true;
+    // Every part this frame: the sunset fan, the stars, the void.
+    frame.sky.sunrise_color = [1.0, 0.5, 0.0, 1.0];
+    frame.stars = Some((glam::Mat4::IDENTITY, 1.0));
+    frame.dark_disc = true;
+    frame.celestial = &quads;
+    frame.celestial_bodies = bodies;
     let pixels = gpu.render(&mut post, &color, &depth, &frame, &mut |_, _, _, _| {});
     std::array::from_fn(|band| {
         let first = pixels[band * 2];
@@ -154,13 +149,16 @@ const VOID: [u8; 4] = red(240);
 /// two the sky never reaches.
 const ALL: [[u8; 4]; 8] = [SKY, SUNSET, SUN, MOON, STARS, VOID, CLEAR, CLEAR];
 
+/// The Overworld's two quads: the sun's, then the moon's.
+const BOTH: &[CelestialBody] = &[Sun, Moon];
+
 #[test]
 fn every_part_draws_without_the_keys() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Gpu::new() else { return };
-    assert_eq!(bands(&gpu, "", false), ALL);
+    assert_eq!(bands(&gpu, "", BOTH), ALL);
     assert_eq!(
-        bands(&gpu, "sky=true\nstars=true\nsun=true\nmoon=true\n", false),
+        bands(&gpu, "sky=true\nstars=true\nsun=true\nmoon=true\n", BOTH),
         ALL
     );
 }
@@ -170,7 +168,7 @@ fn sky_false_leaves_out_the_disc_the_sunset_and_the_void() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Gpu::new() else { return };
     assert_eq!(
-        bands(&gpu, "sky=false\n", false),
+        bands(&gpu, "sky=false\n", BOTH),
         [CLEAR, CLEAR, SUN, MOON, STARS, CLEAR, CLEAR, CLEAR]
     );
 }
@@ -180,7 +178,7 @@ fn stars_false_leaves_out_the_stars() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Gpu::new() else { return };
     assert_eq!(
-        bands(&gpu, "stars=false\n", false),
+        bands(&gpu, "stars=false\n", BOTH),
         [SKY, SUNSET, SUN, MOON, CLEAR, VOID, CLEAR, CLEAR]
     );
 }
@@ -190,7 +188,7 @@ fn sun_false_leaves_out_the_sun() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Gpu::new() else { return };
     assert_eq!(
-        bands(&gpu, "sun=false\n", false),
+        bands(&gpu, "sun=false\n", BOTH),
         [SKY, SUNSET, CLEAR, MOON, STARS, VOID, CLEAR, CLEAR]
     );
 }
@@ -200,20 +198,32 @@ fn moon_false_leaves_out_the_moon() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Gpu::new() else { return };
     assert_eq!(
-        bands(&gpu, "moon=false\n", false),
+        bands(&gpu, "moon=false\n", BOTH),
         [SKY, SUNSET, SUN, CLEAR, STARS, VOID, CLEAR, CLEAR]
     );
 }
 
-/// In the End under the dragon fight's fog the pack draws only the End's fan, as stage SKY:
-/// `sky=false` leaves it out too.
+/// The moon alone (the sun's sprite missing) is the first quad, and still the moon: it draws as
+/// stage MOON, `sun=false` keeps it and `moon=false` leaves it out.
 #[test]
-fn sky_false_leaves_out_the_end_fan() {
+fn the_moon_alone_follows_only_moon() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Gpu::new() else { return };
-    assert_eq!(
-        bands(&gpu, "", true),
-        [SKY, CLEAR, CLEAR, CLEAR, CLEAR, CLEAR, CLEAR, CLEAR]
-    );
-    assert_eq!(bands(&gpu, "sky=false\n", true), [CLEAR; 8]);
+    let moon = [SKY, SUNSET, CLEAR, MOON, STARS, VOID, CLEAR, CLEAR];
+    let none = [SKY, SUNSET, CLEAR, CLEAR, STARS, VOID, CLEAR, CLEAR];
+    assert_eq!(bands(&gpu, "", &[Moon]), moon);
+    assert_eq!(bands(&gpu, "sun=false\n", &[Moon]), moon);
+    assert_eq!(bands(&gpu, "moon=false\n", &[Moon]), none);
+}
+
+/// The sun alone (the moon's sprite missing): `moon=false` keeps it, `sun=false` leaves it out.
+#[test]
+fn the_sun_alone_follows_only_sun() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = Gpu::new() else { return };
+    let sun = [SKY, SUNSET, SUN, CLEAR, STARS, VOID, CLEAR, CLEAR];
+    let none = [SKY, SUNSET, CLEAR, CLEAR, STARS, VOID, CLEAR, CLEAR];
+    assert_eq!(bands(&gpu, "", &[Sun]), sun);
+    assert_eq!(bands(&gpu, "moon=false\n", &[Sun]), sun);
+    assert_eq!(bands(&gpu, "sun=false\n", &[Sun]), none);
 }

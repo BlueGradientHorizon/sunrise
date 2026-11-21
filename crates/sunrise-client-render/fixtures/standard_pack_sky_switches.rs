@@ -1,7 +1,8 @@
 //! A `shaders/` pack's `sky`, `stars`, `sun` and `moon` (spec 3.2) on the game's own sky: the pack
 //! has only `final`, so the game draws the sky disc, the sunset fan, the sun and moon, the stars
 //! and the void disc into `colortex0` itself. Each switch's frame must equal the frame with only
-//! that part left out of the scene, and differ from the frame with no key. Asset-free; run with
+//! that part left out of the scene, and differ from the frame with no key; `sun` and `moon` also
+//! on a scene of the sun alone and one of the moon alone. Asset-free; run with
 //! throwaway SUNRISE_HOME, SUNRISE_LAUNCHER_HOME, XDG_DATA_HOME and XDG_CONFIG_HOME (AGENTS.md):
 //! `cargo test -p sunrise-client-render --test standard_pack_sky_switches -- --ignored`
 //! (under `python3 tools/ci/with_xvfb.py` without a display) gives each its own. On a Wayland
@@ -9,7 +10,7 @@
 //! has no Wayland socket.
 use client::{
     environment::Sky,
-    gfx::{Frame, Renderer, ScreenshotRequest},
+    gfx::{CelestialBody, Frame, Renderer, ScreenshotRequest},
     graphics::GraphicsApi,
     hud::HudBatch,
     render_geometry::Vertex,
@@ -105,12 +106,15 @@ fn shoot(renderer: &mut Renderer, hud: &HudBatch, parts: Parts, path: &Path) -> 
         sunrise_color: [1.0, 0.4, 0.1, if parts.sunrise { 0.9 } else { 0.0 }],
         ..Sky::default()
     };
-    let mut celestial = Vec::new();
+    // Each body as the game gives it: its quad, and what it is.
+    let (mut celestial, mut bodies) = (Vec::new(), Vec::new());
     if parts.sun {
         body(&mut celestial, 30.0, 60.0, 30.0);
+        bodies.push(CelestialBody::Sun);
     }
     if parts.moon {
         body(&mut celestial, -30.0, 60.0, 20.0);
+        bodies.push(CelestialBody::Moon);
     }
     let mut frame = fixture_frame(hud);
     frame.title = false;
@@ -123,6 +127,7 @@ fn shoot(renderer: &mut Renderer, hud: &HudBatch, parts: Parts, path: &Path) -> 
     frame.dark_disc = parts.dark_disc;
     frame.stars = parts.stars.then_some((glam::Mat4::IDENTITY, 1.0));
     frame.celestial = &celestial;
+    frame.celestial_bodies = &bodies;
     renderer.screenshot = Some(ScreenshotRequest {
         path: path.to_path_buf(),
         size: None,
@@ -252,6 +257,36 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         assert!(pixels > 0, "the scene shows the {part}");
         result.insert(format!("{part}_pixels"), pixels.into());
     }
+    // One body alone, as `Game::celestial_geometry` gives it when the other's sprite is
+    // missing: `sun` and `moon` still leave out their own body, and only it.
+    let [_, _, moon_alone, sun_alone] = &oracles[..] else {
+        unreachable!()
+    };
+    let neither = shoot(
+        &mut renderer,
+        &hud,
+        Parts {
+            sun: false,
+            moon: false,
+            ..ALL
+        },
+        &out.join("neither-oracle.png"),
+    );
+    for (body, alone) in [("sun", sun_alone), ("moon", moon_alone)] {
+        let pixels = differing(alone, &neither);
+        assert!(pixels > 0, "the scene shows the {body} alone");
+        result.insert(format!("{body}_alone_pixels"), pixels.into());
+    }
+    // Under each key, a scene of one body and the frame it must give: the other body's switch
+    // keeps it, its own leaves it out.
+    let sun_only = Parts { moon: false, ..ALL };
+    let moon_only = Parts { sun: false, ..ALL };
+    let singles = [
+        ("sun", "moon-alone", moon_only, moon_alone),
+        ("sun", "sun-alone", sun_only, &neither),
+        ("moon", "sun-alone", sun_only, sun_alone),
+        ("moon", "moon-alone", moon_only, &neither),
+    ];
     for ((key, _), oracle) in cases.iter().zip(&oracles) {
         let pixels = differing(&all, oracle);
         assert!(pixels > 0, "the scene shows what `{key}` leaves out");
@@ -272,11 +307,23 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
             "`{key}=false` leaves out exactly its part"
         );
         result.insert(format!("{key}_pixels"), pixels.into());
+        for (_, scene, parts, expected) in singles.iter().filter(|s| s.0 == *key) {
+            let switched = shoot(
+                &mut renderer,
+                &hud,
+                *parts,
+                &out.join(format!("{key}-false-{scene}.png")),
+            );
+            assert_eq!(
+                differing(&switched, expected),
+                0,
+                "`{key}=false` on the {scene} scene leaves out exactly its body"
+            );
+        }
     }
-    // A real GPU drew these frames, not a software rasterizer.
+    // Vulkan drew these frames. A software adapter (lavapipe) is fine: the comparisons are exact.
     let adapter = client::gfx::adapter().expect("the renderer's adapter");
     assert_eq!(adapter.backend, "Vulkan");
-    assert_ne!(adapter.kind, "cpu", "{adapter:?}");
     result.insert(
         "graphics_adapter".into(),
         format!(
@@ -447,6 +494,7 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         world_primitives: Default::default(),
         shadow_only: &[],
         celestial: &[],
+        celestial_bodies: &[],
         stars: None,
         hand: &[],
         hand_items: &[],

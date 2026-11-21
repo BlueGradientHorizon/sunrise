@@ -76,8 +76,12 @@ impl Renderer {
                     let lifted = hdr_gain
                         && self.hdr.as_ref().is_some_and(|h| h.lighting)
                         && !self.core_sky.as_ref().is_some_and(|c| c.draws_disc());
-                    let bodies =
-                        vanilla_bodies(celestial_vertices, frame.end_sky, own_sun, sky_switches);
+                    let bodies = vanilla_bodies(
+                        frame.celestial_bodies,
+                        celestial_vertices / 4,
+                        own_sun,
+                        sky_switches,
+                    );
                     pass.set_vertex_buffer(0, self.celestial_buffer.slice(..));
                     self.celestial.draw_bodies(pass, lifted, bodies);
                 }
@@ -107,23 +111,24 @@ impl Renderer {
     }
 }
 
-/// The indices (six a quad) of the celestial quads the game draws itself. The Overworld's are the
-/// sun's quad, then the moon's (`Game::celestial_geometry`): `own_sun` (a pack sky drawing its
-/// own) or a shader pack's `sun=false` leaves the sun out, `moon=false` the moon. The End's flash
-/// (`end_sky`) is neither and always draws.
+/// The celestial quads the game draws itself, by their place in `bodies` (what each quad is,
+/// `Frame::celestial_bodies`), of the `quads` uploaded: `own_sun` (a pack sky drawing its own)
+/// or a shader pack's `sun=false` leaves the sun out, `moon=false` the moon. The End's flash is
+/// neither and always draws. An entry past the quads uploaded has no quad to draw.
 fn vanilla_bodies(
-    celestial_vertices: usize,
-    end_sky: bool,
+    bodies: &[CelestialBody],
+    quads: usize,
     own_sun: bool,
     switches: sunrise_shaders::SkySwitches,
-) -> std::ops::Range<u32> {
-    let all = (celestial_vertices as u32 / 4) * 6;
-    if end_sky {
-        return 0..all;
-    }
-    let first = if own_sun || !switches.sun { 6 } else { 0 };
-    let last = if switches.moon { all } else { all.min(6) };
-    first..last
+) -> impl Iterator<Item = (u32, CelestialBody)> + '_ {
+    let drawn = move |body: CelestialBody| match body {
+        CelestialBody::Sun => !own_sun && switches.sun,
+        CelestialBody::Moon => switches.moon,
+        CelestialBody::EndFlash => true,
+    };
+    (0u32..)
+        .zip(bodies.iter().copied().take(quads))
+        .filter(move |&(_, body)| drawn(body))
 }
 
 #[cfg(test)]
