@@ -226,6 +226,7 @@ jobs:
             tools/check_cpu_baseline.py
             tools/check_glibc.py
             tools/check_imports.py
+            tools/check_pe_arch.py
             tools/ci/build-musl.sh
             tools/ci/check-musl-startup.sh
             tools/ci/game_smoke.sh
@@ -257,7 +258,23 @@ jobs:
           dpkg-query -W libasound2-dev libudev-dev
       - name: Build the official game, sunrise-ctl, sunrise-perf, sunrise-prepare, sunrise-server and sunrise-port-pack
         if: ${{ !matrix.musl }}
-        run: cargo build --release --locked --timings ${{ matrix.target && format('--target {0}', matrix.target) || '' }} -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl -p sunrise-perf --bin sunrise-perf -p sunrise-prepare --bin sunrise-prepare -p sunrise-server --bin sunrise-server -p sunrise-port-pack --bin sunrise-port-pack
+        run: |
+          source_game=()
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            source_game=(-p sunrise-game --bin sunrise-client)
+          fi
+          cargo build --release --locked --timings ${{ matrix.target && format('--target {0}', matrix.target) || '' }} \
+            -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl \
+            -p sunrise-perf --bin sunrise-perf -p sunrise-prepare --bin sunrise-prepare \
+            -p sunrise-server --bin sunrise-server -p sunrise-port-pack --bin sunrise-port-pack "${source_game[@]}"
+      - name: Verify the Windows game executables reserve 8 MiB of main stack
+        if: runner.os == 'Windows'
+        run: |
+          # Check sunrise-game's own executable before the release renames sunrise-official to sunrise-client.
+          python .workflow-tools/tools/check_pe_arch.py --stack-reserve 8388608 "${{ matrix.pe_arch }}" \
+            "$BIN/sunrise-client.exe" "$BIN/sunrise-official.exe"
+          # Cargo may hardlink its output to a cached artifact; don't overwrite that inode below.
+          rm "$BIN/sunrise-client.exe"
       - name: The official game is the game players get, under its name
         # sunrise-official: sunrise-client's game with Sunrise's own parts plugged in (docs/layers.md, "How a
         # Sunrise crate plugs in"). Everything below, the launcher and players know it as sunrise-client.
@@ -272,8 +289,8 @@ jobs:
       - name: Verify Windows executable architecture
         if: runner.os == 'Windows'
         run: |
-          python tools/check_pe_arch.py "${{ matrix.pe_arch }}" \
-            "$BIN/sunrise-client${{ matrix.exe }}" "$BIN/sunrise-ctl${{ matrix.exe }}" "$BIN/sunrise-perf${{ matrix.exe }}" \
+          python .workflow-tools/tools/check_pe_arch.py "${{ matrix.pe_arch }}" \
+            "$BIN/sunrise-ctl${{ matrix.exe }}" "$BIN/sunrise-perf${{ matrix.exe }}" \
             "$BIN/sunrise-prepare${{ matrix.exe }}" "$BIN/sunrise-server${{ matrix.exe }}" \
             "$BIN/sunrise-port-pack${{ matrix.exe }}"
       - name: Rosetta for the Intel build on Apple Silicon

@@ -32,10 +32,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-/// Stack reserved by workers that run gameplay or native mod code.
-/// Keep the established reservation until native stack use is measured: the integrated server
-/// holds `Game` by value, and native load, tick and save callbacks run on these same worker stacks.
-pub const GAME_THREAD_STACK_BYTES: usize = 136 * 1024 * 1024;
+/// The pre-guest stack reservation for a worker that holds and ticks `Game` by value (#2430).
+/// Other gameplay workers use the same host stack without the retired guest allowance.
+pub const GAME_THREAD_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 /// The worker threads the machine offers this process: `available_parallelism`'s
 /// answer (its share of the cores — CPU affinity, a container's quota), resolved

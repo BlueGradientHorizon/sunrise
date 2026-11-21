@@ -50,7 +50,11 @@ fn asynchronous_chunk_save_hook_runs_on_the_region_writer() {
     let probe = StackProbe::default();
     let writer = probe.writer.clone();
     let mods = vec![mod_api::ModEntry::new("stack_probe", Box::new(probe))].into();
-    save_chunk(mods);
+    assert_eq!(
+        save_chunk(mods),
+        7,
+        "the queued chunk reached the region file"
+    );
     let writer = writer.get().expect("the save hook did not run");
     assert_ne!(writer.id, caller, "the save hook ran on the calling thread");
     #[cfg(target_os = "linux")]

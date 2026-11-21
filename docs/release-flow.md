@@ -263,10 +263,11 @@ publishes) is `linux-smoke`'s, on Dyna's runner with the prepared files, from th
 
 On Windows, the binaries built by `sunrise-game` and `sunrise-official`, and the SDK's `sunrise_native_game`,
 reserve 8 MiB for the main thread (`/STACK:8388608` with MSVC, `-Wl,--stack,8388608` with GNU). This gives
-startup's by-value `Game` construction more room than the Windows default. Other shipped executables and
-platforms use their default main stack. The SDK sets the flag when it links the executable; `sunrise-prebuilt.json`
-does not carry `link_args`. Worker threads request stack sizes independently; the integrated server still
-honors `RUST_MIN_STACK` when it exceeds its own minimum.
+startup's by-value `Game` construction more room than the Windows default. The Windows package build checks
+`SizeOfStackReserve` in both Cargo game executables before renaming the official executable for shipping. Other
+shipped executables and platforms use their default main stack. The SDK sets the flag when it links the executable;
+`sunrise-prebuilt.json` does not carry `link_args`. Gameplay workers request their own 8 MiB stack; the integrated
+server honors a larger `RUST_MIN_STACK`. The Linux smoke run starts it without that override.
 
 The musl archive is an optional manual download for musl-based Linux desktops; see
 [installation and updates](native-client.md#musl-linux-manual-installation). The launcher still selects the

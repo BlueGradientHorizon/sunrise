@@ -8,8 +8,11 @@ why = """
 Native startup no longer needs a guest stack guard. Vanilla 26.3 constructs the client on the render thread in
 `net.minecraft.client.main.Main.main` and starts the server thread in `MinecraftServer.spin`; NeoForge's client and
 server `Main` patches add mod loading, not a stack guard. Sunrise keeps its startup order and restores the pre-guest
-8 MiB Windows executable reservation from `45b9aa75ff7` and `639ccd4e575` for by-value `Game` construction. The worker
-reservation is unchanged pending native stack measurements.
+8 MiB Windows executable reservation from `45b9aa75ff7` and `639ccd4e575` for by-value `Game` construction. Game
+workers use the same 8 MiB host stack adopted for `Game` on the integrated server in `0eaf8850ecf`. The extra 128 MiB
+from `119509e0a2b2` only served the retired guest runtime. Save order is unchanged: vanilla's `IOWorker.runStore`
+still anchors the background write, and NeoForge's patch to `SerializableChunkData.copyOf` serializes chunk attachments
+before the write, without a guest stack.
 """
 migrate = """
 Native mods keep their code and manifest. If you embed the game, remove calls to and imports of

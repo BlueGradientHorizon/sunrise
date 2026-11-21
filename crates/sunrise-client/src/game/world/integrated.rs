@@ -1552,17 +1552,17 @@ pub(super) mod tests {
     /// `RUST_MIN_STACK` override (#2430).
     #[test]
     fn integrated_server_stack_honors_its_floor_and_larger_overrides() {
-        let minimum = sunrise_threads::GAME_THREAD_STACK_BYTES;
-        assert_eq!(super::stack_for(None), minimum);
+        let host_stack = 8 * 1024 * 1024;
+        assert_eq!(super::stack_for(None), host_stack);
         assert_eq!(
             super::stack_for(Some("1048576")),
-            minimum,
+            host_stack,
             "smaller values keep the integrated server floor"
         );
-        assert_eq!(super::stack_for(Some("268435456")), 256 * 1024 * 1024);
+        assert_eq!(super::stack_for(Some("16777216")), 16 * 1024 * 1024);
         assert_eq!(
             super::stack_for(Some("lots")),
-            minimum,
+            host_stack,
             "an unparsed value is ignored"
         );
     }
