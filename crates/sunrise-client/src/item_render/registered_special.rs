@@ -149,9 +149,7 @@ impl ItemRenderer {
         factories: Option<&SpecialModelFactories>,
     ) -> Result<ClientItem, DecodeError> {
         ClientItem::from_json_with_specials(text, &|kind, base, fields| {
-            let Some(factory) = factories.and_then(|factories| {
-                mod_api::Identifier::parse_namespaced(kind).and_then(|id| factories.get(&id))
-            }) else {
+            let Some(factory) = factories.and_then(|factories| factories.get(kind)) else {
                 return Ok(None);
             };
             let renderer = factory
@@ -160,7 +158,7 @@ impl ItemRenderer {
             let base = self.bake(base);
             let particle = Arc::from(sprite_name(&base.particle.sprite));
             Ok(Some(RegisteredSpecialModel(Arc::new(BakedSpecialModel {
-                kind: kind.into(),
+                kind: kind.to_string().into(),
                 renderer,
                 base: SpecialLayerBase {
                     model: base,

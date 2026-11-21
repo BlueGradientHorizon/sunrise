@@ -217,7 +217,7 @@ impl ItemDrawEnv for PanEnv {
         let item = match stack.item.as_str() {
             "spt:pan" => 0,
             "spt:composite" => 3,
-            "spt:fault" | "spt:alias" => 4,
+            "spt:fault" | "spt:alias" | "spt:bare" | "spt:empty_path" => 4,
             "spt:bundle" => 5,
             _ => return None,
         };
@@ -1086,4 +1086,32 @@ fn a_parts_tint_reaches_the_vertices_as_a_vanilla_tint_does() {
         assert_eq!(part, vec![argb as u32; 6], "{vanilla}");
     }
     fs::remove_dir_all(root).unwrap();
+}
+
+/// Registration and resource lookup both use `Identifier::parse`: bare paths default to
+/// `minecraft:` and a valid empty path (`example:`) reaches its registered factory.
+#[test]
+fn special_model_lookup_accepts_bare_path_and_empty_path() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        root.path(),
+        "assets/spt/items/bare.json",
+        r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"skillet","handle":1}}}"#,
+    );
+    write(
+        root.path(),
+        "assets/spt/items/empty_path.json",
+        r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"example:","handle":2}}}"#,
+    );
+    let factory = || SpecialModelFactory::new(|config| config.decode::<PanConfig>(), Pan::bake);
+    let factories = BTreeMap::from([
+        (mod_api::Identifier::parse("skillet").unwrap(), factory()),
+        (mod_api::Identifier::parse("example:").unwrap(), factory()),
+    ]);
+    let renderer = renderer(root.path(), 2, 2, &factories);
+    let env = PanEnv(FakeHost::new());
+    for item in ["spt:bare", "spt:empty_path"] {
+        let state = renderer.resolve(&stack(item, 1), DisplayContext::Gui, None, None, 0, &env);
+        assert_eq!(quads(&renderer, &state).len(), 6, "{item}");
+    }
 }
