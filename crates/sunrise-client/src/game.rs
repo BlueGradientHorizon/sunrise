@@ -5075,8 +5075,8 @@ impl Game<'_> {
                         attack: (indicator == 2).then_some(strength),
                     };
                     let draws = hud_layout::hotbar(wi, hi, &inputs);
-                    // `extractSlot` for each item, in order, on the path `gui_paint` takes.
-                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g };
+                    // `extractSlot` for each item, in order.
+                    let mut items = crate::game::hotbar_items::HotbarItems { game: g };
                     hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
                 }
             });

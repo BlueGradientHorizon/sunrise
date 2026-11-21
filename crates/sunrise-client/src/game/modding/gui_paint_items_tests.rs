@@ -106,7 +106,7 @@ impl ItemPart for Decorator {
 #[ignore = "daily"]
 fn scoped_and_hotbar_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
     use crate::game::{
-        Game, gui_paint_items::HotbarItems, native_client_session::tests::logged_client,
+        Game, hotbar_items::HotbarItems, native_client_session::tests::logged_client,
         native_entity_refs::tests::with_client_game,
     };
 

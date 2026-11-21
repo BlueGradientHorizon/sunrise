@@ -96,15 +96,6 @@ pub trait DrawContext {
     ) -> Result<(), GuiDrawError> {
         Err(GuiDrawError::Unavailable)
     }
-    /// Paint GUI extraction calls through this window's atlas, including player faces, under
-    /// their poses: every op, an `Item` as vanilla's `item` then `itemDecorations` (the stack of
-    /// the local player's hotbar slot, scaled about its pivot, then its decorations unscaled) and
-    /// a `Blit` of every [`Blend`](crate::client::hud_layout::Blend). An op it cannot draw (text
-    /// deeper than 512 component nodes, an unknown slot, texture or sprite) refuses the whole
-    /// buffer with a [`GuiPaintError`] naming the op, and nothing of it is drawn.
-    fn gui_paint(&mut self, draws: &[GuiDraw]) -> Result<(), GuiPaintError> {
-        unimplemented!("DrawContext::gui_paint")
-    }
     /// Vanilla's nine-slice widget rendering. `color` is ARGB, as `fill` uses.
     fn gui_nine_slice(&mut self, sprite: &str, rect: [f32; 4], color: u32) {
         unimplemented!("DrawContext::gui_nine_slice")
