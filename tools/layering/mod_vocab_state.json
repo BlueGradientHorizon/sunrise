@@ -14,6 +14,16 @@
     "category": "reentrancy guard",
     "reason": "Per-thread stack of the Part-state edits open on this thread, by holder, so an edit of the same holder and key from inside its own edit is refused."
   },
+  "callback_owner.rs::CAUGHT": {
+    "type": "RefCell<Option<String>>",
+    "category": "crash owner",
+    "reason": "Per-thread slot holding the attributed diagnostic recorded by the game panic hook during a contained unwind so hostile payload destructors cannot overwrite it."
+  },
+  "callback_owner.rs::CONTAINED": {
+    "type": "Cell<u32>",
+    "category": "reentrancy guard",
+    "reason": "Per-thread nesting depth for contain_unwind and CallbackOwner containment so the game panic hook suppresses crash reports and captures diagnostics for contained mod panics."
+  },
   "callback_owner.rs::DELEGATED_ENGINE_PANIC": {
     "type": "RefCell<Option<Box<dynAny+Send>>>",
     "category": "reentrancy guard",
@@ -213,6 +223,11 @@
     "type": "OnceLock<Mutex<HashSet<(&'staticstr,&'staticstr)>>>",
     "category": "reentrancy guard",
     "reason": "Process-wide set of the (mod, operation) pairs whose refusal has been logged, so a refusing hook names the operation once and not on every call."
+  },
+  "world/scheduler.rs::allocate::NEXT_ID": {
+    "type": "AtomicU64",
+    "category": "monotonic counter",
+    "reason": "Monotonic generator for TaskId cancellation handles so scheduled task IDs are unique across worlds and never reused."
   },
   "world/server_reload.rs::first::ID": {
     "type": "LazyLock<Identifier>",
