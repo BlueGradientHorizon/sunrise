@@ -2238,16 +2238,21 @@ pub(super) mod tests {
                 .unwrap()
                 .hub
                 .stack(&Some(table_paper.clone()));
-            let content_carried: Vec<_> = drain_packets(&rx)
+            // Matching state IDs take `handleContainerClick`'s incremental broadcast path.
+            // A wrong carried hash corrects the cursor without resending the whole menu.
+            let replies = drain_packets(&rx);
+            assert!(!replies.iter().any(|packet| matches!(
+                packet,
+                C::ContainerSetContent(content) if content.container == table_window
+            )));
+            let corrected_cursor: Vec<_> = replies
                 .into_iter()
                 .filter_map(|packet| match packet {
-                    C::ContainerSetContent(content) if content.container == table_window => {
-                        Some(content.carried)
-                    }
+                    C::SetCursorItem(update) => Some(update.item),
                     _ => None,
                 })
                 .collect();
-            assert_eq!(content_carried, vec![table_net]);
+            assert_eq!(corrected_cursor, vec![table_net]);
             game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
