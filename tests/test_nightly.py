@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -238,7 +239,7 @@ class MuslAttachmentTests(unittest.TestCase):
                 # Both signatures checked for real, with OpenSSL and the run's throwaway key, no code of the checkout.
                 result = shell(verify)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout.splitlines(), [f"{kind}: 1 files match SHA256SUMS",
+                self.assertEqual(result.stderr.splitlines(), [f"{kind}: 1 files match SHA256SUMS",
                                                               f"{env['ALSO_FOR']}: 1 files match SHA256SUMS"])
                 self.assertNotIn("cargo", verify)
                 self.assertTrue((root / "musl/SHA256SUMS-musl.sig").stat().st_size)
@@ -739,8 +740,9 @@ class VerifySumsTests(unittest.TestCase):
         return folder
 
     def verify(self, folder, tag, **kwargs):
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
             nightly.verify_sums(folder, tag, **{"keys": [self.public], **kwargs})
+        self.assertEqual(out.getvalue(), "", "stdout is its callers' result")
 
     def test_a_folder_signed_for_its_tag_by_a_release_key_passes(self):
         files = {"sdk.json": b"index", "surface.json": b"surface"}
@@ -772,10 +774,42 @@ class VerifySumsTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "isn't signed"):
             self.verify(folder, "26.3-0.1.0")
 
+    def test_a_malformed_row_or_signature_line_refuses_and_every_repeated_row_is_checked(self):
+        files = {"a.tar.gz": b"a"}
+        folder = self.release("26.3-0.1.0", files)
+        sums = (folder / "SHA256SUMS").read_text()
+        for text, error in ((sums + "not a row\n", "row 'not a row' is not"),
+                            (sums + f"{'0' * 64}  a.tar.gz\n", "a.tar.gz does not match")):
+            with self.subTest(error=error):
+                broken = self.release("26.3-0.1.0", files)
+                (broken / "SHA256SUMS").write_text(text)
+                message = self.work / "message"
+                message.write_bytes(b"horizon release 26.3-0.1.0\n" + text.encode())
+                signature = subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", str(self.key), "-rawin", "-in",
+                                            str(message)], check=True, capture_output=True).stdout
+                (broken / "SHA256SUMS.sig").write_text(base64.b64encode(signature).decode() + "\n")
+                with self.assertRaisesRegex(SystemExit, error):
+                    self.verify(broken, "26.3-0.1.0", only=["a.tar.gz"])
+        (folder / "SHA256SUMS.sig").write_text((folder / "SHA256SUMS.sig").read_text() + "not-base64!\n")
+        with self.assertRaisesRegex(SystemExit, "line 'not-base64!' is not a base64 Ed25519 signature"):
+            self.verify(folder, "26.3-0.1.0")
+
+    def test_sdk_previous_prints_only_the_build_it_found(self):
+        # sdk-publish.yml reads its stdout as one SHA: the verifier's own report goes to stderr.
+        build = "b" * 40
+        with mock.patch.object(nightly, "previous_sdk", return_value=build), \
+                mock.patch.object(nightly, "release_assets",
+                                  side_effect=lambda tag, *names: print("26.3: 1 files match", file=sys.stderr)
+                                  or {nightly.SDK_SURFACE: b"{}"}), \
+                mock.patch("sys.argv", ["nightly.py", "sdk-previous", "c" * 40, str(self.work / "previous.json")]), \
+                contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+            nightly.main()
+        self.assertEqual(out.getvalue(), build + "\n")
+
     def test_publishing_before_any_key_warns_and_unsigned_never_passes_once_one_is_listed(self):
         folder = self.release("nightly", {"a.tar.gz": b"a"})
         (folder / "SHA256SUMS.sig").unlink()
-        with contextlib.redirect_stdout(io.StringIO()) as out:
+        with contextlib.redirect_stderr(io.StringIO()) as out:
             nightly.verify_sums(folder, "nightly", keys=[], publishing=True)
         self.assertIn("::warning::nightly: published with SHA256SUMS but unsigned", out.getvalue())
         with self.assertRaisesRegex(SystemExit, "has no SHA256SUMS.sig"):

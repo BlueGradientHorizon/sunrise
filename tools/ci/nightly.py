@@ -331,6 +331,8 @@ def isolated_env() -> dict[str, str]:
 # The release keys launchers trust, read from main, never from the checkout a release builds: a candidate's own copy
 # could list a key of its own.
 KEYS_FILE = "crates/sunrise-release-sign/release-keys.txt"
+# A SHA256SUMS row as sha256sum writes it (text or binary mode), as sunrise-release-sign's parse_sums reads it.
+SUMS_ROW = re.compile(r"([0-9A-Fa-f]{64}) [ *]?(\S.*)")
 # An Ed25519 public key's DER: this SubjectPublicKeyInfo header, then its 32 bytes.
 ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
 
@@ -352,22 +354,29 @@ def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.si
     no code of the checkout: a key of `keys` (main's release-keys.txt by default) signed SHA256SUMS for `tag` (the
     message `horizon release <tag>` and a newline, then SHA256SUMS), and each file of `only` (every file SHA256SUMS
     lists when empty) is listed and matches. `publishing`: while no key is listed, an unsigned release goes out with
-    a warning, as before any key existed. Exits naming what failed."""
+    a warning, as before any key existed. Every SHA256SUMS row must be `<sha256> <file>` or `<sha256> *<file>`, and
+    every signature line one base64 Ed25519 signature; a repeated name is checked against each of its rows. Reports
+    on stderr (stdout is its callers' result), and exits naming what failed."""
     keys = release_keys() if keys is None else list(keys)
     sums = (folder / "SHA256SUMS").read_bytes()
-    entries = {}
-    for line in sums.decode().splitlines():
-        digest, _, name = line.partition(" ")
-        entries[name.strip().lstrip("*")] = digest
+    rows = []
+    for line in sums.decode(errors="replace").splitlines():
+        if not line.strip():
+            continue
+        if not (match := SUMS_ROW.fullmatch(line)):
+            raise SystemExit(f"::error::{tag}'s SHA256SUMS row {line!r} is not `<sha256>  <file>`")
+        rows.append((match[2], match[1].lower()))
     if "/" in signature or not (folder / signature).is_file():
         if publishing and not keys:
-            print(f"::warning::{tag}: published with SHA256SUMS but unsigned: release-keys.txt lists no key yet")
+            print(f"::warning::{tag}: published with SHA256SUMS but unsigned: release-keys.txt lists no key yet",
+                  file=sys.stderr)
         else:
             raise SystemExit(f"::error::{tag} has no {signature}: launchers would refuse it")
     elif not keys:
         if not publishing:
             raise SystemExit(f"::error::{tag}: no key to check the signature with")
-        print(f"::warning::{tag}: signed, but release-keys.txt lists no key yet, so launchers can't check it")
+        print(f"::warning::{tag}: signed, but release-keys.txt lists no key yet, so launchers can't check it",
+              file=sys.stderr)
     else:
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
@@ -376,9 +385,12 @@ def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.si
             signed = False
             for line in (folder / signature).read_text().split():
                 try:
-                    (work / "signature").write_bytes(base64.b64decode(line, validate=True))
+                    decoded = base64.b64decode(line, validate=True)
                 except ValueError:
-                    continue
+                    decoded = b""
+                if len(decoded) != 64:
+                    raise SystemExit(f"::error::{tag}'s {signature} line {line!r} is not a base64 Ed25519 signature")
+                (work / "signature").write_bytes(decoded)
                 for key in keys:
                     (work / "key.der").write_bytes(ED25519_SPKI + base64.b64decode(key))
                     checked = subprocess.run(
@@ -389,12 +401,14 @@ def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.si
             if not signed:
                 raise SystemExit(f"::error::{tag}: SHA256SUMS isn't signed for `horizon release {tag}` by a release key")
     for name in only:
-        if name not in entries:
+        if name not in {listed for listed, _ in rows}:
             raise SystemExit(f"::error::{name} is not in {tag}'s SHA256SUMS")
-    for name in only or entries:
-        if hashlib.sha256((folder / name).read_bytes()).hexdigest() != entries[name]:
-            raise SystemExit(f"::error::{tag}'s {name} does not match its SHA256SUMS")
-    print(f"{tag}: {len(only or entries)} files match SHA256SUMS")
+    checked = [(name, digest) for name, digest in rows if not only or name in only]
+    for name, digest in checked:
+        with (folder / name).open("rb") as file:
+            if hashlib.file_digest(file, "sha256").hexdigest() != digest:
+                raise SystemExit(f"::error::{tag}'s {name} does not match its SHA256SUMS")
+    print(f"{tag}: {len(checked)} files match SHA256SUMS", file=sys.stderr)
 
 
 def release_assets(tag: str, *names: str) -> dict[str, bytes]:
