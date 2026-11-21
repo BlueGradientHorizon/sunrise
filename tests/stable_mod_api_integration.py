@@ -110,9 +110,12 @@ class StableModApiIntegration(unittest.TestCase):
         unknown_field = {**ADDITIVE,
                          "behaviours": [{**record, "since": "26.3-0.2.0"} for record in ADDITIVE["behaviours"]]}
         bumped = {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0], {**ADDITIVE["behaviours"][1], "version": 2}]}
-        entries = [(record["id"], record["hash"]) for record in ADDITIVE["behaviours"]] + [("later:x", LATER_HASH)]
-        counted = {**ADDITIVE, "later": [{"id": "later:x", "hash": LATER_HASH}],
-                   "hash": digest("".join(f"{id} {hash}\n" for id, hash in sorted(entries)))}
+        def counting(*later):
+            """ADDITIVE with an unknown collection of `later`'s (id, hash) records, counted in its document hash."""
+            entries = sorted([(record["id"], record["hash"]) for record in ADDITIVE["behaviours"]] + list(later))
+            return {**ADDITIVE, "later": [{"id": id, "hash": hash} for id, hash in later],
+                    "hash": digest("".join(f"{id} {hash}\n" for id, hash in entries))}
+        counted = counting(("later:x", LATER_HASH))
         for fixture, signed, refused in (
                 ("as exported", ADDITIVE, False), ("unknown field", unknown_field, False),
                 ("empty unknown collection", {**ADDITIVE, "later": []}, False),
@@ -121,8 +124,8 @@ class StableModApiIntegration(unittest.TestCase):
                 ("unknown collection outside the hash", {**ADDITIVE, "later": [{"id": "later:x", "hash": LATER_HASH}]},
                  True),
                 ("positional unknown records", {**counted, "later": [["later:x", LATER_HASH]]}, True),
-                ("unknown record reusing a known id",
-                 {**counted, "later": [{"id": ADDITIVE["behaviours"][0]["id"], "hash": LATER_HASH}]}, True),
+                # Counted in the hash, so only the repeated id refuses it.
+                ("unknown record reusing a known id", counting((ADDITIVE["behaviours"][0]["id"], LATER_HASH)), True),
                 ("repeated id", repeated, True), ("no hash", hashless, True),
                 ("float schema", {**ADDITIVE, "schema": 3.0}, True),
                 ("native internals", {**ADDITIVE, "engine_items": [internal]}, True),
