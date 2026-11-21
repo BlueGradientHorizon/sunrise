@@ -1,7 +1,7 @@
 //! Moved here from the game so mods can name it.
 #[allow(unused_imports)]
 use crate::*;
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
 /// A `Matrix3x2fStack` operation applied to a copy of the current pose.
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: a closed set the game matches without a wildcard
@@ -160,4 +160,61 @@ pub struct HealthInputs {
     pub under_water: bool,
     /// `getVehicleMaxHearts` of the ridden living vehicle (0 = none).
     pub vehicle_hearts: i32,
+}
+
+type HealthHudDraw = dyn Fn(&dyn ClientHost, &HealthInputs, &mut dyn GuiCanvas) -> Result<(), GuiDrawError>
+    + Send
+    + Sync;
+
+// no wire: owns an in-process renderer callback.
+/// An owned renderer for the `health_hud` hook. Clones share the callback, so a listener can
+/// build one renderer at setup and return a clone of its handle each frame.
+#[derive(Clone)]
+// exhaustive: its fields are private, so mods cannot build or destructure it
+pub struct HealthHudReplacement {
+    draw: Arc<HealthHudDraw>,
+    status_top: Option<i32>,
+}
+
+impl HealthHudReplacement {
+    /// Share a renderer that draws the health, armour, food and air rows. The selected renderer
+    /// runs only when the player-health layer is drawn. An error discards its whole canvas group
+    /// and draws vanilla instead; `Ok(())` replaces vanilla even if nothing was drawn.
+    ///
+    /// By default this replacement reserves no room for status rows.
+    pub fn new(
+        draw: impl Fn(&dyn ClientHost, &HealthInputs, &mut dyn GuiCanvas) -> Result<(), GuiDrawError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self {
+            draw: Arc::new(draw),
+            status_top: None,
+        }
+    }
+
+    /// Reserve room from the highest status row's top to the bottom of the GUI. `top` is a
+    /// logical GUI y coordinate, independent of the canvas pose. This also applies when a Pre
+    /// listener hides the selected layer, but not if the renderer fails and vanilla draws instead.
+    pub fn with_status_top(mut self, top: i32) -> Self {
+        self.status_top = Some(top);
+        self
+    }
+
+    /// The declared top of the status rows, if the renderer reserves room for them.
+    pub fn status_top(&self) -> Option<i32> {
+        self.status_top
+    }
+
+    /// Run this renderer with the current client's host, inputs and canvas. The game invokes
+    /// it in the answering mod's scope inside the player-health layer's drawing group.
+    pub fn invoke(
+        &self,
+        host: &dyn ClientHost,
+        inputs: &HealthInputs,
+        canvas: &mut dyn GuiCanvas,
+    ) -> Result<(), GuiDrawError> {
+        (self.draw)(host, inputs, canvas)
+    }
 }

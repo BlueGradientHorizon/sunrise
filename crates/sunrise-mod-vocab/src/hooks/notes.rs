@@ -2877,10 +2877,12 @@ registration path.
   `list(&folder, after, limit)` returns lexicographically ordered names strictly after the cursor, at most `limit` entries; start with `None`, continue with the last name, and stop on an empty page.
   `ConfigPath::root()` lists the mod's own root; `limit` must be 1 through `CONFIG_LIST_MAX` (1024), otherwise `InvalidPage` ([config and bulk storage](../how-to/mod-settings.md)).
 
-- The player-health HUD rows through `health_hud`: every frame the HUD draws them, the
-  hook hears the layout's inputs (`HealthInputs`) and the screen's GUI size, and a mod that answers with
-  draws replaces all the rows — armour, hearts, food, air and the heights above the hotbar — for that
-  frame. Nothing answered draws Sunrise's own.
+- The player-health HUD rows through `health_hud`: the hook hears the layout's inputs
+  (`HealthInputs`) and the logical GUI size. The first `HealthHudReplacement` answer draws all the
+  rows (armour, hearts, food and air) on the canvas at `minecraft:player_health`, unless layer Pre
+  hides it. An error discards its draws and falls back to vanilla; a successful empty draw still
+  replaces vanilla. A replacement can declare its highest logical row to reserve room for overlays.
+  With no answer, vanilla lays out the rows even if layer Pre hides the layer.
 
 - Which hearts the player's health bar draws through `player_heart_type` (NeoForge's `PlayerHeartTypeEvent`):
   each frame the HUD draws the hearts, `kind` comes in as vanilla's pick (poisoned, withered, frozen or normal) and a mod

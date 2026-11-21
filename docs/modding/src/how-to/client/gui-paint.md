@@ -67,6 +67,46 @@ bar, cooldown and count. Use the icon's local `event.x` and `event.y` for drawin
 already has the caller's pose and scissor (identity for ordinary inventory, hotbar and tooltip
 calls). Use `event.draw.scope` to give a decorator's own draws a separate rollback boundary.
 
+## Replacing the player-health HUD
+
+Return `Some(HealthHudReplacement)` from `health_hud` to replace the player's hearts, armour, food
+and air rows; return `None` to leave the choice to the next listener. The first replacement wins.
+The listener sees `HealthInputs` (including the selected heart type) and the logical GUI size.
+The renderer runs in the answering mod's scope, on the `minecraft:player_health` layer's canvas,
+only when layer Pre lets the layer draw.
+
+Construct the renderer once and clone the handle when answering. Use `with_status_top(top)` on the
+returned handle to keep overlays clear of the highest logical GUI row, even if Pre hides the layer.
+Without it, a replacement reserves no room. An error rolls back the canvas and draws/reserves
+vanilla's rows; the game does not ask the next listener. Returning `Ok(())` without drawing
+anything intentionally hides all these rows, rather than falling back to vanilla.
+
+```rust,ignore
+use mod_api::{ClientHost, HealthHudEvent, HealthHudReplacement, Hooks};
+
+struct StatusHud(HealthHudReplacement);
+
+impl Default for StatusHud {
+    fn default() -> Self {
+        Self(HealthHudReplacement::new(|_, inputs, canvas| {
+            let [_, height] = canvas.size();
+            canvas.fill([16.0, height - 49.0, inputs.health, 4.0], 0xFFFF_6060)
+        }))
+    }
+}
+
+#[mod_api::sunrise_mod]
+impl Hooks for StatusHud {
+    fn health_hud(
+        &self,
+        _: &dyn ClientHost,
+        event: &mut HealthHudEvent<'_>,
+    ) -> Option<HealthHudReplacement> {
+        Some(self.0.clone().with_status_top(event.hi - 49))
+    }
+}
+```
+
 ## Command buffer
 
 `DrawContext::gui_paint(&[GuiDraw])` draws a buffer of vanilla's `GuiGraphics` calls in order, under their poses

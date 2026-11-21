@@ -56,7 +56,12 @@ impl Game<'_> {
     /// frame (`draws`): a keep-out from their highest row's top down, as wide as the hotbar. Called
     /// as they are laid out, after `hud_room`, so the overlays drawn over the HUD see them.
     pub(super) fn keep_status_rows(&mut self, draws: &[hud_layout::GuiDraw], w: i32, h: i32) {
-        if let Some(top) = hud_layout::draws_top(draws).filter(|top| *top < h) {
+        self.keep_status_top(hud_layout::draws_top(draws), w, h);
+    }
+
+    /// Reserve the same space from a renderer's declared top instead of a list of draws.
+    pub(super) fn keep_status_top(&mut self, top: Option<i32>, w: i32, h: i32) {
+        if let Some(top) = top.filter(|top| *top < h) {
             let half = hud_overlays::HOTBAR_HALF_WIDTH;
             self.ui.room.add(
                 Keep::StatusRows,
@@ -64,7 +69,7 @@ impl Game<'_> {
                     (w / 2 - half) as f32,
                     top as f32,
                     (2 * half) as f32,
-                    (h - top) as f32,
+                    (i64::from(h) - i64::from(top)) as f32,
                 ],
             );
         }

@@ -5144,20 +5144,48 @@ impl Game<'_> {
                     vehicle_hearts,
                 };
                 let at = [p.position.x, p.position.y, p.position.z];
-                // The native mods' health HUD (`native_health_hud`): a mod
-                // that answers draws every row instead.
-                let mut native_health_hud = None;
-                self.native_health_hud(&inputs, wi, hi, &mut native_health_hud);
-                let draws = match native_health_hud {
-                    Some(draws) => draws,
-                    None => self.health_hud.layout(&inputs, wi, hi),
-                };
-                self.keep_status_rows(&draws, wi, hi);
+                let mut replacement = None;
+                self.native_health_hud(&inputs, wi, hi, &mut replacement);
+                // Without a replacement, advance vanilla's layout state even if Pre hides the layer.
+                let vanilla = replacement.is_none().then(|| {
+                    let draws = self.health_hud.layout(&inputs, wi, hi);
+                    self.keep_status_rows(&draws, wi, hi);
+                    draws
+                });
                 // The rows draw in one pass here, so a mod's `player_health`
                 // layer stands for the armor, food and air rows too.
-                self.gui_layer("minecraft:player_health", &mut batch, |g, batch| {
+                let shown = self.gui_layer("minecraft:player_health", &mut batch, |g, batch| {
+                    if let Some(chosen) = &replacement {
+                        use mod_api::DrawContext;
+                        let drawn =
+                            host::draw::GameDrawContext::new(g, batch).draw_gui(&mut |canvas| {
+                                let _entered =
+                                    mod_api::__private::enter(chosen.mod_id, "health_hud");
+                                // Contain phase refusals inside the drawing group, so even a refusal
+                                // the mod caught becomes an error before the group can commit.
+                                mod_api::__private::contain_outside_world(|| {
+                                    chosen.answer.invoke(g, &inputs, canvas)
+                                })
+                                .inspect_err(|refusal| refusal.report())
+                                .unwrap_or(Err(mod_api::GuiDrawError::Abort))
+                            });
+                        if drawn.is_ok() {
+                            g.keep_status_top(chosen.answer.status_top(), wi, hi);
+                            return;
+                        }
+                    }
+                    let draws = vanilla.unwrap_or_else(|| {
+                        let draws = g.health_hud.layout(&inputs, wi, hi);
+                        g.keep_status_rows(&draws, wi, hi);
+                        draws
+                    });
                     hud_layout::paint(batch, &g.gui.atlas, &draws);
                 });
+                if shown.is_none()
+                    && let Some(chosen) = replacement
+                {
+                    self.keep_status_top(chosen.answer.status_top(), wi, hi);
+                }
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
                 // by this client only.
                 if let Some((volume, pitch)) = self.health_hud.bubble_pop_sound.take() {
