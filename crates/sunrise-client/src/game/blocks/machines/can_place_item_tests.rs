@@ -396,6 +396,19 @@ fn storage_transfer_can_insert_two_despite_a_declared_rule_the_part_replaces() {
 #[ignore = "daily"]
 fn unrepresentable_hook_inputs_refuse_insertion_instead_of_using_any() {
     fixture(|game| {
+        let stone = ItemStack::new("minecraft:stone", 1);
+        let entity = target(game);
+        let mut attempt = PlacementAttempt::default();
+        let unloaded = World::new(BlockStateId(u32::MAX), 0);
+        assert_eq!(
+            attempt.ask(&game.world, TARGET, entity, 1, &stone),
+            Some(true)
+        );
+        assert_eq!(
+            attempt.ask(&unloaded, TARGET, entity, 1, &stone),
+            Some(false)
+        );
+
         let view = game.containers().view(TARGET, false).unwrap();
         let unknown = ItemStack::new("admission:not_registered", 1);
         assert_eq!(
@@ -407,7 +420,6 @@ fn unrepresentable_hook_inputs_refuse_insertion_instead_of_using_any() {
             unreachable!();
         };
         entity.items[2] = Some(unknown.clone());
-        let stone = ItemStack::new("minecraft:stone", 1);
         assert_eq!(game.add_item(None, &view, stone.clone(), None), Some(stone));
         assert_eq!(target(game).items, [None, None, Some(unknown)]);
     });
