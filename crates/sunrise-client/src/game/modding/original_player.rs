@@ -864,7 +864,7 @@ mod tests {
                             sunrise_mod_runtime::attachments::AttachmentBatch::new(rows).into();
                         let query = batch.query(&RETAINED).unwrap();
                         let old = query.iter().try_next().unwrap().unwrap();
-                        let token = AttachmentWriteToken::from(old.write_token());
+                        let token = old.write_token();
                         assert_eq!(game.attachment_validate_write(token.clone()), Ok(()));
                         *source.lock().unwrap() = Some((index, token));
                         game.lan_open_crafting(12, [0, 64, 0]);
