@@ -373,6 +373,9 @@ impl<'a> Index<'a> {
             (self.default_build(root, &item.attrs) && *alias == name)
                 .then(|| item.ident.to_string())
         });
+        if spelling.as_deref() == Some("self") {
+            return Ok(Some(krate));
+        }
         let name = spelling.as_deref().unwrap_or(name);
         Ok(self
             .dependency_aliases
@@ -741,7 +744,12 @@ impl<'a> Index<'a> {
                 Item::ExternCrate(item) if self.default_build(module, &item.attrs) => {
                     let alias = item.rename.as_ref().map_or(&item.ident, |(_, alias)| alias);
                     if *alias == name {
-                        named.push((vec![item.ident.to_string()], true, reachable(&item.vis)));
+                        let (source, rooted) = if item.ident == "self" {
+                            ("crate".to_owned(), false)
+                        } else {
+                            (item.ident.to_string(), true)
+                        };
+                        named.push((vec![source], rooted, reachable(&item.vis)));
                     }
                 }
                 _ => {}

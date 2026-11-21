@@ -22,7 +22,7 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "crates/sunrise-mod-api/Cargo.toml",
-        "[package]\nname = \"sunrise-mod-api\"\n[lib]\nname = \"mod_api\"\n[dependencies]\nmod_vocab = { package = \"sunrise-mod-vocab\", path = \"../sunrise-mod-vocab\" }\n",
+        "[package]\nname = \"sunrise-mod-api\"\n[lib]\nname = \"mod_api\"\n[dependencies]\nsunrise-mod-vocab = { path = \"../sunrise-mod-vocab\" }\n",
     ),
     (
         "crates/sunrise-mod-api-macros/Cargo.toml",
@@ -30,7 +30,7 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "crates/sunrise-mod-api/src/lib.rs",
-        "pub use mod_vocab::*;\n",
+        "extern crate self as mod_api;\npub use mod_vocab::*;\n",
     ),
     (
         "crates/sunrise-mod-vocab/src/lib.rs",
@@ -1167,6 +1167,27 @@ fn a_rooted_external_path_wins_over_a_local_module_name() {
         .expect("the rooted path must resolve through the dependency root");
     assert!(error.contains("mod_api::leak"), "{error}");
     assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_facade_self_alias_does_not_hide_its_dependency_glob() {
+    let export = export_fixture(
+        &[(
+            "crates/sunrise-mod-api/src/lib.rs",
+            "pub use mod_vocab::*;",
+            "pub use mod_vocab::*;\npub struct FacadeType;\npub fn own(value: mod_api::FacadeType) -> mod_api::FacadeType { value }",
+        )],
+        HOOKS,
+    );
+    assert!(export.surface.traits.iter().any(|t| t.id == "trait:Hooks"));
+    assert!(export.surface.types.iter().any(|t| t.id == "type:Point"));
+    let own = export
+        .surface
+        .functions
+        .iter()
+        .find(|f| f.id == "fn:own")
+        .unwrap();
+    assert_eq!(own.refs, ["type:FacadeType"]);
 }
 
 #[test]

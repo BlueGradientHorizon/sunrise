@@ -2,14 +2,13 @@
 //! through public modules and `pub use`s (globs included), skipping `#[doc(hidden)]`, `__`
 //! names and items compiled out of a mod's default native build.
 use crate::index::{Found, Index, ItemId, OutsideSeam, uses};
+use mod_source::index::Binding;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use syn::{Item, Visibility};
 
 /// The facade crate a mod depends on, and the crate its root re-exports.
 const FACADE: &str = "sunrise_mod_api";
 const VOCAB: &str = "mod_api";
-/// The vocabulary crate's own name, as the facade writes it.
-const VOCAB_WRITTEN: &str = "mod_vocab";
 /// The procedural macros crate whose macros the API re-exports.
 pub(super) const MACROS: &str = "sunrise_mod_api_macros";
 
@@ -141,11 +140,7 @@ impl<'i, 'a> Walker<'i, 'a> {
         path: &[String],
         outside: &OutsideSeam,
     ) -> Option<usize> {
-        let mut path = path.to_vec();
-        if path.first().map(String::as_str) == Some(VOCAB_WRITTEN) {
-            path[0] = VOCAB.to_owned();
-        }
-        outside.internal_module(self.index, module, &path)
+        outside.internal_module(self.index, module, path)
     }
 
     /// What a path rooted in the extern prelude names, without letting a local module shadow its
@@ -156,54 +151,22 @@ impl<'i, 'a> Walker<'i, 'a> {
         path: &[String],
         outside: &OutsideSeam,
     ) -> Result<Option<Target>, String> {
-        let mut path = path.to_vec();
-        if path.first().map(String::as_str) == Some(VOCAB_WRITTEN) {
-            path[0] = VOCAB.to_owned();
-        }
-        if let Some(external) = outside.external_path(self.index, module, &path, true)? {
+        if let Some(external) = outside.external_path(self.index, module, path, true)? {
             return Ok(Some(Target::External(external)));
         }
-        let Some((krate, relative)) = path.split_first() else {
-            return Ok(None);
-        };
-        let indexed = *krate == FACADE
-            || crate::index::CRATES
-                .iter()
-                .any(|(name, _)| *name == krate.as_str());
-        if !indexed {
-            return Ok(None);
-        }
-        let root = self.index.module(krate, &[])?;
-        if relative.is_empty() {
-            return Ok(Some(Target::Module(root)));
-        }
-        if let Some(target) = self.index.resolve_module_path(root, relative)? {
-            let module_path = &self.index.modules[target];
-            let canonical = std::iter::once(module_path.krate.clone())
-                .chain(module_path.path.iter().cloned())
-                .collect::<Vec<_>>();
-            if let Some(external) = outside.external_path(self.index, module, &canonical, true)? {
-                return Ok(Some(Target::External(external)));
-            }
+        if let Binding::Found(Found::Module(target)) =
+            self.index.resolve_type_binding(module, path, true)?
+        {
             return Ok(Some(Target::Module(target)));
         }
-        let (last, parent_path) = relative.split_last().expect("a nonempty path");
-        let parent = if parent_path.is_empty() {
-            Some(root)
-        } else {
-            self.index.resolve_module_path(root, parent_path)?
+        // This can also name a value or a macro re-exported by an indexed module.
+        let Some((last, parent)) = path.split_last() else {
+            return Ok(None);
         };
-        if let Some(parent) = parent {
-            let module_path = &self.index.modules[parent];
-            let canonical = std::iter::once(module_path.krate.clone())
-                .chain(module_path.path.iter().cloned())
-                .collect::<Vec<_>>();
-            if let Some(mut external) =
-                outside.external_path(self.index, module, &canonical, true)?
-            {
-                external.push(last.clone());
-                return Ok(Some(Target::External(external)));
-            }
+        if !parent.is_empty()
+            && let Binding::Found(Found::Module(parent)) =
+                self.index.resolve_type_binding(module, parent, true)?
+        {
             if let Some(name) = self
                 .names(parent, outside)?
                 .into_iter()
@@ -211,33 +174,11 @@ impl<'i, 'a> Walker<'i, 'a> {
             {
                 return Ok(Some(name.target));
             }
-        }
-        Ok(match self.index.resolve_path(root, relative) {
-            Ok(Found::Item(id)) => {
-                let (_, name) = defined(self.index.item(id)).expect("resolved items have names");
-                let item_module = &self.index.modules[id.module];
-                let canonical = std::iter::once(item_module.krate.clone())
-                    .chain(item_module.path.iter().cloned())
-                    .chain(std::iter::once(name))
-                    .collect::<Vec<_>>();
-                match outside.external_path(self.index, module, &canonical, true)? {
-                    Some(external) => Some(Target::External(external)),
-                    None => Some(Target::Item(id)),
-                }
+            if let Ok(Found::Item(id)) = self.index.resolve_rooted_path(module, path) {
+                return Ok(Some(Target::Item(id)));
             }
-            Ok(Found::External {
-                module,
-                path,
-                rooted,
-            }) => Some(
-                match outside.external_path(self.index, module, &path, rooted) {
-                    Ok(external) => Target::External(external.unwrap_or(path)),
-                    Err(error) => Target::Ambiguous(error),
-                },
-            ),
-            Ok(Found::Module(target)) => Some(Target::Module(target)),
-            Err(_) => None,
-        })
+        }
+        Ok(None)
     }
 
     /// What `path`, written in a `pub use` of `module`, leads to.
@@ -403,12 +344,6 @@ impl<'i, 'a> Walker<'i, 'a> {
                                         },
                                         hidden,
                                     });
-                                } else if let Some(target) = self.module_at(module, &path, outside)
-                                {
-                                    for mut name in self.names(target, outside)? {
-                                        name.hidden |= hidden;
-                                        globbed.push(name);
-                                    }
                                 } else {
                                     self.notes.push(format!(
                                         "pub use {}::* in {}: not a module of the API's crates",

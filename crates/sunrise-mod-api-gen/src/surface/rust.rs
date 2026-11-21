@@ -2,6 +2,7 @@
 //! relative to `mod_api`, lifetimes kept, one spacing), and each type's wire layout description
 //! for the shape function.
 use crate::index::{Found, Index, ItemId, OutsideSeam};
+use mod_source::index::Binding;
 use mod_source::layouts::{WireForm, Wires, param_names};
 use mod_surface::shape::Shape;
 use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
@@ -12,8 +13,6 @@ use syn::{Item, Type};
 
 /// The crates whose paths are written by their last segment (`Arc`, `HashMap`, `Duration`).
 const STD: &[&str] = &["std", "core", "alloc"];
-/// The vocabulary crate is indexed by its public API name, not its Cargo library name.
-const INDEXED_CRATE_ALIASES: &[(&str, &str)] = &[("mod_vocab", "mod_api")];
 
 /// `tokens` with one spacing: a space after `,`, `;` and a lone `:`, around `->`, `=`, `+` and
 /// `=>`, between two words, after a word-ending `>`, `)` or `]` before a word; none elsewhere.
@@ -197,20 +196,9 @@ pub(super) fn ref_kind(item: &Item) -> Option<&'static str> {
 }
 
 impl Paths<'_, '_> {
-    /// Resolve an absolute path from its crate root, where a local module cannot shadow the
-    /// extern-prelude crate name. The vocabulary's Rust crate name differs from its index name.
     fn rooted_item(&mut self, path: &[String]) -> Option<ItemId> {
-        let (written_crate, relative) = path.split_first()?;
-        let indexed_crate = INDEXED_CRATE_ALIASES
-            .iter()
-            .find_map(|(alias, indexed)| (*alias == written_crate).then_some(*indexed))
-            .unwrap_or(written_crate);
-        if relative.is_empty() {
-            return None;
-        }
-        let root = self.index.module(indexed_crate, &[]).ok()?;
-        match self.index.resolve_type_path(root, relative) {
-            Ok(Found::Item(id)) => Some(id),
+        match self.index.resolve_type_binding(self.module, path, true) {
+            Ok(Binding::Found(Found::Item(id))) => Some(id),
             _ => None,
         }
     }

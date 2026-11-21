@@ -71,8 +71,6 @@ impl OutsideSeam {
                 .and_then(toml::Value::as_str)
                 .ok_or_else(|| format!("{member}/Cargo.toml: no crate name"))?;
             let crate_name = crate_name.replace('-', "_");
-            packages.insert(package_name.to_owned(), crate_name.clone());
-
             // The facade and seam crates are indexed under names their source writes, which
             // differ from some Cargo library names (`mod_api` vs `mod_vocab`).
             let indexed_name = CRATES
@@ -113,11 +111,14 @@ impl OutsideSeam {
                         .file_name()
                         .map(|name| name.to_string_lossy().into_owned());
                     indexed.push(WorkspaceCrate {
-                        name: crate_name,
+                        name: crate_name.clone(),
                         source,
                         root_file,
                     });
+                    packages.insert(package_name.to_owned(), (crate_name, indexed_name.clone()));
                 }
+            } else if member != "crates/sunrise-mod-api-macros" {
+                packages.insert(package_name.to_owned(), (crate_name, indexed_name.clone()));
             }
             member_manifests.push((indexed_name, package));
         }
@@ -165,10 +166,15 @@ impl OutsideSeam {
                         .and_then(|table| table.get("package"))
                         .and_then(toml::Value::as_str)
                         .unwrap_or(alias);
-                    if let Some(crate_name) = packages.get(package)
-                        && crates.contains(crate_name)
-                    {
-                        aliases.insert(alias.replace('-', "_"), crate_name.clone());
+                    if let Some((crate_name, indexed_name)) = packages.get(package) {
+                        // Without a Cargo rename the extern prelude uses the library target's
+                        // name, which need not match the package name or our index name.
+                        let written = if alias == package {
+                            crate_name.clone()
+                        } else {
+                            alias.replace('-', "_")
+                        };
+                        aliases.insert(written, indexed_name.clone());
                     }
                 }
             };
