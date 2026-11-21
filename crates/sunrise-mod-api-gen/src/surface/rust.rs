@@ -165,6 +165,9 @@ impl<'a> ExternalTypes<'a> {
     }
 
     pub(super) fn finish(&self, index: &Index<'_>) -> Result<(), String> {
+        if let Some(error) = self.outside.take_resolution_error() {
+            return Err(error);
+        }
         if let Some((id, path)) = self.first.take() {
             let owner = self.public.get(&id).map_or_else(
                 || {
@@ -197,24 +200,52 @@ impl Paths<'_, '_> {
         if !self.aliases.insert(id) {
             return;
         }
-        // Explicit type arguments replace positional defaults. Inspecting a replaced default
-        // would reject a safe use such as `Alias<u32>` just because `Alias<T = Outside>` has an
-        // unused outside default.
-        let supplied_types = match arguments {
-            syn::PathArguments::AngleBracketed(arguments) => arguments
+        // Explicit positional type arguments replace matching type defaults. Match each
+        // argument against its declared parameter kind: an unbraced const such as `N` is
+        // represented as a syntactic type by syn, but still occupies a const parameter slot.
+        let mut supplied_types = HashSet::new();
+        if let syn::PathArguments::AngleBracketed(arguments) = arguments {
+            let mut arguments = arguments
                 .args
                 .iter()
-                .filter(|argument| matches!(argument, syn::GenericArgument::Type(_)))
-                .count(),
-            _ => 0,
-        };
-        let mut type_index = 0;
-        for param in &mut alias.generics.params {
-            if let syn::GenericParam::Type(param) = param {
-                if type_index < supplied_types {
-                    param.default = None;
+                .filter(|argument| {
+                    !matches!(
+                        argument,
+                        syn::GenericArgument::AssocType(_)
+                            | syn::GenericArgument::AssocConst(_)
+                            | syn::GenericArgument::Constraint(_)
+                    )
+                })
+                .peekable();
+            for param in &alias.generics.params {
+                match param {
+                    syn::GenericParam::Lifetime(_) => {
+                        if matches!(arguments.peek(), Some(syn::GenericArgument::Lifetime(_))) {
+                            arguments.next();
+                        }
+                    }
+                    syn::GenericParam::Type(param) => {
+                        if matches!(arguments.peek(), Some(syn::GenericArgument::Type(_))) {
+                            arguments.next();
+                            supplied_types.insert(param.ident.to_string());
+                        }
+                    }
+                    syn::GenericParam::Const(_) => {
+                        if matches!(
+                            arguments.peek(),
+                            Some(syn::GenericArgument::Const(_) | syn::GenericArgument::Type(_))
+                        ) {
+                            arguments.next();
+                        }
+                    }
                 }
-                type_index += 1;
+            }
+        }
+        for param in &mut alias.generics.params {
+            if let syn::GenericParam::Type(param) = param
+                && supplied_types.contains(&param.ident.to_string())
+            {
+                param.default = None;
             }
         }
         let old_module = self.module;
@@ -272,7 +303,9 @@ impl Paths<'_, '_> {
             }
             Ok(Found::External(full)) => {
                 if let Some((check, id)) = self.check {
-                    check.inspect(self.index, self.module, id, &full, rooted);
+                    // Keep the written alias for namespace checks; `full` has already discarded
+                    // whether the local import was a type, value, or module.
+                    check.inspect(self.index, self.module, id, &segments, rooted);
                 }
                 if STD.contains(&full[0].as_str()) {
                     vec![full.last().cloned().unwrap_or_default()]

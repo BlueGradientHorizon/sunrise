@@ -44,6 +44,42 @@ MOD_API_GEN = [
     "crates/sunrise-mod-vocab/src", "crates/sunrise-world", "packaging/executable_link.rs",
     "tools/layering/mod_vocab_state.json",
 ]
+# The API generator indexes every workspace package to resolve cross-crate paths, so each package manifest
+# contributes to the generated surface even when the package is not otherwise part of the SDK seam.
+WORKSPACE_MANIFESTS = [
+    "Cargo.toml", "crates/cargo-sunrise-mod/Cargo.toml", "crates/sunrise-addresses/Cargo.toml",
+    "crates/sunrise-assets/Cargo.toml", "crates/sunrise-bench/Cargo.toml", "crates/sunrise-border/Cargo.toml",
+    "crates/sunrise-bots/Cargo.toml", "crates/sunrise-client-core/Cargo.toml",
+    "crates/sunrise-client-gameplay/Cargo.toml", "crates/sunrise-client-input/Cargo.toml",
+    "crates/sunrise-client-lib/Cargo.toml", "crates/sunrise-client-render/Cargo.toml",
+    "crates/sunrise-client/Cargo.toml", "crates/sunrise-command/Cargo.toml", "crates/sunrise-connected/Cargo.toml",
+    "crates/sunrise-core/Cargo.toml", "crates/sunrise-deflate/Cargo.toml", "crates/sunrise-discord/Cargo.toml",
+    "crates/sunrise-dualsense/Cargo.toml", "crates/sunrise-friends/Cargo.toml",
+    "crates/sunrise-game-discovery/Cargo.toml", "crates/sunrise-game/Cargo.toml",
+    "crates/sunrise-gameplay/Cargo.toml", "crates/sunrise-guest-stack/Cargo.toml", "crates/sunrise-hdr/Cargo.toml",
+    "crates/sunrise-heartbeat/Cargo.toml", "crates/sunrise-hooks/Cargo.toml",
+    "crates/sunrise-hot-paths-game/Cargo.toml", "crates/sunrise-internals/Cargo.toml",
+    "crates/sunrise-items/Cargo.toml", "crates/sunrise-java-properties/Cargo.toml", "crates/sunrise-mcp/Cargo.toml",
+    "crates/sunrise-mod-api-gen/Cargo.toml", "crates/sunrise-mod-api-gen/dispatch-tests/Cargo.toml",
+    "crates/sunrise-mod-api-macros/Cargo.toml", "crates/sunrise-mod-api/Cargo.toml",
+    "crates/sunrise-mod-deps/Cargo.toml", "crates/sunrise-mod-dimension-game/Cargo.toml",
+    "crates/sunrise-mod-host/Cargo.toml", "crates/sunrise-mod-package/Cargo.toml",
+    "crates/sunrise-mod-render/Cargo.toml", "crates/sunrise-mod-runtime/Cargo.toml",
+    "crates/sunrise-mod-source/Cargo.toml", "crates/sunrise-mod-surface/Cargo.toml",
+    "crates/sunrise-mod-vocab/Cargo.toml", "crates/sunrise-narrator/Cargo.toml",
+    "crates/sunrise-native-build/Cargo.toml", "crates/sunrise-official/Cargo.toml",
+    "crates/sunrise-optifine/Cargo.toml", "crates/sunrise-perf-format/Cargo.toml",
+    "crates/sunrise-perf-overlay/Cargo.toml", "crates/sunrise-perf-share/Cargo.toml",
+    "crates/sunrise-perf/Cargo.toml", "crates/sunrise-platform/Cargo.toml", "crates/sunrise-polytone/Cargo.toml",
+    "crates/sunrise-port-pack/Cargo.toml", "crates/sunrise-prepare/Cargo.toml",
+    "crates/sunrise-protocol/Cargo.toml", "crates/sunrise-reconnect/Cargo.toml", "crates/sunrise-relay/Cargo.toml",
+    "crates/sunrise-release-sign/Cargo.toml", "crates/sunrise-render-core/Cargo.toml",
+    "crates/sunrise-server-files/Cargo.toml", "crates/sunrise-server-launch/Cargo.toml",
+    "crates/sunrise-server/Cargo.toml", "crates/sunrise-shader-api/Cargo.toml",
+    "crates/sunrise-shaders/Cargo.toml", "crates/sunrise-system/Cargo.toml",
+    "crates/sunrise-telemetry/Cargo.toml", "crates/sunrise-theme/Cargo.toml", "crates/sunrise-threads/Cargo.toml",
+    "crates/sunrise-world/Cargo.toml", "docs/modding/examples/Cargo.toml", "xtask/Cargo.toml",
+]
 READERS = {
     "cargo-sunrise-mod": [
         "Cargo.lock", "crates/sunrise-mod-api", "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
@@ -70,7 +106,8 @@ READERS = {
     "sunrise-mod-api": MOD_API_GEN,
     # Its daily stable-release test drives the release gate's Python through the real surface differ.
     "sunrise-mod-api-gen": [
-        *MOD_API_GEN, "crates/sunrise-mod-vocab/extension-tags",
+        *MOD_API_GEN, *WORKSPACE_MANIFESTS, "crates/sunrise-mod-vocab/extension-tags",
+        "crates/sunrise-mod-api-macros/Cargo.toml", "crates/sunrise-mod-vocab/Cargo.toml",
         "tests/stable_mod_api_integration.py", "tests/test_stable_mod_api.py", "tools/ci/nightly.py",
         "tools/release_train.py",
     ],
@@ -116,6 +153,8 @@ NOT_READS = {
         "crates/sunrise-client/src/entry.rs", "crates/sunrise-client/src/game.rs", "crates/sunrise-client/src/lib.rs",
         "crates/sunrise-mod-api-gen/internals.txt",
     },
+    # The scanner uses this path to exclude the macro crate from the indexed seam; it reads its manifest, not source.
+    "sunrise-mod-api-gen": {"crates/sunrise-mod-api-macros", "crates/sunrise-mod-vocab"},
 }
 
 

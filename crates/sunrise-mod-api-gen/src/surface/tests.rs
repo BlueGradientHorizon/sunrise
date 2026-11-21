@@ -14,7 +14,7 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "engine-fixture/src/lib.rs",
-        "pub struct Secret;\npub trait Trait { type Out; }\nimpl Trait for u32 { type Out = Secret; }\nstruct Option;\n#[cfg(feature = \"extra\")] pub struct Result<T, E>(T, E);\n#[cfg(test)] pub struct TestOnly;\npub mod nested { pub struct Hidden; }\n",
+        "pub struct Secret;\npub trait Trait { type Out; }\nimpl Trait for u32 { type Out = Secret; }\nstruct Option;\n#[cfg(feature = \"extra\")] pub struct Result<T, E>(T, E);\n#[cfg(windows)] pub mod conditional { pub struct WindowsActive; }\n#[cfg(unix)] pub mod conditional { pub struct UnixActive; }\n#[cfg(test)] pub struct TestOnly;\npub mod nested { pub struct Hidden; }\npub mod option { pub struct Option<T>(T); }\n",
     ),
     (
         "crates/sunrise-mod-vocab/Cargo.toml",
@@ -388,8 +388,7 @@ fn a_signature_cannot_hide_a_workspace_type_behind_an_import() {
 
 #[test]
 fn a_signature_cannot_hide_a_workspace_type_behind_a_private_glob_import() {
-    let edited =
-        "use engine_library::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
+    let edited = "mod imported { use engine_library::*; pub fn leak() -> Secret { unimplemented!() } }\npub use imported::leak;\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .err()
         .expect("the glob-imported leak must fail the export");
@@ -399,7 +398,7 @@ fn a_signature_cannot_hide_a_workspace_type_behind_a_private_glob_import() {
 
 #[test]
 fn a_renamed_workspace_dependency_glob_cannot_hide_a_type() {
-    let edited = "use engine::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
+    let edited = "mod imported { use engine::*; pub fn leak() -> Secret { unimplemented!() } }\npub use imported::leak;\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .err()
         .expect("the aliased glob-imported leak must fail the export");
@@ -409,9 +408,60 @@ fn a_renamed_workspace_dependency_glob_cannot_hide_a_type() {
 
 #[test]
 fn primitive_and_prelude_types_after_a_workspace_glob_are_not_leaks() {
-    let edited = "use engine_library::*;\npub fn safe() -> (u32, Option<String>, Result<u32, u8>) { unimplemented!() }\n/// A colour.";
+    let edited = "mod imported { use engine_library::*; pub fn safe() -> (u32, Option<String>) { unimplemented!() } }\npub use imported::safe;\n/// A colour.";
     try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .expect("primitive and prelude types are not imported from the workspace glob");
+}
+
+#[test]
+fn a_local_type_shadows_a_workspace_glob_import() {
+    let edited = "use engine_library::*;\npub struct Secret;\npub fn safe() -> Secret { unimplemented!() }\n/// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("the local type shadows the name imported by the workspace glob");
+}
+
+#[test]
+fn a_local_constant_does_not_shadow_a_workspace_type_imported_by_glob() {
+    let edited = "use engine_library::*;\nconst Secret: u8 = 0;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("a value name does not shadow the workspace type in a signature");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn an_external_value_import_does_not_shadow_a_workspace_type_imported_by_glob() {
+    let edited = "use core::f32::consts::PI as Secret;\nuse engine_library::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("a value import leaves the type namespace open to the workspace glob");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn an_external_type_import_shadows_a_workspace_type_imported_by_glob() {
+    let edited = "use core::option::Option as Secret;\nuse engine_library::*;\npub fn safe() -> Secret<u8> { unimplemented!() }\n/// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("an explicit external type import wins in the type namespace");
+}
+
+#[test]
+fn a_cfg_disabled_workspace_glob_does_not_shadow_the_prelude() {
+    let edited = "#[cfg(feature = \"extra\")] use engine_library::*;\npub fn safe() -> Result<u32, u8> { unimplemented!() }\n/// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("the default build resolves Result from the prelude");
+}
+
+#[test]
+fn a_target_disabled_workspace_glob_does_not_shadow_the_prelude() {
+    let inactive = if cfg!(windows) { "unix" } else { "windows" };
+    let edited = format!(
+        "#[cfg({inactive})] use engine_library::*;\npub fn safe() -> Result<u32, u8> {{ unimplemented!() }}\n/// A colour."
+    );
+    try_export_fixture(&[(LIB, "/// A colour.", &edited)], HOOKS)
+        .expect("the target-disabled glob does not shadow Result from the prelude");
 }
 
 #[test]
@@ -476,9 +526,42 @@ fn an_unreadable_workspace_generated_include_stops_the_surface_audit() {
     let mut index = Index::new(root, &[], &[]);
     let error = outside
         .add_to_index(&mut index)
-        .err()
-        .expect("the unreadable generated include must stop the audit");
+        .expect_err("the unreadable generated include must stop the audit");
     assert!(error.contains("include!"), "{error}");
+}
+
+#[test]
+fn an_unreadable_dev_dependency_does_not_stop_the_surface_audit() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/sunrise-mod-vocab\", \"outside\"]\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("outside/src")).unwrap();
+    std::fs::create_dir_all(root.join("crates/sunrise-mod-vocab")).unwrap();
+    std::fs::write(
+        root.join("crates/sunrise-mod-vocab/Cargo.toml"),
+        "[package]\nname = \"sunrise-mod-vocab\"\n[dev-dependencies]\noutside = { path = \"../../outside\" }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("outside/Cargo.toml"),
+        "[package]\nname = \"outside\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("outside/src/lib.rs"),
+        "include!(\"generated.rs\");\n",
+    )
+    .unwrap();
+
+    let outside = OutsideSeam::read(root).unwrap();
+    let mut index = Index::new(root, &[], &[]);
+    outside
+        .add_to_index(&mut index)
+        .expect("dev dependencies are not part of the default API surface");
 }
 
 #[test]
@@ -489,6 +572,24 @@ fn a_public_reexport_cannot_name_a_workspace_type_outside_the_seam() {
         .expect("the re-export must fail the export");
     assert!(error.contains("mod_api::Leaked"), "{error}");
     assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_named_reexport_resolves_the_default_cfg_module_variant() {
+    let active = if cfg!(windows) {
+        "WindowsActive"
+    } else {
+        "UnixActive"
+    };
+    let edited = format!("pub use engine_library::conditional::{active} as Leaked;\n/// A colour.");
+    let error = try_export_fixture(&[(LIB, "/// A colour.", &edited)], HOOKS)
+        .err()
+        .expect("the public type in the active module variant must be found");
+    assert!(error.contains("mod_api::Leaked"), "{error}");
+    assert!(
+        error.contains(&format!("engine_library::conditional::{active}")),
+        "{error}"
+    );
 }
 
 #[test]
@@ -556,6 +657,16 @@ fn a_nested_private_alias_composes_with_a_local_module_alias() {
 }
 
 #[test]
+fn self_qualified_local_module_aliases_still_expand_private_type_aliases() {
+    let edited = "mod inner { pub(crate) type Alias = engine_library::Secret; }\nuse self::inner as h;\npub fn leak() -> self::h::Alias { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("self-qualified module aliases must reach the private type alias");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
 fn a_public_glob_reexport_checks_signatures_of_its_module_alias() {
     let edited = "mod inner { pub(crate) type Alias = engine_library::Secret; pub fn leak() -> Alias { unimplemented!() } }\nuse self::inner as h;\npub use h::*;\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
@@ -583,6 +694,13 @@ fn an_extern_crate_alias_cannot_hide_a_workspace_type() {
         .expect("the extern-crate alias must fail the export");
     assert!(error.contains("mod_api::leak"), "{error}");
     assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_cfg_disabled_extern_crate_alias_does_not_override_the_active_alias() {
+    let edited = "extern crate core as api;\n#[cfg(feature = \"extra\")] extern crate engine_library as api;\npub fn safe() -> api::option::Option<u32> { unimplemented!() }\n/// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("the disabled workspace alias does not override the active core alias");
 }
 
 #[test]
@@ -637,6 +755,16 @@ fn a_private_type_alias_does_not_check_a_default_overridden_by_the_call() {
     let edited = "type Alias<T = engine_library::Secret> = T;\npub fn safe() -> Alias<u32> { unimplemented!() }\n/// A colour.";
     try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .expect("the explicit argument overrides the outside default");
+}
+
+#[test]
+fn a_bare_const_generic_argument_does_not_hide_a_type_default() {
+    let edited = "type Alias<const K: usize, T = engine_library::Secret> = [T; K];\npub fn leak<const N: usize>(_: Alias<N>) {}\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the type default must be checked when only the const argument is supplied");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
 }
 
 #[test]

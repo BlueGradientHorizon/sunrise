@@ -1,10 +1,12 @@
 //! The crates the mod API's signatures name, indexed by [`mod_source::index`].
-pub(crate) use mod_source::index::{Found, Index, ItemId, uses};
+pub(crate) use mod_source::index::{Found, Index, ItemId, default_build, uses};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    path::Path,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::atomic::{AtomicU64, Ordering},
 };
-use syn::{Attribute, Ident, Item, Meta, Visibility};
+use syn::{Attribute, Ident, Item, Visibility};
 
 fn type_item(item: &Item) -> Option<(&Ident, &Visibility, &[Attribute])> {
     match item {
@@ -15,40 +17,6 @@ fn type_item(item: &Item) -> Option<(&Ident, &Visibility, &[Attribute])> {
         Item::Union(item) => Some((&item.ident, &item.vis, &item.attrs)),
         _ => None,
     }
-}
-
-/// Whether an item exists in a mod's default build, the same feature/test policy as the public
-/// surface walk. External glob imports must not shadow the standard prelude with cfg'd names.
-fn default_build(attrs: &[Attribute]) -> bool {
-    fn holds(meta: &Meta) -> bool {
-        match meta {
-            Meta::Path(path) => !path.is_ident("test"),
-            Meta::NameValue(pair) => !pair.path.is_ident("feature"),
-            Meta::List(list) => {
-                let Ok(inner) = list.parse_args_with(
-                    syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
-                ) else {
-                    return true;
-                };
-                if list.path.is_ident("any") {
-                    inner.iter().any(holds)
-                } else if list.path.is_ident("all") {
-                    inner.iter().all(holds)
-                } else if list.path.is_ident("not") {
-                    !inner.iter().all(holds)
-                } else {
-                    true
-                }
-            }
-        }
-    }
-    attrs.iter().all(|attr| match &attr.meta {
-        Meta::List(list) if list.path.is_ident("cfg") => list
-            .parse_args::<Meta>()
-            .map(|meta| holds(&meta))
-            .unwrap_or(true),
-        _ => true,
-    })
 }
 
 fn is_public_external_type(index: &Index<'_>, id: crate::index::ItemId) -> bool {
@@ -71,10 +39,14 @@ pub(crate) fn game<'a>(root: &'a Path, included: &'a [(&'a str, &'a str)]) -> In
 
 /// The workspace libraries that the public API cannot treat as opaque third-party types.
 pub(crate) struct OutsideSeam {
+    root: PathBuf,
     crates: HashSet<String>,
     indexed: Vec<WorkspaceCrate>,
     /// Dependency names as Rust spells them, keyed by the indexed crate that declares them.
     dependencies: HashMap<String, HashMap<String, String>>,
+    /// External dependency aliases and their Cargo package names for rustc namespace probes.
+    external_libraries: HashMap<String, HashMap<String, String>>,
+    resolution_error: std::cell::RefCell<Option<String>>,
 }
 
 struct WorkspaceCrate {
@@ -172,8 +144,10 @@ impl OutsideSeam {
         }
 
         let mut dependencies = HashMap::new();
+        let mut external_libraries = HashMap::new();
         for (indexed_name, package) in member_manifests {
             let mut aliases = HashMap::new();
+            let mut external = HashMap::new();
             let mut add = |table: Option<&toml::map::Map<String, toml::Value>>| {
                 let Some(table) = table else { return };
                 for (alias, spec) in table {
@@ -198,27 +172,31 @@ impl OutsideSeam {
                         && crates.contains(crate_name)
                     {
                         aliases.insert(alias.replace('-', "_"), crate_name.clone());
+                    } else if !packages.contains_key(package) {
+                        external.insert(alias.replace('-', "_"), package.to_owned());
                     }
                 }
             };
-            for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
-                add(package.get(section).and_then(toml::Value::as_table));
-            }
+            add(package.get("dependencies").and_then(toml::Value::as_table));
             if let Some(targets) = package.get("target").and_then(toml::Value::as_table) {
                 for target in targets.values() {
-                    for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
-                        add(target.get(section).and_then(toml::Value::as_table));
-                    }
+                    add(target.get("dependencies").and_then(toml::Value::as_table));
                 }
             }
             if !aliases.is_empty() {
-                dependencies.insert(indexed_name, aliases);
+                dependencies.insert(indexed_name.clone(), aliases);
+            }
+            if !external.is_empty() {
+                external_libraries.insert(indexed_name, external);
             }
         }
         Ok(Self {
+            root: root.to_path_buf(),
             crates,
             indexed,
             dependencies,
+            external_libraries,
+            resolution_error: Default::default(),
         })
     }
 
@@ -447,7 +425,9 @@ impl OutsideSeam {
     ) -> Option<Vec<String>> {
         let mut globs = Vec::new();
         for item in &index.modules[module].items {
-            if let Item::Use(item) = item {
+            if let Item::Use(item) = item
+                && default_build(&item.attrs)
+            {
                 uses(&item.tree, &mut Vec::new(), &mut |path, alias| {
                     if alias.is_none() {
                         globs.push((path, item.leading_colon.is_some()));
@@ -474,51 +454,7 @@ impl OutsideSeam {
 
     /// Loads an indexed module named by a local path, including `crate::` and `super::` paths.
     fn indexed_module(index: &mut Index<'_>, module: usize, path: &[String]) -> Option<usize> {
-        Self::resolve_indexed_module(index, module, path, &mut HashSet::new())
-    }
-
-    fn resolve_indexed_module(
-        index: &mut Index<'_>,
-        module: usize,
-        path: &[String],
-        seen: &mut HashSet<(usize, String)>,
-    ) -> Option<usize> {
-        if let Some((krate, path)) = index.absolute(module, path)
-            && let Ok(target) = index.module(krate, &path)
-        {
-            return Some(target);
-        }
-
-        let (first, rest) = path.split_first()?;
-        if !seen.insert((module, first.clone())) {
-            return None;
-        }
-        let mut imported = None;
-        for item in &index.modules[module].items {
-            match item {
-                Item::Use(item) => uses(&item.tree, &mut Vec::new(), &mut |path, alias| {
-                    if alias.as_deref() == Some(first.as_str()) {
-                        imported = Some(path);
-                    }
-                }),
-                Item::ExternCrate(item) => {
-                    let alias = item
-                        .rename
-                        .as_ref()
-                        .map_or_else(|| item.ident.to_string(), |(_, name)| name.to_string());
-                    if alias == *first {
-                        imported = Some(vec![item.ident.to_string()]);
-                    }
-                }
-                _ => {}
-            }
-        }
-        let target = Self::resolve_indexed_module(index, module, &imported?, seen)?;
-        if rest.is_empty() {
-            Some(target)
-        } else {
-            Self::resolve_indexed_module(index, target, rest, seen)
-        }
+        index.resolve_module_path(module, path).ok().flatten()
     }
 
     fn resolve_external(
@@ -572,6 +508,42 @@ impl OutsideSeam {
             }
             return self.resolve_external(index, target, rest, seen);
         }
+        if let Ok(found) = index.resolve(scope, first) {
+            match found {
+                Found::External(external) => {
+                    if let Some(workspace_type) = self.globbed_external_path(index, scope, first) {
+                        let package = external.first().and_then(|alias| {
+                            self.external_libraries
+                                .get(&krate)
+                                .and_then(|aliases| aliases.get(alias))
+                        });
+                        match external_import_shadows_type(
+                            &self.root,
+                            &external,
+                            first,
+                            package.map(String::as_str),
+                        ) {
+                            Ok(true) => return None,
+                            Ok(false) => return Some(workspace_type),
+                            Err(error) => {
+                                self.resolution_error.borrow_mut().get_or_insert(error);
+                                return None;
+                            }
+                        }
+                    }
+                    return None;
+                }
+                // Values and types occupy separate Rust namespaces: a local constant cannot
+                // shadow a same-named type imported by a glob in a signature.
+                Found::Item(id)
+                    if !self.crates.contains(&index.modules[id.module].krate)
+                        && type_item(index.item(id)).is_some() =>
+                {
+                    return None;
+                }
+                Found::Item(_) => {}
+            }
+        }
         if self.crates.contains(first) {
             return Some(path.to_vec());
         }
@@ -594,12 +566,14 @@ impl OutsideSeam {
         let mut named = None;
         for item in &index.modules[scope].items {
             match item {
-                Item::Use(item) => uses(&item.tree, &mut Vec::new(), &mut |imported, alias| {
-                    if alias.as_deref() == Some(first.as_str()) {
-                        named = Some((imported, item.leading_colon.is_some()));
-                    }
-                }),
-                Item::ExternCrate(item) => {
+                Item::Use(item) if default_build(&item.attrs) => {
+                    uses(&item.tree, &mut Vec::new(), &mut |imported, alias| {
+                        if alias.as_deref() == Some(first.as_str()) {
+                            named = Some((imported, item.leading_colon.is_some()));
+                        }
+                    })
+                }
+                Item::ExternCrate(item) if default_build(&item.attrs) => {
                     let alias = item
                         .rename
                         .as_ref()
@@ -626,10 +600,231 @@ impl OutsideSeam {
         self.globbed_external_path(index, scope, first)
     }
 
+    pub(crate) fn take_resolution_error(&self) -> Option<String> {
+        self.resolution_error.borrow_mut().take()
+    }
+
     pub(crate) fn error(item: &str, path: &[String]) -> String {
         format!(
             "{item}: `{}` names a workspace crate outside the mod API type index",
             path.join("::")
         )
+    }
+}
+
+/// Whether an opaque explicit import binds in the type namespace ahead of a same-named glob type.
+/// A tiny rustc probe handles external items whose namespace the source index cannot know.
+fn external_import_shadows_type(
+    root: &Path,
+    external: &[String],
+    name: &str,
+    package: Option<&str>,
+) -> Result<bool, String> {
+    static NEXT_PROBE: AtomicU64 = AtomicU64::new(0);
+    let Some(crate_name) = external.first() else {
+        return Err("cannot resolve an empty external import path".to_owned());
+    };
+    let probe_dir = std::env::temp_dir().join(format!(
+        "sunrise-type-namespace-{}-{}",
+        std::process::id(),
+        NEXT_PROBE.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir(&probe_dir).map_err(|error| {
+        format!(
+            "cannot create temporary type namespace probe {}: {error}",
+            probe_dir.display()
+        )
+    })?;
+
+    let result = (|| {
+        let source = probe_dir.join("probe.rs");
+        let output = probe_dir.join("probe.rmeta");
+        let import = external.join("::");
+        let source_text = format!(
+            "#![allow(dead_code, unused_imports)]\n\
+             mod __sunrise_workspace {{ pub struct {name}; }}\n\
+             use self::__sunrise_workspace::*;\n\
+             use ::{import} as {name};\n\
+             trait __SunriseWorkspaceType {{}}\n\
+             impl __SunriseWorkspaceType for __sunrise_workspace::{name} {{}}\n\
+             fn __sunrise_assert<T: __SunriseWorkspaceType>() {{}}\n\
+             fn __sunrise_probe() {{ __sunrise_assert::<{name}>(); }}\n"
+        );
+        std::fs::write(&source, source_text)
+            .map_err(|error| format!("cannot write type namespace probe: {error}"))?;
+
+        let mut command = Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+        command
+            .arg("--edition=2024")
+            .arg("--crate-type=lib")
+            .arg("--emit=metadata")
+            .arg("--crate-name=sunrise_type_namespace_probe")
+            .arg("-o")
+            .arg(&output);
+
+        if !matches!(crate_name.as_str(), "core" | "std") {
+            let directory = cargo_dependency_dir().ok_or_else(|| {
+                format!("cannot find Cargo's dependency artifacts to resolve {crate_name}::{name}")
+            })?;
+            let artifact_name = match package {
+                Some(package) => {
+                    let cargo_home = cargo_home()?;
+                    external_library_name(root, &cargo_home, package)?
+                }
+                None => crate_name.replace('-', "_"),
+            };
+            let artifact = external_metadata(&directory, &artifact_name).ok_or_else(|| {
+                format!(
+                    "cannot find Cargo metadata for external crate {crate_name} ({artifact_name})"
+                )
+            })?;
+            command
+                .arg("--extern")
+                .arg(format!("{crate_name}={}", artifact.display()))
+                .arg("-L")
+                .arg(format!("dependency={}", directory.display()));
+        }
+
+        command.arg(&source);
+        let result = command
+            .output()
+            .map_err(|error| format!("cannot run rustc for type namespace probe: {error}"))?;
+        if result.status.success() {
+            return Ok(false);
+        }
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        if ["E0107", "E0277", "E0573"]
+            .iter()
+            .any(|code| stderr.contains(code))
+        {
+            return Ok(true);
+        }
+        Err(format!(
+            "cannot determine the type namespace for {import} as {name}: {}",
+            stderr.lines().take(8).collect::<Vec<_>>().join("\n")
+        ))
+    })();
+    let _ = std::fs::remove_dir_all(&probe_dir);
+    result
+}
+
+/// Finds the Rust library target for a locked registry package. Cargo dependency aliases and
+/// package names can both differ from the target name used in `lib*.rmeta`.
+fn cargo_home() -> Result<PathBuf, String> {
+    std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
+        .ok_or_else(|| "cannot locate Cargo's home directory".to_owned())
+}
+
+fn external_library_name(root: &Path, cargo_home: &Path, package: &str) -> Result<String, String> {
+    let lock_path = root.join("Cargo.lock");
+    crate::rerun_if_changed(&lock_path.display());
+    let lock_text = std::fs::read_to_string(&lock_path)
+        .map_err(|error| format!("{}: {error}", lock_path.display()))?;
+    let lock: toml::Value =
+        toml::from_str(&lock_text).map_err(|error| format!("{}: {error}", lock_path.display()))?;
+    let versions = lock
+        .get("package")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|entry| {
+            entry.get("name").and_then(toml::Value::as_str) == Some(package)
+                && entry
+                    .get("source")
+                    .and_then(toml::Value::as_str)
+                    .is_some_and(|source| source.starts_with("registry+"))
+        })
+        .filter_map(|entry| entry.get("version").and_then(toml::Value::as_str))
+        .collect::<Vec<_>>();
+    let registry_sources = cargo_home.join("registry/src");
+    for version in versions {
+        let package_dir_name = format!("{package}-{version}");
+        let registries = std::fs::read_dir(&registry_sources).map_err(|error| {
+            format!(
+                "cannot read Cargo registry sources {}: {error}",
+                registry_sources.display()
+            )
+        })?;
+        for registry in registries.filter_map(Result::ok) {
+            let package_dir = registry.path().join(&package_dir_name);
+            if package_dir.join("Cargo.toml").is_file() {
+                crate::rerun_if_changed(&package_dir.join("Cargo.toml").display());
+                return crate::replace::library_name(&package_dir);
+            }
+        }
+    }
+    Err(format!(
+        "cannot find the locked registry source for external package {package}"
+    ))
+}
+
+fn cargo_dependency_dir() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    for ancestor in executable.ancestors() {
+        if ancestor.file_name().is_some_and(|name| name == "deps") && ancestor.is_dir() {
+            return Some(ancestor.to_path_buf());
+        }
+        let directory = ancestor.join("deps");
+        if directory.is_dir() {
+            return Some(directory);
+        }
+    }
+    None
+}
+
+fn external_metadata(directory: &Path, crate_name: &str) -> Option<PathBuf> {
+    let prefix = format!("lib{}-", crate_name.replace('-', "_"));
+    let mut matches = std::fs::read_dir(directory)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(&prefix))
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension == "rmeta" || extension == "rlib")
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|path| {
+        path.extension()
+            .is_some_and(|extension| extension == "rmeta")
+    });
+    matches.pop()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::external_library_name;
+    use std::fs;
+
+    #[test]
+    fn external_library_name_uses_the_locked_package_lib_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        let cargo_home = directory.path().join("cargo");
+        let package_dir = cargo_home
+            .join("registry/src/test-index")
+            .join("md-5-0.10.6");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&package_dir).unwrap();
+        fs::write(
+            root.join("Cargo.lock"),
+            "[[package]]\nname = \"md-5\"\nversion = \"0.10.6\"\nsource = \"registry+https://example.invalid/index\"\n",
+        )
+        .unwrap();
+        fs::write(
+            package_dir.join("Cargo.toml"),
+            "[package]\nname = \"md-5\"\nversion = \"0.10.6\"\n[lib]\nname = \"md5\"\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            external_library_name(&root, &cargo_home, "md-5").unwrap(),
+            "md5"
+        );
     }
 }

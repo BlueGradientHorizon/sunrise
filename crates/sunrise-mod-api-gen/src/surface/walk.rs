@@ -1,7 +1,7 @@
 //! The public items of `mod_api`, each under the path a mod writes: the facade crate's root,
 //! through public modules and `pub use`s (globs included), skipping `#[doc(hidden)]`, `__`
 //! names and items compiled out of a mod's default native build.
-use crate::index::{Found, Index, ItemId, OutsideSeam, uses};
+use crate::index::{Found, Index, ItemId, OutsideSeam, default_build, uses};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use syn::{Item, Visibility};
 
@@ -58,38 +58,9 @@ pub(super) fn hidden(attrs: &[syn::Attribute]) -> bool {
     })
 }
 
-/// Whether the items under `attrs` are part of a mod's default native build: `test` and every
-/// `feature` are off; other configuration keys are assumed on.
+/// Whether the items under `attrs` are part of the default native build.
 pub(super) fn compiled(attrs: &[syn::Attribute]) -> bool {
-    fn holds(meta: &syn::Meta) -> bool {
-        match meta {
-            syn::Meta::Path(path) => !path.is_ident("test"),
-            syn::Meta::NameValue(pair) => !pair.path.is_ident("feature"),
-            syn::Meta::List(list) => {
-                let Ok(inner) = list.parse_args_with(
-                    syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-                ) else {
-                    return true;
-                };
-                if list.path.is_ident("any") {
-                    inner.iter().any(holds)
-                } else if list.path.is_ident("all") {
-                    inner.iter().all(holds)
-                } else if list.path.is_ident("not") {
-                    !inner.iter().all(holds)
-                } else {
-                    true
-                }
-            }
-        }
-    }
-    attrs.iter().all(|attr| match &attr.meta {
-        syn::Meta::List(list) if list.path.is_ident("cfg") => list
-            .parse_args::<syn::Meta>()
-            .map(|meta| holds(&meta))
-            .unwrap_or(true),
-        _ => true,
-    })
+    default_build(attrs)
 }
 
 pub(super) fn attrs(item: &Item) -> &[syn::Attribute] {
