@@ -1,7 +1,7 @@
 //! `player_changed_dimension` is heard on every logical server: the integrated server that runs
 //! single player and the LAN world opened from it, and a dedicated server (#3250).
 //! These prepared tests also exercise menu retirement during travel.
-use super::Dim;
+use super::{Dim, RespawnConfig};
 use crate::game::{
     Game, execution_role::ExecutionRole, lan::LanSettings, lan_actions::GuestCommand,
     native_entity_refs::tests::with_game_role,
@@ -472,6 +472,79 @@ fn player_tick_count_survives_teleports_and_deferred_arrivals() {
         game.start_server_trip(CONN, Dim::Overworld, None, false);
         finish_trip(game, Dim::Overworld);
         assert_eq!(entity.tick_count(game), Some(29));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn ordinary_end_exit_with_configured_respawn_keeps_player_tick_count() {
+    with_server(ExecutionRole::DedicatedServer, |game| {
+        let entity = game.entity(CONN).unwrap();
+        game.as_guest(CONN, |game| {
+            game.player.as_mut().unwrap().health.tick_count = 41;
+        })
+        .unwrap();
+        game.start_server_trip(CONN, Dim::Nether, None, false);
+        game.trip_respawn(
+            CONN,
+            Some(RespawnConfig::wrapped(Dim::Nether, [8, 70, 8], 0.0, false)),
+        );
+        finish_trip(game, Dim::Nether);
+        assert_eq!(entity.tick_count(game), Some(41));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn credits_world_spawn_fallback_resets_player_tick_count() {
+    with_server(ExecutionRole::DedicatedServer, |game| {
+        let entity = game.entity(CONN).unwrap();
+        game.as_guest(CONN, |game| {
+            game.player.as_mut().unwrap().health.tick_count = 41;
+        })
+        .unwrap();
+        game.start_server_trip(CONN, Dim::Overworld, None, true);
+        game.mark_credits_world_spawn(CONN);
+        finish_trip(game, Dim::Overworld);
+        assert_eq!(entity.tick_count(game), Some(0));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn credits_configured_respawn_keeps_permanent_player_attributes() {
+    use sunrise_world::attributes::{Modifier, Operation};
+
+    with_server(ExecutionRole::DedicatedServer, |game| {
+        game.as_guest(CONN, |game| {
+            let player = game.player.as_mut().unwrap();
+            let key = player.attributes.key("minecraft:step_height").unwrap();
+            let handle = player.attributes.get_instance(Some(key)).unwrap().unwrap();
+            let modifier = Modifier::new("test:credits_step", 0.4, Operation::AddValue).unwrap();
+            player
+                .attributes
+                .edit(&handle, |value, observer| {
+                    value.add_permanent(modifier, observer)
+                })
+                .unwrap();
+        })
+        .unwrap();
+        game.start_server_trip(CONN, Dim::Nether, None, true);
+        game.trip_respawn(
+            CONN,
+            Some(RespawnConfig::wrapped(Dim::Nether, [8, 70, 8], 0.0, false)),
+        );
+        finish_trip(game, Dim::Nether);
+        let step_height = game
+            .as_guest(CONN, |game| {
+                game.player
+                    .as_mut()
+                    .unwrap()
+                    .attribute("minecraft:step_height")
+                    .unwrap()
+            })
+            .unwrap();
+        assert!((step_height - 1.4).abs() < 1.0e-9);
     });
 }
 
