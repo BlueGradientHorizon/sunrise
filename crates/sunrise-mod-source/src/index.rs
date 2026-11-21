@@ -1,6 +1,10 @@
 //! The Rust items a set of crates' signatures name, found as rustc finds them: through each
 //! module's items, `use`s and glob imports, into the crates `sunrise-mod-api` builds on.
-use std::{collections::HashMap, fs, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::Path,
+};
 use syn::{Attribute, Item, Meta, UseTree, Visibility};
 
 fn target_cfg(name: &str) -> Option<String> {
@@ -137,6 +141,7 @@ pub struct ItemId {
 }
 
 /// Where a name leads.
+#[derive(Clone)]
 pub enum Found {
     Item(ItemId),
     /// A path outside the indexed crates, with the scope and root of the original spelling.
@@ -148,6 +153,7 @@ pub enum Found {
 }
 
 /// The outcome of looking up a name without picking an arbitrary glob binding.
+#[derive(Clone)]
 pub enum Binding {
     Missing,
     /// A definition or explicit import shadows this module's globs, but is not visible here.
@@ -173,13 +179,61 @@ impl Binding {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Namespace {
     Any,
     Type,
 }
 
-type ActiveLookups = Vec<(usize, String, Namespace)>;
+/// Visibility must hold for every module holding a glob on the route. A restricted binding
+/// is visible to all holders iff it is visible to their common ancestor. Holders in different
+/// crates have no common ancestor and can only see public bindings.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum Audience {
+    Public,
+    Within(String, Vec<String>),
+}
+
+impl Audience {
+    fn include(&mut self, module: &Module) {
+        if let Self::Within(krate, path) = self {
+            if *krate == module.krate {
+                path.truncate(
+                    path.iter()
+                        .zip(&module.path)
+                        .take_while(|(a, b)| a == b)
+                        .count(),
+                );
+            } else {
+                *self = Self::Public;
+            }
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct LookupKey {
+    module: usize,
+    name: String,
+    namespace: Namespace,
+    audience: Audience,
+}
+
+#[derive(Default)]
+struct Lookups {
+    active: HashSet<LookupKey>,
+    memo: HashMap<LookupKey, Binding>,
+    cycle_cuts: usize,
+    path_depth: usize,
+}
+
+struct GlobLookup {
+    key: LookupKey,
+    globs: std::vec::IntoIter<(Vec<String>, bool)>,
+    cycle_cuts: usize,
+    candidate: Binding,
+    indexed: Option<ItemId>,
+}
 
 /// The indexed crates' modules, parsed as they are first reached.
 pub struct Index<'a> {
@@ -456,14 +510,8 @@ impl<'a> Index<'a> {
     /// What `name` means in `module`: an item defined there, a `use` of it, or a glob import
     /// that provides it.
     pub fn resolve(&mut self, module: usize, name: &str) -> Result<Found, String> {
-        self.lookup(
-            module,
-            name,
-            Namespace::Any,
-            &mut vec![module],
-            &mut Vec::new(),
-        )?
-        .require(self, module, name)
+        self.lookup_here(module, name, Namespace::Any, &mut Lookups::default())?
+            .require(self, module, name)
     }
 
     /// What type `name` means in `module`, following named and glob imports in the type namespace.
@@ -480,53 +528,138 @@ impl<'a> Index<'a> {
         name: &str,
         holders: &[usize],
     ) -> Result<Binding, String> {
+        let mut holders = holders.iter().map(|&id| &self.modules[id]);
+        let first = holders.next().unwrap_or(&self.modules[module]);
+        let mut audience = Audience::Within(first.krate.clone(), first.path.clone());
+        for holder in holders {
+            audience.include(holder);
+        }
         self.lookup(
-            module,
-            name,
-            Namespace::Type,
-            &mut holders.to_vec(),
-            &mut Vec::new(),
+            LookupKey {
+                module,
+                name: name.to_owned(),
+                namespace: Namespace::Type,
+                audience,
+            },
+            &mut Lookups::default(),
         )
     }
 
-    fn lookup(
+    fn lookup_here(
         &mut self,
         module: usize,
         name: &str,
         namespace: Namespace,
-        holders: &mut Vec<usize>,
-        active: &mut ActiveLookups,
+        lookups: &mut Lookups,
     ) -> Result<Binding, String> {
-        // Cut just this branch, leaving the other globs and all active callers intact.
-        if active.len() >= 64
-            || active
-                .iter()
-                .any(|(scope, binding, ns)| *scope == module && binding == name && *ns == namespace)
-        {
-            return Ok(Binding::Missing);
-        }
-        active.push((module, name.to_owned(), namespace));
-        let found = self.lookup_binding(module, name, namespace, holders, active);
-        active.pop();
-        found
+        let m = &self.modules[module];
+        self.lookup(
+            LookupKey {
+                module,
+                name: name.to_owned(),
+                namespace,
+                audience: Audience::Within(m.krate.clone(), m.path.clone()),
+            },
+            lookups,
+        )
     }
 
-    /// A glob imports only bindings visible to the original importer and every module
-    /// holding an intermediate glob. A hidden binding still shadows globs in its namespace.
-    fn lookup_binding(
+    fn lookup(&mut self, key: LookupKey, lookups: &mut Lookups) -> Result<Binding, String> {
+        let mut stack: Vec<GlobLookup> = Vec::new();
+        let mut next = Some(key);
+        let mut result = Binding::Missing;
+        loop {
+            if let Some(key) = next.take() {
+                if let Some(found) = lookups.memo.get(&key) {
+                    result = found.clone();
+                } else if !lookups.active.insert(key.clone()) {
+                    lookups.cycle_cuts += 1;
+                    result = Binding::Missing;
+                } else {
+                    let cycle_cuts = lookups.cycle_cuts;
+                    let mut globs = Vec::new();
+                    let candidate = self.explicit_binding(&key, lookups, &mut globs)?;
+                    result = Binding::Missing;
+                    stack.push(GlobLookup {
+                        key,
+                        globs: globs.into_iter(),
+                        cycle_cuts,
+                        candidate,
+                        indexed: None,
+                    });
+                }
+            }
+            let Some(frame) = stack.last_mut() else {
+                return Ok(result);
+            };
+            match std::mem::replace(&mut result, Binding::Missing) {
+                found @ Binding::Found(_) if frame.key.namespace == Namespace::Any => {
+                    frame.candidate = found;
+                }
+                Binding::Found(found) => {
+                    if let Found::Item(id) = found {
+                        let first = *frame.indexed.get_or_insert(id);
+                        if first != id {
+                            frame.candidate = Binding::Ambiguous(first, id);
+                        }
+                    }
+                    if matches!(frame.candidate, Binding::Missing) {
+                        frame.candidate = Binding::Found(found);
+                    }
+                }
+                ambiguous @ Binding::Ambiguous(..) => frame.candidate = ambiguous,
+                // A hidden glob binding shadows names in its own module only.
+                Binding::Missing | Binding::Hidden => {}
+            }
+            let finished = match frame.candidate {
+                Binding::Found(_) => frame.key.namespace == Namespace::Any,
+                Binding::Ambiguous(..) | Binding::Hidden => true,
+                Binding::Missing => false,
+            };
+            if !finished {
+                for (glob, rooted) in frame.globs.by_ref() {
+                    if let Some(target) =
+                        self.module_path(frame.key.module, &glob, rooted, &mut Vec::new())?
+                    {
+                        let mut key = frame.key.clone();
+                        key.audience.include(&self.modules[key.module]);
+                        key.module = target;
+                        next = Some(key);
+                        break;
+                    }
+                }
+                if next.is_some() {
+                    continue;
+                }
+            }
+            let Some(frame) = stack.pop() else {
+                return Ok(result);
+            };
+            result = frame.candidate;
+            lookups.active.remove(&frame.key);
+            // A branch cut by an active ancestor is not a complete lookup, even if another
+            // branch supplied a binding. It may resolve differently along another route.
+            if lookups.cycle_cuts == frame.cycle_cuts {
+                lookups.memo.insert(frame.key, result.clone());
+            }
+        }
+    }
+
+    fn explicit_binding(
         &mut self,
-        module: usize,
-        name: &str,
-        namespace: Namespace,
-        holders: &mut Vec<usize>,
-        active: &mut ActiveLookups,
+        key: &LookupKey,
+        lookups: &mut Lookups,
+        globs: &mut Vec<(Vec<String>, bool)>,
     ) -> Result<Binding, String> {
+        let LookupKey {
+            module,
+            name,
+            namespace,
+            audience,
+        } = key;
+        let (module, name, namespace) = (*module, name.as_str(), *namespace);
         let items = &self.modules[module].items;
-        let reachable = |vis| {
-            holders
-                .iter()
-                .all(|&holder| self.visible_from(module, vis, holder))
-        };
+        let reachable = |vis| self.visible_to(module, vis, audience);
         let mut shadowed = false;
         for (item, definition_item) in items.iter().enumerate() {
             if let Some((attrs, visibility)) = definition(definition_item)
@@ -540,7 +673,6 @@ impl<'a> Index<'a> {
             }
         }
         let mut named = Vec::new();
-        let mut globs = Vec::new();
         for item in items {
             if let Item::Use(item) = item
                 && default_build(&item.attrs)
@@ -559,106 +691,91 @@ impl<'a> Index<'a> {
                 );
             }
         }
-        if matches!(namespace, Namespace::Any)
+        if namespace == Namespace::Any
             && let Some((path, rooted, open)) = named.first()
         {
+            globs.clear();
             return if *open {
-                self.resolve_path_in_namespace(module, path, *rooted, Namespace::Any, active)
+                self.resolve_path_in_namespace(module, path, *rooted, namespace, lookups)
             } else {
                 Ok(Binding::Hidden)
             };
         }
         let mut external_named = None;
         for (path, rooted, open) in named {
-            match self.resolve_path_in_namespace(module, &path, rooted, Namespace::Type, active) {
-                Ok(found @ Binding::Found(Found::Item(_))) if open => return Ok(found),
-                Ok(Binding::Found(found @ Found::External { .. })) if open => {
+            match self.resolve_path_in_namespace(module, &path, rooted, Namespace::Type, lookups)? {
+                found @ (Binding::Found(Found::Item(_)) | Binding::Ambiguous(..)) if open => {
+                    globs.clear();
+                    return Ok(found);
+                }
+                Binding::Found(found @ Found::External { .. }) if open => {
                     // An unindexed import's namespace is unknown. Preserve the external path
                     // so the caller can handle that without mistaking it for a local glob type.
                     external_named.get_or_insert(found);
                 }
-                Ok(ambiguous @ Binding::Ambiguous(..)) if open => return Ok(ambiguous),
-                Ok(Binding::Found(_) | Binding::Ambiguous(..)) => shadowed = true,
-                Ok(Binding::Missing | Binding::Hidden) | Err(_) => {}
-            }
-        }
-        if shadowed {
-            return Ok(Binding::Hidden);
-        }
-        if let Some(found) = external_named {
-            return Ok(Binding::Found(found));
-        }
-        let mut candidate = None;
-        let mut indexed = None;
-        for (glob, rooted) in globs {
-            let Some(target) = self.module_path(module, &glob, rooted, &mut Vec::new())? else {
-                continue;
-            };
-            holders.push(module);
-            let found = self.lookup(target, name, namespace, holders, active);
-            holders.pop();
-            match found? {
-                Binding::Found(found) => {
-                    if matches!(namespace, Namespace::Any) {
-                        return Ok(Binding::Found(found));
-                    }
-                    if let Found::Item(id) = found {
-                        let first = *indexed.get_or_insert(id);
-                        if first != id {
-                            return Ok(Binding::Ambiguous(first, id));
-                        }
-                    }
-                    candidate.get_or_insert(found);
-                }
-                ambiguous @ Binding::Ambiguous(..) => return Ok(ambiguous),
+                Binding::Found(_) | Binding::Ambiguous(..) => shadowed = true,
                 Binding::Missing | Binding::Hidden => {}
             }
         }
-        Ok(candidate.map_or(Binding::Missing, Binding::Found))
+        if shadowed || external_named.is_some() {
+            globs.clear();
+        }
+        Ok(if shadowed {
+            Binding::Hidden
+        } else {
+            external_named.map_or(Binding::Missing, Binding::Found)
+        })
     }
 
     /// A restricted item is visible only in the named module and its descendants.
-    fn visible_from(&self, module: usize, visibility: &Visibility, importer: usize) -> bool {
-        if module == importer {
-            return true;
-        }
+    fn visible_to(&self, module: usize, visibility: &Visibility, audience: &Audience) -> bool {
         let scope = &self.modules[module];
-        let importer = &self.modules[importer];
-        match visibility {
-            Visibility::Public(_) => true,
-            Visibility::Inherited => {
-                scope.krate == importer.krate && importer.path.starts_with(&scope.path)
+        match (visibility, audience) {
+            (Visibility::Public(_), _) => true,
+            (_, Audience::Public) => false,
+            (Visibility::Inherited, Audience::Within(krate, path)) => {
+                scope.krate == *krate && path.starts_with(&scope.path)
             }
-            Visibility::Restricted(visibility) => {
-                let path = visibility
+            (Visibility::Restricted(visibility), Audience::Within(krate, path)) => {
+                let written = visibility
                     .path
                     .segments
                     .iter()
                     .map(|segment| segment.ident.to_string())
                     .collect::<Vec<_>>();
-                self.local_absolute(module, &path)
-                    .is_some_and(|(krate, path)| {
-                        krate == importer.krate && importer.path.starts_with(&path)
-                    })
+                self.local_absolute(module, &written)
+                    .is_some_and(|(owner, prefix)| owner == *krate && path.starts_with(&prefix))
             }
         }
     }
 
     /// What the path `path`, written in `module`, names.
     pub fn resolve_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        self.resolve_path_in_namespace(module, path, false, Namespace::Any, &mut Vec::new())?
-            .require(self, module, path.last().map_or("", String::as_str))
+        self.resolve_path_in_namespace(
+            module,
+            path,
+            false,
+            Namespace::Any,
+            &mut Lookups::default(),
+        )?
+        .require(self, module, path.last().map_or("", String::as_str))
     }
 
     /// What the signature type path `path`, written in `module`, names.
     pub fn resolve_type_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        self.resolve_path_in_namespace(module, path, false, Namespace::Type, &mut Vec::new())?
-            .require(self, module, path.last().map_or("", String::as_str))
+        self.resolve_path_in_namespace(
+            module,
+            path,
+            false,
+            Namespace::Type,
+            &mut Lookups::default(),
+        )?
+        .require(self, module, path.last().map_or("", String::as_str))
     }
 
     /// What a `::`-rooted import names, skipping local bindings of the crate name.
     pub fn resolve_rooted_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        self.resolve_path_in_namespace(module, path, true, Namespace::Any, &mut Vec::new())?
+        self.resolve_path_in_namespace(module, path, true, Namespace::Any, &mut Lookups::default())?
             .require(self, module, path.last().map_or("", String::as_str))
     }
 
@@ -668,20 +785,45 @@ impl<'a> Index<'a> {
         path: &[String],
         rooted: bool,
         namespace: Namespace,
-        active: &mut ActiveLookups,
+        lookups: &mut Lookups,
+    ) -> Result<Binding, String> {
+        // Glob edges use the explicit DFS stack. Bound the remaining recursive path/alias
+        // expansion against pathological source rather than treating it as an absent binding.
+        if lookups.path_depth >= 128 {
+            let scope = &self.modules[module];
+            return Err(format!(
+                "import path nesting limit resolving `{}` in {}::{}",
+                path.join("::"),
+                scope.krate,
+                scope.path.join("::")
+            ));
+        }
+        lookups.path_depth += 1;
+        let result = self.follow_path(module, path, rooted, namespace, lookups);
+        lookups.path_depth -= 1;
+        result
+    }
+
+    fn follow_path(
+        &mut self,
+        module: usize,
+        path: &[String],
+        rooted: bool,
+        namespace: Namespace,
+        lookups: &mut Lookups,
     ) -> Result<Binding, String> {
         let (last, parent) = path.split_last().ok_or("an empty item path")?;
         if !rooted && parent.is_empty() {
-            return self.lookup(module, last, namespace, &mut vec![module], active);
+            return self.lookup_here(module, last, namespace, lookups);
         }
         if !parent.is_empty()
             && let Some(target) = self.module_path(module, parent, rooted, &mut Vec::new())?
         {
-            return self.lookup(target, last, namespace, &mut vec![target], active);
+            return self.lookup_here(target, last, namespace, lookups);
         }
         // A non-module path prefix can still be an external crate/type alias.
         if !rooted {
-            match self.lookup(module, &path[0], namespace, &mut vec![module], active)? {
+            match self.lookup_here(module, &path[0], namespace, lookups)? {
                 Binding::Found(Found::External {
                     module,
                     path: mut prefix,

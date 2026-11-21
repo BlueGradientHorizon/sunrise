@@ -479,16 +479,20 @@ impl OutsideSeam {
         holders: &mut Vec<usize>,
         resolving: &mut Resolving,
     ) -> Option<(Vec<String>, Option<usize>)> {
-        let indexed = match index.visible_type_binding(module, name, holders).ok()? {
-            Binding::Hidden => return None,
-            Binding::Ambiguous(first, second) => {
+        let indexed = match index.visible_type_binding(module, name, holders) {
+            Err(error) => {
+                resolving.error.get_or_insert(error);
+                return None;
+            }
+            Ok(Binding::Hidden) => return None,
+            Ok(Binding::Ambiguous(first, second)) => {
                 resolving
                     .error
                     .get_or_insert_with(|| index.ambiguous_type(name, first, second));
                 return None;
             }
-            Binding::Found(Found::Item(id)) => Some(id),
-            Binding::Missing | Binding::Found(Found::External { .. }) => None,
+            Ok(Binding::Found(Found::Item(id))) => Some(id),
+            Ok(Binding::Missing | Binding::Found(Found::External { .. })) => None,
         };
         if let Some(target) = self.exported_external_module(index, module, name, resolving) {
             return Some((Self::indexed_module_path(index, target), Some(target)));
@@ -805,7 +809,11 @@ impl OutsideSeam {
                 return None;
             }
             Ok(Binding::Hidden) => return None,
-            _ => {}
+            Ok(Binding::Missing) => {}
+            Err(error) => {
+                resolving.error.get_or_insert(error);
+                return None;
+            }
         }
         if self.crates.contains(first) {
             return Some(path.to_vec());

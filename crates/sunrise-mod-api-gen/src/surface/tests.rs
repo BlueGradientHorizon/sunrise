@@ -635,15 +635,67 @@ fn two_globs_in_the_same_namespace_are_ambiguous_at_the_api_owner() {
 }
 
 #[test]
-fn multiple_glob_paths_to_the_same_definition_are_not_ambiguous() {
-    let edited = "pub struct Shared;
-        mod a { pub use crate::Shared; }
-        mod b { pub use crate::Shared; }
-        mod bridge { pub use crate::a::*; pub use crate::b::*; }
-        mod consumer { use crate::bridge::*; pub fn safe() -> Shared { unimplemented!() } }
-        pub use consumer::safe;
+fn a_deep_glob_chain_preserves_references_leaks_and_ambiguity() {
+    use std::fmt::Write as _;
+
+    let mut chain = String::new();
+    for n in 1..=64 {
+        writeln!(chain, "mod m{n} {{ pub use crate::m{}::*; }}", n - 1).unwrap();
+    }
+    let caller = "mod caller { use crate::m64::*; pub fn exposed() -> Shared { unimplemented!() } }
+        pub use caller::exposed;
         /// A colour.";
-    let export = export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS);
+    let edited = format!("pub struct Shared; mod m0 {{ pub use crate::Shared; }} {chain} {caller}");
+    let export = export_fixture(&[(LIB, "/// A colour.", &edited)], HOOKS);
+    let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
+    let exposed = value["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|function| function["id"] == "fn:exposed")
+        .expect("exposed is exported");
+    assert_eq!(exposed["refs"], serde_json::json!(["type:Shared"]));
+
+    let leaking = format!("mod m0 {{ pub type Shared = engine::Secret; }} {chain} {caller}");
+    let error = try_export_fixture(&[(LIB, "/// A colour.", &leaking)], HOOKS)
+        .err()
+        .expect("the deep chain reaches the leaking alias");
+    assert!(error.contains("mod_api::exposed"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+
+    let conflicting = edited.replace(
+        "mod caller {",
+        "mod shallow { pub struct Shared; } mod caller { use crate::shallow::*;",
+    );
+    let error = try_export_fixture(&[(LIB, "/// A colour.", &conflicting)], HOOKS)
+        .err()
+        .expect("the deep binding conflicts with the shallow one");
+    assert!(error.contains("mod_api::exposed"), "{error}");
+    assert!(error.contains("mod_api::Shared"), "{error}");
+    assert!(error.contains("mod_api::shallow::Shared"), "{error}");
+}
+
+#[test]
+fn multiple_glob_paths_to_the_same_definition_are_not_ambiguous() {
+    use std::fmt::Write as _;
+
+    let mut edited = String::from("pub struct Shared; mod bridge0 { pub use crate::Shared; }");
+    for n in 1..=32 {
+        writeln!(
+            edited,
+            "mod a{n} {{ pub use crate::bridge{prev}::*; }}
+             mod b{n} {{ pub use crate::bridge{prev}::*; }}
+             mod bridge{n} {{ pub use crate::a{n}::*; pub use crate::b{n}::*; }}",
+            prev = n - 1,
+        )
+        .unwrap();
+    }
+    edited.push_str(
+        "mod consumer { use crate::bridge32::*; pub fn safe() -> Shared { unimplemented!() } }
+        pub use consumer::safe;
+        /// A colour.",
+    );
+    let export = export_fixture(&[(LIB, "/// A colour.", &edited)], HOOKS);
     let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
     let safe = value["functions"]
         .as_array()
