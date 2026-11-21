@@ -827,7 +827,12 @@ pub fn visual_clip<W: DynamicCollisionWorld>(
                 return None;
             }
             // FenceBlock and SnowLayerBlock: their outline (a fence's collision shape is 24 px tall).
-            if name == "snow" || name.ends_with("_fence") {
+            let vanilla_fence = facts
+                .get(id)
+                .name
+                .strip_prefix("minecraft:")
+                .is_some_and(|n| n.ends_with("_fence"));
+            if name == "snow" || vanilla_fence {
                 return VoxelShape::clip_boxes(
                     facts.get(id).outline.iter().map(|b| {
                         Aabb::new(Vec3::new(b[0], b[1], b[2]), Vec3::new(b[3], b[4], b[5]))
