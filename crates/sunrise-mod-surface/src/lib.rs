@@ -733,16 +733,21 @@ impl Surface {
 
     /// [`Self::read`], and the ids it finds unsealed: [`Self::unsealed`]'s records, and `surface`
     /// when the document's own hash is not [`Self::document_hash`]. That one is checked only when
-    /// the document holds no list this reader doesn't know, since a newer writer's collection may
-    /// count toward it.
+    /// the document holds no non-empty list this reader doesn't know, since a newer writer's
+    /// collection may count toward it. Unknown values are only looked at, never decoded, so no
+    /// nesting the typed reader skips refuses here.
     pub fn read_sealed(bytes: &[u8]) -> Result<(Self, Vec<String>), ReadError> {
         let surface = Self::read(bytes)?;
         let mut unsealed = surface.unsealed();
-        let raw: BTreeMap<String, serde_json::Value> =
+        let raw: BTreeMap<String, &serde_json::value::RawValue> =
             serde_json::from_slice(bytes).map_err(|e| ReadError::Json(e.to_string()))?;
         let known = serde_json::to_value(&surface).expect("a surface serializes");
         let unknown_list = raw.iter().any(|(key, value)| {
-            value.is_array() && key != "engine_items" && known.get(key).is_none()
+            let text = value.get();
+            key != "engine_items"
+                && known.get(key).is_none()
+                && text.starts_with('[')
+                && !text[1..].trim_start().starts_with(']')
         });
         if !unknown_list && surface.hash != surface.document_hash() {
             unsealed.push("surface".to_owned());

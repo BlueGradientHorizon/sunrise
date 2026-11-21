@@ -636,7 +636,18 @@ fn the_document_hash_is_checked_unless_a_newer_writers_list_may_count_toward_it(
     // A newer writer's collection, counted in its document hash: this reader can't recompute it.
     value["later"] = serde_json::json!([{"id": "later:x", "hash": "h"}]);
     assert!(read(&value).is_empty());
-    // A field it doesn't know is no list of records: the hash is checked still.
-    value["later"] = serde_json::json!("note");
-    assert_eq!(read(&value), ["surface"]);
+    // A field it doesn't know that is no list, or an empty one: the hash is checked still.
+    for other in [serde_json::json!("note"), serde_json::json!([])] {
+        value["later"] = other;
+        assert_eq!(read(&value), ["surface"]);
+    }
+    // An unknown list nested past serde_json's limit is skipped, as the typed reader skips it.
+    let mut text = serde_json::to_string(&surface).unwrap();
+    text.pop();
+    text.push_str(&format!(
+        r#","later":{}{}}}"#,
+        "[".repeat(1_000),
+        "]".repeat(1_000)
+    ));
+    assert!(Surface::read_sealed(text.as_bytes()).unwrap().1.is_empty());
 }
