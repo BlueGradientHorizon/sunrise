@@ -2082,6 +2082,8 @@ mod shield;
 mod shoulders;
 #[path = "game/interface/sign_edit.rs"]
 mod sign_edit;
+#[path = "game/modding/slot_changes.rs"]
+mod slot_changes;
 #[cfg(test)]
 #[path = "game/modding/slot_pickup_tests.rs"]
 mod slot_pickup_tests;
@@ -3967,6 +3969,8 @@ struct Game<'a> {
     transactions: transactions::OpenTransactions,
     /// The source of the running dispenser behaviour, including across mod callbacks.
     dispense_source: Option<dispenser::DispenseSource>,
+    /// Open mod menus whose `menu_slot_changed` dispatch is currently on the call stack.
+    slot_changed_active: Vec<slot_changes::SlotChangedTarget>,
     /// Backing blocks whose contents notice is on the call stack, innermost last.
     contents_changing: Vec<(mod_api::LevelRef, BlockPos)>,
     /// The mod screen of a menu open on this client (`native_screen`).
@@ -13988,6 +13992,7 @@ impl<'a> Game<'a> {
             hoppers: HashMap::new(),
             transactions: Default::default(),
             dispense_source: None,
+            slot_changed_active: Vec::new(),
             contents_changing: Vec::new(),
             mod_screen: None,
             mod_container_viewers: HashMap::new(),

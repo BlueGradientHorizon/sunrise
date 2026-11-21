@@ -601,6 +601,7 @@ struct KeptClick {
     conn: u32,
     drag: Option<(u8, Vec<usize>)>,
     craft: Option<sunrise_client::lan::menu::ModCraft>,
+    slot_changed_seen: Option<Vec<Option<ItemStack>>>,
     owned: Option<(u64, Box<sunrise_client::menu::Menu>)>,
     machine: Option<(i32, Box<sunrise_client::menu::Menu>)>,
     places: Option<super::native_menu_places::MenuSlotPlaces>,
@@ -1327,6 +1328,7 @@ impl<'g> Game<'g> {
                         .after
                         .extract_if(.., |after| after.level_owned())
                         .collect(),
+                    menu_click_active: level.menu_click_active,
                     ..Level::default()
                 };
                 level.save_chunks.retain(|&(dim, chunk)| {
@@ -1418,6 +1420,9 @@ impl<'g> Game<'g> {
                 }
                 for (generation, kept) in level.menu_clicks {
                     outer.menu_clicks.entry(generation).or_insert(kept);
+                }
+                if outer.menu_click_active.is_none() {
+                    outer.menu_click_active = level.menu_click_active;
                 }
                 for (generation, kept) in level.native_menu_slots {
                     outer.native_menu_slots.entry(generation).or_insert(kept);
@@ -2014,6 +2019,7 @@ impl<'g> Game<'g> {
                     conn,
                     drag: menu.drag.clone(),
                     craft: menu.craft.clone(),
+                    slot_changed_seen: menu.slot_changed_seen.clone(),
                     owned: owner.and_then(|owner| owner.owned_menu.clone()),
                     machine: owner.and_then(|owner| owner.crafting.machine.as_ref().cloned()),
                     places: owner.and_then(|owner| owner.slot_places.clone()),
@@ -2781,6 +2787,54 @@ impl<'g> Game<'g> {
                 self.guest_craft_result(*conn);
             }
         }
+        // Any open mod menu whose inputs changed through a transactional host write (not already
+        // reconciled inside a click) receives one deduplicated `menu_slot_changed` notice here.
+        if mod_api::__private::has_part_hook(mod_api::HookId::MenuSlotChanged) {
+            let mut owned_generations: Vec<_> = level.native_menu_slots.into_iter().collect();
+            owned_generations.sort_by_key(|(generation, _)| *generation);
+            for (generation, before) in owned_generations {
+                self.notify_owned_menu_slot_changed(generation, &before, level.menu_click_active);
+            }
+            let mut block_positions: Vec<_> = level
+                .block_entities
+                .keys()
+                .copied()
+                .chain(level.slots.keys().map(|&(pos, _)| pos))
+                .collect();
+            block_positions.sort_unstable();
+            block_positions.dedup();
+            for pos in block_positions {
+                let fallback_before = match level
+                    .block_entities
+                    .get(&pos)
+                    .and_then(|kept| kept.entity.as_ref())
+                {
+                    Some(BlockEntity::Mod(entity)) => Some(entity.items.clone()),
+                    _ => match self.world.block_entities.get(&pos) {
+                        Some(BlockEntity::Mod(entity)) => {
+                            let mut before = entity.items.clone();
+                            let mut patched = false;
+                            for (&(slot_pos, slot), kept) in &level.slots {
+                                if slot_pos == pos {
+                                    if before.len() <= slot {
+                                        before.resize(slot + 1, None);
+                                    }
+                                    before[slot] = kept.stack.clone();
+                                    patched = true;
+                                }
+                            }
+                            patched.then_some(before)
+                        }
+                        _ => None,
+                    },
+                };
+                self.notify_block_menu_slot_changed(
+                    pos,
+                    fallback_before.as_deref(),
+                    level.menu_click_active,
+                );
+            }
+        }
         for (pos, kept) in level.block_entities {
             let record = |entity: Option<&BlockEntity>| match entity {
                 Some(BlockEntity::Jukebox(j)) => j.record().cloned(),
@@ -3058,6 +3112,7 @@ impl<'g> Game<'g> {
                         let menu = g.menu.as_mut().unwrap();
                         menu.drag = kept.drag;
                         menu.craft = kept.craft;
+                        menu.slot_changed_seen = kept.slot_changed_seen;
                     });
                     let owner = host.menus.entry(kept.conn).or_default();
                     owner.owned_menu = kept.owned;

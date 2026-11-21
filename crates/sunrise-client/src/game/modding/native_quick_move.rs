@@ -220,9 +220,19 @@ impl Game<'_> {
             }
         };
         let original = held.clone();
+        // `AbstractContainerMenu.slotsChanged`: a mod menu type listening to `menu_slot_changed`
+        // recomputes its outputs from the settled move, inside the same transaction.
+        let changed_menu = take_menu.filter(|menu| {
+            mod_api::__private::menu_listens(mod_api::HookId::MenuSlotChanged, menu.id)
+        });
         let (result, notices) = self.collect_quick_move_notices(|game| {
             game.storage_transaction(|game, _| {
                 game.transactions.last_mut().unwrap().menu_click_active = Some(conn);
+                // Only a listening menu pays for the snapshot.
+                let before = changed_menu.and_then(|_| match game.world.block_entities.get(&pos) {
+                    Some(BlockEntity::Mod(entity)) => Some(entity.items.clone()),
+                    _ => None,
+                });
                 let mut handled = false;
                 let mut access = ResidentBlockEntityAccess::for_handle(game, subject, state);
                 let panicked = Self::native_menu_quick_move(
@@ -334,6 +344,32 @@ impl Game<'_> {
                 }
                 if changed {
                     game.after_commit(After::Changed(pos));
+                }
+                // The listener sees the move with its source settled, and an invalid output or a
+                // failed listener aborts the whole move with this transaction.
+                if let Some(layout) = changed_menu
+                    && let Some(before) = before
+                    && let Some(uuid) = game
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guest(conn))
+                        .map(|guest| guest.uuid)
+                    && let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos)
+                {
+                    let after = entity.items.clone();
+                    if !game.mod_menu_slot_changed_block(
+                        conn,
+                        uuid,
+                        pos,
+                        admitted.generation,
+                        window,
+                        layout,
+                        None,
+                        &before,
+                        &after,
+                    ) {
+                        return Err(QuickMoveOutcome::Rejected);
+                    }
                 }
                 Ok(take)
             })
