@@ -45,6 +45,11 @@ impl Menu {
             self.take_sound("minecraft:ui.stonecutter.take_result");
             return;
         }
+        if self.state.slots[s].role == Role::GrindInput {
+            // The repair inputs use Slot.onTake, which calls setChanged on the repair container.
+            self.slot_changed(env, s);
+            return;
+        }
         if self.state.slots[s].role == Role::GrindResult {
             if self.state.grind_hook {
                 self.state.grind_take = Some(PendingGrindstoneTake {

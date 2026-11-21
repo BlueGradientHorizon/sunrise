@@ -796,7 +796,7 @@ fn equal_stack_swap_and_multi_slot_drag_fire_grindstone_place_live() {
             let mut sticks = engine_item(game, "minecraft:stick", 2);
             sticks.set_crafting_enchantments(vec![("minecraft:sharpness".into(), 1)]);
 
-            // Multi-slot QuickCraft drag across slots 0 and 1 fires grindstone_place live twice.
+            // Each input in the multi-slot drag triggers a pair of live result notifications.
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(sticks);
             });
@@ -815,8 +815,8 @@ fn equal_stack_swap_and_multi_slot_drag_fire_grindstone_place_live() {
                 ]
             );
 
-            // Swapping an identical non-stackable sword into slot 0 leaves slot 0 equal
-            // before and after, yet still fires grindstone_place.
+            // A hotbar swap with an identical sword leaves the input equal, but still notifies
+            // twice through Slot.setByPlayer and once through Slot.onTake.
             let sword = enchanted_sword(game, 200);
             game.lan
                 .as_mut()
@@ -830,11 +830,14 @@ fn equal_stack_swap_and_multi_slot_drag_fire_grindstone_place_live() {
                 .menu
                 .load_slot(0, Some(sword.clone()));
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                g.carried = Some(sword.clone());
+                g.inventory[0] = Some(sword.clone());
             });
             script(Script::default());
-            click(game, window, 0, 0);
-            assert_eq!(slot(game, 0), Some(sword));
+            game.lan_guest_packet(12, container_click(window, 0, 0, 2));
+            assert_eq!(slot(game, 0).as_ref(), Some(&sword));
+            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            assert_eq!(guest.inventory[0].as_ref(), Some(&sword));
+            assert!(guest.carried.is_none());
             assert_eq!(
                 PLACE_OBSERVED.with(|v| v.borrow().clone()),
                 vec![(Some(1), Some(1)); 3]
