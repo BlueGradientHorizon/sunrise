@@ -1,0 +1,2 @@
+# The HUD hotbar and status bars follow the camera player (26.3 recording).
+sunrise-client game::remote::tests::client_hud_camera_tests::hud_bars_follow_the_camera_player_like_26_3 lib daily resources

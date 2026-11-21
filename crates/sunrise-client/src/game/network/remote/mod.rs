@@ -2375,6 +2375,9 @@ pub(crate) mod tests {
     mod camera_death_tests {
         include!("camera_death_tests.rs");
     }
+    mod client_hud_camera_tests {
+        include!("client_hud_camera_tests.rs");
+    }
     mod client_day_time_tests {
         include!("client_day_time_tests.rs");
     }
