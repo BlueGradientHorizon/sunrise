@@ -211,12 +211,14 @@ fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, Strin
     let read = |file: &Path| {
         fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()))
     };
-    // The root's scope is `lib.rs` and the export fragments included into it.
+    // The root's scope is `lib.rs` and the export fragments its build includes: the files the
+    // generator's own inventory lists, not every file in the folder.
     let mut root = read(&src.join("lib.rs"));
-    if let Ok(entries) = fs::read_dir(src.join("exports")) {
-        for entry in entries {
+    let exports = src.join("exports");
+    if exports.is_dir() {
+        for area in sunrise_game_discovery::module_files(&exports)? {
             root.push('\n');
-            root.push_str(&read(&entry.unwrap().path()));
+            root.push_str(&read(&exports.join(format!("{area}.rs"))));
         }
     }
     let (mut module, mut file, mut rest) = (src.to_path_buf(), src.join("lib.rs"), path);
@@ -226,13 +228,16 @@ fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, Strin
         let Some(declared) = scope.windows(3).position(|decl| decl == ["mod", name, ";"]) else {
             break;
         };
-        let attributes = scope[..declared]
-            .rsplit(|token| matches!(*token, ";" | "}"))
-            .next()
-            .unwrap();
+        let attributes = attributes(&scope[..declared]);
         if attributes.windows(2).any(|pair| pair == ["path", "="]) {
             return Err(format!(
                 "{} gives `mod {name}` a #[path], which this guard does not follow",
+                file.display()
+            ));
+        }
+        if attributes.contains(&"cfg") {
+            return Err(format!(
+                "{} compiles `mod {name}` only under a cfg, which this guard does not evaluate",
                 file.display()
             ));
         }
@@ -248,9 +253,19 @@ fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, Strin
         return Err(format!("{} is a module", file.display()));
     };
     // A type declared inside a nested module or a function body is another type.
-    for pair in top_level(&tokens(&text)).windows(2) {
+    let items = top_level(&tokens(&text));
+    for (at, pair) in items.windows(2).enumerate() {
         match pair {
-            ["struct" | "enum" | "union", found] if *found == name => return Ok(file),
+            ["struct" | "enum" | "union", found] if *found == name => {
+                // Another item may define the name where this one is compiled out.
+                if attributes(&items[..at]).contains(&"cfg") {
+                    return Err(format!(
+                        "{} defines {name} only under a cfg, which this guard does not evaluate",
+                        file.display()
+                    ));
+                }
+                return Ok(file);
+            }
             ["type", found] if *found == name => {
                 return Err(format!(
                     "{} makes {name} an alias; name its target",
@@ -266,24 +281,29 @@ fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, Strin
     }
     let mut exports = Vec::new();
     root_exports(&tokens(&root), &mut exports);
-    let named: BTreeSet<_> = exports
+    let named: Vec<_> = exports
         .iter()
-        .filter(|(exported, target)| *exported == name && target.len() > 1)
-        .map(|(_, target)| target)
+        .filter(|(exported, target, _)| *exported == name && target.len() > 1)
         .collect();
-    let mut found: BTreeSet<_> = match named.len() {
-        0 => exports
-            .iter()
-            .filter(|(exported, _)| *exported == "*")
-            .filter_map(|(_, module)| {
-                definition(src, &[module.as_slice(), &[name]].concat(), false).ok()
-            })
-            .collect(),
-        _ => named
-            .into_iter()
-            .map(|target| definition(src, target, false))
-            .collect::<Result<_, _>>()?,
-    };
+    let mut found = BTreeSet::new();
+    let mut conditional = false;
+    for (_, target, gated) in &named {
+        found.insert(definition(src, target, false)?);
+        conditional |= gated;
+    }
+    if named.is_empty() {
+        for (_, module, gated) in exports.iter().filter(|export| export.0 == "*") {
+            if let Ok(file) = definition(src, &[module.as_slice(), &[name]].concat(), false) {
+                found.insert(file);
+                conditional |= gated;
+            }
+        }
+    }
+    if conditional {
+        return Err(format!(
+            "the crate root re-exports {name} only under a cfg, which this guard does not evaluate"
+        ));
+    }
     match (found.pop_first(), found.is_empty()) {
         (Some(file), true) => Ok(file),
         (Some(_), false) => Err(format!("the crate root exports more than one {name}")),
@@ -291,6 +311,14 @@ fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, Strin
             "the crate root neither defines nor traceably re-exports {name}"
         )),
     }
+}
+
+/// The attribute tokens of the item that starts where `before` ends.
+fn attributes<'a, 'b>(before: &'b [&'a str]) -> &'b [&'a str] {
+    before
+        .rsplit(|token| matches!(*token, ";" | "}"))
+        .next()
+        .unwrap()
 }
 
 /// The tokens outside every brace pair: a file's own items, without their bodies.
@@ -311,17 +339,23 @@ fn top_level<'a>(tokens: &[&'a str]) -> Vec<&'a str> {
     out
 }
 
-/// What a file's own `use` items bring into its scope: the name each binds (`*` for a glob) and
-/// the path it comes from, without `crate` and `self`.
-fn root_exports<'a>(tokens: &[&'a str], out: &mut Vec<(&'a str, Vec<&'a str>)>) {
+/// What a file's own `use` items bring into its scope: the name each binds (`*` for a glob), the
+/// path it comes from, without `crate` and `self`, and whether the item carries a `cfg`.
+fn root_exports<'a>(tokens: &[&'a str], out: &mut Vec<(&'a str, Vec<&'a str>, bool)>) {
     let mut depth = 0;
     let mut rest = tokens;
     while let [token, tail @ ..] = rest {
+        let before = &tokens[..tokens.len() - rest.len()];
         rest = tail;
         match *token {
             "{" => depth += 1,
             "}" => depth -= 1,
-            "use" if depth == 0 => use_tree(&mut rest, &mut Vec::new(), out),
+            "use" if depth == 0 => {
+                let mut bound = Vec::new();
+                use_tree(&mut rest, &mut Vec::new(), &mut bound);
+                let gated = attributes(before).contains(&"cfg");
+                out.extend(bound.into_iter().map(|(name, path)| (name, path, gated)));
+            }
             _ => {}
         }
     }
@@ -395,6 +429,25 @@ fn a_same_named_type_elsewhere_is_not_the_declaration() {
     fs::write(&side, "pub enum Side {}").unwrap();
     let redirected = "#[path = \"moved/side.rs\"] pub(crate) mod side;";
     fs::write(src.join("content/mod.rs"), redirected).unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
+    fs::write(src.join("content/mod.rs"), "pub(crate) mod side;").unwrap();
+    assert_eq!(defining_file(&src, &["Side"]), Ok(side.clone()));
+
+    // A fragment the build leaves out exports nothing: the compiled glob decides.
+    fs::write(src.join("exports/mod.rs"), "pub use decoy::Side;").unwrap();
+    fs::write(src.join("exports/sides.rs"), "pub use content::side::*;").unwrap();
+    assert_eq!(defining_file(&src, &["Side"]), Ok(side.clone()));
+    // Which of two conditional items is compiled is not decided here.
+    let look_alike = "#[cfg(test)] pub enum Side {} #[cfg(not(test))] pub use crate::decoy::Side;";
+    fs::write(&side, look_alike).unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
+    fs::write(&side, "pub enum Side {}").unwrap();
+    let export = "#[cfg(test)] pub use content::side::Side;";
+    fs::write(src.join("exports/sides.rs"), export).unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
+    fs::write(src.join("exports/sides.rs"), "pub use content::side::Side;").unwrap();
+    let module = "#[cfg(test)] pub(crate) mod side;";
+    fs::write(src.join("content/mod.rs"), module).unwrap();
     assert!(defining_file(&src, &["Side"]).is_err());
 }
 
