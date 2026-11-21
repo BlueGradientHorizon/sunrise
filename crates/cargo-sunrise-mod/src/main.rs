@@ -23,7 +23,7 @@
 //! - `sdk diff <build> <build>`: what changed in the surface between two builds.
 //! - `fits [<file.smod>] [--build <name>]…`: whether the mod fits each build; exit 0 when all
 //!   do, 1 when one does not, 2 when it cannot be told.
-//! - `registry build|review|check|list|release|page`: the registry repository's CI (`registry.rs`).
+//! - `registry build|review|check|list|release|page|releases`: the registry repository's CI (`registry.rs`).
 //! - `use-jar <path>`: list an exact original Java jar as a passive asset/data source.
 //! - `native-build < plan.json`: compile native mods against an unpacked SDK, as the launcher does
 //!   (docs/modding/src/reference/sdk/08-native-build.md).

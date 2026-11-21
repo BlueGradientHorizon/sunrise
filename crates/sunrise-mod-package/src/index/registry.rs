@@ -391,14 +391,16 @@ pub struct Sources<'a> {
     pub binary_checks: Option<builds::Checks<'a>>,
 }
 
+/// The wire row that discovery writes and the offline registry commands read.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseInput {
+    pub tag: String,
+    pub commit: String,
+}
+
 /// Read the workflow's release list, adding the line from each validated tag.
 pub fn parse_releases(text: &str) -> Result<Vec<SunriseRelease>, String> {
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct ReleaseInput {
-        tag: String,
-        commit: String,
-    }
     let inputs: Vec<ReleaseInput> = serde_json::from_str(text).map_err(|e| e.to_string())?;
     let mut seen = std::collections::HashSet::new();
     let mut releases = Vec::with_capacity(inputs.len());
