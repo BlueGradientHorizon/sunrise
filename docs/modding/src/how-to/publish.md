@@ -223,8 +223,8 @@ pin and the target commit. To describe the archives with `--describe-binaries`, 
 
 ## Tagged native releases in GitHub Actions
 
-New native projects include `.github/workflows/release.yml`, the shared workflow and an action that verifies
-and installs the release tool. The repository does not carry the release scripts: every job extracts them
+New native projects include `.github/workflows/release.yml`, `.github/workflows/rebuild.yml`, a shared workflow
+and an action that verifies and installs the release tool. The repository does not carry the release scripts: every job extracts them
 from its verified tool with `cargo sunrise-mod release scripts`. Development still starts on Nightly. When
 you are ready to publish a stable version from GitHub:
 
@@ -235,7 +235,8 @@ you are ready to publish a stable version from GitHub:
    Actions variable `SUNRISE_MOD_PUBLIC_KEY` to the printed public key. For an existing registry listing it
    must match the key in that entry. Don't generate a fresh key for another release of the same project.
 3. Create the `sunrise-mod-signing` environment. Restrict it to your trusted release tags and require review
-   according to your repository's release policy. Store `SUNRISE_MOD_SIGNING_KEY` and, if needed,
+   according to your repository's release policy. If you use rebuilds, also allow your trusted default branch.
+   Store `SUNRISE_MOD_SIGNING_KEY` and, if needed,
    `SUNRISE_MOD_SIGNING_PASSPHRASE` there, not in repository variables or on the command line. Keep this
    environment off pull requests. Only the signing step sees the secrets, and it never builds or runs mod code.
 4. For a first listing, set `SUNRISE_MOD_REGISTRY_OWNER` (your GitHub login), `SUNRISE_MOD_SUMMARY` and
@@ -257,13 +258,38 @@ only missing ones are uploaded. A different remote file stops the workflow. Reco
 rather than rebuilding or re-signing, even if the original source checkout did not change. A rolling tool update
 can also stop a retry; in that case finish the release manually with the saved, verified assets.
 
-After uploads are verified, the `sunrise-registry-submission` artifact and the run summary give you the entry,
+Once the registry job succeeds, the `sunrise-registry-submission` artifact and the run summary give you the entry,
 any staged icon and the pull request draft. You can always submit these yourself. To let Actions open or update
 that pull request, set `SUNRISE_MOD_REGISTRY_FORK` to your own fork of `sunrise-org/sunrise-mods` (`owner/name`).
 In a separate `sunrise-mod-registry` environment, set `SUNRISE_MOD_REGISTRY_TOKEN` to a token for your listed
 GitHub owner account that can push to the fork and open registry pull requests. It is not the author release's
 token and is not available to the build, sign or upload jobs. If the registry needs page fields or screenshots
 that were not staged, complete the attached draft by hand. The workflow does not commit the author release assets.
+If the registry job fails on the fork or token, fix that setup or remove both settings, then rerun the registry job.
+
+## Rebuilding binaries for a newer stable release
+
+Once the registry has reviewed and published a version with binaries, `rebuild.yml` can add a build for a newer
+stable Sunrise release on the same line. It runs on the default branch with the same `SUNRISE_MOD_RELEASES`
+opt-in and signing key as the tag workflow. On its daily schedule it takes at most one candidate: the newest
+eligible reviewed mod version whose line's current stable release is not already covered. It does not walk back
+through older releases, and no candidate is a successful no-op. To try a specific pair, run **Rebuild reviewed
+native mod source** on the default branch with both the exact mod version (such as `0.1.0`) and the stable Sunrise
+tag (such as `26.3-0.1.1`). The same eligibility rules apply.
+
+A rebuild downloads the exact signed `.smod` from the original author release and verifies it against the
+reviewed source row. It builds from that package and its existing `Cargo.lock`, not the current branch's Rust
+source. Only the manifest in the disposable build folder is repinned; neither a branch nor the tag moves. If
+the lock no longer works unchanged or the mod does not fit the newer SDK, publish a new mod version instead.
+Planning skips withdrawn or ineligible versions. Build jobs use the plan snapshot; preflight stops publication
+if eligibility changes or either stable Sunrise tag moves or is withdrawn after planning.
+
+Only the target's signed archives and descriptor are added to the existing author release. The original source
+and its signature never change. The submission adds one build row to the reviewed version without editing its
+old builds or page fields. If the exact row was already accepted, nothing is submitted. If the source, key, owners
+or existing target changed since planning, stop and replan rather than rewriting the reviewed entry. Recover the
+original signed batch after an interrupted upload, as for a tagged release. Without a registry fork token, submit
+the staged append yourself from the run artifact, which is attached once the registry job succeeds.
 
 ## A collection
 

@@ -1,7 +1,7 @@
 //! One release decision and its verified SDK metadata, before any build or signing job runs.
 use super::{AssetName, releases, version};
 use crate::{bounded, internals::atomic_write, options::Options, sdk_fetch};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     fs,
@@ -31,6 +31,7 @@ struct Plan<'a> {
     #[serde(flatten)]
     release: Selection<'a>,
     rust: String,
+    mixins: String,
     hosts: Vec<Host>,
     descriptor: Option<String>,
     source_asset: String,
@@ -55,13 +56,13 @@ enum Mode {
     Rebuild { reviewed_source: ReviewedSource },
 }
 
-#[derive(Debug, Serialize)]
-struct ReviewedSource {
-    url: String,
-    sha256: String,
-    size: u64,
-    key: String,
-    signature: String,
+#[derive(Debug, Deserialize, Serialize)]
+pub(super) struct ReviewedSource {
+    pub(super) url: String,
+    pub(super) sha256: String,
+    pub(super) size: u64,
+    pub(super) key: String,
+    pub(super) signature: String,
     owners: Vec<String>,
     owner_ids: Vec<u64>,
 }
@@ -548,6 +549,7 @@ fn complete(selection: Selection<'_>, sdk: sdk::Index) -> Result<Plan<'_>, Strin
     Ok(Plan {
         release: selection,
         rust: sdk.toolchain.rust,
+        mixins: sdk.mixins.rev,
         hosts,
         descriptor,
         source_asset,

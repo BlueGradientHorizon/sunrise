@@ -21,8 +21,9 @@ use sunrise_mod_package::{
 use sunrise_native_build::{library_record::Library, prebuilt::Route};
 
 mod plan;
+mod prepare;
 
-pub(crate) const USAGE: &str = "release plan|scripts";
+pub(crate) const USAGE: &str = "release plan|scripts|prepare-rebuild";
 const SCRIPTS_USAGE: &str = "release scripts --out <new-dir>";
 
 const SCRIPTS: &[(&str, &str)] = &[
@@ -50,6 +51,7 @@ pub(crate) fn run(project: &Path, args: &[String]) -> Result<(), String> {
     let usage = match command.as_str() {
         "plan" => plan::USAGE,
         "scripts" => SCRIPTS_USAGE,
+        "prepare-rebuild" => prepare::USAGE,
         _ => {
             return Err(format!(
                 "unknown release command {command:?}; use `cargo sunrise-mod {USAGE}`"
@@ -60,8 +62,10 @@ pub(crate) fn run(project: &Path, args: &[String]) -> Result<(), String> {
         println!("usage: cargo sunrise-mod {usage}");
         return Ok(());
     }
-    if command == "plan" {
-        return plan::run(project, args);
+    match command.as_str() {
+        "plan" => return plan::run(project, args),
+        "prepare-rebuild" => return prepare::run(args),
+        _ => (),
     }
     let mut options =
         crate::options::Options::new("release scripts", args, &["--out"]).usage(usage);
