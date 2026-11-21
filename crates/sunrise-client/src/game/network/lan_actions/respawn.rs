@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::commands::Target;
+use crate::game::{commands::Target, server_travel::SpawnAction};
 
 impl Game<'_> {
     pub(in crate::game) fn guest_respawn(&mut self, conn: u32) {
@@ -19,7 +19,12 @@ impl Game<'_> {
             .get_mut(&conn)
             .is_some_and(|play| std::mem::take(&mut play.won_game));
         if end_conquered || (guest.dead && !guest.respawning) {
-            self.queue_player_clone(conn, !end_conquered);
+            self.queue_spawn_trip(
+                conn,
+                SpawnAction::Replace {
+                    was_death: !end_conquered,
+                },
+            );
         }
     }
 
@@ -217,15 +222,43 @@ impl Game<'_> {
                 .and_then(|g| g.respawn_elsewhere.as_ref())
                 .and_then(RespawnConfig::from_saved)
             {
-                // PlayerList.respawn reads the final saved block in its own level,
-                // then sends only to this connection, using the placement level's RNG.
-                let world = if config.dim == self.dim {
-                    Some(&self.world)
-                } else {
-                    self.levels.parked_world(config.dim)
+                // PlayerList.respawn uses Level.getBlockState, which loads the saved point's
+                // column to FULL (unless it is outside the level's addressable bounds).
+                let placement = self.dim;
+                let anchor = match self.enter_level(config.dim) {
+                    Ok(()) => {
+                        let [x, y, z] = config.pos;
+                        let chunk = (x >> 4, z >> 4);
+                        // ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE: the packed BlockPos range,
+                        // less the player view radius and FULL's 12 accumulated dependency rings.
+                        const MAX_CHUNK: i32 = (((1 << 25) - 1) >> 4) - 2 * (32 + 12 + 1);
+                        if !self.world.shape.contains_y(y)
+                            || chunk.0.abs().max(chunk.1.abs()) > MAX_CHUNK
+                        {
+                            false
+                        } else if self.streaming.load_full_column(&mut self.world, chunk) {
+                            self.is_anchor(self.world.block(x, y, z))
+                        } else {
+                            log::error!(
+                                "could not load the respawn sound's saved point at {config:?}"
+                            );
+                            false
+                        }
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "could not open {} for the respawn sound: {e}",
+                            config.dim.id()
+                        );
+                        false
+                    }
                 };
-                let [x, y, z] = config.pos;
-                if world.is_some_and(|world| self.is_anchor(world.block(x, y, z))) {
+                if let Err(e) = self.enter_level(placement) {
+                    log::error!("could not reopen {}: {e}", placement.id());
+                    return;
+                }
+                // Send only to this connection, using the placement level's RNG.
+                if anchor {
                     let seed = self.world.random.next_long();
                     self.play_sound_to(
                         Target::Guest(conn),

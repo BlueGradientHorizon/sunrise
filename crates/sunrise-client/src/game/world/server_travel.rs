@@ -74,8 +74,8 @@ pub(super) struct Trip {
     /// A respawn at this point outside the Overworld, resolved through its
     /// block on arrival.
     respawn: Option<RespawnConfig>,
-    /// A PlayerList.respawn that has not placed or copied the replacement yet.
-    player_clone: Option<CloneTrip>,
+    /// A transition that resolves its spawn destination before moving the player.
+    spawn_search: Option<SpawnTrip>,
     /// A respawn at the world spawn, moved onto a free column within the
     /// respawn radius once the chunks around it have loaded.
     world_spawn: bool,
@@ -94,8 +94,14 @@ pub(super) struct Trip {
     pub(super) left: Option<Dim>,
 }
 
-struct CloneTrip {
-    was_death: bool,
+#[derive(Clone, Copy)]
+pub(super) enum SpawnAction {
+    Replace { was_death: bool },
+    EndExit,
+}
+
+struct SpawnTrip {
+    action: SpawnAction,
     waiting_for: Option<(i32, i32)>,
 }
 
@@ -225,6 +231,12 @@ pub(super) struct LevelTeleport {
     pub vehicle: Option<u32>,
 }
 
+#[derive(Clone, Copy)]
+enum LevelTeleportKind {
+    Direct,
+    EndExit { missing: bool },
+}
+
 /// A teleport a command made inside a level: told to the mods once it has
 /// reached the hub (`native_player_teleported`).
 pub(super) struct TeleportNote {
@@ -245,24 +257,28 @@ impl Trip {
         self.conn == conn
     }
 
-    pub(super) fn clone_destination_areas(
+    pub(super) fn spawn_destination_areas(
         &self,
         dim: Dim,
     ) -> impl Iterator<Item = ((i32, i32), i32)> {
-        self.player_clone
+        self.spawn_search
             .as_ref()
             .filter(|_| self.dim == dim)
             .into_iter()
-            .flat_map(|clone| {
+            .flat_map(|search| {
                 std::iter::once((Game::chunk_of(self.target), 2))
-                    .chain(clone.waiting_for.map(|chunk| (chunk, 0)))
+                    .chain(search.waiting_for.map(|chunk| (chunk, 0)))
             })
     }
 
-    /// Respawn searches, like command arrivals, must finish before the client can leave
-    /// their loading area. `hold` alone names a command's already-placed body.
+    /// Respawns and command arrivals hold their loading area; an unresolved End teleport
+    /// must not change the source player's placement or movement before the travel veto.
     fn holds_movement(&self) -> bool {
-        self.hold || self.respawn.is_some() || self.world_spawn
+        !self
+            .spawn_search
+            .as_ref()
+            .is_some_and(|s| matches!(s.action, SpawnAction::EndExit))
+            && (self.hold || self.respawn.is_some() || self.world_spawn)
     }
 }
 
@@ -298,7 +314,7 @@ impl Game<'_> {
             vehicle: None,
             gateway: None,
             respawn: None,
-            player_clone: None,
+            spawn_search: None,
             world_spawn: false,
             finder: None,
             placed: false,
@@ -490,20 +506,13 @@ impl Game<'_> {
             "end_portal" => {
                 let from_end = self.dim == Dim::End;
                 // Entity.canTeleport: out of the End only after the credits.
-                if !from_end || seen_credits {
-                    // EndPortalBlock.getPortalDestination: into the End from
-                    // anywhere else, out of it to the player's own point, in
-                    // the level the config names
-                    // (`findRespawnPositionAndUseSpawnBlock`, not used up).
-                    let (target, respawn) = if from_end {
-                        self.end_departure(conn)
-                    } else {
-                        (Dim::End, None)
-                    };
-                    if self.server_player_travel_allowed(conn, target, TravelCause::EndPortal) {
-                        self.start_server_trip(conn, target, None);
-                        self.trip_respawn(conn, respawn);
+                if from_end {
+                    if seen_credits {
+                        self.queue_spawn_trip(conn, SpawnAction::EndExit);
                     }
+                } else if self.server_player_travel_allowed(conn, Dim::End, TravelCause::EndPortal)
+                {
+                    self.start_server_trip(conn, Dim::End, None);
                 }
             }
             _ => {
@@ -513,33 +522,6 @@ impl Game<'_> {
             }
         }
         true
-    }
-
-    /// The level a player leaving the End goes to, and the respawn point it
-    /// resolves there: the point's own level
-    /// (`ServerPlayer.RespawnConfig.getDimensionOrDefault`): the Overworld for a
-    /// bed there (the guest's `spawn`), else the world spawn's
-    /// (`TeleportTransition.createDefault`, `findRespawnDimension`).
-    fn end_departure(&mut self, conn: u32) -> (Dim, Option<RespawnConfig>) {
-        let (config, bed) = self
-            .as_guest(conn, |g| (g.respawn_config, g.spawn.is_some()))
-            .unwrap_or((None, false));
-        let level = match config {
-            Some(c) => c.dim,
-            None if bed => Dim::Overworld,
-            None => self.world_spawn_level(),
-        };
-        (level, config)
-    }
-
-    /// The respawn point of the trip a player has just started: its block is
-    /// resolved once the level it names has loaded (`arrive_server_trips`).
-    fn trip_respawn(&mut self, conn: u32, respawn: Option<RespawnConfig>) {
-        if let Some(config) = respawn
-            && let Some(trip) = self.server_trips.iter_mut().find(|t| t.is(conn))
-        {
-            trip.respawn = Some(config);
-        }
     }
 
     /// Whether an exit portal already stands in the plan's dimension
@@ -709,23 +691,19 @@ impl Game<'_> {
                 return;
             }
             if self.portals.player.cooldown == 0 {
-                // EndPortalBlock.getPortalDestination: into the End from
-                // anywhere else, out of it to the player's own point, in the
-                // level the config names (`findRespawnPositionAndUseSpawnBlock`,
-                // not used up).
-                let (target, respawn) = if self.dim == Dim::End {
-                    self.end_departure(conn)
+                if self.dim == Dim::End {
+                    // Entity.handlePortal sets the cooldown before resolving its destination.
+                    self.portals.player.cooldown = PLAYER_DELAY;
+                    self.queue_spawn_trip(conn, SpawnAction::EndExit);
                 } else {
-                    (Dim::End, None)
-                };
-                if !self.server_player_travel_allowed(conn, target, TravelCause::EndPortal) {
-                    return;
+                    if !self.server_player_travel_allowed(conn, Dim::End, TravelCause::EndPortal) {
+                        return;
+                    }
+                    self.start_server_trip(conn, Dim::End, None);
                 }
-                self.start_server_trip(conn, target, None);
-                self.trip_respawn(conn, respawn);
             }
             // Entity.setAsInsidePortal while cooling down restarts the cooldown.
-            self.portals.player.cooldown = 10;
+            self.portals.player.cooldown = PLAYER_DELAY;
             return;
         }
         // EndGatewayBlock.entityInside: a gateway that is not cooling down
@@ -974,7 +952,7 @@ impl Game<'_> {
             vehicle,
             gateway: None,
             respawn: None,
-            player_clone: None,
+            spawn_search: None,
             world_spawn: false,
             missing: None,
             finder: None,
@@ -987,14 +965,15 @@ impl Game<'_> {
         }
     }
 
-    /// Resolve the transition before overwriting the source player. The same trip mechanism
-    /// as portal arrivals streams the destination without placing a player there prematurely.
-    pub(super) fn queue_player_clone(&mut self, conn: u32, was_death: bool) {
-        if self
-            .server_trips
-            .iter()
-            .any(|t| t.is(conn) && t.player_clone.is_some())
-        {
+    /// Both PlayerList.respawn and an ordinary End exit use the same spawn search. Its
+    /// chunks must load before either the replacement or the teleport moves the player.
+    pub(super) fn queue_spawn_trip(&mut self, conn: u32, action: SpawnAction) {
+        if self.server_trips.iter().any(|t| {
+            t.is(conn)
+                && t.spawn_search
+                    .as_ref()
+                    .is_some_and(|search| matches!(search.action, SpawnAction::Replace { .. }))
+        }) {
             return;
         }
         let Some(guest) = self.lan.as_ref().and_then(|h| h.hub.guest(conn)) else {
@@ -1020,7 +999,7 @@ impl Game<'_> {
         };
         let return_to = self.dim;
         if let Err(e) = self.enter_level(dim) {
-            log::error!("could not open {} for player respawn: {e}", dim.id());
+            log::error!("could not open {} for player spawn search: {e}", dim.id());
             return;
         }
         self.server_trips.retain(|t| !t.is(conn));
@@ -1035,8 +1014,8 @@ impl Game<'_> {
             vehicle: None,
             gateway: None,
             respawn: config,
-            player_clone: Some(CloneTrip {
-                was_death,
+            spawn_search: Some(SpawnTrip {
+                action,
                 waiting_for: None,
             }),
             world_spawn,
@@ -1047,7 +1026,7 @@ impl Game<'_> {
             left: None,
         };
         if (config.is_none() && !world_spawn) || self.trip_destination_ready(&trip) {
-            if let Some(pending) = self.resolve_clone_trip(trip, was_death) {
+            if let Some(pending) = self.resolve_spawn_trip(trip, action) {
                 self.server_trips.push(pending);
             }
         } else {
@@ -1062,21 +1041,22 @@ impl Game<'_> {
         let (cx, cz) = Self::chunk_of(trip.target);
         (-2..=2).all(|dz| (-2..=2).all(|dx| self.streaming.is_lit(cx + dx, cz + dz)))
             && trip
-                .player_clone
+                .spawn_search
                 .as_ref()
-                .and_then(|clone| clone.waiting_for)
+                .and_then(|search| search.waiting_for)
                 .is_none_or(|(x, z)| self.streaming.is_lit(x, z))
     }
 
-    fn resolve_clone_trip(&mut self, mut trip: Trip, was_death: bool) -> Option<Trip> {
+    fn resolve_spawn_trip(&mut self, mut trip: Trip, action: SpawnAction) -> Option<Trip> {
         let before = self.dim;
+        let consume = matches!(action, SpawnAction::Replace { was_death: true });
         let result = (|| -> sunrise_client::Result<Option<Trip>> {
             let own = if let Some(config) = trip.respawn {
-                if let Some(found) = self.find_respawn_and_use(config, was_death)? {
+                if let Some(found) = self.find_respawn_and_use(config, consume)? {
                     Some(found)
                 } else {
                     // TeleportTransition.missingRespawnBlock: search the world's spawn before
-                    // constructing the replacement, without a first placement in either level.
+                    // placing the player, without an intermediate move into the config's level.
                     let [x, y, z] = self.world_spawn_position();
                     trip.dim = self.world_spawn_level();
                     trip.target = Vec3::new(x, y, z);
@@ -1101,8 +1081,8 @@ impl Game<'_> {
                     match self.search_spawn(suggestion, &mut trip.finder) {
                         Ok(at) => at,
                         Err(chunk) => {
-                            if let Some(clone) = &mut trip.player_clone {
-                                clone.waiting_for = Some(chunk);
+                            if let Some(search) = &mut trip.spawn_search {
+                                search.waiting_for = Some(chunk);
                             }
                             return Ok(Some(trip));
                         }
@@ -1120,11 +1100,49 @@ impl Game<'_> {
                 pitch,
             };
             self.enter_level(trip.source)?;
-            self.remove_old_player_for_clone(trip.conn, was_death);
-            let decision = self.respawn_position(trip.conn, found, trip.missing, !was_death);
-            let (to, copy) = decision.map_or((found, trip.missing.is_none()), |d| (d.to, d.copy));
-            self.enter_level(to.dim)?;
-            self.place_cloned_player(trip.conn, to, was_death, copy, trip.missing.is_some());
+            match action {
+                SpawnAction::Replace { was_death } => {
+                    self.remove_old_player_for_clone(trip.conn, was_death);
+                    let decision =
+                        self.respawn_position(trip.conn, found, trip.missing, !was_death);
+                    let (to, copy) =
+                        decision.map_or((found, trip.missing.is_none()), |d| (d.to, d.copy));
+                    self.enter_level(to.dim)?;
+                    self.place_cloned_player(
+                        trip.conn,
+                        to,
+                        was_death,
+                        copy,
+                        trip.missing.is_some(),
+                    );
+                }
+                SpawnAction::EndExit => {
+                    // EndPortalBlock returns DO_NOTHING; ServerPlayer.teleport sees only this
+                    // resolved transition, including when the saved block was missing.
+                    if self.lan.as_ref().is_some_and(|host| {
+                        host.hub
+                            .guest(trip.conn)
+                            .is_some_and(|g| host.hub.here(g) && !g.dead)
+                    }) && self.server_player_travel_allowed(
+                        trip.conn,
+                        found.dim,
+                        TravelCause::EndPortal,
+                    ) {
+                        self.apply_level_teleport(
+                            LevelTeleport {
+                                conn: trip.conn,
+                                dim: found.dim,
+                                at: [found.at.x, found.at.y, found.at.z],
+                                rotation: Some([found.yaw, found.pitch]),
+                                vehicle: None,
+                            },
+                            LevelTeleportKind::EndExit {
+                                missing: trip.missing.is_some(),
+                            },
+                        );
+                    }
+                }
+            }
             Ok(None)
         })();
         if let Err(e) = self.enter_level(before) {
@@ -1133,7 +1151,7 @@ impl Game<'_> {
         match result {
             Ok(pending) => pending,
             Err(e) => {
-                log::error!("could not complete player respawn: {e}");
+                log::error!("could not resolve player spawn destination: {e}");
                 None
             }
         }
@@ -1158,7 +1176,7 @@ impl Game<'_> {
             vehicle: None,
             gateway: None,
             respawn: None,
-            player_clone: None,
+            spawn_search: None,
             world_spawn: true,
             missing: None,
             finder: None,
@@ -1166,25 +1184,6 @@ impl Game<'_> {
             hold: false,
             left: None,
         });
-    }
-
-    /// TeleportTransition.missingRespawnBlock: the world spawn, in its level
-    /// (MinecraftServer.findRespawnDimension).
-    fn respawn_at_world_spawn(&mut self, conn: u32) {
-        let at = self.level.world_spawn.map_or(
-            self.spawn.map_or([0.5, 80.0, 0.5], |s| [s.x, s.y, s.z]),
-            |[x, y, z]| [f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5],
-        );
-        self.level_teleports.push(LevelTeleport {
-            conn,
-            dim: self.world_spawn_level(),
-            at,
-            // Facing the world spawn's angle (respawnData.yaw(), pitch()).
-            rotation: Some(self.level.world_spawn_angle),
-            vehicle: None,
-        });
-        self.run_level_teleports();
-        self.world_spawn_trip(conn);
     }
 
     /// `TheEndGatewayBlockEntity.getPortalPosition` and the teleport within
@@ -1219,7 +1218,7 @@ impl Game<'_> {
             vehicle: None,
             gateway: Some(job),
             respawn: None,
-            player_clone: None,
+            spawn_search: None,
             world_spawn: false,
             missing: None,
             finder: None,
@@ -1262,8 +1261,8 @@ impl Game<'_> {
                 continue;
             }
             let mut trip = self.server_trips.remove(k);
-            if let Some(was_death) = trip.player_clone.as_ref().map(|clone| clone.was_death) {
-                if let Some(pending) = self.resolve_clone_trip(trip, was_death) {
+            if let Some(action) = trip.spawn_search.as_ref().map(|search| search.action) {
+                if let Some(pending) = self.resolve_spawn_trip(trip, action) {
                     self.server_trips.insert(k, pending);
                     k += 1;
                 }
@@ -1280,36 +1279,7 @@ impl Game<'_> {
                 return;
             };
             let yaw = host.hub.guests[i].yaw;
-            let (position, yaw) = if let Some(config) = trip.respawn {
-                // A later End portal exit teleports this same player. It neither consumes
-                // the block nor copies, clears, or fires mods about a respawn config.
-                match self.find_respawn_and_use(config, false) {
-                    Ok(Some((at, yaw, pitch))) => {
-                        if let Some(host) = self.lan.as_mut() {
-                            host.hub.guests.update(i, |guest| guest.pitch = pitch);
-                        }
-                        (at, yaw)
-                    }
-                    Err(e) => {
-                        log::error!("could not resolve End portal destination: {e}");
-                        continue;
-                    }
-                    Ok(None) => {
-                        if let Some(host) = self.lan.as_mut() {
-                            host.hub.missing_respawn_block(trip.conn);
-                        }
-                        self.respawn_at_world_spawn(trip.conn);
-                        // The move to the world spawn ends the player's move
-                        // from the level they left.
-                        if let Some(left) = trip.left
-                            && let Some(t) = self.server_trips.iter_mut().find(|t| t.is(trip.conn))
-                        {
-                            t.left = Some(left);
-                        }
-                        continue;
-                    }
-                }
-            } else if trip.world_spawn {
+            let (position, yaw) = if trip.world_spawn {
                 // PlayerSpawnFinder.findSpawn around the world spawn.
                 let suggestion =
                     [trip.target.x, trip.target.y, trip.target.z].map(|v| v.floor() as i32);
@@ -1525,84 +1495,131 @@ impl Game<'_> {
             return;
         }
         for t in std::mem::take(&mut self.level_teleports) {
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
-            let Some(i) = host.hub.guests.iter().position(|g| g.conn == t.conn) else {
-                continue;
-            };
-            let source = self.dim;
-            if t.dim != source {
-                drop_hook(host, t.conn);
+            self.apply_level_teleport(t, LevelTeleportKind::Direct);
+        }
+    }
+
+    fn apply_level_teleport(&mut self, t: LevelTeleport, kind: LevelTeleportKind) {
+        let source = self.dim;
+        let Some(player) = self.command_guest(t.conn) else {
+            return;
+        };
+        let id = player.entity_id as u32;
+        if let LevelTeleportKind::EndExit { missing } = kind
+            && let Some(host) = self.lan.as_mut()
+        {
+            if missing {
+                host.hub.missing_respawn_block(t.conn);
             }
-            if let Err(e) = self.enter_level(t.dim) {
-                log::error!("could not open {}: {e}", t.dim.id());
-                continue;
-            }
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
-            let (uuid, name) = (host.hub.guests[i].uuid, host.hub.guests[i].name.clone());
-            let (yaw, pitch, origin, passenger_body) = host.hub.guests.update(i, |g| {
-                let [yaw, pitch] = t.rotation.unwrap_or([g.yaw, g.pitch]);
-                let origin = g.position;
-                // A new body there: no fall distance or motion carried over, but
-                // the player's attributes (ServerPlayer.teleport keeps the entity).
-                let passenger_body = if t.vehicle.is_some() {
-                    g.motion.take()
-                } else {
-                    g.new_body(true);
-                    None
-                };
-                (yaw, pitch, origin, passenger_body)
-            });
-            let cooldown = host.play.get(&t.conn).map_or(0, |p| p.portal.cooldown);
-            let ctx = server_ctx!(self);
-            if let Some(host) = self.lan.as_mut() {
-                host.hub
-                    .change_level(i, t.at, yaw, Some(pitch), false, cooldown, &ctx);
-                host.hub.guests.update(i, |g| {
-                    g.vehicle = t.vehicle;
-                    if let Some(mut body) = passenger_body {
-                        body.position = Vec3::new(t.at[0], t.at[1], t.at[2]);
-                        g.motion = Some(body);
+            host.play.entry(t.conn).or_default().portal.cooldown = PLAYER_DELAY;
+            if source == t.dim {
+                // ServerPlayer.teleport within a level applies the absolute destination
+                // and sends only the position packet (no Respawn or command notification).
+                self.as_guest(t.conn, |g| {
+                    g.stop_riding();
+                    let [x, y, z] = t.at;
+                    let at = Vec3::new(x, y, z);
+                    if let Some(body) = &mut g.player {
+                        body.position = at;
+                        body.velocity = Vec3::ZERO;
+                        body.teleported = true;
+                        body.teleported_delta = [false; 3];
+                    }
+                    g.previous_position = at;
+                    if let Some([yaw, pitch]) = t.rotation {
+                        (g.yaw, g.pitch) = (yaw, pitch);
                     }
                 });
+                return;
             }
-            self.bind_player_attachments(t.conn, false);
-            self.as_guest(t.conn, |g| {
-                g.trigger_dimension(source, t.dim, origin);
-                // The mods hear the teleport into another level, with the
-                // player's state swapped in.
-                g.native_player_teleported(uuid, &name, origin, t.at, t.dim.id());
+            self.eject_player_riders(Some(id));
+        }
+        if t.dim != source
+            && let Some(host) = self.lan.as_mut()
+        {
+            drop_hook(host, t.conn);
+        }
+        if let Err(e) = self.enter_level(t.dim) {
+            log::error!("could not open {}: {e}", t.dim.id());
+            return;
+        }
+        let Some(i) = self.guest_index(t.conn) else {
+            return;
+        };
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
+        let (yaw, pitch, origin, passenger_body) = host.hub.guests.update(i, |g| {
+            let [yaw, pitch] = t.rotation.unwrap_or([g.yaw, g.pitch]);
+            let origin = g.position;
+            // A new body there: no fall distance or motion carried over, but
+            // the player's attributes (ServerPlayer.teleport keeps the entity).
+            let passenger_body = if t.vehicle.is_some() {
+                g.motion.take()
+            } else {
+                g.new_body(true);
+                None
+            };
+            (yaw, pitch, origin, passenger_body)
+        });
+        let cooldown = host.play.get(&t.conn).map_or(0, |p| p.portal.cooldown);
+        let ctx = server_ctx!(self);
+        if let Some(host) = self.lan.as_mut() {
+            host.hub
+                .change_level(i, t.at, yaw, Some(pitch), false, cooldown, &ctx);
+            host.hub.guests.update(i, |g| {
+                g.vehicle = t.vehicle;
+                if let Some(mut body) = passenger_body {
+                    body.position = Vec3::new(t.at[0], t.at[1], t.at[2]);
+                    g.motion = Some(body);
+                }
             });
-            self.server_trips.retain(|trip| !trip.is(t.conn));
-            self.server_trips.push(Trip {
-                conn: t.conn,
-                dim: t.dim,
-                source,
-                target: Vec3::new(t.at[0], t.at[1], t.at[2]),
-                end: false,
-                entering: false,
-                plan: None,
-                // A command teleports the player alone: it is not a
-                // passenger any more (`ServerPlayer.teleport`).
-                vehicle: None,
-                gateway: None,
-                respawn: None,
-                player_clone: None,
-                world_spawn: false,
-                missing: None,
-                finder: None,
-                placed: true,
-                // The body does not tick until arrival. Letting it leave the destination before
-                // its chunks load can strand this trip and freeze its damage cooldown indefinitely.
-                hold: true,
-                left: Some(source),
-            });
-            if let Err(e) = self.enter_level(source) {
-                log::error!("could not reopen {}: {e}", source.id());
+        }
+        self.bind_player_attachments(t.conn, false);
+        match kind {
+            LevelTeleportKind::EndExit { .. } => {
+                self.as_guest(t.conn, |g| {
+                    g.trigger_dimension(source, t.dim, origin);
+                    g.stop_active_item_use();
+                });
+                self.tell_mods_changed_dimension(t.conn, Some(source), t.dim);
             }
+            LevelTeleportKind::Direct => {
+                if let Some(player) = self.command_guest(t.conn) {
+                    let (uuid, name) = (player.uuid, player.name.clone());
+                    self.as_guest(t.conn, |g| {
+                        g.trigger_dimension(source, t.dim, origin);
+                        g.native_player_teleported(uuid, &name, origin, t.at, t.dim.id());
+                    });
+                }
+                self.server_trips.retain(|trip| !trip.is(t.conn));
+                self.server_trips.push(Trip {
+                    conn: t.conn,
+                    dim: t.dim,
+                    source,
+                    target: Vec3::new(t.at[0], t.at[1], t.at[2]),
+                    end: false,
+                    entering: false,
+                    plan: None,
+                    // A command teleports the player alone: it is not a
+                    // passenger any more (`ServerPlayer.teleport`).
+                    vehicle: None,
+                    gateway: None,
+                    respawn: None,
+                    spawn_search: None,
+                    world_spawn: false,
+                    missing: None,
+                    finder: None,
+                    placed: true,
+                    // The body does not tick until arrival. Letting it leave the destination before
+                    // its chunks load can strand this trip and freeze its damage cooldown indefinitely.
+                    hold: true,
+                    left: Some(source),
+                });
+            }
+        }
+        if let Err(e) = self.enter_level(source) {
+            log::error!("could not reopen {}: {e}", source.id());
         }
     }
 
@@ -2530,12 +2547,21 @@ mod credits_respawn_tests {
                 .unwrap()
         );
         assert!(game.spectator_use_portal(2, 0, portal));
-        assert_eq!(
-            game.lan.as_ref().unwrap().hub.guests[0].dimension,
-            "minecraft:the_nether",
-            "a spectator's exit from the End goes to its point's level"
+        assert!(
+            game.on_server_trip(2),
+            "the saved point is still being searched"
         );
-        assert!(game.on_server_trip(2), "the player is on its way there");
+        assert_eq!(game.command_guest(2).unwrap().dimension, Dim::End.id());
+        game.enter_level(Dim::Nether).unwrap();
+        light_spawn_chunks(&mut game);
+        charge_anchor(&mut game);
+        game.tick_server_travel();
+        assert_eq!(
+            game.command_guest(2).unwrap().dimension,
+            Dim::Nether.id(),
+            "a spectator's exit from the End goes to its resolved point's level"
+        );
+        assert!(!game.on_server_trip(2));
     }
 }
 

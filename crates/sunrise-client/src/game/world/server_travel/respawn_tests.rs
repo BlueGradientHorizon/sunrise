@@ -8,9 +8,9 @@ use super::{
 };
 use crate::game::{Game, native_entity_refs::tests::run_with_game_stack};
 use mod_api::{
-    EntityTravelToDimensionEvent, Flow, Hooks, ModEntry, PlayerChangedDimensionEvent,
-    PlayerCloneEvent, PlayerRespawnPositionEvent, PlayerRespawnedEvent, PlayerSetSpawnEvent,
-    ServerHost,
+    BlockPos, EntityTravelToDimensionEvent, Flow, GlobalPos, Hooks, Identifier, ModEntry,
+    PlayerChangedDimensionEvent, PlayerCloneEvent, PlayerRespawnConfig, PlayerRespawnPositionEvent,
+    PlayerRespawnedEvent, PlayerSetSpawnEvent, ServerHost,
 };
 use std::sync::{Arc, Mutex, mpsc};
 use sunrise_client::{
@@ -36,7 +36,7 @@ fn put_guest_in_end_exit(game: &mut Game<'_>) {
 
 #[derive(Debug, PartialEq, Eq)]
 enum EndHook {
-    Travel(String),
+    Travel(String, String),
     Changed(String, String),
     Position(bool),
     Clone(bool),
@@ -46,7 +46,7 @@ enum EndHook {
 type Heard = Arc<Mutex<Vec<EndHook>>>;
 
 struct EndTravel {
-    veto: bool,
+    veto: Option<Dim>,
     heard: Heard,
 }
 
@@ -57,11 +57,11 @@ impl Hooks for EndTravel {
         _: &mut dyn ServerHost,
         event: &mut EntityTravelToDimensionEvent,
     ) -> Flow {
-        self.heard
-            .lock()
-            .unwrap()
-            .push(EndHook::Travel(event.cause.to_owned()));
-        if self.veto {
+        self.heard.lock().unwrap().push(EndHook::Travel(
+            event.cause.to_owned(),
+            event.dimension.to_owned(),
+        ));
+        if self.veto.is_some_and(|dim| event.dimension == dim.id()) {
             Flow::Cancel
         } else {
             Flow::Continue
@@ -108,7 +108,7 @@ impl Hooks for EndTravel {
 }
 
 fn with_end_travel(
-    veto: bool,
+    veto: Option<Dim>,
     test: impl FnOnce(&mut Game<'_>, &mpsc::Receiver<Out>, &Heard) + Send + 'static,
 ) {
     run_with_game_stack(move || {
@@ -132,7 +132,7 @@ fn with_end_travel(
 #[test]
 #[ignore = "daily"]
 fn credits_respawn_is_not_subject_to_the_end_travel_veto() {
-    with_end_travel(true, |game, rx, heard| {
+    with_end_travel(Some(Dim::Nether), |game, rx, heard| {
         game.enter_level(Dim::Nether).unwrap();
         light_spawn_chunks(game);
         charge_anchor(game);
@@ -142,7 +142,10 @@ fn credits_respawn_is_not_subject_to_the_end_travel_veto() {
         game.handle_server_portal(2);
         assert_eq!(
             std::mem::take(&mut *heard.lock().unwrap()),
-            [EndHook::Travel("end_portal".into())]
+            [EndHook::Travel(
+                "end_portal".into(),
+                Dim::Nether.id().into()
+            )]
         );
         assert!(!game.on_server_trip(2));
 
@@ -184,8 +187,8 @@ fn credits_respawn_is_not_subject_to_the_end_travel_veto() {
     });
 }
 
-fn ordinary_end_exit(available: bool) {
-    with_end_travel(false, move |game, rx, heard| {
+fn ordinary_end_exit(available: bool, veto: Option<Dim>, spectator: bool) {
+    with_end_travel(veto, move |game, rx, heard| {
         light_spawn_chunks(game);
         assert!(game.ui.rules.set_string("respawn_radius", "0"));
         assert!(
@@ -193,7 +196,18 @@ fn ordinary_end_exit(available: bool) {
                 .unwrap()
         );
         put_guest_in_end_exit(game);
-        game.handle_server_portal(2);
+        if spectator {
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.game_mode = sunrise_client::lan::guest::SPECTATOR;
+            });
+            assert!(game.spectator_use_portal(2, 0, [0, 100, 0]));
+        } else {
+            game.handle_server_portal(2);
+        }
+        // The saved-point chunks aren't ready yet. The level being searched is not a move.
+        assert_eq!(game.command_guest(2).unwrap().dimension, Dim::End.id());
+        assert!(heard.lock().unwrap().is_empty());
+        assert!(!received_packets(rx).any(|packet| matches!(packet, C::Respawn(_))));
 
         game.enter_level(Dim::Nether).unwrap();
         light_spawn_chunks(game);
@@ -206,19 +220,14 @@ fn ordinary_end_exit(available: bool) {
                 charged,
                 "teleporting does not consume a charge"
             );
-        } else {
-            game.enter_level(Dim::Overworld).unwrap();
-            game.tick_server_travel();
         }
         assert!(!game.on_server_trip(2));
-        let player = &game.lan.as_ref().unwrap().hub.guests[0];
+        let player = game.command_guest(2).unwrap();
         let (dim, at) = if available {
             (Dim::Nether, [10.5, 101.0, 10.5])
         } else {
             (Dim::Overworld, [0.5, 100.0, 0.5])
         };
-        assert_eq!(player.dimension, dim.id());
-        assert_eq!(player.position, at);
         assert_eq!(
             player
                 .respawn_elsewhere
@@ -227,77 +236,161 @@ fn ordinary_end_exit(available: bool) {
             Some((Dim::Nether.id(), ANCHOR)),
             "even a missing point still belongs to the same player after a teleport",
         );
-        let unavailable = received_packets(rx)
-            .filter(|packet| {
-                matches!(packet,
-                    C::GameEvent(event) if event.event == game_event::NO_RESPAWN_BLOCK_AVAILABLE
-                )
-            })
-            .count();
-        assert_eq!(unavailable, usize::from(!available));
+        let mut transitions = Vec::new();
+        let (mut unavailable, mut positions, mut portal_sounds) = (0, 0, 0);
+        for packet in received_packets(rx) {
+            match packet {
+                C::Respawn(packet) => transitions.push((packet.spawn.dimension, packet.keep)),
+                C::PlayerPosition(_) => positions += 1,
+                C::GameEvent(event) if event.event == game_event::NO_RESPAWN_BLOCK_AVAILABLE => {
+                    unavailable += 1;
+                }
+                C::LevelEvent(event) if event.kind == 1032 => portal_sounds += 1,
+                _ => {}
+            }
+        }
         assert_eq!(
-            *heard.lock().unwrap(),
-            [
-                EndHook::Travel("end_portal".into()),
-                EndHook::Changed(Dim::End.id().into(), dim.id().into())
-            ]
+            portal_sounds, 0,
+            "outbound player transitions use DO_NOTHING"
         );
+        let mut expected = vec![EndHook::Travel("end_portal".into(), dim.id().into())];
+        if veto == Some(dim) {
+            assert_eq!(player.dimension, Dim::End.id());
+            assert_eq!(player.position, [0.5, 100.0, 0.5]);
+            assert!(transitions.is_empty());
+            assert_eq!((positions, unavailable), (0, 0));
+        } else {
+            assert_eq!(player.dimension, dim.id());
+            assert_eq!(player.position, at);
+            assert_eq!(
+                transitions,
+                [(dim.id().to_owned(), 3)],
+                "one move, keeping player data"
+            );
+            assert_eq!((positions, unavailable), (1, usize::from(!available)));
+            expected.push(EndHook::Changed(Dim::End.id().into(), dim.id().into()));
+        }
+        assert_eq!(*heard.lock().unwrap(), expected);
     });
 }
 
 #[test]
 #[ignore = "daily"]
 fn ordinary_end_exit_to_a_valid_point_only_teleports() {
-    ordinary_end_exit(true);
+    ordinary_end_exit(true, None, false);
 }
 
 #[test]
 #[ignore = "daily"]
 fn ordinary_end_exit_with_a_missing_point_only_teleports() {
-    ordinary_end_exit(false);
+    ordinary_end_exit(false, None, false);
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_travel_veto_can_refuse_a_spectators_resolved_end_exit() {
+    ordinary_end_exit(false, Some(Dim::Overworld), true);
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_end_exit_to_a_point_in_the_end_sends_no_respawn_packet() {
+    with_end_travel(None, |game, rx, heard| {
+        game.enter_level(Dim::End).unwrap();
+        light_spawn_chunks(game);
+        put_guest_in_end_exit(game);
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.respawn_elsewhere = Some((Dim::End.id().to_owned(), [9, 100, 9], 30.0, 0.0, true));
+        });
+        game.handle_server_portal(2);
+        assert!(!game.on_server_trip(2));
+        assert_eq!(game.command_guest(2).unwrap().position, [9.5, 100.1, 9.5]);
+        assert_eq!(
+            *heard.lock().unwrap(),
+            [EndHook::Travel("end_portal".into(), Dim::End.id().into())]
+        );
+        let packets: Vec<_> = received_packets(rx).collect();
+        assert!(!packets.iter().any(|packet| matches!(
+            packet,
+            C::Respawn(_) | C::LevelEvent(play::LevelEvent { kind: 1032, .. })
+        )));
+        assert_eq!(
+            packets
+                .iter()
+                .filter(|packet| matches!(packet, C::PlayerPosition(_)))
+                .count(),
+            1
+        );
+    });
 }
 
 const ANCHOR_DEPLETE: &str = "minecraft:block.respawn_anchor.deplete";
 const REDIRECTED: [f64; 3] = [200.5, 72.0, 200.5];
 const CLONE_POINT: [i32; 3] = [44, 75, 21];
+const LATE_ANCHOR: [i32; 3] = [170, 90, 170];
 
-struct AnchorRules {
-    veto_copy: bool,
+#[derive(Clone, Copy)]
+enum AnchorRules {
+    Redirect,
+    VetoCopy,
+    SetInCompletion,
+    EditOriginal,
+}
+
+fn forced_point(dim: Dim, [x, y, z]: [i32; 3]) -> PlayerRespawnConfig {
+    PlayerRespawnConfig {
+        position: GlobalPos::new(Identifier::parse(dim.id()).unwrap(), BlockPos::new(x, y, z)),
+        yaw: 0.0,
+        forced: true,
+    }
 }
 
 #[mod_api::__subscriptions]
 impl Hooks for AnchorRules {
     fn player_respawn_position(
         &self,
-        _: &mut dyn ServerHost,
+        host: &mut dyn ServerHost,
         event: &mut PlayerRespawnPositionEvent<'_>,
     ) {
-        if !self.veto_copy {
-            *event.level = Dimension::Overworld;
-            *event.position = REDIRECTED;
+        match self {
+            Self::Redirect => {
+                *event.level = Dimension::Overworld;
+                *event.position = REDIRECTED;
+            }
+            Self::EditOriginal => {
+                assert!(
+                    event
+                        .player
+                        .set_respawn_config(host, Some(forced_point(Dim::Overworld, CLONE_POINT)))
+                );
+                *event.copy_original_spawn_position = true;
+            }
+            _ => {}
         }
     }
 
     fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
-        if self.veto_copy {
-            use mod_api::{BlockPos, GlobalPos, Identifier, PlayerRespawnConfig};
-            let [x, y, z] = CLONE_POINT;
-            let point = PlayerRespawnConfig {
-                position: GlobalPos::new(
-                    Identifier::parse(Dim::Overworld.id()).unwrap(),
-                    BlockPos::new(x, y, z),
-                ),
-                yaw: 0.0,
-                forced: true,
-            };
-            host.player(event.player)
-                .unwrap()
-                .set_respawn_config(host, Some(point));
+        if matches!(self, Self::VetoCopy) {
+            assert!(
+                host.player(event.player)
+                    .unwrap()
+                    .set_respawn_config(host, Some(forced_point(Dim::Overworld, CLONE_POINT)))
+            );
+        }
+    }
+
+    fn player_respawned(&self, host: &mut dyn ServerHost, event: &mut PlayerRespawnedEvent<'_>) {
+        if matches!(self, Self::SetInCompletion) {
+            assert!(
+                host.player(event.player)
+                    .unwrap()
+                    .set_respawn_config(host, Some(forced_point(Dim::End, LATE_ANCHOR)))
+            );
         }
     }
 
     fn player_set_spawn(&self, _: &mut dyn ServerHost, event: &mut PlayerSetSpawnEvent) -> Flow {
-        if self.veto_copy && event.pos == Some(ANCHOR) {
+        if matches!(self, Self::VetoCopy) && event.pos == Some(ANCHOR) {
             Flow::Cancel
         } else {
             Flow::Continue
@@ -306,19 +399,31 @@ impl Hooks for AnchorRules {
 }
 
 fn with_anchor_death(
-    veto_copy: bool,
+    rules: AnchorRules,
     test: impl FnOnce(&Game<'_>, &mpsc::Receiver<Out>, &mpsc::Receiver<Out>) + Send + 'static,
 ) {
     run_with_game_stack(move || {
-        let mods = vec![ModEntry::new(
-            "anchor-rules",
-            Box::new(AnchorRules { veto_copy }),
-        )]
-        .into();
+        let mods = vec![ModEntry::new("anchor-rules", Box::new(rules))].into();
         mod_platform::testing::with_mods(mods, || {
             let mut resources = None;
             let (_scratch, mut game, rx) = server_with_a_nether_anchor(&mut resources);
+            light_spawn_chunks(&mut game);
             *game.world.random = LegacyRandom::new(12345);
+            if matches!(rules, AnchorRules::SetInCompletion) {
+                game.enter_level(Dim::End).unwrap();
+                let [x, y, z] = LATE_ANCHOR;
+                let registry = game.pack.assets.registry;
+                let anchor = registry.default_state("minecraft:respawn_anchor").unwrap();
+                let mut chunk = Chunk::with_layout(x >> 4, z >> 4, game.world.layout());
+                chunk.set(x & 15, y, z & 15, anchor.0);
+                game.save
+                    .save(&[Arc::new(chunk)], registry, world_biomes!(game))
+                    .unwrap();
+                assert!(
+                    !game.world.loaded(x, z),
+                    "writing the fixture does not load its chunk"
+                );
+            }
             game.enter_level(Dim::Nether).unwrap();
             light_spawn_chunks(&mut game);
             charge_anchor(&mut game);
@@ -329,6 +434,13 @@ fn with_anchor_death(
                 g.dead = true;
                 g.health = 0.0;
             });
+            if matches!(rules, AnchorRules::EditOriginal) {
+                let player = game.player(game.command_guest(2).unwrap().uuid).unwrap();
+                assert!(!game.player_set_respawn_config(
+                    player,
+                    Some(forced_point(Dim::Overworld, CLONE_POINT))
+                ));
+            }
             game.guest_respawn(2);
             assert!(!game.on_server_trip(2));
             assert!(game.lan.as_ref().unwrap().hub.guests[0].placed);
@@ -359,7 +471,7 @@ fn anchor_sounds(game: &Game<'_>, rx: &mpsc::Receiver<Out>) -> Vec<play::Sound> 
 #[test]
 #[ignore = "daily"]
 fn redirected_respawn_sends_the_anchor_sound_only_to_its_player() {
-    with_anchor_death(false, |game, rx, other| {
+    with_anchor_death(AnchorRules::Redirect, |game, rx, other| {
         let player = &game.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(player.dimension, Dim::Overworld.id());
         assert_eq!(player.position, REDIRECTED);
@@ -380,7 +492,7 @@ fn redirected_respawn_sends_the_anchor_sound_only_to_its_player() {
 #[test]
 #[ignore = "daily"]
 fn vetoing_the_spawn_copy_keeps_the_clone_point_and_suppresses_anchor_sound() {
-    with_anchor_death(true, |game, rx, other| {
+    with_anchor_death(AnchorRules::VetoCopy, |game, rx, other| {
         let player = &game.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(player.dimension, Dim::Nether.id());
         assert_eq!(player.position, [10.5, 101.0, 10.5]);
@@ -393,5 +505,49 @@ fn vetoing_the_spawn_copy_keeps_the_clone_point_and_suppresses_anchor_sound() {
         );
         assert!(anchor_sounds(game, rx).is_empty());
         assert!(anchor_sounds(game, other).is_empty());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn completion_can_select_an_anchor_in_an_unloaded_chunk() {
+    with_anchor_death(AnchorRules::SetInCompletion, |game, rx, other| {
+        let player = game.command_guest(2).unwrap();
+        assert_eq!(player.dimension, Dim::Nether.id());
+        assert_eq!(
+            player
+                .respawn_elsewhere
+                .as_ref()
+                .map(|point| (point.0.as_str(), point.1)),
+            Some((Dim::End.id(), LATE_ANCHOR))
+        );
+        let sounds = anchor_sounds(game, rx);
+        let [sound] = sounds.as_slice() else {
+            panic!("expected one sound from the saved End anchor")
+        };
+        assert_eq!([sound.x, sound.y, sound.z], [1360, 720, 1360]);
+        assert!(anchor_sounds(game, other).is_empty());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn the_dead_original_can_change_the_point_copied_to_the_replacement() {
+    with_anchor_death(AnchorRules::EditOriginal, |game, _, _| {
+        let player = game.command_guest(2).unwrap();
+        assert_eq!(player.dimension, Dim::Nether.id());
+        assert_eq!(
+            player.position,
+            [10.5, 101.0, 10.5],
+            "this respawn's destination was already found"
+        );
+        assert_eq!(
+            player
+                .respawn_elsewhere
+                .as_ref()
+                .map(|point| (point.0.as_str(), point.1)),
+            Some((Dim::Overworld.id(), CLONE_POINT)),
+            "the replacement copies the original's edited point"
+        );
     });
 }

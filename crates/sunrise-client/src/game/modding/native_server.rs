@@ -1593,9 +1593,10 @@ impl Game<'_> {
         }))
     }
     /// `ServerPlayer.setRespawnPosition`, as `/spawnpoint` sets it (the
-    /// same `set_respawn_point`): `config`, or none for None. False for a
-    /// stale, unavailable or dead player, a dimension the game doesn't
-    /// have, a yaw that isn't finite and a change a mod canceled.
+    /// same `set_respawn_point`): `config`, or none for None. The removed
+    /// original is writable here during the respawn-position callback, even
+    /// after death. Otherwise dead players, stale handles, unknown levels,
+    /// non-finite yaw and canceled changes are refused.
     pub(super) fn player_set_respawn_config(
         &mut self,
         player: PlayerRef,
@@ -1617,8 +1618,24 @@ impl Game<'_> {
             }
             None => None,
         };
-        let mut set = false;
-        self.native_as_player_handle(player, |game| set = game.set_respawn_point(stored)) && set
+        // The cloning scope lends the removed original to PlayerRespawnPositionEvent.
+        // Allow this write without publishing the player or relaxing other dead-player writes.
+        match self.player_handle_read(player) {
+            Some(PlayerRead::Acting { .. }) => {
+                let mut set = false;
+                self.native_as_acting(|game| set = game.set_respawn_point(stored)) && set
+            }
+            Some(PlayerRead::Guest(guest))
+                if !guest.dead
+                    || self
+                        .cloning_guest(guest.uuid)
+                        .is_some_and(|original| original.conn == guest.conn) =>
+            {
+                let conn = guest.conn;
+                self.as_guest(conn, |game| game.set_respawn_point(stored)) == Some(true)
+            }
+            _ => false,
+        }
     }
     /// The ping the Tab list shows (`ServerCommonPacketListenerImpl.latency`, kept by the
     /// connection's keep-alives): 0 for a fake player and for an acting player with no known

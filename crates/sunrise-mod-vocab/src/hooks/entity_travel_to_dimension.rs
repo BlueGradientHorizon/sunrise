@@ -21,7 +21,9 @@ pub trait Hooks {
     /// discarded during a callback never travels. A falling block is held out of the level while it
     /// ticks, so its handle reads nothing yet. A respawn (including the
     /// return after the End credits) and a world's join are not travel.
-    /// Later End portal exits are ordinary `end_portal` travel.
+    /// Later End portal exits are ordinary `end_portal` travel. For a player, `dimension`
+    /// is the level of the resolved destination, including the world spawn when the
+    /// saved respawn block is missing. A veto stops that transition too.
     /// Server-side. Diverges
     /// from upstream: replaces `player_portal`, which covered only server
     /// players through portals.

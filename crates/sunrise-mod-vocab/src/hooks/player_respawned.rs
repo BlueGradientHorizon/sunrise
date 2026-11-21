@@ -10,7 +10,10 @@ pub trait Hooks {
     /// and `pitch` to choose their final destination; no preliminary placement is made.
     /// `copy_original_spawn_position` (default: the block wasn't missing) says whether
     /// they keep their respawn point. Runs on the removed original player, before
-    /// `player_clone` and placement. `from_end_fight` is true for the respawn after the End credits,
+    /// `player_clone` and placement. To change the point copied for future respawns,
+    /// call `event.player.set_respawn_config(host, ...)` here, even on death, and set
+    /// `copy_original_spawn_position` to true. This does not change the current destination.
+    /// `from_end_fight` is true for the respawn after the End credits,
     /// false for death. An ordinary End portal teleport does not run this hook. Server-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_respawn_position",

@@ -135,6 +135,12 @@ impl Hooks for WelcomeBack {
 `event.end_conquered` in `player_respawned` to distinguish the return after the End credits from a death respawn.
 Both causes replace the player, so neither calls `entity_travel_to_dimension` or `player_changed_dimension`.
 An ordinary End portal exit teleports the same player and runs the travel hooks, not the respawn hooks.
+The travel veto sees the resolved destination, including the world spawn if the saved block is missing.
+
+To change the saved point copied to the replacement, use `event.player.set_respawn_config(host, Some(config))`
+inside `player_respawn_position` and set `*event.copy_original_spawn_position = true`. This works even
+on the removed player after death. It does not change the destination of this respawn: edit the event's
+`level`, `position`, `yaw` and `pitch` for that.
 
 `player.respawn(host)` returns `Result<(), RespawnRefusal>`, and each refusal changes nothing, checked in
 this order: `Client`, `InPlayerHook` (a player's state is swapped in), `Stale` (no player on this server behind the
@@ -150,7 +156,7 @@ Reads accept `Host`; writes accept `ServerHost`.
 | `may_use_item_at(host, pos, face, stack)` | Applies `Player.mayUseItemAt`: builders may use the item; adventure and spectator players need matching `can_place_on`. |
 | `can_harm(host, other)` | Applies `ServerPlayer.canHarmPlayer`, including the `pvp` rule and teams. |
 | `respawn_config(host)` | Reads the respawn point; `Some(None)` means no point is set. |
-| `set_respawn_config(host, config)` | Sets the point as `/spawnpoint` does, including the `player_set_spawn` veto. Refuses stale, unavailable or dead players, unknown dimensions, non-finite yaw and canceled changes. |
+| `set_respawn_config(host, config)` | Sets the point as `/spawnpoint` does, including the `player_set_spawn` veto. Refuses stale, unavailable or dead players (except the original in `player_respawn_position`), unknown dimensions, non-finite yaw and canceled changes. |
 | `text_filtering(host)` | Reads the option announced by the player's client. |
 | `sleep_ignored(host)` | Reads the sleep-count exclusion setting. |
 | `counts_for_sleep(host)` | Reports whether the player counts toward the night skip. |

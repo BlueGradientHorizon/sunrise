@@ -42,7 +42,8 @@ pub trait PlayerWorldBackendMut {
     /// yaw wraps to -180..180 (`RespawnData.of`) and the `player_set_spawn` hook may cancel the
     /// change, which refuses it. Kept with the player's record. False for a stale or unavailable
     /// player, a dead one, a dimension the game doesn't have, a yaw that is not finite and a
-    /// canceled change.
+    /// canceled change. During `player_respawn_position` only, the removed original may set
+    /// this point even after death, so it can be copied to the replacement for future respawns.
     #[access(WorldOnly)]
     fn player_set_respawn_config(
         &mut self,

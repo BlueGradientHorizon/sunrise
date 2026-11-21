@@ -163,7 +163,7 @@ impl Game<'_> {
         self.streaming.extra.extend(
             self.server_trips
                 .iter()
-                .flat_map(|trip| trip.clone_destination_areas(dim)),
+                .flat_map(|trip| trip.spawn_destination_areas(dim)),
         );
         let waiting = std::mem::take(&mut self.spawn_wait);
         self.streaming
