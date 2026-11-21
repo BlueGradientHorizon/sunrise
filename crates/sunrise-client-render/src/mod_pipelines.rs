@@ -17,7 +17,8 @@ use sunrise_shader_api::mod_pipeline::{FOLDER, compose_with};
 static REGISTERED: OnceLock<Vec<RenderPipeline>> = OnceLock::new();
 
 /// Publish the mods' registrations once at startup, as `register_render_pipelines` left them:
-/// each id once, in a namespace its mod owns. A pipeline's place in the list is its slot.
+/// each id at most once per kind (required or optional). A pipeline's place in the list is its
+/// slot.
 pub fn register(pipelines: Vec<RenderPipeline>) {
     if REGISTERED.set(pipelines).is_err() {
         log::warn!("Render pipelines already registered; keeping the first list");
@@ -59,6 +60,7 @@ pub enum BuiltTexture {
 #[derive(Clone, Debug, Default)]
 pub struct Pipelines {
     ids: Vec<Identifier>,
+    optional: Vec<bool>,
     built: Vec<Option<Built>>,
     /// The render assets' generation this set was loaded for; 0 for none.
     generation: u64,
@@ -148,6 +150,7 @@ impl Pipelines {
         }
         Ok(Self {
             ids: registered.iter().map(|p| p.id.clone()).collect(),
+            optional: registered.iter().map(|p| p.optional).collect(),
             built,
             generation,
             invalid: Default::default(),
@@ -182,12 +185,15 @@ impl Pipelines {
         &self.built
     }
 
-    /// The handle of the registered pipeline `id` in this load.
+    /// The handle of the registered pipeline `id` in this load. When both a required and an
+    /// optional pipeline are registered under `id`, the required pipeline is chosen first.
     pub fn resolve(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
         let slot = self
             .ids
             .iter()
-            .position(|registered| registered == id)
+            .zip(&self.optional)
+            .position(|(registered, &optional)| registered == id && !optional)
+            .or_else(|| self.ids.iter().position(|registered| registered == id))
             .ok_or(RenderPipelineError::Unknown)?;
         if self.built[slot].is_none()
             || self
@@ -429,5 +435,18 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
             built("test:effect/glow.png"),
             Err("required render pipeline test:glow from mod  refused: its texture: NotASpriteKey: the id names a file, not a sprite key".into())
         );
+    }
+
+    #[test]
+    fn resolve_prefers_required_pipeline_when_optional_shares_id() {
+        let registered = [
+            pipeline("example:shared", "example:optional_glow").optional(),
+            pipeline("example:shared", "example:required_glow"),
+        ];
+        let set = Pipelines::build(&registered, 11, |_| Ok(GLOW.to_owned())).unwrap();
+        assert!(set.built()[0].as_ref().is_some_and(|b| b.optional));
+        assert!(set.built()[1].as_ref().is_some_and(|b| !b.optional));
+        let handle = set.resolve(&id("example:shared")).unwrap();
+        assert_eq!(set.slot(handle), Ok(1));
     }
 }

@@ -503,10 +503,13 @@ impl LayerDefinition {
 
 impl RegisterLayerDefinitionsEvent<'_> {
     /// Register a supplier for a model layer ID such as `mymod:golem#main`.
-    /// The first valid registration of an ID wins. Malformed IDs, IDs in `minecraft`,
-    /// duplicates and registrations from a phase-refused listener never call their supplier.
-    /// An accepted supplier runs once at client startup to build the frozen definition, not
-    /// when the layer is baked or resources are reloaded. Capture owned data in the supplier.
+    /// Any `<namespace>:<path>#<layer>` ID that does not collide with an existing vanilla layer
+    /// definition is accepted; duplicate mod registrations for an ID overwrite earlier suppliers
+    /// (last-writer-wins) before freeze. Malformed IDs, collisions with existing vanilla layer
+    /// definitions, overwritten suppliers and registrations from a phase-refused listener never
+    /// call their supplier. Each winning supplier runs once at client startup to build the frozen
+    /// definition, not when the layer is baked or resources are reloaded. Capture owned data in
+    /// the supplier.
     pub fn register(
         &mut self,
         id: impl Into<String>,

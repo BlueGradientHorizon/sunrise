@@ -1,14 +1,16 @@
 //! Client render pipeline registration.
 
 pub trait Hooks {
-    /// Register the mod's own render pipelines, once at client startup (NeoForge's
+    /// Register render pipelines once at client startup (NeoForge's
     /// `RegisterRenderPipelinesEvent`; 1.21.1 mods used `RegisterShadersEvent`): call
     /// `event.register(pipeline)` with each [`RenderPipeline`]. The game builds them with its own
-    /// at startup and again on every resource reload. An id outside the mod's namespaces or one
-    /// already registered is logged with the mod and dropped. A required pipeline whose shader
-    /// is missing or doesn't build fails the load: the game does not start, and a reload fails
-    /// and keeps the previous resources. An [optional](RenderPipeline::optional()) one is
-    /// logged and resolves to [`RenderPipelineError::Invalid`].
+    /// at startup and again on every resource reload. Any valid [`Identifier`] is accepted, and
+    /// duplicate IDs are checked separately for required and optional pipelines (a duplicate of
+    /// the same kind is logged with the mod and dropped; when both a required and an optional
+    /// pipeline share an id, resolving that id returns the required pipeline). A required pipeline
+    /// whose shader is missing or doesn't build fails the load: the game does not start, and a
+    /// reload fails and keeps the previous resources. An [optional](RenderPipeline::optional())
+    /// one is logged and resolves to [`RenderPipelineError::Invalid`].
     #[notes = r#"## Render pipelines
 
 `Hooks::register_render_pipelines` is the client registration-phase counterpart of NeoForge's
@@ -59,7 +61,10 @@ pipeline again, so a resource pack can replace a shader; a handle from before th
 `Stale`.
 
 A pipeline is required unless it is registered with `.optional()` (NeoForge's
-`registerPipeline` and `registerOptionalPipeline`). When a load cannot build a required pipeline,
+`registerPipeline` and `registerOptionalPipeline`). Any valid `Identifier` is accepted, and
+duplicate IDs are checked separately for required and optional pipelines (a duplicate of the same
+kind is logged with the mod and dropped; resolving an ID shared by both selects the required
+pipeline). When a load cannot build a required pipeline,
 because its file is missing, refused or turned down by the GPU, the whole load fails and names it:
 the game does not start, and a reload keeps the previous resources and handles, then drops the
 selected resource packs and tries again, as vanilla does with any failed reload. An optional

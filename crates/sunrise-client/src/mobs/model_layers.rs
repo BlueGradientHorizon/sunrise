@@ -4,10 +4,7 @@ use mod_api::{
     __private::game::{CallbackOwner, LayerDefinitionRegistration},
     Answered, LayerDefinition, ModelPart, ModelPolygon, ModelVertex, PartPose,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    sync::OnceLock,
-};
+use std::{collections::HashMap, sync::OnceLock};
 
 /// A vanilla layer's part tree from `entity-models.json`.
 pub fn from_part(part: &Part) -> ModelPart {
@@ -37,27 +34,40 @@ pub fn from_part(part: &Part) -> ModelPart {
 
 static REGISTERED: OnceLock<HashMap<String, LayerDefinition>> = OnceLock::new();
 
-/// Call each accepted mod supplier in registration order and publish the realized layers once
-/// at client startup. Reject invalid IDs and duplicates without calling their suppliers.
-pub fn register(layers: Vec<Answered<LayerDefinitionRegistration>>) {
+/// Stage accepted mod suppliers (last-writer-wins per ID, refusing invalid IDs and collisions
+/// with existing vanilla layers), then invoke each winning supplier once at client startup and
+/// publish the realized layers.
+pub fn register(
+    layers: Vec<Answered<LayerDefinitionRegistration>>,
+    mut is_vanilla: impl FnMut(&str) -> bool,
+) {
     let mut assembled = false;
     REGISTERED.get_or_init(|| {
         assembled = true;
-        let mut seen = HashSet::new();
-        let mut definitions = HashMap::new();
+        let mut order: Vec<&str> = Vec::new();
+        let mut staged: HashMap<&str, &Answered<LayerDefinitionRegistration>> = HashMap::new();
         for entry in &layers {
-            let LayerDefinitionRegistration { id, supplier, .. } = &entry.answer;
+            let id = entry.answer.id.as_str();
             let mod_id = entry.mod_id;
-            if !is_mod_layer_id(id) {
+            if !is_layer_id(id) {
+                log::warn!("Mod {mod_id}: model layer {id:?} is not <namespace>:<path>#<layer>");
+                continue;
+            }
+            if is_vanilla(id) {
                 log::warn!(
-                    "Mod {mod_id}: model layer {id:?} is not <namespace>:<path>#<layer> in a mod's namespace"
+                    "Mod {mod_id}: model layer {id} collides with an existing vanilla model layer"
                 );
                 continue;
             }
-            if !seen.insert(id.as_str()) {
-                log::warn!("Mod {mod_id}: model layer {id} is registered twice; the first is kept");
-                continue;
+            if staged.insert(id, entry).is_none() {
+                order.push(id);
             }
+        }
+        let mut definitions = HashMap::new();
+        for id in order {
+            let entry = staged[id];
+            let LayerDefinitionRegistration { id, supplier, .. } = &entry.answer;
+            let mod_id = entry.mod_id;
             let Some(owner) = CallbackOwner::new(mod_id) else {
                 log::warn!("Model layer {id} has no installed owner {mod_id}");
                 continue;
@@ -81,7 +91,7 @@ pub fn registered(id: &str) -> Option<&'static LayerDefinition> {
     REGISTERED.get()?.get(id)
 }
 
-fn is_mod_layer_id(id: &str) -> bool {
+fn is_layer_id(id: &str) -> bool {
     let Some((location, layer)) = id.split_once('#') else {
         return false;
     };
@@ -97,11 +107,7 @@ fn is_mod_layer_id(id: &str) -> bool {
                     || extra.contains(&c)
             })
     };
-    namespace != "minecraft"
-        && ok(namespace, &[])
-        && ok(path, &['/'])
-        && !layer.is_empty()
-        && !layer.contains(['#', ':'])
+    ok(namespace, &[]) && ok(path, &['/']) && !layer.is_empty() && !layer.contains(['#', ':'])
 }
 
 #[cfg(test)]
@@ -110,7 +116,7 @@ mod tests {
     use mod_api::{CubeDeformation, CubeListBuilder, MeshDefinition};
 
     #[test]
-    fn suppliers_only_run_for_the_first_valid_ids_at_freeze() {
+    fn suppliers_overwrite_last_writer_wins_and_refuse_only_vanilla_collisions() {
         use mod_api::__private::game::RegistrationContextNew;
         use mod_api::{Hooks, ModEntry, RegisterLayerDefinitionsEvent, RegistrationContext};
         use std::sync::{Arc, Mutex};
@@ -146,7 +152,11 @@ mod tests {
                 ModEntry::new(
                     "first",
                     Box::new(Layers(
-                        &[("minecraft:golem#main", 1), ("first:golem#main", 6)],
+                        &[
+                            ("minecraft:zombie#main", 1),
+                            ("minecraft:custom_golem#main", 3),
+                            ("first:golem#main", 6),
+                        ],
                         calls.clone(),
                     )),
                 ),
@@ -166,32 +176,50 @@ mod tests {
                     &mut suppliers,
                 );
                 assert!(calls.lock().unwrap().is_empty());
-                register(suppliers);
-                assert_eq!(*calls.lock().unwrap(), [6, 12]);
+                register(suppliers, |id| id == "minecraft:zombie#main");
+                assert_eq!(*calls.lock().unwrap(), [3, 9, 12]);
 
-                assert!(registered("minecraft:golem#main").is_none());
+                assert!(registered("minecraft:zombie#main").is_none());
+                assert_eq!(
+                    registered("minecraft:custom_golem#main")
+                        .unwrap()
+                        .bake_root()
+                        .get_child("head")
+                        .unwrap()
+                        .y,
+                    3.0
+                );
                 for _ in 0..2 {
                     let model = registered("first:golem#main").unwrap().bake_root();
-                    assert_eq!(model.get_child("head").unwrap().y, 6.0);
+                    assert_eq!(model.get_child("head").unwrap().y, 9.0);
                 }
+                assert_eq!(
+                    registered("second:golem#main")
+                        .unwrap()
+                        .bake_root()
+                        .get_child("head")
+                        .unwrap()
+                        .y,
+                    12.0
+                );
 
                 let mut late = Vec::new();
                 mod_api::dispatch_register_layer_definitions(
                     &RegistrationContext::new(),
                     &mut late,
                 );
-                register(late);
-                assert_eq!(*calls.lock().unwrap(), [6, 12]);
+                register(late, |id| id == "minecraft:zombie#main");
+                assert_eq!(*calls.lock().unwrap(), [3, 9, 12]);
             },
         );
     }
 
     #[test]
-    fn layer_ids_are_a_mods_own_model_and_layer() {
-        assert!(is_mod_layer_id("mymod:golem#main"));
-        assert!(is_mod_layer_id("my_mod:mobs/golem.v2#outer_armor"));
+    fn layer_ids_require_namespaced_model_and_layer() {
+        assert!(is_layer_id("minecraft:zombie#main"));
+        assert!(is_layer_id("mymod:golem#main"));
+        assert!(is_layer_id("my_mod:mobs/golem.v2#outer_armor"));
         for bad in [
-            "minecraft:zombie#main",
             "mymod:golem",
             "golem#main",
             "mymod:#main",
@@ -199,7 +227,7 @@ mod tests {
             "MyMod:golem#main",
             "mymod:golem#a#b",
         ] {
-            assert!(!is_mod_layer_id(bad), "{bad}");
+            assert!(!is_layer_id(bad), "{bad}");
         }
     }
     /// `HumanoidModel.createMesh(CubeDeformation.NONE, 0)` built with these

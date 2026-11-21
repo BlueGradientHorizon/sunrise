@@ -48,7 +48,7 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
         || {
             let mut layers = Vec::new();
             mod_api::dispatch_register_layer_definitions(&RegistrationContext::new(), &mut layers);
-            model_layers::register(layers);
+            model_layers::register(layers, |id| id == "minecraft:zombie_head#main");
         },
     );
     // A vanilla layer, read from `entity-models.json` under the vanilla root.

@@ -468,7 +468,15 @@ pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std
     }
     let mut suppliers = Vec::new();
     Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
-    sunrise_client::mobs::model_layers::register(suppliers);
+    let mut vanilla = None;
+    sunrise_client::mobs::model_layers::register(suppliers, |id| {
+        vanilla
+            .get_or_insert_with(|| {
+                sunrise_client::mobs::EntityModelDocument::load(vanilla_root).ok()
+            })
+            .as_ref()
+            .is_some_and(|doc| doc.value().get(id).is_some())
+    });
     let mut models = Vec::new();
     Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
     sunrise_client::skull_models::register(models, vanilla_root);

@@ -66,11 +66,13 @@ At client startup, implement `Hooks::register_layer_definitions` and call
 `event.register("mymod:golem#main", create_golem_layer)`, where `create_golem_layer`
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
-inputs, not the event or its registration context. Use a `<namespace>:<path>#<layer>`
-ID outside the `minecraft` namespace.
+inputs, not the event or its registration context. Use any `<namespace>:<path>#<layer>`
+ID that does not collide with an existing vanilla layer definition.
 
-The game calls each accepted supplier once when it freezes the layer table, in
-registration order. A duplicate ID does not run its supplier. The frozen table
+Duplicate mod registrations for the same ID overwrite earlier suppliers (last-writer-wins)
+before freeze, so overwritten suppliers never run. Collisions with existing vanilla layer
+definitions are logged and skipped without invoking their suppliers. The game calls each
+winning supplier once when it freezes the layer table. The frozen table
 retains the definitions, not the suppliers. Call
 `ClientHost::bake_layer("mymod:golem#main")` during renderer setup, then keep the
 resulting `ModelPart` tree for posing and drawing. Baking again and reloading

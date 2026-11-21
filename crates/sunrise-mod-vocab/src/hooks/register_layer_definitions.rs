@@ -12,12 +12,14 @@ pub trait Hooks {
 `EntityRenderersEvent.RegisterLayerDefinitions`. It receives a `RegistrationContext` once at
 client startup. Call `event.register(id, supplier)` to stage a supplier that builds a
 `LayerDefinition`. Dedicated and integrated server roles do not fire this client event.
-IDs have the form `<namespace>:<path>#<layer>`; malformed IDs and the `minecraft` namespace
-are logged and dropped. The first valid registration for an ID wins.
+IDs have the form `<namespace>:<path>#<layer>`. Any valid ID that does not collide with an
+existing vanilla layer definition is accepted; malformed IDs and collisions with existing vanilla
+layer definitions are logged and dropped without calling their suppliers. Duplicate mod
+registrations for the same ID overwrite earlier suppliers (last-writer-wins) before freeze.
 
-The game calls accepted suppliers in registration order when assembling the frozen layer table.
-Duplicates never run, even if the first supplier for that ID fails. A supplier that is disabled,
-refuses or panics leaves no definition. Bakes and resource reloads do not call suppliers again.
+The game calls each winning supplier once when assembling the frozen layer table. Overwritten
+suppliers never run. A supplier that is disabled, refuses or panics leaves no definition. Bakes
+and resource reloads do not call suppliers again.
 
 A `LayerDefinition` holds a `MeshDefinition` of named parts whose `CubeListBuilder` boxes sit
 at a `PartPose`, on a texture of the given size. Texture offsets, mirroring and
