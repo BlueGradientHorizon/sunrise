@@ -1044,12 +1044,13 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(steps["actions/upload-artifact@v4"]["with"]["name"], "sdk-leg-${{ matrix.name }}")
         self.assertNotIn("env", build, "no hand-set archive name")
 
-        # The launcher and the mod tool ask for sunrise_mod_package::sdk::Asset::name(kind, target, side):
-        # `{kind}-{target}{-server}.tar.xz`, the kinds named runtime, api and engine; and the release's other files
-        # are its BESIDE_ASSETS. Producer (the legs), publish check (SDK_ARCHIVES, SDK_ASSETS) and launcher agree.
+        # The launcher and the mod tool use Asset::name: `{kind}-{host}.tar.xz`, where the host adds
+        # `-server` only for per-side assets. Check that these names and BESIDE_ASSETS agree with the
+        # SDK producer's legs and the publish check's SDK_ARCHIVES and SDK_ASSETS.
         sdk = (ROOT / "crates/sunrise-mod-package/src/sdk.rs").read_text()
-        self.assertIn('format!("{}-{target}{suffix}.tar.xz", kind.name())', sdk)
-        self.assertIn('let suffix = if kind.per_side() && side == Side::Server {', sdk)
+        self.assertIn('Self::host_name(target, if kind.per_side() { side } else { Side::Client })', sdk)
+        self.assertIn('format!("{}-{host}.tar.xz", kind.name())', sdk)
+        self.assertIn('Side::Server => format!("{target}-server"),', sdk)
         for kind in ("runtime", "api", "engine", "build-data", "api-source", "tool"):
             self.assertIn(f'=> "{kind}",', sdk)
         self.assertIn('pub const INDEX: &str = "sdk.json";', sdk)
