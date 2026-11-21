@@ -5285,6 +5285,7 @@ dependencies = [
  "sunrise-core",
  "sunrise-deflate",
  "sunrise-mod-api-macros",
+ "sunrise-mod-vocab",
  "sunrise-threads",
  "xxhash-rust",
 ]
