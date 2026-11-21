@@ -106,7 +106,6 @@ struct StillKey {
 #[derive(Default)]
 pub struct Sprites {
     source: ResourceSource,
-    /// Whether this load draws nothing (a server's): the mods' sprite sources are not run for it.
     /// Edge length of every array layer and the layers' current frames, set
     /// by [`Sprites::finish`].
     pub size: u32,
