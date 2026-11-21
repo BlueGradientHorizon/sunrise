@@ -1037,7 +1037,8 @@ pub struct MenuScreenLayout {
     pub own_background: bool,
     /// The registered recipe book hosted beside this menu. Its declarations must
     /// target this menu; no panel is enabled until authoritative settings arrive.
-    /// Leaving this unset keeps the screen without a recipe book.
+    /// If the menu declares a book with `MenusRegistrar::menu_recipe_book`, this
+    /// field must name that book. Otherwise the book is optional and display-only.
     pub recipe_book: Option<crate::RecipeBookTypeKey>,
     /// Optional 20 × 18 recipe-book toggle position, from this menu's left and, per
     /// [`RecipeBookToggle::from`], its top or the window's centre.

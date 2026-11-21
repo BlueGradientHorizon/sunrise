@@ -331,11 +331,11 @@ the entire declared book, not just the visible page.
 ## Menu-owned destination roles
 
 During shared registration,
-`r.menu_recipe_book(menu, &book, recipe_type, layout, screen)` binds a content
-menu to a registered book, a recipe type and its existing typed `MenuScreenLayout` value. The menu namespace
+`r.menu_recipe_book(menu, &book, recipe_type, layout)` binds a content menu
+to a registered book, a recipe type and its destination roles. The menu namespace
 must belong to the registering mod. Duplicate bindings and unknown books refuse
-installation even when the registration error is ignored. The declaration is
-frozen with the other registrations and explicitly derives `Wire`.
+installation even when the registration error is ignored. The roles are frozen with
+the other registrations; `RecipeBookLayout` derives `Wire`.
 
 `RecipeBookLayout` declares one of four destination maps:
 
@@ -355,14 +355,13 @@ agree with the declaration. Without that backend, a crafting map describes real
 persistent input storage instead: for example, six cooking-pot inputs in a 3 by 2
 grid. Placement never fills its cooked output or fuel, and preserves those slots.
 An incompatible display or one that does not fit refuses the declaration
-generation rather than truncating ingredients. All mapped slots need finite
-coordinates in `MenuScreenLayout.slots`. Registration rejects missing or nonfinite
-coordinates, nonpositive/nonfinite panel sizes and a screen bound to another
-book. Startup also rejects geometry for slots beyond the actual content menu.
-The screen is frozen in this same declaration, not a second registry. For these
-book-enabled menus, both the client layout and server hidden-slot policy use
-that registered screen; `native_screen` is not consulted. Other mod menus still
-obtain their screens dynamically.
+generation rather than truncating ingredients. No permanent slot mask may exclude
+a mapped role. The client obtains geometry from the menu part's `screen` hook at
+open, just as it does for other mod menus. A bound menu's layout must name the
+registered book and supply finite coordinates for all visible backing slots.
+A layout that disagrees with the mask or extends beyond the backing, supplies
+invalid dimensions or coordinates, or names an unknown empty-slot sprite is refused
+at open. The server's slot policy is independent of client geometry.
 
 The shared mapper uses vanilla `PlaceRecipeHelper`: a 1 by 1 shaped recipe in
 a 3 by 3 grid is centered; a 2 by 2 recipe starts at the upper left and retains
@@ -402,7 +401,7 @@ It commits placement atomically, or refuses without publishing a partial plan.
 Persistent machines retain their real fuel and cooked output; placement does not
 craft their output. Only a current server missing-ingredients response installs
 ghost hints. Every new click, window change, disconnect or declaration reload
-revokes pending hints. Ghosts use the shared vanilla painter and the registered
+revokes pending hints. Ghosts use the shared vanilla painter and the active
 screen's native slot geometry, never built-in slot coordinates.
 
 Displays are pictures, not ingredient predicates; declaring a result ghost never

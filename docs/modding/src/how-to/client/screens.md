@@ -121,9 +121,9 @@ assert_eq!(host.screen_slot(MENU, 3), Some([62.0, 18.0]));
 ```
 
 `menu` is the menu type whose screen is open, so a call made for another screen refuses, as does one from a mod
-that does not own the open screen. A screen with a registered recipe-book layout belongs to the mod that
-registered it, which moves its slots with or without a screen part; any other screen belongs to the mod whose
-screen part lays it out (several mods' blocks can open one vanilla menu type, each with its own mod's screen).
+that does not own the open screen. The mod whose screen part lays it out can move its slots. A menu with
+a bound recipe book takes its screen part from the mod that bound the book; several mods' blocks can open
+one vanilla menu type, each with its own mod's screen.
 `slot` is the index into
 `MenuScreenLayout::slots`. A position is GUI pixels from the screen's top-left corner and names the item's top-left
 corner, as in `MenuScreenLayout::slots`; `None` hides the slot. The call takes `&self`, so a screen hook such as

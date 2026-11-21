@@ -1,0 +1,1 @@
+sunrise-client game::native_hooks::book_screen::lifecycle_tests::a_bound_recipe_book_screen_refuses_bad_layouts_at_open lib daily resources

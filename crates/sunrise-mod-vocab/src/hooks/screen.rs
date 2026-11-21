@@ -14,9 +14,10 @@ pub trait Hooks {
     /// with no answer has no screen, and its window closes again. The server
     /// never calls this hook. Register permanent backing-slot exclusions with
     /// `MenusRegistrar::menu_slot_exclusions`; the layout must agree with that
-    /// mask. A recipe-book menu uses its registered screen instead of this hook.
+    /// mask. A menu with a bound recipe book also gets its screen here;
+    /// the layout must name that book and show all mapped slots at finite positions.
     #[hook(
-        version = 3,
+        version = 4,
         side = "both",
         contract = "replace",
         out = "screen",

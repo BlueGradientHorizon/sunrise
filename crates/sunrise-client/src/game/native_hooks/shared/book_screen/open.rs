@@ -1,19 +1,6 @@
 use super::*;
 
 impl Game<'_> {
-    /// The screen of menu type `menu`: its startup-validated registered book
-    /// layout, else what the menu type's parts answer `native_screen`. `block`
-    /// is the mod block whose menu it is, when the menu is block-backed.
-    fn menu_screen(&self, menu: &str, block: Option<&str>) -> Option<mod_api::MenuScreenLayout> {
-        let mut screen = mod_api::RecipeBookLayout::registered_screen(menu);
-        if screen.is_some() {
-            // A code-opened menu may provide its grid through native slot
-            // backing instead of a block entity.
-            return screen;
-        }
-        self.native_screen(menu, block, &mut screen);
-        screen
-    }
     /// The registered exclusions for a validated opener. Refuse the binding if
     /// any declared index is outside this opening's actual container backing.
     pub(in crate::game) fn native_hidden_slots(
@@ -79,18 +66,47 @@ impl Game<'_> {
             return false;
         };
         let of = block.unwrap_or(name);
-        let Some(mut screen) = self.menu_screen(name, block) else {
+        let mut screen = None;
+        self.native_screen(name, block, &mut screen);
+        let Some(mut screen) = screen else {
             if !hidden.is_empty() {
                 log::error!("screen for {of}: no layout for a menu with excluded slots");
             }
             return mod_type.is_none() && hidden.is_empty();
         };
+        let binding = mod_api::RecipeBookLayout::registered(name);
+        if let Some((book, _, _)) = &binding {
+            if screen.recipe_book.as_ref() != Some(book) {
+                log::error!("screen for {of}: expected the menu's bound recipe book {book:?}");
+                return false;
+            }
+            if ![screen.width, screen.height]
+                .into_iter()
+                .all(|size| size.is_finite() && size > 0.0)
+                || ![screen.inventory_x, screen.inventory_y]
+                    .into_iter()
+                    .chain(screen.title_label.into_iter().flatten())
+                    .chain(screen.inventory_label.into_iter().flatten())
+                    .chain(
+                        screen
+                            .recipe_book_toggle
+                            .into_iter()
+                            .flat_map(|toggle| [toggle.x, toggle.y]),
+                    )
+                    .all(f32::is_finite)
+            {
+                log::error!("screen for {of}: invalid dimensions or coordinates");
+                return false;
+            }
+        }
         if screen.slots.len() > backing_slots {
             log::error!("screen for {of}: layout is longer than its {backing_slots} backing slots");
             return false;
         }
         // Every visible slot uses its backing index. An omitted entry is valid
         // only for a declared exclusion, including at the tail of the layout.
+        // Content loading already ensures mapped book roles fit the menu and
+        // no permanent mask hides them.
         let mut excluded = hidden.iter().copied().map(usize::from).peekable();
         for index in 0..backing_slots {
             let slot = screen.slots.get(index).and_then(Option::as_ref);
@@ -101,11 +117,17 @@ impl Game<'_> {
                 );
                 return false;
             }
-            if let Some(icon) = slot.and_then(|slot| slot.no_item_icon.as_deref())
-                && self.gui.atlas.gui_rect(icon).is_none()
-            {
-                log::error!("screen for {of}: unknown empty-slot GUI sprite {icon:?}");
-                return false;
+            if let Some(slot) = slot {
+                if binding.is_some() && !slot.position.into_iter().all(f32::is_finite) {
+                    log::error!("screen for {of}: nonfinite slot {index} coordinates");
+                    return false;
+                }
+                if let Some(icon) = slot.no_item_icon.as_deref()
+                    && self.gui.atlas.gui_rect(icon).is_none()
+                {
+                    log::error!("screen for {of}: unknown empty-slot GUI sprite {icon:?}");
+                    return false;
+                }
             }
         }
         screen.slots.resize_with(backing_slots, || None);

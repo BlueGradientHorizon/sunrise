@@ -367,9 +367,11 @@ mask refuses the opening.
 For a menu type with a `MenuPart`, a button returned by `screen_click` reaches
 `menu_button` on the server. A block-backed menu also supplies its backing block entity;
 a menu opened without a block supplies `None` for both `event.entity` and `event.context.pos`.
-Registered recipe-book screens work for blockless menus when their recipe slots have native
-slot backing. The mod that registered the layout owns its slot controls and can attach a part
-for drawing, clicks and tooltips; another mod's screen part is refused.
+A [bound recipe book](../items/recipe-book-categories.md#binding-a-book-to-a-menu) works for
+blockless menus when its recipe slots have native slot backing. The declaring mod supplies the
+screen through its own `MenuPart::screen`. Return the bound book in `MenuScreenLayout::recipe_book`;
+a missing or different book, invalid geometry or missing mapped slots refuses that client opening.
+The declaring mod owns its slot controls; another mod's screen part is refused.
 
 ## Laying a screen's slots out again
 

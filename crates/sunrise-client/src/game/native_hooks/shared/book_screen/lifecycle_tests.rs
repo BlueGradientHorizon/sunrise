@@ -1,5 +1,5 @@
 use super::*;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use sunrise_client::recipe_book::{BookFlags, settings_codec, settings_sync::Message};
 
 static KEY: OnceLock<mod_api::RecipeBookTypeKey> = OnceLock::new();
@@ -32,18 +32,29 @@ impl mod_api::Hooks for BookMod {
 fn receive(game: &mut Game<'_>, message: Message) {
     game.remote_book_settings(&settings_codec::encode(&message).unwrap());
 }
-struct BoundBookMod;
+type BoundLayoutEdit = fn(&mut mod_api::MenuScreenLayout);
+
+#[derive(Default)]
+struct BoundBookMod {
+    edit: Arc<Mutex<Option<BoundLayoutEdit>>>,
+}
+
+struct BoundBookScreen {
+    book: mod_api::RecipeBookTypeKey,
+    edit: Arc<Mutex<Option<BoundLayoutEdit>>>,
+}
+
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for BoundBookMod {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        let key = registrar.recipe_book_type("bound:book").unwrap();
+        let book = registrar.recipe_book_type("bound:book").unwrap();
         registrar
             .menu_slot_exclusions("bound:menu", None, &[2])
             .unwrap();
         registrar
             .menu_recipe_book(
                 "bound:menu",
-                &key,
+                &book,
                 "bound:recipe",
                 mod_api::RecipeBookLayout::Crafting {
                     width: 1,
@@ -51,29 +62,51 @@ impl mod_api::Hooks for BoundBookMod {
                     slots: vec![0],
                     result: 1,
                 },
-                mod_api::MenuScreenLayout {
-                    width: 176.0,
-                    height: 166.0,
-                    slots: vec![
-                        Some(mod_api::ScreenSlot {
-                            position: [8.0, 18.0],
-                            ..Default::default()
-                        }),
-                        Some(mod_api::ScreenSlot {
-                            position: [80.0, 18.0],
-                            ..Default::default()
-                        }),
-                    ],
-                    recipe_book: Some(key.clone()),
-                    recipe_book_toggle: Some(mod_api::RecipeBookToggle {
-                        x: 153.0,
-                        y: 60.0,
-                        from: mod_api::ToggleOrigin::Menu,
-                    }),
-                    ..Default::default()
-                },
             )
             .unwrap();
+        registrar.menu_part(
+            "bound:menu",
+            BoundBookScreen {
+                book,
+                edit: self.edit.clone(),
+            },
+        );
+    }
+}
+
+#[mod_api::sunrise_part]
+impl mod_api::MenuPart for BoundBookScreen {
+    fn screen(
+        &self,
+        _: &dyn mod_api::Host,
+        event: &mut mod_api::ScreenEvent<'_>,
+    ) -> Option<mod_api::MenuScreenLayout> {
+        assert_eq!(event.block, None);
+        let mut layout = mod_api::MenuScreenLayout {
+            width: 176.0,
+            height: 166.0,
+            slots: vec![
+                Some(mod_api::ScreenSlot {
+                    position: [8.0, 18.0],
+                    ..Default::default()
+                }),
+                Some(mod_api::ScreenSlot {
+                    position: [80.0, 18.0],
+                    ..Default::default()
+                }),
+            ],
+            recipe_book: Some(self.book.clone()),
+            recipe_book_toggle: Some(mod_api::RecipeBookToggle {
+                x: 153.0,
+                y: 60.0,
+                from: mod_api::ToggleOrigin::Menu,
+            }),
+            ..Default::default()
+        };
+        if let Some(edit) = *self.edit.lock().unwrap() {
+            edit(&mut layout);
+        }
+        Some(layout)
     }
 }
 fn with_bound_menu_type(test: impl FnOnce()) {
@@ -96,57 +129,52 @@ fn with_bound_menu_type(test: impl FnOnce()) {
 #[test]
 #[ignore = "daily"]
 fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("bound", Box::new(BoundBookMod))].into();
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "bound",
+        Box::new(BoundBookMod::default()),
+    )]
+    .into();
     mod_platform::testing::with_mods(mods, || {
-        crate::game::native_entity_refs::tests::with_client_game(|game| {
-            mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
-            let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-            game.connect_local(pipe, "Bound").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.custom_books = true;
-            remote.joined = true;
-            let generation = seed_native_menu(game, 1, "bound:menu");
-            game.screen = Screen::Playing;
-            game.container = Some((i32::MIN, 0, 0));
-            game.mod_screen = Some(OpenNativeScreen {
-                menu: OpenNativeMenu {
-                    key: (i32::MIN, 0, 0),
-                    window: 1,
-                    generation,
-                    name: "bound:menu".into(),
-                    block: Some("bound:block".into()),
-                    pos: None,
-                    mod_type: None,
-                    data: Vec::new(),
-                    extra: Vec::new(),
-                },
-                slot_moves: Default::default(),
-                layout_revision: 4,
-                screen: mod_api::RecipeBookLayout::registered_screen("bound:menu").unwrap(),
-                shown: false,
-            });
-            // Negotiation completed before the user opened the machine. As in
-            // remote_open_screen, the declaration exists before Inventory is shown.
-            use sunrise_client::recipe_book::placement_sync;
-            game.native_net.placement.client.hello(6);
-            assert!(
-                game.native_net
+        with_bound_menu_type(|| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
+                let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(pipe, "Bound").unwrap();
+                let remote = game.remote.as_mut().unwrap();
+                remote.custom_books = true;
+                remote.joined = true;
+                seed_native_menu(game, 1, "bound:menu");
+                let key = (i32::MIN, 0, 0);
+                game.screen = Screen::Playing;
+                game.container = Some(key);
+                assert!(game.open_native_screen(key, None, 3, None));
+                let staged = game.mod_screen.as_ref().expect("bound screen staged");
+                assert_eq!(staged.menu.block, None);
+                let nonce = staged.layout_revision;
+
+                // Negotiation completed before the user opened the machine. As in
+                // remote_open_screen, the layout exists before Inventory is shown.
+                use sunrise_client::recipe_book::placement_sync;
+                game.native_net.placement.client.hello(6);
+                assert!(
+                    game.native_net
+                        .placement
+                        .client
+                        .ready(6, placement_sync::schema())
+                );
+                game.ensure_mod_book_catalog();
+                assert!(game.native_net.placement.client.window().is_none());
+                game.set_screen(Screen::Inventory);
+                let window = game
+                    .native_net
                     .placement
                     .client
-                    .ready(6, placement_sync::schema())
-            );
-            game.ensure_mod_book_catalog();
-            assert!(game.native_net.placement.client.window().is_none());
-            game.set_screen(Screen::Inventory);
-            let window = game
-                .native_net
-                .placement
-                .client
-                .window()
-                .expect("catalogue requested on opening");
-            assert_eq!(window.menu.as_str(), "bound:menu");
-            assert_eq!(window.nonce, 4);
-            assert!(game.native_net.placement.deadline.is_some());
+                    .window()
+                    .expect("catalogue requested on opening");
+                assert_eq!(window.menu.as_str(), "bound:menu");
+                assert_eq!(window.nonce, nonce);
+                assert!(game.native_net.placement.deadline.is_some());
+            });
         });
     });
 }
@@ -154,7 +182,11 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
 #[test]
 #[ignore = "daily"]
 fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("bound", Box::new(BoundBookMod))].into();
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "bound",
+        Box::new(BoundBookMod::default()),
+    )]
+    .into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
@@ -170,7 +202,7 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                         data: Vec::new(),
                     }),
                 ));
-                let screen = game.mod_screen.as_ref().expect("registered screen stages");
+                let screen = game.mod_screen.as_ref().expect("bound screen stages");
                 assert_eq!(
                     screen.screen.recipe_book.as_ref().unwrap().as_str(),
                     "bound:book"
@@ -183,6 +215,52 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                 );
                 assert_eq!(screen.screen.slots.len(), 3);
                 assert!(screen.screen.slots[2].is_none());
+            });
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_bound_recipe_book_screen_refuses_bad_layouts_at_open() {
+    let book_mod = BoundBookMod::default();
+    let edit = book_mod.edit.clone();
+    let mods: mod_api::Mods = vec![
+        mod_api::ModEntry::new("bound", Box::new(book_mod)),
+        mod_api::ModEntry::new("geometry", Box::new(BookMod)),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_bound_menu_type(|| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
+                seed_native_menu(game, 1, "bound:menu");
+                let key = (i32::MIN, 0, 0);
+                let cases: [(&str, BoundLayoutEdit); 6] = [
+                    ("missing book", |layout| layout.recipe_book = None),
+                    ("wrong book", |layout| {
+                        layout.recipe_book = Some(KEY.get().unwrap().clone());
+                    }),
+                    ("nonpositive width", |layout| layout.width = 0.0),
+                    ("nonfinite slot", |layout| {
+                        layout.slots[0].as_mut().unwrap().position[0] = f32::NAN;
+                    }),
+                    ("missing result", |layout| layout.slots[1] = None),
+                    ("unknown sprite", |layout| {
+                        layout.slots[0].as_mut().unwrap().no_item_icon =
+                            Some("bound:missing_sprite".into());
+                    }),
+                ];
+                for (case, adjust) in cases {
+                    *edit.lock().unwrap() = Some(adjust);
+                    assert!(
+                        !game.open_native_screen(key, None, 3, None),
+                        "accepted {case}"
+                    );
+                    assert!(game.mod_screen.is_none(), "staged {case}");
+                }
+                *edit.lock().unwrap() = None;
+                assert!(game.open_native_screen(key, None, 3, None));
             });
         });
     });
@@ -620,7 +698,11 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
 fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
     use sunrise_client::recipe_book::placement_sync::CatalogIdentity;
     use sunrise_protocol::packets::play::{Clientbound, OpenScreen};
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("bound", Box::new(BoundBookMod))].into();
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "bound",
+        Box::new(BoundBookMod::default()),
+    )]
+    .into();
     mod_platform::testing::with_mods(mods, || {
         with_bound_menu_type(|| {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
@@ -681,7 +763,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 };
                 assert!(kept(game));
 
-                // The book declaration, not a screen part, gives the mod its slot controls.
+                // The declaring mod keeps its slot controls for the active opening.
                 {
                     let _call = mod_api::content::crash::enter_native_mod(
                         mod_api::content::crash::ModCall {

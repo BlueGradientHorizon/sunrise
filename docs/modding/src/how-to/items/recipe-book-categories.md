@@ -92,11 +92,22 @@ replacement, new session or server `/reload` rebuilds declarations. Categories a
 category identifier; a book's search group includes only its own categories, not categories from
 other books sharing a menu.
 
+## Binding a book to a menu
+
+In `Hooks::register`, call `r.menu_recipe_book(menu, &book, recipe_type, layout)`.
+The layout maps recipe roles to container backing indices, not player inventory slots.
+Every declared role must be in the content menu, agree with its crafting grid if it has one,
+and remain available under every [permanent slot mask](../world/machine-menu-data.md#the-menus-screen).
+In the menu's `MenuPart::screen` callback, return the geometry and set
+`MenuScreenLayout::recipe_book` to `Some(book.clone())`. The screen does not select the
+recipe type or determine which slots take server clicks. A book added only to the screen,
+without a menu binding, is display-only. Either kind waits for authoritative book settings.
+
 ## Placing a recipe yourself
 
 A menu whose inputs are not a crafting grid, a furnace, a stonecutter or a smithing table (a cooking pot
-with six inputs, a preview slot and a container slot) registers `RecipeBookLayout::Mod` with
-`menu_recipe_book`. The game then maps no display to a slot and answers a recipe click through your
+with six inputs, a preview slot and a container slot) registers `RecipeBookLayout::Mod` as its layout.
+The game then maps no display to a slot and answers a recipe click through your
 `MenuPart`'s `recipe_book_place` hook. Before the hook runs the game checks what vanilla checks: the
 player is not a spectator, the window is the open menu of this type, the menu is still valid, the
 player's book holds the recipe, and its `PlacementInfo` is not `NOT_PLACEABLE`. Every recipe of a

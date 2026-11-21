@@ -7,7 +7,6 @@ pub(crate) struct MenuBookDeclaration {
     pub(crate) book: crate::RecipeBookTypeKey,
     pub(crate) recipe_type: String,
     pub(crate) layout: crate::RecipeBookLayout,
-    pub(crate) screen: crate::MenuScreenLayout,
 }
 
 impl HookParts {
@@ -18,8 +17,8 @@ impl HookParts {
         attached(&self.menus, id)
     }
     /// The menu's owner lookup: only the part whose package owns the menu type, or the block
-    /// opening a vanilla menu, receives callbacks. A registered recipe-book screen is owned by
-    /// its declaring mod even though its menu type is vanilla.
+    /// opening a vanilla menu, receives callbacks. A bound recipe book keeps ownership with
+    /// its declaring mod.
     pub(crate) fn menu_screen(&self, menu: &str, block: Option<&str>) -> &[Attached<dyn MenuPart>] {
         let parts = attached(&self.menus, || Some(menu));
         let owner = crate::RecipeBookLayout::declaring_mod(menu);
@@ -77,8 +76,8 @@ fn vanilla_menu(menu: &str) -> bool {
     menu.starts_with("minecraft:")
 }
 
-/// The mod that declared the recipe-book screen or owns the dynamic screen of `menu`
-/// opened as `block`'s menu. A registered book needs no screen part to have an owner.
+/// The mod that bound the menu's recipe book or owns the screen of `menu`
+/// opened as `block`'s menu.
 pub fn menu_screen_owner(menu: &str, block: Option<&str>) -> Option<&'static str> {
     if let Some(owner) = crate::RecipeBookLayout::declaring_mod(menu) {
         return Some(owner);
@@ -121,6 +120,23 @@ pub fn menu_slot_exclusions(menu: &str, block: Option<&str>) -> &'static [u16] {
         .map_or(&[], |slots| slots.as_ref())
 }
 
+/// All permanent masks for a menu, including the default and each exact opener override.
+/// Content-load validation checks recipe roles against each mask before the menu can open.
+pub fn menu_slot_exclusion_masks(
+    menu: &str,
+) -> impl Iterator<Item = (Option<&'static str>, &'static [u16])> + use<> {
+    installed()
+        .and_then(|installed| installed.menu_slot_exclusions.get(menu))
+        .into_iter()
+        .flatten()
+        .map(|(scope, slots)| {
+            (
+                (!scope.is_empty()).then_some(scope.as_str()),
+                slots.as_ref(),
+            )
+        })
+}
+
 impl dyn Registrar + '_ {
     /// Attach `part` to the menu type `menu`: a mod's, or one of vanilla's that a mod block opens.
     pub fn menu_part<P: MenuPart>(&mut self, menu: &str, part: P) {
@@ -149,23 +165,20 @@ pub trait MenusRegistrar {
 
     /// Declare this menu's book, authoritative recipe type and destination roles.
     /// The menu remains content-owned; loading checks these roles against its
-    /// actual container slots and crafting declaration. `screen` is the existing
-    /// typed screen value, frozen here: mapped slots need finite coordinates and
-    /// its book must equal `book`. This screen owns client geometry; permanent
-    /// exclusions are declared separately with [`Self::menu_slot_exclusions`].
-    /// These menus do not call the dynamic screen hook.
-    /// The declaring mod owns the screen's callbacks and slot controls, even
-    /// without a screen part. A foreign screen part on this menu is refused.
+    /// actual container slots, crafting declaration and every permanent mask
+    /// declared with [`Self::menu_slot_exclusions`].
+    /// Attach a `MenuPart` whose `screen` hook supplies geometry on the client
+    /// and sets `MenuScreenLayout::recipe_book` to this `book`. The declaring mod
+    /// owns the screen's callbacks and slot controls; a foreign screen part is refused.
     /// This does not turn display candidates into ingredient predicates.
-    /// Invalid ownership, unknown books, duplicate menus or malformed screen
-    /// geometry refuse installation, even when the caller ignores the error.
+    /// Invalid ownership, unknown books, duplicate menus or malformed roles
+    /// refuse installation, even when the caller ignores the error.
     fn menu_recipe_book(
         &mut self,
         menu: &str,
         book: &crate::RecipeBookTypeKey,
         recipe_type: &str,
         layout: crate::RecipeBookLayout,
-        screen: crate::MenuScreenLayout,
     ) -> Result<(), String>;
     /// Attach `part`, of kind `kind`, to the menu type `menu`.
     fn attach_menu_part(&mut self, menu: &str, kind: &'static str, part: Arc<dyn MenuPart>);
