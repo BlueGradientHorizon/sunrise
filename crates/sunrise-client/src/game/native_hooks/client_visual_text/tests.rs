@@ -97,6 +97,29 @@ fn visual_read_uses_live_translations_styles_and_bidi_outside_drawing() {
         }
         sunrise_core::nbt::discard_tag(dialog);
 
+        let mut custom = Text::literal("");
+        for (letter, id) in [
+            ("A", "example"),
+            ("B", "minecraft:example"),
+            ("C", ":example"),
+            ("D", "other:example"),
+        ] {
+            let mut child = Text::literal(letter);
+            child.style.click = Some(mod_api::text::TextClick::Custom {
+                id: id.into(),
+                payload: Some(mod_api::Tag::Int(7)),
+            });
+            custom.children.push(child);
+        }
+        let output = host.text_visual_order(&custom);
+        assert_eq!(
+            output.iter().map(|v| v.source_index).collect::<Vec<_>>(),
+            [0, 1, 2, 0]
+        );
+        for (character, input) in output.iter().zip(&custom.children) {
+            assert_eq!(character.style.click, input.style.click);
+        }
+
         let mut styled = Text::literal("X");
         styled.style.color = Some("#123456".into());
         styled.style.bold = Some(false);

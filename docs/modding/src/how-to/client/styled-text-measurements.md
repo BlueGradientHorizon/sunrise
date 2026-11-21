@@ -100,7 +100,9 @@ Sink indices are UTF-16 offsets local to a constant-style substring within a
 directional run, not global component positions. For example, `A😀B` yields
 indices `0, 1, 3`; Hebrew `שלום` yields `3, 2, 1, 0`. A style or bidi run boundary
 restarts the index, but adjacent components with equal effective styles stay
-in the same run. A resolved color is returned as uppercase `#RRGGBB`, even
+in the same run. For example, custom click IDs `example` and `minecraft:example`
+match for run grouping, but each character retains its original click event.
+A resolved color is returned as uppercase `#RRGGBB`, even
 if the input used a named color. Shaping can shorten the string, so these
 indices are not guaranteed to identify original input scalars. Use the records to re-layout existing tooltip
 lines without losing click, hover, font or other style information.

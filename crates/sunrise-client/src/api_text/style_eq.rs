@@ -1,6 +1,7 @@
 //! Compare the typed events omitted from the local layout projection. Components and NBT can
 //! be arbitrarily deep in memory, so don't use recursive equality on their child trees.
 use super::*;
+use sunrise_client_core::identifier::parse_identifier_parts;
 
 pub(super) fn same_events(a: LocalStyle<'_>, b: LocalStyle<'_>) -> bool {
     let mut nodes = Vec::new();
@@ -131,7 +132,14 @@ fn same_click(a: Option<&TextClick>, b: Option<&TextClick>) -> bool {
                 id: bi,
                 payload: bp,
             }),
-        ) => ai == bi && same_optional_tag(ap.as_ref(), bp.as_ref()),
+        ) => {
+            // ClickEvent.Custom compares decoded Identifiers, not their input spelling.
+            (ai == bi
+                || parse_identifier_parts(ai)
+                    .zip(parse_identifier_parts(bi))
+                    .is_some_and(|(a, b)| a == b))
+                && same_optional_tag(ap.as_ref(), bp.as_ref())
+        }
         (a, b) => a == b,
     }
 }

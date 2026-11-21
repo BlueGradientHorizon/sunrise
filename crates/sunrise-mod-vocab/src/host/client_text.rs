@@ -11,6 +11,8 @@ pub trait ClientTextClientHost {
     /// drawing, including client setup. Sink indices are UTF-16 offsets within
     /// the current directional and effective-style run, not within the input
     /// component tree. Independently set equal styles do not restart a run.
+    /// Custom click IDs compare by namespace and path for grouping, without
+    /// rewriting each character's returned click event.
     /// A resolved color is returned as uppercase `#RRGGBB`.
     /// Action keybinds resolve to their assigned keys as in `text_string`.
     /// In-memory text reads do not enforce the 512-node serialization depth cap
