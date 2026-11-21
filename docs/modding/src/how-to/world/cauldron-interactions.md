@@ -205,9 +205,17 @@ grouping storage mutations (such as `ItemPlace::exchange` with
 Sunrise clients use the server's published registration keys to identify a
 custom cauldron click, even when the handler is installed only on the server.
 They do not invoke `Interaction::interact`, predict its writes, or send a
-speculative item-use packet. Once the server finishes the block use, a pass
-resumes the original click: the same hand's item use, then the off hand's
-block and item use if the main hand still passes. A terminal result ends
-only that click. Vanilla handlers continue to predict locally. Clients that do
-not negotiate these results still use vanilla packets, which do not identify
-which item-use packet belongs to a block click.
+speculative item-use packet, even if the client's block-use phase was skipped.
+A terminal client hook answer ends the local click as usual. Otherwise, only a
+server pass continues the click: the same hand's remaining item phases, then the
+off hand's block and item use if the main hand still passes. The original
+swing policy applies. Changing the selected slot, held stacks or aim before
+the result supersedes the pending item turn; it does not use the replacement
+item or new aim.
+
+`client_packet_send` still sees `minecraft:use_item_on` for the block-use action.
+Canceling that packet stops both the action and its continuation. If a packet
+hold drops the action, no continuation waits for a reply. Vanilla handlers
+continue to predict locally. Clients that do not negotiate these results still
+use vanilla packets, which do not identify which item-use packet belongs to a
+block click.

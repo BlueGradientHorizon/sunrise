@@ -573,10 +573,16 @@ enum OwnProfile {
     Done(Option<sunrise_client::skins::Textures>),
 }
 
-struct PendingCauldron {
+pub(in crate::game) struct PendingCauldron {
     hand: Hand,
     hit: Hit,
     attempt: mod_api::InteractionAttempt,
+    selected: usize,
+    main: Option<ItemStack>,
+    off: Option<ItemStack>,
+    aim: (f32, f32),
+    swing: [bool; 2],
+    item_after_block: bool,
 }
 
 pub(super) struct Remote {
@@ -737,7 +743,7 @@ pub(super) struct Remote {
     /// Receipts are connection-scoped; unlike block prediction sequences, they
     /// are never reset on a level change.
     cauldron_receipt: i64,
-    pending_cauldrons: HashMap<i64, PendingCauldron>,
+    pub(in crate::game) pending_cauldrons: std::cell::RefCell<HashMap<i64, PendingCauldron>>,
     /// A mod menu's extra data, kept for the `OpenScreen` of its window that
     /// follows (`sunrise:menu_extra`).
     pub(in crate::game) menu_extra: Option<sunrise_protocol::menu_extra::Message>,
@@ -1333,7 +1339,7 @@ impl Game<'_> {
             use_target: None,
             cauldron_entries: None,
             cauldron_receipt: 0,
-            pending_cauldrons: HashMap::new(),
+            pending_cauldrons: Default::default(),
             menu_extra: None,
             entities: HashMap::new(),
             tick_fluids: Vec::new(),
@@ -1590,7 +1596,7 @@ impl Game<'_> {
             use_target: None,
             cauldron_entries: None,
             cauldron_receipt: 0,
-            pending_cauldrons: HashMap::new(),
+            pending_cauldrons: Default::default(),
             menu_extra: None,
             entities: HashMap::new(),
             tick_fluids: Vec::new(),
@@ -3452,11 +3458,32 @@ impl Game<'_> {
                 let click = self
                     .remote
                     .as_mut()
-                    .and_then(|r| r.pending_cauldrons.remove(&receipt));
-                if let Some(click) = click
-                    && passed
+                    .and_then(|r| r.pending_cauldrons.get_mut().remove(&receipt));
+                // Minecraft.startUseItem finishes with the same slot, stacks
+                // and aim. Changed input supersedes the delayed item turn;
+                // don't reselect an old slot or send a ray at a different aim.
+                if passed
+                    && let Some(click) = click
+                    && self.selected == click.selected
+                    && self.stack_in(click.selected) == click.main.as_ref()
+                    && self.offhand == click.off
+                    && (self.yaw, self.pitch) == click.aim
                 {
                     self.with_interaction_swing_scope(|game| {
+                        if let Some(remote) = &mut game.remote {
+                            remote.interaction_swing = click.swing;
+                        }
+                        let held = match click.hand {
+                            Hand::Main => click.main.as_ref(),
+                            Hand::Off => click.off.as_ref(),
+                        };
+                        if click.item_after_block
+                            && let Some(answer) =
+                                game.remote_item_after_block(&click.hit, click.hand, held)
+                            && game.finish_remote_item_on(click.hand, answer)
+                        {
+                            return;
+                        }
                         game.remote_use_hands(click.hand, click.attempt, Some(click.hit));
                     });
                 }
@@ -3559,9 +3586,13 @@ impl Game<'_> {
                 if let Some(player) = self.player.as_mut() {
                     player.entity_id = p.player_id;
                 }
+                self.native_net
+                    .holds
+                    .borrow_mut()
+                    .clear_cauldron_continuations();
                 if let Some(r) = self.remote.as_mut() {
                     r.carried.set(Some(0));
-                    r.pending_cauldrons.clear();
+                    r.pending_cauldrons.get_mut().clear();
                     // handleLogin makes a new ClientLevel: its predictions count from 0.
                     r.sequence = 0;
                     r.own_invisible = false;
@@ -3670,8 +3701,12 @@ impl Game<'_> {
                 }
                 // handleRespawn makes a new ClientLevel for another dimension
                 // key (a proxy's server switch too): its predictions count from 0.
+                self.native_net
+                    .holds
+                    .borrow_mut()
+                    .clear_cauldron_continuations();
                 if let Some(r) = self.remote.as_mut() {
-                    r.pending_cauldrons.clear();
+                    r.pending_cauldrons.get_mut().clear();
                     if r.level != p.spawn.dimension {
                         r.sequence = 0;
                     }

@@ -160,7 +160,7 @@ impl Game<'_> {
                         remote.quiet_commands = false;
                         remote.custom_books = false;
                         remote.cauldron_entries = None;
-                        remote.pending_cauldrons.clear();
+                        remote.pending_cauldrons.get_mut().clear();
                     }
                     self.clear_lod();
                     if let Some(remote) = &self.remote {

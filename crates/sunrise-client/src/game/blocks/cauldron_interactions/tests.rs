@@ -1486,12 +1486,28 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     if run_fresh_cases(
         "game::cauldron_interactions::tests::cauldron_packet_pass_resumes_item_use_once_without_client_prediction",
         "SUNRISE_CAULDRON_CASE",
-        &["pass", "consume", "success", "refused", "already-sent"],
+        &[
+            "pass",
+            "consume",
+            "success",
+            "refused",
+            "dead",
+            "already-sent",
+            "slot-changed",
+            "aim-changed",
+            "no-swing",
+            "server-sneak-override",
+            "client-block-terminal",
+            "client-item-on-terminal",
+            "packet-veto",
+            "hold-drop",
+            "hold-release",
+        ],
     ) {
         return;
     }
     use crate::game::{
-        cauldron_prediction::{USE_CHANNEL, registration_packet},
+        cauldron_prediction::{USE_CHANNEL, registration_packet, use_result},
         execution_role::ExecutionRole,
         native_sound_refs::tests::{guest, packets},
     };
@@ -1499,10 +1515,17 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
 
     let case = std::env::var("SUNRISE_CAULDRON_CASE").unwrap();
     let already_sent = case == "already-sent";
+    let block_terminal = case == "client-block-terminal";
+    let sneak_override = case == "server-sneak-override";
     let decision = match case.as_str() {
-        "consume" => CauldronDecision::Consume,
+        "consume" | "server-sneak-override" => CauldronDecision::Consume,
         "success" => CauldronDecision::Success,
         _ => CauldronDecision::Pass,
+    };
+    let item = match case.as_str() {
+        "server-sneak-override" => "minecraft:milk_bucket",
+        "no-swing" | "aim-changed" => "minecraft:ender_pearl",
+        _ => "minecraft:paper",
     };
     struct PacketDecision {
         decision: CauldronDecision,
@@ -1515,9 +1538,13 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         }
     }
     struct PacketMod {
+        case: String,
+        item: &'static str,
         decision: CauldronDecision,
         calls: Arc<AtomicUsize>,
         item_uses: Arc<AtomicUsize>,
+        block_packets: Arc<AtomicUsize>,
+        item_on_terminations: Arc<AtomicUsize>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for PacketMod {
@@ -1530,7 +1557,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
                 .interactions
                 .register(
                     mod_api::__private::block_key("minecraft:cauldron").unwrap(),
-                    mod_api::__private::item_key("minecraft:paper").unwrap(),
+                    mod_api::__private::item_key(self.item).unwrap(),
                     Arc::new(PacketDecision {
                         decision: self.decision,
                         calls: self.calls.clone(),
@@ -1548,16 +1575,77 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             }
             mod_api::Flow::Continue
         }
+        fn right_click_block(
+            &self,
+            host: mod_api::HostSide<'_>,
+            event: &mut mod_api::RightClickBlockEvent<'_>,
+        ) -> mod_api::Flow {
+            match (self.case.as_str(), host) {
+                ("server-sneak-override", mod_api::HostSide::Server(_)) => {
+                    *event.use_block = mod_api::TriState::True;
+                }
+                ("client-block-terminal", mod_api::HostSide::Client(_)) => {
+                    *event.cancellation_result = mod_api::InteractionResult::Success;
+                    return mod_api::Flow::Cancel;
+                }
+                _ => {}
+            }
+            mod_api::Flow::Continue
+        }
+        fn use_item_on_block(
+            &self,
+            host: mod_api::HostSide<'_>,
+            event: &mut mod_api::UseItemOnBlockEvent<'_>,
+        ) -> mod_api::Flow {
+            if self.case == "client-item-on-terminal"
+                && matches!(host, mod_api::HostSide::Client(_))
+                && event.phase == mod_api::UsePhase::ItemAfterBlock
+            {
+                self.item_on_terminations.fetch_add(1, Ordering::SeqCst);
+                *event.cancellation_result = mod_api::InteractionResult::Consume;
+                return mod_api::Flow::Cancel;
+            }
+            mod_api::Flow::Continue
+        }
+        fn interaction_key_mapping_triggered(
+            &self,
+            _: &mut dyn mod_api::ClientHost,
+            event: &mut mod_api::InteractionKeyMappingTriggeredEvent,
+        ) -> mod_api::Flow {
+            if self.case == "no-swing" {
+                event.swing_hand = false;
+            }
+            mod_api::Flow::Continue
+        }
+        fn client_packet_send(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut mod_api::ClientPacketSendEvent<'_>,
+        ) -> mod_api::Flow {
+            if event.packet.id.path() == "use_item_on" {
+                self.block_packets.fetch_add(1, Ordering::SeqCst);
+                if self.case == "packet-veto" {
+                    return mod_api::Flow::Cancel;
+                }
+            }
+            mod_api::Flow::Continue
+        }
     }
 
     let calls = Arc::new(AtomicUsize::new(0));
     let item_uses = Arc::new(AtomicUsize::new(0));
+    let block_packets = Arc::new(AtomicUsize::new(0));
+    let item_on_terminations = Arc::new(AtomicUsize::new(0));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "packet_cauldron",
         Box::new(PacketMod {
+            case: case.clone(),
+            item,
             decision,
             calls: calls.clone(),
             item_uses: item_uses.clone(),
+            block_packets: block_packets.clone(),
+            item_on_terminations: item_on_terminations.clone(),
         }),
     )]
     .into();
@@ -1565,10 +1653,10 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         let server_table = snapshot();
         let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
         let mut read_uses = |game: &Game<'_>| {
-            // A packet on the same writer fences each burst without timing guesses.
-            game.send(S::PingRequest(sunrise_protocol::packets::status::Ping {
-                time: 0,
-            }));
+            // Use the same writer, outside the actor hold, to fence each burst.
+            game.remote.as_ref().unwrap().session.send(S::PingRequest(
+                sunrise_protocol::packets::status::Ping { time: 0 },
+            ));
             let mut uses = Vec::new();
             loop {
                 let (id, bytes) = peer.recv().unwrap();
@@ -1582,8 +1670,14 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             }
         };
         assert!(read_uses(game).is_empty());
+        game.remote.as_mut().unwrap().joined = true;
         game.set_mode_id(0);
-        setup(game, "minecraft:cauldron", None, "minecraft:paper", 1);
+        setup(game, "minecraft:cauldron", None, item, 1);
+        let aim = (35.0, -12.0);
+        (game.yaw, game.pitch) = aim;
+        if sneak_override {
+            game.set_sent_sneak_for_test();
+        }
         // The client has no local registration. Selection must come from the server.
         clear();
         if !already_sent {
@@ -1599,23 +1693,54 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         };
         game.forced_hit = Some(hit);
         let client_swings = game.swings_started;
+        let hold = matches!(case.as_str(), "hold-drop" | "hold-release")
+            .then(|| game.hold_packets().unwrap());
         game.remote_use(mod_api::InteractionAttempt::Press);
+        assert_eq!(block_packets.load(Ordering::SeqCst), 1);
+        assert_eq!(item_on_terminations.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            game.swings_started - client_swings,
+            u32::from(block_terminal)
+        );
+        assert!(game.using.is_none(), "no speculative item use");
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state(game).0, "minecraft:cauldron");
+        if let Some(hold) = hold {
+            assert!(
+                read_uses(game).is_empty(),
+                "held block use must not reach the peer"
+            );
+            if case == "hold-drop" {
+                game.drop_held(hold).unwrap();
+            } else {
+                assert!(game.release_held(hold).unwrap() > 0);
+            }
+        }
         let mut uses = read_uses(game).into_iter();
+        if matches!(case.as_str(), "hold-drop" | "packet-veto") {
+            assert_eq!(uses.len(), 0);
+            // Neither a dropped request nor a canceled action may leave a
+            // continuation waiting for the first receipt of this connection.
+            game.apply_packet(use_result(1, true)).unwrap();
+            assert!(read_uses(game).is_empty());
+            return;
+        }
         let block_use = uses.next().expect("client must send the block use");
-        if already_sent {
+        if already_sent || block_terminal {
             assert!(matches!(&block_use, S::UseItemOn(p) if p.hand == 0 && p.pos == POS));
         } else {
             assert!(matches!(&block_use, S::CustomPayload(p) if p.channel == USE_CHANNEL));
-            assert_eq!(uses.len(), 0, "no speculative item use");
-            assert_eq!(game.swings_started, client_swings);
         }
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
-        assert_eq!(state(game).0, "minecraft:cauldron");
+        assert_eq!(
+            uses.len(),
+            usize::from(already_sent),
+            "no speculative item use"
+        );
 
         let remote = game.remote.take();
         game.options.execution_role = ExecutionRole::IntegratedServer;
         crate::game::native_item_places::tests::open_to_lan(game);
-        setup(game, "minecraft:cauldron", None, "minecraft:paper", 1);
+        setup(game, "minecraft:cauldron", None, item, 1);
         install(server_table);
         let at = if case == "refused" {
             [64.5, 64.0, 2.5]
@@ -1624,13 +1749,19 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         };
         let (mut player, output) = guest(1, 2123, at);
         player.load_timeout = 0;
-        player.inventory[0] = Some(ItemStack::new("minecraft:paper", 1));
+        player.inventory[0] = Some(ItemStack::new(item, 1));
+        player.inventory[1] = Some(ItemStack::new("minecraft:ender_pearl", 1));
+        player.sneaking = sneak_override;
+        player.dead = case == "dead";
         if !already_sent {
             player.offhand = Some(ItemStack::new("minecraft:water_bucket", 1));
         }
         game.lan.as_mut().unwrap().hub.guests.push(player);
         game.lan_guest_packet(1, block_use);
-        assert_eq!(calls.load(Ordering::SeqCst), usize::from(case != "refused"));
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            usize::from(!matches!(case.as_str(), "refused" | "dead"))
+        );
         assert_eq!(
             item_uses.load(Ordering::SeqCst),
             0,
@@ -1657,32 +1788,71 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         );
         let response = replies
             .into_iter()
-            .find(|p| matches!(p, C::CustomPayload(p) if p.channel == USE_CHANNEL))
-            .expect("server must answer the exact request");
+            .find(|p| matches!(p, C::CustomPayload(p) if p.channel == USE_CHANNEL));
+        if block_terminal {
+            assert!(
+                response.is_none(),
+                "locally terminal input cannot have a continuation"
+            );
+            return;
+        }
+        let response = response.expect("server must answer the exact request");
         let host = game.lan.take();
         game.remote = remote;
         game.options.execution_role = ExecutionRole::Client;
         let dedicated = game.options.dedicated.take();
-        // Aim somewhere else by the time the result arrives. The off-hand turn
-        // still uses the original hit, and a duplicate result cannot replay it.
+        // The off hand must use the captured block hit even if picking has
+        // changed meanwhile. A changed slot or look must not start another use.
         game.forced_hit = None;
+        (game.yaw, game.pitch) = aim;
+        if case == "slot-changed" {
+            game.inventory[1] = Some(ItemStack::new("minecraft:ender_pearl", 1));
+            game.selected = 1;
+        }
+        if case == "aim-changed" {
+            (game.yaw, game.pitch) = (90.0, 25.0);
+        }
         game.apply_packet(response.clone()).unwrap();
         game.apply_packet(response).unwrap();
         let followup = read_uses(game);
-        if case == "pass" {
+        let pass_to_offhand = matches!(case.as_str(), "pass" | "hold-release");
+        if pass_to_offhand {
             assert!(
                 matches!(followup.as_slice(), [S::UseItem(main), S::UseItemOn(off)]
-                    if main.hand == 0 && off.hand == 1 && off.pos == POS),
+                    if main.hand == 0 && (main.yaw, main.pitch) == aim && off.hand == 1 && off.pos == POS),
                 "{followup:?}",
+            );
+        } else if case == "no-swing" {
+            assert!(matches!(followup.as_slice(), [S::UseItem(p)]
+                if p.hand == 0 && (p.yaw, p.pitch) == aim));
+            assert_eq!(
+                game.swings_started, client_swings,
+                "keep the original input swing policy"
             );
         } else {
             assert!(followup.is_empty(), "{followup:?}");
         }
+        assert_eq!(
+            item_on_terminations.load(Ordering::SeqCst),
+            usize::from(case == "client-item-on-terminal"),
+        );
+        assert!(
+            game.using.is_none(),
+            "terminal cauldron must not start drinking milk"
+        );
 
         // Terminal or refused clicks cannot eat the next independent item packet.
-        assert!(!game.remote_use_item(Hand::Main));
-        let independent = read_uses(game);
-        assert!(matches!(independent.as_slice(), [S::UseItem(p)] if p.hand == 0));
+        let independent = if case == "no-swing" {
+            // This case used up the guest's pearl; there is no second item to use.
+            Vec::new()
+        } else {
+            game.selected = 0;
+            game.inventory[0] = Some(ItemStack::new("minecraft:paper", 1));
+            assert!(!game.remote_use_item(Hand::Main));
+            let independent = read_uses(game);
+            assert!(matches!(independent.as_slice(), [S::UseItem(p)] if p.hand == 0));
+            independent
+        };
         game.remote = None;
         game.lan = host;
         game.options.execution_role = ExecutionRole::IntegratedServer;
@@ -1692,11 +1862,11 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         }
         assert_eq!(
             item_uses.load(Ordering::SeqCst),
-            if case == "pass" { 2 } else { 1 }
+            usize::from(case != "dead") + usize::from(pass_to_offhand)
         );
         assert_eq!(
             state(game).0,
-            if case == "pass" {
+            if pass_to_offhand {
                 "minecraft:water_cauldron"
             } else {
                 "minecraft:cauldron"

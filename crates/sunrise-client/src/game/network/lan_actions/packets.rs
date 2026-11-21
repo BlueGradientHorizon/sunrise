@@ -196,6 +196,9 @@ impl Game<'_> {
                     | S::CustomClickAction(_)
             )
         {
+            if let Some(receipt) = receipt {
+                host.hub.send_to(conn, &use_result(receipt, false));
+            }
             return;
         }
         // The window a packet names is the open one, as in vanilla's handlers. With no menu open

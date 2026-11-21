@@ -197,6 +197,24 @@ impl Game<'_> {
             use mod_api::InteractionResult as Answer;
             use mod_api::TriState;
             let spectator = self.spectator();
+            // The client and server can answer RightClickBlock differently (for
+            // example, a server-only listener may override sneaking). Selection
+            // comes from the registration snapshot, not the client's hook answer.
+            let cauldron_click = self
+                .remote
+                .as_ref()
+                .filter(|_| !spectator && self.has_server_cauldron_handler(hit.pos, held.as_ref()))
+                .map(|remote| PendingCauldron {
+                    hand,
+                    hit,
+                    attempt,
+                    selected: self.selected,
+                    main: self.stack_in(self.selected).cloned(),
+                    off: self.offhand.clone(),
+                    aim: (self.yaw, self.pitch),
+                    swing: remote.interaction_swing,
+                    item_after_block: false,
+                });
             // RightClickBlock on this client, where performUseItemOn starts,
             // for a spectator too (whose use only opens menus on the server):
             // it may force the block's use or the item's useOn, or answer for
@@ -254,7 +272,7 @@ impl Game<'_> {
             } else {
                 None
             };
-            let vanilla_block = block_used && block_answer.is_none();
+            let vanilla_block = cauldron_click.is_none() && block_used && block_answer.is_none();
             let seq = self.next_sequence();
             let packet = play::UseItemOn {
                 hand: hand_id(hand),
@@ -267,31 +285,6 @@ impl Game<'_> {
                 world_border: false,
                 sequence: seq,
             };
-            if !spectator
-                && vanilla_block
-                && self.has_server_cauldron_handler(hit.pos, held.as_ref())
-                && let Some(remote) = &mut self.remote
-            {
-                use sunrise_protocol::buf::Codec;
-                remote.cauldron_receipt = remote.cauldron_receipt.wrapping_add(1);
-                let receipt = remote.cauldron_receipt;
-                let mut body = sunrise_core::vanilla_bytes::Writer::new();
-                body.i64(receipt);
-                play::UseItemOn::write(&packet, &mut body);
-                self.remote_send_carried();
-                if self.send_play(S::CustomPayload(
-                    sunrise_protocol::packets::configuration::CustomPayload {
-                        channel: super::super::cauldron_prediction::USE_CHANNEL.into(),
-                        data: body.data,
-                    },
-                )) && let Some(remote) = &mut self.remote
-                {
-                    remote
-                        .pending_cauldrons
-                        .insert(receipt, PendingCauldron { hand, hit, attempt });
-                }
-                return true;
-            }
             // ShelfBlock.useItemOn consumes a nonempty main-hand click client-side
             // without predicting the inventory swap or swinging.
             let shelf_reacts = hand == Hand::Main
@@ -325,6 +318,36 @@ impl Game<'_> {
                 };
                 (result, DryUse::default())
             };
+            if let Some(mut click) = cauldron_click
+                && canceled.is_none_or(|answer| !answer.consumes_action() && answer != Answer::Fail)
+                && !result.consumes_action()
+            {
+                // A terminal client answer has no continuation and takes the
+                // ordinary path below. Otherwise wait before the after-block
+                // hooks, which can apply item effects of their own.
+                click.item_after_block = item_used;
+                self.remote_send_carried();
+                if !self.client_packet_send_canceled(&S::UseItemOn(packet.clone()))
+                    && let Some(remote) = &mut self.remote
+                {
+                    use sunrise_protocol::buf::Codec;
+                    remote.cauldron_receipt = remote.cauldron_receipt.wrapping_add(1);
+                    let receipt = remote.cauldron_receipt;
+                    let mut body = sunrise_core::vanilla_bytes::Writer::new();
+                    body.i64(receipt);
+                    play::UseItemOn::write(&packet, &mut body);
+                    // The envelope carries a receipt for the *same* block-use
+                    // action. Do not expose it instead of the logical UseItemOn.
+                    self.send_or_hold_play(
+                        S::CustomPayload(sunrise_protocol::packets::configuration::CustomPayload {
+                            channel: super::super::cauldron_prediction::USE_CHANNEL.into(),
+                            data: body.data,
+                        }),
+                        Some((receipt, click)),
+                    );
+                }
+                return true;
+            }
             // AbstractCauldronBlock.useItemOn, either hand: CauldronInteractions
             // answers on the client as on the server and only the server acts,
             // so a bucket the cauldron takes is not used again (UseItem).
@@ -371,11 +394,7 @@ impl Game<'_> {
                 result
             };
             let item_answer = if !spectator && !result.consumes_action() && item_used {
-                self.use_item_on_block(&hit, hand, held.as_ref(), mod_api::UsePhase::ItemAfterBlock)
-                    .or_else(|| {
-                        held.as_ref()
-                            .and_then(|stack| self.item_on_interaction(&hit, hand, stack))
-                    })
+                self.remote_item_after_block(&hit, hand, held.as_ref())
             } else {
                 None
             };
@@ -410,10 +429,7 @@ impl Game<'_> {
             // (startPrediction sends it whatever the use): SUCCESS swings
             // here, and PASS goes on to useItem and the other hand.
             if let Some(answer) = canceled {
-                if answer == Answer::Success {
-                    self.with_hand(hand, Game::swing_arm);
-                }
-                return answer.consumes_action() || answer == Answer::Fail;
+                return self.finish_remote_item_on(hand, answer);
             }
             // Only a predicted placement (predict_place) marks a cell whose
             // resend plays a place sound: an empty hand or a non-block item
@@ -422,10 +438,7 @@ impl Game<'_> {
                 r.use_target = Some(hit.pos);
             }
             if let Some(answer) = item_answer {
-                if answer == Answer::Success {
-                    self.with_hand(hand, Game::swing_arm);
-                }
-                return answer.consumes_action() || answer == Answer::Fail;
+                return self.finish_remote_item_on(hand, answer);
             }
             if shelf_reacts {
                 return true;
@@ -569,5 +582,27 @@ impl Game<'_> {
             return reacts;
         }
         false
+    }
+
+    pub(super) fn remote_item_after_block(
+        &mut self,
+        hit: &Hit,
+        hand: Hand,
+        held: Option<&ItemStack>,
+    ) -> Option<mod_api::InteractionResult> {
+        self.use_item_on_block(hit, hand, held, mod_api::UsePhase::ItemAfterBlock)
+            .or_else(|| held.and_then(|stack| self.item_on_interaction(hit, hand, stack)))
+    }
+
+    pub(super) fn finish_remote_item_on(
+        &mut self,
+        hand: Hand,
+        answer: mod_api::InteractionResult,
+    ) -> bool {
+        use mod_api::InteractionResult as Answer;
+        if answer == Answer::Success {
+            self.with_hand(hand, Game::swing_arm);
+        }
+        answer.consumes_action() || answer == Answer::Fail
     }
 }

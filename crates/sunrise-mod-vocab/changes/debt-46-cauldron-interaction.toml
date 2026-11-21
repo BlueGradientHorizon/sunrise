@@ -4,15 +4,28 @@ ids = [
     "method:Interaction::decide",
     "method:Interaction::fire",
     "method:Interaction::interact",
+    "trait:CauldronInteractions",
+    "method:CauldronInteractions::register",
+    "method:CauldronInteractions::register_to_all",
+    "method:CauldronInteractions::register_tag",
+    "method:CauldronInteractions::register_tag_to_all",
     "type:CauldronUse",
     "type:CauldronUse.dimension",
     "type:CauldronUse.actor",
     "type:CauldronUse.level",
     "type:CauldronUse.player",
     "type:CauldronPlan",
+    "type:CauldronPlan.block",
+    "type:CauldronPlan.exchange",
+    "type:CauldronPlan.sound",
+    "type:CauldronPlan.fluid_event",
+    "type:CauldronPlan.statistics",
     "type:CauldronDecision",
     "type:CauldronDecision.Success",
+    "type:CauldronDecision.Consume",
     "type:CauldronFire",
+    "type:CauldronFire.Applied",
+    "type:CauldronFire.Refused",
     "type:CauldronRegistrationError",
     "type:CauldronRegistrationError.Duplicate",
     "type:CauldronRegistrationError.UnknownDispatcher",
@@ -23,7 +36,7 @@ Cauldron interactions now use a single server-side callback (`Interaction::inter
 The old read-only `decide` + `CauldronPlan` + `fire` split, the `CauldronFire` outcome enum, and the engine's forced wrapper transaction, reentry guard, and staleness abort are removed so callbacks perform writes directly through `host` and the typed `LevelRef`/`PlayerRef` handles on `CauldronUse` (opening `host.transaction` only when grouping storage mutations, or joining an already-open caller transaction). \
 `CauldronDecision` is now fieldless (`Pass`, `Consume`, `Success`), with only `Success` swinging the arm and `Consume` stopping item use without swinging. \
 `CauldronInteractions` (`register`, `register_to_all`, `register_tag`, `register_tag_to_all`) now applies direct and all-dispatcher registrations in registration order across the complete prepared dispatcher set, overwrites matching item and tag entries in place (matching `CauldronInteraction.Dispatcher.put`), drops the unused `Duplicate`, `UnknownDispatcher`, and `UnsupportedCapability` variants from `CauldronRegistrationError`, and evaluates item-tag entries before exact item entries (matching `CauldronInteraction.Dispatcher.get`), with `minecraft:cauldron_can_remove_dye` on `minecraft:water_cauldron` replaceable via `register_tag`. \
-Sunrise clients wait for the exact server block-use result for custom registrations, including server-only ones. A pass resumes the original click in `Minecraft.startUseItem` order: the same hand's item, then the other hand if it still passes. \
+Sunrise clients wait for the exact server block-use result for custom registrations, including when NeoForge's `RightClickBlock` would allow the block use only on the server. A pass resumes a locally eligible, unchanged click in `Minecraft.startUseItem` order, keeping the `InteractionKeyMappingTriggered` swing policy. `client_packet_send` still sees `minecraft:use_item_on`; cancellation and a dropped hold leave no pending continuation. \
 `CauldronUse`, `CauldronDecision`, and `CauldronRegistrationError` stay in-process and no longer implement `Wire`. \
 `register_cauldron_interaction` is bumped from version 2 to version 3 for the precedence, overwrite-in-place, registration-order, and single-callback swing semantics."""
 migrate = """
@@ -32,7 +45,7 @@ Delete uses of `CauldronPlan` and `CauldronFire`, and replace `CauldronDecision:
 
 Update reads of `CauldronUse`: replace `input.dimension` with `input.level` (`LevelRef`) and `input.actor` with `input.player` (`PlayerRef`). \
 Perform what `CauldronPlan` previously described directly on the server: use `input.level.set_block(host, input.pos, state, BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS)` for the cauldron block replacement, `host.transaction(|host, tx| { ... ItemPlace::PlayerHand { player: input.player.uuid(), hand: input.hand }.exchange(host, tx, &resource, 1) ... })` (importing `HostTransaction`) when exchanging the held item atomically with block writes, separate `input.player.award_stat(host, StatType::Custom, "minecraft:use_cauldron", 1)` and `input.player.award_stat(host, StatType::Used, pre_click_item_key, 1)` calls for custom and pre-click used-item statistics, `input.level.play_sound(host, sound, at, SoundSource::Blocks, 1.0, 1.0, None)` for sounds, and `input.level.game_event(host, event, at, GameEventContext::default())` for fluid events. \
-Do not rely on an implicit engine transaction around `interact`; open `host.transaction` yourself if mutations must commit or roll back together.
+Replace `CauldronFire::Applied` with the intended action result, and replace `CauldronFire::Refused` with `CauldronDecision::Consume` when refusing to let the click fall through. Do not rely on an implicit engine transaction around `interact`; open `host.transaction` yourself if mutations must commit or roll back together.
 
 Remove match arms for `CauldronRegistrationError::Duplicate`, `CauldronRegistrationError::UnknownDispatcher`, and `CauldronRegistrationError::UnsupportedCapability`. \
 `CauldronInteractions::register`, `register_to_all`, `register_tag`, and `register_tag_to_all` now overwrite matching vanilla or mod entries in place instead of rejecting duplicates: code that relied on `CauldronRegistrationError::Duplicate` to reject a second registration or preserve the earlier handler must avoid re-registering or declare mod dependency order in `[dependencies]` when intending to override another mod. \
