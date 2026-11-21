@@ -133,7 +133,11 @@ impl Game<'_> {
         // at or above `born`, so the set cannot grow, only lose the removed.
         let (done, born, announced) =
             (self.ordered.done, self.ordered.born, self.ordered.announced);
-        let wanted = |j: JoinSeq| done.is_none_or(|d| j > d) && j < cut && j < born;
+        // The earlier passes never tick a TNT or falling block that joined since
+        // the spawn packets (`right_pass`), so the late pass offers none that
+        // ticked this tick: an orb that joined after one and ticked in an
+        // earlier pass must not move `done` past it.
+        let wanted = |j: JoinSeq| (late || done.is_none_or(|d| j > d)) && j < cut && j < born;
         let mut pending = std::mem::take(&mut self.ordered.pending_buf);
         pending.clear();
         let mut offer = |j: JoinSeq, kind: Pending| {
@@ -264,6 +268,7 @@ impl Game<'_> {
                     let tags = world_items!(self);
                     let block_registries = &self.pack.block_registries;
                     let hooks = &self.damage_hooks;
+                    let side = game_side!(self);
                     let o = &mut self.orbs[i];
                     // An orb has no random of its own here: lava draws from one
                     // made on first use, apart from the level stream.
@@ -288,6 +293,7 @@ impl Game<'_> {
                             Some(self.border.geometry()),
                             &self.res.motion().fluids,
                             &self.loop_context,
+                            &side,
                             &mut on_sound,
                             &nearby,
                             &mut |world| {

@@ -29,11 +29,10 @@ pub trait EntityPositionBackend {
     #[access(WorldOnly)]
     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool>;
     /// Side: server.
-    /// The block the entity stands on (`Entity.getOnPos`): the supporting block
-    /// of an entity on the ground (`Entity.mainSupportingBlockPos`, the solid
-    /// block under its box nearest its position), else the block just under
-    /// its feet. A dragon part, which never stands, has the block under its
-    /// feet. None for a stale handle.
+    /// `Entity.getOnPos()`: the supporting block when available, otherwise the feet block with
+    /// vanilla's `1.0E-5F` subtracted from Y. For players the support comes from the last move
+    /// (`Entity.mainSupportingBlockPos`), not the current ground flag or a new collision query.
+    /// A dragon part, which never stands, has the block under its feet. None for a stale handle.
     #[access(WorldOnly)]
     fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]>;
     /// Side: server.
@@ -66,7 +65,8 @@ pub trait EntityPositionBackend {
 pub trait EntityPositionBackendMut {
     /// Side: server.
     /// Moves the entity to `pos` in its level (`Entity.teleportTo`), as
-    /// `/tp` does: a player is placed there and told, a rider gets off. With
+    /// `/tp` does: a player is placed there and told, a rider gets off, and a
+    /// vehicle (including a general entity) takes its riders with it. With
     /// `rotation` (yaw, pitch in degrees) it also turns. False for a position
     /// outside the world's bounds, for wall-mounted entities or dragon parts, or when the
     /// requested rotation cannot be stored.
@@ -151,6 +151,7 @@ pub trait EntityPositionBackendMut {
     /// Turns the entity to `yaw` and `pitch` in degrees (`Entity.setYRot`,
     /// `setXRot`): the pitch wraps and is clamped to -90..90. False for kinds
     /// whose rotation Sunrise does not fully store, or an unavailable player.
+    /// Works for general entities; the new angles are tracked to clients.
     /// Does not teleport or dismount.
     #[access(WorldOnly)]
     fn entity_set_rotation(&mut self, entity: EntityRef, yaw: f32, pitch: f32) -> bool;

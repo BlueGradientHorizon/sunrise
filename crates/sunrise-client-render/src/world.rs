@@ -21,16 +21,47 @@ pub use modified::{ChunkMark, ModifiedChunks};
 /// rather than at every section of it.
 #[derive(Clone, Debug, Default)]
 pub struct DirtySections {
-    columns: crate::fast_hash::FxHashMap<(i32, i32), SectionMask>,
+    columns: FxHashMap<(i32, i32), SectionMask>,
+    // Raw input changes since the streamer last invalidated cached decisions. An answer changing
+    // the mesh of a neighbour does not change that neighbour's raw input.
+    visibility_edits: Option<FxHashMap<(i32, i32), SectionMask>>,
 }
 impl DirtySections {
-    pub fn insert(&mut self, (x, sy, z): (i32, i32, i32)) {
+    pub fn insert(&mut self, key @ (x, sy, z): (i32, i32, i32)) {
+        self.insert_mesh(key);
+        if let Some(edits) = &mut self.visibility_edits {
+            edits.entry((x, z)).or_default().insert(sy as usize);
+        }
+    }
+    /// Mark all sections in `mask` dirty for column `(x, z)`.
+    pub fn insert_column_mask(&mut self, key: (i32, i32), mask: SectionMask) {
+        self.insert_mesh_column_mask(key, mask);
+        if let Some(edits) = &mut self.visibility_edits {
+            *edits.entry(key).or_default() |= mask;
+        }
+    }
+    pub(crate) fn insert_mesh(&mut self, (x, sy, z): (i32, i32, i32)) {
         debug_assert!((0..SectionMask::CAPACITY as i32).contains(&sy));
         self.columns.entry((x, z)).or_default().insert(sy as usize);
     }
-    /// Mark all sections in `mask` dirty for column `(x, z)`.
-    pub fn insert_column_mask(&mut self, (x, z): (i32, i32), mask: SectionMask) {
-        *self.columns.entry((x, z)).or_default() |= mask;
+    pub(crate) fn insert_mesh_column_mask(&mut self, key: (i32, i32), mask: SectionMask) {
+        *self.columns.entry(key).or_default() |= mask;
+    }
+    pub(crate) fn track_visibility_edits(&mut self, listening: bool) {
+        self.visibility_edits = listening.then(FxHashMap::default);
+    }
+    pub(crate) fn visibility_edits(
+        &mut self,
+    ) -> impl Iterator<Item = ((i32, i32), SectionMask)> + '_ {
+        self.visibility_edits
+            .iter_mut()
+            .flat_map(|edits| edits.drain())
+    }
+    pub(crate) fn visibility_edited(&self, (x, sy, z): (i32, i32, i32)) -> bool {
+        self.visibility_edits
+            .as_ref()
+            .and_then(|edits| edits.get(&(x, z)))
+            .is_some_and(|mask| mask.contains(sy as usize))
     }
     pub fn contains(&self, &(x, sy, z): &(i32, i32, i32)) -> bool {
         (0..SectionMask::CAPACITY as i32).contains(&sy)
@@ -53,6 +84,9 @@ impl DirtySections {
     }
     pub fn clear(&mut self) {
         self.columns.clear();
+        if let Some(edits) = &mut self.visibility_edits {
+            edits.clear();
+        }
     }
     pub fn is_empty(&self) -> bool {
         self.columns.is_empty()
@@ -85,6 +119,10 @@ pub struct World {
     pub shape: LevelShape,
     pub fast_lava: bool,
     pub chunks: crate::chunk_map::ChunkMap,
+    /// The light the columns that left the level keep (`light_border.rs`).
+    pub border: crate::fast_hash::FxHashMap<(i32, i32), crate::light_border::Border>,
+    /// Published section support of proto neighbours of saved columns.
+    pub(crate) proto_light_support: crate::fast_hash::FxHashMap<(i32, i32), SectionMask>,
     pub random: LevelRandom,
     pub revision: u64,
     pub health_rules: HealthRules,
@@ -158,6 +196,7 @@ pub struct World {
     /// The sections whose light changed since the log was last drained, as
     /// a bit per section of each column, kept while `block_log` is
     /// (`ChunkHolder.sectionLightChanged`).
+    /// Pending network light updates, indexed from the column's lower light pad.
     pub light_log: Option<crate::fast_hash::FxHashMap<(i32, i32), SectionMask>>,
     /// The villager POIs of each section (`PoiManager`'s sections).
     pub pois: crate::poi_sections::PoiSections<sunrise_world::poi::PoiIdentity>,
@@ -310,6 +349,8 @@ impl World {
             infiniburn: None,
             shape: LevelShape::OVERWORLD,
             chunks: Default::default(),
+            border: Default::default(),
+            proto_light_support: Default::default(),
             random: LevelRandom::for_level(LegacyRandom::new(seed)),
             revision: 0,
             health_rules: HealthRules::default(),
@@ -486,15 +527,16 @@ impl World {
                 writes.push(((x, y, z), previous, state.0));
             }
             self.modified.insert((x >> 4, z >> 4));
-            // The mesher reads a 3x3x3 neighbourhood for AO, so a write marks
-            // the sections it can reach: this section, the one above/below
-            // only on a section face, and a neighbour column only on a chunk
+            // The mesher reads a 3x3x3 neighbourhood for AO, and a connected texture's `above`
+            // test reads the cell two above a face's block, so a write marks the sections it
+            // can reach: this section, the one above only on its top layer, the one below on
+            // its bottom two layers, and a neighbour column only on a chunk
             // border (the diagonal only where both borders meet).
             let sy = (y - min_y) >> 4;
             let local_y = y & 15;
             let mark = |dirty: &mut DirtySections, bx: i32, bz: i32| {
                 dirty.insert((bx >> 4, sy, bz >> 4));
-                if local_y == 0 && sy > 0 {
+                if local_y <= 1 && sy > 0 {
                     dirty.insert((bx >> 4, sy - 1, bz >> 4));
                 }
                 if local_y == 15 && sy + 1 < sections {
@@ -603,10 +645,32 @@ impl World {
                 .0
         })
     }
+    /// The published light at a block, `sky << 4 | block`: its chunk's, or for a column with no
+    /// chunk what the light storage keeps there (`light_border.rs`). A level without skylight has
+    /// no sky layer (`LevelLightEngine.getRawBrightness`). Never loads a chunk.
+    #[inline]
     pub fn light(&self, x: i32, y: i32, z: i32) -> u8 {
-        self.chunks
-            .get(&(x >> 4, z >> 4))
-            .map_or(0xF0, |chunk| chunk.light(x & 15, y, z & 15))
+        match self.chunks.get(&(x >> 4, z >> 4)).and_then(|chunk| {
+            let s = chunk.section_index(y)?;
+            Some(chunk.sections[s].light(crate::chunk::index(x, y, z)))
+        }) {
+            Some(light) => light,
+            None => self.light_outside(x, y, z),
+        }
+    }
+    /// The light of a position no section holds: past a loaded column's sections, or in a column that
+    /// is not loaded ([`Self::border_light`]), without sky in a level without it. It takes the same
+    /// arguments as [`Self::light`] and looks the column up again, so the hot read keeps nothing live
+    /// for it; a read inside a column of a level without skylight is already without it (its
+    /// sections' sky is 0).
+    #[cold]
+    #[inline(never)]
+    fn light_outside(&self, x: i32, y: i32, z: i32) -> u8 {
+        let light = match self.chunks.get(&(x >> 4, z >> 4)) {
+            Some(chunk) => chunk.light(x & 15, y, z & 15),
+            None => self.border_light((x >> 4, z >> 4), x, y, z),
+        };
+        light & (0x0F | (u8::from(self.shape.sky_light) * 0xF0))
     }
     pub fn is_air(&self, state: BlockStateId) -> bool {
         state == self.air
@@ -618,7 +682,9 @@ impl World {
     /// positions held.
     pub fn unload_chunk(&mut self, key: (i32, i32)) -> Option<Arc<Chunk>> {
         self.capability_generations.unload_chunk(key);
-        self.chunks.remove(&key)
+        let chunk = self.chunks.remove(&key)?;
+        self.retain_border(key, &chunk);
+        Some(chunk)
     }
     /// `Level.isLoaded`: `y` is inside the build height and the chunk of `(x, z)` is loaded.
     /// Never loads a chunk.
@@ -923,6 +989,23 @@ mod tests {
                 assert_eq!(world.dirty_sections.len(), 8);
             }
         }
+    }
+
+    /// A connected texture's `above` test reads two cells up, so a write on the second layer of a
+    /// section re-meshes the section below too, and one on the third does not.
+    #[test]
+    fn a_write_on_a_sections_second_layer_marks_the_section_below() {
+        let mut world = World::new(BlockStateId(0), 0);
+        world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        let sy = (65 - MIN_Y) >> 4;
+        assert_eq!(65 & 15, 1);
+        world.set(3, 65, 3, BlockStateId(1)).unwrap();
+        let got: Vec<_> = world.dirty_sections.columns().collect();
+        assert_eq!(world.dirty_sections.len(), 2, "{got:?}");
+        assert!(world.dirty_sections.contains(&(0, sy - 1, 0)));
+        world.dirty_sections.clear();
+        world.set(3, 66, 3, BlockStateId(1)).unwrap();
+        assert_eq!(world.dirty_sections.len(), 1);
     }
 
     /// `ChunkAccess.getNoiseBiome` clamps the cell to the level. An End chunk read back from a

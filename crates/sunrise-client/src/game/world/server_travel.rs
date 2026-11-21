@@ -59,6 +59,10 @@ pub(super) struct Trip {
     target: Vec3,
     /// Through an End portal.
     end: bool,
+    /// Into the End through its portal, building its platform
+    /// (`EndPortalBlock.getPortalDestination` from another level); else an
+    /// exit, the credits respawn's too.
+    entering: bool,
     /// The Nether portal plan, whose exit is found or built on arrival.
     plan: Option<Plan>,
     /// The vehicle the player rides, which travels with it
@@ -161,6 +165,7 @@ macro_rules! server_ctx {
             next_entity: &mut $s.next_entity,
             spawn,
             spawn_angle: $s.level.world_spawn_angle,
+            spawn_dimension: crate::game::Dim::of_world_spawn(&$s.level).id(),
             sea_level: $s.end.locator().map_or(63, |terrain| terrain.sea_level()),
             difficulty: i32::from($s.ui.difficulty),
             difficulty_locked: $s.level.difficulty_locked,
@@ -271,6 +276,7 @@ impl Game<'_> {
             source: self.dim,
             target,
             end: false,
+            entering: false,
             plan: None,
             vehicle: None,
             gateway: None,
@@ -494,11 +500,19 @@ impl Game<'_> {
 
     /// The level a player leaving the End goes to, and the respawn point it
     /// resolves there: the point's own level
-    /// (`ServerPlayer.RespawnConfig.getDimensionOrDefault`), else the
-    /// Overworld's.
+    /// (`ServerPlayer.RespawnConfig.getDimensionOrDefault`): the Overworld for a
+    /// bed there (the guest's `spawn`), else the world spawn's
+    /// (`TeleportTransition.createDefault`, `findRespawnDimension`).
     fn end_departure(&mut self, conn: u32) -> (Dim, Option<RespawnConfig>) {
-        let config = self.as_guest(conn, |g| g.respawn_config).flatten();
-        (config.map_or(Dim::Overworld, |c| c.dim), config)
+        let (config, bed) = self
+            .as_guest(conn, |g| (g.respawn_config, g.spawn.is_some()))
+            .unwrap_or((None, false));
+        let level = match config {
+            Some(c) => c.dim,
+            None if bed => Dim::Overworld,
+            None => self.world_spawn_level(),
+        };
+        (level, config)
     }
 
     /// The respawn point of the trip a player has just started: its block is
@@ -701,10 +715,11 @@ impl Game<'_> {
         let (end_portal, gateway) = self.inside_end_portals(at, WIDTH, HEIGHT);
         if end_portal && !riding {
             // EndPortalBlock.entityInside: the first exit from the End shows the credits.
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
             if self.dim == Dim::End && !host.hub.guest(conn).is_some_and(|g| g.seen_credits) {
+                let _ = self.guest_close_menus_for_travel(conn);
+                let Some(host) = self.lan.as_mut() else {
+                    return;
+                };
                 let _ = host
                     .hub
                     .guests
@@ -897,13 +912,12 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-            return;
-        };
         if target != self.dim {
             drop_hook(host, conn);
         }
-        let g = &host.hub.guests[i];
+        let Some(g) = host.hub.guest(conn) else {
+            return;
+        };
         let from = Vec3::new(g.position[0], g.position[1], g.position[2]);
         let yaw = g.yaw;
         // The vehicle the player rides travels with it: the player is its
@@ -929,20 +943,34 @@ impl Game<'_> {
             )
         };
         self.end_portal_travel = end;
+        // Out of the End when the trip starts there, wherever it leads (the world spawn
+        // may be in the End too); the credits respawn is always a way out.
+        let entering = end && !credits_respawn && source != Dim::End;
         // Leaving the End: the player's own respawn point.
         let own = if end {
-            self.as_guest(conn, |g| g.end_destination(target)).flatten()
+            self.as_guest(conn, |g| g.end_destination(entering, target))
+                .flatten()
         } else {
             None
         };
         let scaled = own
-            .or_else(|| self.end_destination(target))
+            .or_else(|| self.end_destination(entering, target))
             .unwrap_or(Vec3::new(from.x * scale, from.y, from.z * scale));
         self.end_portal_travel = false;
-        if let Err(e) = self.enter_level(target) {
-            log::error!("could not open {}: {e}", target.id());
+        let retired_window = if source != target {
+            self.guest_close_menus_for_travel(conn)
+        } else {
+            None
+        };
+        if !self.enter_travel_destination(conn, target, retired_window) {
             return;
         }
+        let Some(i) = self.guest_index(conn) else {
+            if let Err(e) = self.enter_level(source) {
+                log::error!("could not reopen {}: {e}", source.id());
+            }
+            return;
+        };
         let destination = match plan {
             Some(plan) => self.arrival_centre(&plan),
             None => scaled,
@@ -985,6 +1013,7 @@ impl Game<'_> {
             source,
             target: destination,
             end,
+            entering,
             plan,
             vehicle,
             gateway: None,
@@ -1002,6 +1031,29 @@ impl Game<'_> {
         }
     }
 
+    /// Menu removal is silent on a successful trip: the respawn closes the
+    /// old screen. On failure, close it explicitly unless a listener opened
+    /// a replacement during removal.
+    fn enter_travel_destination(
+        &mut self,
+        conn: u32,
+        dim: Dim,
+        retired_window: Option<i32>,
+    ) -> bool {
+        let Err(e) = self.enter_level(dim) else {
+            return true;
+        };
+        log::error!("could not open {}: {e}", dim.id());
+        if let Some(container) = retired_window
+            && let Some(host) = self.lan.as_mut()
+            && super::native_menus::open_menu_of(host, conn).is_none()
+        {
+            host.hub
+                .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
+        }
+        false
+    }
+
     /// A respawned player waits at its point outside the Overworld for the
     /// level to load around it.
     pub(super) fn respawn_trip(&mut self, conn: u32, config: RespawnConfig) {
@@ -1012,6 +1064,7 @@ impl Game<'_> {
             source: self.dim,
             target: Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5),
             end: false,
+            entering: false,
             plan: None,
             vehicle: None,
             gateway: None,
@@ -1080,10 +1133,11 @@ impl Game<'_> {
         self.server_trips.retain(|t| !t.is(conn));
         self.server_trips.push(Trip {
             conn,
-            dim: Dim::Overworld,
+            dim: self.world_spawn_level(),
             source: self.dim,
             target: Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5),
             end: false,
+            entering: false,
             plan: None,
             vehicle: None,
             gateway: None,
@@ -1098,8 +1152,8 @@ impl Game<'_> {
         });
     }
 
-    /// TeleportTransition.missingRespawnBlock: the world spawn, in the
-    /// Overworld.
+    /// TeleportTransition.missingRespawnBlock: the world spawn, in its level
+    /// (MinecraftServer.findRespawnDimension).
     fn respawn_at_world_spawn(&mut self, conn: u32, missing: RespawnConfig) {
         let at = self.level.world_spawn.map_or(
             self.spawn.map_or([0.5, 80.0, 0.5], |s| [s.x, s.y, s.z]),
@@ -1107,9 +1161,10 @@ impl Game<'_> {
         );
         self.level_teleports.push(LevelTeleport {
             conn,
-            dim: Dim::Overworld,
+            dim: self.world_spawn_level(),
             at,
-            rotation: None,
+            // Facing the world spawn's angle (respawnData.yaw(), pitch()).
+            rotation: Some(self.level.world_spawn_angle),
             vehicle: None,
         });
         self.run_level_teleports();
@@ -1143,6 +1198,7 @@ impl Game<'_> {
             source: self.dim,
             target: destination,
             end: false,
+            entering: false,
             plan: None,
             vehicle: None,
             gateway: Some(job),
@@ -1285,16 +1341,23 @@ impl Game<'_> {
                     }
                 }
             } else if trip.end {
-                let guest_arrival =
-                    self.as_guest(trip.conn, |g| g.end_arrival(trip.target, &mut trip.finder));
+                let entering = trip.entering;
+                let guest_arrival = self.as_guest(trip.conn, |g| {
+                    g.end_arrival(entering, trip.target, &mut trip.finder)
+                });
                 let arrival = match guest_arrival {
                     Some(arrival) => arrival,
-                    None => self.end_arrival(trip.target, &mut trip.finder),
+                    None => self.end_arrival(entering, trip.target, &mut trip.finder),
                 };
                 match arrival {
-                    Ok(Some((at, turned))) => {
+                    Ok(Some((at, [turned, tilted]))) => {
                         // EndPortalBlock.getPortalDestination: PLACE_PORTAL_TICKET.
                         self.place_portal_ticket(Self::chunk_of(at));
+                        if let Some(pitch) = tilted
+                            && let Some(host) = self.lan.as_mut()
+                        {
+                            host.hub.guests.update(i, |guest| guest.pitch = pitch);
+                        }
                         (at, turned.unwrap_or(yaw))
                     }
                     Ok(None) => {
@@ -1491,20 +1554,37 @@ impl Game<'_> {
             return;
         }
         for t in std::mem::take(&mut self.level_teleports) {
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
-            let Some(i) = host.hub.guests.iter().position(|g| g.conn == t.conn) else {
+            let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(t.conn)) else {
                 continue;
             };
-            let source = self.dim;
-            if t.dim != source {
-                drop_hook(host, t.conn);
-            }
-            if let Err(e) = self.enter_level(t.dim) {
-                log::error!("could not open {}: {e}", t.dim.id());
+            let back = self.dim;
+            let source = Dim::from_id(&guest.dimension);
+            let retired_window = if t.dim != source {
+                if let Err(e) = self.enter_level(source) {
+                    log::error!("could not open {}: {e}", source.id());
+                    continue;
+                }
+                let window = self.guest_close_menus_for_travel(t.conn);
+                if let Some(host) = self.lan.as_mut() {
+                    drop_hook(host, t.conn);
+                }
+                window
+            } else {
+                None
+            };
+            // Cursor overflow and opening a level can run listeners that
+            // change the guest list. Look up the index only after both.
+            let index = if self.enter_travel_destination(t.conn, t.dim, retired_window) {
+                self.guest_index(t.conn)
+            } else {
+                None
+            };
+            let Some(i) = index else {
+                if let Err(e) = self.enter_level(back) {
+                    log::error!("could not reopen {}: {e}", back.id());
+                }
                 continue;
-            }
+            };
             let Some(host) = self.lan.as_mut() else {
                 return;
             };
@@ -1549,6 +1629,7 @@ impl Game<'_> {
                 source,
                 target: Vec3::new(t.at[0], t.at[1], t.at[2]),
                 end: false,
+                entering: false,
                 plan: None,
                 // A command teleports the player alone: it is not a
                 // passenger any more (`ServerPlayer.teleport`).
@@ -1565,8 +1646,8 @@ impl Game<'_> {
                 hold: true,
                 left: Some(source),
             });
-            if let Err(e) = self.enter_level(source) {
-                log::error!("could not reopen {}: {e}", source.id());
+            if let Err(e) = self.enter_level(back) {
+                log::error!("could not reopen {}: {e}", back.id());
             }
         }
     }
@@ -1604,6 +1685,7 @@ impl Game<'_> {
             next_entity: &mut self.next_entity,
             spawn,
             spawn_angle: self.level.world_spawn_angle,
+            spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
             difficulty: i32::from(self.ui.difficulty),
             difficulty_locked: self.level.difficulty_locked,
             clock_rate,

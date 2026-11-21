@@ -158,7 +158,9 @@ impl Gpu {
             SIZE,
             &[],
             terrain,
-        );
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
         encoder.copy_texture_to_buffer(
             screen.texture().as_image_copy(),
             wgpu::TexelCopyBufferInfo {
@@ -642,6 +644,7 @@ pub(super) fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         see_through: &[],
         world_primitives: Default::default(),
         celestial: &[],
+        celestial_bodies: &[],
         stars: None,
         hand: &[],
         hand_items: &[],

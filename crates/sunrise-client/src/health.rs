@@ -797,7 +797,7 @@ impl HealthResources {
             root,
             &sunrise_world::loot::PackOverlay {
                 conditions,
-                ..sunrise_world::loot::PackOverlay::NONE
+                ..sunrise_world::loot::PackOverlay::default()
             },
         )?;
         for name in ["minecraft:fall", "minecraft:stalagmite", "minecraft:starve"] {
@@ -1047,19 +1047,28 @@ impl PlayerHealth {
     pub fn dead_or_dying(&self) -> bool {
         self.health() <= 0.0 || self.dead
     }
-    /// The damage-clock phases of ServerPlayer.tick and LivingEntity.baseTick.
-    /// The complete enclosing ticks, including death removal, are not yet bound.
+    /// Advance all three clock phases for callers without separate level and body ticks.
     pub fn advance_clock(&mut self) {
+        self.advance_entity_clock();
+        self.advance_damage_cooldown();
+        self.advance_body_clock();
+    }
+    /// `Entity.commonTick`: the entity-level immunity window, not the damage cooldown.
+    pub fn advance_entity_clock(&mut self) {
         self.game_time = self.game_time.wrapping_add(1);
         self.tick_count = self.tick_count.wrapping_add(1);
-        if self.hurt.cooldown > 0 {
-            self.hurt.cooldown -= 1;
-        }
-        // Entity.baseTick: the entity-level window counts down too, its own
-        // timer (#916), never the damage cooldown above.
         if self.invulnerable_time > 0 {
             self.invulnerable_time -= 1;
         }
+    }
+    /// `damageCooldownTime` runs in `ServerPlayer.tick`, not in its `LivingEntity.baseTick`.
+    pub fn advance_damage_cooldown(&mut self) {
+        if self.hurt.cooldown > 0 {
+            self.hurt.cooldown -= 1;
+        }
+    }
+    /// `LivingEntity.baseTick`'s hurt timers.
+    pub fn advance_body_clock(&mut self) {
         if self.hurt.hurt_time > 0 {
             self.hurt.hurt_time -= 1;
         }
@@ -1135,23 +1144,6 @@ impl PlayerMotion {
     ) -> Result<BlockOutcome> {
         self.hurt_caused_by(
             level, resources, rules, source, amount, blocking, false, 0, false,
-        )
-    }
-    /// [`hurt_blocking`](Self::hurt_blocking) from a source whose hit was a
-    /// creative player's (`DamageSource.isCreativePlayer`): it passes the
-    /// invulnerability the victim has (`Entity.isInvulnerableToBase`'s one
-    /// exception, #916).
-    pub fn hurt_blocking_creative(
-        &mut self,
-        level: &mut DamageLevel<'_>,
-        resources: &HealthResources,
-        rules: HealthRules,
-        source: DamageTypeId,
-        amount: f32,
-        blocking: Option<Blocking>,
-    ) -> Result<BlockOutcome> {
-        self.hurt_caused_by(
-            level, resources, rules, source, amount, blocking, false, 0, true,
         )
     }
     /// `hurt_blocking` from a source whose causing entity is a living
@@ -1956,10 +1948,19 @@ impl HurtWorld for Environment<'_> {
             .level
             .attack()
             .player_source(&self.source.definition().name, self.causing);
+        // `applyItemBlocking` calls `hurtBlockingItem` with what the item stopped,
+        // nothing included (a hit from behind): the item is used all the same.
+        // Only a block a mod's hook turned off leaves it unused.
+        let reached =
+            vanilla <= 0.0 && matches!(&self.blocking, Some(b) if !b.bypassed && !b.pierce);
         let Some(block) =
             self.level
                 .shield_block(Hurting::Player(self.entity, source), damage, block)
         else {
+            if reached {
+                self.blocking_item_used = true;
+                self.shield_damage = shield_damage;
+            }
             return Ok(0.0);
         };
         self.blocking_item_used = true;
@@ -2303,7 +2304,7 @@ mod tests {
             _: super::Hurting<'_>,
             container: &super::DamageContainer,
         ) {
-            // The plain values used by wasm must preserve the decision in both directions.
+            // Converting to plain values and back must preserve the damage decision.
             let values = DamageValues::from(container);
             assert_eq!(
                 values.should_cause_side_effects,

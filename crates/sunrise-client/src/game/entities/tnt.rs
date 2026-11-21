@@ -480,6 +480,13 @@ impl Game<'_> {
             self.bubble_column_particles(pos);
         }
     }
+    pub(super) fn take_removed_tnt(&mut self, id: u32) -> Option<PrimedTnt> {
+        self.with_destroying_vehicle(super::commands::Target::Tnt(id), |game| {
+            let i = game.tnts.iter().position(|t| t.id == id)?;
+            Some(game.tnts.remove(i))
+        })?
+    }
+
     /// `PrimedTnt.tick` for every primed TNT, in order; an expired fuse
     /// explodes immediately (later TNT in the list feel its knockback this
     /// tick). TNT primed by an explosion starts ticking next tick.
@@ -511,7 +518,10 @@ impl Game<'_> {
         for pos in tops {
             self.bubble_column_particles(pos);
         }
-        let t = &mut self.tnts[i];
+        let Some(i) = super::native_ticks::place(&self.tnts, i, |t| t.id == id) else {
+            return Ok(());
+        };
+        let t = &self.tnts[i];
         if t.fuse <= 0 {
             let center = [
                 t.position.x,
@@ -524,7 +534,9 @@ impl Game<'_> {
             let silent = self.entity_silent(id);
             let (owner, guest) = self.tnt_owner(id, owner, guest);
             let in_water = self.bounds_in_water(bounds);
-            self.tnts.remove(i);
+            if self.take_removed_tnt(id).is_none() {
+                return Ok(());
+            }
             // PrimedTnt.tick: with `tnt_explodes` off it goes away without exploding.
             if !self
                 .ui
@@ -721,15 +733,10 @@ impl Game<'_> {
         self.award_stat("used", item, 1);
         Ok(true)
     }
-    /// `TntRenderer`: the block centred on the entity, swelling over the last
-    /// 10 ticks and flashing white every 5 ticks.
-    pub(super) fn tnt_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
-        if self.tnts.is_empty() {
-            return;
-        }
-        let Some(state) = self.pack.assets.registry.default_state("minecraft:tnt") else {
-            return;
-        };
+    /// The sprites of the TNT block's six faces (up, down, north, south, west, east), from its
+    /// block model; `None` without a model. Once a frame, however many runs of TNT draw.
+    pub(super) fn tnt_face_sprites(&self) -> Option<[Option<sunrise_client_render::hud::Rect>; 6]> {
+        let state = self.pack.assets.registry.default_state("minecraft:tnt")?;
         // Face sprites from the block model: up, down, north, south, west, east.
         let Ok(models) = self
             .pack
@@ -737,7 +744,7 @@ impl Game<'_> {
             .model_catalog
             .collect(state, BlockPos::new(0, 0, 0))
         else {
-            return;
+            return None;
         };
         let mut sprites = [None; 6];
         for face in models.iter().flat_map(|(_, m)| m.faces.iter()) {
@@ -758,11 +765,27 @@ impl Game<'_> {
                     .and_then(|name| self.gui.atlas.sprites.get(name).copied());
             }
         }
+        Some(sprites)
+    }
+
+    /// `TntRenderer`: the block centred on the entity, swelling over the last
+    /// 10 ticks and flashing white every 5 ticks.
+    pub(super) fn tnt_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+        run: std::ops::Range<usize>,
+        sprites: Option<[Option<sunrise_client_render::hud::Rect>; 6]>,
+    ) {
+        let Some(sprites) = sprites else {
+            return;
+        };
         let range = super::entity_culling::default_range(
             glam::DVec3::splat(PrimedTnt::SIZE),
             self.view_scale(),
         );
-        for t in &self.tnts {
+        for t in &self.tnts[run] {
             // LevelExtractor: the camera entity is not drawn from its own eyes.
             if self.hides_as_camera(t.id) {
                 continue;
@@ -801,6 +824,7 @@ impl Game<'_> {
                         orb_value: None,
                         painting: None,
                         item_frame: None,
+                        attachments: None,
                     }
                     .into();
                 let light = self.world.light(
@@ -819,6 +843,7 @@ impl Game<'_> {
                     &entity,
                     "minecraft:tnt",
                     at - camera,
+                    Some(at),
                     block,
                     packed,
                     out,
@@ -944,6 +969,11 @@ fn tnt_blast_owner(
 
 fn tnt_seat(tnt: Vec3, rider_offset: f64) -> Vec3 {
     Vec3::new(tnt.x, tnt.y + PrimedTnt::SIZE - rider_offset, tnt.z)
+}
+
+/// A general rider's seat on primed TNT: no vehicle attachment of its own.
+pub(super) fn tnt_general_seat(tnt: Vec3) -> Vec3 {
+    tnt_seat(tnt, 0.0)
 }
 
 #[cfg(test)]

@@ -116,6 +116,13 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game
             .native_draw_scene(&mut *self.surface, rect, &blocks, scene, view)
     }
+    fn model_3d(
+        &mut self,
+        subject: mod_api::Gui3dSubject,
+        view: mod_api::Gui3dView,
+    ) -> Result<(), mod_api::Gui3dError> {
+        self.game.native_model_3d(&mut *self.surface, subject, view)
+    }
     fn push_clip(&mut self, rect: [f32; 4]) -> Result<(), GuiClipRefusal> {
         self.clips.push(self.surface, rect)
     }
@@ -147,10 +154,17 @@ impl DrawContext for GameDrawContext<'_, '_> {
         label: &Text,
         active: bool,
         highlighted: bool,
+        sprites: Option<&ButtonSprites>,
     ) -> Result<(), mod_api::text::TextFormError> {
         let label = label.try_into_engine(&())?;
-        self.game
-            .native_widget_button(&mut *self.surface, rect, &label, active, highlighted);
+        self.game.native_widget_button(
+            &mut *self.surface,
+            rect,
+            &label,
+            active,
+            highlighted,
+            sprites,
+        );
         Ok(())
     }
     fn widget_text_field(&mut self, field: &TextFieldView) -> TextFieldLayout {
@@ -271,6 +285,9 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
     }
     fn set_light(&mut self, light: u32) {
         self.game.native_draw_set_light(&mut *self.surface, light)
+    }
+    fn level_light(&mut self) {
+        self.game.native_draw_level_light(&mut *self.surface)
     }
     fn quad(&mut self, sprite: &str, corners: [[f32; 3]; 4], uv: [f32; 4], tint: u32) -> bool {
         self.game

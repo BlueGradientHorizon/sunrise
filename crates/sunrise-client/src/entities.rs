@@ -466,7 +466,15 @@ impl ItemEntity {
             self.bounds(),
             &mut self.velocity,
         );
-        let alive = self.tick_settle(world, facts, no_physics, step, context);
+        let alive = self.tick_settle(
+            world,
+            registry,
+            facts,
+            no_physics,
+            step,
+            context,
+            sunrise_client::motion::dry_side(),
+        );
         let before = self.velocity;
         let (water, _) = self.update_fluids(world, fluids, context);
         self.water_entry(water > 0.0, false, before, &mut |_| {});
@@ -475,9 +483,8 @@ impl ItemEntity {
 }
 impl ItemEntity {
     pub const WIDTH: f64 = 0.25;
-    /// `EntityType.ITEM` declares `eyeHeight(0.2125)`: an item is lit from the
-    /// block its eye is in, most of a block above the one its base rests in.
-    pub const EYE_HEIGHT: f64 = 0.2125;
+    /// `EntityTypes.ITEM` declares a float eye height, widened by `Entity.getEyeY`.
+    pub const EYE_HEIGHT: f64 = 0.2125_f32 as f64;
     /// `Entity.getLightProbePosition(partialTick)` for a dropped item: the eye
     /// position (`getEyePosition`) over the position drawn this frame
     /// (`getPosition(partialTick)`), not this tick's own.
@@ -603,10 +610,12 @@ impl ItemEntity {
     pub fn tick_settle(
         &mut self,
         world: &World,
+        registry: &sunrise_world::registry::BlockRegistry,
         facts: &BlockFacts,
         no_physics: bool,
         step: ItemStep,
         context: &sunrise_world::native_load_context::LoopContext,
+        side: &dyn crate::motion::SideLevel,
     ) -> bool {
         if step.movement.is_some() {
             // Entity.applyEffectsFromBlocks -> SlimeBlock.stepOn, with the
@@ -620,7 +629,15 @@ impl ItemEntity {
             if self.on_ground {
                 let below =
                     BlockPos::containing(self.position.subtract(Vec3::new(0.0, 0.999_999, 0.0)));
-                friction *= block_friction(context, self.id, "minecraft:item", world, facts, below);
+                friction *= block_friction(
+                    context,
+                    side,
+                    (self.id, "minecraft:item"),
+                    world,
+                    registry,
+                    facts,
+                    below,
+                );
             }
             let friction = f64::from(friction);
             let air = f64::from(0.98_f32);
@@ -1029,6 +1046,7 @@ impl ExperienceOrb {
         border: Option<&BorderGeometry>,
         fluids: &crate::motion::FluidResources,
         context: &sunrise_world::native_load_context::LoopContext,
+        side: &dyn crate::motion::SideLevel,
         on_sound: &mut dyn FnMut([f64; 3], f32),
     ) -> bool {
         let (stays, _) = self.tick_among(
@@ -1041,6 +1059,7 @@ impl ExperienceOrb {
             border,
             fluids,
             context,
+            side,
             on_sound,
             &[],
         );
@@ -1061,6 +1080,7 @@ impl ExperienceOrb {
         border: Option<&BorderGeometry>,
         fluids: &crate::motion::FluidResources,
         context: &sunrise_world::native_load_context::LoopContext,
+        side: &dyn crate::motion::SideLevel,
         on_sound: &mut dyn FnMut([f64; 3], f32),
         entities: &[Aabb],
     ) -> (bool, OrbMove) {
@@ -1075,6 +1095,7 @@ impl ExperienceOrb {
             border,
             fluids,
             context,
+            side,
             on_sound,
             entities,
             &mut |_| false,
@@ -1094,6 +1115,7 @@ impl ExperienceOrb {
         border: Option<&BorderGeometry>,
         fluids: &crate::motion::FluidResources,
         context: &sunrise_world::native_load_context::LoopContext,
+        side: &dyn crate::motion::SideLevel,
         on_sound: &mut dyn FnMut([f64; 3], f32),
         entities: &[Aabb],
         invulnerable: &mut dyn FnMut(&mut World) -> bool,
@@ -1108,6 +1130,7 @@ impl ExperienceOrb {
             border,
             fluids,
             context,
+            side,
             on_sound,
             entities,
             &mut |world| invulnerable(world),
@@ -1126,6 +1149,7 @@ impl ExperienceOrb {
         border: Option<&BorderGeometry>,
         fluids: &crate::motion::FluidResources,
         context: &sunrise_world::native_load_context::LoopContext,
+        side: &dyn crate::motion::SideLevel,
         on_sound: &mut dyn FnMut([f64; 3], f32),
         entities: &[Aabb],
         invulnerable: &mut dyn FnMut(&mut W) -> bool,
@@ -1274,7 +1298,15 @@ impl ExperienceOrb {
             let below =
                 BlockPos::containing(self.position.subtract(Vec3::new(0.0, 0.999_999, 0.0)));
             let kind = "minecraft:experience_orb";
-            friction *= block_friction(context, self.id, kind, world, facts, below);
+            friction *= block_friction(
+                context,
+                side,
+                (self.id, kind),
+                world,
+                collision.registry(),
+                facts,
+                below,
+            );
         }
         let friction = f64::from(friction);
         // The drag scales every axis by the same friction, the ground's
@@ -1299,10 +1331,11 @@ impl ExperienceOrb {
         };
         (!discarded && !burnt_out && self.age < 6000, step)
     }
-    /// `LavaFluid.entityInside` -> `Entity.lavaHurt`: four damage on the
-    /// server, through the orb's existing hurt/discard policy, playing the generic
-    /// burn sound (`minecraft:entity.generic.burn`, volume 0.4, pitch 2.0 + random * 0.4)
-    /// on each hurt contact. This is separate from the lava impulse at the start of the tick.
+    /// `LavaFluid.entityInside` on the server: `Entity.lavaIgnite` (300 ticks),
+    /// then `Entity.lavaHurt`, four damage through the orb's existing hurt/discard
+    /// policy, playing the generic burn sound (`minecraft:entity.generic.burn`,
+    /// volume 0.4, pitch 2.0 + random * 0.4) on each hurt contact. This is
+    /// separate from the lava impulse at the start of the tick.
     pub fn apply_lava_contact_damage(
         &mut self,
         world: &World,
@@ -1331,21 +1364,19 @@ impl ExperienceOrb {
         on_sound: &mut dyn FnMut([f64; 3], f32),
         invulnerable: &mut dyn FnMut(&mut W) -> bool,
     ) -> bool {
-        let contacts = orb_lava_contacts(self.previous, self.position, wanted, |p| {
-            let fluid = fluids.fluid(world.block(p.x, p.y, p.z));
-            if !fluid
-                .kind()
-                .same_family(sunrise_world::fluid::FluidKind::Lava)
-            {
-                return None;
-            }
-            let above = fluids.fluid(world.block(p.x, p.y + 1, p.z));
-            Some(if fluid.kind().same_family(above.kind()) {
-                1.0
-            } else {
-                f64::from(fluid.own_height())
-            })
-        });
+        let contacts = fluid_contacts(
+            self.previous,
+            self.position,
+            Some(wanted),
+            ExperienceOrb::box_at,
+            |p| fluid_height(world, fluids, p, sunrise_world::fluid::FluidKind::Lava),
+        );
+        if contacts > 0 {
+            // LAVA_IGNITE applies before its step's lavaHurt
+            // (`InsideBlockEffectApplier.StepBasedCollector.applyAndClear`);
+            // `igniteForTicks` keeps a longer fire.
+            self.fire_ticks = self.fire_ticks.max(300);
+        }
         for _ in 0..contacts {
             let dead = !invulnerable(world) && self.hurt(4.0);
             let pitch = 2.0 + next_float() * 0.4;
@@ -1916,7 +1947,16 @@ impl ArmorStand {
         border: Option<&BorderGeometry>,
     ) {
         let context = crate::test_resources::server_loop_context();
-        if let Some(step) = self.tick_move(scene, facts, climbing, in_water, border, &[], context) {
+        if let Some(step) = self.tick_move(
+            scene,
+            facts,
+            climbing,
+            in_water,
+            border,
+            &[],
+            context,
+            sunrise_client::motion::dry_side(),
+        ) {
             let medium = if in_water {
                 StandMedium::Water
             } else {
@@ -2258,6 +2298,7 @@ impl ArmorStand {
         border: Option<&BorderGeometry>,
         entities: &[Aabb],
         context: &sunrise_world::native_load_context::LoopContext,
+        side: &dyn crate::motion::SideLevel,
     ) -> Option<StandStep> {
         use crate::entity_rules::EntityRules;
         self.previous = self.position;
@@ -2288,7 +2329,15 @@ impl ArmorStand {
             let below =
                 BlockPos::containing(self.position.subtract(Vec3::new(0.0, 0.500_001, 0.0)));
             let kind = "minecraft:armor_stand";
-            block_friction(context, self.id, kind, scene.world, facts, below)
+            block_friction(
+                context,
+                side,
+                (self.id, kind),
+                scene.world,
+                scene.binding.registry(),
+                facts,
+                below,
+            )
         } else {
             1.0
         };
@@ -3372,6 +3421,7 @@ mod world_border_tests {
                 border,
                 &fluids,
                 crate::test_resources::server_loop_context(),
+                sunrise_client::motion::dry_side(),
                 &mut |_, _| {},
             );
             for (what, east) in [
@@ -3772,6 +3822,7 @@ mod slime_bounce_tests {
         };
         item.tick_settle(
             &world,
+            crate::test_fixtures::air_registry(),
             &facts,
             true,
             ItemStep {
@@ -3783,6 +3834,7 @@ mod slime_bounce_tests {
                 fall_move: None,
             },
             crate::test_resources::server_loop_context(),
+            sunrise_client::motion::dry_side(),
         );
         assert_eq!(item.velocity.x.to_bits(), 0x3fb9_1687_3333_3334);
         assert_eq!(item.velocity.y.to_bits(), 0x3fc9_1687_3333_3334);
@@ -4394,9 +4446,16 @@ mod armor_stand_motion_tests {
                     binding: collision,
                     subject: None,
                 };
-                if let Some(step) =
-                    stand.tick_move(&mut scene, facts, &climbing, false, None, boxes, context)
-                {
+                if let Some(step) = stand.tick_move(
+                    &mut scene,
+                    facts,
+                    &climbing,
+                    false,
+                    None,
+                    boxes,
+                    context,
+                    sunrise_client::motion::dry_side(),
+                ) {
                     stand.tick_settle(StandMedium::Air, step);
                 }
             }
@@ -4878,23 +4937,19 @@ mod dropped_item_light_tests {
         }
     }
 
-    /// `Entity.getLightProbePosition` is the eye position, and `EntityType.ITEM`
-    /// declares `eyeHeight(0.2125)`. The item used to be lit from the cell of
-    /// `base + 0.1`, so a falling item at y = 64.85 read the cell at 64 (block
-    /// light of the floor) while its eye at 65.0625 is in the cell at 65.
+    /// `Entity.getLightProbePosition` reads the block at the item's eye, so
+    /// a falling item just below y = 65 reads the cell at 65, not the floor.
     #[test]
     fn a_dropped_item_is_lit_from_the_block_its_eye_is_in() {
+        let eye_height = f64::from(0.2125_f32);
         let falling = item(64.85, 64.85);
         let probe = falling.light_probe(1.0);
-        assert!((probe[1] - 65.062_5).abs() < 1e-9);
+        assert_eq!(probe[1], 64.85 + eye_height);
         assert_eq!(probe[1].floor(), 65.0);
-        // The old probe, `(y + 0.1).floor()`, and the base cell itself.
-        assert_eq!((64.85_f64 + 0.1).floor(), 64.0);
-        assert_eq!(64.85_f64.floor(), 64.0);
-        // Resting on a block top the two agree: the eye is 0.2125 up.
         let resting = item(64.0, 64.0);
-        assert_eq!(resting.light_probe(1.0)[1].floor(), 64.0);
-        assert!((resting.light_probe(1.0)[1] - 64.212_5).abs() < 1e-9);
+        let probe = resting.light_probe(1.0);
+        assert_eq!(probe[1], 64.0 + eye_height);
+        assert_eq!(probe[1].floor(), 64.0);
     }
 
     /// `Entity.getLightProbePosition(partialTick)` follows `getPosition(partialTick)`:
@@ -4905,7 +4960,7 @@ mod dropped_item_light_tests {
     fn an_item_probe_follows_the_frame() {
         let falling = item(64.0, 65.0);
         let mid = falling.light_probe(0.5);
-        assert!((mid[1] - 64.712_5).abs() < 1e-9);
+        assert_eq!(mid[1], 64.5 + f64::from(0.2125_f32));
         assert_eq!(mid[1].floor(), 64.0);
         assert_eq!(falling.light_probe(1.0)[1].floor(), 65.0);
         // Across x and z too, not just down.
@@ -4915,7 +4970,7 @@ mod dropped_item_light_tests {
             previous: Vec3::new(0.5, 64.0, 0.5),
             ..item(64.0, 64.0)
         };
-        assert!((sliding.light_probe(0.5)[0] - 1.0).abs() < 1e-9);
+        assert_eq!(sliding.light_probe(0.5)[0], 1.0);
     }
 
     /// `EntityRenderer.getBlockLightLevel` is `isOnFire() ? 15 : the level's
@@ -5031,6 +5086,7 @@ mod orb_lava_tests {
                     None,
                     fluids,
                     crate::test_resources::server_loop_context(),
+                    sunrise_client::motion::dry_side(),
                     &mut |_, _| {},
                 )
             };
@@ -5087,6 +5143,7 @@ mod orb_lava_tests {
                     None,
                     fluids,
                     crate::test_resources::server_loop_context(),
+                    sunrise_client::motion::dry_side(),
                     &mut |_, _| {}
                 ));
                 assert_eq!((client.health, client.age), (5, expected_age));
@@ -5102,6 +5159,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
             assert_eq!((orb.health, orb.age), (1, 1));
@@ -5117,6 +5175,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
             assert_eq!((orb.health, orb.age), (-3, 2));
@@ -5144,6 +5203,7 @@ mod orb_lava_tests {
                     None,
                     fluids,
                     crate::test_resources::server_loop_context(),
+                    sunrise_client::motion::dry_side(),
                     &mut |_, _| sounds += 1,
                     &[],
                     &mut |_| {
@@ -5182,6 +5242,7 @@ mod orb_lava_tests {
                     None,
                     fluids,
                     crate::test_resources::server_loop_context(),
+                    sunrise_client::motion::dry_side(),
                     &mut |pos, pitch| sounds.push((pos, pitch)),
                 ));
                 assert!(sounds.is_empty(), "orb in air must not play burn sound");
@@ -5213,6 +5274,7 @@ mod orb_lava_tests {
                     None,
                     fluids,
                     crate::test_resources::server_loop_context(),
+                    sunrise_client::motion::dry_side(),
                     &mut |pos, pitch| sounds.push((pos, pitch)),
                 ));
                 assert!(sounds.is_empty(), "orb in water must not play burn sound");
@@ -5250,6 +5312,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
             assert!(
@@ -5272,6 +5335,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
             assert!(
@@ -5308,6 +5372,7 @@ mod orb_lava_tests {
                                 None,
                                 fluids,
                                 crate::test_resources::server_loop_context(),
+                                sunrise_client::motion::dry_side(),
                                 &mut |_, _| sounds += 1,
                             ),
                             damage == 0,
@@ -5343,10 +5408,13 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             );
             assert!(stays, "orb survives first contact with 1 HP");
             assert_eq!(orb.health, 1);
+            // Entity.lavaIgnite sets it alight for 300 ticks (#2689).
+            assert_eq!(orb.fire_ticks, 300);
             assert_eq!(sounds.len(), 1, "exactly one burn sound played");
             let expected_pitch = 2.0_f32 + float_val * 0.4_f32;
             assert!((sounds[0].1 - expected_pitch).abs() < 1e-6);
@@ -5379,6 +5447,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
             assert_eq!(orb.health, 1);
@@ -5397,6 +5466,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
             assert_eq!(orb.health, -3);
@@ -5426,13 +5496,37 @@ mod orb_lava_tests {
     }
 }
 
-/// `Entity.checkInsideBlocks` and `collidedWithFluid`: fluid AABB contacts
-/// along Entity.move's axis-ordered path, each block visited once.
-fn orb_lava_contacts(
+/// `FluidState.getHeight` of the fluid of `family` at `p` (a full block under
+/// more of the same fluid, else its own height); None where there is none.
+pub fn fluid_height(
+    world: &World,
+    fluids: &crate::motion::FluidResources,
+    p: BlockPos,
+    family: sunrise_world::fluid::FluidKind,
+) -> Option<f64> {
+    let fluid = fluids.fluid(world.block(p.x, p.y, p.z));
+    if !fluid.kind().same_family(family) {
+        return None;
+    }
+    let above = fluids.fluid(world.block(p.x, p.y + 1, p.z));
+    Some(if fluid.kind().same_family(above.kind()) {
+        1.0
+    } else {
+        f64::from(fluid.own_height())
+    })
+}
+
+/// `Entity.checkInsideBlocks` and `collidedWithFluid`: the cells whose fluid box
+/// (`height`'s, None where there is none) the entity's box (`bounds_at`) touches
+/// over its move, each visited once.
+/// `wanted` is `Entity.move`'s uncollided movement, whose axis order the path
+/// takes; None for a move set by position (`setPos`), swept in one segment.
+pub fn fluid_contacts(
     from: Vec3,
     to: Vec3,
-    wanted: Vec3,
-    mut lava_height: impl FnMut(BlockPos) -> Option<f64>,
+    wanted: Option<Vec3>,
+    bounds_at: impl Fn(Vec3) -> Aabb,
+    mut height: impl FnMut(BlockPos) -> Option<f64>,
 ) -> usize {
     let delta = to.subtract(from);
     let mut visited = std::collections::HashSet::new();
@@ -5441,7 +5535,7 @@ fn orb_lava_contacts(
     let mut segment = |start: Vec3, end: Vec3, budget: i32| {
         let mut iterations = 0;
         let epsilon = f64::from(1.0e-5_f32);
-        let target = ExperienceOrb::box_at(end).deflate(Vec3::new(epsilon, epsilon, epsilon));
+        let target = bounds_at(end).deflate(Vec3::new(epsilon, epsilon, epsilon));
         let _ = sunrise_core::geometry::sweep_intersected_blocks(
             start,
             end,
@@ -5455,12 +5549,10 @@ fn orb_lava_contacts(
                 if visited.contains(&p) {
                     return true;
                 }
-                if let Some(height) = lava_height(p) {
+                if let Some(height) = height(p) {
                     let min = Vec3::new(f64::from(p.x), f64::from(p.y), f64::from(p.z));
                     let fluid = Aabb::new(min, min.add_vector(Vec3::new(1.0, height, 1.0)));
-                    if ExperienceOrb::box_at(start)
-                        .collided_along_vector(end.subtract(start), &[fluid])
-                    {
+                    if bounds_at(start).collided_along_vector(end.subtract(start), &[fluid]) {
                         visited.insert(p);
                         contacts += 1;
                     }
@@ -5470,7 +5562,7 @@ fn orb_lava_contacts(
         );
         iterations + 1
     };
-    if delta.length_squared() > 0.0 {
+    if let Some(wanted) = wanted.filter(|_| delta.length_squared() > 0.0) {
         // Direction.axisStepOrder uses the original, uncollided movement.
         let order = if wanted.x.abs() < wanted.z.abs() {
             [1, 2, 0]
@@ -5502,9 +5594,13 @@ mod orb_lava_shape_tests {
     use super::*;
 
     fn contacts(from: Vec3, to: Vec3) -> usize {
-        orb_lava_contacts(from, to, to.subtract(from), |p| {
-            (p == BlockPos::new(0, 0, 0)).then_some(f64::from(8.0_f32 / 9.0))
-        })
+        fluid_contacts(
+            from,
+            to,
+            Some(to.subtract(from)),
+            ExperienceOrb::box_at,
+            |p| (p == BlockPos::new(0, 0, 0)).then_some(f64::from(8.0_f32 / 9.0)),
+        )
     }
 
     #[test]
@@ -5526,9 +5622,13 @@ mod orb_lava_shape_tests {
         let to = Vec3::new(0.7, 0.2, 0.7);
         assert_eq!(contacts(from, to), 1);
         assert_eq!(
-            orb_lava_contacts(from, to, Vec3::new(0.1, 0.1, 0.9), |p| {
-                (p == BlockPos::new(0, 0, 0)).then_some(1.0)
-            }),
+            fluid_contacts(
+                from,
+                to,
+                Some(Vec3::new(0.1, 0.1, 0.9)),
+                ExperienceOrb::box_at,
+                |p| { (p == BlockPos::new(0, 0, 0)).then_some(1.0) }
+            ),
             1
         );
     }

@@ -54,6 +54,7 @@ pub(super) struct Boat {
     pub id: u32,
     /// Wood type (`oak`, `bamboo` for the raft).
     pub wood: Arc<str>,
+    type_names: [Arc<str>; 2],
     pub position: Vec3,
     pub previous: Vec3,
     pub velocity: Vec3,
@@ -255,12 +256,18 @@ impl Boat {
     }
 
     pub fn new(id: u32, wood: Arc<str>, position: Vec3, yaw: f32) -> Self {
+        let suffix = if &*wood == "bamboo" { "raft" } else { "boat" };
+        let type_names = [
+            format!("minecraft:{wood}_{suffix}").into(),
+            format!("minecraft:{wood}_chest_{suffix}").into(),
+        ];
         Self {
             pitch: 0.0,
             join: Default::default(),
             attachment_lifetime: Default::default(),
             id,
             wood,
+            type_names,
             position,
             previous: position,
             velocity: Vec3::ZERO,
@@ -509,14 +516,11 @@ impl Boat {
     /// The vanilla entity type id (`oak_boat`, `bamboo_chest_raft`), also
     /// the item it drops.
     pub(super) fn entity_type(&self) -> String {
-        #[cfg(test)]
-        friction_tests::TYPE_BUILDS.with(|n| n.set(n.get() + 1));
-        let chest = if self.chest { "chest_" } else { "" };
-        if &*self.wood == "bamboo" {
-            format!("minecraft:bamboo_{chest}raft")
-        } else {
-            format!("minecraft:{}_{chest}boat", self.wood)
-        }
+        self.entity_type_name().to_owned()
+    }
+
+    pub(super) fn entity_type_name(&self) -> &str {
+        &self.type_names[usize::from(self.chest)]
     }
 }
 /// The wood of a boat or chest boat item or entity type, and whether it
@@ -690,7 +694,7 @@ impl Game<'_> {
         }
         (i64::from(y1) + 1) as f32
     }
-    fn boat_status(&self, b: &mut Boat) -> Status {
+    fn boat_status(&self, b: &Boat, water_level: &mut f64, land_friction: &mut f32) -> Status {
         let bb = b.bounds();
         let (lo, hi) = (bb.min_position(), bb.max_position());
         // isUnderwater
@@ -703,7 +707,7 @@ impl Game<'_> {
                         && max_y < f64::from(y as f32 + h)
                     {
                         if !source {
-                            b.water_level = hi.y;
+                            *water_level = hi.y;
                             return Status::UnderFlowingWater;
                         }
                         under = true;
@@ -712,19 +716,19 @@ impl Game<'_> {
             }
         }
         if under {
-            b.water_level = hi.y;
+            *water_level = hi.y;
             return Status::UnderWater;
         }
         // checkInWater
         let mut in_water = false;
-        b.water_level = -f64::MAX;
+        *water_level = -f64::MAX;
         for x in lo.x.floor() as i32..hi.x.ceil() as i32 {
             for y in lo.y.floor() as i32..(lo.y + 0.001).ceil() as i32 {
                 for z in lo.z.floor() as i32..hi.z.ceil() as i32 {
                     if let Some((h, _)) = self.fluid_height(x, y, z) {
                         // `float height = y + getHeight`: summed in float.
                         let level = f64::from(y as f32 + h);
-                        b.water_level = b.water_level.max(level);
+                        *water_level = water_level.max(level);
                         in_water |= lo.y < level;
                     }
                 }
@@ -736,7 +740,7 @@ impl Game<'_> {
 
         let friction = self.boat_ground_friction(b, bb);
         if friction > 0.0 {
-            b.land_friction = friction;
+            *land_friction = friction;
             Status::OnLand
         } else {
             Status::InAir
@@ -923,7 +927,9 @@ impl Game<'_> {
         }
         let had_status = std::mem::replace(&mut b.status_known, true);
         b.old_status = b.status;
-        b.status = self.boat_status(&mut b);
+        let (mut water_level, mut land_friction) = (b.water_level, b.land_friction);
+        b.status = self.boat_status(&b, &mut water_level, &mut land_friction);
+        (b.water_level, b.land_friction) = (water_level, land_friction);
         b.tick_submersion();
         // `tick_boats_now` wears it off for the boats it ticks, before they burn.
         if controlled {
@@ -1287,9 +1293,9 @@ impl Game<'_> {
     /// does not tick (`tick_boat` sets it for the others): a client's boats
     /// other than the one it drives, and a server's boats its players drive.
     pub(super) fn refresh_boat_status(&mut self, i: usize) {
-        let b = &self.boats[i];
-        let mut probe = Boat::new(b.id, b.wood.clone(), b.position, b.yaw);
-        let status = self.boat_status(&mut probe);
+        // The probe's footing is thrown away: only the status of the real boat is kept.
+        let (mut water_level, mut land_friction) = (0.0, 0.0);
+        let status = self.boat_status(&self.boats[i], &mut water_level, &mut land_friction);
         self.boats.update(i, |b| b.status = status);
         // `oldStatus = status` runs on every boat, so the next tick has one.
         self.boats.update(i, |b| b.status_known = true);
@@ -1409,7 +1415,7 @@ impl Game<'_> {
     /// gets out, and a server's player is asked to
     /// (`guest_vehicle_tick` lets it out through its client).
     fn eject_boat_riders(&mut self, i: usize) {
-        self.eject_boat_mobs(i, false);
+        self.eject_boat_mobs(i);
         let id = self.boats[i].id;
         if self.riding == Some(id) && self.player.is_some() {
             self.dismount(i);
@@ -1672,15 +1678,9 @@ impl Game<'_> {
             let p = self.boats[i].position;
             let id = self.boats[i].id;
             let kind = self.boats[i].entity_type();
-            let source = sunrise_client::health::HurtSource {
-                damage_type: "minecraft:lava",
-                causing: 0,
-                direct: 0,
-                position: None,
-            };
             let vanilla = self.saved_refuses_damage(id, "minecraft:lava", false);
-            let broke = !self.native_nonliving_invulnerable(id, &kind, source, vanilla)
-                && self.hurt_boat(i, 4.0, false);
+            let broke =
+                !self.refuses_lava_hurt(id, &kind, vanilla) && self.hurt_boat(i, 4.0, false);
             self.lava_hurt_sound([p.x, p.y, p.z]);
             if broke {
                 return true;
@@ -2105,6 +2105,10 @@ impl Game<'_> {
             .persist
             .destroying_vehicles
             .contains(&super::commands::Target::Boat(id))
+            || self
+                .persist
+                .preparing_vehicle_removals
+                .contains(&super::commands::Target::Boat(id))
         {
             return Some(true);
         }
@@ -2133,45 +2137,14 @@ impl Game<'_> {
         });
         if destroyed {
             self.native_vehicle_destroy("boat", at);
-            if !self.boats.iter().any(|b| {
-                b.id == id
-                    && !self
-                        .persist
-                        .removals
-                        .contains(&crate::game::commands::Target::Boat(id))
-            }) {
-                return Some(true);
-            }
-            if self
-                .with_destroying_vehicle(super::commands::Target::Boat(id), |game| {
-                    game.dismount_destroyed_vehicle_players(id);
-                    if let Some(i) = game.boats.iter().position(|boat| boat.id == id) {
-                        game.eject_boat_mobs(i, true);
-                    }
-                })
-                .is_none()
-            {
-                return Some(true);
-            }
-            let Some(i) = self.boats.iter().position(|b| {
-                b.id == id
-                    && !self
-                        .persist
-                        .removals
-                        .contains(&crate::game::commands::Target::Boat(id))
-            }) else {
+            let Some(b) = self.boats.iter().find(|b| b.id == id) else {
                 return Some(true);
             };
-            self.release_vehicle_container(id);
-            self.unpack_boat_loot(i, false);
-            let b = self.boats.remove(i);
-            // `AbstractChestBoat.remove` spills the chest through
-            // `Containers.dropContents` for every destroying removal reason
-            // (the kill below, and a creative hit's discard); that has no
-            // `entity_drops` gate of its own. A plain boat has no slots.
-            self.drop_vehicle_contents(at, &b.items);
-            // AbstractBoat.remove, after that: a destroyed boat drops its lead.
-            self.boat_removed(&b);
+            let item = b.entity_type();
+            let slots = b.items.len();
+            if !self.kill_vehicle_object(super::commands::Target::Boat(id)) {
+                return Some(true);
+            }
             // `VehicleEntity.destroy(level, dropItem)`: `kill` (the boat's own
             // ENTITY_DIE after that removal), then the boat item on the death
             // path only, and only with `entity_drops` on, by `spawnAtLocation`
@@ -2187,7 +2160,6 @@ impl Game<'_> {
                     .rules
                     .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
             {
-                let item = b.entity_type();
                 self.spawn_item_own(
                     ItemStack {
                         item: Arc::from(item.as_str()),
@@ -2200,23 +2172,27 @@ impl Game<'_> {
                 );
                 // AbstractChestBoat.destroy: `chestVehicleDestroyed` drops the
                 // emptied chest again, which only draws each slot's spot.
-                if b.chest {
-                    let empty = vec![None; b.items.len()];
-                    self.drop_vehicle_contents(at, &empty);
+                if slots != 0 {
+                    self.drop_vehicle_contents(at, &vec![None; slots]);
                 }
             }
-            self.retain_removed_vehicle(id, super::persist::RemovedVehicle::Boat(b));
         }
         Some(destroyed)
     }
     /// AbstractBoatRenderer.
-    pub(super) fn boat_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
+    pub(super) fn boat_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+        run: std::ops::Range<usize>,
+    ) {
         let a = alpha as f32;
         let range = super::entity_culling::default_range(
             glam::DVec3::new(WIDTH, HEIGHT, WIDTH),
             self.view_scale(),
         );
-        for b in &self.boats {
+        for b in &self.boats[run] {
             // LevelExtractor: the camera entity is not drawn from its own eyes.
             if self.hides_as_camera(b.id) {
                 continue;
