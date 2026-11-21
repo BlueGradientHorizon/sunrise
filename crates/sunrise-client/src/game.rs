@@ -644,7 +644,7 @@ struct FallingBlock {
     /// `Entity.fallDistance` (powder snow holds a block that fell far at 0.9).
     fall_distance: f64,
     /// `Entity.onGround`: whether its last move was stopped going down.
-    on_ground: bool,
+    ground: sunrise_world::ground_support::GroundState,
     /// `Entity.remainingFireTicks` (`Fire`): lava sets it, and it never counts
     /// down, as `FallingBlockEntity.tick` runs no `baseTick`.
     fire_ticks: i32,
@@ -3894,7 +3894,7 @@ impl Game<'_> {
                         portal: Default::default(),
                         drop_item: true,
                         fall_distance: 0.0,
-                        on_ground: false,
+                        ground: Default::default(),
                         fire_ticks: 0,
                         sync_velocity: false,
                         stuck: Vec3::ZERO,

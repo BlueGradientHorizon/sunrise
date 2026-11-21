@@ -60,6 +60,18 @@ impl Game<'_> {
         seats
     }
 
+    /// The first seat, preserving enumeration order on a tie without sorting or allocating.
+    pub(super) fn first_seated_passenger(&self, vehicle: u32) -> Option<(i64, u32, bool)> {
+        let mut first: Option<(i64, u32, bool)> = None;
+        self.any_passenger_seat(vehicle, &[], |seat| {
+            if first.is_none_or(|old| seat.0 < old.0) {
+                first = Some(seat);
+            }
+            false
+        });
+        first
+    }
+
     /// `Entity.isVehicle`: any kind of rider makes this a vehicle.
     pub(in crate::game) fn has_seated_passengers(&self, vehicle: u32) -> bool {
         self.has_seated_passengers_with_lent_mobs(vehicle, &[])

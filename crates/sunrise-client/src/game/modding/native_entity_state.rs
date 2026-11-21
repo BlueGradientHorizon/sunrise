@@ -1002,7 +1002,7 @@ mod tests {
                 velocity: Vec3::ZERO,
                 value: 7,
                 age: 600,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 count: 1,
                 fire_ticks: 0,
                 ticks: 21,
@@ -1098,7 +1098,7 @@ mod tests {
                 velocity: Vec3::ZERO,
                 value: 1,
                 age: 0,
-                on_ground: false,
+                ground: Default::default(),
                 count: 1,
                 fire_ticks: 0,
                 ticks: 0,
@@ -1158,7 +1158,7 @@ mod tests {
             game.next_entity += 1;
             let falling = game.next_entity;
             game.falling.push(FallingBlock {
-                on_ground: false,
+                ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
                 attachment_lifetime: Default::default(),
@@ -1339,7 +1339,7 @@ mod tests {
             game.next_entity += 1;
             let id = game.next_entity;
             game.falling.push(FallingBlock {
-                on_ground: false,
+                ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
                 attachment_lifetime: Default::default(),
