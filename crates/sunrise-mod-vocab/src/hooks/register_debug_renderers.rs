@@ -17,8 +17,9 @@ per renderer.
 Each refresh replaces the active list, so a mod pushes every renderer it has, each time, and may
 rebuild its renderers' state here. Pushing an id does not list an option, since the option must
 exist before any refresh. As in vanilla, the option is an entry registered once at start:
-`Hooks::register_debug_entries` with `DebugGroup::Renderer` and the same id. It is listed in the debug options' renderer section, sorted by its id with
-vanilla's, and is switched like them (`alwaysOn`, `inOverlay`, `never`), saved in
+push `DebugEntry::renderer` with the same ID in `Hooks::register_debug_entries`. It is listed in the
+debug options' renderer section, sorted by ID with vanilla's, and is switched like them
+(`alwaysOn`, `inOverlay`, `never`), saved in
 `debug-profile.json` under its full id. It starts off, and reduced debug info hides it, as it
 hides vanilla's. A renderer whose entry is off is left out of the active list, and one with no
 such entry is logged and left out.

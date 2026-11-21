@@ -1036,7 +1036,6 @@ one of these moments has to move that logic into a client native mod.
 | `compute_fov_modifier.rs` | `compute_fov_modifier` |
 | `customize_boss_event_progress.rs` | `customize_boss_event_progress` |
 | `customize_chat_overlay.rs` | `customize_chat_overlay` |
-| `debug_entry_lines.rs` | `debug_entry_lines` |
 | `debug_renderer_draw.rs` | `debug_renderer_draw` |
 | `entity_outline.rs` | `entity_outline` |
 | `flip_frame.rs` | `flip_frame` |

@@ -23,12 +23,29 @@ ids = [
     "type:GuiLayerDrawEvent",
     "type:GuiLayerDrawEvent.layer",
     "type:GuiLayerDrawEvent.draw",
+    "hook:register_debug_entries",
+    "method:Hooks::register_debug_entries",
+    "type:DebugEntry",
+    "type:DebugEntry.id",
+    "type:DebugEntry.group",
+    "type:DebugEntryLines",
+    "type:DebugGroup",
+    "type:DebugGroup.Renderer",
+    "hook:debug_entry_lines",
+    "hook:debug_entry_lines.id",
+    "hook:debug_entry_lines.lines",
+    "method:Hooks::debug_entry_lines",
+    "type:DebugEntryLinesEvent",
+    "type:DebugEntryLinesEvent.id",
+    "type:DebugEntryLinesEvent.lines",
 ]
-why = "HUD slots own their draw code, so the client calls the installed body under its registering mod's identity rather than broadcasting a draw ID every frame. Mods can replace or wrap a slot without shifting it or changing when it draws. Post runs once after that body and no longer runs after a canceled Pre."
+why = "HUD slots own their draw code, so the client calls the installed body under its registering mod's identity rather than broadcasting a draw ID every frame. Mods can replace or wrap a slot without shifting it or changing when it draws. Post runs once after that body and no longer runs after a canceled Pre. F3 text entries now own their line callbacks, called as the registering mod only when enabled. Renderer toggles have no text group or callback."
 migrate = """
 In Hooks::register_gui_layers, replace `event.layers.push(GuiLayer { id, placement })` with `event.layers.register(id, placement, Box::new(move |host, draw| { /* draw this layer */ }))`. Move the matching branch from Hooks::gui_layer_draw into that closure: use `host` as the client host and `draw` in place of `event.draw`. Capture per-layer data instead of branching on `event.layer`. Remove the GuiLayer and GuiLayerDrawEvent imports and the gui_layer_draw method. Keep the same GuiLayerPlacement. Register returns false if the ID or relative anchor is rejected. Place layers between the health rows and the contextual bar with `Above("minecraft:player_health".into())` or `Below("minecraft:contextual_info_bar".into())`; these anchors now follow their paint order.
 
 To replace an existing layer, move painting out of the old `gui_layer_pre` branch that drew and returned `Flow::Cancel`: register `event.layers.replace_layer(id, Box::new(|host, draw| { /* replacement paint */ }))` once. To keep or conditionally draw its previous body, register `event.layers.wrap_layer(id, Box::new(|ctx| { /* paint around ctx.draw_previous() */ }))`. Read the client with `ctx.host()` and use `ctx.with_draw(&mut |draw| { /* before or after paint */ })` on either side of `ctx.draw_previous()`. Use the existing slot ID (both registration methods return false if it is unknown). Remove the old Pre branch once it no longer handles cancellation.
 
 `gui_layer_post` keeps its signature but no longer follows a Pre that returned `Flow::Cancel`. Use the wrapper to paint after the retained or replacement body; move work that must run independently of a canceled layer to `gui_render_post`.
+
+In `Hooks::register_debug_entries`, each mod now receives its own empty batch, not the earlier mods' entries. Replace `event.entries.push(DebugEntry { id, group })` with `event.entries.push(DebugEntry::text(id, group, move |host, lines| { /* append this entry's lines */ }))`. Move the matching branch from `Hooks::debug_entry_lines` into this closure. Use `host` for client reads and `lines` in place of `event.lines`; capture per-entry data instead of branching on `event.id`. Remove `Hooks::debug_entry_lines` and the `DebugEntryLinesEvent` import. For `DebugEntry { id, group: DebugGroup::Renderer }`, use `DebugEntry::renderer(id)` with the same switch ID. If you inspect a declaration, use `entry.id()` instead of `entry.id` and `entry.text_lines()` instead of `entry.group`; it returns the group and callback for text or `None` for a renderer switch. Use the constructors rather than cloning or comparing declarations; compare their IDs when you mean the same debug option. Keep callbacks in process: if you encoded old declarations as data, encode your own ID and text group (or renderer flag), then construct the declaration with your local function at startup.
 """

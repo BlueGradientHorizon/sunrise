@@ -476,7 +476,7 @@ pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std
     Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
     sunrise_client::skull_models::register(models, vanilla_root);
 }
-/// The native mods' F3 debug entries (`native_register_debug_entries`), kept once at start.
+/// Freeze the native mods' F3 text callbacks and renderer toggles at client startup.
 pub(super) fn register_debug_entries(role: ExecutionRole) {
     if !role.is_client() {
         return;

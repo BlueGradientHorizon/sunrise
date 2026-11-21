@@ -7,7 +7,7 @@ use super::{
 };
 use glam::Mat4;
 use mod_api::{
-    ClientHost, DebugEntry, DebugGroup, DebugRenderer, DebugRendererDrawEvent, Hooks, ModEntry,
+    ClientHost, DebugEntry, DebugRenderer, DebugRendererDrawEvent, Hooks, ModEntry,
     RegisterDebugEntriesEvent, RegisterDebugRenderersEvent, WorldDepth, WorldLine,
 };
 use std::sync::Mutex;
@@ -40,10 +40,7 @@ impl Hooks for Marker {
         event: &mut RegisterDebugEntriesEvent<'_>,
     ) {
         for id in [SHOWN, OTHER] {
-            event.entries.push(DebugEntry {
-                id: id.into(),
-                group: DebugGroup::Renderer,
-            });
+            event.entries.push(DebugEntry::renderer(id.into()));
         }
     }
     fn register_debug_renderers(

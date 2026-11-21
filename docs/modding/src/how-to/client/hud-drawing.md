@@ -48,6 +48,29 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 its body nor Post runs. For work that must happen even when the HUD is hidden, use the independent
 foreground `gui_render_post` hook.
 
+## Registering F3 text
+
+Push a `DebugEntry::text(id, group, lines)` in `Hooks::register_debug_entries` at client
+startup. Use a non-vanilla namespaced ID, which also identifies the entry in the debug options
+and saved profile. The group says which vanilla lines yours join; the closure receives the
+current client host and appends to the entry's lines.
+
+```rust,ignore
+use mod_api::{DebugEntry, DebugGroup, RegisterDebugEntriesEvent, RegistrationContext};
+
+fn register_debug_entries(&self, _: &RegistrationContext, event: &mut RegisterDebugEntriesEvent<'_>) {
+    event.entries.push(DebugEntry::text(
+        "example:queue".into(),
+        DebugGroup::Memory,
+        |_host, lines| lines.push("Queue: ready".into()),
+    ));
+}
+```
+
+The client keeps the closure and calls it as your mod only while the entry is visible.
+Reduced debug info hides it, even if it is set to always on. Push `DebugEntry::renderer(id)`
+instead to list a world-space renderer toggle with the same ID and no text.
+
 ## Gradient fills
 
 `DrawContext::fill_gradient(rect, top, bottom)` is vanilla's `GuiGraphics.fillGradient`, the call screen
