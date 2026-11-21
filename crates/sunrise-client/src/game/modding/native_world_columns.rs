@@ -247,7 +247,7 @@ mod tests {
                     .iter()
                     .filter_map(|path| {
                         path.split_first()
-                            .filter(|(head, _)| *head == name_str)
+                            .filter(|(head, _)| **head == name_str)
                             .map(|(_, tail)| tail)
                     })
                     .collect();
