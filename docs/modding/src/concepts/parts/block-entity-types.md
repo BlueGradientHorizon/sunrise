@@ -9,13 +9,14 @@ let press = r.block_entity_type("press")
 r.block_entity_part(&press, Press).expect("native block entity type");
 ```
 
-The builder qualifies the type ID and each bare block name with the registering mod's namespace, so
-`"press"` above is `mymod:press`; the blocks may be declared later in `blocks`. It owns the save ID, wire type
+The builder qualifies a bare type ID and each bare block name with the registering mod's namespace,
+so `"press"` above is `mymod:press`. Explicit identifiers keep their namespaces; the blocks may be
+declared later in `blocks`. The type defines the save ID, wire type
 and valid blocks; `block_entity` returns only initial `Compound` data (or none for an empty compound). It is fired
 inside the write that creates the entity (`LevelChunk.setBlockState`) and receives the read-only level, a `LevelSide`,
 on a server and on a client of one.
-Unknown blocks, duplicate types, overlapping membership and attempts to own a `minecraft:` block are
-refused at load. Refused native block, item or block entity declarations stop startup, as does unreadable
+Unknown blocks, duplicate types (including built-in keys), overlapping membership and attempts
+to reassign an existing vanilla block are refused at load. Refused native block, item or block entity declarations stop startup, as does unreadable
 known-components input; the game does not fall back to vanilla content. An explicitly declared mod
 template block uses its declared type; undeclared template blocks retain their vanilla behavior. Adding mod blocks to vanilla types is not supported by this builder.
 The hooks about the entity (`block_entity_tick`, `block_entity_update_tag`, `pre_remove_side_effects`,

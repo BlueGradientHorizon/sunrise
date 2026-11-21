@@ -923,8 +923,7 @@ impl BlockEntitiesRegistrar for PartRegistrar {
         if let Some(id) = id.filter(|id| {
             self.block_entity_types
                 .iter()
-                .any(|(_, decl)| decl.id == *id)
-                && self.owned_declaration_id(id).is_ok()
+                .any(|(owner, decl)| *owner == self.mod_id && decl.id == *id)
         }) {
             self.block_entity_transforms.insert(id, step);
         } else {

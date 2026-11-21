@@ -1,11 +1,15 @@
-//! Concrete authoring extracted verbatim from the vocabulary layer.
+//! Qualify and validate code registry keys.
 use super::*;
 
 impl PartRegistrar {
-    /// New identifiers only, not attachment targets: Parts may attach to
-    /// vanilla or another mod's existing content.
+    /// Bare names use this mod's ID; explicit namespaces remain unchanged.
+    pub(crate) fn declaration_id(&self, name: &str) -> Result<String, String> {
+        declaration_id(self.mod_id, name)
+    }
+
+    // Removed in P3-04 step 3 once Part registrar callers use declaration_id.
     pub(crate) fn owned_declaration_id(&self, name: &str) -> Result<String, String> {
-        owned_declaration_id(self.mod_id, name)
+        self.declaration_id(name)
     }
 }
 
@@ -119,12 +123,17 @@ mod tests {
     }
 
     #[test]
-    fn manifest_owned_declarations_keep_the_persisted_namespace() {
+    fn declarations_keep_explicit_namespaces_and_qualify_bare_names() {
         with_porter(|| {
             let mut r = PartRegistrar::new("porter");
             r.dimension_shape = |_| true;
-            assert_eq!(r.owned_declaration_id("bare").unwrap(), "porter:bare");
-            assert_eq!(r.owned_declaration_id("legacy:pot").unwrap(), "legacy:pot");
+            assert_eq!(r.declaration_id("bare").unwrap(), "porter:bare");
+            assert_eq!(r.declaration_id("legacy:pot").unwrap(), "legacy:pot");
+            assert_eq!(r.declaration_id("foreign:pot").unwrap(), "foreign:pot");
+            assert_eq!(
+                r.declaration_id("minecraft:custom_pot").unwrap(),
+                "minecraft:custom_pot"
+            );
             let kind = r.declare_block_entity_type("legacy:pot", vec!["legacy:pot".into()]);
             assert_ne!(
                 kind,
@@ -179,16 +188,17 @@ mod tests {
             assert_eq!(r.entity_attributes[0].id, "legacy:cook");
             assert_eq!(&*r.dimensions[0].id, "legacy:kitchen");
             assert!(r.refused.is_empty(), "{:?}", r.refused);
-            assert_eq!(
-                r.declare_block_entity_type("unowned:pot", vec![]),
+            let foreign = r.declare_block_entity_type("foreign:pot", vec![]);
+            assert_ne!(
+                foreign,
                 mod_vocab::__private::parts_installation::block_entity_type_key(u32::MAX)
             );
-            let reason = r.refused.last().unwrap();
-            assert!(
-                reason.contains("porter") && reason.contains("unowned"),
-                "{reason}"
+            assert_eq!(r.block_entity_types[1].0, "porter");
+            assert_eq!(r.block_entity_types[1].1.id, "foreign:pot");
+            assert_eq!(
+                r.declaration_id("legacy:Bad Name"),
+                Err("mod porter declares invalid identifier \"legacy:Bad Name\"".into())
             );
-            assert!(r.owned_declaration_id("legacy:Bad Name").is_err());
         });
     }
 
@@ -255,17 +265,16 @@ mod tests {
         #[crate::__subscriptions]
         impl Hooks for Declares {
             fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
-                let mut value = Block::new("legacy:pot", "minecraft:stone");
+                let mut value = Block::new("foreign:pot", "minecraft:stone");
                 value.block_item = Some("spoon".into());
                 value.pick_item = Some("minecraft:stick".into());
                 value.wall_block = Some("legacy:wall_pot".into());
                 value.base_block = Some("soil".into());
                 event.register(value).unwrap();
                 assert_eq!(
-                    event.register(Block::new("unowned:pot", "minecraft:stone")),
-                    Err(DeclarationError::UnownedNamespace {
-                        id: "unowned:pot".into(),
-                        namespace: "unowned".into(),
+                    event.register(Block::new("foreign:Bad Name", "minecraft:stone")),
+                    Err(DeclarationError::InvalidId {
+                        id: "foreign:Bad Name".into(),
                     })
                 );
             }
@@ -274,6 +283,9 @@ mod tests {
                 value.crafting_remainder = Some("bowl".into());
                 value.block = Some("minecraft:stone".into());
                 event.register(value).unwrap();
+                event
+                    .register(Item::new("minecraft:custom_spoon", "minecraft:stick"))
+                    .unwrap();
                 assert_eq!(
                     event.register(Item::new("Bad Name", "minecraft:stick")),
                     Err(DeclarationError::InvalidId {
@@ -301,13 +313,15 @@ mod tests {
                 assert_eq!(blocks.len(), 1);
                 assert_eq!(blocks[0].mod_id, "porter");
                 let pot = &blocks[0].answer;
-                assert_eq!(pot.id, "legacy:pot");
+                assert_eq!(pot.id, "foreign:pot");
                 // Bare references use the declaring mod, not the declaration's other namespace.
                 assert_eq!(pot.block_item.as_deref(), Some("porter:spoon"));
                 assert_eq!(pot.pick_item.as_deref(), Some("minecraft:stick"));
                 assert_eq!(pot.wall_block.as_deref(), Some("legacy:wall_pot"));
                 assert_eq!(pot.base_block.as_deref(), Some("porter:soil"));
-                assert_eq!(items.len(), 1);
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[1].mod_id, "porter");
+                assert_eq!(items[1].answer.id, "minecraft:custom_spoon");
                 let item = &items[0].answer;
                 assert_eq!(item.id, "porter:spoon");
                 assert_eq!(item.crafting_remainder.as_deref(), Some("porter:bowl"));
@@ -319,9 +333,8 @@ mod tests {
                         DeclarationRefusal::new(
                             "porter",
                             DeclarationKind::Block,
-                            DeclarationError::UnownedNamespace {
-                                id: "unowned:pot".into(),
-                                namespace: "unowned".into(),
+                            DeclarationError::InvalidId {
+                                id: "foreign:Bad Name".into(),
                             },
                         ),
                         DeclarationRefusal::new(

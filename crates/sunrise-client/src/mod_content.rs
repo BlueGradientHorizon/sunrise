@@ -736,23 +736,6 @@ impl std::fmt::Display for UnknownBaseBlock {
 }
 impl std::error::Error for UnknownBaseBlock {}
 
-/// A native block entity declaration uses vanilla's reserved namespace.
-#[derive(Debug)]
-pub struct ReservedBlockEntityNamespace {
-    /// The refused type's registry ID.
-    pub kind: String,
-}
-impl fmt::Display for ReservedBlockEntityNamespace {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "block entity type {} cannot use the minecraft namespace",
-            self.kind
-        )
-    }
-}
-impl std::error::Error for ReservedBlockEntityNamespace {}
-
 /// A block ID resolved against the complete content and vanilla registry.
 struct KnownBlock<'a>(&'a str);
 
@@ -1122,7 +1105,7 @@ use entity_sounds::mod_entity_row;
 
 impl<'a> Plan<'a> {
     fn new(base: &Path, mods: &'a [ContentMod]) -> Result<Self> {
-        let vanilla_items = match base.join("items.json").exists() {
+        let vanilla_items: BTreeSet<String> = match base.join("items.json").exists() {
             true => match read_json(&base.join("items.json"))? {
                 J::Obj(entries) => entries.into_iter().map(|(id, _)| id).collect(),
                 _ => return Err("items.json is not an object".into()),
@@ -1252,10 +1235,27 @@ impl<'a> Plan<'a> {
             (names[start + len..].iter().all(|n| n != name))
                 .then_some(start as u32..(start + len) as u32)
         };
-        let declared_ids: BTreeSet<&str> = mods
-            .iter()
-            .flat_map(|m| m.content.blocks.iter().map(|b| b.id.as_str()))
-            .collect();
+        // Native declarations can share a namespace with another package, not a registry key.
+        let mut declared_ids = BTreeSet::new();
+        let mut item_ids = BTreeSet::new();
+        for m in mods {
+            for block in &m.content.blocks {
+                if defaults.contains_key(&block.id) || !declared_ids.insert(block.id.as_str()) {
+                    return Err(format!("{}: {} is already a block", m.id, block.id).into());
+                }
+            }
+            for id in m.content.items.iter().map(|item| item.id.as_str()).chain(
+                m.content
+                    .blocks
+                    .iter()
+                    .filter(|block| block.item)
+                    .map(|block| block.id.as_str()),
+            ) {
+                if vanilla_items.contains(id) || !item_ids.insert(id) {
+                    return Err(format!("{}: {id} is already an item", m.id).into());
+                }
+            }
+        }
         let mut block_entity_types: Vec<(&str, &BlockEntityType)> = mods
             .iter()
             .flat_map(|m| {
@@ -1277,17 +1277,11 @@ impl<'a> Plan<'a> {
             };
             let mut ids: BTreeSet<&str> = entries.iter().map(|(id, _)| id.as_str()).collect();
             for (mod_id, kind) in &block_entity_types {
-                if kind.id.starts_with("minecraft:") {
-                    return Err(ReservedBlockEntityNamespace {
-                        kind: kind.id.clone(),
-                    }
-                    .into());
-                }
                 if !ids.insert(&kind.id) {
                     return Err(format!("block entity type {} is already declared", kind.id).into());
                 }
                 for block in &kind.blocks {
-                    if block.starts_with("minecraft:") {
+                    if defaults.contains_key(block.as_str()) {
                         return Err(format!(
                             "mod {mod_id}: block entity type {} cannot own vanilla block {block}",
                             kind.id
@@ -1381,9 +1375,6 @@ impl<'a> Plan<'a> {
                     }
                     None => None,
                 };
-                if defaults.contains_key(&decl.id) {
-                    return Err(format!("{}: {} is already a block", m.id, decl.id).into());
-                }
                 if decl.shapes_from_block_entity
                     && !block_entity_factories.contains_key(decl.id.as_str())
                 {

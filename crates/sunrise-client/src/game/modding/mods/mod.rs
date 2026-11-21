@@ -263,6 +263,15 @@ pub(super) fn register_components(root: &std::path::Path) -> sunrise_client::Res
     let types = builtin
         .get("minecraft:data_component_type")
         .ok_or("missing data component registry")?;
+    if let Some(name) = names
+        .iter()
+        .find(|name| !name.is_empty() && types.names.contains(name))
+    {
+        return Err(format!(
+            "native component {name} conflicts with a built-in data component type"
+        )
+        .into());
+    }
     let first = i32::try_from(types.names.len())?;
     sunrise_protocol::item::custom::install(first, names)
         .map_err(|error| format!("invalid native component registration: {error}"))?;
@@ -297,10 +306,6 @@ impl DeclarationFailures {
                 DeclarationError::InvalidId { id } => {
                     Text::translate("sunrise.mods.declaration.invalid_id", &[quoted(id)])
                 }
-                DeclarationError::UnownedNamespace { id, namespace } => Text::translate(
-                    "sunrise.mods.declaration.unowned_namespace",
-                    &[quoted(id), quoted(namespace)],
-                ),
                 DeclarationError::Rejected { id, reason } => Text::translate(
                     "sunrise.mods.declaration.rejected",
                     &[quoted(id), Text::literal(reason.clone())],
@@ -2154,7 +2159,7 @@ mod tests {
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for DeclaresBadContent {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
-                let _ = event.register(mod_api::Block::new("foreign:lamp", "minecraft:stone"));
+                let _ = event.register(mod_api::Block::new("foreign:Bad Lamp", "minecraft:stone"));
             }
             fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
                 let _ = event.register(mod_api::Item::new("Bad Key", "minecraft:stick"));
@@ -2181,9 +2186,8 @@ mod tests {
                         DeclarationRefusal::new(
                             "maker",
                             DeclarationKind::Block,
-                            DeclarationError::UnownedNamespace {
-                                id: "foreign:lamp".into(),
-                                namespace: "foreign".into(),
+                            DeclarationError::InvalidId {
+                                id: "foreign:Bad Lamp".into(),
                             }
                         ),
                         DeclarationRefusal::new(
@@ -2248,14 +2252,13 @@ mod tests {
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Declares {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
-                let _ = event.register(mod_api::Block::new("foreign:lamp", "minecraft:stone"));
                 event
-                    .register(mod_api::Block::new("tool", "minecraft:stone"))
+                    .register(mod_api::Block::new("foreign:tool", "minecraft:stone"))
                     .unwrap();
             }
             fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
                 event
-                    .register(mod_api::Item::new("tool", "minecraft:stick"))
+                    .register(mod_api::Item::new("foreign:tool", "minecraft:stick"))
                     .unwrap();
                 let mut item = mod_api::Item::new("bad_component", "minecraft:stick");
                 item.components
@@ -2270,21 +2273,10 @@ mod tests {
                     .err()
                     .expect("invalid native batch must refuse startup");
                 let report = error.downcast_ref::<DeclarationFailures>().unwrap();
-                assert_eq!(report.0.len(), 3, "{:?}", report.0);
-                assert_eq!(
-                    report.0[0],
-                    DeclarationRefusal::new(
-                        "maker",
-                        DeclarationKind::Block,
-                        DeclarationError::UnownedNamespace {
-                            id: "foreign:lamp".into(),
-                            namespace: "foreign".into()
-                        }
-                    )
-                );
+                assert_eq!(report.0.len(), 2, "{:?}", report.0);
                 for (record, id, detail) in [
-                    (&report.0[1], "maker:tool", "block's item"),
-                    (&report.0[2], "maker:bad_component", "maker:unknown"),
+                    (&report.0[0], "foreign:tool", "block's item"),
+                    (&report.0[1], "maker:bad_component", "maker:unknown"),
                 ] {
                     assert_eq!(
                         (&*record.mod_id, record.kind),
@@ -2301,13 +2293,50 @@ mod tests {
     }
 
     #[test]
+    fn native_component_registration_refuses_a_builtin_key() {
+        struct DeclaresDamage;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for DeclaresDamage {
+            fn component_types(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::ComponentTypesEvent<'_>,
+            ) {
+                event.register("minecraft:damage".into());
+            }
+        }
+        let root =
+            std::env::temp_dir().join(format!("sunrise-component-builtin-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("registries.json"),
+            r#"{"minecraft:data_component_type":{"entries":{"minecraft:damage":{"protocol_id":0}}}}"#,
+        )
+        .unwrap();
+        let result = mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("maker", Box::new(DeclaresDamage))].into(),
+            || {
+                let _registration = mod_api::__private::PhaseOwner::scope(
+                    mod_api::__private::ModPhase::Registration,
+                );
+                register_components(&root)
+            },
+        );
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "native component minecraft:damage conflicts with a built-in data component type"
+        );
+    }
+
+    #[test]
     fn native_declarations_follow_the_scoped_mod_fixture() {
         struct DeclaresBlock;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for DeclaresBlock {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
                 event
-                    .register(mod_api::Block::new("test:blastproof", "minecraft:stone"))
+                    .register(mod_api::Block::new("foreign:blastproof", "minecraft:stone"))
                     .unwrap();
             }
         }
@@ -2320,7 +2349,7 @@ mod tests {
                 native_declared().batches["test"]
                     .blocks
                     .iter()
-                    .any(|b| b.get().id == "test:blastproof")
+                    .any(|b| b.get().id == "foreign:blastproof")
             );
         });
         mod_platform::testing::with_mods(Vec::new().into(), || {

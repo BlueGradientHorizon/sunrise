@@ -98,11 +98,11 @@ Code mods declare content through `BlocksEvent` and `ItemsEvent`, using API-owne
 run before resources load. These are load-time declarations, not live registry entries. The game
 admits them with the content-file checks, atomically for each owner.
 A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none.
-New identifiers from code—including block entity types and other registrar
-declarations—may use any namespace owned by that mod's manifest. Bare names use
-the mod ID; an explicit owned namespace stays unchanged. An unowned namespace
-refuses registration with a diagnostic naming both the mod and namespace. Attaching a Part to an existing vanilla or
-foreign block or item is a reference, not a new declaration, and remains allowed.
+For blocks, items, and block entity types declared in code, bare names use the mod ID;
+an explicit valid `namespace:path` stays unchanged, including an unused `minecraft:` key.
+Declarations cannot replace built-in or other registered entries. Refusals name the submitting
+mod, regardless of the key's namespace. Attaching a Part to an existing vanilla or foreign block
+or item is a reference, not a new declaration.
 
 Code declarations carry component patches as `Vec<(String, Option<Tag>)>`:
 `Some(tag)` sets the named component and `None` removes it (without a `!` prefix).
@@ -1184,10 +1184,10 @@ namespaces = ["kaisyn", "towns_and_towers"]
 
 A listed namespace is the mod's as its id is: its `assets/` and `data/` files load, and the game reads its tags,
 recipes, names and loot. Blocks, items, creative tabs, mob effects, entity types and menu types may be declared in
-`data/<owned_namespace>/sunrise/`. The same owned set governs code declarations.
-For example, a package with ID `ported_farmersdelight` and
-`namespaces = ["farmersdelight"]` can declare `farmersdelight:cooking_pot`
-and its `farmersdelight:` block entity type without changing saved-world IDs.
+`data/<owned_namespace>/sunrise/`. This file rule does not restrict the IDs used for code-declared
+blocks, items, and block entity types. For example, a package with ID `ported_farmersdelight` can
+register a code-declared `farmersdelight:cooking_pot` without changing its saved-world ID;
+its `farmersdelight:` asset and data files still require `namespaces = ["farmersdelight"]`.
 `minecraft`, `c` and `sunrise` cannot be listed. When two packages list the same extra namespace, the first
 admitted package owns it; the game leaves the later package's content out and logs the conflict. A package's
 primary namespace is its ID. Listing another package's ID as an extra namespace is a load error, regardless of

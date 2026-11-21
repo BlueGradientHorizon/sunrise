@@ -145,7 +145,8 @@ impl<T: ?Sized + 'static> BlockProviders<T> {
 }
 
 impl dyn Registrar + '_ {
-    /// Declare a block entity type in a namespace owned by this mod's manifest.
+    /// Declare a block entity type by key. A bare name uses this mod's namespace; an explicit
+    /// valid `namespace:path` is kept. Existing type keys, including vanilla's, cannot be replaced.
     pub fn block_entity_type(&mut self, id: &str) -> crate::BlockEntityTypeBuilder<'_> {
         crate::BlockEntityTypeBuilder {
             id: id.to_owned(),
@@ -242,8 +243,9 @@ pub trait BlockEntitiesRegistrar {
     /// Look up a vanilla or another mod's type. The final registry validates it at load.
     fn block_entity_type_key(&mut self, id: &str) -> crate::BlockEntityTypeKey;
 
-    /// Declare block entity type `path` in a namespace owned by this mod's manifest, held by `blocks`
-    /// (a bare name is this mod's); mods usually reach it through `block_entity_type`.
+    /// Declare a new block entity type held by `blocks`. A bare type or block name uses this mod's
+    /// namespace. Explicit keys keep their namespace. Vanilla blocks cannot be reassigned here;
+    /// mods usually reach this through `block_entity_type`.
     fn declare_block_entity_type(
         &mut self,
         path: &str,

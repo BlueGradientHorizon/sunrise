@@ -1,0 +1,8 @@
+ids = [
+    "type:DeclarationError.UnownedNamespace",
+    "hook:blocks",
+    "hook:items",
+    "hook:component_types",
+]
+why = "Like NeoForge RegisterEvent.register and vanilla 26.3 MappedRegistry.register, code declaration keys are not claims to package namespaces. Bare declaration names qualify to the submitting mod ID and explicit identifiers retain their namespace. The submitting mod stays separate for attribution. Block, item, block entity type, component and custom statistic keys cannot overwrite existing entries, including vanilla entries registered by DataComponents.register and Stats.makeCustomStat. The block entity builder still cannot reassign an existing vanilla block. The blocks, items and component_types hooks move from version 2 to 3 for accepting keys the old contract refused. File-pack ownership is unchanged."
+migrate = "Keep BlocksEvent::register, ItemsEvent::register, ComponentTypesEvent::register, Registrar::block_entity_type and CustomStatsRegistrar::register_custom_stat. A new declaration can use its intended unused key (for example, explicitly pass \"other:charge\" instead of renaming it to \"mymod:charge\"); keep the old key if it is already in saves. Bare declaration names still use your mod ID; components still require an explicit namespace. Delete the DeclarationError::UnownedNamespace match arm: malformed names still return InvalidId, while registry-specific refusals reported as a DeclarationError use Rejected. If your manifest pins blocks, items or component_types, change hook_version = 2 to hook_version = 3. Keep manifest namespaces for assets and data files you ship under those namespaces."

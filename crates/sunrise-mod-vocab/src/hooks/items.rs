@@ -6,6 +6,8 @@ pub trait Hooks {
     /// Pass each `mod_api::Item` to `event.register`. The declaration belongs to the
     /// submitting package and works like `data/<id>/sunrise/item/<path>.json` in a
     /// content mod. A block's item is declared with its block, not here.
+    /// A bare item ID uses the submitting mod's ID as its namespace; an explicit valid
+    /// `namespace:path` is kept as written. Existing item keys are not replaced.
     /// `register` returns a typed `DeclarationError` for invalid IDs or fields.
     /// The game records the refusal and stops startup even if you ignore the error.
     #[hook(
@@ -17,7 +19,7 @@ pub trait Hooks {
         out = "items",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 2
+        version = 3
     )]
     fn items(
         items: &mut dyn FnMut(

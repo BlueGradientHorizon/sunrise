@@ -6,6 +6,7 @@ use crate::{
 
 /// The package inventory carries the same namespace set as content files and
 /// the package loader's collision fence. A package always owns its own ID.
+/// Keep the cross-crate export for runtime level creation until P3-36.
 pub fn owns_namespace(owner: &str, namespace: &str) -> bool {
     owner == namespace
         || crate::LoadedMods::new()
@@ -24,22 +25,20 @@ pub fn qualified(owner: &str, name: &str) -> String {
     }
 }
 
-/// Validate and qualify a declaration using the package namespace inventory.
-pub fn owned_declaration_id(owner: &str, name: &str) -> Result<String, String> {
-    validate_owned_id(owner, qualified(owner, name))
+/// Qualify a bare declaration name with the mod ID and validate the resulting identifier.
+pub fn declaration_id(owner: &str, name: &str) -> Result<String, String> {
+    validate_declaration_id(qualified(owner, name))
         .map_err(|error| format!("mod {owner} declares {error}"))
 }
 
-fn validate_owned_id(owner: &str, id: String) -> Result<String, DeclarationError> {
-    let Some(parsed) = crate::Identifier::parse_namespaced(&id) else {
+// Removed in P3-04 step 3 once Part registrar callers use declaration_id.
+pub fn owned_declaration_id(owner: &str, name: &str) -> Result<String, String> {
+    declaration_id(owner, name)
+}
+
+fn validate_declaration_id(id: String) -> Result<String, DeclarationError> {
+    if crate::Identifier::parse_namespaced(&id).is_none() {
         return Err(DeclarationError::InvalidId { id });
-    };
-    let namespace = parsed.namespace();
-    if !owns_namespace(owner, namespace) {
-        return Err(DeclarationError::UnownedNamespace {
-            id,
-            namespace: namespace.to_owned(),
-        });
     }
     Ok(id)
 }
@@ -96,7 +95,7 @@ pub(crate) fn submit_declaration<D: Declaration>(
     }
     let result = (|| {
         let (id, references) = declaration.names();
-        *id = validate_owned_id(mod_id, qualified(mod_id, id))?;
+        *id = validate_declaration_id(qualified(mod_id, id))?;
         for reference in references.into_iter().flatten() {
             *reference = qualified(mod_id, reference);
         }
@@ -114,7 +113,7 @@ pub(crate) fn submit_declaration<D: Declaration>(
     })
 }
 
-/// The engine consumes block/item declaration ownership refusals before loading
+/// The engine consumes block/item declaration refusals before loading
 /// resources.
 // hidden: engine admission plumbing, re-exported through __private for the loader.
 #[doc(hidden)]

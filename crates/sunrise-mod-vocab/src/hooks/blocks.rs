@@ -6,6 +6,8 @@ pub trait Hooks {
     /// Pass each `mod_api::Block` to `event.register`. The declaration belongs to the
     /// submitting package and works like `data/<id>/sunrise/block/<path>.json` in a
     /// content mod, including a block item unless disabled with `Block::with_item(false)`.
+    /// A bare block ID uses the submitting mod's ID as its namespace; an explicit valid
+    /// `namespace:path` is kept as written. Existing block keys are not replaced.
     /// `register` returns a typed `DeclarationError` for invalid IDs or fields.
     /// The game records the refusal and stops startup even if you ignore the error.
     #[notes = r#"## Villager farming
@@ -26,7 +28,7 @@ requires a farmer at work and `mob_griefing` enabled."#]
         out = "blocks",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 2
+        version = 3
     )]
     fn blocks(
         blocks: &mut dyn FnMut(
