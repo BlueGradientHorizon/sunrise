@@ -68,9 +68,15 @@ fn entity_type_id(game: &Game<'_>, kind: &str) -> i32 {
         .unwrap_or_else(|| panic!("missing entity type {kind}"))
 }
 
-fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64; 3], flat: bool) {
+#[must_use]
+fn setup_remote_overworld(
+    game: &mut Game<'_>,
+    player_id: i32,
+    player_pos: [f64; 3],
+    flat: bool,
+) -> Pipe {
     game.native_lifecycle = NativeLifecycle::default();
-    let (client, _server) = Pipe::pair();
+    let (client, server) = Pipe::pair();
     game.connect_local(client, "CameraParityTest").unwrap();
     let spawn = SpawnInfo {
         dimension_type: 0,
@@ -100,6 +106,7 @@ fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64;
     game.camera_type = CameraType::FirstPerson;
     game.settings.fov = 70.0;
     game.settings.render_distance = 8;
+    server
 }
 
 fn add_entity(game: &mut Game<'_>, id: i32, kind: &str, position: [f64; 3], yaw: f32, pitch: f32) {
@@ -173,7 +180,7 @@ fn genpvp_menu_interaction_camera_matches_26_3_witness() {
     let partial = f32::from_bits(hex_f32(&settled["camera"]["partial_tick_bits"]));
 
     with_client_game(|game| {
-        setup_remote_overworld(game, player_id, player_pos, false);
+        let _server = setup_remote_overworld(game, player_id, player_pos, false);
         add_entity(game, cam_id, cam_type, cam_entity_pos, 0.0, 0.0);
         sync_interaction_size(game, cam_id, 0.1, 1.9059);
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: cam_id }))
@@ -253,7 +260,7 @@ fn any_tracked_entity_resolves_as_camera_26_3() {
     let witness = parity_witness();
     let records = witness["entity_cameras"]["records"].as_array().unwrap();
     with_client_game(|game| {
-        setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
         let mut mismatches = Vec::new();
         for (idx, row) in records.iter().enumerate() {
             let label = row["label"].as_str().unwrap();
@@ -346,7 +353,7 @@ fn interaction_camera_eye_rotation_move_and_teleport_26_3() {
     let witness = parity_witness();
     let life = &witness["interaction_lifecycle"];
     with_client_game(|game| {
-        setup_remote_overworld(game, 1, [0.0, 64.0, 0.0], true);
+        let _server = setup_remote_overworld(game, 1, [0.0, 64.0, 0.0], true);
 
         // 1. Unsynced spawn keeps eye_height == 0.0 and stores spawn rotation.
         add_entity(
@@ -525,7 +532,7 @@ fn removing_camera_entity_keeps_detached_camera_26_3() {
     for kind in ["minecraft:interaction", "minecraft:creeper"] {
         let case = &witness["camera_removal"][kind];
         with_client_game(|game| {
-            setup_remote_overworld(game, 7, [0.5, 64.0, 0.5], true);
+            let _server = setup_remote_overworld(game, 7, [0.5, 64.0, 0.5], true);
             add_entity(game, 31, kind, [10.5, 300.0, 12.5], 45.0, 10.0);
             if kind == "minecraft:interaction" {
                 sync_interaction_size(game, 31, 0.1, 1.9059);
@@ -612,7 +619,7 @@ fn camera_consumers_bob_fog_dark_disc_and_vignette_26_3() {
     let witness = parity_witness();
     let consumers = &witness["camera_consumers"];
     with_client_game(|game| {
-        setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], false);
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], false);
 
         // Give the local player hurt + walk bob, Spectator mode, and fog-altering potions.
         {
@@ -864,7 +871,7 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
     let want_occluded_crosshair = cross["with_interaction_crosshair"].as_bool().unwrap();
 
     with_client_game(|game| {
-        setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
         let plains = *world_biomes!(game).index.get("minecraft:plains").unwrap();
         let desert = *world_biomes!(game).index.get("minecraft:desert").unwrap();
         game.world
@@ -1017,7 +1024,7 @@ fn frozen_camera_partial_tick_matches_26_3_witness() {
     let witness = parity_witness();
     let frozen = &witness["camera_consumers"]["frozen_partial"];
     with_client_game(|game| {
-        setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
         add_entity(
             game,
             2,
@@ -1075,7 +1082,7 @@ fn block_outline_requires_player_camera_26_3() {
     let witness = parity_witness();
     let outline = &witness["camera_consumers"]["block_outline"];
     with_client_game(|game| {
-        setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
         game.handle_packet(C::GameEvent(play::GameEvent {
             event: 3,
             param: 1.0,
@@ -1123,7 +1130,7 @@ fn culling_near_plane_uses_max_of_fov_and_option_fov_26_3() {
 
     with_client_game(|game| {
         // Bottom stone_slab at [1,65,0] uses NEAR_PLANE_INTERSECTS_OUTLINE: 70-deg hits, 7-deg misses.
-        setup_remote_overworld(game, 1, [0.99, 63.6, 0.5], true);
+        let _server = setup_remote_overworld(game, 1, [0.99, 63.6, 0.5], true);
         game.world
             .chunks
             .insert((0, 0), Arc::new(make_chunk(0, 0, 0, 0xF0)));
