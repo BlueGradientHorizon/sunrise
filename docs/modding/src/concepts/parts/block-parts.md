@@ -3,8 +3,8 @@
 `BlockPart::clone_item_stack` answers on the server when a player picks the block. It receives the
 level, position, block state, and `include_data`, true when a creative player picks with Ctrl.
 `event.player` is the player who sent the pick request. Use it with the read-only host for
-player reads such as `event.player.food_level(host)`. The request does not include a client hit
-face. Return `None` to keep the game's item.
+player reads such as `event.player.food(host).map(|food| food.level)`. The request does not include
+a client hit face. Return `None` to keep the game's item.
 
 ## Breaking-crack display
 
