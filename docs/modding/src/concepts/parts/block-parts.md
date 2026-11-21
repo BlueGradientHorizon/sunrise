@@ -56,8 +56,8 @@ the server only, and no mob is supplied. The same state may answer differently b
 Queries on the supplied level (such as `level.block_state(pos)` or looking up a block entity via
 `level.block_entity(pos)` and `level.block_entity_data(entity)`) are strictly read-only: they never
 perform writes, random draws, chunk loads or lazy loot generation. `level.block_entity(pos)`
-returns `None` when no block entity is present, the chunk is unloaded, `pos` is outside the build
-height, or the block entity is temporarily out of the world for its own tick.
+returns `None` when no block entity is present, the chunk is unloaded, or `pos` is outside the build
+height.
 `level.block_entity_data(entity)` returns validated saved data without identity metadata, or
 `None` for stale generations and handles from another level or world.
 

@@ -31,7 +31,7 @@ impl Game<'_> {
         world_block_entity(world, level, pos)
     }
 
-    /// `block_entity`, also for a block entity temporarily detached for a menu operation:
+    /// `block_entity`, also for a block entity temporarily taken out by an engine operation:
     /// its generation stays in place while it is out.
     pub(super) fn block_entity_identity(
         &self,
@@ -854,7 +854,7 @@ pub(super) fn part_snapshot(
 }
 
 /// The handle of the loaded block entity at `pos`, without loading a chunk or taking one
-/// that is out of the world for its own tick.
+/// temporarily absent from the resident table.
 pub(super) fn world_block_entity(
     world: &World,
     level: LevelRef,

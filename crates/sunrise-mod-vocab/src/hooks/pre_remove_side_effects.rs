@@ -24,8 +24,8 @@ pub trait Hooks {
   Each list is limited to 1024 entries and positions must be finite. It runs inside
   the level's write with the level host, like `neighbor_changed`; the block entity is still in place, so the part
   reads its attachments with `TYPE.get(host, Holder::BlockEntity(pos))`, the level host being their store. A part that returns nothing draws nothing.
-  A ticking or `menu_button` block entity stays in the level: removing its block through the Host runs the usual
-  removal, and the old scope can no longer lend a view."#]
+  A ticking or menu-hook (`menu_button`, `menu_quick_move`, `menu_slot_take`) block entity stays in the level:
+  removing its block through the Host runs the usual removal, and the old scope can no longer lend a view."#]
     #[hook(
         side = "server",
         contract = "collect",

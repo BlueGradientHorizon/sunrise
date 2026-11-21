@@ -150,14 +150,14 @@ struct PotOutput;
 impl mod_api::BlockPart for PotOutput {}
 #[mod_api::sunrise_part]
 impl mod_api::BlockEntityPart for PotOutput {
-    fn menu_slot_take(
-        &self,
-        _: &mut dyn mod_api::ServerHost,
-        event: &mut mod_api::MenuSlotTakeEvent<'_>,
-    ) {
+    fn menu_slot_take(&self, event: &mut mod_api::MenuSlotTakeEvent<'_>) {
         // Slot 6 is the result: each item taken uses up one input from slot 0.
-        if event.slot == 6 && let Some(input) = event.entity.items[0].take() {
-            event.entity.items[0] = input.shrink(event.taken.count());
+        if event.slot == 6 {
+            event.subject.with_view(|mut entity| {
+                if let Some(input) = entity.item_slot(0).and_then(|s| s.to_owned()) {
+                    let _ = entity.set_item_slot(0, input.shrink(event.taken.count()));
+                }
+            });
         }
     }
 }
@@ -172,9 +172,12 @@ clone and a refused take are not takes. Taking from a linked container or from t
 the block behind the menu. When `menu_quick_move` handles a shift-click, its move is heard before the click commits.
 Each take runs before the next iteration, so a listener can refill a crafting grid and the next iteration sees it.
 
-The take and the listeners are one action: what a listener writes through the `Host` stays when it returns, and if one
-panics or traps its writes are undone and so is the take, the slot and the cursor going back as they were. The block
-entity is out of the world during the call, as in `menu_button`. Nothing is asked when no mod listens.
+`menu_slot_take` (contract version 2) lends the live resident block entity and the server `Host` sequentially through
+`event.subject: BlockEntityScope<'_>` (`with_view` returns `None` if the block entity was removed or replaced during
+the call). Writes through `with_view` validate at the boundary and apply in place, marking the chunk dirty and firing
+container updates when items change (matching vanilla `BlockEntity.setChanged`). When an enclosing click transaction
+is open, a panicking listener is contained and disabled for `menu_slot_take` for the rest of the session, and the
+click undoes its transaction before resending the menu. Nothing is asked when no mod listens.
 
 ## Crafted-by processing for held stacks
 
@@ -301,14 +304,19 @@ host.transaction(|host, tx| {
 })
 ```
 
-`menu_clicked` (contract version 2) and `menu_quick_move` (contract version 4, with an optional remainder where `None` empties the clicked slot) each run as one action: what a listener writes
-through the `Host` stays when it returns and is undone with the rest of the action when a listener fails. A
-panicking `menu_quick_move` publishes neither the detached block entity (including one-shot update fields)
-nor the stack remainder or handled answer. A panic, an invalid answer, or a `Host` write to a player's inventory,
-cursor or menu storage refuses the whole quick move instead of falling back to the game's routing.
-`menu_clicked` hears the raw slot, button
+`menu_clicked` (contract version 2) runs as one action: what a listener writes through the `Host` stays when it
+returns and is undone with the rest of the action when a listener fails. `menu_clicked` hears the raw slot, button
 and click type on a menu a mod opened (a single-slot drag once); menu-button clicks, recipe placement and creative
 set-slot never reach it, and it cannot know whether the click changes anything.
+
+`menu_quick_move` (contract version 5, with an optional remainder where `None` empties the clicked slot) lends the
+live resident block entity and the server `Host` sequentially through `event.subject: BlockEntityScope<'_>` instead of
+detaching a snapshot or wrapping untaken fallbacks in a rollback transaction. Writes through
+`event.subject.with_view(...)` validate at the boundary and apply in place (marking the chunk dirty and firing
+container updates when items change, matching vanilla `BlockEntity.setChanged`); use `event.subject.transaction(...)`
+when an edit must span the subject and other world storage atomically. A panicking callback is contained and disabled
+for `menu_quick_move` for the rest of the session, discarding its `stack` and `handled` outputs and resending the menu;
+an invalid `stack` remainder leaves the clicked slot's original stack untouched.
 
 Inside `menu_clicked`, `ItemPlace::MenuSlot` can take from and give to the clicking
 player's inventory and hotbar slots as well as the menu's own storage. Inserts fill

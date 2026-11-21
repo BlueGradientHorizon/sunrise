@@ -103,10 +103,11 @@ impl BlockEntityPartState for Press {
 }
 r.block_entity_part_with_state(&press, Press)?;
 
-// In its tick, where the block entity is out of the world and `block_entity` finds nothing:
-let level = host.level(host.dimension()).unwrap();
-let entity = host.block_entity_identity(level, event.pos).unwrap();
-let done = Press::edit_state(host, entity, |_, progress| {
+// In its tick (or a menu hook), get the live handle from the view, then edit through the Host:
+let Some(entity) = event.subject.with_view(|view| view.handle()) else {
+    return;
+};
+let done = Press::edit_state(event.subject.host(), entity, |_, progress| {
     *progress += 1;
     *progress >= 200
 })?;

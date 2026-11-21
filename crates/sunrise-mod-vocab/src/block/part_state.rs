@@ -32,8 +32,9 @@ use std::{cell::RefCell, fmt, sync::Arc};
 /// their own nested transaction and store the new value only when the closure returns.
 /// Every call first checks that `entity` is still the block entity it named, in the
 /// level this host is in: a replaced, removed or unloaded one refuses with
-/// [`PartStateError::Stale`]. A block entity out of the world for its own tick still
-/// answers, through [`BlockEntitiesHost::block_entity_identity`].
+/// [`PartStateError::Stale`]. A block entity temporarily taken out by an engine ticker still
+/// answers, through [`BlockEntitiesHost::block_entity_identity`]; mod block entities stay
+/// resident during ticks and menu hooks.
 ///
 /// Server-side only for now: `DATA` must not sync, and a client's copy holds nothing
 /// of it, so a client reads the default.
