@@ -109,7 +109,9 @@ impl RandomSource for LegacyRandomSource {
     }
 }
 // no wire: borrowed RNG adapter used only when crossing into a native callback.
+// hidden: the renderer lends its provider RNG through the native callback.
 #[doc(hidden)]
+// exhaustive: a game-only adapter around the precise engine RNG loan.
 pub struct BorrowedRandom<'a>(pub &'a mut LegacyRandom);
 impl RandomSource for BorrowedRandom<'_> {
     fn next_int(&mut self) -> i32 {

@@ -104,6 +104,7 @@ pub fn particle_name(key: ParticleKey) -> Option<&'static str> {
     resolved().get()?.names.id(key.0)
 }
 
+// hidden: the command registry enumerates the game's resolved particle IDs.
 #[doc(hidden)]
 pub fn particle_ids() -> impl Iterator<Item = &'static str> {
     resolved()
@@ -112,6 +113,7 @@ pub fn particle_ids() -> impl Iterator<Item = &'static str> {
         .flat_map(|p| p.names.order.iter().filter_map(|&slot| p.names.id(slot)))
 }
 
+// hidden: the renderer reads the limiter policy when it resolves a typed request.
 #[doc(hidden)]
 pub fn particle_override_limiter(key: ParticleKey) -> Option<bool> {
     crate::parts::installed()?
@@ -133,6 +135,7 @@ fn particle_codec(key: ParticleKey) -> Option<&'static dyn ParticleCodec> {
 }
 
 /// Decode the fields of a named, codec-bearing type. `None` means this name has no typed codec.
+// hidden: the game's structured and command dispatch select a registered codec.
 #[doc(hidden)]
 pub fn decode_particle_map(
     name: &str,
@@ -143,6 +146,7 @@ pub fn decode_particle_map(
 }
 
 /// Encode a structured value, selecting its registered `type` at this boundary.
+// hidden: the game's structured dispatcher writes the type field.
 #[doc(hidden)]
 pub fn encode_particle_map(value: &TypedParticleOptions) -> Result<Compound, String> {
     let key = value.key();
@@ -155,6 +159,7 @@ pub fn encode_particle_map(value: &TypedParticleOptions) -> Result<Compound, Str
 }
 
 /// Decode a Sunrise particle envelope. An asset-only type has no stream fields.
+// hidden: the play connection dispatches this envelope before spawning.
 #[doc(hidden)]
 pub fn decode_particle_stream(
     name: &str,
@@ -173,6 +178,7 @@ pub fn decode_particle_stream(
     }
 }
 
+// hidden: the play connection encodes one registered payload for the packet.
 #[doc(hidden)]
 pub fn encode_particle_stream(
     value: &TypedParticleOptions,

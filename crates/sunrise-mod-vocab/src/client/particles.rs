@@ -60,6 +60,7 @@ impl ParticleOptions {
         self.ty
     }
 
+    // hidden: the game wraps a value decoded by the registered codec.
     #[doc(hidden)]
     pub fn from_typed(value: super::particle_types::TypedParticleOptions) -> Self {
         let key = value.key();
@@ -69,6 +70,7 @@ impl ParticleOptions {
         }
     }
 
+    // hidden: the game's spawn and send paths inspect the erased value.
     #[doc(hidden)]
     pub fn typed(&self) -> Option<&super::particle_types::TypedParticleOptions> {
         self.typed.as_ref()
