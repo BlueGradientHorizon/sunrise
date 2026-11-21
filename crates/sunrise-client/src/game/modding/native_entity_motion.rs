@@ -657,7 +657,7 @@ mod tests {
             let velocity = Vec3::new(0.25, -0.125, 0.5);
             let mut stand = ArmorStand::new(40, position, 25.0);
             stand.velocity = velocity;
-            stand.fall_distance = 1.5;
+            stand.enchantment_fall_distance = 1.5;
             stand.ground.horizontal_collision = true;
             game.armor_stands.push(stand);
             let entity = game.entity(40).unwrap();
@@ -683,7 +683,7 @@ mod tests {
             assert_eq!(stand.ground.supporting_block, None::<BlockPos>);
             assert!(!stand.ground.on_ground_no_blocks);
             assert!(stand.ground.horizontal_collision);
-            assert_eq!(stand.fall_distance, 1.5);
+            assert_eq!(stand.enchantment_fall_distance, 1.5);
             assert_eq!(
                 (stand.position, stand.velocity, stand.yaw),
                 (position, velocity, 25.0)
@@ -698,7 +698,7 @@ mod tests {
     #[ignore = "daily"]
     fn set_on_ground_follows_the_server_players_parked_and_acting_bodies() {
         use super::super::{
-            native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
+            Dim, native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
         };
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
@@ -731,9 +731,16 @@ mod tests {
                 .update_guest(12, |guest| guest.position = [0.9, 65.0, 0.5])
                 .unwrap();
             game.world.set(1, 64, 0, stone).unwrap();
+            game.enter_level(Dim::Nether).unwrap();
+            // This level has no support at the guest's coordinates. The parked
+            // Overworld under their footprint does.
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             assert_eq!(entity.set_on_ground(game, true), Ok(true));
             assert_eq!(entity.on_ground(game), Some(true));
             assert_eq!(entity.on_block(game), Some([1, 64, 0]));
+            game.enter_level(Dim::Overworld).unwrap();
             game.as_guest(12, |game| {
                 assert_eq!(entity.on_ground(game), Some(true));
                 assert_eq!(entity.on_block(game), Some([1, 64, 0]));
