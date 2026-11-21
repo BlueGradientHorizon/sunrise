@@ -977,8 +977,7 @@ impl Game<'_> {
                     self.remember_mob_player_credit(id);
                 }
             }
-            // Warden.hurtServer: anger and target at hurt time, refused hit or not.
-            self.settle_warden_hurt(id);
+            self.settle_mob_hurt(id);
         }
     }
     /// The owner as `rocket_targets` names it: a guest by their entity id.

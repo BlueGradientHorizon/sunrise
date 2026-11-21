@@ -275,8 +275,7 @@ impl Game<'_> {
                     }
                     None => false,
                 };
-                // Warden.hurtServer: anger and target at hurt time, refused hit or not.
-                self.settle_warden_hurt(id);
+                self.settle_mob_hurt(id);
                 if survived_hit && live_owner.is_some() {
                     self.mob_post_attack(
                         id,
