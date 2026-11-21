@@ -177,7 +177,7 @@ fn signed(content: &str) -> ChatMessage {
     ChatMessage {
         sender: 12,
         index: 0,
-        signature: None,
+        signature: Some([9; sunrise_protocol::secure_chat::SIGNATURE_BYTES]),
         content: content.to_owned(),
         timestamp: 0,
         salt: 0,
@@ -215,7 +215,14 @@ fn a_chat_line_hidden_from_one_receiver_reaches_the_others() {
                     .unwrap();
             };
             say(game, "a secret");
-            assert_eq!(lines(&sender), 1, "the sender still sees it");
+            let play::Clientbound::PlayerChat(chat) = packets(&sender).next().unwrap() else {
+                panic!("the sender still sees signed player chat");
+            };
+            assert_eq!(chat.content, "a secret");
+            assert_eq!(
+                chat.signature.as_deref(),
+                Some([9; sunrise_protocol::secure_chat::SIGNATURE_BYTES].as_slice())
+            );
             assert_eq!(lines(&other), 0, "the hidden receiver is not sent it");
             assert_eq!(
                 std::mem::take(&mut *asked.lock().unwrap()),
@@ -227,7 +234,10 @@ fn a_chat_line_hidden_from_one_receiver_reaches_the_others() {
             );
             say(game, "hello");
             assert_eq!(lines(&sender), 1);
-            assert_eq!(lines(&other), 1, "a line no mod hides reaches everyone");
+            let play::Clientbound::PlayerChat(chat) = packets(&other).next().unwrap() else {
+                panic!("a line no mod hides reaches everyone");
+            };
+            assert_eq!(chat.global_index, 0, "an omitted line consumes no index");
         });
     });
 }
