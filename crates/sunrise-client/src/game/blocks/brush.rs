@@ -6,7 +6,6 @@ use super::{
     item_draw::{BlockItemDraw, block_entity_pose},
     view_vector,
 };
-use std::collections::HashMap;
 use sunrise_client::{
     block_entity_render::vertex_light,
     camera::rotate_degrees,
@@ -18,30 +17,7 @@ use sunrise_client::{
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::random::RandomSource;
 
-/// `BrushItem.USE_DURATION`.
-const USE_DURATION: u32 = 200;
-
-/// A brushable block's counters. Vanilla never saves them: the block's
-/// `dusted` state is all that is left after a reload.
-#[derive(Default)]
-pub(super) struct BrushState {
-    count: i32,
-    resets_at: i64,
-    cooldown_ends_at: i64,
-    hit_face: Option<[i32; 3]>,
-}
-
-/// `BrushableBlockEntity.getCompletionState`: the `dusted` property.
-fn completion_state(count: i32) -> i32 {
-    match count {
-        0 => 0,
-        1..=2 => 1,
-        3..=5 => 2,
-        _ => 3,
-    }
-}
-
-pub(super) type Brushing = HashMap<[i32; 3], BrushState>;
+pub(super) use sunrise_gameplay::brushing::{Brushing, USE_DURATION, completion_state};
 
 impl Game<'_> {
     /// `BrushItem.onUseTick` for a brush used `ticks` ticks so far, the
