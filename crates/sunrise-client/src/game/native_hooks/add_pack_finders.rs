@@ -20,6 +20,11 @@ impl Game<'_> {
         &mut self,
         packs: &mut crate::game::pack_finders::Registry,
     ) {
-        Self::fire_add_pack_finders(self, |listen| packs.register_listener(listen));
+        let mods = self.mods.clone();
+        Self::fire_add_pack_finders(
+            self,
+            |listen| packs.register_listener(listen),
+            |id| mods.code_owner_enabled(id),
+        );
     }
 }

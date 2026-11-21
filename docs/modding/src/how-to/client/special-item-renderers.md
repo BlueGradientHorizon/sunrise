@@ -145,17 +145,18 @@ mod does not pass those values to the collector.
 Registration runs once at client startup, not on reload. Use a fully qualified name
 (`namespace:path`); an invalid name is logged and skipped. The last registration of a type wins,
 including replacements for vanilla types. Each resource load decodes the winning definitions,
-bakes new renderer instances and leases, and starts with no disabled types. Submit only leases
+bakes new renderer instances and leases for enabled factories. Submit only leases
 from the current load. Item states already resolved before a reload retain their baked geometry
 and can finish drawing it.
 
-An unknown type or an error or panic in decode or bake refuses the enclosing item definition.
-That item draws the missing model; the other definitions still load and the game does not try a
-lower pack's definition.
+An unknown type, a disabled winning factory, or an error or panic in decode or bake refuses the
+enclosing item definition. That item draws the missing model. Other definitions still load; the
+game does not try the built-in decoder for an overridden type or a lower pack's definition.
 
-A callback error or panic, an invalid pose, or a lease from the wrong resource load rolls back the
-entire special layer and disables the offending type until resources reload. Unreadable input or
-a nested refusal also rolls back the enclosing layer, including its earlier submissions, without
-disabling the enclosing renderer. Ignoring a collector error does not make the layer commit;
-propagate it with `?`. The outermost refused layer draws the missing model; unrelated item
-layers still draw normally.
+The factory, argument extraction and submission run as the mod that registered the type.
+A failed draw rolls back the entire special layer, including earlier submissions. A panic
+logs and shows an error toast naming the mod, and disables the failing callback for that type
+for the session, even after a reload. Other errors are reported on every failure and do not
+disable the callback. A nested refusal rolls back the enclosing layer but does not disable
+its renderer. Ignoring a collector error does not make the layer commit; propagate it with `?`.
+The outermost refused layer draws the missing model; unrelated item layers still draw normally.

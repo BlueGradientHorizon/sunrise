@@ -101,8 +101,9 @@ no lookup by name and no scan over the mods; with no layer at all, it checks one
 builds nothing. The draw retains its existing body poses only when the target has a layer to draw
 or a Post listener can read them. A layer on one type does not request captures for other types.
 The layers draw on the mobs (vanilla's and the content mods' living types) and on the players,
-this window's own in third person included. The armour stand and the ender dragon have draws of their
-own that don't run layers, so `add` refuses them.
+including this window's own in third person when it holds the camera. In the ordered body pass, layers
+submit in level join order, interleaved with general entity renderer submissions. The armour stand
+and the ender dragon have draws of their own that don't run layers, so `add` refuses them.
 
 Use `render_living_post` and `render_player_post` to draw after the layers without registering for
 one specific type (NeoForge's `RenderLivingEvent.Post` and `RenderPlayerEvent.Post`). They borrow the

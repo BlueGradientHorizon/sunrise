@@ -29,7 +29,7 @@ use sunrise_core::geometry::{Aabb, Axis, Direction, ShapeOp, Vec3, border::Borde
 use sunrise_core::position::BlockPos;
 use sunrise_world::{
     block_collision_scan::BlockCollisionWorld, collision_context::CollisionContext,
-    entity_move::MoverType, level::data::PushReaction::IgnoreEntity, level::pistons::MovingPiston,
+    entity_move::MoverType, level::data::PushReaction, level::pistons::MovingPiston,
     move_gate::MoveGate, piston_movement::PistonMovement, piston_push,
     world_movement::EntityMovementWorld,
 };
@@ -91,6 +91,7 @@ struct Body {
     position: Vec3,
     on_ground: bool,
     step_height: f32,
+    piston_reaction: PushReaction,
     /// Standing on the piston's own block (`Entity.isSupportedBy`).
     supported: bool,
 }
@@ -198,7 +199,7 @@ impl Game<'_> {
         let at = pushes[0].0;
         self.push_targets()
             .filter(|&target| {
-                self.push_body(target, Some(at), steps)
+                self.piston_body(target, Some(at), steps)
                     .is_some_and(|body| body.bounds.intersects(reach))
             })
             .collect()
@@ -393,7 +394,11 @@ impl Game<'_> {
         // The armor stands' obstacles, built at the first stand the lid meets.
         let mut stand_grid = None;
         self.push_targets().for_each(|target| {
-            let Some(body) = self.push_body(target, None, &steps) else {
+            let body = match lid {
+                Lid::Box => self.piston_body(target, None, &steps),
+                Lid::Shulker(_) => self.push_body(target, None, &steps),
+            };
+            let Some(body) = body else {
                 return;
             };
             if !body.bounds.intersects(area) {
@@ -489,10 +494,8 @@ impl Game<'_> {
         let mut i = 0;
         while i < self.cushions.len() {
             let c = &self.cushions[i];
-            if root == Some(c.id) || !meets(c.bounds()) {
+            if root == Some(c.id) || !meets(c.bounds()) || !self.break_cushion_by(i, None) {
                 i += 1;
-            } else {
-                self.break_cushion_by(i, None);
             }
         }
     }
@@ -737,7 +740,7 @@ impl Game<'_> {
             )
         });
         targets.iter().copied().for_each(|target| {
-            let Some(body) = self.push_body(target, Some(pos), steps) else {
+            let Some(body) = self.piston_body(target, Some(pos), steps) else {
                 return;
             };
             // `level.getEntities(null, area)`: a body outside the search area
@@ -775,7 +778,7 @@ impl Game<'_> {
                 // an entity that is still inside its own block.
                 if !piston.extending
                     && piston.source
-                    && let Some(after) = self.push_body(target, Some(pos), steps)
+                    && let Some(after) = self.piston_body(target, Some(pos), steps)
                     && let Some(fix) = piston_push::fix_within_piston_base(
                         pos,
                         after.bounds,
@@ -802,13 +805,13 @@ impl Game<'_> {
         if honey && movement.normal()[1] == 0 {
             let area = piston_push::sticky_area(pos, piston.shape_state(), sticky_top);
             for &target in targets {
-                let Some(body) = self.push_body(target, Some(pos), steps) else {
+                let Some(body) = self.piston_body(target, Some(pos), steps) else {
                     continue;
                 };
                 if piston_push::sticky_entity_selected(
                     area,
                     body.bounds,
-                    sunrise_world::level::data::PushReaction::PushPull,
+                    body.piston_reaction,
                     body.on_ground,
                     body.supported,
                     body.position,
@@ -1059,8 +1062,18 @@ impl Game<'_> {
             .chain(self.entity_handles().map(MoveWho::Entity))
     }
 
-    /// What the push needs from one entity, or `None` when it is not pushed:
-    /// removed, dead, a spectator, or an armor-stand marker. `pos` is the
+    /// Pistons and shulker boxes skip bodies that ignore piston reactions.
+    fn piston_body(
+        &self,
+        target: MoveWho,
+        pos: Option<BlockPos>,
+        steps: &StepHeights,
+    ) -> Option<Body> {
+        self.push_body(target, pos, steps)
+            .filter(|body| body.piston_reaction != PushReaction::IgnoreEntity)
+    }
+
+    /// What the push needs from a live, non-spectating body. `pos` is the
     /// pushing block a body can stand on (none for a lid).
     fn push_body(
         &self,
@@ -1079,6 +1092,7 @@ impl Game<'_> {
                     position: p.position,
                     on_ground: p.ground.on_ground,
                     step_height: steps.player,
+                    piston_reaction: PushReaction::PushPull,
                     supported: pos.is_some() && p.ground.supporting_block == pos,
                 })
             }
@@ -1095,16 +1109,15 @@ impl Game<'_> {
                     position: Vec3::new(p[0], p[1], p[2]),
                     on_ground: g.on_ground,
                     step_height: steps.guests.get(&conn).copied().unwrap_or(0.6),
+                    piston_reaction: PushReaction::PushPull,
                     supported: g
                         .motion
                         .as_ref()
                         .is_some_and(|m| pos.is_some() && m.ground.supporting_block == pos),
                 })
             }
-            MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
-                entity.is_alive() && entity.get_piston_push_reaction() != IgnoreEntity
-            })
-            .then(|| self.listed_body(handle, pos)),
+            MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.is_alive())
+                .then(|| self.listed_body(handle, pos)),
         }
     }
 
@@ -1115,6 +1128,7 @@ impl Game<'_> {
             position: entity.position(),
             on_ground: entity.on_ground(),
             step_height: entity.get_step_height(),
+            piston_reaction: entity.get_piston_push_reaction(),
             supported: pos.is_some_and(|pos| entity.is_supported_by(pos)),
         })
     }

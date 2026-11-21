@@ -26,7 +26,16 @@ PATTERN = "|".join(
 def main():
     root = Path(__file__).resolve().parents[1]
     files = subprocess.check_output(
-        ["git", "ls-files", "-z", "crates/*.rs", "docs/*.md"], cwd=root
+        [
+            "git",
+            "ls-files",
+            "-z",
+            "crates/*.rs",
+            "docs/modding/*.md",
+            "docs/fabric-ledger.md",
+            "docs/paper-ledger.md",
+        ],
+        cwd=root,
     ).decode().split("\0")
     for name in filter(None, files):
         path = root / name

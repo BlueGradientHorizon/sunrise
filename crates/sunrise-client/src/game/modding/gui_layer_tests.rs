@@ -258,3 +258,111 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
         );
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
+    use sunrise_client::hud::{Blend, rgba};
+
+    let test = "game::gui_layer_tests::a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal";
+    crate::game::in_own_process(test, || {
+        struct Wrapper(&'static str, bool);
+        #[mod_api::__subscriptions]
+        impl Hooks for Wrapper {
+            fn register_gui_layers(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterGuiLayersEvent<'_>,
+            ) {
+                let Self(id, broken) = *self;
+                assert!(event.layers.wrap_layer(
+                    "minecraft:hotbar",
+                    Box::new(move |ctx| {
+                        assert_owner(id);
+                        log(id);
+                        if broken {
+                            ctx.with_draw(&mut |draw| draw.fill([0.0, 0.0, 4.0, 4.0], 0xFFFF_0000));
+                            ctx.draw_previous();
+                            ctx.with_draw(&mut |draw| draw.fill([0.0, 0.0, 4.0, 4.0], 0xFF00_00FF));
+                            ctx.draw_previous();
+                            ctx.with_draw(&mut |draw| draw.fill([0.0, 0.0, 4.0, 4.0], 0xFFFF_0000));
+                            panic!("broken wrapper");
+                        }
+                        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            ctx.draw_previous();
+                        }))
+                        .is_err()
+                        {
+                            log(format!("caught by {id}"));
+                        }
+                        assert_owner(id);
+                    }),
+                ));
+            }
+        }
+        with_client_game(|game| {
+            mod_platform::__private::install(
+                vec![
+                    ModEntry::new("inner", Box::new(Wrapper("inner", false))),
+                    ModEntry::new("broken", Box::new(Wrapper("broken", true))),
+                    ModEntry::new("outer", Box::new(Wrapper("outer", false))),
+                ]
+                .into(),
+            );
+            mods::register_gui_layers(ExecutionRole::Client);
+            let mut batch = HudBatch::scratch([320, 240]);
+            let white = rgba(255, 255, 255, 255);
+            let green = rgba(0, 255, 0, 255);
+            let yellow = rgba(255, 255, 0, 255);
+            let mut paint_calls = 0;
+            batch.fill(&game.gui.atlas, 0.0, 0.0, 4.0, 4.0, white);
+            game.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |g, batch| {
+                log("vanilla paint");
+                let start = batch.vertices.len();
+                let color = [green, yellow][paint_calls];
+                paint_calls += 1;
+                batch.fill(&g.gui.atlas, 0.0, 0.0, 4.0, 4.0, color);
+                batch.invert_since(start);
+            });
+            assert_eq!(
+                take(),
+                [
+                    "outer",
+                    "broken",
+                    "inner",
+                    "vanilla paint",
+                    "inner",
+                    "vanilla paint"
+                ]
+            );
+            assert_eq!(
+                batch.vertices.iter().map(|v| v.color).collect::<Vec<_>>(),
+                [[white; 6], [green; 6], [yellow; 6]].concat()
+            );
+            assert_eq!(
+                batch.blends,
+                [(6..12, Blend::Invert), (12..18, Blend::Invert)]
+            );
+
+            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                game.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |_, _| {
+                    assert_eq!(current_native_mod(), None);
+                    assert!(!mod_api::__private::game::retained_callback_active());
+                    panic!("vanilla paint failed");
+                });
+            }))
+            .unwrap_err();
+            assert_eq!(panic.downcast_ref::<&str>(), Some(&"vanilla paint failed"));
+            assert_eq!(
+                take(),
+                ["outer", "inner", "caught by inner", "caught by outer"]
+            );
+            assert_eq!(current_native_mod(), None);
+
+            game.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |_, _| {
+                log("vanilla paint");
+            });
+            assert_eq!(take(), ["outer", "inner", "vanilla paint"]);
+        });
+    });
+}

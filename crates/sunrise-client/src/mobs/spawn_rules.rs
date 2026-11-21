@@ -3,7 +3,7 @@
 //! (`checkSpawnRules`), read through [`SpawnLevel`] so the game's world and a
 //! differential test world answer the same questions. Random draws follow
 //! vanilla's order.
-use super::{Species, data};
+use super::{MobType, Species, data};
 use crate::blocks::{BlockFacts, Fluid};
 use mod_api::{BlockPos, SpawnPlacementContext, SpawnPlacementLevel};
 use sunrise_core::random::{RandomSource, slime_chunk_random};
@@ -119,51 +119,6 @@ pub fn fire_immune(s: Species) -> bool {
             | S::Wither
             | S::WitherSkeleton
             | S::Zoglin
-            | S::ZombifiedPiglin
-    )
-}
-/// `EntityType.isAllowedInPeaceful`.
-pub fn allowed_in_peaceful(s: Species) -> bool {
-    use Species as S;
-    !matches!(
-        s,
-        S::Blaze
-            | S::Bogged
-            | S::Breeze
-            | S::CaveSpider
-            | S::Creaking
-            | S::Creeper
-            | S::Drowned
-            | S::ElderGuardian
-            | S::Enderman
-            | S::Endermite
-            | S::Evoker
-            | S::Ghast
-            | S::Giant
-            | S::Guardian
-            | S::Hoglin
-            | S::Husk
-            | S::Illusioner
-            | S::MagmaCube
-            | S::Parched
-            | S::Phantom
-            | S::PiglinBrute
-            | S::Pillager
-            | S::Ravager
-            | S::Silverfish
-            | S::Skeleton
-            | S::Slime
-            | S::Spider
-            | S::Stray
-            | S::Vex
-            | S::Vindicator
-            | S::Warden
-            | S::Witch
-            | S::Wither
-            | S::WitherSkeleton
-            | S::Zoglin
-            | S::Zombie
-            | S::ZombieVillager
             | S::ZombifiedPiglin
     )
 }
@@ -306,18 +261,17 @@ fn surface_water<L: SpawnLevel>(l: &L, x: i32, y: i32, z: i32) -> bool {
 /// can stand for several types), then `MobSpawnEvent.SpawnPlacementCheck`
 /// through [`SpawnLevel::placement_check`].
 pub fn check_spawn_rules<L: SpawnLevel>(
-    entity: &str,
-    s: Species,
+    kind: &MobType,
     l: &L,
     reason: Reason,
     random: &mut impl RandomSource,
     at: [i32; 3],
 ) -> bool {
-    if !allowed_in_peaceful(s) && l.peaceful() {
+    if !kind.allowed_in_peaceful() && l.peaceful() {
         return false;
     }
     let [x, y, z] = at;
-    let allowed = match l.mob_data().mod_spawns.get(entity) {
+    let allowed = match l.mob_data().mod_spawns.get(&kind.id) {
         Some(row) => {
             let pos = BlockPos::new(x, y, z);
             let mut ctx = SpawnContext {
@@ -325,23 +279,34 @@ pub fn check_spawn_rules<L: SpawnLevel>(
                 rng: random,
                 pos,
             };
+            let test = |p: &data::OwnedSpawnPredicate, ctx: &mut SpawnContext<'_, L, _>| {
+                if !p.owner.is_enabled() {
+                    return None;
+                }
+                p.owner
+                    .call("spawn placement", "spawn_placement_predicate", || {
+                        p.predicate.test(row.kind, ctx, reason, pos)
+                    })
+                    .ok()
+            };
             match &row.predicates {
+                // MergedSpawnPredicate.build installs only the selected replacement.
                 data::SpawnPredicates::Replacement(predicate) => {
-                    predicate.test(row.kind, &mut ctx, reason, pos)
+                    test(predicate, &mut ctx).unwrap_or(false)
                 }
                 data::SpawnPredicates::Combined { original, or, and } => {
                     let original = match original {
-                        Some(predicate) => predicate.test(row.kind, &mut ctx, reason, pos),
-                        None => placement_predicate(s, l, reason, ctx.rng, x, y, z),
+                        Some(predicate) => test(predicate, &mut ctx).unwrap_or(false),
+                        None => placement_predicate(kind.species, l, reason, ctx.rng, x, y, z),
                     };
-                    (original || or.iter().any(|p| p.test(row.kind, &mut ctx, reason, pos)))
-                        && and.iter().all(|p| p.test(row.kind, &mut ctx, reason, pos))
+                    (original || or.iter().any(|p| test(p, &mut ctx) == Some(true)))
+                        && and.iter().all(|p| test(p, &mut ctx) != Some(false))
                 }
             }
         }
-        None => placement_predicate(s, l, reason, random, x, y, z),
+        None => placement_predicate(kind.species, l, reason, random, x, y, z),
     };
-    l.placement_check(entity, reason, at, allowed)
+    l.placement_check(&kind.id, reason, at, allowed)
 }
 
 struct SpawnLevelView<'a, L>(&'a L);
@@ -779,6 +744,9 @@ mod underwater_sky_tests {
             |w, _| {
                 // Sea level in this world is 63, so y=55 sits in the scan.
                 assert_eq!(w.sea_level(), 63);
+                let mut guardian = (*super::super::sensor_scan_tests::kind()).clone();
+                guardian.id = "minecraft:guardian".into();
+                guardian.species = Species::Guardian;
                 let mut probe = LegacyRandom::new(1);
                 assert_ne!(
                     probe.next_int_bound(20).unwrap(),
@@ -787,26 +755,12 @@ mod underwater_sky_tests {
                 );
                 let mut random = LegacyRandom::new(1);
                 assert!(
-                    check_spawn_rules(
-                        "minecraft:guardian",
-                        Species::Guardian,
-                        w,
-                        Reason::Natural,
-                        &mut random,
-                        [0, 50, 0]
-                    ),
+                    check_spawn_rules(&guardian, w, Reason::Natural, &mut random, [0, 50, 0]),
                     "kelp between the guardian and the sea hides the sky"
                 );
                 let mut random = LegacyRandom::new(1);
                 assert!(
-                    !check_spawn_rules(
-                        "minecraft:guardian",
-                        Species::Guardian,
-                        w,
-                        Reason::Natural,
-                        &mut random,
-                        [1, 50, 0]
-                    ),
+                    !check_spawn_rules(&guardian, w, Reason::Natural, &mut random, [1, 50, 0]),
                     "a bubble column is liquid(), so the sky still shows"
                 );
             },
@@ -1030,21 +984,27 @@ mod mod_spawn_rule_tests {
             self.data.install_spawn_placements(declarations, |id| {
                 matches!(
                     id,
-                    "minecraft:zombie" | "minecraft:shulker" | "ruby:ghoul" | "ruby:floater"
+                    "minecraft:zombie"
+                        | "minecraft:shulker"
+                        | "ruby:ghoul"
+                        | "ruby:floater"
+                        | "test:trader"
                 )
             })
         }
         /// `SpawnPlacements.checkSpawnRules` for a type of the zombie species.
         fn check(&self, entity: &str, reason: Reason, at: [i32; 3]) -> bool {
-            check_spawn_rules(
-                entity,
-                Species::Zombie,
-                self,
-                reason,
-                &mut LegacyRandom::new(7),
-                at,
-            )
+            let kind = mob_kind(entity, Species::Zombie);
+            check_spawn_rules(&kind, self, reason, &mut LegacyRandom::new(7), at)
         }
+    }
+
+    fn mob_kind(entity: &str, species: Species) -> MobType {
+        let mut kind = (*super::super::sensor_scan_tests::kind()).clone();
+        kind.id = entity.into();
+        kind.species = species;
+        kind.flags.not_in_peaceful = species == Species::Zombie;
+        kind
     }
     impl SpawnLevel for Flat {
         fn state(&self, x: i32, y: i32, _: i32) -> BlockStateId {
@@ -1129,6 +1089,43 @@ mod mod_spawn_rule_tests {
             && (reason == Reason::TrialSpawner || ctx.level().is_bright_enough_to_spawn(pos))
     }
 
+    #[test]
+    fn natural_placement_uses_the_types_peaceful_flag_not_its_species() {
+        let mut trader = (*super::super::sensor_scan_tests::kind()).clone();
+        trader.id = "test:trader".into();
+        trader.species = Species::WanderingTrader;
+        trader.flags.not_in_peaceful = true;
+
+        let mut level = Flat::new(&[SpawnPlacementDeclaration {
+            id: "test:trader".into(),
+            kind: entity_type_key(5),
+            mod_id: "test",
+            placement: Some(SpawnPlacementType::OnGround),
+            heightmap: Some(Heightmap::OceanFloor),
+            predicate: Arc::new(
+                |_: EntityTypeKey, _: &mut dyn SpawnPlacementContext, _: Reason, _: BlockPos| true,
+            ),
+            operation: Replace,
+        }]);
+        let check = |level: &Flat| {
+            check_spawn_rules(
+                &trader,
+                level,
+                Reason::Natural,
+                &mut LegacyRandom::new(7),
+                [0, 1, 0],
+            )
+        };
+        assert!(check(&level));
+        level.heard.borrow_mut().clear();
+        level.peaceful = true;
+        assert!(!check(&level));
+        assert!(
+            level.heard.borrow().is_empty(),
+            "Peaceful admission comes before placement rules"
+        );
+    }
+
     /// Ground, biome and light each refuse on their own. The ghoul's callback
     /// passes in daylight at the same spot where its zombie template fails.
     #[test]
@@ -1188,6 +1185,52 @@ mod mod_spawn_rule_tests {
         assert_eq!(context.random().next_int(), JAVA_DRAWS[0]);
         assert!(context.is_dark_enough_to_spawn());
         assert_eq!(rng.next_int(), JAVA_DRAWS[3]);
+    }
+
+    #[test]
+    fn a_panicking_replacement_does_not_retry_vanilla_or_draw_again() {
+        let mut level = Flat::new(&[SpawnPlacementDeclaration {
+            id: "minecraft:zombie".into(),
+            kind: entity_type_key(0),
+            mod_id: "broken_spawn_replacement",
+            placement: None,
+            heightmap: None,
+            predicate: Arc::new(
+                |_: EntityTypeKey,
+                 ctx: &mut dyn SpawnPlacementContext,
+                 _: Reason,
+                 _: BlockPos|
+                 -> bool {
+                    assert_eq!(ctx.random().next_int(), JAVA_DRAWS[0]);
+                    panic!("test spawn predicate panic");
+                },
+            ),
+            operation: Replace,
+        }]);
+        level.sky = 0;
+        let kind = mob_kind("minecraft:zombie", Species::Zombie);
+        let mut rng = LegacyRandom::new(7);
+        assert!(!check_spawn_rules(
+            &kind,
+            &level,
+            Reason::Natural,
+            &mut rng,
+            [0, 1, 0]
+        ));
+        assert_eq!(rng.next_int(), JAVA_DRAWS[1]);
+
+        // The check hook still gets the failed answer and can override it. The
+        // disabled replacement and vanilla consume no draws on this check.
+        level.hook = Some(true);
+        assert!(check_spawn_rules(
+            &kind,
+            &level,
+            Reason::Natural,
+            &mut rng,
+            [0, 1, 0]
+        ));
+        assert_eq!(rng.next_int(), JAVA_DRAWS[2]);
+        assert_eq!(*level.heard.borrow(), [false, false]);
     }
 
     /// `mob_spawn_placement_check` still runs after the rule and is told its
@@ -1312,8 +1355,7 @@ mod mod_spawn_rule_tests {
             // The template zombie always passes for a trial spawner. The first
             // custom row has to be the original, not an OR after that template.
             let actual = check_spawn_rules(
-                "ruby:ghoul",
-                Species::Zombie,
+                &mob_kind("ruby:ghoul", Species::Zombie),
                 &level,
                 Reason::TrialSpawner,
                 &mut rng,
@@ -1449,8 +1491,7 @@ mod mod_spawn_rule_tests {
             Placement::NoRestrictions
         );
         assert!(!check_spawn_rules(
-            "minecraft:shulker",
-            Species::Shulker,
+            &mob_kind("minecraft:shulker", Species::Shulker),
             &level,
             Reason::TrialSpawner,
             &mut LegacyRandom::new(7),
@@ -1467,8 +1508,7 @@ mod mod_spawn_rule_tests {
         level.hook = Some(true);
         let mut rng = LegacyRandom::new(7);
         assert!(!check_spawn_rules(
-            "ruby:ghoul",
-            Species::Zombie,
+            &mob_kind("ruby:ghoul", Species::Zombie),
             &level,
             Reason::Natural,
             &mut rng,

@@ -135,6 +135,7 @@ impl Hooks for DeclareGeneral {
             mod_api::GeneralSavePolicy::NoSave,
             false,
             false,
+            None,
             8,
             3,
             1,

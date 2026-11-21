@@ -107,11 +107,17 @@ impl ModGuard {
         }
     }
 
+    pub(crate) fn unattributed() -> Self {
+        let mut guard = Self::empty();
+        guard.owner = Some(crate::content::crash::push(None));
+        guard
+    }
+
     /// Vocab-only fixtures have no platform instrumentation backend.
     #[cfg(test)]
     pub(crate) fn fixture_owner(call: ModCall) -> Self {
         let mut guard = Self::empty();
-        guard.owner = Some(crate::content::crash::push(call));
+        guard.owner = Some(crate::content::crash::push(Some(call)));
         guard
     }
 
@@ -196,7 +202,7 @@ impl Scope {
     pub(crate) fn replace(self, guard: &mut ModGuard, call: ModCall) {
         guard.clear();
         if self.installed {
-            let owner = crate::content::crash::push(call);
+            let owner = crate::content::crash::push(Some(call));
             if let Some((enter, leave)) = self.timing {
                 *guard = enter(ModGuardFactory { leave, owner }, call);
             } else {

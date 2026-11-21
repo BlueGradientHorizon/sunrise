@@ -33,7 +33,9 @@ impl Game<'_> {
     ) {
         if self.riding == Some(id)
             || self.ridden_by_guest(id)
-            || self.mob_objects().any(|mob| mob.extra.mount == Some(id))
+            || self
+                .mob_objects()
+                .any(|mob| !mob.removed && mob.extra.mount == Some(id))
             || self.general_passengers(id).next().is_some()
         {
             vehicle.retire_attachment_registration();
@@ -46,7 +48,9 @@ impl Game<'_> {
         if self.persist.removed_vehicles.contains_key(&id)
             && self.riding != Some(id)
             && !self.ridden_by_guest(id)
-            && !self.mob_objects().any(|mob| mob.extra.mount == Some(id))
+            && !self
+                .mob_objects()
+                .any(|mob| !mob.removed && mob.extra.mount == Some(id))
             && self.general_passengers(id).next().is_none()
         {
             self.persist.removed_vehicles.remove(&id);
@@ -60,7 +64,11 @@ impl Game<'_> {
         if self.persist.off_level.is_empty() {
             return Default::default();
         }
-        let mounts: HashMap<_, _> = self.mob_objects().map(|m| (m.id, m.extra.mount)).collect();
+        let mounts: HashMap<_, _> = self
+            .mob_objects()
+            .filter(|m| !m.removed)
+            .map(|m| (m.id, m.extra.mount))
+            .collect();
         self.mobs
             .iter()
             .filter_map(|m| {
@@ -168,20 +176,22 @@ impl Game<'_> {
         let invalid: Vec<_> = self
             .mob_objects()
             .filter_map(|m| {
+                if m.removed {
+                    return None;
+                }
                 let v = m.extra.mount?;
                 // Removed vehicles are retried only in the passenger's own
                 // eligible entity tick, after its cancellable Pre event.
                 if self.persist.removed_vehicles.contains_key(&v) {
                     return None;
                 }
-                let valid = !m.removed
-                    && (self.mob_object(v).is_some_and(|m| !m.removed)
-                        || self.boat_object(v).is_some()
-                        || self.cart_object(v).is_some()
-                        || self.cushions.iter().any(|c| c.id == v)
-                        || self.tnts.iter().any(|t| t.id == v && v != 0)
-                        || self.seat(v).is_some()
-                        || self.player_vehicle(v).is_some());
+                let valid = self.mob_object(v).is_some_and(|m| !m.removed)
+                    || self.boat_object(v).is_some()
+                    || self.cart_object(v).is_some()
+                    || self.cushions.iter().any(|c| c.id == v)
+                    || self.tnts.iter().any(|t| t.id == v && v != 0)
+                    || self.seat(v).is_some()
+                    || self.player_vehicle(v).is_some();
                 (!valid).then_some((m.id, v))
             })
             .collect();
@@ -1928,7 +1938,13 @@ mod nested_vehicle_discard_tests {
         }
     }
 
-    struct ObserveSpillItem(Arc<AtomicUsize>);
+    #[derive(Default)]
+    struct SpillJoins {
+        vehicle: AtomicUsize,
+        items: AtomicUsize,
+    }
+
+    struct ObserveSpillItem(Arc<SpillJoins>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for ObserveSpillItem {
         fn entity_join_level(
@@ -1936,16 +1952,23 @@ mod nested_vehicle_discard_tests {
             host: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::EntityJoinLevelEvent<'_>,
         ) -> mod_api::Flow {
-            assert_ne!(
-                event.entity, 71,
-                "a removed vehicle must not join during its sweep"
-            );
-            if event.kind == "minecraft:item" {
-                assert!(
-                    host.entity(71).is_none(),
-                    "spill callbacks cannot resolve the removed owner"
+            if event.entity == 71 {
+                assert_eq!(
+                    self.0.vehicle.fetch_add(1, Ordering::Relaxed),
+                    0,
+                    "the vehicle must not join again during its sweep"
                 );
-                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+            if event.kind == "minecraft:item" {
+                if self.0.items.fetch_add(1, Ordering::Relaxed) == 0 {
+                    let vehicle = host.entity(71).expect("contents drop before removal");
+                    assert!(!vehicle.discard(host), "the spill must not reenter removal");
+                } else {
+                    assert!(
+                        host.entity(71).is_none(),
+                        "the vehicle item drops after removal"
+                    );
+                }
             }
             mod_api::Flow::Continue
         }
@@ -1958,7 +1981,7 @@ mod nested_vehicle_discard_tests {
             for mode in 0..3 {
                 let cancel = Arc::new(AtomicBool::new(true));
                 let calls = Arc::new(AtomicUsize::new(0));
-                let item_joins = Arc::new(AtomicUsize::new(0));
+                let joins = Arc::new(SpillJoins::default());
                 let mods: mod_api::Mods = vec![
                     mod_api::ModEntry::new(
                         "cancel_spilling_vehicle",
@@ -1969,7 +1992,7 @@ mod nested_vehicle_discard_tests {
                     ),
                     mod_api::ModEntry::new(
                         "observe_spill",
-                        Box::new(ObserveSpillItem(item_joins.clone())),
+                        Box::new(ObserveSpillItem(joins.clone())),
                     ),
                 ]
                 .into();
@@ -1991,6 +2014,8 @@ mod nested_vehicle_discard_tests {
                                 vehicle.items = items;
                             });
                         }
+                        game.native_joins_flush(false, 0);
+                        assert_eq!(joins.vehicle.load(Ordering::Relaxed), 1);
                         match mode {
                             0 if cart => game.hurt_cart(
                                 0,
@@ -2020,7 +2045,7 @@ mod nested_vehicle_discard_tests {
                                 .sum()
                         };
                         assert_eq!(diamonds(game), 5);
-                        assert!(item_joins.load(Ordering::Relaxed) > 0);
+                        assert!(joins.items.load(Ordering::Relaxed) > 0);
                         assert_eq!(calls.load(Ordering::Relaxed), 1);
                         assert!(game.persist.removed_vehicles.contains_key(&71));
                         for _ in 0..2 {
@@ -2656,28 +2681,6 @@ mod nested_vehicle_discard_tests {
                 assert_eq!(game.mob_object(72).unwrap().extra.mount, None);
             })
         });
-    }
-}
-
-impl Game<'_> {
-    pub(super) fn dismount_killed_boat(&mut self, id: u32) {
-        if let Some(y) = self.boats.iter().find(|b| b.id == id).map(|b| b.position.y) {
-            self.dismount_destroyed_vehicle_mobs(id, y);
-        }
-    }
-}
-
-impl Game<'_> {
-    pub(super) fn dismount_killed_cart(&mut self, id: u32) {
-        if let Some(y) = self.carts.iter().find(|c| c.id == id).map(|c| c.position.y) {
-            self.dismount_destroyed_vehicle_mobs(id, y);
-        }
-    }
-}
-
-impl Game<'_> {
-    pub(super) fn dismount_cart_mob_at(&mut self, rider: u32, y: f64) {
-        self.dismount_mob_from_removed_vehicle(rider, y);
     }
 }
 

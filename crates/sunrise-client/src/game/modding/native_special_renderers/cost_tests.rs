@@ -16,7 +16,7 @@ use std::{
 };
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
-    item_render::{ItemRenderState, install_special_model_factories},
+    item_render::{ItemRenderState, OwnedSpecialModelFactory, install_special_model_factories},
     items::ItemStack,
     mesher::Vertex,
 };
@@ -132,7 +132,10 @@ fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
     crate::game::native_entity_refs::tests::with_game(|game| unregistered = Some(scene(game)));
     assert!(install_special_model_factories(BTreeMap::from([(
         "test:unmatched".into(),
-        SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Unmatched)),
+        OwnedSpecialModelFactory::new(
+            "test",
+            SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Unmatched))
+        ),
     )])));
     crate::game::native_entity_refs::tests::with_game(|game| {
         assert_eq!(scene(game), unregistered.unwrap());
@@ -168,9 +171,12 @@ fn special_item_draw_cost() {
     const SAMPLES: usize = 10_000;
     let factories = BTreeMap::from([(
         "test:stone".into(),
-        SpecialModelFactory::new(
-            |_| Ok(()),
-            |(), bake| bake.bake_model("minecraft:block/stone").map(Stone),
+        OwnedSpecialModelFactory::new(
+            "test",
+            SpecialModelFactory::new(
+                |_| Ok(()),
+                |(), bake| bake.bake_model("minecraft:block/stone").map(Stone),
+            ),
         ),
     )]);
     crate::game::native_entity_refs::tests::with_game(|game| {

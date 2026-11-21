@@ -780,9 +780,9 @@ impl PackageInfo {
 }
 
 // no wire: shared immutable loader inventory; contexts query it through LoadReader rather than transferring its Arc storage.
-/// The registries and settings registration reads: captured by the engine once, before the
-/// first registration hook runs, and the same for every registration step. Lookups are binary
-/// searches over sorted lists, so a clone of the context copies nothing.
+/// The instance directory, registries and settings that registration reads: captured by the
+/// engine once, before the first registration hook, and the same for every registration step.
+/// Registry and settings lookups are binary searches over sorted lists.
 #[derive(Clone)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct RegistrationData {
@@ -801,7 +801,7 @@ pub struct RegistrationData {
 
 impl RegistrationData {
     /// The engine's snapshot: `registries` maps a registry name to its names in ID order,
-    /// `settings` a mod ID to its settings.
+    /// `settings` a mod ID to its settings, and `instance_dir` is the startup game directory.
     pub fn new(
         registries: BTreeMap<String, Vec<String>>,
         settings: BTreeMap<String, BTreeMap<String, String>>,

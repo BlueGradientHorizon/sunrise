@@ -291,27 +291,31 @@ Inline player and atlas objects use `Option<Box<Text>>` for their fallback: `Non
 keeps the engine-computed default; `Some` preserves a styled or translatable component
 rather than flattening it to a string.
 
-`Text::validate()` checks serialization tree/payload bounds and `ExtraCodecs` profile
-fields without cloning; `validate_depth()` is the component-only preflight. Serialization
-boundaries (Wire, JSON/SNBT codecs such as `text_from_json`, and NBT/network writes)
-enforce the 512-node depth limit and `ExtraCodecs` profile/property bounds. In-process
-text reads (`text_string`, `text_width`, `text_split`, `text_visual_order`, and
-`BlockEntityDrawContext::text_width`) are infallible and do not impose those serialization
-caps. NaN/infinity and unpaired UTF-16 are legal Tag data but cause typed `NonFinite` or
-`InvalidString` refusals when engine emission requires JSON. Nested JSON null is refused as
-`NestedNull` when capturing opaque NBT fields; it is never silently replaced.
-Host serialization and write methods accepting or returning Text return
-`Result<_, TextFormError>`; mixed item/Text writes preserve the refusal in
-`StackWriteError::Text`, and unspawned-mob reads use `UnspawnedMobError::Text`. `TooDeep`
-means a serialized component path or opaque NBT container path exceeds 512. Unavailable
-backends are distinct from invalid text or unrepresentable payloads.
-A refused hook capture does not dispatch; a refused writeback leaves every field unchanged.
-No subscriber means no conversion or snapshot allocation.
+`Text::validate()` checks tree/payload bounds and profile fields
+without cloning; `validate_depth()` is the component-only preflight. NaN/infinity and
+unpaired UTF-16 are legal Tag data but cause typed `NonFinite` or `InvalidString`
+refusals when engine emission requires JSON. Nested JSON null is refused as `NestedNull`
+when capturing opaque NBT fields; it is never silently replaced.
+Host methods accepting or returning Text return `Result<_, TextFormError>`; mixed
+item/Text writes preserve the refusal in `StackWriteError::Text`, and unspawned-mob
+reads use `UnspawnedMobError::Text`. `TooDeep` means a component path or opaque NBT
+container path exceeds 512. Unavailable backends are distinct from invalid text or
+unrepresentable payloads.
+A refused hook capture does not dispatch. No subscriber means no API conversion or API
+snapshot allocation.
 Mutable stack arguments are compared using value equality with the snapshot passed to
 the listener. An unchanged argument retains the original engine value without strict
 write validation (including engine-legal stacks above effective count or damage maxima).
-A changed argument is validated in full; a refusal commits no outputs. The same
-rule applies to anvil/grindstone records and menu cursor/quick-move stacks.
+A changed argument is validated in full; a refusal commits no listener edits. The same
+rule applies to menu cursor and quick-move stacks.
+
+Anvil and grindstone hook inputs are borrowed, read-only snapshots, not stack writes.
+`anvil_update` validates an output replacement only if it differs from vanilla. An invalid
+replacement or cancellation leaves no result and zero costs. The anvil's Pre and Post
+hooks lend the same pre-take snapshot and do not take any stack edits. `grindstone_place`
+validates an explicit output override and `grindstone_take` validates supplied remainders,
+not the original inputs. See [item and tag Parts](parts/item-and-tag-parts.md) for the staged
+edits and the different cancellation outcomes.
 
 `Text` copies and drops its component tree without using the call stack for depth. Component
 equality and formatting are not part of the serialization boundary guarantee.
@@ -386,13 +390,23 @@ A bare name uses the `minecraft` namespace; an invalid name refuses the mod at l
 `tags.key(&identifier)` resolves the same key from a validated identifier. Naming a tag does
 not require it to have any members. Item, block and fluid tags share one name table; the
 membership method chooses the registry. Reload replaces membership, not key identity.
-`tags.is_in_tag(item_key, tag_key)` tests merged item membership. `tags.items(tag_key)`,
-`tags.blocks(tag_key)` and `tags.fluids(tag_key)` return registered keys in vanilla's member order. Unknown tags
-return false or empty lists. Clients read the tags sent by their server. Membership reads return `None` before
-authoritative tags are applied or if the relevant registry mapping is unavailable. Key resolution itself can be
-refused if the runtime cannot allocate a name slot. No lookup stringifies a retained key.
-Block enumeration returns `BlockKey` values, including blocks no mod requested. An unresolved
-member returns `None` for the entire list, not a partial result.
+`tags.is_in_tag(item_key, tag_key)` tests merged item membership. It returns `Some(false)`
+for either an absent tag or a loaded empty tag. Use `tags.items(tag_key)`,
+`tags.blocks(tag_key)` or `tags.fluids(tag_key)` to tell them apart. Each returns a
+`TagMembers<K>` for the registry's key type:
+
+- `Missing`: no tag with this name was bound. An unresolved required entry, including a
+  required reference to another unbound tag, keeps the whole tag out of the table.
+- `Members(keys)`: the bound tag's keys in vanilla's order. Absent optional entries are
+  skipped, so a declared tag can be present with no members.
+- `Unavailable`: that registry's authoritative tag table has not been applied, or a member
+  key cannot be resolved. The query never returns partial membership.
+
+Include a fallback arm when matching `TagMembers`: the enum is non-exhaustive.
+
+Clients read only the tags their server sent. Item and block enumeration includes keys no
+mod requested. Key resolution itself can be refused if the runtime cannot allocate a name
+slot. No lookup stringifies a retained key.
 The engine `TagRegistry`, `StackData`, `StackView` and `DisplayContext` are not API types.
 
 ## Scoped Parts

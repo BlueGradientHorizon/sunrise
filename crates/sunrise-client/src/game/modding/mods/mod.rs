@@ -129,7 +129,7 @@ impl ModsState {
         }));
     }
 
-    fn apply_code_switches(&self, disabled: &std::collections::BTreeSet<String>) {
+    pub(super) fn apply_code_switches(&self, disabled: &std::collections::BTreeSet<String>) {
         for id in mod_api::__private::installed_code_ids() {
             mod_api::__private::set_mod_enabled(id, !disabled.contains(id));
         }
@@ -226,9 +226,8 @@ pub(super) fn install_registration_data(
     runtime_files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>>,
 ) -> sunrise_client::Result<()> {
     let packages = mod_api::__private::loaded_mods();
-    let directory = Game::game_dir();
-    let directory = mod_api::InstanceDirectory::from_path(&directory)
-        .expect("the host's paths have an encoding the mod API carries");
+    let directory = mod_api::InstanceDirectory::from_path(&Game::game_dir())
+        .expect("the host path has an encoding the mod API carries");
     (mod_api::__private::platform::platform()?.install_registration_data)(
         mod_api::__private::RegistrationData::new(
             builtin_registry_names(root)?,
@@ -355,32 +354,46 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
         use super::api_values::TryIntoEngine;
         let mut declared = NativeDeclared::default();
         let context = RegistrationContext::new();
-        Game::native_blocks(&context, &mut |Answered { mod_id, answer, .. }| {
-            let block = answer
-                .try_into_engine(&())
-                .and_then(|b| b.validate_local())
-                .map_err(|reason| DeclarationError::Rejected {
-                    id: answer.id,
-                    reason,
-                })?;
-            declared
-                .batches
-                .entry(mod_id)
-                .or_default()
-                .blocks
-                .push(block);
-            Ok(())
+        Game::native_blocks(&context, |listen| {
+            let mut staged = Vec::new();
+            if listen(&mut |Answered { mod_id, answer, .. }| {
+                let block = answer
+                    .try_into_engine(&())
+                    .and_then(|value| value.validate_local())
+                    .map_err(|reason| DeclarationError::Rejected {
+                        id: answer.id,
+                        reason,
+                    })?;
+                staged.push((mod_id, block));
+                Ok(())
+            }) {
+                for (mod_id, block) in staged {
+                    declared
+                        .batches
+                        .entry(mod_id)
+                        .or_default()
+                        .blocks
+                        .push(block);
+                }
+            }
         });
-        Game::native_items(&context, &mut |Answered { mod_id, answer, .. }| {
-            let item = answer
-                .try_into_engine(&())
-                .and_then(|i| i.validate_local())
-                .map_err(|reason| DeclarationError::Rejected {
-                    id: answer.id,
-                    reason,
-                })?;
-            declared.batches.entry(mod_id).or_default().items.push(item);
-            Ok(())
+        Game::native_items(&context, |listen| {
+            let mut staged = Vec::new();
+            if listen(&mut |Answered { mod_id, answer, .. }| {
+                let item = answer
+                    .try_into_engine(&())
+                    .and_then(|value| value.validate_local())
+                    .map_err(|reason| DeclarationError::Rejected {
+                        id: answer.id,
+                        reason,
+                    })?;
+                staged.push((mod_id, item));
+                Ok(())
+            }) {
+                for (mod_id, item) in staged {
+                    declared.batches.entry(mod_id).or_default().items.push(item);
+                }
+            }
         });
         declared.refusals = mod_api::__private::take_declaration_refusals(&context);
         for (owner, kind) in super::api_values::block_entity_declarations() {
@@ -594,7 +607,18 @@ fn register_special_model_renderers() {
             name(replaced.later)
         );
     }
-    sunrise_client::item_render::install_special_model_factories(factories);
+    sunrise_client::item_render::install_special_model_factories(
+        factories
+            .into_iter()
+            .filter_map(|(kind, (owner, factory))| {
+                let owner = owner?;
+                Some((
+                    kind,
+                    sunrise_client::item_render::OwnedSpecialModelFactory::new(owner, factory),
+                ))
+            })
+            .collect(),
+    );
 }
 /// The client presentation registrations, kept once at start, before resources load: the
 /// dimension transition screens, the entity spectator shaders, the render pipelines and the entity
@@ -1460,6 +1484,7 @@ fn register_menu_types(
             crafting,
             links,
             m.player_inventory,
+            m.owned_slots.clone(),
         )
     }));
     if !set
@@ -2426,6 +2451,7 @@ mod tests {
                 save_policy: mod_api::GeneralSavePolicy::Save,
                 summonable: true,
                 pickable: false,
+                piston_push_reaction: mod_api::PushReaction::PushPull,
                 tracking_chunks: 8,
                 update_interval: 3,
                 payload_version: 1,

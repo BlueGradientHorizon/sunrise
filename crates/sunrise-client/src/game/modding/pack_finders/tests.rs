@@ -758,7 +758,11 @@ fn a_panicking_pack_finder_does_not_reserve_its_pack_id() {
     struct FailingFinder(Finder);
     #[mod_api::__subscriptions]
     impl Hooks for FailingFinder {
-        fn add_pack_finders(&self, context: &mut dyn PackDiscoveryContext, event: &mut AddPackFindersEvent<'_>) {
+        fn add_pack_finders(
+            &self,
+            context: &mut dyn PackDiscoveryContext,
+            event: &mut AddPackFindersEvent<'_>,
+        ) {
             self.0.add_pack_finders(context, event);
             panic!("finder failed after offering its pack");
         }
@@ -778,10 +782,16 @@ fn a_panicking_pack_finder_does_not_reserve_its_pack_id() {
         ]
         .into(),
         || {
-            let packs = discover(PackType::ClientResources, &sources);
-            assert_eq!(packs.len(), 1);
-            assert_eq!(packs[0].id, fixture.asset_id());
-            assert!(!packs[0].selection.as_ref().unwrap().required);
+            for _ in 0..2 {
+                let packs = discover(PackType::ClientResources, &sources);
+                assert_eq!(packs.len(), 1);
+                assert_eq!(packs[0].id, fixture.asset_id());
+                assert!(!packs[0].selection.as_ref().unwrap().required);
+            }
+            assert_eq!(
+                mod_api::__private::poisoned_listeners(HookId::AddPackFinders),
+                1
+            );
             assert_eq!(
                 mod_api::__private::take_hook_panics(),
                 [mod_api::__private::HookPanicReport {
@@ -789,6 +799,115 @@ fn a_panicking_pack_finder_does_not_reserve_its_pack_id() {
                     hook: "add_pack_finders",
                 }]
             );
+        },
+    );
+}
+
+#[test]
+fn disabled_native_mods_skip_add_pack_finders_at_startup_and_after_toggle() {
+    use std::collections::BTreeSet;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct Probe {
+        calls: Arc<AtomicUsize>,
+        register_packs: bool,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Probe {
+        fn add_pack_finders(
+            &self,
+            _context: &mut dyn PackDiscoveryContext,
+            event: &mut AddPackFindersEvent<'_>,
+        ) {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if !self.register_packs {
+                return;
+            }
+            let path = match event.packs.pack_type() {
+                PackType::ClientResources => ASSET_PACK,
+                PackType::ServerData => DATA_PACK,
+                _ => return,
+            };
+            let pack = PackRegistration::new(
+                Identifier::parse(&format!("packmod:{path}")).unwrap(),
+                event.packs.pack_type(),
+                mod_api::Text::translate("packmod.optional.title", vec![]),
+            );
+            event.packs.add_pack_finders(pack).unwrap();
+        }
+    }
+
+    let fixture = Fixture::new(false);
+    let disabled_calls = Arc::new(AtomicUsize::new(0));
+    let enabled_calls = Arc::new(AtomicUsize::new(0));
+
+    with_mods(
+        vec![
+            ModEntry::new(
+                "discovery_probe",
+                Box::new(Probe {
+                    calls: disabled_calls.clone(),
+                    register_packs: false,
+                }),
+            ),
+            ModEntry::new(
+                "packmod",
+                Box::new(Probe {
+                    calls: enabled_calls.clone(),
+                    register_packs: true,
+                }),
+            ),
+        ]
+        .into(),
+        || {
+            // Startup before Game::start_mods applies saved switches to runtime dispatch:
+            // sunrise-mods.txt has disabled `discovery_probe`, while its runtime slot is still on.
+            let mut sources = fixture.sources();
+            let disabled = BTreeSet::from(["discovery_probe".to_owned()]);
+            sources.capture_code_switches(&disabled);
+            assert!(mod_api::__private::mod_index_on(
+                mod_api::__private::mod_index("discovery_probe").unwrap()
+            ));
+
+            let client_packs = discover(PackType::ClientResources, &sources);
+            let server_packs = data_packs(&sources);
+            assert_eq!(disabled_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(enabled_calls.load(Ordering::SeqCst), 2);
+            assert_eq!(client_packs.len(), 1);
+            assert_eq!(client_packs[0].id, fixture.asset_id());
+            assert_eq!(server_packs.len(), 1);
+            assert_eq!(server_packs[0].id, fixture.data_id());
+
+            // After Game::start_mods applies switches, both startup-style and direct dispatch skip it.
+            sources.apply_code_switches(&disabled);
+            assert!(!mod_api::__private::mod_index_on(
+                mod_api::__private::mod_index("discovery_probe").unwrap()
+            ));
+            let client_packs = discover(PackType::ClientResources, &sources);
+            let server_packs = data_packs(&sources);
+            assert_eq!(disabled_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(enabled_calls.load(Ordering::SeqCst), 4);
+            assert_eq!(client_packs.len(), 1);
+            assert_eq!(server_packs.len(), 1);
+
+            let mut registry = Registry::new(PackType::ClientResources, sources.clone());
+            mod_api::dispatch_add_pack_finders(&mut StartupDiscovery, |listen| {
+                registry.register_listener(listen)
+            });
+            assert_eq!(disabled_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(enabled_calls.load(Ordering::SeqCst), 5);
+            assert_eq!(registry.packs.len(), 1);
+
+            // Live toggles flip which listener runs without invoking the newly disabled mod.
+            assert!(mod_api::__private::set_mod_enabled("discovery_probe", true));
+            assert!(mod_api::__private::set_mod_enabled("packmod", false));
+            assert!(discover(PackType::ClientResources, &sources).is_empty());
+            assert!(data_packs(&sources).is_empty());
+            assert_eq!(disabled_calls.load(Ordering::SeqCst), 2);
+            assert_eq!(enabled_calls.load(Ordering::SeqCst), 5);
         },
     );
 }

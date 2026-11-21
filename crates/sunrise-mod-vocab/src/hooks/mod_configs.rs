@@ -43,28 +43,30 @@ pub trait Hooks {
     /// second, on the window and on the server's tick; a file saved with the
     /// same text, removed or unreadable fires nothing and keeps its last
     /// text. Receives the polling game's [`HostSide`]; world queries return
-    /// `None` if no world is open.
+    /// `None` if no world is open. A panic disables only the offending mod’s
+    /// reload callback; later listeners still run. Live writes outside a journal stand.
     #[hook(
         dispatch = "flat",
         side = "both",
         contract = "listen",
         neoforge = "ModConfigEvent.Reloading",
         cancellable = false,
-        version = 3
+        version = 4
     )]
     fn config_reloading(config: &ConfigFile);
     /// A `Server` config is dropped as its server stops
     /// (`ModConfigEvent.Unloading`), after `server_stopping`; the next
     /// world reads it again. `Client` and `Common` configs stay until the
     /// game quits. Receives the stopping game's [`ServerHost`], before the
-    /// final save and teardown.
+    /// final save and teardown. A panic disables only that mod’s unload callback,
+    /// not other listeners or the rest of teardown. Live writes outside a journal stand.
     #[hook(
         dispatch = "flat",
         side = "server",
         contract = "listen",
         neoforge = "ModConfigEvent.Unloading",
         cancellable = false,
-        version = 3
+        version = 4
     )]
     fn config_unloading(config: &ConfigFile);
 }

@@ -138,6 +138,7 @@ impl Hooks for Declare {
                 },
                 true,
                 false,
+                None,
                 8,
                 3,
                 1,

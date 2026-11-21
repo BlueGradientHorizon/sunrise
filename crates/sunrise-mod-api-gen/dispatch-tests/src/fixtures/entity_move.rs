@@ -12,7 +12,6 @@ struct Mover {
 enum Answer {
     Replace([f64; 3]),
     Panic,
-    Refuse,
     Cancel,
     Continue,
 }
@@ -30,13 +29,6 @@ impl Hooks for Mover {
                 *event.delta = [9.0; 3];
                 event.cancelled = true;
                 panic!("the fixture's move listener unwinds")
-            }
-            Answer::Refuse => {
-                *event.delta = [8.0; 3];
-                event.cancelled = true;
-                std::panic::resume_unwind(Box::new(runtime::Refusal(
-                    "unavailable fixture operation",
-                )))
             }
             Answer::Cancel => return Flow::Cancel,
             Answer::Continue => {}
@@ -117,75 +109,19 @@ fn a_failed_receiver_cannot_clear_an_accepted_move_veto() {
     assert!(skipped_heard.lock().unwrap().is_empty());
 }
 
-#[test]
-fn a_move_phase_refusal_restores_the_proposal_and_is_reported_on_each_call() {
-    let accepted = [3.0, 4.0, 5.0];
-    let (_, first) = mover("accepted", Answer::Replace(accepted));
-    let (refused_heard, refused) = mover("refused", Answer::Refuse);
-    let (later_heard, later) = mover("later", Answer::Continue);
-    install(vec![first, refused, later].into());
-
-    runtime::OUTSIDE_WORLD.set(true);
-    let outputs = [dispatch([1.0; 3]), dispatch([2.0; 3])];
-    runtime::OUTSIDE_WORLD.set(false);
-    assert_eq!(outputs, [(accepted, false); 2]);
-    assert_eq!(*refused_heard.lock().unwrap(), [(accepted, false); 2]);
-    assert_eq!(*later_heard.lock().unwrap(), [(accepted, false); 2]);
-    assert!(!runtime::poisoned(HookId::EntityMove, "refused"));
-    assert_eq!(
-        runtime::REFUSALS.with(|reports| std::mem::take(&mut *reports.borrow_mut())),
-        ["unavailable fixture operation"; 2]
-    );
-}
-
 mod root {
     mod runtime {
-        pub(super) struct Refusal(pub(super) &'static str);
-        impl Refusal {
-            pub(super) fn report(&self) {
-                REFUSALS.with(|reports| reports.borrow_mut().push(self.0));
-            }
-        }
-
-        pub(super) enum DispatchOutcome<T> {
-            Ok(T),
-            Refused(Refusal),
-            Panicked,
-        }
-
-        pub(super) fn outside_world() -> bool {
-            OUTSIDE_WORLD.get()
-        }
-        pub(super) fn refusable<T>(
-            contained: bool,
-            call: impl FnOnce() -> T,
-        ) -> Result<T, Refusal> {
-            if !contained {
-                return Ok(call());
-            }
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
-                Ok(value) => Ok(value),
-                Err(payload) => match payload.downcast::<Refusal>() {
-                    Ok(refusal) => Err(*refusal),
-                    Err(payload) => std::panic::resume_unwind(payload),
-                },
-            }
-        }
         pub(super) fn invoke<T>(
             hook: super::HookId,
             _: &'static str,
             mod_id: &'static str,
-            contained: bool,
             call: impl FnOnce() -> T,
-        ) -> DispatchOutcome<T> {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                refusable(contained, call)
-            })) {
-                Ok(Ok(value)) => DispatchOutcome::Ok(value),
-                Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
+        ) -> Option<T> {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
+                Ok(value) => Some(value),
                 Err(_) => {
                     poison(hook, mod_id);
-                    DispatchOutcome::Panicked
+                    None
                 }
             }
         }
@@ -198,6 +134,20 @@ mod root {
             super::listening(hook)
                 .map(|(_, entry)| entry)
                 .find(|entry| entry.id == namespace)
+        }
+
+        pub(super) fn entered_matching<'a>(
+            hook_id: super::HookId,
+            hook: &'static str,
+            mut allow: impl FnMut(&str) -> bool + 'a,
+        ) -> impl Iterator<Item = &'static dyn super::Hooks> + 'a {
+            super::listening(hook_id).filter_map(move |(_, entry)| {
+                if !allow(entry.id) {
+                    return None;
+                }
+                let ((), hooks) = super::enter_listener(entry, hook);
+                Some(hooks)
+            })
         }
 
         pub(super) struct ListenerScope;
@@ -214,8 +164,6 @@ mod root {
             }
         }
         thread_local! {
-            pub(super) static OUTSIDE_WORLD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-            pub(super) static REFUSALS: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
             /// The listeners dispatch poisoned, as (hook ordinal, id) pairs — the stand-in
             /// for the real runtime's per-hook sets.
             pub(super) static POISONED: std::cell::RefCell<std::collections::HashSet<(usize, &'static str)>> =

@@ -146,12 +146,16 @@ impl mod_api::prelude::TextHost for StartupDiscovery {
     }
 }
 pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
-    if !mod_api::__private::listened(HookId::AddPackFinders) {
+    if !mod_api::__private::enabled_listened(HookId::AddPackFinders) {
         return Vec::new();
     }
     let mut registry = Registry::new(kind, mods.clone());
     if matches!(kind, PackType::ClientResources | PackType::ServerData) {
-        mod_api::dispatch_add_pack_finders(&mut StartupDiscovery, |listen| registry.register_listener(listen));
+        mod_api::dispatch_add_pack_finders_for(
+            &mut StartupDiscovery,
+            |listen| registry.register_listener(listen),
+            |id| mods.code_owner_enabled(id),
+        );
     }
     registry.packs
 }
@@ -182,7 +186,7 @@ pub(super) fn data_repository(
 
 impl Game<'_> {
     pub(super) fn discover_mod_packs(&mut self, kind: PackType) -> Vec<Pack> {
-        if !mod_api::__private::listened(HookId::AddPackFinders) {
+        if !mod_api::__private::enabled_listened(HookId::AddPackFinders) {
             return Vec::new();
         }
         let mut registry = Registry::new(kind, self.mods.clone());

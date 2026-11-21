@@ -19,7 +19,8 @@ impl DebugEntry {
     /// Declare a text entry under a non-vanilla `<namespace>:<path>` such as `mymod:tick_cost`.
     /// The client retains `lines` for the session and calls it as the registering mod only
     /// while the entry is visible. Append lines to the supplied vector; legacy colour codes (§)
-    /// work. Appending nothing leaves the group unchanged.
+    /// work. Appending nothing leaves the group unchanged. Disabled owners are skipped;
+    /// a panic discards the lines and disables this callback for the session.
     pub fn text(
         id: String,
         group: DebugGroup,
@@ -63,7 +64,8 @@ impl DebugRenderer {
     /// Bind drawing to the ID of a [`DebugEntry::renderer`] toggle, such as `mymod:pipe_network`.
     /// Submit a new declaration on each renderer-list refresh. If selected, the client calls
     /// `draw` after custom geometry in each world view, as the registering mod. Capture any
-    /// renderer-specific state in the callback.
+    /// renderer-specific state in the callback. A disabled owner does not draw. A panic
+    /// disables this mod's draw callback for the switch even across renderer-list refreshes.
     pub fn new(
         id: String,
         draw: impl Fn(&dyn ClientHost, &WorldRenderView, &mut dyn WorldDrawContext)

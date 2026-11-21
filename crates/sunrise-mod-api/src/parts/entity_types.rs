@@ -12,6 +12,7 @@ impl GeneralTypesRegistrar for PartRegistrar {
         save_policy: GeneralSavePolicy,
         summonable: bool,
         pickable: bool,
+        piston_push_reaction: Option<PushReaction>,
         tracking_chunks: i32,
         update_interval: i32,
         payload_version: u16,
@@ -85,6 +86,7 @@ impl GeneralTypesRegistrar for PartRegistrar {
                     save_policy,
                     summonable,
                     pickable,
+                    piston_push_reaction: piston_push_reaction.unwrap_or_default(),
                     tracking_chunks,
                     update_interval,
                     payload_version,
@@ -132,6 +134,7 @@ mod tests {
             GeneralSavePolicy::Save,
             true,
             false,
+            None,
             tracking_chunks,
             update_interval,
             1,
@@ -208,6 +211,7 @@ mod tests {
                 GeneralSavePolicy::Save,
                 true,
                 false,
+                None,
                 8,
                 3,
                 1,
@@ -357,6 +361,7 @@ mod tests {
                 GeneralSavePolicy::Save,
                 true,
                 false,
+                Some(PushReaction::IgnoreEntity),
                 8,
                 3,
                 1,
@@ -364,5 +369,9 @@ mod tests {
             )
             .unwrap();
         assert_eq!(registrar.general_entity_types.len(), 1);
+        assert_eq!(
+            registrar.general_entity_types[0].piston_push_reaction,
+            PushReaction::IgnoreEntity
+        );
     }
 }

@@ -289,13 +289,47 @@ A client without this mod predicts vanilla here; the server corrects it.
   contents) and the item slots a mod gives an item. A hopper filling a shulker box doesn't ask. A `true` for a
   shulker box lets shulker boxes nest: that is the mod's choice, bounded by the NBT readers' depth limit.
 
-`grindstone_place` can replace the result when the inputs change. A cancel or refusal leaves no
-result. `grindstone_take` can replace the two inputs and the experience award. Cancelling a take
-keeps the click that took the result but skips the input replacement and experience. Refusing a
-take (for example, because the backing block changed or the answer is invalid) instead restores
-the click, including the result, cursor, inventory and any dropped item. Both cancel and refusal
-undo the listener's writes. An accepted take is still tentative until the enclosing transaction
-commits.
+When the grindstone inputs change, `grindstone_place` lends the top and bottom stacks and
+vanilla's result through `event.inputs`. Set `event.edits.output = Some(stack)` with a valid
+stack to replace the result. Only a replacement uses `event.edits.xp`: leave it at `-1` for
+vanilla experience or set a nonnegative award. Leaving the override at `None` keeps vanilla's
+result and award. Only the replacement stack is checked as a write; the borrowed stacks are not.
+An invalid replacement or an uncancelled XP below `-1` refuses the answer. Either cancellation
+or refusal leaves no result and rolls back the listener's writes.
+
+`grindstone_take` lends the pre-take stacks as `event.inputs.top` and `event.inputs.bottom`.
+These optional references do not change when listeners edit the answer. Set a valid
+`event.edits.new_top` or `event.edits.new_bottom` to leave a stack in that slot; both start
+at `None` (empty the slot). `event.edits.xp` starts with the award set on place or `-1`
+for vanilla's award from the pre-take stacks. Set a nonnegative value to give that much
+experience. The game resolves the default award only on an accepted take.
+
+Cancelling a take keeps the click that took the result but skips input replacement,
+experience and sound. An invalid remainder refuses the click even if the listener cancels;
+XP below `-1` refuses an uncancelled answer. A refusal, including a stale read or a failing
+listener, restores the result, inputs, cursor, inventory and any dropped item. Both cancel and
+refusal undo the listener's writes. An accepted take is still tentative until the enclosing
+transaction commits.
+
+After the anvil calculates a result with a left input, `anvil_update` lends
+`event.inputs` on both sides: the left and optional right stacks, the optional rename text
+and vanilla's output and costs. Read those values without cloning; they don't change as
+listeners edit `event.edits`. Leave `edits.output` at `StackResult::Keep` to use vanilla's
+output, use `StackResult::Set(Some(stack))` to replace it, or use `StackResult::Set(None)`
+to clear it. To read the current answer, match on `&event.edits.output`: use
+`event.inputs.vanilla_output` for `Keep` and `stack.as_ref()` for `Set(stack)`. The level
+and material costs start at vanilla's values. Changing only the costs doesn't revalidate
+vanilla's stack. Cancellation or an invalid replacement clears the output and both costs.
+
+The server's `anvil_craft_pre` and `anvil_craft_post` both borrow the same pre-take snapshot
+through `event.inputs` (`AnvilCraftInputs<'_>`). Read the optional stacks through `inputs.left`
+and `inputs.right`, and the taken result through `inputs.output`. Set `event.cancelled` or
+return `Flow::Cancel` in Pre to veto the whole take: the result stays in the slot, the inputs,
+cursor, inventory and levels do not change, and Post is skipped. Post runs after the inputs
+are consumed, levels are charged and anvil wear is applied.
+
+These input views are valid only during the callback. Clone an individual stack only if you
+need to keep it afterwards. The input views and staged edits are not Wire records.
 
 `MenuPart::menu_slot_rules` answers per menu type and slot, including for a replacement from
 `item_stacked_on_other`.

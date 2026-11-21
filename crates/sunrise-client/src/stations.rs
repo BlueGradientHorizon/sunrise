@@ -310,10 +310,7 @@ pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> cra
     // `ItemStack.getItemName`: the item's own `getName`, which for a few items is not its
     // `item_name` component.
     if let Some(key) = crate::brewing::contents_name_key(stack) {
-        let fallback = names
-            .get(&key)
-            .map_or_else(|| names.item(&stack.item), str::to_owned);
-        return Text::translate_with_fallback(&key, &fallback, &[]);
+        return Text::translate(&key, &[]);
     }
     if &*stack.item == "minecraft:shield"
         && let Some(color) = data.and_then(|d| d.base_color.as_deref())
@@ -331,49 +328,39 @@ pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> cra
         // `PlayerHeadItem.getName`: a profile's name, else the item name.
         return head.text();
     }
-    // `Item.getName`: the stack's `item_name` component, the patch over the prototype.
-    if stack.item_name().is_some()
-        && let Some(component) = data.and_then(|d| d.other("minecraft:item_name"))
-    {
+    // `Item.getName`: the stack's `item_name` component, including the compact raid banner.
+    if let Some(component) = data.and_then(|d| d.saved_other("minecraft:item_name")) {
         return crate::entity_nbt::name_text(component);
     }
     if data.is_some_and(|d| d.other("!minecraft:item_name").is_some()) {
         // `Item.getName` is `getOrDefault(ITEM_NAME, EMPTY)`.
         return Text::literal("");
     }
-    if data.is_some_and(|d| d.ominous_banner) {
-        let key = "block.minecraft.ominous_banner";
-        return Text::translate_with_fallback(key, names.get(key).unwrap_or("Ominous Banner"), &[]);
+    // Keep the prototype's component, including any fallback it actually carries.
+    // Do not insert an English fallback into a component shared with other viewers.
+    if let Some(name) = names.item_name(&stack.item) {
+        return match name
+            .as_object()
+            .filter(|component| component.len() == 1)
+            .and_then(|component| component.get("translate"))
+            .and_then(serde_json::Value::as_str)
+        {
+            Some(key) => Text::translate(key, &[]),
+            None => crate::entity_nbt::name_text(&crate::scoreboard::json_to_tag(name)),
+        };
     }
-    // The prototype's default `item_name` (`Item.getDescriptionId`), else, for an item whose
-    // prototype carries none (a mod's), the key `Item.Properties` gives it: its block's for a
-    // block item (`useBlockDescriptionPrefix`), else `item.*` (`Util.makeDescriptionId`).
-    // The English name is the fallback text.
+    // An item without a prototype (a mod's) takes the key `Item.Properties` gives it: its
+    // block's for a block item (`useBlockDescriptionPrefix`), else `item.*`.
     let (namespace, path) = stack
         .item
         .split_once(':')
         .unwrap_or(("minecraft", &stack.item));
-    let fallback = names.item(&stack.item);
-    match names.item_name(&stack.item) {
-        Some(name) => match name.as_object() {
-            Some(component) if component.len() == 1 => match component
-                .get("translate")
-                .and_then(serde_json::Value::as_str)
-            {
-                Some(key) => Text::translate_with_fallback(key, &fallback, &[]),
-                None => crate::entity_nbt::name_text(&crate::scoreboard::json_to_tag(name)),
-            },
-            _ => crate::entity_nbt::name_text(&crate::scoreboard::json_to_tag(name)),
-        },
-        None => {
-            let prefix = if names.is_block_item(&stack.item) {
-                "block"
-            } else {
-                "item"
-            };
-            Text::translate_with_fallback(&format!("{prefix}.{namespace}.{path}"), &fallback, &[])
-        }
-    }
+    let prefix = if names.is_block_item(&stack.item) {
+        "block"
+    } else {
+        "item"
+    };
+    Text::translate(&format!("{prefix}.{namespace}.{path}"), &[])
 }
 /// `ItemStack.getHoverName` as plain text in the current language: the component of
 /// [`hover_name_text`], rendered.
@@ -731,28 +718,32 @@ pub(crate) enum ParsedStationRecipe {
     Stonecutting(Stonecutting),
 }
 impl ParsedStationRecipe {
-    pub(crate) fn parse(id: String, v: &Value, items: &Items) -> Option<Self> {
+    pub(crate) fn parse(
+        id: String,
+        v: &Value,
+        ingredient: impl Fn(&Value) -> Option<Ingredient>,
+    ) -> Option<Self> {
         match v["type"].as_str().unwrap_or("") {
             "minecraft:smithing_transform" => {
                 // Only omitted ingredients mean empty slots; malformed present
                 // ingredients invalidate the recipe rather than becoming optional.
                 let parse_optional = |key: &str| match v.get(key) {
                     None => Some(None),
-                    Some(value) => Ingredient::parse(value, items).map(Some),
+                    Some(value) => ingredient(value).map(Some),
                 };
                 Some(Self::Smithing(Smithing::Transform {
                     id,
                     template: parse_optional("template")?,
-                    base: Ingredient::parse(&v["base"], items)?,
+                    base: ingredient(&v["base"])?,
                     addition: parse_optional("addition")?,
                     result: crate::crafting::Template::parse(&v["result"])?,
                 }))
             }
             "minecraft:smithing_trim" => Some(Self::Smithing(Smithing::Trim {
                 id,
-                template: Ingredient::parse(&v["template"], items)?,
-                base: Ingredient::parse(&v["base"], items)?,
-                addition: Ingredient::parse(&v["addition"], items)?,
+                template: ingredient(&v["template"])?,
+                base: ingredient(&v["base"])?,
+                addition: ingredient(&v["addition"])?,
                 // Use the same holder codec as item components, collapsing
                 // unstyled literal text once at the recipe boundary before
                 // publishing the typed snapshot.
@@ -773,7 +764,7 @@ impl ParsedStationRecipe {
             })),
             "minecraft:stonecutting" => Some(Self::Stonecutting(Stonecutting {
                 id,
-                input: Ingredient::parse(&v["ingredient"], items)?,
+                input: ingredient(&v["ingredient"])?,
                 result: crate::crafting::Template::parse(&v["result"])
                     .filter(|template| template.item.is_some())?
                     .create(),
@@ -1911,6 +1902,38 @@ mod tests {
         });
     }
 
+    #[test]
+    fn hover_name_keeps_only_authored_fallbacks() {
+        use serde_json::json;
+        use std::collections::BTreeMap;
+        let blocks = Box::leak(Box::new(
+            sunrise_world::registry::BlockRegistry::from_facts_json(
+                br#"{"defaults":{"minecraft:air":0},"states":[["a",true,false,"","minecraft:air"]]}"#
+                    .as_slice(),
+            )
+            .unwrap(),
+        ));
+        let sword = ItemStack::new("minecraft:diamond_sword", 1);
+        let name = json!({"translate": "item.minecraft.diamond_sword"});
+        let names = crate::creative::Names::default().with_item_names(
+            &BTreeMap::from([(
+                sword.item.to_string(),
+                BTreeMap::from([("minecraft:item_name".into(), name.clone())]),
+            )]),
+            blocks,
+        );
+        crate::lang::scoped(crate::lang::Language::default(), || {
+            assert_eq!(hover_name_text(&names, &sword).component(), name);
+            let mut renamed = sword;
+            let name = json!({"translate": "test.name", "fallback": "A custom sword"});
+            renamed.data_mut().set_other(
+                "minecraft:item_name",
+                Some(crate::scoreboard::json_to_tag(&name)),
+            );
+            assert_eq!(hover_name_text(&names, &renamed).component(), name);
+        });
+    }
+
     /// `ItemStack.getHoverName` falls back to `getOrDefault(ITEM_NAME, EMPTY)`,
     /// so a removed item name is the empty string, not the localized item.
     #[test]
@@ -2290,9 +2313,10 @@ mod tests {
     fn stonecutting_component_result_is_retained() {
         let items = Items::for_tests(Default::default());
         let json = serde_json::json!({"type":"minecraft:stonecutting","ingredient":"minecraft:stone","result":{"id":"minecraft:diamond","count":2,"components":{"minecraft:damage":7}}});
-        let rule = ParsedStationRecipe::parse("test:cut".into(), &json, &items)
-            .unwrap()
-            .rule();
+        let rule =
+            ParsedStationRecipe::parse("test:cut".into(), &json, |v| Ingredient::parse(v, &items))
+                .unwrap()
+                .rule();
         let crate::crafting::RecipeRule::Stonecutting { result, .. } = rule else {
             panic!("wrong rule")
         };
@@ -2305,7 +2329,10 @@ mod tests {
     fn smithing_transform_omitted_slots_match_empty() {
         let items = Items::for_tests(Default::default());
         let json = serde_json::json!({"type":"minecraft:smithing_transform","base":"minecraft:stone","result":"minecraft:diamond"});
-        let parsed = ParsedStationRecipe::parse("test:smith".into(), &json, &items).unwrap();
+        let parsed = ParsedStationRecipe::parse("test:smith".into(), &json, |v| {
+            Ingredient::parse(v, &items)
+        })
+        .unwrap();
         assert!(matches!(
             parsed.rule(),
             crate::crafting::RecipeRule::SmithingTransform {
@@ -2341,7 +2368,10 @@ mod tests {
         let items = Items::for_tests(Default::default());
         let json = serde_json::json!({"type":"minecraft:smithing_transform","base":"minecraft:diamond_sword","result":{"id":"minecraft:netherite_sword","count":2}});
         let ParsedStationRecipe::Smithing(recipe) =
-            ParsedStationRecipe::parse("test:smith".into(), &json, &items).unwrap()
+            ParsedStationRecipe::parse("test:smith".into(), &json, |v| {
+                Ingredient::parse(v, &items)
+            })
+            .unwrap()
         else {
             panic!("wrong rule")
         };
@@ -2370,9 +2400,10 @@ mod tests {
     fn smithing_inline_trim_pattern_is_retained() {
         let items = Items::for_tests(Default::default());
         let json = serde_json::json!({"type":"minecraft:smithing_trim","template":"minecraft:stick","base":"minecraft:stone","addition":"minecraft:iron_ingot","pattern":{"asset_id":"example:wave","description":{"translate":"trim.example.wave"},"decal":true}});
-        let rule = ParsedStationRecipe::parse("test:trim".into(), &json, &items)
-            .unwrap()
-            .rule();
+        let rule =
+            ParsedStationRecipe::parse("test:trim".into(), &json, |v| Ingredient::parse(v, &items))
+                .unwrap()
+                .rule();
         let crate::crafting::RecipeRule::SmithingTrim {
             pattern:
                 crate::crafting::RecipeTrimPattern::Inline {

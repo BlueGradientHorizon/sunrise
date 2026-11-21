@@ -37,8 +37,11 @@ place in the HUD and its draw conditions.
 
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
-The latest wrapper runs first. Don't call `draw_previous()` if you want to skip the previous body
-for this draw without discarding it at registration.
+The latest wrapper runs first. A delegated mod body draws as its own mod; vanilla paint runs
+as the engine, not as the wrapper's mod. A panic in delegated vanilla paint is an engine fault;
+catching the unwind inside the wrapper does not let the layer finish or disable the wrapper.
+Don't call `draw_previous()` if you want to skip the previous body for this draw without discarding
+it at registration.
 
 ```rust,ignore
 event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
@@ -51,9 +54,23 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 ```
 
 `gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. Post still fires if the
-wrapper omitted the previous body. If Pre cancels the slot, neither the installed body nor Post
-runs. For work that must happen even when the HUD is hidden, use the independent foreground
+wrapper omitted the previous body. If a retained painter or wrapper panics or is refused, its
+paint is discarded. A wrapper's completed `draw_previous()` calls keep their paint in order,
+without being called again. A panic disables just the offending callback for this session; a
+disabled wrapper leaves the previous body to draw directly. If Pre cancels the slot, neither the
+installed body nor Post runs. For work that must happen even when the HUD is hidden, use the independent foreground
 `gui_render_post` hook.
+
+## Status rows and fixed text positions
+
+`minecraft:player_health` is still a single GUI layer for hearts, armour, food and air. Cancelling it
+in `gui_layer_pre` hides all four. `health_hud` replaces their combined drawing, not the separate
+`minecraft:vehicle_health` layer.
+
+Adding a taller status bar does not move the selected item name or the action bar. The name starts
+59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
+pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:
+`minecraft:selected_item_name` or `minecraft:overlay_message`.
 
 ## Registering F3 text
 
@@ -75,7 +92,8 @@ fn register_debug_entries(&self, _: &RegistrationContext, event: &mut RegisterDe
 ```
 
 Each mod starts with an empty batch. The client keeps the closure and calls it as your mod only
-while the entry is visible. Reduced debug info hides it, even if it is set to always on.
+while the entry is visible and its mod is enabled. A panic discards its lines and disables the
+callback for the session. Reduced debug info hides it, even if it is set to always on.
 
 ## Registering world-space debug renderers
 
@@ -108,7 +126,9 @@ The client collects a fresh list at startup, login, the first world view and the
 after a selection rebuild or respawn. Keep per-refresh state in the new callbacks. Push all
 renderers every time, even if their toggles are off; the first active registration for a switch
 wins. Only installed callbacks run in a world view, as their registering mods, after
-`submit_custom_geometry` and within its shared draw limits. Off or hidden toggles do not draw.
+`submit_custom_geometry` and within its shared draw limits. Off or hidden toggles and disabled
+mods do not draw. A panic disables that mod's renderer for the switch for the rest of the
+session, even after a selection rebuild.
 
 ## Block overlays
 

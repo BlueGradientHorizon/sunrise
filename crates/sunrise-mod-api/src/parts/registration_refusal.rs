@@ -311,38 +311,43 @@ mod tests {
 
     #[test]
     fn panic_in_hooks_register_rolls_back_only_its_owner_and_queues_report() {
-        struct Panics;
+        struct Panics(std::sync::Arc<std::sync::atomic::AtomicUsize>);
         impl Hooks for Panics {
             fn subscribed(&self) -> &'static [Option<crate::HookId>] {
                 &[]
             }
             fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 r.declare_fluid("before");
                 r.declare_biome_region("aborted", region()).unwrap();
                 panic!("boom during registration");
             }
         }
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mods: crate::Mods = vec![
             ModEntry::new("healthy", Box::new(Healthy)),
-            ModEntry::new("broken", Box::new(Panics)),
+            ModEntry::new("broken", Box::new(Panics(calls.clone()))),
             ModEntry::new("later", Box::new(Healthy)),
         ]
         .into();
         crate::testing::with_dispatch(mods, || {
-            let registrar = super::super::register_all(mod_vocab::__private::mods(), |_| false);
-            assert!(registrar.refused.is_empty());
-            assert_eq!(
-                registrar
-                    .biome_regions
-                    .iter()
-                    .map(|d| (d.mod_id.as_str(), d.id.as_str(), d.region.weight))
-                    .collect::<Vec<_>>(),
-                [("healthy", "healthy:kept", 5), ("later", "later:kept", 5)]
-            );
-            let keys = registrar.registry_keys.borrow();
-            assert!(keys.declared_fluids.contains_key("healthy:soup"));
-            assert!(keys.declared_fluids.contains_key("later:soup"));
-            assert!(!keys.declared_fluids.contains_key("broken:before"));
+            for _ in 0..2 {
+                let registrar = super::super::register_all(mod_vocab::__private::mods(), |_| false);
+                assert!(registrar.refused.is_empty());
+                assert_eq!(
+                    registrar
+                        .biome_regions
+                        .iter()
+                        .map(|d| (d.mod_id.as_str(), d.id.as_str(), d.region.weight))
+                        .collect::<Vec<_>>(),
+                    [("healthy", "healthy:kept", 5), ("later", "later:kept", 5)]
+                );
+                let keys = registrar.registry_keys.borrow();
+                assert!(keys.declared_fluids.contains_key("healthy:soup"));
+                assert!(keys.declared_fluids.contains_key("later:soup"));
+                assert!(!keys.declared_fluids.contains_key("broken:before"));
+            }
+            assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
             assert_eq!(
                 mod_vocab::__private::take_hook_panics(),
                 [mod_vocab::__private::HookPanicReport {

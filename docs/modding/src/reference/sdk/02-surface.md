@@ -154,8 +154,9 @@ tests = ["crates/sunrise-client/src/some_tests.rs::the_test_that_pins_it"]
 ```
 
 `version` starts at 1 and goes up when a mod that relies on the behaviour can see a different meaning. `tests` lists
-the tests that pin the promise, each as `<file path from the repository root>::<fn name>`; the export refuses a behaviour whose
-test has no `fn` of that name, and a malformed file, naming it. `doc` and `tests` are outside the record's hash.
+the tests that pin the promise, each as `<file path from the repository root>::<fn name>`. The export validates the
+TOML and link syntax without opening the proof files. The separate `published_behaviour_proofs_exist` test checks
+that each file parses as Rust and contains the named function. `doc` and `tests` are outside the record's hash.
 
 The diff treats a behaviour like any record: a new one is additive, a removed one is breaking (so it needs a change
 note that names `behaviour:<name>`), and a `version` change is conditional, for the mods that rely on it. Nothing in a

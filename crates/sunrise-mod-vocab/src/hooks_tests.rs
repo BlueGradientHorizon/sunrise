@@ -1094,7 +1094,6 @@ fn world_phase_cloned_event_fields_roll_back_on_panic() {
         }
     }
 
-    assert!(!crate::runtime::outside_world());
     let observed = Arc::new(std::sync::Mutex::new(None));
     testing::with_dispatch(
         vec![

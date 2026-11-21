@@ -345,6 +345,13 @@ Each mob and player in view gets the render hook pair once a frame, NeoForge's
 4. `render_living_post(entity, model, draw)`;
 5. `render_player_post(player, who, model, draw)`, for a player only.
 
+This is the order within one entity. In the ordered body pass, the hooks run at each body's slot in
+level join order, interleaved with general entity renderer submissions. The local body is not
+submitted while the camera follows another entity (except in studio freecam). The `entity_outline`
+queries for mobs, players and dropped items also follow this pass's join order; projectiles are
+queried in a later pass. The ender dragon and end crystals draw at their slots without adding
+these hooks or outline queries.
+
 The order today: the model and the layers are drawn before the post hooks; the entity's name tag, leash, flames
 and shadow are drawn in the frame's later passes, after them. The reference draws the leash and the name tag
 before the post (and queues the flames and the shadow after it): tracked in #3915. A type with a registered
@@ -412,11 +419,12 @@ has unrepresentable metadata; deep local text has no serialization depth cap.
 Kept text retains its glyphs, including obfuscated glyph choices,
 until it is drawn again. Resource reload invalidates kept geometry.
 
-Spinning parts use the client's animation clock: level-running texture ticks plus the
-level's partial tick, not the camera's partial tick or the server's day time. Pausing
-holds that clock; `/tick freeze` holds the level partial at 1 and stops texture ticks.
-Camera motion during a freeze does not spin a part backwards. Server time updates do
-not reset animation. Held-arm, hand, mob and scene draws use this same level partial.
+Spinning parts use the client's animation clock: level-running texture ticks plus an
+animation phase, not the camera's partial tick or the server's day time. Pausing and
+`/tick freeze` hold the animation where it was and resume without a jump; `/tick step`
+advances it by whole ticks. The world's own render interpolation still uses 1 while
+frozen. Camera motion and server time updates do not reset animation. Held-arm, hand,
+mob and scene draws share this animation clock.
 
 Directional shading on `quad` and `cube` follows `spin`, but light stays fixed by default.
 To use the level's sky and block light, call `BlockEntityDrawContext::level_light` in a world

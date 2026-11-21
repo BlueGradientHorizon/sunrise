@@ -282,6 +282,188 @@ mod tests {
     use super::*;
 
     #[test]
+    fn panic_drops_only_the_current_listeners_task_registrations() {
+        use mod_api::{
+            __private::ConfigurationTaskRegistration, ConfigurationTask, ConfigurationTaskContext,
+            Identifier, RegisterConfigurationTasksEvent, ServerHost,
+        };
+
+        struct Task(Identifier, bool);
+        impl ConfigurationTask for Task {
+            fn task_type(&self) -> &Identifier {
+                if self.1 {
+                    panic!("test task_type fault");
+                }
+                &self.0
+            }
+
+            fn start(&mut self, _: &mut dyn ServerHost, _: &mut ConfigurationTaskContext<'_>) {}
+        }
+
+        struct Registers(&'static str, bool);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Registers {
+            fn register_configuration_tasks(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut RegisterConfigurationTasksEvent<'_>,
+            ) {
+                let task = |refuse| Task(Identifier::parse(self.0).unwrap(), refuse);
+                event.register(task(false)).unwrap();
+                if self.1 {
+                    // Both the reservation and this validation error belong to the refused listener.
+                    assert!(event.register(task(false)).is_err());
+                    panic!("the listener unwinds to its checkpoint");
+                }
+            }
+        }
+
+        mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("first_task", Box::new(Registers("config:first", false))),
+                mod_api::ModEntry::new("refused_task", Box::new(Registers("config:next", true))),
+                mod_api::ModEntry::new("next_task", Box::new(Registers("config:next", false))),
+            ]
+            .into(),
+            || {
+                let mut host = mod_api::testing::FakeHost::new();
+                let mut registration = ConfigurationTaskRegistration::default();
+                mod_api::dispatch_register_configuration_tasks(
+                    &mut host,
+                    mod_api::__private::configuration_connection(1),
+                    0,
+                    "Test",
+                    &mut registration,
+                );
+                assert_eq!(registration.refusal(), None);
+                let tasks = registration.into_tasks();
+                assert_eq!(
+                    tasks.iter().map(|task| task.owner.id()).collect::<Vec<_>>(),
+                    ["first_task", "next_task"]
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn a_panicking_task_type_refuses_one_registration_and_disables_only_its_owner() {
+        use mod_api::{
+            __private::ConfigurationTaskRegistration, ConfigurationTask, ConfigurationTaskContext,
+            ConfigurationTaskRegistrationError, Identifier, RegisterConfigurationTasksEvent,
+            ServerHost, content::crash::current_native_call,
+        };
+
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static BROKEN_LOOKUPS: AtomicUsize = AtomicUsize::new(0);
+        static BROKEN_DISPOSALS_IN_SCOPE: AtomicUsize = AtomicUsize::new(0);
+
+        struct Task {
+            owner: &'static str,
+            kind: Identifier,
+            panic: bool,
+        }
+        impl Drop for Task {
+            fn drop(&mut self) {
+                if self.panic {
+                    if mod_api::__private::game::retained_callback_active()
+                        && current_native_call().is_some_and(|call| {
+                            (call.id, call.hook) == (self.owner, "ConfigurationTask::drop")
+                        })
+                    {
+                        BROKEN_DISPOSALS_IN_SCOPE.fetch_add(1, Ordering::Relaxed);
+                    }
+                    panic!("test task destructor panic");
+                }
+            }
+        }
+        impl ConfigurationTask for Task {
+            fn task_type(&self) -> &Identifier {
+                let call = current_native_call().unwrap();
+                assert_eq!(
+                    (call.id, call.hook),
+                    (self.owner, "ConfigurationTask::task_type")
+                );
+                assert!(mod_api::__private::game::retained_callback_active());
+                if self.panic {
+                    BROKEN_LOOKUPS.fetch_add(1, Ordering::Relaxed);
+                    panic!("test task type panic");
+                }
+                &self.kind
+            }
+
+            fn start(&mut self, _: &mut dyn ServerHost, _: &mut ConfigurationTaskContext<'_>) {}
+        }
+
+        struct Register(&'static str, bool);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Register {
+            fn register_configuration_tasks(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut RegisterConfigurationTasksEvent<'_>,
+            ) {
+                // Do not propagate the registration error: the engine must still refuse admission.
+                let _ = event.register(Task {
+                    owner: self.0,
+                    kind: Identifier::parse("config:task").unwrap(),
+                    panic: self.1,
+                });
+            }
+        }
+
+        const BROKEN: &str = "broken_task_type";
+        const HEALTHY: &str = "healthy_task_type";
+        mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new(BROKEN, Box::new(Register(BROKEN, true))),
+                mod_api::ModEntry::new(HEALTHY, Box::new(Register(HEALTHY, false))),
+            ]
+            .into(),
+            || {
+                let mut host = mod_api::testing::FakeHost::new();
+                for peer in [1, 2] {
+                    let mut registration = ConfigurationTaskRegistration::default();
+                    mod_api::dispatch_register_configuration_tasks(
+                        &mut host,
+                        mod_api::__private::configuration_connection(peer),
+                        0,
+                        "Test",
+                        &mut registration,
+                    );
+                    if peer == 1 {
+                        assert!(matches!(
+                            registration.refusal(),
+                            Some(ConfigurationTaskRegistrationError::CallbackFailed(reason))
+                                if reason.contains(BROKEN) && reason.contains("test task type panic")
+                        ));
+                    } else {
+                        assert_eq!(registration.refusal(), None);
+                    }
+                    let tasks = registration.into_tasks();
+                    assert_eq!(tasks.len(), 1);
+                    assert_eq!(tasks[0].owner.id(), HEALTHY);
+                }
+                assert_eq!(BROKEN_LOOKUPS.load(Ordering::Relaxed), 1);
+                assert_eq!(BROKEN_DISPOSALS_IN_SCOPE.load(Ordering::Relaxed), 2);
+                let notices = mod_api::__private::take_hook_panics()
+                    .into_iter()
+                    .filter(|notice| notice.mod_id == BROKEN)
+                    .map(|notice| notice.hook)
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    notices,
+                    [
+                        "ConfigurationTask::task_type",
+                        "ConfigurationTask::drop",
+                        "ConfigurationTask::drop",
+                    ]
+                );
+            },
+        );
+    }
+
+    #[test]
     fn completion_only_takes_effect_on_publication_for_its_own_turn() {
         use crate::lan::config_payloads::ConfigIo;
         use sunrise_protocol::connection::{Connection, Pipe};

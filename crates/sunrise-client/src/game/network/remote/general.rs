@@ -8,6 +8,7 @@ use super::{Game, Lerp, Remote};
 use crate::game::general::general_type_catalog;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
+use sunrise_client::join_seq::JoinSeq;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::{
@@ -22,6 +23,8 @@ const RENDER_SNAPSHOT_BYTES: usize = 64 << 20;
 /// One general row the server shows the window.
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::game) struct RemoteGeneral {
+    /// Admission to the level, even if the first attachment snapshot has yet to arrive.
+    pub join: JoinSeq,
     /// The client's frozen catalog slot for the row's type.
     pub type_slot: usize,
     pub uuid: u128,
@@ -157,6 +160,7 @@ impl Game<'_> {
             return;
         }
         let mut row = RemoteGeneral {
+            join: JoinSeq::next(),
             type_slot,
             uuid,
             position,
@@ -265,6 +269,7 @@ mod tests {
 
     fn row(at: [f64; 3]) -> RemoteGeneral {
         RemoteGeneral {
+            join: JoinSeq::next(),
             type_slot: 0,
             uuid: 1,
             position: at,
@@ -318,6 +323,7 @@ mod tests {
                     mod_api::GeneralSavePolicy::Save,
                     true,
                     pickable,
+                    (!pickable).then_some(mod_api::PushReaction::IgnoreEntity),
                     8,
                     1,
                     1,
@@ -446,6 +452,10 @@ mod tests {
                 game.handle_packet(spawn(40, "mymod:missile", [0.5, 66.5, 1.2]))
                     .unwrap();
                 game.handle_packet(snapshot(40, None)).unwrap();
+                assert_eq!(
+                    game.entity(40).unwrap().piston_push_reaction(game),
+                    Ok(Some(mod_api::PushReaction::IgnoreEntity))
+                );
                 game.handle_packet(spawn(41, PACKAGE, [0.5, 65.0, 1.8]))
                     .unwrap();
                 game.handle_packet(spawn(42, PACKAGE, AT)).unwrap();

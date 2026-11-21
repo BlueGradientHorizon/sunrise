@@ -52,7 +52,11 @@ fn registry_views_and_explicit_order_before_vanilla() {
 
 #[test]
 fn panicking_server_reload_registration_discards_only_its_ordered_and_retained_tails() {
-    use crate::{AddServerReloadListenersEvent, Hooks, Host, ModEntry};
+    use crate::{AddServerReloadListenersEvent, Hooks, Host, ModEntry, ReloadContext};
+    struct Context;
+    impl Host for Context {}
+    crate::impl_host_areas!(Context);
+    impl ReloadContext for Context {}
     use std::sync::atomic::{AtomicBool, Ordering};
 
     struct Stored(&'static str);
@@ -69,7 +73,7 @@ fn panicking_server_reload_registration_discards_only_its_ordered_and_retained_t
     impl Hooks for Register {
         fn add_server_reload_listeners(
             &self,
-            _: &dyn Host,
+            _: &dyn ReloadContext,
             event: &mut AddServerReloadListenersEvent<'_>,
         ) {
             let reg = &mut *event.listeners;
@@ -108,15 +112,9 @@ fn panicking_server_reload_registration_discards_only_its_ordered_and_retained_t
         ]
         .into(),
         || {
-            use crate::world::phase::{ModPhase, PhaseOwner};
-            let phase = PhaseOwner::scope(ModPhase::World);
-            let _reload = phase.reloading().unwrap();
-            crate::dispatch_add_server_reload_listeners(
-                &crate::testing::FakeHost::new(),
-                |listen| {
-                    listeners.register_listener(listen);
-                },
-            );
+            crate::dispatch_add_server_reload_listeners(&Context, |listen| {
+                listeners.register_listener(listen);
+            });
             assert!(wrote_tail.load(Ordering::Relaxed));
             assert_eq!(
                 crate::__private::take_hook_panics(),

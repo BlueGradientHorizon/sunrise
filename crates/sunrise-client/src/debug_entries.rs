@@ -3,8 +3,8 @@
 //! only in the overlay or never, the two built-in profiles, and
 //! `debug-profile.json` beside `options.txt`, which keeps them.
 use mod_api::{
-    Answered, ClientHost, DebugEntry, DebugGroup, DebugRenderer, Identifier,
-    content::crash::{ModCall, enter_native_mod},
+    __private::game::CallbackOwner, Answered, ClientHost, DebugEntry, DebugGroup, DebugRenderer,
+    Identifier,
 };
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -188,8 +188,14 @@ pub const ENTRIES: [Entry; 46] = [
 
 /// A startup declaration with the native mod identity supplied by dispatch.
 pub struct RegisteredDebugEntry {
-    owner: &'static str,
+    owner: CallbackOwner,
     entry: DebugEntry,
+}
+
+/// A selected world renderer and the mod scope of its retained draw callback.
+pub struct ActiveDebugRenderer {
+    pub owner: CallbackOwner,
+    pub renderer: DebugRenderer,
 }
 
 /// The entries native mods registered (`register_debug_entries`), kept once at start.
@@ -200,7 +206,7 @@ static REGISTERED: OnceLock<Vec<RegisteredDebugEntry>> = OnceLock::new();
 /// already, is logged and left out.
 pub fn register(entries: Vec<Answered<DebugEntry>>) {
     let entries = entries.into_iter().map(|answer| RegisteredDebugEntry {
-        owner: answer.mod_id,
+        owner: CallbackOwner::for_mod(answer.mod_id),
         entry: answer.answer,
     });
     if REGISTERED.set(checked(entries)).is_err() {
@@ -220,12 +226,12 @@ fn checked(entries: impl IntoIterator<Item = RegisteredDebugEntry>) -> Vec<Regis
         if Identifier::parse_namespaced(id).is_none_or(|id| id.namespace() == "minecraft") {
             log::warn!(
                 "{}: debug entry {id:?} must be <namespace>:<path> outside the minecraft namespace",
-                registered.owner
+                registered.owner.id()
             );
         } else if kept.iter().any(|k| k.entry.id() == id) {
             log::warn!(
                 "{}: debug entry {id} is registered twice; the first is kept",
-                registered.owner
+                registered.owner.id()
             );
         } else {
             kept.push(registered);
@@ -300,13 +306,16 @@ pub fn mod_lines<'a>(
         {
             return None;
         }
-        let _owner = enter_native_mod(ModCall {
-            id: registered.owner,
-            hook: "debug_entry_callback",
-            part: None,
-        });
+        if !registered.owner.is_enabled() {
+            return None;
+        }
         let mut lines = Vec::new();
-        append_lines(host, &mut lines);
+        registered
+            .owner
+            .call("debug entry", "debug_entry_lines", || {
+                append_lines(host, &mut lines);
+            })
+            .ok()?;
         (!lines.is_empty()).then_some((group, lines))
     })
 }
@@ -321,6 +330,7 @@ pub struct DebugEntries {
     file: Option<PathBuf>,
     /// Monotonic `rebuildCurrentList` revision, including unchanged selections.
     version: u64,
+    renderer_owners: BTreeMap<(&'static str, String), CallbackOwner>,
 }
 
 impl Default for DebugEntries {
@@ -330,6 +340,7 @@ impl Default for DebugEntries {
             profile: None,
             file: None,
             version: 0,
+            renderer_owners: BTreeMap::new(),
         };
         entries.reset_to_profile(Profile::Default);
         entries
@@ -488,12 +499,12 @@ impl DebugEntries {
     /// registration order. A missing renderer switch is logged; the first active renderer for
     /// an ID wins.
     pub fn active_renderers(
-        &self,
+        &mut self,
         renderers: Vec<Answered<DebugRenderer>>,
         overlay: bool,
         reduced: bool,
-    ) -> Vec<Answered<DebugRenderer>> {
-        let mut active: Vec<Answered<DebugRenderer>> = Vec::new();
+    ) -> Vec<ActiveDebugRenderer> {
+        let mut active: Vec<ActiveDebugRenderer> = Vec::new();
         for renderer in renderers {
             let id = renderer.answer.id();
             let Some(declared) =
@@ -507,9 +518,18 @@ impl DebugEntries {
             };
             if (declared.reduced || !reduced)
                 && self.status(id).shown(overlay)
-                && !active.iter().any(|kept| kept.answer.id() == id)
+                && !active.iter().any(|kept| kept.renderer.id() == id)
             {
-                active.push(renderer);
+                // Refreshing the selection does not clear this renderer's session poison.
+                let owner = self
+                    .renderer_owners
+                    .entry((renderer.mod_id, id.to_owned()))
+                    .or_insert_with(|| CallbackOwner::for_mod(renderer.mod_id))
+                    .clone();
+                active.push(ActiveDebugRenderer {
+                    owner,
+                    renderer: renderer.answer,
+                });
             }
         }
         active
@@ -690,33 +710,33 @@ mod tests {
     fn a_native_mods_entries_need_their_own_namespace_and_a_free_id() {
         let kept = checked([
             RegisteredDebugEntry {
-                owner: "mymod",
+                owner: CallbackOwner::for_mod("mymod"),
                 entry: DebugEntry::text("mymod:tick_cost".into(), DebugGroup::Memory, |_, _| {}),
             },
             RegisteredDebugEntry {
-                owner: "mymod",
+                owner: CallbackOwner::for_mod("mymod"),
                 entry: DebugEntry::renderer("minecraft:fps".into()),
             },
             RegisteredDebugEntry {
-                owner: "mymod",
+                owner: CallbackOwner::for_mod("mymod"),
                 entry: DebugEntry::renderer("tick_cost".into()),
             },
             RegisteredDebugEntry {
-                owner: "mymod",
+                owner: CallbackOwner::for_mod("mymod"),
                 entry: DebugEntry::renderer("mymod:Bad".into()),
             },
             RegisteredDebugEntry {
-                owner: "other",
+                owner: CallbackOwner::for_mod("other"),
                 entry: DebugEntry::renderer("mymod:tick_cost".into()),
             },
             RegisteredDebugEntry {
-                owner: "other",
+                owner: CallbackOwner::for_mod("other"),
                 entry: DebugEntry::renderer("other:queue".into()),
             },
         ]);
         let ids: Vec<&str> = kept.iter().map(|e| e.entry.id()).collect();
         assert_eq!(ids, ["mymod:tick_cost", "other:queue"]);
-        assert_eq!(kept[0].owner, "mymod");
+        assert_eq!(kept[0].owner.id(), "mymod");
         assert_eq!(
             kept[0].entry.text_lines().map(|(group, _)| group),
             Some(DebugGroup::Memory)
@@ -729,7 +749,7 @@ mod tests {
             let cost = String::from("Tick cost: 3 ms");
             let entries = [
                 RegisteredDebugEntry {
-                    owner: "inspect",
+                    owner: CallbackOwner::for_mod("inspect"),
                     entry: DebugEntry::text(
                         "metrics:tick_cost".into(),
                         DebugGroup::Memory,
@@ -740,7 +760,7 @@ mod tests {
                     ),
                 },
                 RegisteredDebugEntry {
-                    owner: "metrics",
+                    owner: CallbackOwner::for_mod("metrics"),
                     entry: DebugEntry::text(
                         "metrics:queue".into(),
                         DebugGroup::Position,
@@ -773,9 +793,64 @@ mod tests {
     }
 
     #[test]
+    fn a_panicking_debug_entry_is_skipped_and_the_next_mod_keeps_drawing() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Empty;
+        impl mod_api::Hooks for Empty {}
+        mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("debug_panic", Box::new(Empty)),
+                mod_api::ModEntry::new("debug_healthy", Box::new(Empty)),
+            ]
+            .into(),
+            || {
+                let runs = std::sync::Arc::new(AtomicUsize::new(0));
+                let bad_runs = runs.clone();
+                let entries = [
+                    RegisteredDebugEntry {
+                        owner: CallbackOwner::new("debug_panic").unwrap(),
+                        entry: DebugEntry::text(
+                            "debug_panic:text".into(),
+                            DebugGroup::Memory,
+                            move |_, lines| {
+                                bad_runs.fetch_add(1, Ordering::Relaxed);
+                                lines.push("must not be shown".into());
+                                panic!("broken debug entry");
+                            },
+                        ),
+                    },
+                    RegisteredDebugEntry {
+                        owner: CallbackOwner::new("debug_healthy").unwrap(),
+                        entry: DebugEntry::text(
+                            "debug_healthy:text".into(),
+                            DebugGroup::Position,
+                            |_, lines| {
+                                lines.push(current_native_mod().unwrap_or("wrong scope").into());
+                            },
+                        ),
+                    },
+                ];
+                let mut selection = DebugEntries::default();
+                selection.set_status("debug_panic:text", Status::AlwaysOn);
+                selection.set_status("debug_healthy:text", Status::AlwaysOn);
+                let host = FakeHost::new();
+                for _ in 0..2 {
+                    assert_eq!(
+                        mod_lines(&entries, &host, &selection, true, false).collect::<Vec<_>>(),
+                        [(DebugGroup::Position, vec!["debug_healthy".to_owned()]),]
+                    );
+                }
+                assert_eq!(runs.load(Ordering::Relaxed), 1);
+                assert_eq!(current_native_mod(), None);
+            },
+        );
+    }
+
+    #[test]
     fn a_native_mods_renderer_entry_is_listed_as_a_renderer_and_has_no_lines() {
         let entry: &'static RegisteredDebugEntry = Box::leak(Box::new(RegisteredDebugEntry {
-            owner: "mymod",
+            owner: CallbackOwner::for_mod("mymod"),
             entry: DebugEntry::renderer("mymod:pipes".into()),
         }));
         assert_eq!(as_entry(entry).category, Category::Renderer);
@@ -819,7 +894,7 @@ mod tests {
     fn an_entry_with_no_lines_joins_no_group() {
         mod_platform::testing::with_mods(Vec::new().into(), || {
             let entries = [RegisteredDebugEntry {
-                owner: "mymod",
+                owner: CallbackOwner::for_mod("mymod"),
                 entry: DebugEntry::text("mymod:quiet".into(), DebugGroup::Light, |_, _| {}),
             }];
             let mut selection = DebugEntries::default();

@@ -67,7 +67,7 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
     impl Hooks for Register {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn ClientHost,
+            _: &dyn ClientReloadListenerContext,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
             let name = if self.fails { "failed" } else { "healthy" };
@@ -122,16 +122,10 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
                 ]
                 .into(),
                 || {
-                    let (listeners, phase) = if startup {
-                        (
-                            register_startup_client_reload_listeners(),
-                            mod_api::__private::ModPhase::Setup,
-                        )
+                    let listeners = if startup {
+                        register_startup_client_reload_listeners(None)
                     } else {
-                        (
-                            game.register_client_reload_listeners(),
-                            mod_api::__private::ModPhase::World,
-                        )
+                        game.register_client_reload_listeners()
                     };
                     assert!(!listeners.get_registry().contains(&id("test_mod:failed")));
                     assert!(listeners.get_registry().contains(&id("test_mod:healthy")));
@@ -140,8 +134,8 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
                         VanillaClientListeners::model_manager()
                     )));
                     let root = ResourceSource::indexed(Default::default());
-                    let prepared = stage_client_reload(&root, listeners, phase).unwrap();
-                    apply_client_reload(&mod_api::__private::PhaseOwner::new(phase), prepared);
+                    let prepared = stage_client_reload(&root, listeners).unwrap();
+                    apply_client_reload(prepared);
                     assert!(registered.load(std::sync::atomic::Ordering::Relaxed));
                     assert!(failed.lock().unwrap().is_empty());
                     assert_eq!(healthy.lock().unwrap().as_slice(), ["hats"]);
@@ -306,7 +300,7 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
 fn initial_load_stages_and_applies_client_reload_listeners() {
     use crate::game::{Progress, load_resources, native_entity_refs::tests::with_game};
     use mod_api::{self, ModEntry};
-    use mod_api::{AddClientReloadListenersEvent, ClientHost, Hooks};
+    use mod_api::{AddClientReloadListenersEvent, Hooks};
     use mod_platform::testing::with_mods;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -416,7 +410,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
 fn client_reload_reads_real_assets_with_pack_overrides() {
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{self, ModEntry};
-    use mod_api::{AddClientReloadListenersEvent, ClientHost, Hooks};
+    use mod_api::{AddClientReloadListenersEvent, Hooks};
     use mod_platform::testing::with_mods;
     use std::{
         collections::BTreeSet,

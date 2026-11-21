@@ -15,7 +15,8 @@ pub trait MenusServerHost {
     /// `MenuReplace::InPlace` changes the title and rows without the client
     /// centring the mouse again. Packets for the old window are ignored. The
     /// items of an open menu change through its slots (`menu`), not by
-    /// opening it again.
+    /// opening it again. An active speculative menu click refuses the open with `Ok(None)`.
+
     #[serialize_text]
     fn open_menu(
         &mut self,
@@ -35,7 +36,9 @@ pub trait MenusServerHost {
     /// a player who isn't here.
     fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef>;
     /// Side: server.
-    /// Closes the player's native menu (a `menu_closed` follows).
+    /// Closes the player's native menu (a `menu_closed` follows). During an active menu click,
+    /// the close waits for the transaction to commit; an abort leaves the window open.
+
     fn close_menu(&mut self, uuid: u128);
     /// Side: server.
     /// Replaces everything the player's open `open_menu` menu `window` shows with `items` (by
@@ -46,8 +49,10 @@ pub trait MenusServerHost {
     /// the next tick's sync instead; this is the whole-contents form, for a page turned or a
     /// list rebuilt. Each refusal sends nothing and changes nothing, and is named by
     /// `MenuItemsRefusal`: `Client`, `NoPlayer` (no placed player of that UUID), `NotOpen`
-    /// (`window` is not their open `open_menu` menu) and `Stack` (a stack the game's item
-    /// conversion refuses).
+    /// (`window` is not their open native menu), `Stack` (a stack the game's item conversion
+    /// refuses), or `OwnedSlots` (use `ItemPlace::MenuSlot` for an owned window). Inside a
+    /// transaction, an abort puts the display contents back without sending a packet.
+
     fn menu_set_items(
         &mut self,
         uuid: u128,
@@ -90,12 +95,15 @@ pub trait MenusBackend {
     /// The storage menu slot `slot` shows (`Slot.container` and `getContainerSlot`): the
     /// player's inventory by `ENTITY_ITEMS` index (`InventoryMenu`'s armour slots 5..9 go head
     /// to feet), a block entity's or an entity's slot, the ender chest's, the crafting grid's
-    /// or a mod's chest menu's.
+    /// or a mod's chest or transient container slot.
+
     fn menu_slot_backing(&self, menu: MenuRef, slot: usize) -> Option<MenuSlotBacking>;
     /// Side: server.
     /// How many of `stack` menu slot `slot` holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`):
     /// a furnace's fuel slot one bucket, an armour slot one piece that fits it, a crafting result
-    /// none.
+    /// none. For an owned transient slot, this is the declared limit or the item's own
+    /// limit, whichever is lower; its mod decides what a click moves.
+
     fn menu_slot_holds(&self, menu: MenuRef, slot: usize, stack: &ItemStack) -> Option<u32>;
     /// Side: server.
     /// Whether menu slot `slot` gives up what it holds (`Slot.mayPickup`): bound armour stays
@@ -179,12 +187,13 @@ pub trait MenusClientBackendMut {
 #[sunrise_mod_api_macros::host_area]
 pub trait MenusBackendMut {
     /// Side: server.
-    /// Close a player's open menu as `ServerPlayer.closeContainer` does, running the normal
-    /// lifecycle once: the container's lid, a vehicle's or a trade's stand-in, the crafting,
-    /// station and mount menus, the carried stack back to the inventory,
-    /// `player_container_close`, then the client's window closed (`ContainerClose`). Refuses
-    /// stale menus, clients, a player whose state is swapped in for a turn, and the player's own
-    /// inventory menu, which is never closed. A client closes its own screen with `close`.
+    /// Close a player's open menu as `ServerPlayer.closeContainer` does. The server queues
+    /// `ContainerClose`, then removes the menu, returns the carried stack to the inventory,
+    /// and fires `player_container_close`. Refuses stale menus, clients, a player whose state
+    /// is swapped in for a turn, a pending disconnect, and the player's own inventory menu.
+    /// During a click action, true accepts a request to close that same window at commit; an
+    /// aborted action leaves it open. A client closes its own screen with `close`.
+
     fn menu_close_container(&mut self, menu: MenuRef) -> bool;
     /// Side: server.
     /// Set a data slot of the owning mod's current blockless menu (`DataSlot.set`).

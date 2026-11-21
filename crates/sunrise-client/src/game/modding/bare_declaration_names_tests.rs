@@ -61,16 +61,18 @@ fn a_bare_block_name_binds_the_type_to_the_mods_own_block() {
         let _registration = mod_api::__private::RegistrationGuard::open();
         let context = mod_api::RegistrationContext::new();
         let mut blocks = Vec::new();
-        Game::native_blocks(&context, &mut |block| {
-            blocks.push(
-                block
-                    .answer
-                    .try_into_engine(&())
-                    .unwrap()
-                    .validate_local()
-                    .unwrap(),
-            );
-            Ok(())
+        Game::native_blocks(&context, |listen| {
+            assert!(listen(&mut |block| {
+                blocks.push(
+                    block
+                        .answer
+                        .try_into_engine(&())
+                        .unwrap()
+                        .validate_local()
+                        .unwrap(),
+                );
+                Ok(())
+            }));
         });
         assert!(mod_api::__private::take_declaration_refusals(&context).is_empty());
         (

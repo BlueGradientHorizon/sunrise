@@ -1,8 +1,13 @@
+import base64
+import contextlib
 import datetime as dt
+import hashlib
+import io
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -190,7 +195,8 @@ class MuslAttachmentTests(unittest.TestCase):
                 seen.add(name)
                 needs = self.jobs[name].get("needs", [])
                 pending.extend([needs] if isinstance(needs, str) else needs)
-        self.assertEqual(seen, {"pick", "exporters", "build", "complete", "sign", "publish"})
+        self.assertEqual(seen, {"pick", "break-glass-umceko", "break-glass-aria", "break-glass", "exporters", "build",
+                                "complete", "sign", "publish"})
         self.assertEqual(self.jobs["build"]["needs"], ["pick", "exporters"])
         self.assertEqual(self.jobs["musl-build"]["needs"], ["pick", "exporters"])
         for call, part in (("exporters", "exporters"), ("build", "game"), ("musl-build", "musl")):
@@ -230,12 +236,12 @@ class MuslAttachmentTests(unittest.TestCase):
 
                 result = shell(sign)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                # Isolate Cargo, but verify the hashes before the workflow renames the sums for publication.
-                result = shell('cargo() { printf "%s\\n" "$*" >> verified; (cd musl && sha256sum -c SHA256SUMS); }\n' + verify)
+                # Both signatures checked for real, with OpenSSL and the run's throwaway key, no code of the checkout.
+                result = shell(verify)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                channel, version = (root / "verified").read_text().splitlines()
-                self.assertIn(f"--tag {kind} --only {archive} --key ", channel)
-                self.assertIn(f"--tag {env['ALSO_FOR']} --signature SHA256SUMS.v2.sig --only {archive} --key ", version)
+                self.assertEqual(result.stderr.splitlines(), [f"{kind}: 1 files match SHA256SUMS",
+                                                              f"{env['ALSO_FOR']}: 1 files match SHA256SUMS"])
+                self.assertNotIn("cargo", verify)
                 self.assertTrue((root / "musl/SHA256SUMS-musl.sig").stat().st_size)
                 self.assertTrue((root / "musl/SHA256SUMS-musl.v2.sig").stat().st_size)
                 self.assertFalse((root / "musl/SHA256SUMS").exists())
@@ -657,14 +663,6 @@ class SdkPairTests(unittest.TestCase):
         self.assertFalse(nightly.listed("surface.json", b"index", sums))
         self.assertFalse(nightly.listed("SHA256SUMS", b"index", sums))
 
-    def test_an_sdk_asset_is_trusted_only_under_the_forks_signature_for_its_own_tag(self):
-        command = nightly.signature_check("a" * 40, Path("/tmp/x"), ["sdk.json"])
-        self.assertEqual(command[:6], ["cargo", "run", "--locked", "--quiet", "-p", "sunrise-release-sign"])
-        arguments = command[command.index("--") + 1:]
-        self.assertEqual(arguments, ["verify", "--repository", "sunrise-org/sunrise", "--tag", "sdk-" + "a" * 40,
-                                     "--only", "sdk.json", "/tmp/x"])
-        self.assertNotIn("--publishing", command, "an unsigned SDK is refused, as the launcher refuses it")
-
     def test_the_previous_sdk_is_the_nearest_published_one_behind_the_build(self):
         a, b, c, d = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
         # c is not on d's history; b is nearer than a.
@@ -707,3 +705,129 @@ class SdkPairTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("openssl"), "needs the runner's OpenSSL")
+class VerifySumsTests(unittest.TestCase):
+    """verify_sums: a release folder checked as launchers check it, with OpenSSL and no code of the checkout."""
+
+    def setUp(self):
+        self.work = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.key, self.public = self.keypair("release")
+        _, self.other = self.keypair("other")
+
+    def keypair(self, name):
+        private = self.work / f"{name}.pem"
+        subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(private)], check=True,
+                       capture_output=True)
+        der = subprocess.run(["openssl", "pkey", "-in", str(private), "-pubout", "-outform", "DER"], check=True,
+                             capture_output=True).stdout
+        return private, base64.b64encode(der[-32:]).decode()
+
+    def release(self, tag, files, signed_for=None, key=None):
+        """A folder with `files`, their SHA256SUMS, and SHA256SUMS.sig signed for `signed_for` (default `tag`)."""
+        folder = self.work / f"release-{len(list(self.work.glob('release-*')))}"
+        folder.mkdir()
+        for name, data in files.items():
+            (folder / name).write_bytes(data)
+        sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in files.items()).encode()
+        (folder / "SHA256SUMS").write_bytes(sums)
+        message = self.work / "message"
+        message.write_bytes(f"horizon release {signed_for or tag}\n".encode() + sums)
+        signature = subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", str(key or self.key), "-rawin", "-in",
+                                    str(message)], check=True, capture_output=True).stdout
+        (folder / "SHA256SUMS.sig").write_text(base64.b64encode(signature).decode() + "\n")
+        return folder
+
+    def verify(self, folder, tag, **kwargs):
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+            nightly.verify_sums(folder, tag, **{"keys": [self.public], **kwargs})
+        self.assertEqual(out.getvalue(), "", "stdout is its callers' result")
+
+    def test_a_folder_signed_for_its_tag_by_a_release_key_passes(self):
+        files = {"sdk.json": b"index", "surface.json": b"surface"}
+        folder = self.release("26.3-0.1.0", files)
+        self.verify(folder, "26.3-0.1.0")
+        self.verify(folder, "26.3-0.1.0", only=["sdk.json"])
+        self.verify(folder, "26.3-0.1.0", keys=[self.other, self.public])
+
+    def test_a_tampered_folder_another_tag_or_another_key_refuses(self):
+        files = {"sdk.json": b"index", "surface.json": b"surface"}
+        folder = self.release("26.3-0.1.0", files)
+        cases = (("26.3-0.1.1", {}, "isn't signed for `horizon release 26.3-0.1.1`"),
+                 ("26.3-0.1.0", {"keys": [self.other]}, "isn't signed"),
+                 ("26.3-0.1.0", {"only": ["missing.json"]}, "missing.json is not in 26.3-0.1.0's SHA256SUMS"),
+                 ("26.3-0.1.0", {"keys": []}, "no key to check the signature with"),
+                 ("26.3-0.1.0", {"signature": "SHA256SUMS.v2.sig"}, "has no SHA256SUMS.v2.sig"))
+        for tag, kwargs, error in cases:
+            with self.subTest(error=error), self.assertRaisesRegex(SystemExit, error):
+                self.verify(folder, tag, **kwargs)
+        # A file changed after signing: the signed list holds, its bytes don't.
+        (folder / "surface.json").write_bytes(b"tampered")
+        with self.assertRaisesRegex(SystemExit, "26.3-0.1.0's surface.json does not match its SHA256SUMS"):
+            self.verify(folder, "26.3-0.1.0")
+        self.verify(folder, "26.3-0.1.0", only=["sdk.json"])
+        # A list rewritten after signing: the signature no longer covers it.
+        sums = (folder / "SHA256SUMS").read_text().replace(hashlib.sha256(b"surface").hexdigest(),
+                                                           hashlib.sha256(b"tampered").hexdigest())
+        (folder / "SHA256SUMS").write_text(sums)
+        with self.assertRaisesRegex(SystemExit, "isn't signed"):
+            self.verify(folder, "26.3-0.1.0")
+
+    def test_a_malformed_row_or_signature_line_refuses_and_every_repeated_row_is_checked(self):
+        files = {"a.tar.gz": b"a"}
+        folder = self.release("26.3-0.1.0", files)
+        sums = (folder / "SHA256SUMS").read_text()
+        for text, error in ((sums + "not a row\n", "row 'not a row' is not"),
+                            (sums + f"{'0' * 64}  a.tar.gz\n", "a.tar.gz does not match")):
+            with self.subTest(error=error):
+                broken = self.release("26.3-0.1.0", files)
+                (broken / "SHA256SUMS").write_text(text)
+                message = self.work / "message"
+                message.write_bytes(b"horizon release 26.3-0.1.0\n" + text.encode())
+                signature = subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", str(self.key), "-rawin", "-in",
+                                            str(message)], check=True, capture_output=True).stdout
+                (broken / "SHA256SUMS.sig").write_text(base64.b64encode(signature).decode() + "\n")
+                with self.assertRaisesRegex(SystemExit, error):
+                    self.verify(broken, "26.3-0.1.0", only=["a.tar.gz"])
+        (folder / "SHA256SUMS.sig").write_text((folder / "SHA256SUMS.sig").read_text() + "not-base64!\n")
+        with self.assertRaisesRegex(SystemExit, "line 'not-base64!' is not a base64 Ed25519 signature"):
+            self.verify(folder, "26.3-0.1.0")
+
+    def test_sdk_previous_prints_only_the_build_it_found(self):
+        # sdk-publish.yml reads its stdout as one SHA: the verifier's own report goes to stderr.
+        build = "b" * 40
+        with mock.patch.object(nightly, "previous_sdk", return_value=build), \
+                mock.patch.object(nightly, "release_assets",
+                                  side_effect=lambda tag, *names: print("26.3: 1 files match", file=sys.stderr)
+                                  or {nightly.SDK_SURFACE: b"{}"}), \
+                mock.patch("sys.argv", ["nightly.py", "sdk-previous", "c" * 40, str(self.work / "previous.json")]), \
+                contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+            nightly.main()
+        self.assertEqual(out.getvalue(), build + "\n")
+
+    def test_publishing_before_any_key_warns_and_unsigned_never_passes_once_one_is_listed(self):
+        folder = self.release("nightly", {"a.tar.gz": b"a"})
+        (folder / "SHA256SUMS.sig").unlink()
+        with contextlib.redirect_stderr(io.StringIO()) as out:
+            nightly.verify_sums(folder, "nightly", keys=[], publishing=True)
+        self.assertIn("::warning::nightly: published with SHA256SUMS but unsigned", out.getvalue())
+        with self.assertRaisesRegex(SystemExit, "has no SHA256SUMS.sig"):
+            self.verify(folder, "nightly", publishing=True)
+
+    def test_the_keys_are_mains_never_the_checkouts(self):
+        origin, clone = self.work / "origin", self.work / "clone"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        subprocess.run(["git", "clone", "-q", str(origin), str(clone)], check=True, capture_output=True)
+        keys = clone / nightly.KEYS_FILE
+        keys.parent.mkdir(parents=True)
+        keys.write_text(f"# main's\n{self.public}\n")
+        for command in (["add", "-A"], ["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m",
+                                        "keys"], ["push", "-q", "origin", "main"]):
+            subprocess.run(["git", *command], cwd=clone, check=True)
+        keys.write_text(f"{self.public}\n{self.other}\n")  # a candidate's own copy adds a key
+        with mock.patch.object(nightly, "REPOSITORY", clone), \
+                mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "sunrise-org/sunrise"}):
+            self.assertEqual(nightly.release_keys(), [self.public])
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "someone/fork"}):
+            self.assertEqual(nightly.release_keys(), [], "another repository's releases are trusted by no key")

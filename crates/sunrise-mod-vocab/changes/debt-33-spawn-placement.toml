@@ -12,6 +12,7 @@ ids = [
 why = """
 Register a native predicate for an entity type instead of sending a fixed ground, biome and light rule. \
 Mods can extend or replace each type's predicate, including vanilla types, using the checked level and its live random stream. \
+The check follows vanilla's SpawnPlacements.checkSpawnRules and NeoForge's MergedSpawnPredicate.build: a selected replacement is the only predicate, including when it cannot answer. \
 Placement types and registration errors now stay in-process; they no longer implement Wire. \
 The placement hook is version 2 because its default result can now differ from vanilla even for a vanilla type."""
 migrate = """
@@ -25,6 +26,7 @@ Test light last: replace `SpawnLight::Dark` with `(reason == SpawnReason::TrialS
 For `SpawnLight::Any`, omit the light condition. Draw any extra randomness from `ctx.random()`; the darkness test uses the same live stream. \
 To extend an existing entry, pass `None` for both metadata fields and use `Or` or `And`. \
 Without a replacement, the engine evaluates `(original or any Or) and all And`, short-circuiting each list in registration order. Only the last replacement of an existing entry runs if there is one. \
+A disabled or refused replacement supplies `false` to the placement hook; do not expect the original to run or consume any extra random draws. Panics disable the affected predicate for the session; phase refusals are reported without disabling it. \
 Remove matches on `SpawnPlacementError::{InvalidId, InvalidTag, Duplicate}`. `InvalidEntityType` reports an unavailable key and records a startup refusal even if the return value is ignored. \
 An unloaded type or invalid metadata refuses resource loading with the mod and entity type named. Do not Wire-encode `SpawnPlacementType` or `SpawnPlacementError`; use them directly in native registration. \
 Rebuild listeners for `mob_spawn_placement_check` version 2; the callback signature and timing are unchanged. \

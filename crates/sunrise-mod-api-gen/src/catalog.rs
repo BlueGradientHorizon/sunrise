@@ -1096,6 +1096,34 @@ mod tests {
     const HOOK: &str = "pub trait Hooks { /// Doc.\n #[hook(side = \"server\", contract = \"listen\")] fn one(); }";
 
     #[test]
+    fn metadata_generators_need_only_the_hook_declarations() {
+        let root = checkout(&[(
+            &format!("{DECLARATIONS}/base.rs"),
+            r###"
+            pub trait Hooks {
+                /// Example hook.
+                #[hook(side = "server", contract = "listen", neoforge = "ExampleEvent")]
+                #[notes = "## Example\n\nA hook note."]
+                fn example();
+            }
+        "###,
+        )]);
+        let json = crate::neoforge_catalog(&root);
+        let notes = crate::generate_hook_notes(&root);
+        fs::remove_dir_all(root).unwrap();
+
+        let actual: serde_json::Value = serde_json::from_str(&json.unwrap()).unwrap();
+        let expected: serde_json::Value =
+            serde_json::from_str(r#"{"hooks":[{"name":"example","neoforge":"ExampleEvent"}]}"#)
+                .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(
+            notes.unwrap(),
+            "# Hook notes\n\n## Example\n\nA hook note.\n"
+        );
+    }
+
+    #[test]
     fn the_retired_json_catalog_is_refused_wherever_it_is() {
         let base = format!("{DECLARATIONS}/base.rs");
         let index = format!("{DECLARATIONS}/mod.rs");

@@ -230,6 +230,119 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use mod_api::{
+            Hooks, HostSide, ModEntry, Registrar, RegistrationContext, ServerHost, SettingSpec,
+        };
+        use std::sync::{Arc, Mutex};
+
+        if run_fresh_cases(
+            "game::native_configs::tests::panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners",
+            "SUNRISE_CONFIG_PANIC_CHILD",
+            &["server"],
+        ) {
+            return;
+        }
+
+        struct Broken;
+        #[mod_api::__subscriptions]
+        impl Hooks for Broken {
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                for (key, title) in [("reload", "fault.reload"), ("unload", "fault.unload")] {
+                    registrar
+                        .register_setting(SettingSpec::toggle(key, title, false))
+                        .unwrap();
+                }
+            }
+
+            fn config_reloading(
+                &self,
+                host: HostSide<'_>,
+                _: &mut mod_api::ConfigReloadingEvent<'_>,
+            ) {
+                let HostSide::Server(host) = host else {
+                    panic!("expected server polling")
+                };
+                host.set_setting("fault", "reload", "true");
+                panic!("broken reload listener");
+            }
+
+            fn config_unloading(
+                &self,
+                host: &mut dyn ServerHost,
+                _: &mut mod_api::ConfigUnloadingEvent<'_>,
+            ) {
+                host.set_setting("fault", "unload", "true");
+                panic!("broken unload listener");
+            }
+        }
+
+        struct Later(Arc<Mutex<Vec<&'static str>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Later {
+            fn config_reloading(&self, _: HostSide<'_>, _: &mut mod_api::ConfigReloadingEvent<'_>) {
+                self.0.lock().unwrap().push("reload");
+            }
+
+            fn config_unloading(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &mut mod_api::ConfigUnloadingEvent<'_>,
+            ) {
+                self.0.lock().unwrap().push("unload");
+            }
+        }
+
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![
+            ModEntry::new("fault", Box::new(Broken)),
+            ModEntry::new("later", Box::new(Later(observed.clone()))),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let config = ConfigFile {
+                    mod_id: "fault".into(),
+                    kind: Server,
+                    file: "fault-server.toml".into(),
+                    text: String::new(),
+                };
+                game.native_config_reloading(&config);
+                game.native_config_unloading(&config);
+                assert_eq!(game.setting("fault", "reload").as_deref(), Some("true"));
+                assert_eq!(game.setting("fault", "unload").as_deref(), Some("true"));
+                // These writes lack a journal. Reset them outside dispatch to make another
+                // invocation of either disabled callback observable.
+                game.set_setting("fault", "reload", "false");
+                game.set_setting("fault", "unload", "false");
+                game.native_config_reloading(&config);
+                game.native_config_unloading(&config);
+                assert_eq!(game.setting("fault", "reload").as_deref(), Some("false"));
+                assert_eq!(game.setting("fault", "unload").as_deref(), Some("false"));
+                assert_eq!(
+                    observed.lock().unwrap().as_slice(),
+                    ["reload", "unload", "reload", "unload"]
+                );
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [
+                        mod_api::__private::HookPanicReport {
+                            mod_id: "fault",
+                            hook: "config_reloading"
+                        },
+                        mod_api::__private::HookPanicReport {
+                            mod_id: "fault",
+                            hook: "config_unloading"
+                        },
+                    ]
+                );
+            })
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn config_permissions_and_once_per_side_survive_two_worlds() {
         use crate::game::native_entity_refs::tests::{
             run_fresh_cases, with_client_game, with_game,

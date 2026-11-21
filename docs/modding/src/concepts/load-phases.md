@@ -99,6 +99,12 @@ Attribute bounds are registration data too. `Registrar::widen_attribute_bounds` 
 the union of every mod's asks, so the result does not depend on the dispatch order, and the default never moves
 ([content mods](../how-to/content-mods.md) has the call, its refusals and what saves keep).
 
+During `config_reloading` and `config_unloading`, a callback panic disables only that callback for
+that mod and reports its name. Subsequent listeners and server teardown still run. A live setting
+write that already took effect is not part of a registration batch and is not undone. In startup
+registration, the registrar checkpoint or declaration batch discards the panicking listener’s
+pending entries; later mods can still register.
+
 ## Pack repository discovery
 
 `add_pack_finders` takes `&mut dyn PackDiscoveryContext` and `&mut AddPackFindersEvent` at startup
@@ -108,6 +114,7 @@ using fallbacks before assets are loaded. `context.client_text()` lends font mea
 when the client is ready. `context.live_host()` returns `None` before the game exists, and lends
 a `HostSide<'_>` during live rediscovery. For example, match `Some(HostSide::Client(host))` to read
 a registered client setting via `host.setting(mod_id, key)` while rediscovering resource packs.
+If a callback panics, none of its offered packs are kept, and other finders still run.
 
 ## Reloading
 
@@ -192,8 +199,8 @@ dedicated server setup. Dependencies express intermod ordering.
 through `DataLoadContext::origin()` and `LoopContext::side()` as before; if a payload needs such
 a fact, map it into a field of your own [Wire record](wire-types.md).
 
-FML's file and path APIs (`ModList` file reads, config full paths, the game directory, update URLs) are
-replaced on purpose; [FML loader APIs and their Sunrise routes](../reference/fml-loader-apis.md) lists each one.
+[FML loader APIs and their Sunrise routes](../reference/fml-loader-apis.md) compares the two loaders'
+file and path APIs, including the game directory.
 
 ## Settings snapshots
 

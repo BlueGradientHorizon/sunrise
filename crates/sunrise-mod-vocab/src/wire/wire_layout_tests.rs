@@ -217,28 +217,6 @@ fn handle_records_have_declared_field_bytes() {
     );
     fields(InstanceGroupRef::from_parts(37, 9).unwrap(), (37u64, 9u32));
     fields(RenderPipelineRef::from_parts(41, 5).unwrap(), (41u64, 5u32));
-    fields(AttachmentHolder::Entity(entity), (0u32, entity));
-    fields(AttachmentHolder::Player(player), (1u32, player));
-    fields(
-        AttachmentHolder::BlockEntity(BlockEntityRef {
-            level,
-            position: [7, -8, 9],
-            generation: 83,
-        }),
-        (
-            2u32,
-            BlockEntityRef {
-                level,
-                position: [7, -8, 9],
-                generation: 83,
-            },
-        ),
-    );
-    fields(
-        AttachmentHolder::Chunk(ChunkRef::new(level, [3, -4])),
-        (3u32, ChunkRef::new(level, [3, -4])),
-    );
-    fields(AttachmentHolder::Level(level), (4u32, level));
 }
 
 #[test]
@@ -276,10 +254,6 @@ fn payload_enum_cases_have_declared_field_bytes() {
     );
     fields(TicketOwner::Block([1, -2, 3]), (0u32, [1i32, -2, 3]));
     fields(TicketOwner::Entity(0x1234), (1u32, 0x1234u128));
-    fields(Holder::Entity(17), (0u32, 17u32));
-    fields(Holder::Player(23), (1u32, 23u128));
-    fields(Holder::BlockEntity([1, -2, 3]), (2u32, [1i32, -2, 3]));
-    fields(Holder::Chunk([7, -9]), (3u32, [7i32, -9]));
     fields(
         LevelDimension::Custom(LevelKey::try_from("example:moon".to_owned()).unwrap()),
         (3u32, LevelKey::try_from("example:moon".to_owned()).unwrap()),
@@ -347,44 +321,6 @@ fn snapshot_records_have_declared_field_bytes() {
     fields(DamageContainer::from(values.clone()), (values,));
     let revision = crate::item::containers::ModRevision::from_snapshot(31, 47);
     fields(revision, (31u64, 47u64));
-    fields(
-        AttachmentPolicy {
-            copy_on_death: true,
-            sync: false,
-        },
-        (true, false),
-    );
-    fields(
-        AttachmentForm {
-            encoded: Some(Compound::new()),
-            policy: AttachmentPolicy {
-                copy_on_death: false,
-                sync: true,
-            },
-            write: AttachmentWrite::Set,
-        },
-        (
-            Some(Compound::new()),
-            AttachmentPolicy {
-                copy_on_death: false,
-                sync: true,
-            },
-            AttachmentWrite::Set,
-        ),
-    );
-    let token = AttachmentWriteToken::from(
-        sunrise_mod_runtime::attachments::index::AttachmentOwner::from_parts(
-            AttachmentHolder::Entity(EntityRef::new(WorldEpoch::new(43), 29)),
-            71,
-        ),
-    );
-    fields(
-        token,
-        (
-            AttachmentHolder::Entity(EntityRef::new(WorldEpoch::new(43), 29)),
-            71u64,
-        ),
-    );
 }
 
 fn decode<T: Wire, F: Wire>(value: T) -> F {
@@ -432,10 +368,6 @@ fn spawner_and_attribute_records_have_declared_field_bytes() {
         },
         (vec![(id("minecraft:sharpness"), 3u32)], true),
     );
-    let (rows,): (Vec<(AttachmentWriteToken, Vec<u8>)>,) = decode(AttachmentBatch::from(
-        sunrise_mod_runtime::attachments::AttachmentBatch::<AttachmentHolder>::empty(),
-    ));
-    assert!(rows.is_empty());
     fields(
         ItemPlace::Mod {
             provider: "example:bag",
@@ -496,42 +428,6 @@ fn particle_record_has_declared_field_bytes() {
             ),
         ),
     );
-    let kind = BlockEntityTypeKey::from_slot(0).unwrap();
-    fields(BlockEntityPartError::VanillaType { kind }, (0u32, kind));
-    fields(
-        BlockEntityPartError::Duplicate {
-            kind,
-            part: "example::Machine",
-        },
-        (1u32, kind, "example::Machine".to_owned()),
-    );
-}
-
-#[test]
-fn saved_attachment_batch_fields_keep_scoped_identity_and_nbt() {
-    use sunrise_mod_runtime::attachments::{
-        AttachmentBatch as Batch, AttachmentEntry,
-        index::{AttachmentOwner, AttachmentSnapshot},
-    };
-    let holder = AttachmentHolder::Entity(EntityRef::new(WorldEpoch::new(43), 29));
-    let mut saved = Compound::new();
-    saved.insert("value".into(), Tag::Int(123));
-    let row = AttachmentOwner::from_parts(holder, 71).into_row(std::sync::Arc::new(
-        AttachmentEntry::from_saved(saved.clone()),
-    ));
-    let batch = AttachmentBatch::from(Batch::new(std::sync::Arc::new(
-        AttachmentSnapshot::from_rows(vec![row]),
-    )));
-    let (rows,): (Vec<(AttachmentWriteToken, Vec<u8>)>,) = decode(batch);
-    assert_eq!(rows.len(), 1);
-    let (token, bytes) = rows.into_iter().next().unwrap();
-    let (identity, generation): (AttachmentHolder, u64) = decode(token);
-    assert_eq!(identity, holder);
-    assert_eq!(generation, 71);
-    let (tag, used) =
-        sunrise_core::nbt::read_network(&bytes, sunrise_core::nbt::Limits::default()).unwrap();
-    assert_eq!(used, bytes.len());
-    assert_eq!(tag, Tag::Compound(saved));
 }
 
 #[test]
@@ -539,10 +435,6 @@ fn remaining_enum_payload_fields_keep_tags_and_widths() {
     fields(
         NeighbourUpdate::NeighboursExcept(Direction::North),
         (2u32, Direction::North),
-    );
-    fields(
-        AttachmentRowError::Value(AttachmentError::Decode),
-        (0u32, AttachmentError::Decode),
     );
     fields(Tag::Byte(-7), (1u32, -7i8));
     fields(Tag::Short(-1234), (2u32, -1234i16));
@@ -669,9 +561,6 @@ fn every_item_place_case_has_declared_tag_and_field_types() {
         },
         (13u32, 0x1234u128, parent),
     );
-    // The other four holder cases are exercised in handle_records above.
-    fields(AttachmentHolder::Level(level), (4u32, level));
-    fields(AttachmentRowError::StaleHolder, (1u32,));
 }
 
 #[test]
@@ -803,43 +692,7 @@ fn every_game_mode_pose_animation_and_connection_case_has_declared_tag_type() {
 }
 
 #[test]
-fn every_attachment_error_and_write_case_has_declared_tag_type() {
-    for (value, tag) in [
-        (AttachmentError::MissingHolder, 0u32),
-        (AttachmentError::TypeMismatch, 1),
-        (AttachmentError::Decode, 2),
-        (AttachmentError::Encode, 3),
-        (AttachmentError::InvalidNamespace, 4),
-        (AttachmentError::InvalidCopyPolicy, 5),
-        (AttachmentError::InvalidSyncPolicy, 6),
-    ] {
-        fields(value, (tag,));
-    }
-    fields(AttachmentError::HolderBusy, (7u32,));
-    fields(
-        AttachmentError::UnsupportedHolder("dragonpart"),
-        (8u32, "dragonpart"),
-    );
-    fields(
-        AttachmentError::Undeclared {
-            package_id: "test_pkg".into(),
-            attachment_id: "test_pkg:mana".into(),
-        },
-        (9u32, "test_pkg".to_owned(), "test_pkg:mana".to_owned()),
-    );
-    fields(AttachmentRowError::HolderBusy, (2u32,));
-    fields(
-        AttachmentRowError::UnsupportedHolder("dragonpart"),
-        (3u32, "dragonpart"),
-    );
-    fields(AttachmentWrite::Decoded, (0u32,));
-    fields(AttachmentWrite::Default, (1u32,));
-    fields(AttachmentWrite::Set, (2u32,));
-}
-
-#[test]
-fn original_player_identity_and_attachment_selector_cross_the_boundary() {
+fn original_player_identity_has_declared_field_bytes() {
     let original = crate::__private::game::original_player_ref(0x1234_5678);
     fields(original, (0x1234_5678u64,));
-    fields(Holder::OriginalPlayer(0x1234_5678), (5u32, 0x1234_5678u64));
 }

@@ -14,14 +14,16 @@ that host has an open world is separate. Use `event.packs.pack_type()` to distin
 `PackType::ClientResources` from `PackType::ServerData`. Register a
 `PackRegistration` with `event.packs.add_pack_finders(...)`; registrations for
 the other repository type are ignored. This hook contributes whole packs, while
-resource-file hooks and reload listeners retain their separate roles.
+resource-file hooks and reload listeners retain their separate roles. Native
+mods disabled in `sunrise-mods.txt` are skipped before their listener is
+entered, from the first startup discovery onwards.
 
 A location such as `example:assets/example/resourcepacks/high_contrast` names a
 loaded mod and a directory inside its package, containing `pack.mcmeta` and the
 usual `assets/` or `data/` tree. Folder packages and `.smod` archives use the same
 logical paths, without extraction. Invalid locations, missing metadata and
 duplicate repository ids return and log a `PackFinderError` without adding a partial pack.
-A panic or phase refusal discards only the current listener's packs.
+A panic discards only the current listener's packs.
 
 The repository id is `mod/<location>`. Packs are optional by default: resource
 packs appear in Resource Packs, and data packs appear in the world's Data Packs
