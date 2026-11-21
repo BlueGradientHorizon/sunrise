@@ -163,7 +163,7 @@ event.register(
 The baker is `Send + Sync + 'static` and may run on a resource worker. Capture
 owned inputs, not the event or its registration context. The
 `StandaloneModelBakeContext` is borrowed only for that invocation and gives no
-`Host`. Return `Ok(())` to publish an assembly if every append succeeded or
+`Host`. Return `Ok(())` to publish the assembly or
 `Err(StandaloneModelBakeError::Rejected(reason))` to leave it out.
 
 The quarter-turn counts are negative turns, modulo four, applied X then Y then Z
@@ -177,8 +177,11 @@ metadata in one model. The particle is the first available part particle, and mo
 ambient occlusion is enabled only if every appended part enables it. Declare all the model
 files the callback may append. Dependencies, including their parents and loader references,
 load through the normal model library; they are not automatically registered as results.
-An undeclared append, a missing dependency, a bake error or a refused callback discards
-the whole model and logs the registering mod. Ignoring an append error still discards it.
+A failed `append_dependency` returns `Err` without changing the assembly; propagate it
+with `?` to discard the model, or handle it and return `Ok(())` to publish the valid
+appends. A missing dependency or `Err` return discards the model for that load and logs
+the registering mod, and the baker runs again on later resource reloads; only a panic
+disables the callback for the session (matching NeoForge `StandaloneModelLoader`).
 
 Result IDs and plain file IDs require a nonempty namespace and path, which need not equal
 the registering mod's ID. A successfully baked plain file wins over any baker for that ID;

@@ -700,16 +700,17 @@ pub(super) fn register_entity_renderers(role: ExecutionRole) {
 /// The native mods' particle providers (`native_register_particle_providers`) and render groups
 /// (`native_register_particle_groups`) are registered once at startup. Each particle engine
 /// constructs its groups once; sprite-set loads associate types with those groups and providers.
-pub(super) fn register_particles(role: ExecutionRole) {
+pub(super) fn register_particles(role: ExecutionRole) -> sunrise_client::Result<()> {
     if !role.is_client() {
-        return;
+        return Ok(());
     }
     let mut registry = mod_api::ParticleProviderRegistry::default();
     Game::native_register_particle_providers(&RegistrationContext::new(), &mut registry);
     sunrise_client::particles::register_particle_providers(registry.into_providers());
     let mut group_factories = Vec::new();
     Game::native_register_particle_groups(&RegistrationContext::new(), &mut group_factories);
-    sunrise_client::particles::register_particle_groups(group_factories);
+    sunrise_client::particles::register_particle_groups(group_factories)?;
+    Ok(())
 }
 
 /// `root` with the content mods that are on layered over it

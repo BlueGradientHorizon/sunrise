@@ -13901,7 +13901,7 @@ pub(crate) fn run_with(
     mods::register_enchantment_damage_effects();
     mods::register_client_presentations(options.execution_role);
     mods::register_meshing(options.execution_role);
-    mods::register_particles(options.execution_role);
+    mods::register_particles(options.execution_role)?;
     mods::freeze_declarations();
     mod_phase.advance(mod_api::__private::ModPhase::Setup)?;
     // Minecraft.<init>: read the last start's flag, then mark this one as not

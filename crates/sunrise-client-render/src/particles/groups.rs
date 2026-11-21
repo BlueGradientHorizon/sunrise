@@ -7,7 +7,7 @@ use mod_api::{
     __private::game::{CallbackOwner, ParticleGroupRegistration},
     Answered, Identifier, ParticleGroup,
 };
-use std::{collections::BTreeSet, sync::OnceLock};
+use std::{collections::BTreeMap, sync::OnceLock};
 
 pub(super) struct Factory {
     registration: ParticleGroupRegistration,
@@ -17,32 +17,37 @@ pub(super) struct Factory {
 /// Accepted factories in registration order, frozen before the first particle engine is built.
 static REGISTERED: OnceLock<Vec<Factory>> = OnceLock::new();
 
-/// Freeze the mods' particle group factories at startup. Reserved or duplicate IDs are logged
-/// and dropped without invoking their factories. Returns false if already frozen.
-pub fn register_particle_groups(groups: Vec<Answered<ParticleGroupRegistration>>) -> bool {
-    REGISTERED.set(freeze(groups)).is_ok()
+/// Freeze the mods' particle group factories at startup. Duplicate IDs fail registration
+/// without invoking any factory or committing the table.
+pub fn register_particle_groups(
+    groups: Vec<Answered<ParticleGroupRegistration>>,
+) -> Result<(), String> {
+    let factories = freeze(groups)?;
+    if REGISTERED.set(factories).is_err() {
+        log::warn!("Particle groups already registered; keeping the first table");
+    }
+    Ok(())
 }
 
 pub(super) fn registered() -> &'static [Factory] {
     REGISTERED.get().map_or(&[], Vec::as_slice)
 }
 
-fn freeze(groups: Vec<Answered<ParticleGroupRegistration>>) -> Vec<Factory> {
-    let mut ids = BTreeSet::new();
+fn freeze(groups: Vec<Answered<ParticleGroupRegistration>>) -> Result<Vec<Factory>, String> {
+    let mut ids = BTreeMap::new();
     let mut factories = Vec::new();
     for entry in groups {
         let registration = entry.answer;
         let id = &registration.id;
         let mod_id = entry.mod_id;
-        if id.namespace().is_empty() || id.namespace() == "minecraft" || id.path().is_empty() {
-            log::warn!(
-                "Mod {mod_id}: particle group {id} must have a nonempty mod namespace and path"
-            );
+        if id.namespace().is_empty() || id.path().is_empty() {
+            log::warn!("Mod {mod_id}: particle group {id} must have a nonempty namespace and path");
             continue;
         }
-        if !ids.insert(id.clone()) {
-            log::warn!("Mod {mod_id}: particle group {id} is registered twice; the first is kept");
-            continue;
+        if let Some(first_mod) = ids.insert(id.clone(), mod_id) {
+            return Err(format!(
+                "Duplicate particle group registration: {id} (registered by {first_mod} and {mod_id})"
+            ));
         }
         let Some(owner) = CallbackOwner::new(mod_id) else {
             log::warn!("Particle group {id} has no installed owner {mod_id}");
@@ -53,7 +58,7 @@ fn freeze(groups: Vec<Answered<ParticleGroupRegistration>>) -> Vec<Factory> {
             owner,
         });
     }
-    factories
+    Ok(factories)
 }
 
 /// A group's engine-owned definition and live particles. Vanilla's `ParticleGroup` keeps
@@ -130,15 +135,34 @@ mod tests {
                 event: &mut mod_api::RegisterParticleGroupsEvent<'_>,
             ) {
                 for (id, call, member) in [
-                    ("mymod:glow", "glow", "mymod:glow"),
-                    ("minecraft:glow", "reserved", "mymod:plain"),
-                    ("noprefix", "unqualified", "mymod:plain"),
-                    ("mymod:", "empty path", "mymod:plain"),
-                    ("mymod:shade", "shade", "mymod:shade"),
-                    ("mymod:glow", "duplicate", "mymod:orbit"),
+                    (
+                        Identifier::parse("mymod:glow").unwrap(),
+                        "glow",
+                        "mymod:glow",
+                    ),
+                    (
+                        Identifier::parse("minecraft:glow").unwrap(),
+                        "minecraft_glow",
+                        "mymod:plain",
+                    ),
+                    (
+                        Identifier::from_parts("", "empty_ns").unwrap(),
+                        "empty namespace",
+                        "mymod:orbit",
+                    ),
+                    (
+                        Identifier::parse("mymod:").unwrap(),
+                        "empty path",
+                        "mymod:orbit",
+                    ),
+                    (
+                        Identifier::parse("mymod:shade").unwrap(),
+                        "shade",
+                        "mymod:shade",
+                    ),
                 ] {
                     let calls = Arc::clone(&self.0);
-                    event.register(Identifier::parse(id).unwrap(), move || {
+                    event.register(id, move || {
                         calls.lock().unwrap().push(call);
                         ParticleGroup {
                             blend: ParticleBlend::Opaque,
@@ -157,7 +181,7 @@ mod tests {
         mod_platform::testing::with_mods(mods.into(), || {
             let mut staged = Vec::new();
             mod_api::dispatch_register_particle_groups(&RegistrationContext::new(), &mut staged);
-            let factories = freeze(staged);
+            let factories = freeze(staged).unwrap();
             assert!(calls.lock().unwrap().is_empty());
 
             let pack = Pack::new();
@@ -171,8 +195,8 @@ mod tests {
                 ["mymod:glow", "mymod:shade", "mymod:orbit", "mymod:plain"]
                     .map(|name| engine.mod_sets[name].group)
             };
-            assert_eq!(handles(&engine), [Some(0), Some(1), None, None]);
-            assert_eq!(*calls.lock().unwrap(), ["glow", "shade"]);
+            assert_eq!(handles(&engine), [Some(0), Some(2), None, Some(1)]);
+            assert_eq!(*calls.lock().unwrap(), ["glow", "minecraft_glow", "shade"]);
 
             engine.reload(
                 &ResourceSource::indexed(Default::default()),
@@ -181,8 +205,8 @@ mod tests {
             );
             assert!(engine.mod_sets.is_empty());
             pack.reload(&mut engine);
-            assert_eq!(handles(&engine), [Some(0), Some(1), None, None]);
-            assert_eq!(*calls.lock().unwrap(), ["glow", "shade"]);
+            assert_eq!(handles(&engine), [Some(0), Some(2), None, Some(1)]);
+            assert_eq!(*calls.lock().unwrap(), ["glow", "minecraft_glow", "shade"]);
 
             let next = ParticleEngine::with_group_factories(
                 &pack.root,
@@ -190,8 +214,92 @@ mod tests {
                 &HashSet::new(),
                 &factories,
             );
-            assert_eq!(handles(&next), [Some(0), Some(1), None, None]);
-            assert_eq!(*calls.lock().unwrap(), ["glow", "shade", "glow", "shade"]);
+            assert_eq!(handles(&next), [Some(0), Some(2), None, Some(1)]);
+            assert_eq!(
+                *calls.lock().unwrap(),
+                [
+                    "glow",
+                    "minecraft_glow",
+                    "shade",
+                    "glow",
+                    "minecraft_glow",
+                    "shade"
+                ]
+            );
+        });
+    }
+
+    #[test]
+    fn duplicate_particle_group_id_fails_without_calling_factories() {
+        struct RegisterOne(&'static str, Arc<Mutex<Vec<&'static str>>>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for RegisterOne {
+            fn register_particle_groups(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::RegisterParticleGroupsEvent<'_>,
+            ) {
+                let id = self.0;
+                let calls = Arc::clone(&self.1);
+                event.register(Identifier::parse(id).unwrap(), move || {
+                    calls.lock().unwrap().push(id);
+                    ParticleGroup {
+                        blend: ParticleBlend::Opaque,
+                        particles: Vec::new(),
+                    }
+                });
+            }
+        }
+
+        struct RegisterTwice(&'static str, Arc<Mutex<Vec<&'static str>>>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for RegisterTwice {
+            fn register_particle_groups(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::RegisterParticleGroupsEvent<'_>,
+            ) {
+                for _ in 0..2 {
+                    let id = self.0;
+                    let calls = Arc::clone(&self.1);
+                    event.register(Identifier::parse(id).unwrap(), move || {
+                        calls.lock().unwrap().push(id);
+                        ParticleGroup {
+                            blend: ParticleBlend::Opaque,
+                            particles: Vec::new(),
+                        }
+                    });
+                }
+            }
+        }
+
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![
+            mod_api::ModEntry::new("mod_a", Box::new(RegisterOne("mymod:glow", calls.clone()))),
+            mod_api::ModEntry::new("mod_b", Box::new(RegisterOne("mymod:glow", calls.clone()))),
+        ];
+        mod_platform::testing::with_mods(mods.into(), || {
+            let mut staged = Vec::new();
+            mod_api::dispatch_register_particle_groups(&RegistrationContext::new(), &mut staged);
+            let error = freeze(staged).err().expect("duplicate ID must fail");
+            assert!(error.contains("mymod:glow"), "{error}");
+            assert!(
+                error.contains("mod_a") && error.contains("mod_b"),
+                "{error}"
+            );
+            assert!(calls.lock().unwrap().is_empty());
+        });
+
+        let mods = vec![mod_api::ModEntry::new(
+            "mymod",
+            Box::new(RegisterTwice("minecraft:dup", calls.clone())),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            let mut staged = Vec::new();
+            mod_api::dispatch_register_particle_groups(&RegistrationContext::new(), &mut staged);
+            let error = freeze(staged).err().expect("duplicate ID must fail");
+            assert!(error.contains("minecraft:dup"), "{error}");
+            assert!(calls.lock().unwrap().is_empty());
         });
     }
 
