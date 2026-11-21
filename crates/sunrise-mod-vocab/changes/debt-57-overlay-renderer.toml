@@ -17,8 +17,12 @@ ids = [
 why = """
 Extraction chooses the last renderer an eligible listener selects instead of setting a flag and broadcasting a draw hook.
 Vanilla's `LevelExtractor.extractPlayerState` and `ScreenEffectRenderer.submit` gate water to first person.
+Vanilla and NeoForge's `LevelExtractor.extractPlayerState` use the player's tick-sampled `isEyeInFluid(WATER)`.
+`EntityFluidInteraction.update` includes an eye exactly at the surface; the `Camera.getFluidInCamera` geometry test
+excludes it. Sunrise still lets `camera_submersion` override water eligibility, starting with the player's eye sample.
 NeoForge passes both interpolation values from `LevelExtractor.extractPlayerState` and supplies the default water state
-at the eye in `ClientHooks.extractWaterScreenEffect`. Its `ExtractBlockScreenEffectEvent.setCanceled` and
+at the eye in `ClientHooks.extractWaterScreenEffect`. Sunrise requires that state when loading resources rather than
+skipping the hook if it is absent. NeoForge's `ExtractBlockScreenEffectEvent.setCanceled` and
 `ScreenEffectRenderer.submit` patch suppress canceled fire with a no-op only when no renderer was selected.
 """
 migrate = """

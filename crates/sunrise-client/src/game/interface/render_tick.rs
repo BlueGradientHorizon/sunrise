@@ -14,7 +14,7 @@ use sunrise_client::{
     blocks::{BlockFacts, Fluid},
     containers::BlockEntity,
     mobs::Mob,
-    motion::PlayerMotion,
+    motion::{PlayerMotion, WATER},
     particles::{ParticleLevel, ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
     world::World,
 };
@@ -535,8 +535,10 @@ impl Game<'_> {
                     != sunrise_client::blocks::RenderShape::Invisible
                     && self.state_view_blocking(state, pos, near_plane)
                 {
-                    if !modded
-                        || self.screen_effect_kept(
+                    block = Some(state);
+                    if modded
+                        && let Ok(state) = state.try_into_api()
+                        && !self.screen_effect_kept(
                             BlockScreenEffect::Block,
                             state,
                             pos,
@@ -545,36 +547,44 @@ impl Game<'_> {
                             &mut custom[0],
                         )
                     {
-                        block = Some(state);
+                        block = None;
                     }
                     break;
                 }
             }
         }
         let first_person = self.camera_type.is_first_person() && !spectator;
-        let registry = &self.pack.assets.registry;
-        let water = first_person
-            && self.camera_fog_type(eye) == FogType::Water
-            && (!modded
-                || registry
-                    .default_state("minecraft:water")
-                    .is_none_or(|water| {
-                        self.screen_effect_kept(
-                            BlockScreenEffect::Water,
-                            water,
-                            eye.map(|c| c.floor() as i32),
-                            partial,
-                            player_partial_tick,
-                            &mut custom[1],
-                        )
-                    }));
+        let water = first_person && {
+            // LevelExtractor uses the player's tick-sampled eye state, not camera fog geometry.
+            // Keep the existing mod override explicit, applied to that answer at the eye.
+            let mut submersion = if p.is_eye_in_fluid(WATER) {
+                FogType::Water
+            } else {
+                FogType::Atmospheric
+            };
+            self.native_camera_submersion(eye, &mut submersion);
+            submersion == FogType::Water
+                && (!modded
+                    || self.screen_effect_kept(
+                        BlockScreenEffect::Water,
+                        self.pack.water_overlay_state,
+                        eye.map(|c| c.floor() as i32),
+                        partial,
+                        player_partial_tick,
+                        &mut custom[1],
+                    ))
+        };
         // Canceling fire acts as a no-op renderer only if no listener selected one.
         // A selected renderer can still prepend to the eligible vanilla overlay.
         let on_fire = first_person && p.is_on_fire();
         let fire_suppressed = on_fire
             && modded
-            && registry
+            && self
+                .pack
+                .assets
+                .registry
                 .default_state("minecraft:fire")
+                .and_then(|fire| fire.try_into_api().ok())
                 .is_some_and(|fire| {
                     let feet = [p.position.x, p.position.y, p.position.z].map(|c| c.floor() as i32);
                     !self.screen_effect_kept(
@@ -598,15 +608,12 @@ impl Game<'_> {
     fn screen_effect_kept(
         &self,
         effect: BlockScreenEffect,
-        state: BlockStateId,
+        state: mod_api::BlockState,
         pos: [i32; 3],
         partial_tick: f32,
         player_partial_tick: f32,
         custom: &mut Option<ExtractedBlockScreenEffect>,
     ) -> bool {
-        let Ok(state) = state.try_into_api() else {
-            return true;
-        };
         let pos = BlockPos::new(pos[0], pos[1], pos[2]);
         let (mut canceled, mut renderer) = (false, None);
         self.native_extract_block_screen_effect(

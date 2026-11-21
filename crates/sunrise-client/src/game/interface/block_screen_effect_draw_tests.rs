@@ -1,10 +1,10 @@
 //! Selected block overlay renderers in a real game: what they submit and where those quads land.
-use super::Game;
-use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+use super::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_client_game};
+use super::{Game, PackResources};
 use BlockScreenEffect::{Block, Fire, Water};
 use mod_api::{
-    BlockScreenEffect, BlockScreenEffectRender, BlockScreenEffectRenderer, ClientHost,
-    ExtractBlockScreenEffectEvent, Flow, GuiRenderPostEvent, Hooks, ModEntry, Mods,
+    BlockScreenEffect, BlockScreenEffectRender, BlockScreenEffectRenderer, CameraSubmersionEvent,
+    ClientHost, ExtractBlockScreenEffectEvent, Flow, GuiRenderPostEvent, Hooks, ModEntry, Mods,
 };
 use std::{
     sync::{Arc, Mutex},
@@ -14,8 +14,9 @@ use sunrise_client::{
     camera::{CameraType, hand_projection},
     chunk::Chunk,
     clock::FixedStep,
+    fog::FogType,
     gfx::ScreenshotRequest,
-    motion::PlayerMotion,
+    motion::{MotionWorld, PlayerMotion, WATER},
     screen_effects::{Blend, ScreenQuad},
 };
 use sunrise_core::{geometry::Vec3, position::BlockPos};
@@ -115,6 +116,36 @@ fn burning_player(game: &mut Game<'_>) {
     player.fire_ticks = 100;
     game.player = Some(player);
 }
+/// Sample the player's fluid state as a tick would, without advancing their fire timer.
+fn sample_eye_in_water(game: &mut Game<'_>) -> bool {
+    // The fluid scan requires the chunks around the interaction box to be loaded too.
+    let layout = game.world.layout();
+    for (x, z) in [(-1, -1), (-1, 0), (0, -1)] {
+        if !game.world.chunks.contains_key(&(x, z)) {
+            game.world
+                .chunks
+                .insert((x, z), Arc::new(Chunk::with_layout(x, z, layout)));
+        }
+    }
+    let side = game_side!(game);
+    let mut motion = MotionWorld {
+        side: &side,
+        entities: &[],
+        player: game.player.as_mut().unwrap(),
+        scene: &mut game.world,
+        assets: &game.pack.assets,
+        collision_binding: game.collision,
+        resources: game.motion,
+        health: &game.health_resources,
+        loop_context: &game.loop_context,
+        damage_hooks: &game.damage_hooks,
+        tag_items: None,
+        block_registries: None,
+    };
+    motion.update_fluids().unwrap();
+    motion.player.is_eye_in_fluid(WATER)
+}
+
 /// The frame's quads at 2:1 with the hand's usual 70 degrees.
 fn quads(game: &Game<'_>) -> Vec<ScreenQuad> {
     let projection = hand_projection(70.0, 1000.0, 500.0, 1000.0);
@@ -294,6 +325,7 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
 
             // Under water: every overlay claimed, in vanilla's order.
             game.world.set(0, 65, 0, water).unwrap();
+            assert!(sample_eye_in_water(game));
             let (under, draws) = frame(
                 game,
                 Plan {
@@ -370,6 +402,7 @@ fn underwater_third_person_neither_extracts_nor_draws_the_overlay() {
             .default_state("minecraft:water")
             .unwrap();
         game.world.set(0, 65, 0, water).unwrap();
+        assert!(sample_eye_in_water(game));
         let seen = observe_overlay(Water, || {
             let overlays = names(&quads(game));
             assert!(!overlays.contains(&"mod water") && !overlays.contains(&"water"));
@@ -387,6 +420,7 @@ fn waterlogged_eye_reports_default_water_at_the_eye_block() {
             .block_state_id("minecraft:oak_slab[type=bottom,waterlogged=true]")
             .unwrap();
         game.world.set(0, 65, 0, slab).unwrap();
+        assert!(sample_eye_in_water(game));
         let seen = observe_overlay(Water, || {
             assert!(
                 names(&quads(game))
@@ -406,6 +440,120 @@ fn waterlogged_eye_reports_default_water_at_the_eye_block() {
             crate::game::api_values::TryIntoApi::try_into_api(&water).unwrap()
         );
         assert_eq!(seen.pos, BlockPos::new(0, 65, 0));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn water_extraction_follows_the_tick_sample_at_the_surface() {
+    with_client_game(|game| {
+        burning_player(game);
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
+            .unwrap();
+        game.world.set(0, 65, 0, water).unwrap();
+        // A source with no water or solid ceiling above it is 8/9 of a block high.
+        // EntityFluidInteraction includes the equality case; Camera.getFluidInCamera does not.
+        let surface = 65.0 + f64::from(8.0_f32 / 9.0);
+        let player = game.player.as_mut().unwrap();
+        player.position.y = surface - f64::from(player.dimensions.eye_height);
+        assert!(sample_eye_in_water(game));
+        assert_eq!(
+            game.camera_fog_type([0.5, surface, 0.5]),
+            FogType::Atmospheric
+        );
+        assert!(names(&quads(game)).contains(&"water"));
+        assert!(
+            observe_overlay(Water, || {
+                assert!(names(&quads(game)).contains(&"mod water"));
+            })
+            .is_some()
+        );
+    });
+}
+
+struct InvertWater;
+#[mod_api::__subscriptions]
+impl Hooks for InvertWater {
+    fn camera_submersion(&self, _: &dyn ClientHost, event: &mut CameraSubmersionEvent<'_>) {
+        *event.fog_type = if *event.fog_type == FogType::Water {
+            FogType::Atmospheric
+        } else {
+            FogType::Water
+        };
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn camera_submersion_can_force_or_clear_the_first_person_water_overlay() {
+    with_client_game(|game| {
+        burning_player(game);
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
+            .unwrap();
+        let dry = game.world.block(0, 65, 0);
+        let mods: Mods = vec![ModEntry::new("invert-water", Box::new(InvertWater))].into();
+        for wet in [false, true] {
+            if wet {
+                game.world.set(0, 65, 0, water).unwrap();
+            }
+            assert_eq!(sample_eye_in_water(game), wet);
+            // The world can change after the sample. The override still sees the tick's answer.
+            game.world.set(0, 65, 0, dry).unwrap();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                assert_eq!(names(&quads(game)).contains(&"water"), !wet);
+            });
+        }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_assembly_reports_a_missing_water_default() {
+    with_client_game(|game| {
+        let root = sunrise_assets::resource_source::ResourceRoot::directory(fixture_root());
+        let pack = &game.pack;
+        let registry = sunrise_world::registry::BlockRegistry::from_facts_json(
+            br#"{"states":[["minecraft:air",true,false,"","minecraft:air"]],"defaults":{"minecraft:air":0}}"#
+                .as_slice(),
+        )
+        .unwrap();
+        let assets = sunrise_client::assets::Assets {
+            registry: Box::leak(Box::new(registry)),
+            properties: sunrise_client::assets::Properties::for_tests(&[(
+                true, false, false, false,
+            )]),
+            material_states: [sunrise_world::registry::BlockStateId(0); 6],
+            blocks_fluid_flow: Default::default(),
+        };
+        let items = sunrise_client::item_render::ItemRenderer::load_for_server(
+            &root,
+            pack.render.model_library.clone(),
+            &game.res.core.item_data,
+        )
+        .unwrap();
+        let Err(error) = PackResources::assemble(
+            &root,
+            Arc::new(assets),
+            pack.render.clone(),
+            pack.context.tables.clone(),
+            items,
+            pack.context.biomes.clone(),
+            pack.context.light.clone(),
+        ) else {
+            panic!("a registry without water cannot supply the overlay");
+        };
+        assert_eq!(
+            error.to_string(),
+            "block registry is missing the default minecraft:water state"
+        );
     });
 }
 
