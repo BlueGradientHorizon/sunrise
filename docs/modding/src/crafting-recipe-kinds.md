@@ -115,8 +115,12 @@ the existing skip-one-file behavior; changing that is a separate task.
 
 Reload decodes a fresh generation and preserves startup registration. Joining
 Sunrise clients receive serializer-written JSON under the existing recipe-content
-packet limits and decode it into their own generation. Vanilla clients receive
-no custom kind. `datapack_sync.recipe_types` selects actual recipe type IDs; the
+packet limits and decode it into their own generation. A writer returning `Err`
+omits that recipe from the payload and reports the error each time. A writer panic
+is logged with the mod's name, queues an error toast on a local client and disables
+only that serializer's writer for the session, including across reloads. Recipes
+that need that writer are not sent; other serializers continue. Vanilla clients
+receive no custom kind. `datapack_sync.recipe_types` selects actual recipe type IDs; the
 engine selects the published recipes of each type, including all serializers
 producing that type. Vanilla serializers send the server's resolved candidate
 item IDs for each ingredient; the client doesn't bind those ingredients again.

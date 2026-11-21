@@ -110,6 +110,7 @@ fn simplicity_follows_all_children_and_custom_display_base() {
         mod_api::__private::bind_ingredient_predicate(
             "fixture",
             0,
+            "fixture:custom",
             mod_api::IngredientDefinition::new(vec![], |_, _| false),
         )
         .1,

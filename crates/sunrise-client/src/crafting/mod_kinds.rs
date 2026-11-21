@@ -194,9 +194,8 @@ impl ModRecipe {
         .ok()
         .flatten()
     }
-    pub fn written(&self) -> Result<String, String> {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.loaded.write()))
-            .unwrap_or_else(|_| Err("serializer panicked".into()))
+    pub fn written(&self) -> Result<Option<String>, String> {
+        self.loaded.write()
     }
 }
 

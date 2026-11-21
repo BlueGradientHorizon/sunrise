@@ -16,6 +16,14 @@ Return `Some(n)` for success with integer result `n` (zero is also success), or
 An executor can capture owned or shared state, such as an `Arc`, but it cannot
 borrow values from the registration call.
 
+A panic fails the command, is logged with the mod's name and queues an error toast
+on a local client. That mod's executor for the registered usage is disabled for the
+session, even if the tree is rebuilt. Other usages still run. If the caller already
+had a transaction, the panicking invocation's journaled writes are undone. The
+game does not implicitly open a transaction for an ordinary command, and
+unjournaled effects are not undone. Like a vanilla command throwing an unexpected
+exception, a panicking executor does not run the command's `execute store` callbacks.
+
 The server asks for commands when it builds the session command tree: at world open before
 functions compile, and again on every `/reload` and data pack change. No player or network hub
 needs to exist yet. Register the complete current set on each call. Plain function lines and

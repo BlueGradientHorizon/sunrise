@@ -89,6 +89,9 @@ impl Command {
     /// `execute as`; feedback respects silence, track-output and the acting player.
     /// Return `Some(n)` for success with result `n` (including zero), or `None` for
     /// failure. A failed executor or disabled owner never gives another mod a turn.
+    /// A panic is reported with the mod's name and disables this usage's executor for the
+    /// session. It aborts writes in an enclosing transaction's journal, not unjournaled effects,
+    /// and does not publish a command result to `execute store`.
     /// Only a parse from the current server dispatcher can reach this executor.
     /// Capture owned or shared state rather than borrowing the registration event.
     pub fn executes(

@@ -159,6 +159,7 @@ fn network_catalogue_projects_non_empty_custom_ingredients_and_composites_to_ite
         mod_api::__private::bind_ingredient_predicate(
             "demo",
             0,
+            "demo:projected",
             mod_api::IngredientDefinition::new(vec![], |_, _| false),
         )
         .1
@@ -272,6 +273,7 @@ fn network_catalogue_collapses_empty_candidate_ingredients_to_not_placeable() {
                     mod_api::__private::bind_ingredient_predicate(
                         "demo",
                         0,
+                        "demo:empty",
                         mod_api::IngredientDefinition::new(vec![], |_, _| false),
                     )
                     .1,
@@ -392,6 +394,7 @@ fn deep_native_declarations_are_stack_safe_across_index_compile_drop_and_send() 
         mod_api::__private::bind_ingredient_predicate(
             "demo",
             0,
+            "demo:deep",
             mod_api::IngredientDefinition::new(vec!["minecraft:stone".into()], |_, _| true),
         )
         .1,

@@ -2187,6 +2187,7 @@ impl Game<'_> {
     /// The shared command-node executor, also reached by functions and `execute`.
     pub(super) fn run_native_command(&mut self, context: Context) -> super::commands::R<i32> {
         use super::commands::err;
+        use mod_api::__private::RetainedFailure;
         // Argument resolution uses node IDs from the parse. Never use them against a
         // replacement tree, even if the new tree has the same command at the same ID.
         let executor = context
@@ -2199,14 +2200,27 @@ impl Game<'_> {
                     .executors
                     .get(key.slot())
             })
-            .filter(|executor| mod_api::__private::mod_index_on(executor.mod_index))
+            .filter(|executor| executor.callback.enabled())
             .ok_or_else(|| err("command.unknown.command", &[]))?;
-        let owner = executor.owner;
+        let callback = executor.callback.clone();
         let call = Arc::clone(&executor.call);
         let command = self.resolve_native_command(context)?;
         let origin = self.native_command_origin(self.ui.registries.permission)?;
-        let _scope = mod_api::__private::enter(owner, "command_executor");
-        call(self, &origin, &command).ok_or_else(|| err("command.unknown.command", &[]))
+        // Isolate journaled writes when the caller already has a transaction. An ordinary
+        // command is not implicitly transactional, and writes outside the journal stay put.
+        let savepoint = self.transaction_current().map(|_| self.transaction_open());
+        let result = callback.call(|| call(self, &origin, &command));
+        if let Some(seal) = savepoint {
+            self.transaction_close(&seal, result.is_ok());
+        }
+        match result {
+            Ok(Some(value)) => Ok(value),
+            Ok(None) | Err(RetainedFailure::Disabled) => Err(err("command.unknown.command", &[])),
+            Err(RetainedFailure::Refused) => Err(err("command.failed", &[])),
+            Err(RetainedFailure::Panicked) => {
+                Err(sunrise_client::command::CommandError::unexpected())
+            }
+        }
     }
 
     fn native_command_player_target(&self, target: super::commands::Target) -> Option<PlayerRef> {
@@ -3593,6 +3607,123 @@ mod tests {
                 .parse("toggle maybe", &registries)
                 .executable()
                 .is_err()
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn panicking_command_executors_keep_other_usages_and_only_undo_journaled_writes() {
+        use std::sync::atomic::AtomicUsize;
+        const JOURNALED: [i32; 3] = [2, 70, 2];
+        const UNJOURNALED: [i32; 3] = [3, 70, 2];
+        struct Executors(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Executors {
+            fn register_commands(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::RegisterCommandsEvent<'_>,
+            ) {
+                for (usage, pos) in [("journalboom", JOURNALED), ("plainboom", UNJOURNALED)] {
+                    event.commands.push(mod_api::Command::new(usage).executes(
+                        move |host, _, _| {
+                            let level = host.level("minecraft:overworld").unwrap();
+                            let state = host.block_state_id("minecraft:stone").unwrap();
+                            if level.set_block(host, pos, state, mod_api::BlockUpdateFlags::NONE)
+                                != Ok(true)
+                            {
+                                return None;
+                            }
+                            panic!("executor regression panic");
+                        },
+                    ));
+                }
+                let refuses = self.0.clone();
+                event
+                    .commands
+                    .push(
+                        mod_api::Command::new("ordinaryfailure").executes(move |_, _, _| {
+                            refuses.fetch_add(1, Ordering::Relaxed);
+                            None
+                        }),
+                    );
+                event
+                    .commands
+                    .push(mod_api::Command::new("worksagain").executes(|_, _, _| Some(7)));
+            }
+        }
+        let refuses = Arc::new(AtomicUsize::new(0));
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "executor_owner",
+                Box::new(Executors(refuses.clone())),
+            )]
+            .into(),
+            || {
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    let _phase =
+                        mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+                    game.options.dedicated = Some(Vec::new());
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    let air = game.world.block(JOURNALED[0], JOURNALED[1], JOURNALED[2]);
+                    let stone = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:stone")
+                        .unwrap();
+                    game.build_registries();
+                    game.build_native_commands(&[]);
+
+                    let seal = game.transaction_open();
+                    let (failure, outcome) = game.recording_command_outcome(|game| {
+                        game.execute_line("journalboom", game.server_source())
+                    });
+                    assert_eq!(failure.unwrap_err().key, "command.failed");
+                    assert_eq!(outcome, None);
+                    assert_eq!(
+                        game.world.block(JOURNALED[0], JOURNALED[1], JOURNALED[2]),
+                        air
+                    );
+                    game.transaction_close(&seal, true);
+                    let failure = game
+                        .execute_line("plainboom", game.server_source())
+                        .unwrap_err();
+                    assert!(failure.unexpected);
+                    assert_eq!(
+                        game.world
+                            .block(UNJOURNALED[0], UNJOURNALED[1], UNJOURNALED[2]),
+                        stone
+                    );
+
+                    game.build_native_commands(&[]);
+                    assert_eq!(
+                        game.execute_line("journalboom", game.server_source())
+                            .unwrap_err()
+                            .key,
+                        "command.unknown.command"
+                    );
+                    assert_eq!(game.execute_line("worksagain", game.server_source()), Ok(7));
+                    for _ in 0..2 {
+                        assert_eq!(
+                            game.execute_line("ordinaryfailure", game.server_source())
+                                .unwrap_err()
+                                .key,
+                            "command.unknown.command"
+                        );
+                    }
+                    assert_eq!(refuses.load(Ordering::Relaxed), 2);
+                    assert_eq!(
+                        mod_api::__private::take_hook_panics(),
+                        [mod_api::__private::HookPanicReport {
+                            mod_id: "executor_owner",
+                            hook: "command_executor",
+                        }; 2]
+                    );
+                })
+            },
         );
     }
 

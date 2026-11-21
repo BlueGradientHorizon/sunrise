@@ -1913,8 +1913,12 @@ fn resolve_custom_ingredient(
     // Only dispatch creates Answered, from the installed subscriber table.
     let owner = mod_api::__private::mod_index(definition.mod_id)
         .expect("ingredient dispatch names an installed mod");
-    let (mut items, predicate) =
-        mod_api::__private::bind_ingredient_predicate(definition.mod_id, owner, definition.answer);
+    let (mut items, predicate) = mod_api::__private::bind_ingredient_predicate(
+        definition.mod_id,
+        owner,
+        kind,
+        definition.answer,
+    );
     mod_api::__private::dedup_keep_order(&mut items);
     if items.is_empty() {
         log::warn!(

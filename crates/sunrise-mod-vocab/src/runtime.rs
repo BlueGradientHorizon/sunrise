@@ -74,6 +74,7 @@ pub(crate) struct Installed {
     /// answers through one atomic load, so a dispatch with no poison pays nothing.
     poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
     poison_free: std::sync::atomic::AtomicBool,
+    retained_poisons: RetainedPoisons,
     /// Hook-listener panic reports queued for this installed set's client error toast.
     hook_panics: std::sync::Mutex<Vec<HookPanicReport>>,
     has_hook_panics: std::sync::atomic::AtomicBool,
@@ -127,6 +128,7 @@ impl Installed {
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
             poisons: std::sync::Mutex::new(None),
             poison_free: std::sync::atomic::AtomicBool::new(true),
+            retained_poisons: RetainedPoisons::default(),
             hook_panics: std::sync::Mutex::new(Vec::new()),
             has_hook_panics: std::sync::atomic::AtomicBool::new(false),
         }
@@ -292,7 +294,7 @@ fn log_and_queue_panic(
         .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
         .unwrap_or("panic");
     log::error!(
-        "mod {mod_id} panicked in hook {hook} and has been disabled for this hook for the rest of the session: {reason}"
+        "mod {mod_id} panicked in {hook}; that callback is disabled for the rest of the session: {reason}"
     );
     if let Some(installed) = installed() {
         let mut queue = installed
@@ -328,17 +330,32 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
+    invoke_callback(contained, call, |payload| {
+        record_hook_panic(hook_id, hook, mod_id, payload);
+    })
+}
+
+fn invoke_callback<T>(
+    contained: bool,
+    call: impl FnOnce() -> T,
+    report_panic: impl FnOnce(&(dyn std::any::Any + Send)),
+) -> DispatchOutcome<T> {
     let _scope = DispatchPanicScope::enter();
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
+            report_panic(&*payload);
             dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }
     }
 }
+
+#[path = "runtime/retained.rs"]
+pub(crate) mod retained;
+pub(crate) use retained::RetainedCallback;
+use retained::RetainedPoisons;
 
 // A mod's panic payload may itself panic on drop. Stay in DispatchPanicScope and do not
 // recursively destroy a secondary payload that may repeat the same panic.

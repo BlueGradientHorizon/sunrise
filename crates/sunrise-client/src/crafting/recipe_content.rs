@@ -26,7 +26,7 @@ impl Recipes {
             })
             .filter_map(|recipe| match recipe.write_content() {
                 Ok(Some(value)) => Some((recipe.name.clone(), value)),
-                Ok(None) => None, // The source's refusal was already reported at load.
+                Ok(None) => None, // No value, or shared callback dispatch already reported the failure.
                 Err(error) => {
                     log::error!("recipe {}: {error}", qualified(&recipe.name));
                     None
@@ -402,7 +402,9 @@ impl ResolvedRecipe {
                 else {
                     return Ok(None);
                 };
-                let text = recipe.written()?;
+                let Some(text) = recipe.written()? else {
+                    return Ok(None);
+                };
                 let Value::Object(mut object) =
                     serde_json::from_str::<Value>(&text).map_err(|e| e.to_string())?
                 else {
