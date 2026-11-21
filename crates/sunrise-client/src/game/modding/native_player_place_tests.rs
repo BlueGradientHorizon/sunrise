@@ -84,6 +84,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
             "chest-veto",
             "chest-replace",
             "chest-round-trip",
+            "chest-skip-removal",
             "chest-transfer",
             "bed-head",
             "bed-veto",
@@ -191,14 +192,13 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
             let chest = api_state(game, "minecraft:chest");
             let barrel = api_state(game, "minecraft:barrel");
             let is_bed = case.starts_with("bed-");
-            let (before, chosen) = if is_bed {
-                (chest, foot)
-            } else if case == "chest-replace" {
-                (barrel, chest)
-            } else if case == "chest-round-trip" {
-                (chest, chest)
-            } else {
-                (air, chest)
+            let skip_removal = case == "chest-skip-removal";
+            let (before, chosen) = match case.as_str() {
+                _ if is_bed => (chest, foot),
+                "chest-replace" => (barrel, chest),
+                "chest-round-trip" => (chest, chest),
+                "chest-skip-removal" => (chest, barrel),
+                _ => (air, chest),
             };
             if before != air {
                 assert_eq!(
@@ -235,7 +235,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                 .unwrap()
             };
             let result = match case.as_str() {
-                "chest-round-trip" => {
+                "chest-round-trip" | "chest-skip-removal" => {
                     game.world
                         .block_entities
                         .get_mut(&(2, 70, 2))
@@ -246,12 +246,14 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     let dirt = ItemResource::of(&stack.clone().try_into_api().unwrap());
                     let new_stack = ItemStack::new("minecraft:stone", 7);
                     let replacement = ItemResource::of(&new_stack.try_into_api().unwrap());
+                    let removal_flags = if skip_removal {
+                        BlockUpdateFlags::SKIP_BLOCK_ENTITY_SIDE_EFFECTS
+                    } else {
+                        BlockUpdateFlags::NONE
+                    };
                     run_transaction(game, |game, tx| {
                         assert_eq!(from.extract_at(game, tx, 0, &dirt, 2), 2);
-                        assert_eq!(
-                            level.set_block(game, AT, stone, BlockUpdateFlags::NONE),
-                            Ok(true)
-                        );
+                        assert_eq!(level.set_block(game, AT, stone, removal_flags), Ok(true));
                         place(game)?;
                         let to = level.capability(game, &ITEMS, AT, None).unwrap();
                         assert_eq!(to.insert_at(game, tx, 0, &replacement, 7), 7);
@@ -371,9 +373,9 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                         12
                     );
                 }
-                "chest-round-trip" => {
+                "chest-round-trip" | "chest-skip-removal" => {
                     assert_eq!(result, Ok(()));
-                    assert_eq!(level.block_state(game, AT), Some(chest));
+                    assert_eq!(level.block_state(game, AT), Some(chosen));
                     let final_entity = game.block_entity(level, AT).unwrap();
                     assert_eq!(Some(final_entity), *entity.lock().unwrap());
                     assert_ne!(Some(final_entity), original_entity);
@@ -390,7 +392,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                             .iter()
                             .map(|item| item.stack.count)
                             .sum::<u32>(),
-                        133
+                        if skip_removal { 0 } else { 133 }
                     );
                 }
                 "chest-accept" | "chest-replace" => {

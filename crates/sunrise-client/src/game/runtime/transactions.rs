@@ -1940,6 +1940,7 @@ impl Game<'_> {
                     let final_is_staged = staged_entity.is_some()
                         && self.world.block_entities.generation(&pos) == staged_entity;
                     let mut placement_entity = None;
+                    let mut replay_flags = flags;
                     if final_is_staged && !net_keeps_group {
                         // Supply the final generation to LevelChunk's creation step, not
                         // its removal step. The latter gets the generation actually removed.
@@ -1958,6 +1959,10 @@ impl Game<'_> {
                                 && !self.world.block_entities.contains_key(&pos)
                             {
                                 removed.install(&mut self.world);
+                                // The later placement must not change how the earlier write
+                                // retired this entity. Keep every other merged update flag.
+                                let skip = flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS;
+                                replay_flags = (flags & !skip) | (removal_flags & skip);
                             } else if net_keeps_group
                                 && let Some(kept) = level.block_entities.get(&pos)
                             {
@@ -1993,11 +1998,11 @@ impl Game<'_> {
                         if level_host {
                             self.with_level(|_, level, ticks| {
                                 level.placement_entity = placement_entity;
-                                level.native_set_block(ticks, pos, now, flags);
+                                level.native_set_block(ticks, pos, now, replay_flags);
                             });
                             let _ = self.process_level_events();
                         } else {
-                            let _ = self.level_set_with_flags(pos, now, flags);
+                            let _ = self.level_set_with_flags(pos, now, replay_flags);
                         }
                     } else if clear_connection_group {
                         // A round trip that preserves the block state can still end the
