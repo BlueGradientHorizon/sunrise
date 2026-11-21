@@ -1,0 +1,13 @@
+ids = [
+    "type:Native.state",
+    "fn:Manifest::parse",
+    "fn:Package::read",
+    "fn:Package::read_zip",
+    "fn:package::read",
+    "fn:package::tool_manifest",
+    "fn:Bundle::needs_mixins",
+    "fn:native_route::changes_game",
+    "fn:game_uses::unjudged",
+]
+why = "Native build now discovers candidates by sunrise-mod.toml and uses the package reader's schema and path rules. Loose projects no longer reserve the names of retired layouts. Native archives still accept only the package's allowed files. The manifest reader refuses native state before it can affect serialization or build routing: adding fields would change the prebuilt game's layout. This is Sunrise's .smod format, with no vanilla or NeoForge counterpart."
+migrate = "Use root sunrise-mod.toml for mod metadata and build pins, root Cargo.toml and src/ for code, assets/ and data/ for pack resources, and declared runtime/ files for native runtime data. Move any code intended for the package from native/ or rust/ to src/; put source edits in the supported [[native.*]] tables of sunrise-mod.toml instead of tool-specific manifest files. Repack any manually assembled archive with cargo sunrise-mod build so it contains only package files. Remove [[native.state]] (or state = []): store per-object data in a registered AttachmentType<T> with the matching Holder instead. Tools using Native.state must drop that access, not classify or serialize a state row, and use Manifest::parse or Package::read to get the named E_MIXIN_STATE_LAYOUT refusal. Tools calling the package readers or build classifier keep the same calls."

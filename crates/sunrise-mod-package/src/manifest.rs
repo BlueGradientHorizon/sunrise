@@ -283,6 +283,7 @@ impl Rule {
     }
 }
 
+/// The build pins and supported `[[native.*]]` tables of a native mod.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Native {
@@ -300,9 +301,6 @@ pub struct Native {
     /// Accessor and invoker bridges, forwarded as horizon-mixins' `[[bridge]]`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridge: Vec<mixin::Forwarded>,
-    /// State fields added to game types, forwarded as horizon-mixins' `[[state]]`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub state: Vec<mixin::Forwarded>,
     /// Slots of published game loops, native only (`mod_api::loops`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub r#loop: Vec<loops::Loop>,
@@ -484,8 +482,31 @@ fn edit_distance(a: &str, b: &str) -> usize {
 }
 
 impl Manifest {
+    /// Read the package manifest. Native state declarations are refused with
+    /// `E_MIXIN_STATE_LAYOUT`; they cannot enter the parsed native tables.
     pub fn parse(text: &str) -> Result<Self, String> {
-        let m: Manifest = toml::from_str(text).map_err(|e| toml_error(text, &e))?;
+        let document = toml::de::DeTable::parse(text).map_err(|e| toml_error(text, &e))?;
+        let root = document.get_ref();
+        if let Some(state) = root
+            .get("native")
+            .and_then(|native| native.get_ref().get("state"))
+        {
+            let id = root
+                .get("id")
+                .and_then(|id| id.get_ref().as_str())
+                .unwrap_or(MANIFEST);
+            let row = state
+                .get_ref()
+                .get(0usize)
+                .and_then(|row| row.get_ref().get("id"))
+                .and_then(|id| id.get_ref().as_str())
+                .unwrap_or("native.state");
+            return Err(format!(
+                "E_MIXIN_STATE_LAYOUT: {id}:{row}: native state changes the prebuilt game's layout; use an attachment instead"
+            ));
+        }
+        let m = Self::deserialize(toml::de::Deserializer::from(document))
+            .map_err(|e| toml_error(text, &e))?;
         Internal::check_all(&m.internals)?;
         if !m.internals.is_empty() && m.native.is_none() {
             return Err(format!("{MANIFEST}: internals need a [native] mod"));
@@ -590,12 +611,12 @@ impl Manifest {
                 .mixin
                 .iter()
                 .map(|entry| &entry.id)
-                .chain(native.bridge.iter().chain(&native.state).map(|row| &row.id))
+                .chain(native.bridge.iter().map(|row| &row.id))
                 .chain(native.r#loop.iter().map(|row| &row.id))
             {
                 if id.trim().is_empty() || !ids.insert(id) {
                     return Err(format!(
-                        "{MANIFEST}: empty or duplicate mixin, bridge, state or loop id"
+                        "{MANIFEST}: empty or duplicate mixin, bridge or loop id"
                     ));
                 }
             }
@@ -795,22 +816,13 @@ impl Package {
     }
 
     /// Read a flat `.smod` or project folder, without executing native code.
+    /// A folder is read by its package paths, not by the names of unrelated files beside them.
     pub fn read(path: &Path) -> Result<Self, String> {
         let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
         let mut icon = None;
         let mut has_cargo = false;
         let mut has_source = false;
         let toml = if metadata.is_dir() {
-            for old in [
-                "sunrise-native.json",
-                "horizon-mixin.toml",
-                "native",
-                "rust",
-            ] {
-                if std::fs::symlink_metadata(path.join(old)).is_ok() {
-                    return Err(format!("{old}: unsupported package path"));
-                }
-            }
             if std::fs::symlink_metadata(path.join("Cargo.toml")).is_ok() {
                 check_folder_file(path, "Cargo.toml")?;
                 has_cargo = true;
@@ -882,14 +894,7 @@ impl Package {
             let name = entry.name().map_err(|e| e.to_string())?.into_owned();
             let mode = entry.unix_mode().unwrap_or_default();
             entries.push((name.clone(), entry.size(), entry.is_dir()));
-            let first = name.split('/').next().unwrap_or("");
-            if matches!(
-                first,
-                "sunrise-native.json" | "horizon-mixin.toml" | "native" | "rust"
-            ) {
-                return Err(format!("{name}: unsupported package path"));
-            }
-            has_source |= first == "src";
+            has_source |= name.split('/').next() == Some("src");
             if entry.is_dir() && matches!(mode & 0o170000, 0 | 0o040000) {
                 continue;
             }
@@ -1943,9 +1948,29 @@ capabilities = ["registries"]
         );
         std::fs::write(root.join(MANIFEST), format!("{EXAMPLE}{native}")).unwrap();
         assert_eq!(Package::read(&root).unwrap().manifest.id, "ruby");
-        std::fs::create_dir(root.join("native")).unwrap();
-        assert!(Package::read(&root).is_err());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_project_reader_ignores_unrelated_root_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        std::fs::write(root.join(MANIFEST), EXAMPLE).unwrap();
+        for dir in ["native", "rust"] {
+            std::fs::create_dir(root.join(dir)).unwrap();
+        }
+        std::fs::write(root.join("sunrise-native.json"), "not a manifest").unwrap();
+        std::fs::write(root.join("horizon-mixin.toml"), "not a manifest").unwrap();
+        let package = Package::read(root).unwrap();
+        assert_eq!(package.manifest.id, "ruby");
+        assert_eq!(
+            package
+                .directory_files(root)
+                .unwrap()
+                .into_keys()
+                .collect::<Vec<_>>(),
+            [MANIFEST],
+        );
     }
 
     #[test]

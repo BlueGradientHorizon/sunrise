@@ -4,34 +4,25 @@ use std::{fs, path::Path};
 use sunrise_mod_package::mod_surface::uses::USES_FILE;
 use sunrise_mod_package::{Package, manifest};
 
+/// Return the validated native project, if this directory has a package manifest.
+/// A present but invalid manifest is reported by the canonical package reader.
 pub fn read(dir: &Path) -> Result<Option<Bundle>, String> {
-    for old in [
-        "sunrise-native.json",
-        "horizon-mixin.toml",
-        "native",
-        "rust",
-    ] {
-        if dir.join(old).exists() {
-            return Err(format!("{}: unsupported package path {old}", dir.display()));
+    let path = dir.join(manifest::MANIFEST);
+    match fs::symlink_metadata(&path) {
+        Ok(_) => {}
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Ok(None);
         }
-    }
-    if !dir.join(manifest::MANIFEST).is_file() {
-        return Ok(None);
+        Err(e) => return Err(format!("{}: {e}", path.display())),
     }
     let package = Package::read(dir)?;
     if !package.is_native() {
         return Ok(None);
-    }
-    if let Some(state) = package
-        .manifest
-        .native
-        .as_ref()
-        .and_then(|native| native.state.first())
-    {
-        return Err(crate::host::trf(
-            "E_MIXIN_STATE_LAYOUT: {mod}:{state}: native state changes the prebuilt game's layout; use an attachment instead",
-            &[("mod", &package.manifest.id), ("state", &state.id)],
-        ));
     }
     package.directory_files(dir)?;
     Ok(Some(Bundle {
@@ -60,7 +51,6 @@ pub fn tool_manifest(bundle: &Bundle) -> Result<(), String> {
     for (name, rows) in [
         ("injection", toml::Value::try_from(&bundle.native().mixin)),
         ("bridge", toml::Value::try_from(&bundle.native().bridge)),
-        ("state", toml::Value::try_from(&bundle.native().state)),
     ] {
         let rows = rows.map_err(|error| error.to_string())?;
         if rows.as_array().is_some_and(|rows| !rows.is_empty()) {
@@ -126,18 +116,57 @@ fn copy_files(to: &Path, files: impl IntoIterator<Item = (String, Vec<u8>)>) -> 
 }
 
 #[cfg(test)]
-mod state_tests {
+mod tests {
+    use super::*;
+    use crate::tests::write_bundle;
+
     #[test]
-    fn native_state_is_refused_before_staging() {
-        let dir = super::super::tests::dir("state-refusal");
-        super::super::tests::write_bundle(&dir, "stateful", "");
-        let path = dir.join(sunrise_mod_package::manifest::MANIFEST);
-        let mut text = std::fs::read_to_string(&path).unwrap();
-        text.push_str("\n[[native.state]]\nid='autosave'\ntarget='game::Game'\nty='u32'\ninitial='0'\nconstructor=[]\n");
-        std::fs::write(path, text).unwrap();
-        let error = super::read(&dir).err().unwrap();
-        assert!(error.contains("E_MIXIN_STATE_LAYOUT"), "{error}");
-        assert!(error.contains("attachment"), "{error}");
-        std::fs::remove_dir_all(dir).unwrap();
+    fn scan_skips_non_packages_and_reads_native_projects_with_unrelated_folders() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        fs::create_dir_all(workspace.join("rust")).unwrap();
+        fs::write(workspace.join("horizon-mixin.toml"), "not a package").unwrap();
+        let project = workspace.join("example");
+        write_bundle(&project, "example", "");
+        fs::create_dir(project.join("native")).unwrap();
+        fs::write(project.join("sunrise-native.json"), "not a manifest").unwrap();
+
+        let bundles = crate::scan_bundles(&workspace).unwrap();
+        assert_eq!(bundles.len(), 1);
+        assert_eq!(bundles[0].manifest.id, "example");
+        assert_eq!(bundles[0].dir, project);
+    }
+
+    #[test]
+    fn a_present_malformed_manifest_is_not_skipped() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join(manifest::MANIFEST)).unwrap();
+        let error = read(root.path()).unwrap_err();
+        assert_eq!(
+            error,
+            "sunrise-mod.toml: unsupported file type in a content mod"
+        );
+    }
+
+    #[test]
+    fn native_state_is_refused_by_the_package_reader_before_staging() {
+        let dir = tempfile::tempdir().unwrap();
+        write_bundle(dir.path(), "stateful", "");
+        let path = dir.path().join(manifest::MANIFEST);
+        let text = fs::read_to_string(&path).unwrap();
+        for (row, table) in [
+            (
+                "autosave",
+                "[[native.state]]\nid='autosave'\ntarget='game::Game'\nty='u32'\ninitial='0'\nconstructor=[]\n",
+            ),
+            ("native.state", "state = []\n"),
+        ] {
+            fs::write(&path, format!("{text}{table}")).unwrap();
+            let error = format!(
+                "E_MIXIN_STATE_LAYOUT: stateful:{row}: native state changes the prebuilt game's layout; use an attachment instead"
+            );
+            assert_eq!(Package::read(dir.path()).err().unwrap(), error);
+            assert_eq!(read(dir.path()).unwrap_err(), error);
+        }
     }
 }
