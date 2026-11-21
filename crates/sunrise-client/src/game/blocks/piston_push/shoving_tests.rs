@@ -1,7 +1,5 @@
 use super::*;
-use crate::game::native_entity_refs::tests::{
-    bind_acting_guest, bind_local_player, with_client_game, with_game,
-};
+use crate::game::native_entity_refs::tests::{bind_acting_guest, with_client_game, with_game};
 use mod_api::{Collider, ColliderBox};
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, entities::ItemEntity, items::ItemStack, motion::PlayerMotion};
@@ -181,10 +179,13 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                 empty_chunk(game);
                 holder(game, 4.75);
                 game.player = Some(PlayerMotion::new(game.motion, from).unwrap());
-                bind_local_player(game, PLAYER, 11);
                 game.lan_acting = Some(CONN);
+                game.lan_acting_entity = Some(PLAYER);
+                game.lan_acting_uuid = Some(11);
                 game.lan_acting_name = Some("pushed-player".into());
                 bind_acting_guest(game);
+                // The packet belongs to the hub guest, not a second local body.
+                game.remove_local_player_body();
                 game.lan_acting = None;
                 let hub = &mut game.lan.as_mut().unwrap().hub;
                 hub.update_guest(CONN, |g| {
