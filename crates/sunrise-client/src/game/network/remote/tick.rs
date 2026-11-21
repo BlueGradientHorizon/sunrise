@@ -979,7 +979,6 @@ impl Game<'_> {
             player.pitch = 0.0;
         } else if walks {
             let side = game_side!(self);
-            let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
             player.client_side = true;
             // LivingEntity.checkAutoSpinAttack: a Riptide spin that touches a
             // mob ends and bounces back; the server deals the hit.
@@ -1012,6 +1011,8 @@ impl Game<'_> {
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
             };
+            // Only travel writes positions; the fluid and sprint decisions precede this pass.
+            let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
             motion_world!(side, player).finish_local_tick(keys)?;
         } else {
             // LivingEntity.baseTick counts hurtTime down for a dead or riding
@@ -1020,7 +1021,6 @@ impl Game<'_> {
             player.health.advance_clock();
             if riding && !dead {
                 let side = game_side!(self);
-                let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
                 player.client_side = true;
                 let mut passenger = motion_world!(side, player);
                 // The rider moves from its old seat; the new one is its place after.
@@ -1039,6 +1039,7 @@ impl Game<'_> {
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
                 };
+                let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
                 let mut passenger = motion_world!(side, player);
                 passenger.finish_rider_tick(keys.direction(), answer)?;
                 sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
