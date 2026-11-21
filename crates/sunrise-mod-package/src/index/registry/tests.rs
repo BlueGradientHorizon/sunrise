@@ -446,6 +446,19 @@ fn a_review_protects_published_files() {
 
     let r = review(&[], &[cozy], "newcomer");
     assert_eq!(r.notes, ["cozy: a new modpack by ludovic111"]);
+
+    // A row may gain a stable release; once published, the release it names stays.
+    let mut stable = base.clone();
+    stable.versions[0].sunrise = Some("26.3-0.1.0".into());
+    let r = review(one, std::slice::from_ref(&stable), "ludovic111");
+    assert!(r.errors.is_empty(), "{r:?}");
+    for renamed in [None, Some("26.3-0.2.0".to_owned())] {
+        let mut changed = stable.clone();
+        changed.versions[0].sunrise = renamed;
+        let r = review(std::slice::from_ref(&stable), &[changed], "ludovic111");
+        assert_eq!(r.errors.len(), 1, "{r:?}");
+        assert!(r.errors[0].contains("stable release a published version names never changes"));
+    }
 }
 
 #[test]
