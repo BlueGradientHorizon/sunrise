@@ -63,6 +63,12 @@ pub(super) fn emit<'a>(
         let native = format!("native_{name}");
         let target = hook.target.as_str();
         let is_render = is_render(hook);
+        let filtered_subscribers = name == "add_pack_finders";
+        if hook.contain_panics && (is_render || filtered_subscribers || name == "consume_effect") {
+            return Err(format!(
+                "{name}: contain_panics requires ordinary global subscriber dispatch"
+            ));
+        }
         let in_game = target.starts_with("sunrise_client::game::");
         let declaration_only = target == EFFECT_TICK_TARGET;
         let expected = if is_render { name } else { &native };
@@ -444,7 +450,7 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
-            if isolated_collect {
+            if isolated_collect || hook.contain_panics {
                 struct MutableBorrow(bool);
                 impl<'ast> syn::visit::Visit<'ast> for MutableBorrow {
                     fn visit_type_reference(&mut self, reference: &'ast syn::TypeReference) {
@@ -455,8 +461,13 @@ pub(super) fn emit<'a>(
                 let mut mutable = MutableBorrow(false);
                 syn::visit::Visit::visit_type(&mut mutable, ty);
                 if mutable.0 {
+                    let policy = if hook.contain_panics {
+                        "contain_panics"
+                    } else {
+                        "an isolated collector"
+                    };
                     return Err(format!(
-                        "{}: an isolated collector cannot also write to {name}",
+                        "{}: {policy} cannot also write to {name}",
                         hook.name
                     ));
                 }
@@ -789,7 +800,7 @@ pub(super) fn emit<'a>(
                 .collect::<Vec<_>>()
                 .join(", ");
             let passed = passed.join(", ");
-            let dispatch_call = if name == "add_pack_finders" {
+            let dispatch_call = if filtered_subscribers {
                 format!(
                     "let mods = self.mods.clone(); mod_api::dispatch_{name}_for({passed}, |id| mods.code_owner_enabled(id));"
                 )
@@ -817,7 +828,6 @@ pub(super) fn emit<'a>(
             && host
                 .as_ref()
                 .is_some_and(|(_, param)| param.ty == "&mut dyn LevelWriteHost");
-        let filtered_subscribers = name == "add_pack_finders";
         let allow_subscriber = fresh_name("allow", &mut used);
         let invoke_part = fresh_name("invoke_part", &mut used);
         let invoke = call_args.join(", ");
@@ -946,7 +956,9 @@ pub(super) fn emit<'a>(
         // Each listener gets a fresh event with the original inputs. Writable borrowed
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.
-        let (build, local_event) = if hook.event_per_listener || isolated_collect {
+        let (build, local_event) = if hook.contain_panics {
+            (String::new(), build)
+        } else if hook.event_per_listener || isolated_collect {
             // A replace answer is returned outside the event. A regular collect
             // output borrows one slot, reborrowed for each listener above. Answered
             // collect batches and cancellation do not use this mode. An isolated collector's
@@ -1029,7 +1041,7 @@ pub(super) fn emit<'a>(
                 if *by_reference { "*" } else { "" }
             ));
         }
-        if mod_cancel {
+        if mod_cancel && !hook.contain_panics {
             restores.push(format!("{event}.cancelled = {saved}.{};", snaps.len()));
             snaps.push(format!("{event}.cancelled"));
         }
@@ -1255,6 +1267,33 @@ pub(super) fn emit<'a>(
                     owner = hook.owner.as_deref().unwrap(),
                 ),
             ),
+            None if hook.contain_panics => {
+                let call = format!(
+                    "{entered}.call_contained(HookId::{hook_id}, \"{name}\", {mod_entry}, contained, \
+                     |{mod_item}| {mod_item}.{name}({invoke}))"
+                );
+                let (receives, skip, commit) = if let Some(out) = out {
+                    let answer = fresh_name("answer", &mut used);
+                    (
+                        receives.as_str(),
+                        format!("if *{out} && !{receives} {{ continue; }}"),
+                        format!(
+                            "if let Some({answer}) = {call} {{ \
+                             *{out} = {event}.cancelled || matches!({answer}, Flow::Cancel); }}"
+                        ),
+                    )
+                } else {
+                    ("_", String::new(), format!("let _ = {call};"))
+                };
+                (
+                    String::new(),
+                    format!(
+                        "let mut {entered} = super::runtime::ListenerScope::new(); \
+                         for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ \
+                         {skip} {local_event} {commit} }}"
+                    ),
+                )
+            }
             None if isolated_collect => (
                 // The callback receives only completed answers. Containment covers the mod's call
                 // and the panic payload destructor, not the engine's answer callback.
@@ -1347,7 +1386,7 @@ pub(super) fn emit<'a>(
             format!("if !super::listened(HookId::{hook_id}) {{ return; }}")
         };
         // One thread-local read per dispatch, not per listener.
-        let early_return = if body.contains("refusable(") {
+        let early_return = if hook.contain_panics || body.contains("refusable(") {
             format!("{early_return} let contained = super::runtime::outside_world();")
         } else {
             early_return

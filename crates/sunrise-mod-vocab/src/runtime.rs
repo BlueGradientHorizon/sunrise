@@ -58,11 +58,9 @@ pub(crate) struct Installed {
     mod_id_owners: std::collections::HashMap<&'static str, usize>,
     content_owners: OnceLock<std::collections::HashMap<Box<str>, Option<usize>>>,
     disabled_count: std::sync::atomic::AtomicUsize,
-    /// The poison sets of the hooks whose dispatch isolates every listener
-    /// (#2414 ruling): a listener that unwound is skipped by that one hook
-    /// for the rest of the session. One set per hook, filled only on a panic;
-    /// `poison_free` answers through one atomic load, so a dispatch with no
-    /// poison pays nothing.
+    /// A contained listener that panicked is skipped by that one hook for the rest
+    /// of the session. The sets are filled only on failure; `poison_free` avoids
+    /// locking them until then.
     poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
     poison_free: std::sync::atomic::AtomicBool,
 }
@@ -638,6 +636,33 @@ impl ListenerScope {
             },
         );
         &*entry.hooks
+    }
+
+    /// Run one listener and return only an answer that completed without panic or refusal.
+    pub(crate) fn call_contained<T>(
+        &mut self,
+        hook_id: HookId,
+        name: &'static str,
+        entry: &'static ModEntry,
+        contained: bool,
+        call: impl FnOnce(&dyn Hooks) -> T,
+    ) -> Option<T> {
+        if poisoned(hook_id, entry.id) {
+            return None;
+        }
+        let hooks = self.enter(entry, name);
+        match crate::callback_owner::contain_unwind(|| refusable(contained, || call(hooks))) {
+            Ok(Ok(answer)) => Some(answer),
+            Ok(Err(refusal)) => {
+                refusal.report_each();
+                None
+            }
+            Err(message) => {
+                poison(hook_id, entry.id);
+                crate::callback_owner::report_callback_panic(entry.id, "hook", name, message);
+                None
+            }
+        }
     }
 }
 

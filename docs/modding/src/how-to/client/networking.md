@@ -2,6 +2,20 @@
 
 Call `host.disconnect(reason)` through `ClientHost` to leave the joined server or world at the end of the frame, outside hooks. Pass `Some(Text)` to show a disconnect reason or `None` for the normal leave flow. The disconnect screen renders the reason in the player's language, like other translatable text: a translatable component shows its translated text and a plain-text reason is unchanged. The call returns `Result<(), DisconnectError>`: `Unavailable` means no world is joined, it is closing, or a save is pending, and `Text` reports an invalid reason (a malformed or too-deep component is refused by that name and nothing changes). A pending request belongs to its current world epoch and cannot leave a later world. Server code continues to use the separate player disconnect operation.
 
+## Observing play packets
+
+`client_packet` and `client_packet_send` lend each listener the original packet
+view for the duration of the call. Copy any channel or payload bytes you need
+after the callback returns. The receive hook cannot cancel a packet. On send,
+`Flow::Cancel` drops the packet unless a later listener marked
+`#[listener(receive_cancelled)]` sets `event.cancelled` to `false` and continues.
+
+A panic in either hook is logged and shown in an error toast naming the mod.
+Only that mod's callback for that hook is disabled for the session. Later eligible
+listeners still run; a failed send listener neither adds nor clears a cancellation,
+and effects on the Host are not rolled back. A phase refusal is logged each time
+without disabling the callback.
+
 ## Holding outgoing play packets
 
 Call `host.hold_packets()` to start an ordered hold and receive its opaque `HoldId`.

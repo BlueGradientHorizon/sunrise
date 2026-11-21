@@ -12,6 +12,9 @@ pub trait Hooks {
     /// player's own included. Every packet exposes its protocol type id; custom payloads also
     /// expose their channel and raw bytes, as `client_packet` does for the packets that arrive.
     /// Play-phase pongs pass through this hook; return `Flow::Cancel` to drop a packet.
+    /// The packet is borrowed for the call. A panic is logged and shown in an error toast,
+    /// disables only that mod's send callback for the session, and leaves the last accepted
+    /// cancellation unchanged for later eligible listeners. Host effects are not rolled back.
     /// Beyond NeoForge: there is no counterpart. Diverges from upstream: new hook.
     #[hook(
         receiver = "read",
@@ -20,7 +23,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         cancellable = false,
-        version = 2,
+        contain_panics = true,
+        version = 3,
         neoforge = "none (NeoForge has no raw play-packet send event)"
     )]
     fn client_packet_send(packet: &ClientPacket<'_>, canceled: &mut bool);

@@ -14,18 +14,24 @@ pub trait Hooks {
     /// Client-side, on any server, single player's own included.
     /// Every packet exposes its protocol type id. Custom payloads also expose
     /// their channel and raw bytes; no other decoded fields cross the API.
+    /// The packet is borrowed for the call. A panic is logged and shown in an error toast,
+    /// disables only that mod's receive callback for the session, and does not stop later
+    /// listeners. Host effects are not rolled back.
     #[notes = r#"## Decoded client packets
 
-`Hooks::client_packet` receives `&mut dyn ClientHost` and a read-only
-`ClientPacketEvent` before the window handles a decoded server play packet.
-The read-only `event.packet` is a `mod_api::ClientPacket`: `id` identifies the
+`Hooks::client_packet` receives `&mut dyn ClientHost` and a `ClientPacketEvent`
+before the window handles a decoded server play packet. `event.packet` borrows
+an immutable `mod_api::ClientPacket`: `id` identifies the
 packet type (for example, `minecraft:custom_payload`); `custom_payload` contains
 the channel and raw bytes for a custom payload, or `None` otherwise. An id
 outside the protocol's packet table is reported as `sunrise:unknown`.
 Other decoded fields are not exposed.
 
-The hook cannot cancel or replace a packet. It also observes chunk packets
-handled by the batching path, once each. Configuration packets and the network
+The hook cannot cancel or replace a packet. Each listener sees the original
+borrowed packet. If a listener panics, the error is logged and shown in a toast
+naming the mod, and only its callback for this hook is disabled for the session.
+Later listeners and the normal packet handler still run. The hook also observes
+chunk packets handled by the batching path, once each. Configuration packets and the network
 thread's own handling (including keep-alives, chunk batch starts and finishes, and resource pack
 messages) do not fire it. The chunks between a batch's start and finish still fire it.
 
@@ -44,13 +50,16 @@ in order, including the selected slot sent before an attack or a use. Returning 
 the packet, and the game goes on as if it had been sent. Play-phase pongs pass through this hook.
 Packets the network thread sends itself (keep-alives, chunk batch acknowledgements, configuration pongs, cookies, configuration), the phase-dependent answers (resource pack status,
 a dialog's custom click action) and far terrain requests do not fire it. With no listener the
-send path checks one flag and builds nothing."#]
+send path checks one flag and builds nothing. The same panic policy applies:
+a failed listener does not change the last accepted cancellation, and later eligible
+listeners still run."#]
     #[hook(
         dispatch = "flat",
         side = "client",
         contract = "listen",
         cancellable = false,
-        version = 2,
+        contain_panics = true,
+        version = 3,
         neoforge = "none (NeoForge has no raw play-packet receive event)"
     )]
     fn client_packet(packet: &ClientPacket<'_>);

@@ -181,6 +181,9 @@ pub struct Hook {
     /// A collector receives at most one returned value per registration, and later listeners
     /// still run after a failure.
     pub isolate: bool,
+    /// A global listen or cancel hook whose panicking listener is reported and disabled.
+    /// Later listeners continue with the last accepted cancellation; Host effects stand.
+    pub contain_panics: bool,
     /// An isolated cancel hook's per-listener check of the outputs it wrote: a path to
     /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
     /// vector/scalar outputs in declaration order and naming the first refused one. A refused
@@ -359,6 +362,8 @@ struct ModApiEntry {
     collect_validator: Option<String>,
     registration_append: Option<RegistrationAppend>,
     isolate: Option<bool>,
+    #[serde(default)]
+    contain_panics: bool,
     output_validator: Option<String>,
 }
 
@@ -537,6 +542,23 @@ impl Hook {
                 error: "output_validator is a path on an isolated cancel hook".into(),
             });
         }
+        if api.contain_panics
+            && (scope.is_some()
+                || !matches!(api.contract, Contract::Listen | Contract::Cancel)
+                || isolate
+                || entry.event_per_listener
+                || api.owner.is_some()
+                || api.registration_append.is_some()
+                || matches!(
+                    entry.context,
+                    Some(PhaseContext::Registration | PhaseContext::ChunkDisk)
+                ))
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name,
+                error: "contain_panics requires an unfiltered global listen or cancel hook without an alternate dispatch policy".into(),
+            });
+        }
         let counterparts = Counterparts {
             neoforge: counterparts(&name, "neoforge", entry.neoforge)?,
             fabric: counterparts(&name, "fabric", entry.fabric)?,
@@ -557,6 +579,7 @@ impl Hook {
             registration_append: api.registration_append,
             inert: entry.inert,
             isolate,
+            contain_panics: api.contain_panics,
             output_validator: api.output_validator,
             scope,
             host: entry.host,
@@ -845,6 +868,7 @@ impl Declared {
                             "collect_validator",
                             "registration_append",
                             "isolate",
+                            "contain_panics",
                             "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
@@ -1020,6 +1044,7 @@ impl Hook {
             registration_append: None,
             inert: None,
             isolate: false,
+            contain_panics: false,
             output_validator: None,
             scope: None,
             host: None,

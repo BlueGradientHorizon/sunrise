@@ -2513,7 +2513,7 @@ impl Game<'_> {
             }
         }
     }
-    /// Retained callback faults use system toasts but bypass `toast_add`: a mod
+    /// Mod callback faults use system toasts but bypass `toast_add`: a mod
     /// must not be able to hide the message naming the callback that failed.
     pub(super) fn draw_mod_callback_toasts(&mut self, batch: &mut HudBatch) {
         use sunrise_client::toasts::SystemToast;

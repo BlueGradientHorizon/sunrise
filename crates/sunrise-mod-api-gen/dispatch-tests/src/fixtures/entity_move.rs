@@ -170,6 +170,27 @@ mod root {
             ) -> &'static dyn super::Hooks {
                 super::enter_listener(entry, hook).1
             }
+
+            pub(super) fn call_contained<T>(
+                &mut self,
+                hook_id: super::HookId,
+                hook: &'static str,
+                entry: &'static super::ModEntry,
+                _: bool,
+                call: impl FnOnce(&dyn super::Hooks) -> T,
+            ) -> Option<T> {
+                if poisoned(hook_id, entry.id) {
+                    return None;
+                }
+                let hooks = self.enter(entry, hook);
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| call(hooks))) {
+                    Ok(answer) => Some(answer),
+                    Err(_) => {
+                        poison(hook_id, entry.id);
+                        None
+                    }
+                }
+            }
         }
         thread_local! {
             /// The listeners the isolated dispatches poisoned, as (hook ordinal, id) pairs — the
