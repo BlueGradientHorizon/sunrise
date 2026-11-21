@@ -54,10 +54,12 @@ class Collection(unittest.TestCase):
         }})
         self.batch = Batch(self.work)
 
-    def test_an_unknown_schema_names_the_tool_that_wrote_it(self):
+    def test_an_unknown_schema_is_refused_without_writing(self):
         json_write(self.batch.shared / "plan.json", {"schema": 7, "tool_commit": "f" * 40})
-        with self.assertRaisesRegex(SystemExit, f"schema 7 from tool commit {'f' * 40}"):
+        before = {path: path.read_bytes() if path.is_file() else None for path in self.work.rglob("*")}
+        with self.assertRaises(SystemExit):
             Batch(self.work)
+        self.assertEqual({path: path.read_bytes() if path.is_file() else None for path in self.work.rglob("*")}, before)
 
     def test_missing_host_blocks_signing_before_writing_any_output(self):
         client = self.work / "host-results" / LINUX

@@ -329,11 +329,20 @@ mod tests {
             out.display().to_string(),
         ];
         run(temp.path(), &args).unwrap();
-        assert_eq!(fs::read_dir(&out).unwrap().count(), SCRIPTS.len());
-        for (name, text) in SCRIPTS {
-            assert_eq!(fs::read(out.join(name)).unwrap(), text.as_bytes());
+        assert_eq!(fs::read_dir(&out).unwrap().count(), 2);
+        for (name, bytes) in [
+            (
+                "sunrise_release.py",
+                include_str!("../template/native/sunrise_release.py"),
+            ),
+            (
+                "sunrise_release_github.py",
+                include_str!("../template/native/sunrise_release_github.py"),
+            ),
+        ] {
+            assert_eq!(fs::read(out.join(name)).unwrap(), bytes.as_bytes());
         }
-        let keep = out.join(SCRIPTS[0].0);
+        let keep = out.join("sunrise_release.py");
         fs::write(&keep, b"keep these bytes").unwrap();
         assert!(run(temp.path(), &args).is_err());
         assert_eq!(fs::read(keep).unwrap(), b"keep these bytes");
