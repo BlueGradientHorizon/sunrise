@@ -98,7 +98,7 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
 fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
     use mod_api::{AudioStream, AudioStreamState, SoundSource, StreamSpec};
-    use sunrise_client::net::{Event, ingress};
+    use sunrise_client::net::Event;
 
     struct Silent;
     impl AudioStream for Silent {
@@ -154,16 +154,9 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
         .unwrap();
     assert_eq!(stream.state(), AudioStreamState::Playing);
 
-    let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
-    tx.send(sunrise_client::net::QueuedEvent {
-        serial: Some(game.remote.as_ref().unwrap().session.serial()),
-        event: Event::Reconfiguring,
-    })
-    .unwrap();
-    let (queued, credit) = rx.try_recv_owned().unwrap().into_parts();
-    game.client_backlog_serial = queued.serial;
+    game.client_backlog_serial = Some(game.remote.as_ref().unwrap().session.serial());
     game.client_backlog
-        .push_back(super::super::Received::Event(queued.event, credit));
+        .push_back(super::super::Received::Event(Event::Reconfiguring, None));
     game.poll_remote_events(true).unwrap();
 
     assert!(game.remote.as_ref().unwrap().reconfiguring.is_some());

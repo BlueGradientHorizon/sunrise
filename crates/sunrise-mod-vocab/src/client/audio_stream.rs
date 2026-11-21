@@ -284,8 +284,9 @@ impl AudioStreamRef {
     /// `entity`, its position is not finite, or once the stream has stopped. Stereo streams
     /// accept any tracked entity and play un-spatialized.
     ///
-    /// Obtain a [`ClientExecutor`](crate::ClientExecutor) from `host.client_executor()` in a
-    /// client callback, then clone it into a network-thread producer holding an `EntityRef`.
+    /// In `client_setup`, use `if let Some(executor) = host.client_executor()` to obtain a
+    /// [`ClientExecutor`](crate::ClientExecutor), then clone it into a network-thread
+    /// producer holding an `EntityRef`.
     /// It can retarget the stream without borrowing a host or a live payload context:
     ///
     /// ```

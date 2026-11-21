@@ -2,39 +2,51 @@
 use super::*;
 
 impl Game<'_> {
-    /// Drain local executor work and current-connection events in publication order.
-    /// Before a tick we take only what the frame left behind, with no chunk budget.
+    /// Drain the current connection's packets and then the application's tasks.
+    /// Before a tick we take only deferred packets, with no chunk budget.
     pub(super) fn poll_remote_events(&mut self, before_tick: bool) -> Result<()> {
         let serial = self.remote.as_ref().map(|remote| remote.session.serial());
         let mut events = std::mem::take(&mut self.client_backlog);
         if self.client_backlog_serial != serial {
-            // The executor belongs to the client, including across disconnects or transfers.
             // Old packets (including queued payload work) belong only to their connection.
-            events.retain(|item| matches!(item, Received::Event(Event::ClientTask(_), _)));
+            events.clear();
             self.client_backlog_serial = serial;
         }
-        if !before_tick {
-            for receipt in self.client_inbox.poll() {
-                let (queued, credit) = receipt.into_parts();
-                if queued.serial.is_some() && queued.serial != serial {
-                    continue;
-                }
-                // Decode the columns in parallel, but apply each at its ordered slot.
-                events.push_back(match (self.remote.as_mut(), queued.event) {
-                    (Some(remote), Event::Packet(packet))
-                        if matches!(*packet, C::LevelChunkWithLight(_)) =>
-                    {
-                        match remote.decoder.submit(remote.chunk_format.clone(), packet) {
-                            None => Received::Chunk(remote.chunk_format.clone(), credit),
-                            Some(packet) => Received::Event(Event::Packet(packet), credit),
-                        }
-                    }
-                    (_, event) => Received::Event(event, credit),
-                });
+        let mut turn = if before_tick {
+            Vec::new()
+        } else {
+            self.client_inbox.poll()
+        };
+        // Minecraft.runTick processes packets before its scheduled executables.
+        // Keep this turn's tasks in the frozen turn itself, not the packet backlog.
+        for queued in turn.extract_if(.., |item| !matches!(item.event, Event::ClientTask(_))) {
+            let (source, event, credit) = queued.into_parts();
+            if source != serial {
+                continue;
             }
+            // Decode the columns in parallel, but apply each at its ordered slot.
+            events.push_back(match (self.remote.as_mut(), event) {
+                (Some(remote), Event::Packet(packet))
+                    if matches!(*packet, C::LevelChunkWithLight(_)) =>
+                {
+                    match remote.decoder.submit(remote.chunk_format.clone(), packet) {
+                        None => Received::Chunk(remote.chunk_format.clone(), credit),
+                        Some(packet) => Received::Event(Event::Packet(packet), credit),
+                    }
+                }
+                (_, event) => Received::Event(event, credit),
+            });
         }
         let result = self.dispatch_client_events(&mut events, before_tick);
         self.client_backlog = events;
+        for queued in turn {
+            if !self.client_inbox.is_open() {
+                break;
+            }
+            if let Event::ClientTask(task) = queued.event {
+                self.run_client_task(task);
+            }
+        }
         result
     }
 
@@ -281,10 +293,7 @@ impl Game<'_> {
                     self.leave_server(Some(Text::literal(reason)))?;
                     return Ok(());
                 }
-                Event::ClientTask(task) => {
-                    self.run_client_task(task);
-                    continue;
-                }
+                Event::ClientTask(task) => self.run_client_task(task),
                 Event::RawPayload(incoming) => {
                     if let Some(remote) = self.remote.as_ref() {
                         self.run_payload(remote.session.payload_endpoint(), *incoming);

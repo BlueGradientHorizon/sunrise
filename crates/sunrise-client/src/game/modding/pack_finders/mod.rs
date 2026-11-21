@@ -124,7 +124,12 @@ impl mod_api::prelude::TextHost for DiscoveryHost {
     }
 }
 impl ClientHost for DiscoveryHost {}
-mod_api::impl_client_host_areas!(DiscoveryHost, except(audio));
+mod_api::impl_client_host_areas!(DiscoveryHost, except(audio, services));
+impl mod_api::prelude::ServicesClientHost for DiscoveryHost {
+    fn client_executor(&self) -> Option<mod_api::ClientExecutor> {
+        None
+    }
+}
 // Registration opens no audio stream.
 impl mod_api::prelude::AudioClientHost for DiscoveryHost {
     fn open_audio_stream(

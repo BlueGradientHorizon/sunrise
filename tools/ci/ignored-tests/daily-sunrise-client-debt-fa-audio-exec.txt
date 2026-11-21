@@ -1,3 +1,4 @@
-sunrise-client game::client_executor::tests::panicking_executor_disables_only_its_mod_and_shows_an_error lib daily resources
-sunrise-client game::client_executor::tests::shutdown_discards_pending_and_late_client_tasks lib daily resources
+sunrise-client game::client_executor::tests::closing_window_during_pending_save_discards_pending_and_late_client_tasks lib daily resources
+sunrise-client game::client_executor::tests::executor_drains_the_current_turn_even_when_a_packet_disconnects lib daily resources
+sunrise-client game::client_executor::tests::executor_reports_a_panic_and_runs_later_tasks_from_any_mod lib daily resources
 sunrise-client game::client_executor::tests::worker_tasks_run_in_order_on_the_client_with_its_live_host lib daily resources

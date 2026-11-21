@@ -3,7 +3,6 @@ use super::Game;
 use mod_api::ClientExecutor;
 use sunrise_client::{
     crash::{self, ModCall},
-    fast_hash::FxHashSet,
     hud::{self, HudBatch},
     net::ClientTask,
     text::Text,
@@ -12,7 +11,6 @@ use sunrise_client::{
 
 #[derive(Default)]
 pub(super) struct State {
-    disabled: FxHashSet<&'static str>,
     pub(super) errors: Vec<SystemToast>,
 }
 
@@ -31,9 +29,6 @@ impl Game<'_> {
 
     pub(super) fn run_client_task(&mut self, task: ClientTask) {
         let owner = task.owner;
-        if self.client_executor.disabled.contains(owner) {
-            return;
-        }
         let guard = crash::enter_native_mod(ModCall {
             id: owner,
             hook: "client_executor",
@@ -46,10 +41,7 @@ impl Game<'_> {
             Ok(Ok(())) => {}
             Ok(Err(refusal)) => refusal.report(),
             Err(error) => {
-                self.client_executor.disabled.insert(owner);
-                log::error!(
-                    "Mod {owner} panicked in client executor work; its executor callbacks are disabled for this session: {error}"
-                );
+                log::error!("Mod {owner} panicked in client executor work: {error}");
                 self.client_executor.errors.push(
                     SystemToast::new(
                         Text::tr("sunrise.toast.client_task_failed", &[]),
@@ -104,12 +96,15 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::native_entity_refs::tests::with_client_game;
+    use crate::game::{
+        EventLoopCtl, native_entity_refs::tests::with_client_game, raw_backlog::Received,
+    };
     use mod_api::ClientHost;
     use std::{
         sync::{Arc, Mutex},
         thread,
     };
+    use sunrise_client::net::Event;
 
     fn executor(host: &dyn ClientHost, id: &'static str) -> ClientExecutor {
         let _call = crash::enter_native_mod(ModCall {
@@ -161,7 +156,17 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn shutdown_discards_pending_and_late_client_tasks() {
+    fn closing_window_during_pending_save_discards_pending_and_late_client_tasks() {
+        use crate::game::input_trace::InputOrigin;
+        use winit::{event::WindowEvent, event_loop::ControlFlow, window::WindowId};
+        struct TestLoop;
+        impl EventLoopCtl for TestLoop {
+            fn exit(&self) {
+                panic!("the quit must wait for the pending save");
+            }
+            fn set_control_flow(&self, _: ControlFlow) {}
+        }
+
         with_client_game(|game| {
             let executor = executor(game, "producer");
             let captured = Arc::new(());
@@ -172,8 +177,21 @@ mod tests {
             }));
             assert_eq!(Arc::strong_count(&captured), 2);
 
-            game.saved_for_exit = true;
-            game.begin_closing_save(true).unwrap();
+            let (reply, completion) = std::sync::mpsc::channel();
+            game.begin_control_save(false, reply).unwrap();
+            assert!(!game.pending_save.as_ref().unwrap().quit);
+            game.options.headless = true;
+            game.handle_window_event(
+                &TestLoop,
+                WindowId::dummy(),
+                WindowEvent::CloseRequested,
+                InputOrigin::User,
+            );
+            assert!(game.pending_save.as_ref().unwrap().quit);
+            assert!(matches!(
+                completion.try_recv(),
+                Err(std::sync::mpsc::TryRecvError::Empty)
+            ));
             assert_eq!(Arc::strong_count(&captured), 1);
             let late = captured.clone();
             thread::spawn(move || {
@@ -192,21 +210,47 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn panicking_executor_disables_only_its_mod_and_shows_an_error() {
+    fn executor_reports_a_panic_and_runs_later_tasks_from_any_mod() {
         with_client_game(|game| {
             let failed = executor(game, "failed");
             let other = executor(game, "other");
             let (record, calls) = std::sync::mpsc::channel();
             failed.execute(Box::new(|_| panic!("mod's task panicked")));
-            let skipped = record.clone();
-            failed.execute(Box::new(move |_| skipped.send("failed").unwrap()));
+            let same_mod = record.clone();
+            failed.execute(Box::new(move |_| same_mod.send("failed").unwrap()));
             other.execute(Box::new(move |_| record.send("other").unwrap()));
 
             game.poll_remote().unwrap();
-            assert_eq!(calls.try_iter().collect::<Vec<_>>(), ["other"]);
+            assert_eq!(calls.try_iter().collect::<Vec<_>>(), ["failed", "other"]);
             assert_eq!(game.client_executor.errors.len(), 1);
             let error = &game.client_executor.errors[0];
             assert_eq!(error.message.as_ref().unwrap().plain(), "failed");
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn executor_drains_the_current_turn_even_when_a_packet_disconnects() {
+        with_client_game(|game| {
+            game.init_remote_for_replay().unwrap();
+            game.client_backlog_serial = Some(game.remote.as_ref().unwrap().session.serial());
+            game.client_backlog.push_back(Received::Event(
+                Event::Disconnected {
+                    reason: "fixture disconnected".into(),
+                    key: None,
+                    from_server: true,
+                },
+                None,
+            ));
+            let executor = executor(game, "producer");
+            let (record, calls) = std::sync::mpsc::channel();
+            let first = record.clone();
+            executor.execute(Box::new(move |_| first.send(2).unwrap()));
+            executor.execute(Box::new(move |_| record.send(1).unwrap()));
+
+            game.poll_remote().unwrap();
+            assert!(game.remote.is_none());
+            assert_eq!(calls.try_iter().collect::<Vec<_>>(), [2, 1]);
         });
     }
 }

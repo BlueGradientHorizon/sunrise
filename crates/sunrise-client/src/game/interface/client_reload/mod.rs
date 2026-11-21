@@ -29,7 +29,12 @@ pub(super) struct StartupClientHost;
 impl Host for StartupClientHost {}
 mod_api::impl_host_areas!(StartupClientHost);
 impl ClientHost for StartupClientHost {}
-mod_api::impl_client_host_areas!(StartupClientHost, except(audio));
+mod_api::impl_client_host_areas!(StartupClientHost, except(audio, services));
+impl mod_api::prelude::ServicesClientHost for StartupClientHost {
+    fn client_executor(&self) -> Option<mod_api::ClientExecutor> {
+        None
+    }
+}
 // A startup reload opens no audio stream.
 impl mod_api::prelude::AudioClientHost for StartupClientHost {
     fn open_audio_stream(

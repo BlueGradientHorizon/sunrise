@@ -4,13 +4,22 @@ Call `host.disconnect(reason)` through `ClientHost` to leave the joined server o
 
 ## Moving work to the client thread
 
-In a live client callback such as `client_setup`, call `host.client_executor()` to get a
-`ClientExecutor`. Clone it into a network handler or another worker. Call
-`executor.execute(Box::new(move |host| { /* use the client host here */ }))` with owned data.
+In `client_setup`, get the `ClientExecutor` and clone it into a network handler or another
+worker. Handle `None`: hosts with limited access, such as the client-side
+`entity_entering_section` host, cannot issue an executor, and neither can a closing client.
+
+```rust,ignore
+// In client_setup:
+let Some(executor) = host.client_executor() else { return; };
+let worker_executor = executor.clone();
+// In the worker, move owned data into the closure:
+worker_executor.execute(Box::new(move |host| { /* use the client host here */ }));
+```
+
 The executor does not run the closure inline. The next client task drain runs queued work in
-submission order and lends each callback a live `&mut dyn ClientHost`. Work submitted after
-shutdown starts is dropped, as is any work that has not run by then. A panic in a task is logged
-and shown in an error toast naming the mod; only that mod's executor callbacks are disabled.
+submission order and lends each callback a live `&mut dyn ClientHost`, even if packet work
+must wait. Work submitted after shutdown starts is dropped, as is any work that has not run by
+then. A panic is logged and shown in an error toast naming the mod; other tasks still run.
 
 The executor belongs to the client application, not to a connection or level. Keep using
 `IPayloadContext::enqueue_work` if the work needs the payload's original epoch, player, reply or

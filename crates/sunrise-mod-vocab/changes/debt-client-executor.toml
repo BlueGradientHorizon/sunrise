@@ -1,3 +1,23 @@
 ids = ["type:ClientExecutor", "handle:ClientExecutor::execute", "method:prelude::ServicesClientHost::client_executor"]
-why = "Vanilla's BlockableEventLoop.execute (Minecraft.execute) moves work from another thread to the client; Minecraft.runTick drains scheduled work and Minecraft.stop ends the loop. NeoForge uses this hop in its ConnectScreen patch, and its ClientPayloadContext.enqueueWork uses the client PacketProcessor for payload-scoped work. Sunrise's executor submits one-shot closures to the same ordered client drain as queued payload work, even when the caller is already on the client thread. Each callback gets a live host. Shutdown drops pending work; a panic logs and toasts the owning mod and disables only that mod's executor callbacks for the session."
-migrate = "Additive; existing payload handlers need no change. In a live client callback, obtain the handle with host.client_executor() and clone it into workers. Replace an off-thread client operation with executor.execute(Box::new(move |host| { /* use the live client host */ })). Keep IPayloadContext::enqueue_work when the task needs that payload's epoch or reply context. Native replacements of net::Session::poll move to net::ClientInbox::poll; each receipt now holds a QueuedEvent with an optional physical session serial (None for application-owned executor work)."
+why = """
+Vanilla's `BlockableEventLoop.execute` (`Minecraft.execute`) moves work to the client thread; \
+`Minecraft.runTick` runs scheduled executables after the packet processor, and `Minecraft.shouldRun` \
+accepts every runnable. NeoForge uses this hop in its `ConnectScreen` patch, and \
+`ClientPayloadContext.enqueueWork` uses the packet processor for payload-scoped work. Sunrise's \
+executor submits one-shot closures to the same ingress as queued payload work, even when called on the \
+client thread. Deferred packets and disconnects do not defer this turn's tasks. Each task gets a live \
+host. `Minecraft.stop` ends the loop; Sunrise drops work as soon as the client starts quitting. \
+Like `BlockableEventLoop.doRunTask` for recoverable errors, a panic reports the failed task (a log and \
+an error toast naming its mod) and the client continues to run later tasks."""
+migrate = """
+Existing payload handlers need no change. In `client_setup`, use `let Some(executor) = \
+host.client_executor() else { return; };` and clone it into workers. Restricted hosts such as the \
+client-side `entity_entering_section` host return `None`. Replace an off-thread client operation with \
+`executor.execute(Box::new(move |host| { /* use the live client host */ }))`. Keep \
+`IPayloadContext::enqueue_work` when the task needs that payload's epoch or reply context.
+
+Native replacements of `net::Session::poll` move to `net::ClientInbox::poll(&self) -> Vec<QueuedEvent>`. \
+Use `QueuedEvent::into_parts()` to split the optional physical session serial, event and optional receive \
+credit; executor work has neither a serial nor receive credit. Native replacements of `net::receive_brand` \
+now take `fn receive_brand(payload: &sunrise_protocol::packets::configuration::CustomPayload, \
+send: &sunrise_client::net::EventSender)` instead of taking `&ingress::Producer<Event>` as argument two."""

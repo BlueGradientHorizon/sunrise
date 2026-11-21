@@ -276,6 +276,7 @@ mod tests {
                         .local_player()
                         .is_some_and(|p| p.entity() == event.entity)
                 {
+                    assert!(host.client_executor().is_none());
                     self.0.lock().unwrap().push((
                         event.old_section,
                         event.new_section,

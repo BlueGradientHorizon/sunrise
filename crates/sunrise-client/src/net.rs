@@ -9,7 +9,8 @@
 use crate::auth::AuthSession;
 mod client_inbox;
 mod held_packets;
-pub use client_inbox::{ClientInbox, ClientTask, EventSender, QueuedEvent};
+pub(crate) use client_inbox::PreparedEvent;
+pub use client_inbox::{ClientInbox, ClientReceiveCredit, ClientTask, EventSender, QueuedEvent};
 pub mod ingress;
 mod known_packs;
 use known_packs::{fill_known_entries, select_known_packs};
@@ -153,7 +154,10 @@ pub enum Event {
 }
 
 #[cfg(test)]
-fn event_channel() -> (EventSender, ingress::Consumer<QueuedEvent>) {
+fn event_channel() -> (
+    EventSender,
+    sunrise_mod_runtime::byte_channel::Receiver<QueuedEvent>,
+) {
     let inbox = ClientInbox::default();
     (inbox.connection(0), inbox.into_receiver())
 }
@@ -208,14 +212,7 @@ impl Event {
         // Layout-derived allowance for a frozen receiving vector, actor backlog,
         // decoder marker and retained receipt, including vector spare capacity.
         // Raw application buffers themselves are never multiplied.
-        owned.saturating_add(
-            8 * size_of::<(
-                QueuedEvent,
-                ingress::ReceiveLease<QueuedEvent>,
-                usize,
-                usize,
-            )>(),
-        )
+        owned.saturating_add(8 * size_of::<(QueuedEvent, usize, usize)>())
     }
 }
 
@@ -3124,14 +3121,10 @@ mod tests {
         });
         server.send(&transfer.encode()).unwrap();
         assert!(thread.join().unwrap().is_ok());
-        let turn: Vec<_> = events
-            .take_turn()
-            .into_iter()
-            .map(ingress::OwnedReceipt::into_parts)
-            .collect();
+        let last_event = std::iter::from_fn(|| events.try_recv().ok()).last();
         assert!(matches!(
-            turn.last(),
-            Some((QueuedEvent { event: Event::Transfer { host, port: 25566 }, .. }, _credit)) if host == "example.net"
+            last_event,
+            Some(QueuedEvent { event: Event::Transfer { host, port: 25566 }, .. }) if host == "example.net"
         ));
         // The stored cookie stays for the next connection (TransferState).
         assert_eq!(

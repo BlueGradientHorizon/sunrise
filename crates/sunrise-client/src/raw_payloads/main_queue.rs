@@ -3,7 +3,7 @@ use super::{Delivery, Endpoint, Incoming};
 use crate::{
     lan::NetEvent,
     net::{
-        Event, EventSender, QueuedEvent,
+        Event, EventSender, PreparedEvent, QueuedEvent,
         ingress::{Prepared, Producer, Refusal, Refused},
     },
 };
@@ -18,7 +18,7 @@ pub enum MainQueue {
     },
 }
 pub(crate) enum PreparedMain {
-    Client(Prepared<QueuedEvent>),
+    Client(PreparedEvent),
     Server(Prepared<NetEvent>),
 }
 /// Keeps failed opaque work alive until after the caller releases its epoch gate.

@@ -2333,7 +2333,7 @@ impl Game<'_> {
     /// `CHUNK_PACKETS_PER_FRAME`: once a frame has spent it, the events from
     /// the next chunk packet on wait for the next frame, unless they have
     /// already waited `BACKLOG_LIMIT`. A chunk packet still decoding holds
-    /// back what follows it.
+    /// back later network events, but not this turn's client executor tasks.
     pub(super) fn poll_remote(&mut self) -> Result<()> {
         self.poll_remote_with(false)
     }

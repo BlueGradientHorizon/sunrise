@@ -126,9 +126,9 @@ pub fn channel<T>(capacity: usize) -> Result<(Sender<T>, Receiver<T>), InvalidCa
 }
 
 impl<T> Sender<T> {
-    /// Publish in FIFO order without spending the transport byte budget. Only for local
-    /// engine work that does not originate as retained network input.
-    pub fn send_local(&self, value: T) -> Result<(), T> {
+    /// Publish in FIFO order without spending this channel's byte budget. For local work
+    /// or values whose credit is already held elsewhere.
+    pub fn send_uncharged(&self, value: T) -> Result<(), T> {
         Permit {
             shared: self.0.clone(),
             charge: 0,
@@ -171,6 +171,11 @@ impl<T> Sender<T> {
     }
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
+    }
+
+    /// Whether a receiver exists now; publication still checks for concurrent closure.
+    pub fn receiver_is_open(&self) -> bool {
+        self.0.lock().receiver_alive
     }
 }
 impl<T> Permit<T> {
@@ -340,9 +345,9 @@ mod tests {
     fn local_work_shares_fifo_without_using_transport_credit() {
         let charge = message_overhead::<&str>();
         let (tx, rx) = channel(charge).unwrap();
-        tx.send_local("first task").unwrap();
+        tx.send_uncharged("first task").unwrap();
         tx.try_send("packet", 0).unwrap();
-        tx.send_local("second task").unwrap();
+        tx.send_uncharged("second task").unwrap();
         assert_eq!(tx.stats().reserved_bytes, charge);
         assert_eq!(rx.try_recv().unwrap(), "first task");
         assert_eq!(tx.stats().reserved_bytes, charge);

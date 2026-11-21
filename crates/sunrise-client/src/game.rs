@@ -11723,7 +11723,10 @@ impl Game<'_> {
                     {
                         return;
                     }
-                    self.pending_save.as_mut().unwrap().quit = true;
+                    if let Err(error) = self.begin_closing_save(true) {
+                        self.error = Some(error);
+                        event_loop.exit();
+                    }
                 }
                 WindowEvent::Focused(focused) => {
                     self.focused = focused;

@@ -90,10 +90,6 @@ impl<T> Producer<T> {
     pub fn send(&self, value: T) -> Result<(), Refused<T>> {
         self.prepare(value)?.publish()
     }
-    /// Append a locally owned task to this ingress without charging network credit.
-    pub(super) fn send_local(&self, value: T) -> Result<(), T> {
-        self.sender.send_local(value)
-    }
     pub fn stats(&self) -> Stats {
         self.sender.stats()
     }
