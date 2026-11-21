@@ -264,7 +264,7 @@ impl Game<'_> {
                 // The id the server gave, for the hooks the motion fires.
                 player.entity_id = self.own_entity_id();
                 // Player.tick reads PlayerInfo (`noPhysics`); LocalPlayer.aiStep reads local mode.
-                player.spectator = self.player_is_spectator();
+                player.spectator = self.own_player_is_spectator();
                 player.local_spectator = Some(self.spectator());
                 player.velocity = delta;
                 self.take_carried_attributes(&mut player)?;

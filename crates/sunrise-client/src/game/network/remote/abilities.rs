@@ -50,7 +50,7 @@ impl Game<'_> {
         if self.remote.is_none() {
             return;
         }
-        let info_spectator = self.player_is_spectator();
+        let info_spectator = self.own_player_is_spectator();
         let local_spectator = self.spectator();
         if let Some(player) = self.player.as_mut() {
             player.spectator = info_spectator;

@@ -337,7 +337,7 @@ impl Game<'_> {
             if !self.consume_mapping_click(name) {
                 continue;
             }
-            if self.player_is_spectator() {
+            if self.own_player_is_spectator() {
                 self.spectator_hotbar_key(slot as i32);
                 continue;
             }
@@ -504,7 +504,7 @@ impl Game<'_> {
                 }
             }
             while !using
-                && self.player_is_spectator()
+                && self.own_player_is_spectator()
                 && self.consume_mapping_click("key.spectatorHotbar")
             {
                 self.spectator_action_key();

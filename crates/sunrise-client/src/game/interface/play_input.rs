@@ -343,9 +343,9 @@ impl Game<'_> {
     /// What one whole wheel step does in play (`MouseHandler.onScroll`): a spectator's menu or
     /// flying speed, else the selected hotbar slot.
     pub(super) fn hotbar_wheel_step(&mut self, wheel: i32, vertical_steps: i32) {
-        if self.player_is_spectator() && self.spectator_gui.is_menu_active() {
+        if self.own_player_is_spectator() && self.spectator_gui.is_menu_active() {
             self.spectator_scroll(-wheel);
-        } else if self.player_is_spectator() {
+        } else if self.own_player_is_spectator() {
             let speed = self.player.as_mut().map(|player| {
                 player.flying_speed = sunrise_client::mouse::spectator_flying_speed(
                     player.flying_speed,
@@ -440,7 +440,7 @@ impl Game<'_> {
             || input.is_none_or(|input| {
                 self.settings
                     .keys
-                    .middle_acts(input, self.player_is_spectator())
+                    .middle_acts(input, self.own_player_is_spectator())
             })
     }
     /// A mouse button while playing (window or control socket).
@@ -454,7 +454,7 @@ impl Game<'_> {
         let name = match button {
             MouseButton::Left => "key.attack",
             MouseButton::Right => "key.use",
-            MouseButton::Middle if self.player_is_spectator() => "key.spectatorHotbar",
+            MouseButton::Middle if self.own_player_is_spectator() => "key.spectatorHotbar",
             MouseButton::Middle => "key.pickItem",
             _ => return Ok(()),
         };

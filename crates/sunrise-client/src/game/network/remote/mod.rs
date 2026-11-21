@@ -2090,7 +2090,9 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         !self.0.mod_mappings_screen_open()
     }
     fn spectator_hotbar(&mut self) {
-        while self.0.player_is_spectator() && self.0.consume_mapping_click("key.spectatorHotbar") {
+        while self.0.own_player_is_spectator()
+            && self.0.consume_mapping_click("key.spectatorHotbar")
+        {
             self.0.spectator_action_key();
         }
     }

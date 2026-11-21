@@ -58,7 +58,7 @@ impl Game<'_> {
         }
     }
     /// `Player.isSpectator()`: reads `PlayerInfo` on a remote client and `self.mode` locally.
-    pub(in crate::game) fn player_is_spectator(&self) -> bool {
+    pub(in crate::game) fn own_player_is_spectator(&self) -> bool {
         self.player_info_game_mode() == Some(GameMode::Spectator)
     }
     /// `Abilities.mayBuild`.
