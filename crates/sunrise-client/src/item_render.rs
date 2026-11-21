@@ -785,10 +785,14 @@ fn submit_quads(
     } else {
         (None, None)
     };
-    let decal = (foil == Foil::Special).then(|| {
-        let cols = m.to_cols_array();
-        (cols, special_foil_inverse(&cols, layer.display))
-    });
+    let m_cols = (foil != Foil::None).then(|| m.to_cols_array());
+    let decal_inv = if foil == Foil::Special {
+        m_cols
+            .as_ref()
+            .and_then(|c| special_foil_inverse(c, layer.display))
+    } else {
+        None
+    };
     let mut normals = FaceNormals::new(m);
     // Quads of one layer mostly share a sprite: look its rect and its
     // translucency up once.
@@ -812,7 +816,13 @@ fn submit_quads(
             continue;
         };
         let color = layer.tints.at(q.tint_index);
-        let pos = q.positions.map(|p| m.transform_point3(Vec3::from(p)));
+        // Non-foil quads keep glam `transform_point3` to match `entity_skin::expand` on the GPU.
+        let pos = match &m_cols {
+            Some(cols) => q
+                .positions
+                .map(|p| Vec3::from_array(joml_transform_pos(cols, p))),
+            None => q.positions.map(|p| m.transform_point3(Vec3::from(p))),
+        };
         let uv =
             q.uv.map(|[u, v]| [r.u0 + (r.u1 - r.u0) * u, r.v0 + (r.v1 - r.v0) * v]);
         let translucent = match last {
@@ -857,9 +867,9 @@ fn submit_quads(
                     q.uv.map(|[u, v]| [r.u0 + (r.u1 - r.u0) * u, r.v0 + (r.v1 - r.v0) * v])
                 })
             }
-            Foil::Special => {
-                decal.map(|(m_cols, inv)| special_foil_uv(&m_cols, inv, q.positions, q.facing))
-            }
+            Foil::Special => m_cols
+                .as_ref()
+                .map(|cols| special_foil_uv(cols, decal_inv, q.positions, q.facing)),
         };
         sink.quad(ItemQuad {
             pos,

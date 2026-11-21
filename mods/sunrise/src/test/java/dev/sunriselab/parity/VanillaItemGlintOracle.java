@@ -577,10 +577,45 @@ public final class VanillaItemGlintOracle {
         );
     }
 
+    static int compareBits2D(long[][] a, long[][] b) {
+        int cmp = Integer.compare(a.length, b.length);
+        if (cmp != 0) return cmp;
+        for (int i = 0; i < a.length; i++) {
+            cmp = Integer.compare(a[i].length, b[i].length);
+            if (cmp != 0) return cmp;
+            for (int j = 0; j < a[i].length; j++) {
+                cmp = Long.compare(a[i][j], b[i][j]);
+                if (cmp != 0) return cmp;
+            }
+        }
+        return 0;
+    }
+
+    @SuppressWarnings("unchecked")
+    static int compareQuadGeom(Object ao, Object bo) {
+        Map<String, Object> a = (Map<String, Object>) ao;
+        Map<String, Object> b = (Map<String, Object>) bo;
+        int cmp = compareBits2D((long[][]) a.get("pos_bits"), (long[][]) b.get("pos_bits"));
+        if (cmp != 0) return cmp;
+        return compareBits2D((long[][]) a.get("uv0_bits"), (long[][]) b.get("uv0_bits"));
+    }
+
+    static void canonicaliseSideFaces(List<Object> quadRecords) {
+        if (quadRecords.size() <= 2) return;
+        List<Object> sides = quadRecords.subList(2, quadRecords.size());
+        sides.sort(VanillaItemGlintOracle::compareQuadGeom);
+        for (int i = 1; i < sides.size(); i++) {
+            if (compareQuadGeom(sides.get(i - 1), sides.get(i)) == 0) {
+                throw new IllegalStateException("duplicate side-face geometric key at index " + (i + 2));
+            }
+        }
+    }
+
     static Map<String, Object> evaluateItemSubmits(
         List<CapturedItemSubmit> submits,
         GameRenderState gameRenderState,
-        Method computeFoilDecalPose
+        Method computeFoilDecalPose,
+        boolean canonicaliseSides
     ) throws Exception {
         List<Object> quadRecords = new ArrayList<>();
         QuadInstance qi = new QuadInstance();
@@ -659,6 +694,9 @@ public final class VanillaItemGlintOracle {
                 }
                 quadRecords.add(qm);
             }
+        }
+        if (canonicaliseSides) {
+            canonicaliseSideFaces(quadRecords);
         }
         return map(
             "foil_type", firstFoilType,
@@ -974,15 +1012,23 @@ public final class VanillaItemGlintOracle {
         PoseStack displayPose = new PoseStack();
         displayRenderer.submit(displayState, displayPose, displayCollector, new CameraRenderState());
 
-        Map<String, Object> eid83245Json = evaluateItemSubmits(displayCollector.items, gameRenderState, computeFoilDecalPose);
+        Map<String, Object> eid83245Json = evaluateItemSubmits(displayCollector.items, gameRenderState, computeFoilDecalPose, true);
         eid83245Json.put("entity_id", 83245);
         eid83245Json.put("item", "minecraft:end_crystal");
         eid83245Json.put("display_context", "gui");
         eid83245Json.put("submit_pose_cols_bits", matrixColsBits(displayCollector.items.get(0).pose().pose()));
 
-        // Verify every ItemDisplayContext matches EID 83245 bit-for-bit, then store summary.
+        // Verify every ItemDisplayContext matches EID 83245 bit-for-bit, then record canonical quads.
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> eidQuads = (List<Map<String, Object>>) eid83245Json.get("quads");
+        Map<String, Map<String, Object>> eidSidesByFacingUv = new HashMap<>();
+        for (int i = 2; i < eidQuads.size(); i++) {
+            Map<String, Object> q = eidQuads.get(i);
+            String k = q.get("facing") + ":" + Arrays.deepToString((long[][]) q.get("uv0_bits"));
+            if (eidSidesByFacingUv.put(k, q) != null) {
+                throw new IllegalStateException("duplicate eid side key " + k);
+            }
+        }
         Map<String, Object> contextsJson = new LinkedHashMap<>();
         ItemStack endCrystalStack = new ItemStack(Items.END_CRYSTAL);
         for (ItemDisplayContext ctx : ItemDisplayContext.values()) {
@@ -990,17 +1036,32 @@ public final class VanillaItemGlintOracle {
             resolver.updateForTopItem(st, endCrystalStack, ctx, null, null, 0);
             RecordingCollector col = new RecordingCollector();
             st.submit(new PoseStack(), col, 15728880, 0, 0);
-            Map<String, Object> eval = evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose);
+            Map<String, Object> eval = evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true);
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> ctxQuads = (List<Map<String, Object>>) eval.get("quads");
             if (ctxQuads.size() != eidQuads.size()) {
                 throw new IllegalStateException("quad count mismatch for " + ctx);
             }
-            for (int i = 0; i < ctxQuads.size(); i++) {
+            for (int i = 0; i < 2; i++) {
                 if (!Arrays.deepEquals((long[][]) ctxQuads.get(i).get("uv0_bits"), (long[][]) eidQuads.get(i).get("uv0_bits"))
                     || !Arrays.deepEquals((long[][]) ctxQuads.get(i).get("glint_uv_t0_bits"), (long[][]) eidQuads.get(i).get("glint_uv_t0_bits"))
                     || !Arrays.deepEquals((long[][]) ctxQuads.get(i).get("glint_uv_t123456_bits"), (long[][]) eidQuads.get(i).get("glint_uv_t123456_bits"))) {
                     throw new IllegalStateException("glint mismatch for " + ctx + " quad " + i);
+                }
+            }
+            Set<String> seen = new HashSet<>();
+            for (int i = 2; i < ctxQuads.size(); i++) {
+                Map<String, Object> cq = ctxQuads.get(i);
+                String k = cq.get("facing") + ":" + Arrays.deepToString((long[][]) cq.get("uv0_bits"));
+                if (!seen.add(k)) {
+                    throw new IllegalStateException("duplicate side key for " + ctx + ": " + k);
+                }
+                Map<String, Object> eq = eidSidesByFacingUv.get(k);
+                if (eq == null
+                    || !Arrays.deepEquals((long[][]) cq.get("uv0_bits"), (long[][]) eq.get("uv0_bits"))
+                    || !Arrays.deepEquals((long[][]) cq.get("glint_uv_t0_bits"), (long[][]) eq.get("glint_uv_t0_bits"))
+                    || !Arrays.deepEquals((long[][]) cq.get("glint_uv_t123456_bits"), (long[][]) eq.get("glint_uv_t123456_bits"))) {
+                    throw new IllegalStateException("glint mismatch for " + ctx + " side " + k);
                 }
             }
             contextsJson.put(
@@ -1012,8 +1073,7 @@ public final class VanillaItemGlintOracle {
                     "textures", eval.get("textures"),
                     "quad_count", eval.get("quad_count"),
                     "matches_eid_83245_all_quads", true,
-                    "first_quad", ctxQuads.get(0),
-                    "last_quad", ctxQuads.get(ctxQuads.size() - 1)
+                    "quads", ctxQuads
                 )
             );
         }
@@ -1027,7 +1087,7 @@ public final class VanillaItemGlintOracle {
             resolver.updateForTopItem(st, glintStone, ctx, null, null, 0);
             RecordingCollector col = new RecordingCollector();
             st.submit(new PoseStack(), col, 15728880, 0, 0);
-            blockItemJson.put(ctx.getSerializedName(), evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose));
+            blockItemJson.put(ctx.getSerializedName(), evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, false));
         }
 
         // 7. Special foil (FoilType.SPECIAL): minecraft:compass with enchantment_glint_override = true.
@@ -1047,7 +1107,7 @@ public final class VanillaItemGlintOracle {
             resolver.updateForTopItem(st, glintCompass, ctx, null, null, 0);
             RecordingCollector col = new RecordingCollector();
             st.submit(new PoseStack(), col, 15728880, 0, 0);
-            specialFoilJson.put(ctx.getSerializedName(), evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose));
+            specialFoilJson.put(ctx.getSerializedName(), evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
         }
         // Also check compass at GUI slot pose (translate(8,8,0) * scale(16,-16,16)) and a non-trivial world pose.
         {
@@ -1058,7 +1118,7 @@ public final class VanillaItemGlintOracle {
             ps.translate(8.0F, 8.0F, 0.0F);
             ps.scale(16.0F, -16.0F, 16.0F);
             st.submit(ps, col, 15728880, 0, 0);
-            specialFoilJson.put("gui_slot_pose", evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose));
+            specialFoilJson.put("gui_slot_pose", evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
         }
         {
             ItemStackRenderState st = new ItemStackRenderState();
@@ -1069,7 +1129,7 @@ public final class VanillaItemGlintOracle {
             ps.rotate(new Quaternionf().rotationY(0.7F));
             ps.scale(0.5F, 0.5F, 0.5F);
             st.submit(ps, col, 15728880, 0, 0);
-            specialFoilJson.put("ground_posed", evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose));
+            specialFoilJson.put("ground_posed", evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
         }
 
         // 8. Special entity-model items: trident (2D gui/ground, 3D hand) and plain/red shields.
@@ -1111,7 +1171,7 @@ public final class VanillaItemGlintOracle {
                 perCtx.put(
                     ctx.getSerializedName(),
                     map(
-                        "items", col.items.isEmpty() ? null : evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose),
+                        "items", col.items.isEmpty() ? null : evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true),
                         "models", evaluateModelSubmits(col.models, gameRenderState)
                     )
                 );

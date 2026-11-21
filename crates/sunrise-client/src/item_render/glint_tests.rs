@@ -879,7 +879,24 @@ fn parse_quad_uv_bits(v: &Value) -> [[u32; 2]; 4] {
     })
 }
 
-fn vertex_quad_glint_bits(verts: &[Vertex]) -> Vec<[[u32; 2]; 4]> {
+type PosBits = [[u32; 3]; 4];
+type UvBits = [[u32; 2]; 4];
+type GeomKey = (PosBits, UvBits);
+
+fn parse_quad_pos_bits(v: &Value) -> PosBits {
+    let arr = v.as_array().unwrap();
+    assert_eq!(arr.len(), 4);
+    std::array::from_fn(|i| {
+        let p = arr[i].as_array().unwrap();
+        [
+            p[0].as_u64().unwrap() as u32,
+            p[1].as_u64().unwrap() as u32,
+            p[2].as_u64().unwrap() as u32,
+        ]
+    })
+}
+
+fn vertex_quad_glint_bits(verts: &[Vertex]) -> Vec<UvBits> {
     assert_eq!(verts.len() % 4, 0);
     verts
         .chunks_exact(4)
@@ -887,23 +904,163 @@ fn vertex_quad_glint_bits(verts: &[Vertex]) -> Vec<[[u32; 2]; 4]> {
         .collect()
 }
 
-/// Compare extruded `item/generated` quads: front/back faces match by index, while side faces
-/// match as an exact bit multiset (vanilla `HashSet` vs Sunrise `BTreeSet` order).
-fn assert_extruded_glint_bits(
-    mut got: Vec<[[u32; 2]; 4]>,
+struct SubmittedQuad {
+    pos: PosBits,
+    uv0: UvBits,
+    uv3: Option<UvBits>,
+    glint_uv: UvBits,
+}
+
+struct PairedWorldSink<'a> {
+    world: WorldSink<'a>,
+    quads: Vec<ItemQuad>,
+}
+
+impl ItemSink for PairedWorldSink<'_> {
+    fn quad(&mut self, q: ItemQuad) {
+        self.quads.push(q);
+        self.world.quad(q);
+    }
+}
+
+fn submitted_quads(
+    quads: &[ItemQuad],
+    verts: &[Vertex],
+    special_atlas_rect: Option<Rect>,
+) -> Vec<SubmittedQuad> {
+    assert_eq!(verts.len(), quads.len() * 4);
+    quads
+        .iter()
+        .zip(verts.chunks_exact(4))
+        .map(|(q, vquad)| {
+            let pos: PosBits = std::array::from_fn(|i| vquad[i].pos.map(f32::to_bits));
+            for i in 0..4 {
+                assert_eq!(q.pos[i].to_array().map(f32::to_bits), pos[i]);
+            }
+            let glint_uv: UvBits = std::array::from_fn(|i| vquad[i].glint_uv.map(f32::to_bits));
+            let (uv0, uv3) = match special_atlas_rect {
+                Some(r) => (
+                    q.foil_uv.map(|[u, v]| {
+                        [r.u0 + (r.u1 - r.u0) * u, r.v0 + (r.v1 - r.v0) * v].map(f32::to_bits)
+                    }),
+                    Some(q.gui_glint_uv.unwrap().map(|p| p.map(f32::to_bits))),
+                ),
+                None => (q.gui_glint_uv.unwrap().map(|p| p.map(f32::to_bits)), None),
+            };
+            SubmittedQuad {
+                pos,
+                uv0,
+                uv3,
+                glint_uv,
+            }
+        })
+        .collect()
+}
+
+/// Compare extruded `item/generated` quads: front/back faces `[0..2]` match by index, while side
+/// faces `[2..]` match 1-to-1 by `(pos_bits, uv0_bits)` (vanilla's `HashSet<SideFace>` order
+/// varies per launch through `SideDirection`'s `Enum` identity hash), asserting every field exact.
+fn assert_extruded_quads_match(
+    got: &[SubmittedQuad],
     expected_quads: &[Value],
-    key: &str,
+    glint_key: &str,
     label: &str,
 ) {
     assert_eq!(got.len(), expected_quads.len(), "{label} quad count");
-    let mut want: Vec<[[u32; 2]; 4]> = expected_quads
-        .iter()
-        .map(|q| parse_quad_uv_bits(&q[key]))
-        .collect();
-    assert_eq!(got[..2], want[..2], "{label} front/back faces");
-    got[2..].sort();
-    want[2..].sort();
-    assert_eq!(got[2..], want[2..], "{label} side faces");
+    for i in 0..2 {
+        let w = &expected_quads[i];
+        assert_eq!(
+            got[i].pos,
+            parse_quad_pos_bits(&w["pos_bits"]),
+            "{label} quad[{i}] pos"
+        );
+        assert_eq!(
+            got[i].uv0,
+            parse_quad_uv_bits(&w["uv0_bits"]),
+            "{label} quad[{i}] uv0"
+        );
+        assert_eq!(
+            got[i].uv3,
+            w.get("uv3_bits").map(parse_quad_uv_bits),
+            "{label} quad[{i}] uv3"
+        );
+        assert_eq!(
+            got[i].glint_uv,
+            parse_quad_uv_bits(&w[glint_key]),
+            "{label} quad[{i}] {glint_key}"
+        );
+    }
+    let mut witness_sides: HashMap<GeomKey, &Value> =
+        HashMap::with_capacity(expected_quads.len() - 2);
+    for w in &expected_quads[2..] {
+        let key = (
+            parse_quad_pos_bits(&w["pos_bits"]),
+            parse_quad_uv_bits(&w["uv0_bits"]),
+        );
+        assert!(
+            witness_sides.insert(key, w).is_none(),
+            "{label} duplicate witness side-face key {key:#x?}"
+        );
+    }
+    let mut seen: std::collections::HashSet<GeomKey> =
+        std::collections::HashSet::with_capacity(got.len() - 2);
+    for q in &got[2..] {
+        let key = (q.pos, q.uv0);
+        assert!(
+            seen.insert(key),
+            "{label} duplicate Sunrise side-face key {key:#x?}"
+        );
+        let w = witness_sides
+            .remove(&key)
+            .unwrap_or_else(|| panic!("{label} unmatched Sunrise side-face key {key:#x?}"));
+        assert_eq!(
+            q.pos,
+            parse_quad_pos_bits(&w["pos_bits"]),
+            "{label} side pos"
+        );
+        assert_eq!(
+            q.uv0,
+            parse_quad_uv_bits(&w["uv0_bits"]),
+            "{label} side uv0"
+        );
+        assert_eq!(
+            q.uv3,
+            w.get("uv3_bits").map(parse_quad_uv_bits),
+            "{label} side uv3"
+        );
+        assert_eq!(
+            q.glint_uv,
+            parse_quad_uv_bits(&w[glint_key]),
+            "{label} side {glint_key}"
+        );
+    }
+    assert!(
+        witness_sides.is_empty(),
+        "{label} {} unmatched witness side faces",
+        witness_sides.len()
+    );
+}
+
+/// Exact `DisplayRenderer.ItemDisplayRenderer` pose for genpvp EID 83245 (`CENTER` billboard,
+/// camera at zero rotation, translation `(-0.945, 0.3885, -4.2)`, `left_rotation = (0, 1, 0, 0)`,
+/// `scale = 0.525`, then `ItemDisplayRenderer`'s `rotate(Axis.YP, PI)`).
+fn eid_83245_pose() -> Mat4 {
+    let mut p = crate::camera::joml::Mat4::IDENTITY;
+    p.rotate(crate::camera::joml::Quat::rotation_yxz(
+        (-std::f64::consts::PI / 180.0) as f32 * -180.0,
+        0.0,
+        0.0,
+    ));
+    p.translate(-0.945, 0.3885, -4.2);
+    p.rotate(crate::camera::joml::Quat {
+        x: 0.0,
+        y: 1.0,
+        z: 0.0,
+        w: 0.0,
+    });
+    p.scale(0.525, 0.525, 0.525);
+    p.rotate_y(std::f32::consts::PI);
+    p.to_glam()
 }
 
 /// 26.3 parity: `Glint::uv` matches `TextureTransform.setupGlintTexturing` bit-for-bit.
@@ -956,10 +1113,7 @@ fn end_crystal_world_sink_uses_atlas_uv_and_item_glint_scale_26_3() {
     let eid_quads = witness["end_crystal_item_display"]["quads"]
         .as_array()
         .unwrap();
-    let eid_pose = Mat4::from_translation(Vec3::new(-0.945, 0.3885, -4.2))
-        * Mat4::from_quat(glam::Quat::from_xyzw(0.0, 1.0, 0.0, 0.0))
-        * Mat4::from_scale(Vec3::splat(0.525))
-        * Mat4::from_rotation_y(std::f32::consts::PI);
+    let eid_pose = eid_83245_pose();
 
     let cases: [(&str, DisplayContext, Mat4); 11] = [
         ("eid_83245", DisplayContext::Gui, eid_pose),
@@ -992,24 +1146,23 @@ fn end_crystal_world_sink_uses_atlas_uv_and_item_glint_scale_26_3() {
     ];
 
     for (label, ctx, pose) in cases {
-        if label != "eid_83245" {
+        let expected_quads = if label == "eid_83245" {
+            eid_quads
+        } else {
             assert_eq!(
                 witness["contexts"][label]["matches_eid_83245_all_quads"].as_bool(),
                 Some(true)
             );
-        }
+            witness["contexts"][label]["quads"].as_array().unwrap()
+        };
         let state = renderer.resolve(&stack, ctx, None, None, 83245, &NoEnv);
         for (millis, key) in [
             (0.0f32, "glint_uv_t0_bits"),
             (123_456.0f32, "glint_uv_t123456_bits"),
         ] {
             let mut out = Vec::new();
-            state.submit(
-                &renderer,
-                &sprites,
-                &NoHost,
-                pose,
-                &mut WorldSink {
+            let mut sink = PairedWorldSink {
+                world: WorldSink {
                     out: &mut out,
                     light: 0xF0F0,
                     lights: None,
@@ -1021,15 +1174,23 @@ fn end_crystal_world_sink_uses_atlas_uv_and_item_glint_scale_26_3() {
                     }),
                     tier: 0,
                 },
+                quads: Vec::new(),
+            };
+            state.submit(&renderer, &sprites, &NoHost, pose, &mut sink);
+            let PairedWorldSink { quads, .. } = sink;
+            assert_eq!(
+                out.len(),
+                expected_quads.len() * 4,
+                "{label} {key} vertex count"
             );
-            assert_eq!(out.len(), eid_quads.len() * 4, "{label} {key} vertex count");
             assert!(
                 out.iter().all(|v| (v.layer & 0xFFFF) == 7),
                 "{label} {key} expected glint overlay 7"
             );
-            assert_extruded_glint_bits(
-                vertex_quad_glint_bits(&out),
-                eid_quads,
+            let got = submitted_quads(&quads, &out, None);
+            assert_extruded_quads_match(
+                &got,
+                expected_quads,
                 key,
                 &format!("26.3 end_crystal {label} {key}"),
             );
@@ -1187,6 +1348,7 @@ fn compass_special_foil_uses_decal_uv_26_3() {
         ("ground_posed", DisplayContext::Ground, ground_posed),
     ];
 
+    let compass_rect = renderer.glint_atlas.lock().unwrap()["item/compass_16"];
     for (case_key, ctx, pose) in cases {
         let expected_quads = witness["special_foil"][case_key]["quads"]
             .as_array()
@@ -1197,12 +1359,8 @@ fn compass_special_foil_uses_decal_uv_26_3() {
             (123_456.0f32, "glint_uv_t123456_bits"),
         ] {
             let mut out = Vec::new();
-            state.submit(
-                &renderer,
-                &sprites,
-                &NoHost,
-                pose,
-                &mut WorldSink {
+            let mut sink = PairedWorldSink {
+                world: WorldSink {
                     out: &mut out,
                     light: 0xF0F0,
                     lights: None,
@@ -1214,14 +1372,18 @@ fn compass_special_foil_uses_decal_uv_26_3() {
                     }),
                     tier: 0,
                 },
-            );
+                quads: Vec::new(),
+            };
+            state.submit(&renderer, &sprites, &NoHost, pose, &mut sink);
+            let PairedWorldSink { quads, .. } = sink;
             assert_eq!(
                 out.len(),
                 expected_quads.len() * 4,
                 "compass {case_key} {key} vertex count"
             );
-            assert_extruded_glint_bits(
-                vertex_quad_glint_bits(&out),
+            let got = submitted_quads(&quads, &out, Some(compass_rect));
+            assert_extruded_quads_match(
+                &got,
                 expected_quads,
                 key,
                 &format!("26.3 compass {case_key} {key}"),
@@ -1267,12 +1429,8 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
             .unwrap();
         let state = renderer.resolve(&trident, ctx, None, None, 0, &NoEnv);
         let mut out = Vec::new();
-        state.submit(
-            &renderer,
-            &sprites,
-            &NoHost,
-            Mat4::IDENTITY,
-            &mut WorldSink {
+        let mut sink = PairedWorldSink {
+            world: WorldSink {
                 out: &mut out,
                 light: 0xF0F0,
                 lights: None,
@@ -1284,10 +1442,14 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
                 }),
                 tier: 0,
             },
-        );
+            quads: Vec::new(),
+        };
+        state.submit(&renderer, &sprites, &NoHost, Mat4::IDENTITY, &mut sink);
+        let PairedWorldSink { quads, .. } = sink;
         assert_eq!(out.len(), expected_quads.len() * 4, "trident 2d {ctx_name}");
-        assert_extruded_glint_bits(
-            vertex_quad_glint_bits(&out),
+        let got = submitted_quads(&quads, &out, None);
+        assert_extruded_quads_match(
+            &got,
             expected_quads,
             "glint_uv_t123456_bits",
             &format!("26.3 trident 2d {ctx_name}"),

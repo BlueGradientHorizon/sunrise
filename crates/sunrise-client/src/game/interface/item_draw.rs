@@ -1540,13 +1540,98 @@ mod tests {
                 std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../.local/sunrise-client/26.3")
             });
-        let parse_quad = |v: &Value| -> [[u32; 2]; 4] {
+        fn parse_pos(v: &Value) -> [[u32; 3]; 4] {
+            let arr = v.as_array().unwrap();
+            std::array::from_fn(|i| {
+                let p = arr[i].as_array().unwrap();
+                [
+                    p[0].as_u64().unwrap() as u32,
+                    p[1].as_u64().unwrap() as u32,
+                    p[2].as_u64().unwrap() as u32,
+                ]
+            })
+        }
+        fn parse_quad(v: &Value) -> [[u32; 2]; 4] {
             let arr = v.as_array().unwrap();
             std::array::from_fn(|i| {
                 let p = arr[i].as_array().unwrap();
                 [p[0].as_u64().unwrap() as u32, p[1].as_u64().unwrap() as u32]
             })
-        };
+        }
+        fn assert_extruded_match(
+            verts: &[Vertex],
+            quads: &[item_render::ItemQuad],
+            expected: &[Value],
+            label: &str,
+        ) {
+            assert_eq!(verts.len(), expected.len() * 4, "{label} vertex count");
+            assert_eq!(quads.len(), expected.len(), "{label} quad count");
+            let extract = |idx: usize| {
+                let vq = &verts[idx * 4..(idx + 1) * 4];
+                let q = &quads[idx];
+                let pos: [[u32; 3]; 4] = std::array::from_fn(|i| {
+                    let bits = vq[i].pos.map(f32::to_bits);
+                    assert_eq!(q.pos[i].to_array().map(f32::to_bits), bits);
+                    assert_eq!(q.uv[i].map(f32::to_bits), vq[i].uv.map(f32::to_bits));
+                    bits
+                });
+                let uv0 = q.gui_glint_uv.unwrap().map(|p| p.map(f32::to_bits));
+                let glint_uv: [[u32; 2]; 4] =
+                    std::array::from_fn(|i| vq[i].glint_uv.map(f32::to_bits));
+                (pos, uv0, glint_uv)
+            };
+            // Front/back faces `[0..2]` match by index.
+            for i in 0..2 {
+                let (pos, uv0, glint_uv) = extract(i);
+                assert_eq!(
+                    pos,
+                    parse_pos(&expected[i]["pos_bits"]),
+                    "{label} q[{i}] pos"
+                );
+                assert_eq!(
+                    uv0,
+                    parse_quad(&expected[i]["uv0_bits"]),
+                    "{label} q[{i}] uv0"
+                );
+                assert_eq!(
+                    glint_uv,
+                    parse_quad(&expected[i]["glint_uv_t123456_bits"]),
+                    "{label} q[{i}] glint_uv"
+                );
+            }
+            // Side faces `[2..]` match 1-to-1 by `(pos_bits, uv0_bits)`; fail on dup/unmatched.
+            let mut witness_sides: HashMap<([[u32; 3]; 4], [[u32; 2]; 4]), &Value> =
+                HashMap::with_capacity(expected.len() - 2);
+            for w in &expected[2..] {
+                let key = (parse_pos(&w["pos_bits"]), parse_quad(&w["uv0_bits"]));
+                assert!(
+                    witness_sides.insert(key, w).is_none(),
+                    "{label} duplicate witness side key"
+                );
+            }
+            let mut seen: std::collections::HashSet<([[u32; 3]; 4], [[u32; 2]; 4])> =
+                std::collections::HashSet::with_capacity(quads.len() - 2);
+            for i in 2..quads.len() {
+                let (pos, uv0, glint_uv) = extract(i);
+                let key = (pos, uv0);
+                assert!(seen.insert(key), "{label} duplicate Sunrise side key");
+                let w = witness_sides
+                    .remove(&key)
+                    .unwrap_or_else(|| panic!("{label} unmatched Sunrise side key"));
+                assert_eq!(pos, parse_pos(&w["pos_bits"]), "{label} side pos");
+                assert_eq!(uv0, parse_quad(&w["uv0_bits"]), "{label} side uv0");
+                assert_eq!(
+                    glint_uv,
+                    parse_quad(&w["glint_uv_t123456_bits"]),
+                    "{label} side glint_uv"
+                );
+            }
+            assert!(
+                witness_sides.is_empty(),
+                "{label} {} unmatched witness side faces",
+                witness_sides.len()
+            );
+        }
         super::super::native_entity_refs::tests::with_game_role(
             root,
             super::super::execution_role::ExecutionRole::Client,
@@ -1562,51 +1647,63 @@ mod tests {
                     sprite: true,
                 };
                 let crystal = ItemStack::new("minecraft:end_crystal", 1);
-                let eid_pose = glam::Mat4::from_translation(glam::Vec3::new(-0.945, 0.3885, -4.2))
-                    * glam::Mat4::from_quat(glam::Quat::from_xyzw(0.0, 1.0, 0.0, 0.0))
-                    * glam::Mat4::from_scale(glam::Vec3::splat(0.525))
-                    * glam::Mat4::from_rotation_y(std::f32::consts::PI);
+                // Exact `DisplayRenderer.ItemDisplayRenderer` pose for EID 83245 (`CENTER` billboard).
+                let mut eid_p = joml::Mat4::IDENTITY;
+                eid_p.rotate(joml::Quat::rotation_yxz(
+                    (-std::f64::consts::PI / 180.0) as f32 * -180.0,
+                    0.0,
+                    0.0,
+                ));
+                eid_p.translate(-0.945, 0.3885, -4.2);
+                eid_p.rotate(joml::Quat {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                    w: 0.0,
+                });
+                eid_p.scale(0.525, 0.525, 0.525);
+                eid_p.rotate_y(std::f32::consts::PI);
+                let eid_pose = eid_p.to_glam();
                 let eid_quads = witness["end_crystal_item_display"]["quads"]
                     .as_array()
                     .unwrap();
 
-                let mut want_eid: Vec<[[u32; 2]; 4]> = eid_quads
-                    .iter()
-                    .map(|q| parse_quad(&q["glint_uv_t123456_bits"]))
-                    .collect();
                 let state_gui = game.resolve_item(&crystal, DisplayContext::Gui, None, 83245);
                 let mut world_out = Vec::new();
                 game.submit_item_world(&state_gui, eid_pose, 0xF0F0, &mut world_out);
-                assert_eq!(world_out.len(), eid_quads.len() * 4);
                 assert!(world_out.iter().all(|v| (v.layer & 0xFFFF) == 7));
-                let mut got_world: Vec<[[u32; 2]; 4]> = world_out
-                    .chunks_exact(4)
-                    .map(|quad| std::array::from_fn(|i| quad[i].glint_uv.map(f32::to_bits)))
-                    .collect();
-                // Front/back faces match by index; extruded side faces differ in HashSet vs BTreeSet order.
-                assert_eq!(got_world[..2], want_eid[..2]);
-                got_world[2..].sort();
-                want_eid[2..].sort();
-                assert_eq!(
-                    got_world[2..],
-                    want_eid[2..],
-                    "26.3 Game::submit_item_world end_crystal EID 83245 side faces"
+                let mut world_quads = Vec::new();
+                state_gui.submit(
+                    &game.pack.item_renderer,
+                    &game.gui.atlas.sprites,
+                    &game.item_host(),
+                    eid_pose,
+                    &mut world_quads,
+                );
+                assert_extruded_match(
+                    &world_out,
+                    &world_quads,
+                    eid_quads,
+                    "26.3 Game::submit_item_world end_crystal EID 83245",
                 );
 
+                let ground_quads_want = witness["contexts"]["ground"]["quads"].as_array().unwrap();
                 let state_ground = game.resolve_item(&crystal, DisplayContext::Ground, None, 83245);
                 let mut unlit_out = Vec::new();
                 game.submit_item_unlit(&state_ground, glam::Mat4::IDENTITY, 0xF0F0, &mut unlit_out);
-                assert_eq!(unlit_out.len(), eid_quads.len() * 4);
-                let mut got_unlit: Vec<[[u32; 2]; 4]> = unlit_out
-                    .chunks_exact(4)
-                    .map(|quad| std::array::from_fn(|i| quad[i].glint_uv.map(f32::to_bits)))
-                    .collect();
-                assert_eq!(got_unlit[..2], want_eid[..2]);
-                got_unlit[2..].sort();
-                assert_eq!(
-                    got_unlit[2..],
-                    want_eid[2..],
-                    "26.3 Game::submit_item_unlit end_crystal ground side faces"
+                let mut unlit_quads = Vec::new();
+                state_ground.submit(
+                    &game.pack.item_renderer,
+                    &game.gui.atlas.sprites,
+                    &game.item_host(),
+                    glam::Mat4::IDENTITY,
+                    &mut unlit_quads,
+                );
+                assert_extruded_match(
+                    &unlit_out,
+                    &unlit_quads,
+                    ground_quads_want,
+                    "26.3 Game::submit_item_unlit end_crystal ground",
                 );
 
                 // GUI draw_item_model must not lose millis precision via `/ 1000.0 * 1000.0`.
