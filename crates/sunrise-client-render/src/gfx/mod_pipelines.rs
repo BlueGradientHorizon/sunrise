@@ -51,10 +51,11 @@ struct FrameUniform {
     _pad: f32,
 }
 
-/// A run as uploaded: where its quads start in the vertex buffer.
+/// A run as uploaded: which vertex chunk and local quad range it draws from.
 struct Run {
     slot: usize,
     stage: usize,
+    chunk: usize,
     quads: std::ops::Range<u32>,
 }
 
@@ -83,7 +84,8 @@ pub struct ModPipelines {
     group: wgpu::BindGroup,
     view: wgpu::Buffer,
     frame: wgpu::Buffer,
-    vertices: wgpu::Buffer,
+    vertex_chunks: Vec<wgpu::Buffer>,
+    chunk_vertices: Vec<PipelineVertex>,
     /// The load `pipelines` was built from; 0 before any.
     generation: u64,
     /// By slot; `None` for a pipeline the load refused.
@@ -184,7 +186,8 @@ impl ModPipelines {
             group,
             view,
             frame,
-            vertices: buffer("Mod pipeline quads", 0, wgpu::BufferUsages::VERTEX),
+            vertex_chunks: vec![buffer("Mod pipeline quads", 0, wgpu::BufferUsages::VERTEX)],
+            chunk_vertices: Vec::new(),
             generation: 0,
             pipelines: Vec::new(),
             runs: Vec::new(),
@@ -392,8 +395,9 @@ impl ModPipelines {
         Ok(())
     }
 
-    /// Uploads the frame's quads, drawn with `view_proj` into a frame `viewport` pixels big. The
-    /// number of quads to draw: the caller's quad indices must reach that far. A set this
+    /// Uploads the frame's quads, chunked to stay within `device.limits().max_buffer_size`,
+    /// drawn with `view_proj` into a frame `viewport` pixels big. Returns the largest quad count
+    /// in any uploaded chunk so the caller's shared index buffer reaches that far. A set this
     /// renderer was not built with draws nothing.
     pub fn prepare(
         &mut self,
@@ -410,37 +414,82 @@ impl ModPipelines {
         {
             return 0;
         }
-        let mut next = 0;
+        let limit = super::world_primitives::legal_buffer_limit(device);
+        let quad_bytes = 4 * std::mem::size_of::<PipelineVertex>() as u64;
+        let max_quads = super::world_primitives::max_quads_per_chunk(limit, quad_bytes);
+        if max_quads == 0 {
+            return 0;
+        }
+        self.chunk_vertices.clear();
+        let mut next = 0u32;
+        let mut chunk_idx = 0usize;
+        let mut chunk_quads = 0u32;
+        let mut max_chunk_quads = 0u32;
         for run in batch.runs {
-            let quads = next..next + run.quads;
-            next = quads.end;
+            let input_start = next;
+            let Some(input_end) = next.checked_add(run.quads) else {
+                break;
+            };
+            next = input_end;
             // A run past the vertices given, or of a pipeline this load has none for, has
             // nothing to draw with.
-            if quads.end as usize * 4 > batch.vertices.len()
+            if run.quads == 0
+                || input_end as usize * 4 > batch.vertices.len()
                 || !matches!(self.pipelines.get(run.slot as usize), Some(Some(_)))
             {
                 continue;
             }
-            self.runs.push(Run {
-                slot: run.slot as usize,
-                stage: run.stage as usize,
-                quads,
-            });
+            let mut cursor = input_start;
+            while cursor < input_end {
+                if chunk_quads == max_quads {
+                    let bytes: &[u8] = bytemuck::cast_slice(&self.chunk_vertices);
+                    super::world_primitives::ensure_chunk_buffer(
+                        device,
+                        &mut self.vertex_chunks,
+                        chunk_idx,
+                        bytes.len() as u64,
+                        limit,
+                        "Mod pipeline quads",
+                        wgpu::BufferUsages::VERTEX,
+                    );
+                    upload(&self.vertex_chunks[chunk_idx], bytes);
+                    max_chunk_quads = max_chunk_quads.max(chunk_quads);
+                    self.chunk_vertices.clear();
+                    chunk_quads = 0;
+                    chunk_idx += 1;
+                }
+                let take = (input_end - cursor).min(max_quads - chunk_quads);
+                let src = &batch.vertices[cursor as usize * 4..(cursor + take) as usize * 4];
+                self.chunk_vertices.extend_from_slice(src);
+                let local_start = chunk_quads;
+                chunk_quads += take;
+                self.runs.push(Run {
+                    slot: run.slot as usize,
+                    stage: run.stage as usize,
+                    chunk: chunk_idx,
+                    quads: local_start..chunk_quads,
+                });
+                cursor += take;
+            }
         }
-        let Some(last) = self.runs.last() else {
+        if self.runs.is_empty() {
             return 0;
-        };
-        let quads = last.quads.end;
-        let bytes: &[u8] = bytemuck::cast_slice(&batch.vertices[..quads as usize * 4]);
-        if self.vertices.size() < bytes.len() as u64 {
-            self.vertices = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Mod pipeline quads"),
-                size: (bytes.len() as u64).next_power_of_two(),
-                usage: self.vertices.usage(),
-                mapped_at_creation: false,
-            });
         }
-        upload(&self.vertices, bytes);
+        if !self.chunk_vertices.is_empty() {
+            let bytes: &[u8] = bytemuck::cast_slice(&self.chunk_vertices);
+            super::world_primitives::ensure_chunk_buffer(
+                device,
+                &mut self.vertex_chunks,
+                chunk_idx,
+                bytes.len() as u64,
+                limit,
+                "Mod pipeline quads",
+                wgpu::BufferUsages::VERTEX,
+            );
+            upload(&self.vertex_chunks[chunk_idx], bytes);
+            max_chunk_quads = max_chunk_quads.max(chunk_quads);
+            self.chunk_vertices.clear();
+        }
         upload(&self.view, bytemuck::cast_slice(&view_proj.to_cols_array()));
         upload(
             &self.frame,
@@ -450,7 +499,7 @@ impl ModPipelines {
                 _pad: 0.0,
             }),
         );
-        quads
+        max_chunk_quads
     }
 
     /// Draws the prepared runs of stages `first..=last` in the order queued, with `indices`
@@ -464,6 +513,7 @@ impl ModPipelines {
         last: usize,
     ) {
         let mut bound = false;
+        let mut bound_chunk = None;
         for run in &self.runs {
             if run.stage < first || run.stage > last {
                 continue;
@@ -474,8 +524,11 @@ impl ModPipelines {
             if !bound {
                 bound = true;
                 pass.set_bind_group(0, &self.group, &[]);
-                pass.set_vertex_buffer(0, self.vertices.slice(..));
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+            }
+            if bound_chunk != Some(run.chunk) {
+                bound_chunk = Some(run.chunk);
+                pass.set_vertex_buffer(0, self.vertex_chunks[run.chunk].slice(..));
             }
             pass.set_pipeline(pipeline);
             // Only a textured pipeline has group 1; the others draw as they did before it.
@@ -519,7 +572,7 @@ mod tests {
     use super::*;
     use crate::gfx::world_primitives::{self, STAGES, WorldPrimitives};
     use glam::Vec3;
-    use mod_api::{Identifier, RenderPipeline};
+    use mod_api::{Identifier, PipelineKind, RenderPipeline};
 
     const SIZE: u32 = 64;
     /// The frame before any quad: a quarter grey, stored as 64 in 8 bits.
@@ -735,7 +788,7 @@ mod tests {
             &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
         );
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = set.resolve(&id).unwrap();
+        let handle = set.resolve(&id, PipelineKind::Optional).unwrap();
         let renderer = ModPipelines::new(&device, wgpu::TextureFormat::Rgba8Unorm);
         let mut broken = set.built()[0].clone().unwrap();
         broken.owner = "owning_mod".into();
@@ -746,7 +799,10 @@ mod tests {
         broken.shader = "not wgsl".into();
         assert!(renderer.pipeline(&device, &broken, None).is_err());
         assert!(set.invalidate(0));
-        assert_eq!(set.resolve(&id), Err(mod_api::RenderPipelineError::Invalid));
+        assert_eq!(
+            set.resolve(&id, PipelineKind::Optional),
+            Err(mod_api::RenderPipelineError::Invalid)
+        );
         assert_eq!(set.slot(handle), Err(mod_api::RenderPipelineError::Invalid));
     }
 
@@ -761,7 +817,7 @@ mod tests {
             &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
         );
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = set.resolve(&id).unwrap();
+        let handle = set.resolve(&id, PipelineKind::Optional).unwrap();
         let mut renderer = ModPipelines::new(&device, wgpu::TextureFormat::Rgba8Unorm);
         renderer
             .build_with(&set, |_, _| Err("injected refusal".into()))
@@ -786,7 +842,7 @@ mod tests {
             &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
         );
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = set.resolve(&id).unwrap();
+        let handle = set.resolve(&id, PipelineKind::Optional).unwrap();
         let mut refusing = ModPipelines::new(&device, wgpu::TextureFormat::Rgba8Unorm);
         refusing
             .build_with(&set, |_, _| Err("injected refusal".into()))
@@ -796,7 +852,7 @@ mod tests {
         recovered.build(&device, &set, None).unwrap();
         assert!(recovered.pipelines[0].is_some());
         assert_eq!(set.slot(handle), Ok(0));
-        assert!(set.resolve(&id).is_ok());
+        assert!(set.resolve(&id, PipelineKind::Optional).is_ok());
     }
 
     #[test]
@@ -824,7 +880,7 @@ mod tests {
         registered[0].optional = false;
         let next = Pipelines::build(&registered, 42, |_| Ok(PASS.to_owned())).unwrap();
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = next.resolve(&id).unwrap();
+        let handle = next.resolve(&id, PipelineKind::Required).unwrap();
         let error = renderer
             .build_with(&next, |_, _| Err("injected refusal".into()))
             .unwrap_err();
@@ -835,7 +891,13 @@ mod tests {
         assert_eq!(renderer.generation, 41);
         assert_eq!(renderer.pipelines.len(), 1);
         assert_eq!(next.slot(handle), Ok(0));
-        assert!(next.resolve(&Identifier::parse("test:p1").unwrap()).is_ok());
+        assert!(
+            next.resolve(
+                &Identifier::parse("test:p1").unwrap(),
+                PipelineKind::Optional
+            )
+            .is_ok()
+        );
         renderer.build(&device, &next, None).unwrap();
         assert_eq!(renderer.generation, 42);
         assert_eq!(renderer.pipelines.len(), 2);
@@ -1063,7 +1125,7 @@ mod tests {
             .build(device, &set, Some(sources))
             .unwrap();
         assert_eq!(
-            set.resolve(&id(2)),
+            set.resolve(&id(2), PipelineKind::Optional),
             Err(mod_api::RenderPipelineError::Invalid),
             "a sprite the atlas lacks"
         );
@@ -1113,5 +1175,167 @@ mod tests {
         assert_near(pixel(8, 24), green, 1.0, "the sprite, not the atlas's red");
         assert_near(pixel(40, 24), green, 1.0, "the sprite repeated");
         assert_near(pixel(8, 40), [255.0; 4], 1.0, "the untextured pipeline");
+    }
+
+    #[test]
+    fn shared_id_required_and_optional_pipelines_both_resolve_and_draw_in_either_order() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some(gpu) = device() else {
+            eprintln!("no GPU adapter: skipped");
+            return;
+        };
+        let red_shader = "fn pipeline_fragment(input: PipelineInput) -> vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }";
+        let green_shader = "fn pipeline_fragment(input: PipelineInput) -> vec4<f32> { return vec4<f32>(0.0, 1.0, 0.0, 1.0); }";
+        let shared = Identifier::parse("test:shared").unwrap();
+        let req_frag = Identifier::parse("test:red").unwrap();
+        let opt_frag = Identifier::parse("test:green").unwrap();
+        let required = RenderPipeline::new(
+            shared.clone(),
+            req_frag,
+            PipelineBlend::Translucent,
+            WorldDepth::Tested,
+        );
+        let optional = RenderPipeline::new(
+            shared.clone(),
+            opt_frag,
+            PipelineBlend::Translucent,
+            WorldDepth::Tested,
+        )
+        .optional();
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let vertices = [
+            quad([0.0, 0.0, 32.0, 64.0], 2.0, [255; 4]),
+            quad([32.0, 0.0, 64.0, 64.0], 2.0, [255; 4]),
+        ]
+        .concat();
+        let mut primitives = WorldPrimitives::new(&gpu.0, (format, false));
+        for (generation, registered) in [
+            (101, [required.clone(), optional.clone()]),
+            (102, [optional, required]),
+        ] {
+            let set = Pipelines::build(&registered, generation, |file| {
+                Ok(if file.ends_with("red.wgsl") {
+                    red_shader
+                } else {
+                    green_shader
+                }
+                .to_owned())
+            })
+            .unwrap();
+            let req_handle = set.resolve(&shared, PipelineKind::Required).unwrap();
+            let opt_handle = set.resolve(&shared, PipelineKind::Optional).unwrap();
+            assert_ne!(req_handle, opt_handle);
+            let runs = [
+                PipelineRun {
+                    slot: set.slot(req_handle).unwrap(),
+                    stage: 4,
+                    quads: 1,
+                },
+                PipelineRun {
+                    slot: set.slot(opt_handle).unwrap(),
+                    stage: 4,
+                    quads: 1,
+                },
+            ];
+            let at = render(
+                &gpu,
+                &mut primitives,
+                format,
+                Batch {
+                    set: Some(&set),
+                    vertices: &vertices,
+                    runs: &runs,
+                    time: 0.0,
+                },
+                STAGES - 1,
+            );
+            assert_near(
+                at(16, 32),
+                [255.0, 0.0, 0.0, 255.0],
+                1.0,
+                "required pipeline",
+            );
+            assert_near(
+                at(48, 32),
+                [0.0, 255.0, 0.0, 255.0],
+                1.0,
+                "optional pipeline",
+            );
+        }
+    }
+
+    #[test]
+    fn pipeline_quads_chunk_across_small_max_buffer_size_and_preserve_order() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let instance = crate::gfx::test_gpu::instance();
+        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+            eprintln!("no GPU adapter: skipped");
+            return;
+        };
+        let limit = 16_384u64.min(adapter.limits().max_buffer_size);
+        let Ok(gpu) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits {
+                max_buffer_size: limit,
+                ..wgpu::Limits::default()
+            },
+            ..Default::default()
+        })) else {
+            eprintln!("no GPU device with small max_buffer_size: skipped");
+            return;
+        };
+        let set = load(
+            77,
+            &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
+        );
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&gpu.0, (format, false));
+        let quad_bytes = 4 * std::mem::size_of::<PipelineVertex>() as u64;
+        let max_quads = world_primitives::max_quads_per_chunk(limit, quad_bytes);
+        assert!(max_quads > 0);
+        // More than one full chunk in a single run, followed by a second run at a later stage.
+        let first_count = max_quads + 20;
+        let mut vertices = Vec::with_capacity((first_count as usize + 1) * 4);
+        for _ in 0..first_count {
+            vertices.extend_from_slice(&quad([0.0, 0.0, 64.0, 64.0], 2.0, [255, 0, 0, 255]));
+        }
+        vertices.extend_from_slice(&quad([0.0, 0.0, 64.0, 64.0], 2.0, [0, 255, 0, 255]));
+        let runs = [
+            PipelineRun {
+                slot: 0,
+                stage: 0,
+                quads: first_count,
+            },
+            PipelineRun {
+                slot: 0,
+                stage: 4,
+                quads: 1,
+            },
+        ];
+        let at = render(
+            &gpu,
+            &mut primitives,
+            format,
+            Batch {
+                set: Some(&set),
+                vertices: &vertices,
+                runs: &runs,
+                time: 0.0,
+            },
+            STAGES - 1,
+        );
+        assert!(primitives.pipelines.vertex_chunks.len() >= 2);
+        assert!(
+            primitives
+                .pipelines
+                .vertex_chunks
+                .iter()
+                .all(|buffer| buffer.size() <= limit)
+        );
+        assert_near(
+            at(32, 32),
+            [0.0, 255.0, 0.0, 255.0],
+            1.0,
+            "later chunked stage draws over earlier chunked stage",
+        );
     }
 }

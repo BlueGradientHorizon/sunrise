@@ -67,11 +67,13 @@ At client startup, implement `Hooks::register_layer_definitions` and call
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
 inputs, not the event or its registration context. Use any `<namespace>:<path>#<layer>`
-ID that does not collide with an existing vanilla layer definition.
+ID whose `<namespace>:<path>` is a valid namespaced `Identifier` (any suffix after `#` is
+preserved) and that does not collide with an existing vanilla layer definition.
 
 Duplicate mod registrations for the same ID overwrite earlier suppliers (last-writer-wins)
-before freeze, so overwritten suppliers never run. Collisions with existing vanilla layer
-definitions are logged and skipped without invoking their suppliers. The game calls each
+before freeze, so overwritten suppliers never run. Malformed IDs, collisions with existing
+vanilla layer definitions, or an unavailable/invalid vanilla `entity-models.json` fail
+startup freeze cleanly before invoking any supplier or publishing. The game calls each
 winning supplier once when it freezes the layer table. The frozen table
 retains the definitions, not the suppliers. Call
 `ClientHost::bake_layer("mymod:golem#main")` during renderer setup, then keep the

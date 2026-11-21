@@ -13891,7 +13891,7 @@ pub(crate) fn run_with(
     native_biome_source::install();
     mods::register_components(&vanilla_root)?;
     mods::register_standalone_models(options.execution_role);
-    mods::register_layer_definitions(options.execution_role, &vanilla_root);
+    mods::register_layer_definitions(options.execution_role, &vanilla_root)?;
     mods::register_debug_entries(options.execution_role);
     mods::register_gui_layers(options.execution_role);
     mods::register_map_decoration_types();
@@ -13899,7 +13899,7 @@ pub(crate) fn run_with(
     mods::register_select_item_model_properties(options.execution_role);
     mods::register_resource_sources(options.execution_role);
     mods::register_enchantment_damage_effects();
-    mods::register_client_presentations(options.execution_role);
+    mods::register_client_presentations(options.execution_role)?;
     mods::register_meshing(options.execution_role);
     mods::register_particles(options.execution_role);
     mods::freeze_declarations();

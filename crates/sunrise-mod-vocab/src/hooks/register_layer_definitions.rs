@@ -12,10 +12,12 @@ pub trait Hooks {
 `EntityRenderersEvent.RegisterLayerDefinitions`. It receives a `RegistrationContext` once at
 client startup. Call `event.register(id, supplier)` to stage a supplier that builds a
 `LayerDefinition`. Dedicated and integrated server roles do not fire this client event.
-IDs have the form `<namespace>:<path>#<layer>`. Any valid ID that does not collide with an
-existing vanilla layer definition is accepted; malformed IDs and collisions with existing vanilla
-layer definitions are logged and dropped without calling their suppliers. Duplicate mod
-registrations for the same ID overwrite earlier suppliers (last-writer-wins) before freeze.
+IDs have the form `<namespace>:<path>#<layer>`, where `<namespace>:<path>` is a valid namespaced
+`Identifier` and `<layer>` is any suffix after the first `#`. Any valid ID that does not collide
+with an existing vanilla layer definition is accepted; duplicate mod registrations for the same ID
+overwrite earlier suppliers (last-writer-wins) before freeze. Malformed IDs, collisions with
+existing vanilla layer definitions, or an unavailable/invalid vanilla `entity-models.json` key
+table fail startup freeze before any supplier runs or the layer table publishes.
 
 The game calls each winning supplier once when assembling the frozen layer table. Overwritten
 suppliers never run. A supplier that is disabled, refuses or panics leaves no definition. Bakes

@@ -62,11 +62,11 @@ fn register_render_pipelines(
 scaled by its alpha. `WorldDepth::Tested` hides the quads behind nearer world surfaces, and
 `ThroughWalls` draws them over everything. No pipeline writes depth.
 
-Any valid `Identifier` is accepted, and there is no per-mod pipeline count cap. Duplicate ids are
-checked separately for required and optional pipelines: a duplicate of the same kind (two required
-or two optional registrations with the same id) is logged with the mod's id and dropped, while a
-required and an optional registration may share an id (resolving that id returns the required
-pipeline).
+Any valid `Identifier` is accepted, and there is no per-mod pipeline count cap. Collisions are
+checked separately for required and optional pipelines against both vanilla's built-in pipelines
+and earlier mod registrations of the same kind: a same-kind collision fails startup registration,
+while a required and an optional registration may share an id and are resolved separately via
+`PipelineKind`.
 
 ### Required or optional
 
@@ -121,7 +121,10 @@ not translate:
 ```rust,ignore
 fn client_setup(&self, host: &dyn ClientHost, _event: &mut ClientSetupEvent<'_>) {
     let id = Identifier::parse("example:glow").unwrap();
-    *self.glow.lock().unwrap() = host.render_assets().render_pipeline(&id).ok();
+    *self.glow.lock().unwrap() = host
+        .render_assets()
+        .render_pipeline(&id, PipelineKind::Required)
+        .ok();
 }
 
 fn submit_custom_geometry(&self, _host: &dyn ClientHost, event: &mut SubmitCustomGeometryEvent<'_>) {

@@ -8,25 +8,271 @@
 //! The shader's composition and checks live in `sunrise_shader_api::mod_pipeline`, shared with
 //! `cargo sunrise-mod check`.
 use mod_api::{
-    Identifier, PipelineBlend, PipelineTexture, PipelineTextureError, RenderPipeline,
+    Identifier, PipelineBlend, PipelineKind, PipelineTexture, PipelineTextureError, RenderPipeline,
     RenderPipelineError, RenderPipelineRef, WorldDepth,
 };
+use std::collections::HashMap;
 use std::sync::OnceLock;
 use sunrise_shader_api::mod_pipeline::{FOLDER, compose_with};
 
 static REGISTERED: OnceLock<Vec<RenderPipeline>> = OnceLock::new();
 
-/// Publish the mods' registrations once at startup, as `register_render_pipelines` left them:
-/// each id at most once per kind (required or optional). A pipeline's place in the list is its
-/// slot.
-pub fn register(pipelines: Vec<RenderPipeline>) {
+/// Authoritative vanilla 26.3 required render pipeline locations (`PIPELINES_BY_LOCATION`),
+/// sorted lexicographically for binary search.
+const VANILLA_REQUIRED_PIPELINES: &[&str] = &[
+    "minecraft:pipeline/animate_sprite_blit",
+    "minecraft:pipeline/animate_sprite_interpolate",
+    "minecraft:pipeline/armor_cutout_no_cull",
+    "minecraft:pipeline/armor_cutout_no_cull_glint",
+    "minecraft:pipeline/armor_decal_cutout_no_cull",
+    "minecraft:pipeline/armor_translucent",
+    "minecraft:pipeline/banner_pattern",
+    "minecraft:pipeline/beacon_beam_opaque",
+    "minecraft:pipeline/beacon_beam_translucent",
+    "minecraft:pipeline/blit_depth",
+    "minecraft:pipeline/blit_depth_bounds",
+    "minecraft:pipeline/blit_depth_during_depth_bounds",
+    "minecraft:pipeline/block_screen_effect",
+    "minecraft:pipeline/breeze_wind",
+    "minecraft:pipeline/celestial",
+    "minecraft:pipeline/clouds",
+    "minecraft:pipeline/crosshair",
+    "minecraft:pipeline/crumbling",
+    "minecraft:pipeline/cutout_block",
+    "minecraft:pipeline/cutout_terrain",
+    "minecraft:pipeline/cutout_terrain_multidraw",
+    "minecraft:pipeline/debug_filled_box",
+    "minecraft:pipeline/debug_points",
+    "minecraft:pipeline/debug_quads",
+    "minecraft:pipeline/debug_triangle_fan",
+    "minecraft:pipeline/dragon_rays",
+    "minecraft:pipeline/end_crystal_beam",
+    "minecraft:pipeline/end_gateway",
+    "minecraft:pipeline/end_portal",
+    "minecraft:pipeline/end_sky",
+    "minecraft:pipeline/energy_swirl",
+    "minecraft:pipeline/entity_cutout",
+    "minecraft:pipeline/entity_cutout_cull",
+    "minecraft:pipeline/entity_cutout_dissolve",
+    "minecraft:pipeline/entity_cutout_z_offset",
+    "minecraft:pipeline/entity_outline_blit",
+    "minecraft:pipeline/entity_shadow",
+    "minecraft:pipeline/entity_solid",
+    "minecraft:pipeline/entity_solid_glint",
+    "minecraft:pipeline/entity_solid_offset_forward",
+    "minecraft:pipeline/entity_translucent",
+    "minecraft:pipeline/entity_translucent_cull",
+    "minecraft:pipeline/entity_translucent_emissive",
+    "minecraft:pipeline/eyes",
+    "minecraft:pipeline/fire_screen_effect",
+    "minecraft:pipeline/flat_clouds",
+    "minecraft:pipeline/glint",
+    "minecraft:pipeline/gui",
+    "minecraft:pipeline/gui_invert",
+    "minecraft:pipeline/gui_nausea_overlay",
+    "minecraft:pipeline/gui_opaque_textured_background",
+    "minecraft:pipeline/gui_text",
+    "minecraft:pipeline/gui_text_grayscale",
+    "minecraft:pipeline/gui_text_highlight",
+    "minecraft:pipeline/gui_textured",
+    "minecraft:pipeline/gui_textured_premultiplied_alpha",
+    "minecraft:pipeline/integrate_depth",
+    "minecraft:pipeline/item_cutout",
+    "minecraft:pipeline/item_translucent",
+    "minecraft:pipeline/item_translucent_glint",
+    "minecraft:pipeline/leash",
+    "minecraft:pipeline/lightmap",
+    "minecraft:pipeline/lightning",
+    "minecraft:pipeline/lines",
+    "minecraft:pipeline/lines_depth_bias",
+    "minecraft:pipeline/lines_translucent",
+    "minecraft:pipeline/lines_translucent_no_depth_write",
+    "minecraft:pipeline/mojang_logo",
+    "minecraft:pipeline/oit_accumulate_beacon_beam",
+    "minecraft:pipeline/oit_accumulate_breeze_wind",
+    "minecraft:pipeline/oit_accumulate_clouds",
+    "minecraft:pipeline/oit_accumulate_crumbling",
+    "minecraft:pipeline/oit_accumulate_debug_filled_box",
+    "minecraft:pipeline/oit_accumulate_debug_points",
+    "minecraft:pipeline/oit_accumulate_debug_quads",
+    "minecraft:pipeline/oit_accumulate_debug_triangle_fan",
+    "minecraft:pipeline/oit_accumulate_dragon_rays",
+    "minecraft:pipeline/oit_accumulate_energy_swirl",
+    "minecraft:pipeline/oit_accumulate_entity",
+    "minecraft:pipeline/oit_accumulate_entity_cull",
+    "minecraft:pipeline/oit_accumulate_entity_emissive",
+    "minecraft:pipeline/oit_accumulate_entity_shadow",
+    "minecraft:pipeline/oit_accumulate_eyes",
+    "minecraft:pipeline/oit_accumulate_flat_clouds",
+    "minecraft:pipeline/oit_accumulate_item",
+    "minecraft:pipeline/oit_accumulate_item_glint",
+    "minecraft:pipeline/oit_accumulate_item_glint_special",
+    "minecraft:pipeline/oit_accumulate_lightning",
+    "minecraft:pipeline/oit_accumulate_lines_translucent",
+    "minecraft:pipeline/oit_accumulate_particle",
+    "minecraft:pipeline/oit_accumulate_terrain",
+    "minecraft:pipeline/oit_accumulate_terrain_multidraw",
+    "minecraft:pipeline/oit_accumulate_text",
+    "minecraft:pipeline/oit_accumulate_text_grayscale",
+    "minecraft:pipeline/oit_accumulate_text_grayscale_polygon_offset",
+    "minecraft:pipeline/oit_accumulate_text_polygon_offset",
+    "minecraft:pipeline/oit_accumulate_translucent_block",
+    "minecraft:pipeline/oit_accumulate_weather",
+    "minecraft:pipeline/oit_accumulate_world_border",
+    "minecraft:pipeline/oit_composite",
+    "minecraft:pipeline/oit_depth_bounds_beacon_beam",
+    "minecraft:pipeline/oit_depth_bounds_breeze_wind",
+    "minecraft:pipeline/oit_depth_bounds_clouds",
+    "minecraft:pipeline/oit_depth_bounds_crumbling",
+    "minecraft:pipeline/oit_depth_bounds_cull",
+    "minecraft:pipeline/oit_depth_bounds_debug_filled_box",
+    "minecraft:pipeline/oit_depth_bounds_debug_points",
+    "minecraft:pipeline/oit_depth_bounds_debug_quads",
+    "minecraft:pipeline/oit_depth_bounds_debug_triangle_fan",
+    "minecraft:pipeline/oit_depth_bounds_dragon_rays",
+    "minecraft:pipeline/oit_depth_bounds_energy_swirl",
+    "minecraft:pipeline/oit_depth_bounds_entity",
+    "minecraft:pipeline/oit_depth_bounds_entity_cull",
+    "minecraft:pipeline/oit_depth_bounds_entity_emissive",
+    "minecraft:pipeline/oit_depth_bounds_entity_shadow",
+    "minecraft:pipeline/oit_depth_bounds_eyes",
+    "minecraft:pipeline/oit_depth_bounds_flat_clouds",
+    "minecraft:pipeline/oit_depth_bounds_item",
+    "minecraft:pipeline/oit_depth_bounds_item_glint",
+    "minecraft:pipeline/oit_depth_bounds_item_glint_special",
+    "minecraft:pipeline/oit_depth_bounds_lightning",
+    "minecraft:pipeline/oit_depth_bounds_lines_translucent",
+    "minecraft:pipeline/oit_depth_bounds_particle",
+    "minecraft:pipeline/oit_depth_bounds_terrain",
+    "minecraft:pipeline/oit_depth_bounds_terrain_multidraw",
+    "minecraft:pipeline/oit_depth_bounds_text",
+    "minecraft:pipeline/oit_depth_bounds_text_grayscale",
+    "minecraft:pipeline/oit_depth_bounds_text_grayscale_polygon_offset",
+    "minecraft:pipeline/oit_depth_bounds_text_polygon_offset",
+    "minecraft:pipeline/oit_depth_bounds_translucent_block",
+    "minecraft:pipeline/oit_depth_bounds_weather",
+    "minecraft:pipeline/oit_depth_bounds_world_border",
+    "minecraft:pipeline/oit_transmittance_beacon_beam",
+    "minecraft:pipeline/oit_transmittance_breeze_wind",
+    "minecraft:pipeline/oit_transmittance_clouds",
+    "minecraft:pipeline/oit_transmittance_crumbling",
+    "minecraft:pipeline/oit_transmittance_debug_filled_box",
+    "minecraft:pipeline/oit_transmittance_debug_points",
+    "minecraft:pipeline/oit_transmittance_debug_quads",
+    "minecraft:pipeline/oit_transmittance_debug_triangle_fan",
+    "minecraft:pipeline/oit_transmittance_dragon_rays",
+    "minecraft:pipeline/oit_transmittance_energy_swirl",
+    "minecraft:pipeline/oit_transmittance_entity",
+    "minecraft:pipeline/oit_transmittance_entity_cull",
+    "minecraft:pipeline/oit_transmittance_entity_emissive",
+    "minecraft:pipeline/oit_transmittance_entity_shadow",
+    "minecraft:pipeline/oit_transmittance_eyes",
+    "minecraft:pipeline/oit_transmittance_flat_clouds",
+    "minecraft:pipeline/oit_transmittance_item",
+    "minecraft:pipeline/oit_transmittance_item_glint",
+    "minecraft:pipeline/oit_transmittance_item_glint_special",
+    "minecraft:pipeline/oit_transmittance_lightning",
+    "minecraft:pipeline/oit_transmittance_lines_translucent",
+    "minecraft:pipeline/oit_transmittance_particle",
+    "minecraft:pipeline/oit_transmittance_terrain",
+    "minecraft:pipeline/oit_transmittance_terrain_multidraw",
+    "minecraft:pipeline/oit_transmittance_text",
+    "minecraft:pipeline/oit_transmittance_text_grayscale",
+    "minecraft:pipeline/oit_transmittance_text_grayscale_polygon_offset",
+    "minecraft:pipeline/oit_transmittance_text_polygon_offset",
+    "minecraft:pipeline/oit_transmittance_translucent_block",
+    "minecraft:pipeline/oit_transmittance_weather",
+    "minecraft:pipeline/oit_transmittance_world_border",
+    "minecraft:pipeline/oit_water_mask",
+    "minecraft:pipeline/opaque_particle",
+    "minecraft:pipeline/outline_cull",
+    "minecraft:pipeline/outline_no_cull",
+    "minecraft:pipeline/panorama",
+    "minecraft:pipeline/secondary_block_outline",
+    "minecraft:pipeline/sky",
+    "minecraft:pipeline/solid_block",
+    "minecraft:pipeline/solid_terrain",
+    "minecraft:pipeline/solid_terrain_multidraw",
+    "minecraft:pipeline/stars",
+    "minecraft:pipeline/sunrise_sunset",
+    "minecraft:pipeline/text",
+    "minecraft:pipeline/text_grayscale",
+    "minecraft:pipeline/text_grayscale_polygon_offset",
+    "minecraft:pipeline/text_grayscale_see_through",
+    "minecraft:pipeline/text_polygon_offset",
+    "minecraft:pipeline/text_see_through",
+    "minecraft:pipeline/tracy_blit",
+    "minecraft:pipeline/translucent_block",
+    "minecraft:pipeline/translucent_particle",
+    "minecraft:pipeline/translucent_terrain",
+    "minecraft:pipeline/translucent_terrain_multidraw",
+    "minecraft:pipeline/vignette",
+    "minecraft:pipeline/water_mask",
+    "minecraft:pipeline/weather",
+    "minecraft:pipeline/world_border",
+];
+
+/// Authoritative vanilla 26.3 optional render pipeline locations
+/// (`OPTIONAL_PIPELINES_BY_LOCATION`), sorted lexicographically for binary search.
+const VANILLA_OPTIONAL_PIPELINES: &[&str] = &[
+    "minecraft:pipeline/wireframe",
+    "minecraft:pipeline/wireframe_multidraw",
+];
+
+fn is_vanilla_pipeline(id: &Identifier, kind: PipelineKind) -> bool {
+    if id.namespace() != "minecraft" {
+        return false;
+    }
+    let table = match kind {
+        PipelineKind::Required => VANILLA_REQUIRED_PIPELINES,
+        PipelineKind::Optional => VANILLA_OPTIONAL_PIPELINES,
+    };
+    let full = id.to_string();
+    table.binary_search(&full.as_str()).is_ok()
+}
+
+/// Validate `pipelines` against vanilla's built-in required/optional pipeline tables and earlier
+/// mod registrations of the same kind. Cross-kind registrations sharing an ID are allowed.
+pub fn validate_registrations(pipelines: &[RenderPipeline]) -> Result<(), String> {
+    let mut seen: HashMap<(Identifier, PipelineKind), &str> =
+        HashMap::with_capacity(pipelines.len());
+    for pipeline in pipelines {
+        let kind = pipeline.kind();
+        let label = match kind {
+            PipelineKind::Required => "required",
+            PipelineKind::Optional => "optional",
+        };
+        if is_vanilla_pipeline(&pipeline.id, kind) {
+            return Err(format!(
+                "register_render_pipelines: mod {}: {label} pipeline {} collides with vanilla {label} pipeline",
+                pipeline.owner(),
+                pipeline.id
+            ));
+        }
+        if let Some(earlier) = seen.insert((pipeline.id.clone(), kind), pipeline.owner()) {
+            return Err(format!(
+                "register_render_pipelines: mod {}: {label} pipeline {} collides with earlier {label} registration from mod {earlier}",
+                pipeline.owner(),
+                pipeline.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Validate and publish the mods' registrations once at startup, as `register_render_pipelines`
+/// left them: each `(id, kind)` at most once and never colliding with vanilla's same-kind table.
+/// A pipeline's place in the list is its slot.
+pub fn register(pipelines: Vec<RenderPipeline>) -> Result<(), String> {
+    validate_registrations(&pipelines)?;
     if REGISTERED.set(pipelines).is_err() {
         log::warn!("Render pipelines already registered; keeping the first list");
     }
+    Ok(())
 }
 
 /// The registered pipelines; none until registration publishes them.
-fn registered() -> &'static [RenderPipeline] {
+pub fn registered() -> &'static [RenderPipeline] {
     REGISTERED.get().map_or(&[], Vec::as_slice)
 }
 
@@ -59,8 +305,7 @@ pub enum BuiltTexture {
 /// load refused has no shader here and resolves to [`RenderPipelineError::Invalid`].
 #[derive(Clone, Debug, Default)]
 pub struct Pipelines {
-    ids: Vec<Identifier>,
-    optional: Vec<bool>,
+    keys: Vec<(Identifier, PipelineKind)>,
     built: Vec<Option<Built>>,
     /// The render assets' generation this set was loaded for; 0 for none.
     generation: u64,
@@ -87,6 +332,7 @@ impl Pipelines {
         generation: u64,
         read: impl Fn(&str) -> Result<String, String>,
     ) -> Result<Self, String> {
+        validate_registrations(registered)?;
         let mut required = Vec::new();
         let built = registered
             .iter()
@@ -149,8 +395,10 @@ impl Pipelines {
             return Err(required.join("; "));
         }
         Ok(Self {
-            ids: registered.iter().map(|p| p.id.clone()).collect(),
-            optional: registered.iter().map(|p| p.optional).collect(),
+            keys: registered
+                .iter()
+                .map(|p| (p.id.clone(), p.kind()))
+                .collect(),
             built,
             generation,
             invalid: Default::default(),
@@ -185,15 +433,16 @@ impl Pipelines {
         &self.built
     }
 
-    /// The handle of the registered pipeline `id` in this load. When both a required and an
-    /// optional pipeline are registered under `id`, the required pipeline is chosen first.
-    pub fn resolve(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
+    /// The handle of the registered pipeline `(id, kind)` in this load.
+    pub fn resolve(
+        &self,
+        id: &Identifier,
+        kind: PipelineKind,
+    ) -> Result<RenderPipelineRef, RenderPipelineError> {
         let slot = self
-            .ids
+            .keys
             .iter()
-            .zip(&self.optional)
-            .position(|(registered, &optional)| registered == id && !optional)
-            .or_else(|| self.ids.iter().position(|registered| registered == id))
+            .position(|(registered, registered_kind)| registered == id && *registered_kind == kind)
             .ok_or(RenderPipelineError::Unknown)?;
         if self.built[slot].is_none()
             || self
@@ -305,7 +554,9 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
         };
         let set = Pipelines::build(&registered, 7, read).unwrap();
 
-        let glow = set.resolve(&id("example:glow")).unwrap();
+        let glow = set
+            .resolve(&id("example:glow"), PipelineKind::Required)
+            .unwrap();
         assert_eq!(set.slot(glow), Ok(0));
         let built = set.built()[0].as_ref().unwrap();
         assert_eq!(
@@ -313,26 +564,32 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
             (PipelineBlend::Additive, WorldDepth::ThroughWalls)
         );
         assert_eq!(
-            set.resolve(&id("example:broken")),
+            set.resolve(&id("example:glow"), PipelineKind::Optional),
+            Err(RenderPipelineError::Unknown)
+        );
+        assert_eq!(
+            set.resolve(&id("example:broken"), PipelineKind::Optional),
             Err(RenderPipelineError::Invalid)
         );
         assert_eq!(
-            set.resolve(&id("example:missing")),
+            set.resolve(&id("example:missing"), PipelineKind::Optional),
             Err(RenderPipelineError::Invalid)
         );
         assert_eq!(
-            set.resolve(&id("example:never")),
+            set.resolve(&id("example:never"), PipelineKind::Required),
             Err(RenderPipelineError::Unknown)
         );
 
         // The GPU turns down a pipeline the load built: it is reported once, a handle taken
         // before is refused, and the rest still draw.
-        let driver = set.resolve(&id("example:driver")).unwrap();
+        let driver = set
+            .resolve(&id("example:driver"), PipelineKind::Optional)
+            .unwrap();
         assert!(set.invalidate(3));
         assert!(!set.invalidate(3));
         assert_eq!(set.slot(driver), Err(RenderPipelineError::Invalid));
         assert_eq!(
-            set.resolve(&id("example:driver")),
+            set.resolve(&id("example:driver"), PipelineKind::Optional),
             Err(RenderPipelineError::Invalid)
         );
         assert_eq!(set.slot(glow), Ok(0));
@@ -346,7 +603,9 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
             pipeline("example:extra", "example:extra").optional(),
         ];
         let before = Pipelines::build(&registered, 7, |_| Ok(GLOW.to_owned())).unwrap();
-        let handle = before.resolve(&id("example:beam")).unwrap();
+        let handle = before
+            .resolve(&id("example:beam"), PipelineKind::Required)
+            .unwrap();
 
         // A pack broke the required beam and the optional extra: the load fails naming the
         // required one only, so nothing of it is published and the previous load still draws.
@@ -380,20 +639,24 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
     fn a_reload_makes_old_handles_stale_and_can_fix_or_break_a_pipeline() {
         let registered = [pipeline("example:glow", "example:glow").optional()];
         let before = Pipelines::build(&registered, 7, |_| Ok(GLOW.to_owned())).unwrap();
-        let handle = before.resolve(&id("example:glow")).unwrap();
+        let handle = before
+            .resolve(&id("example:glow"), PipelineKind::Optional)
+            .unwrap();
 
         // A pack replaced the file with one that doesn't compile: the pipeline is invalid in
         // the new load, and the old handle is stale there, not silently redirected.
         let broken = Pipelines::build(&registered, 8, |_| Ok("garbage".to_owned())).unwrap();
         assert_eq!(broken.slot(handle), Err(RenderPipelineError::Stale));
         assert_eq!(
-            broken.resolve(&id("example:glow")),
+            broken.resolve(&id("example:glow"), PipelineKind::Optional),
             Err(RenderPipelineError::Invalid)
         );
 
         let fixed = Pipelines::build(&registered, 9, |_| Ok(GLOW.to_owned())).unwrap();
         assert_eq!(fixed.slot(handle), Err(RenderPipelineError::Stale));
-        let again = fixed.resolve(&id("example:glow")).unwrap();
+        let again = fixed
+            .resolve(&id("example:glow"), PipelineKind::Optional)
+            .unwrap();
         assert_eq!(fixed.slot(again), Ok(0));
     }
 
@@ -438,15 +701,98 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
     }
 
     #[test]
-    fn resolve_prefers_required_pipeline_when_optional_shares_id() {
-        let registered = [
+    fn resolve_distinguishes_required_and_optional_pipelines_in_either_order() {
+        let optional_first = [
             pipeline("example:shared", "example:optional_glow").optional(),
             pipeline("example:shared", "example:required_glow"),
         ];
-        let set = Pipelines::build(&registered, 11, |_| Ok(GLOW.to_owned())).unwrap();
-        assert!(set.built()[0].as_ref().is_some_and(|b| b.optional));
-        assert!(set.built()[1].as_ref().is_some_and(|b| !b.optional));
-        let handle = set.resolve(&id("example:shared")).unwrap();
-        assert_eq!(set.slot(handle), Ok(1));
+        let set = Pipelines::build(&optional_first, 11, |_| Ok(GLOW.to_owned())).unwrap();
+        let optional = set
+            .resolve(&id("example:shared"), PipelineKind::Optional)
+            .unwrap();
+        let required = set
+            .resolve(&id("example:shared"), PipelineKind::Required)
+            .unwrap();
+        assert_eq!(set.slot(optional), Ok(0));
+        assert_eq!(set.slot(required), Ok(1));
+
+        let required_first = [
+            pipeline("example:shared", "example:required_glow"),
+            pipeline("example:shared", "example:optional_glow").optional(),
+        ];
+        let set = Pipelines::build(&required_first, 12, |_| Ok(GLOW.to_owned())).unwrap();
+        let required = set
+            .resolve(&id("example:shared"), PipelineKind::Required)
+            .unwrap();
+        let optional = set
+            .resolve(&id("example:shared"), PipelineKind::Optional)
+            .unwrap();
+        assert_eq!(set.slot(required), Ok(0));
+        assert_eq!(set.slot(optional), Ok(1));
+    }
+
+    #[test]
+    fn registration_rejects_same_kind_vanilla_and_mod_collisions_while_preserving_cross_kind() {
+        assert_eq!(VANILLA_REQUIRED_PIPELINES.len(), 190);
+        assert_eq!(VANILLA_OPTIONAL_PIPELINES.len(), 2);
+        assert!(
+            VANILLA_REQUIRED_PIPELINES
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
+        assert!(
+            VANILLA_OPTIONAL_PIPELINES
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
+
+        let vanilla_required_err =
+            validate_registrations(&[pipeline("minecraft:pipeline/solid_terrain", "example:glow")])
+                .unwrap_err();
+        assert!(
+            vanilla_required_err.contains("collides with vanilla required pipeline"),
+            "{vanilla_required_err}"
+        );
+
+        let vanilla_optional_err =
+            validate_registrations(&[
+                pipeline("minecraft:pipeline/wireframe", "example:glow").optional()
+            ])
+            .unwrap_err();
+        assert!(
+            vanilla_optional_err.contains("collides with vanilla optional pipeline"),
+            "{vanilla_optional_err}"
+        );
+
+        // Cross-kind registrations against vanilla's opposite map and between mods are accepted.
+        assert!(
+            validate_registrations(&[
+                pipeline("minecraft:pipeline/solid_terrain", "example:opt").optional(),
+                pipeline("minecraft:pipeline/wireframe", "example:req"),
+                pipeline("example:shared", "example:req"),
+                pipeline("example:shared", "example:opt").optional(),
+            ])
+            .is_ok()
+        );
+
+        let dup_required_err = validate_registrations(&[
+            pipeline("example:dup", "example:a"),
+            pipeline("example:dup", "example:b"),
+        ])
+        .unwrap_err();
+        assert!(
+            dup_required_err.contains("collides with earlier required registration"),
+            "{dup_required_err}"
+        );
+
+        let dup_optional_err = validate_registrations(&[
+            pipeline("example:dup", "example:a").optional(),
+            pipeline("example:dup", "example:b").optional(),
+        ])
+        .unwrap_err();
+        assert!(
+            dup_optional_err.contains("collides with earlier optional registration"),
+            "{dup_optional_err}"
+        );
     }
 }
