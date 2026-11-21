@@ -791,21 +791,39 @@ fn a_pack_declaring_a_3d_shadowcolor_image_runs_without_that_program() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Fixture::new() else { return };
     // The first stores, the second loads then stores (its loads read a copy, `hz_before_`):
-    // both are refused while loading, and the frames draw the buffers' clear colour.
+    // both are refused while loading, and the frames draw the buffers' clear colour. Each also
+    // stores into colorimg1, which `final` shows in the odd columns: it keeps its clear colour
+    // only if the program never runs, where a stand-in for the 3D image would let it run.
+    let last = [
+        ("final.vsh", VERTEX),
+        (
+            "final.fsh",
+            "#version 330 compatibility\nconst int shadowMapResolution = 8;\n\
+             const vec4 colortex1ClearColor = vec4(0.0, 0.0, 0.0, 1.0);\n\
+             uniform sampler2D shadowcolor0;\nuniform sampler2D colortex1;\n\
+             void main() {\n    ivec2 p = ivec2(gl_FragCoord.xy);\n\
+                 gl_FragColor = p.x % 2 == 0 ? texelFetch(shadowcolor0, p, 0) : texelFetch(colortex1, p, 0);\n}\n",
+        ),
+    ];
     for access in ["writeonly ", ""] {
         let composite = format!(
             "{COMPUTE}layout(rgba8) {access}uniform image3D shadowcolorimg0;\n\
+             layout(rgba8) writeonly uniform image2D colorimg1;\n\
              void main() {{\n    ivec3 p = ivec3(gl_GlobalInvocationID.xy, 0);\n\
-                 imageStore(shadowcolorimg0, p, {});\n}}\n",
+                 imageStore(shadowcolorimg0, p, {});\n\
+                 imageStore(colorimg1, p.xy, vec4(0.2, 0.4, 0.6, 1.0));\n}}\n",
             if access.is_empty() {
                 "imageLoad(shadowcolorimg0, p) * 0.5"
             } else {
                 "vec4(0.2)"
             }
         );
-        let mut post = gpu
-            .try_build(pack(&[("composite.csh", &composite)]))
-            .unwrap();
+        let files: Vec<_> = [("composite.csh", composite.as_str())]
+            .iter()
+            .chain(&last)
+            .copied()
+            .collect();
+        let mut post = gpu.try_build(pack_of(&files, &Default::default())).unwrap();
         // A note names the program and the image.
         assert!(
             post.notes
@@ -815,7 +833,7 @@ fn a_pack_declaring_a_3d_shadowcolor_image_runs_without_that_program() {
             post.notes
         );
         for f in frames(&gpu, &mut post) {
-            assert_eq!(f, [[255; 4]; 2], "{access:?}");
+            assert_eq!(f, [[255; 4], [0, 0, 0, 255]], "{access:?}");
         }
     }
 }
