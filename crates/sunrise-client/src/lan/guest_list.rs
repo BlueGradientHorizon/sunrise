@@ -137,8 +137,8 @@ impl GuestList {
             let (spectator, sunrise) = (g.spectator(), g.is_sunrise());
             let is_visible = visible(g);
             let general_entity = is_visible && g.negotiated_general_entity();
-            let attachment_sender = (is_visible && g.placed && g.negotiated_attachment_sync())
-                .then(|| g.sender.clone());
+            let attachment_sender =
+                (is_visible && g.negotiated_attachment_sync()).then(|| g.sender.clone());
             if g.attachments.has_index_entries() {
                 player_attachments.insert(g.entity_id, (g.uuid, &*g.attachments));
             }

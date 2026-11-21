@@ -6630,17 +6630,32 @@ mod tests {
         };
         hub.track_entities(&mut ctx, None);
         assert!(hub.guests[0].tracker.is_tracking(2));
-        let mut slots = None;
-        while let Ok(crate::lan::Out::Packet(body)) = rx.try_recv() {
-            let mut reader = sunrise_protocol::buf::Reader::new(&body);
-            let Ok(id) = reader.varint() else { continue };
-            if let Ok(C::SetEquipment(p)) = C::decode(id, reader.rest())
-                && p.id == 2
-            {
-                slots = Some(p.slots.iter().map(|(slot, _)| *slot).collect::<Vec<_>>());
-            }
-        }
+        let slots = queued_play_packets(&rx)
+            .filter_map(|packet| match packet {
+                C::SetEquipment(p) if p.id == 2 => {
+                    Some(p.slots.iter().map(|(slot, _)| *slot).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .last();
         assert_eq!(slots, Some(vec![1, 6, 7]));
+    }
+
+    fn queued_play_packets(
+        rx: &std::sync::mpsc::Receiver<crate::lan::Out>,
+    ) -> impl Iterator<Item = C> + '_ {
+        use crate::lan::Out;
+        rx.try_iter()
+            .flat_map(|out| match out {
+                Out::Packet(body) => vec![body],
+                Out::Packets(bodies) => bodies,
+                Out::Disconnect(_) => Vec::new(),
+            })
+            .filter_map(|body| {
+                let mut reader = sunrise_protocol::buf::Reader::new(&body);
+                let id = reader.varint().ok()?;
+                C::decode(id, reader.rest()).ok()
+            })
     }
 
     /// A mod's named effect particle goes out as id -1, which vanilla's
@@ -8000,6 +8015,15 @@ mod tests {
 
     #[test]
     fn tracked_player_initial_attachments_arrive_inside_pairing_bundle() {
+        assert_player_initial_sync(false);
+    }
+
+    #[test]
+    fn a_held_viewer_gets_initial_player_attachments_inside_pairing_bundle() {
+        assert_player_initial_sync(true);
+    }
+
+    fn assert_player_initial_sync(held: bool) {
         use sunrise_core::nbt::Tag;
         use sunrise_mod_runtime::attachments::{AttachmentSync, Holder};
         use sunrise_protocol::{
@@ -8012,7 +8036,7 @@ mod tests {
             "minecraft:entity_type".to_string(),
             sunrise_protocol::registry::Ids::from_names(vec!["minecraft:player".to_string()]),
         );
-        let (mut hub, _bob_rx) = hub_with_sync(sync);
+        let (mut hub, bob_rx) = hub_with_sync(sync);
         hub.sync_attachments = true;
 
         // Guest 0 (Bob, entity 1, uuid 1) holds a synced player attachment.
@@ -8025,7 +8049,7 @@ mod tests {
             });
         });
 
-        // Guest 1 (Ann, entity 2, uuid 2) negotiated attachment sync and enters tracking range.
+        // Guest 1 negotiated attachment sync. A proxy-handoff guest can pair while held.
         let local = crate::raw_payloads::Local::capture(crate::raw_payloads::Side::Server).unwrap();
         let mut neg = Negotiation::new(local.manifest.clone());
         neg.receive(Control::Offer(local.manifest.clone())).unwrap();
@@ -8053,7 +8077,8 @@ mod tests {
             [2.5, 64.0, 0.5],
             8,
         );
-        ann.placed = true;
+        ann.placed = !held;
+        ann.held = held;
         ann.dimension = "minecraft:overworld".into();
         ann.sent_chunks.insert((0, 0));
         hub.guests.push(ann);
@@ -8080,6 +8105,13 @@ mod tests {
             streaming: None,
         };
         hub.track_entities(&mut ctx, None);
+        assert!(hub.guests[1].tracker.is_tracking(1));
+        if held {
+            assert!(!hub.guests[0].tracker.is_tracking(2));
+            assert!(
+                !queued_play_packets(&bob_rx).any(|p| matches!(p, C::AddEntity(e) if e.id == 2))
+            );
+        }
 
         let packets: Vec<play::Clientbound> = ann_queued()
             .into_iter()
@@ -8118,6 +8150,10 @@ mod tests {
         assert!(syncs[0].replace);
         assert_eq!(syncs[0].changes.len(), 1);
         assert_eq!(syncs[0].changes[0].name.as_str(), "badge");
+        assert_eq!(
+            syncs[0].changes[0].value,
+            Some([("n".into(), Tag::Int(9))].into())
+        );
         assert!(
             !hub.attachment_snapshots
                 .iter()
