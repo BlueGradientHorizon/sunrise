@@ -7486,6 +7486,15 @@ def zombie_villager_summoned_data():
         else:
             ops.append(cmd(f'/execute if data entity {uuid} VillagerData{{profession:"minecraft:none"}}'))
             ops.append(cmd(f'/data get entity {uuid} VillagerData'))
+    # Compare the whole compound: IsBaby and ConversionPlayer collide in the
+    # Java map, so a path query would miss the inherited field's insertion order.
+    # Load an existing longer Strength effect: the cure does not replace it or
+    # instantiate attack_damage, leaving no identity-hash attribute order to compare.
+    ops += [cmd(f'/summon zombie_villager {x0 + 12}.5 {y0} {z0 + 4}.5 '
+                '{UUID:[I;13262,0,4,1],NoAI:1b,ConversionTime:2000,ConversionPlayer:[I;1,2,3,4],'
+                'active_effects:[{id:"minecraft:strength",duration:4000,show_icon:1b}],'
+                'VillagerData:{type:"minecraft:taiga",profession:"minecraft:cleric",level:2}}', expect_result=1),
+            cmd('/data get entity 000033ce-0000-0000-0000-000400000001')]
     return ops + setup('/tick unfreeze', f'/kill @e[type=!player,x={x0},y={y0 - 8},z={z0},dx=16,dy=32,dz=16]',
                        f'/forceload remove {x0} {z0}')
 
