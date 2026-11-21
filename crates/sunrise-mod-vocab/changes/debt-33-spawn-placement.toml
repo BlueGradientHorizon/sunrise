@@ -23,7 +23,7 @@ Use the fully qualified entity id and import `std::sync::Arc`. For a type withou
 On an existing entry, only `Replace` changes metadata; pass `None` for either field you want to keep. \
 Write `fn predicate(_: EntityTypeKey, ctx: &mut dyn SpawnPlacementContext, reason: SpawnReason, pos: BlockPos) -> bool`, joining the old conditions with `&&` in their original order. \
 Replace `spawnable_on` with `ctx.level().block_in_tag(pos.offset(0, -1, 0), tag)`, then `biome_tag` with `ctx.level().biome_in_tag(pos, tag)`; omit absent conditions and use namespaced tags without `#`. \
-Test light last: replace `SpawnLight::Dark` with `(reason == SpawnReason::TrialSpawner || ctx.is_dark_enough_to_spawn())` and `SpawnLight::Bright` with `(reason == SpawnReason::TrialSpawner || ctx.level().is_bright_enough_to_spawn(pos))`. \
+Test light last: replace `SpawnLight::Dark` with `(reason == SpawnReason::TrialSpawner || ctx.is_dark_enough_to_spawn(pos))` and `SpawnLight::Bright` with `(reason == SpawnReason::TrialSpawner || ctx.level().is_bright_enough_to_spawn(pos))`. \
 For `SpawnLight::Any`, omit the light condition. Draw any extra randomness from `ctx.random()`; the darkness test uses the same live stream. \
 To extend an existing entry, pass `None` for both metadata fields and use `Or` or `And`. \
 Without a replacement, the engine evaluates `(original or any Or) and all And`, short-circuiting each list in registration order. Only the last replacement of an existing entry runs if there is one. \

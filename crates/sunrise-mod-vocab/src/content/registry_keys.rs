@@ -494,13 +494,21 @@ fn ordered_slot_is_live(
 }
 
 /// Complete the entity-type registry in the order supplied by the game.
+/// An existing frozen registry must match the accepted resources.
 pub fn resolve_entity_types<'a>(ids: impl IntoIterator<Item = &'a str>) -> Result<(), Vec<String>> {
     let names = crate::parts::requested_keys()
         .entity_types
         .complete(ids, |mod_id, id| {
             format!("mod {mod_id} requested unknown entity type {id}")
         })?;
-    let _ = resolved_entity_types().set(share_names(names));
+    let names = share_names(names);
+    let published = resolved_entity_types().get_or_init(|| names.clone());
+    if *published != names {
+        return Err(vec![
+            "the accepted resources' entity types differ from the frozen entity-type registry"
+                .to_owned(),
+        ]);
+    }
     Ok(())
 }
 

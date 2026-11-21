@@ -283,10 +283,6 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                 &[],
                 &game.options.mods,
             )
-            .or_else(|error| {
-                log::warn!("Sunrise: resource packs not applied: {error}");
-                crate::game::mods::content_root(&game.options.resources, &game.options.mods)
-            })
             .unwrap();
             let mut loaded = load_resources(
                 root,
@@ -1014,7 +1010,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                             root,
                             Instant::now(),
                             None,
-                            Some(game.settings.clone()),
+                            game.settings.clone(),
                             None,
                             Vec::new(),
                             None,

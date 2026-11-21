@@ -12,12 +12,13 @@ use mod_api::__private::{DeclarationKind, DeclarationRefusal, game::*};
 use mod_api::{Answered, DeclarationError, LoadingMessage, RegistrationContext};
 use standalone::collect_standalone_models;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 use sunrise_client::{
     lang,
+    mobs::spawner::SpawnerTypeFacts,
     mod_content::DeclaredContent,
     mod_list::{self, Installed},
 };
@@ -1094,8 +1095,9 @@ mod particle_registry_reload_tests {
 }
 
 /// The content root with everything the mods declare registered against the
-/// process: block entities, mob effects, entity and menu types, fluid looks,
-/// and the protocol's local mod list, each set once.
+/// process: block entities, mob effects, entity templates and menu definitions,
+/// fluid looks, and the protocol's local mod list. Scalar registry keys are
+/// published only after the gameplay loader chooses its resource generation.
 pub(in crate::game) fn content_root(
     root: &std::path::Path,
     sources: &ModsState,
@@ -1156,7 +1158,6 @@ pub(in crate::game) fn content_root(
     })?;
     register_entity_types(&overlay.mods);
     register_menu_types(&overlay.mods)?;
-    register_iterated_registries(overlay.root.prepared())?;
     sunrise_client::mod_content::set_fluid_looks(&overlay.mods);
     sunrise_client::mod_content::set_fluid_interactions(&overlay.mods);
     // Freeze ownership with the startup registries, before preparing Parts. Pack and data
@@ -1171,24 +1172,31 @@ pub(in crate::game) fn content_root(
     Ok(overlay.root)
 }
 
-/// Publish the registry orders mods iterate. The report includes built-in
-/// and content names in protocol order; native general types come after them
-/// in the public entity-type registry, not in the protocol ID table.
+/// Publish the registry orders mods iterate from the accepted gameplay root.
+/// Read spawn facts for those same entity keys before publishing any of them.
+/// Native general types follow the prepared types in API order, not in the
+/// protocol ID table; their facts come from the same frozen general catalog.
 pub(in crate::game) fn register_iterated_registries(
-    root: &std::path::Path,
-) -> sunrise_client::Result<()> {
+    root: &Path,
+) -> sunrise_client::Result<HashMap<String, SpawnerTypeFacts>> {
     use sunrise_protocol::registry::Builtin;
-    let path = Builtin::find(root).ok_or("registries.json not found")?;
-    let builtin = Builtin::load(&path)?;
-    if let Some(ids) = builtin.get("minecraft:entity_type") {
-        mod_api::__private::resolve_entity_types(
-            ids.names
-                .iter()
-                .map(String::as_str)
-                .chain(super::general::general_type_catalog().keys()),
-        )
-        .map_err(|errors| errors.join("\n"))?;
+    let builtin = Builtin::load(&root.join("registries.json"))?;
+    let ids = &builtin
+        .get("minecraft:entity_type")
+        .ok_or("missing entity type registry")?
+        .names;
+    let prepared = ids.iter().map(String::as_str).filter(|id| !id.is_empty());
+    let general = super::general::general_type_catalog();
+    let mut spawner_types = SpawnerTypeFacts::load_registered(root, prepared.clone())?;
+    for slot in 0..general.len() {
+        let (width, height) = general.dimensions(slot);
+        spawner_types.insert(
+            general.key(slot).to_owned(),
+            SpawnerTypeFacts::general_entity(width, height),
+        );
     }
+    mod_api::__private::resolve_entity_types(prepared.chain(general.keys()))
+        .map_err(|errors| errors.join("\n"))?;
     if let Some(ids) = builtin.get("minecraft:game_event") {
         mod_api::__private::resolve_game_events(ids.names.iter().map(String::as_str))
             .map_err(|errors| errors.join("\n"))?;
@@ -1197,7 +1205,7 @@ pub(in crate::game) fn register_iterated_registries(
         mod_api::__private::resolve_menus(ids.names.iter().map(String::as_str))
             .map_err(|errors| errors.join("\n"))?;
     }
-    Ok(())
+    Ok(spawner_types)
 }
 
 fn register_block_entity_types(
@@ -2109,6 +2117,48 @@ pub(super) fn register_enchantment_damage_effects() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn entity_registry_and_spawner_facts_cannot_publish_different_generations() {
+        use super::register_iterated_registries;
+        use std::fs;
+
+        mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
+        let first = tempfile::tempdir().unwrap();
+        let next = tempfile::tempdir().unwrap();
+        for (root, entity) in [
+            (first.path(), "minecraft:arrow"),
+            (next.path(), "minecraft:egg"),
+        ] {
+            fs::write(
+                root.join("registries.json"),
+                format!(
+                    r#"{{"minecraft:entity_type":{{"entries":{{"{entity}":{{"protocol_id":0}}}}}}}}"#
+                ),
+            )
+            .unwrap();
+            fs::write(
+                root.join("entity-types.json"),
+                format!(r#"{{"{entity}":{{"category":"misc","width":0.25,"height":0.25}}}}"#),
+            )
+            .unwrap();
+        }
+
+        let facts = register_iterated_registries(first.path()).unwrap();
+        assert!(facts.contains_key("minecraft:arrow"));
+        let arrow = mod_api::__private::resolved_entity_type_key("minecraft:arrow").unwrap();
+        // The new reports are internally consistent. They still must not replace the
+        // spawner facts while the API continues to expose the old registry's keys.
+        let Err(error) = register_iterated_registries(next.path()) else {
+            panic!("published a second set of spawner facts against the frozen entity keys");
+        };
+        assert!(error.to_string().contains("frozen entity-type registry"));
+        assert_eq!(
+            mod_api::__private::resolved_entity_type_key("minecraft:arrow"),
+            Some(arrow)
+        );
+        assert!(mod_api::__private::resolved_entity_type_key("minecraft:egg").is_none());
+    }
+
     /// A mod's live-switch verdict is read once per version of the mod: a later look finds
     /// it without reading the files again, a `--dev-mod` is always read, and the mod
     /// replaced (a new modification time) is read again.

@@ -13,7 +13,8 @@ Use spawn hooks to accept or reject a spawn, edit a mob before finalization, or 
 
 Use `Registrar::register_spawn_placement` in `Hooks::register` (NeoForge's
 `RegisterSpawnPlacementsEvent.register`). Request the entity's fully qualified registry key
-with `r.entity_type_key`. It can name your own type, a vanilla type, or a type from another mod.
+with `r.entity_type_key`. Entries are keyed by registered entity type, including the Ender Dragon
+and non-mob types such as arrows. Registering a predicate does not create a new spawn path.
 This example registers a ghoul that spawns on blocks in a ground tag, in biomes in a biome tag,
 and in the dark (except at a trial spawner):
 
@@ -32,7 +33,7 @@ fn predicate(
 ) -> bool {
     ctx.level().block_in_tag(pos.offset(0, -1, 0), "mymod:ghoul_ground")
         && ctx.level().biome_in_tag(pos, "mymod:haunted")
-        && (reason == SpawnReason::TrialSpawner || ctx.is_dark_enough_to_spawn())
+        && (reason == SpawnReason::TrialSpawner || ctx.is_dark_enough_to_spawn(pos))
 }
 
 // In Hooks::register:
@@ -68,19 +69,27 @@ Level reads never load chunks or write to the world. Use namespaced block and bi
 `reason == SpawnReason::TrialSpawner` first, as above. For a brightness condition, use
 `ctx.level().is_bright_enough_to_spawn(pos)` in place of the darkness test. To allow any light
 level, omit the light test. Draw any additional randomness from `ctx.random()`. The darkness
-helper also draws from that stream. Short-circuited predicates don't draw. Each predicate runs as
-the mod that registered it. A disabled or refused replacement supplies `false` to the placement
-check hook; the original predicate never runs in its place. A panic disables only that predicate
-for the session. Draws already made are not rolled back. Registered predicates run only where
-vanilla uses `SpawnPlacements.checkSpawnRules`; patrols and village sieges call their built-in
-predicates directly instead.
+helper also draws from that stream. Short-circuited predicates don't draw. Returning `false`
+or refusing the spawn later does not rewind any draws. Each predicate runs as the mod that
+registered it. If a predicate panics, the game rolls back only that call's draws, disables that
+predicate for the session, and names its mod in the log and client error toast. A disabled or
+refused replacement supplies `false` to the placement check hook without rerunning the original.
+
+Registered predicates run only where vanilla uses `SpawnPlacements.checkSpawnRules`;
+patrols and village sieges call their built-in predicates directly instead. Spawners and trial
+spawners check the resolved type, including non-mobs, before attempting to create an entity.
+Ordinary spawners with custom spawn rules skip the placement check; trial spawners check
+their custom rules afterward.
 
 An unavailable key both returns `SpawnPlacementError::InvalidEntityType` and records a startup
 refusal, so ignoring the returned error does not hide it. A type missing at resource load or
-invalid placement/heightmap options refuse resource loading with the mod and type named. If mods
-register predicates, the prepared resources must include vanilla's spawn placement data.
-Registration is native and in-process: `SpawnPlacementType` and `SpawnPlacementError` no longer
-have Wire encodings.
+invalid placement/heightmap options refuse resource loading with the mod and type named. Sunrise
+resolves entity keys from the accepted gameplay resources, not a provisional pack load.
+Recovery from a failed client pack load clears the optional pack selection without removing
+registered mod entity types or changing their spawn facts. Each prepared type must have a
+category and dimensions in the accepted gameplay resources. Missing or malformed facts fail
+loading and name the affected type instead of treating it as unknown when a spawner ticks.
+If mods register predicates, the prepared resources must include vanilla's spawn placement data.
 
 ## Saved display and utility entities
 

@@ -47,8 +47,10 @@ pub enum PackPosition {
 /// reload read the same logical directory without extracting it.
 ///
 /// The repository id is `mod/<location>`. Optional packs remain unselected until
-/// the player selects them. Always-active packs cannot be disabled; `position`
-/// determines their default priority (later resource layers win).
+/// the player selects them. Startup recovery does not clear a newer selection
+/// the player committed while a client resource load was in progress.
+/// Always-active packs cannot be disabled; `position` determines their default
+/// priority (later resource layers win).
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -61,7 +63,8 @@ pub struct PackRegistration {
     pub title: Text,
     /// The pack's source label and experiment classification.
     pub source: PackSource,
-    /// Require this pack in every selection, preventing it from being disabled.
+    /// Require this pack in every selection, including recovery from a failed client resource
+    /// pack load. Reordering required packs alone does not trigger recovery.
     pub always_active: bool,
     /// The default insertion position of an always-active pack.
     pub position: PackPosition,
