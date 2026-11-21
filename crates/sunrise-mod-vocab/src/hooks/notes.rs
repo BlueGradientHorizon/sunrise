@@ -1405,12 +1405,13 @@ The hook runs during clicks, drags and shift-clicks with the read-only `Host` on
 `AbstractContainerMenu.quickMoveStack`, the method a Java menu overrides to say where a shift-clicked stack goes. It is
 asked on the server before the game's own routing, for the mod block entity at `pos` whose menu a player shift-clicked
 with the left or right button, on a vanilla menu type (`minecraft:generic_9x1`...) or on the mod's own menu type. `slot`
-is the menu's index: below `container_slots` the block's own slot (`entity.items[slot]`), from there the player's
-inventory, its 27 main slots, then the hotbar. `stack` is a copy of what that slot holds. Take what you move out of
-`stack` (into `entity.items`, or into another block through its `ITEMS` capability) and set `handled`: the slot holds what
-is left of `stack` (whatever you wrote to that slot of `entity.items`), the game's routing is skipped, and the player's
-client gets the whole menu again. Unhandled, `entity.items` goes back to what it held and the game moves the stack as
-for any container; a later mod sees what an earlier one did to `stack`. If the mod removes its own block, the menu
+is the menu's index: below `container_slots` a container slot (its own, linked, or the crafting result), from there the
+player's inventory, its 27 main slots, then the hotbar. The live menu asks `Slot.mayPickup` first, then passes a copy of
+what that slot holds as `stack`. Take what you move out of `stack` and set `handled`: the same source keeps the remainder
+(`None` empties it) and the player's client gets the whole menu again. For a linked slot or result this does not replace
+an `entity.items` entry; the handler is responsible for consuming crafting inputs when it handles a result. Unhandled,
+listener writes are undone and the same menu moves the stack without a second pickup check; a later mod sees what an
+earlier one did to `stack`. If the mod removes its own block, the menu
 closes and the player's inventory is sent again. This is how a storage terminal
 whose items live in other blocks, or a screen that hides the container's slots, takes a shift-click from the
 inventory, and how a machine sends fuel to its fuel slot and ores to its input.
@@ -2648,7 +2649,7 @@ registration path.
 
 - The time players wake at after sleeping, as NeoForge's `SleepFinishedTimeEvent`: `sleep_finished_time(dimension, current, new_time, adjustment)` runs on the server once enough players have slept and the `advance_time` rule is on, before the clock moves. `adjustment` (a `ClockAdjustment`: `Absolute`, `Relative` or `Marker`, starting as vanilla's `wake_up_from_sleep` marker) says where the clock goes and a mod may change it; `new_time` is the vanilla morning, read only. A time before `current`, or an undefined marker, is refused. `time_skip` then hears the jump to the chosen time.
 
-- A shift-click in a mod container's menu routed by the mod, `AbstractContainerMenu.quickMoveStack`: `menu_quick_move(pos, entity, container_slots, slot, stack, handled)` runs on the server before the game's own routing, for a mod container on a vanilla menu type or its own menu type. The mod takes what it moves out of `stack` and sets `handled`; the slot keeps the rest and the client gets the menu again.
+- A shift-click in a mod container's menu routed by the mod, `AbstractContainerMenu.quickMoveStack`: `menu_quick_move(pos, entity, container_slots, slot, stack, handled)` runs on the server before the game's own routing, for a mod container on a vanilla menu type or its own menu type. After the live slot allows pickup, the mod takes what it moves out of `stack` and sets `handled`; that same source (including a linked slot or a shown crafting result) keeps the rest and the client gets the menu again.
 
 
 - A server player's or fox's `teleport_randomly` consume effect (chorus fruit) is about to try a spot: version 2 of `item_consumption_teleport(consumer, consumed, from, target, cancel)`, once per attempt (up to 16). `consumer` is the living actor's handle and `consumed` is the public API stack captured before the use, with its count, damage and component patch, rather than the current contents of the hand. The living handle replaces version 1's player-only UUID/name fields; players retain their acting-player context. A mod may move `target`; the game still looks down from it for ground to land on. `cancel` ends the effect with no teleport and no more attempts, not consumption. A fox's callback runs with the full server host before its living AI/movement and before the next mob ticks; listener changes to its mouth item, position or eligibility invalidate the captured decision rather than being overwritten.

@@ -4,10 +4,7 @@
 //! asked, and nothing is converted for it.
 use super::*;
 use crate::game::api_values::TryIntoApi;
-use sunrise_client::{
-    containers::ModMenuType,
-    menu::{Kind, Menu, SlotContext, SlotRules},
-};
+use sunrise_client::menu::{SlotContext, SlotRules};
 
 impl SlotRules for Game<'_> {
     fn listens(&self, menu: &str) -> bool {
@@ -68,33 +65,5 @@ impl SlotRules for Game<'_> {
                 "menu_slot_rules: a listener failed for {menu} slot {slot}; the slot's own answers stand"
             ),
         }
-    }
-}
-
-impl Game<'_> {
-    /// `Slot.mayPickup` of slot `slot` (the menu's index) of mod menu type `menu` while it holds
-    /// `stack`, as the click itself answers it: the slot's own answer, then the parts' `may_pickup`.
-    /// For the server's own steps that run before the click, as `menu_quick_move` does.
-    pub(super) fn mod_menu_slot_gives(
-        &self,
-        menu: &'static ModMenuType,
-        slot: usize,
-        stack: &ItemStack,
-        pos: [i32; 3],
-        items: &[Option<ItemStack>],
-    ) -> bool {
-        let mut view = Menu::new(Kind::Mod(menu));
-        view.set_registry_id(Some(menu.id));
-        view.set_block_pos(Some(pos));
-        view.load_container(&self.menu_env(), items);
-        for (i, held) in self.inventory.iter().enumerate() {
-            view.set_player_item(i, held.clone());
-        }
-        for (i, held) in self.armor.iter().enumerate() {
-            view.set_player_item(39 - i, held.clone());
-        }
-        view.set_player_item(40, self.offhand.clone());
-        view.load_slot(slot, Some(stack.clone()));
-        view.may_pickup(&self.menu_env(), slot)
     }
 }

@@ -421,6 +421,7 @@ enum KeptEquipment {
 struct KeptMenus {
     craft_grid: [Option<ItemStack>; 4],
     native_menu: Vec<Option<ItemStack>>,
+    mod_craft: Option<(i32, Option<sunrise_client::lan::menu::ModCraft>)>,
 }
 
 /// What a write tells the world, at the root commit.
@@ -1314,6 +1315,11 @@ impl Game<'_> {
         let kept = KeptMenus {
             craft_grid: g.craft_grid.clone(),
             native_menu: g.native_menu.clone(),
+            mod_craft: g
+                .menu
+                .as_ref()
+                .filter(|menu| menu.mod_type.is_some_and(|t| t.crafting.is_some()))
+                .map(|menu| (menu.window, menu.craft.clone())),
         };
         if let Some(level) = self.transactions.last_mut() {
             level.menus.insert(conn, kept);
@@ -1966,6 +1972,11 @@ impl Game<'_> {
                 if let Some(kept) = level.menus.get(&g.conn).filter(|_| g.placed) {
                     g.craft_grid.clone_from(&kept.craft_grid);
                     g.native_menu.clone_from(&kept.native_menu);
+                    if let Some((window, craft)) = &kept.mod_craft
+                        && let Some(open) = g.menu.as_mut().filter(|open| open.window == *window)
+                    {
+                        open.craft.clone_from(craft);
+                    }
                 }
             });
         }

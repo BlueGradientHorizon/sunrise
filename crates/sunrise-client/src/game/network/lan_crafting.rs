@@ -260,31 +260,11 @@ impl Game<'_> {
         // `ArmorSlot.mayPlace` asks the parts with the game as `Host`: the menu is the guest's own.
         let parts = self.menu_can_equip();
         let env = Env {
-            crafting_remainder: Some(self),
-            player: Some(host.hub.guests[gi].uuid),
-            player_entity_id: Some(host.hub.guests[gi].entity_id),
-            loop_context: &self.loop_context,
             maps: maps.as_ref().map(|m| m as &dyn sunrise_client::menu::Maps),
-            limited_crafting: host.hub.limited_crafting,
             can_equip: Some(&parts),
-            known_recipes: Some(&host.hub.guests[gi].recipe_book),
             stacked,
-            ..self.menu_env()
+            ..self.load_guest_menu(menu, host, gi)
         };
-        let limits = host.hub.guests[gi]
-            .menu
-            .as_ref()
-            .map(|opened| opened.slots.stack_limits(&self.world, opened.size))
-            .unwrap_or_default();
-        menu.set_container_limits(limits);
-        menu.set_block_pos(
-            host.hub.guests[gi]
-                .menu
-                .as_ref()
-                .and_then(|opened| opened.pos)
-                .map(|(x, y, z)| [x, y, z]),
-        );
-        load_player(menu, &host.hub.guests[gi]);
         menu.brewed_potion_hook = !mod_api::__private::mods().is_empty();
         menu.item_smelted_hook = menu.brewed_potion_hook;
         let result = op(menu, &env);
@@ -298,6 +278,33 @@ impl Game<'_> {
             .guests
             .update(gi, |guest| store_player(menu, guest));
         Some(result)
+    }
+
+    /// Load the player and slot context for the menu's live queries, without storing any edits.
+    fn load_guest_menu<'a>(
+        &'a self,
+        menu: &mut Menu,
+        host: &'a super::lan::LanHost,
+        gi: usize,
+    ) -> Env<'a> {
+        let guest = &host.hub.guests[gi];
+        let open = guest.menu.as_ref();
+        let limits = open
+            .map(|opened| opened.slots.stack_limits(&self.world, opened.size))
+            .unwrap_or_default();
+        menu.set_container_limits(limits);
+        menu.set_block_pos(
+            open.and_then(|opened| opened.pos)
+                .map(|(x, y, z)| [x, y, z]),
+        );
+        load_player(menu, guest);
+        Env {
+            player: Some(guest.uuid),
+            player_entity_id: Some(guest.entity_id),
+            limited_crafting: host.hub.limited_crafting,
+            known_recipes: Some(&guest.recipe_book),
+            ..self.menu_env()
+        }
     }
 
     pub(in crate::game) fn publish_guest_menu_effects(
@@ -466,15 +473,6 @@ impl Game<'_> {
     /// blaze powder slots) or a content mod's menu type (`Kind::Mod`) over the
     /// block entity's slots. False for other windows.
     pub(super) fn lan_machine_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
-        self.lan_machine_click_checked(conn, p, false)
-    }
-
-    pub(in crate::game) fn lan_machine_click_checked(
-        &mut self,
-        conn: u32,
-        p: &play::ContainerClick,
-        pickup_checked: bool,
-    ) -> bool {
         let Some(host) = self.lan.as_mut() else {
             return false;
         };
@@ -521,6 +519,11 @@ impl Game<'_> {
         };
         let heard = matches!((kind, entity), (Kind::Mod(_), BlockEntity::Mod(entity))
             if mod_api::__private::block_entity_type_listens(mod_api::HookId::MenuSlotTake, entity.id()));
+        let click = super::lan_pickup::click_of(p);
+        let native_quick_move = click.2 == Input::QuickMove
+            && (0..=1).contains(&click.1)
+            && matches!((kind, entity), (Kind::Mod(_), BlockEntity::Mod(entity))
+                if mod_api::__private::block_entity_type_listens(mod_api::HookId::MenuQuickMove, entity.id()));
         let overlay_links = |world: &sunrise_client::world::World,
                              items: &mut [Option<ItemStack>]| {
             if let Some((l, links)) = &linked {
@@ -581,6 +584,30 @@ impl Game<'_> {
                 }
                 menu.data[9] = i32::from(triggered);
             }
+        };
+        let pickup_checked = if native_quick_move
+            && !menu.quick_crafting()
+            && let Ok(slot) = usize::try_from(click.0)
+            && slot < menu.slot_count()
+        {
+            let env = self.load_guest_menu(&mut menu, self.lan.as_ref().unwrap(), gi);
+            prepare(&mut menu, &env);
+            if !menu.may_pickup(&env, slot) {
+                // The source refused before quickMoveStack. Correct the client's prediction.
+                if let Some(host) = self.lan.as_mut() {
+                    *host.menus.entry(conn).or_default().crafting.machine =
+                        Some((p.container, menu));
+                    host.hub.inventory_clicked(conn, p, &self.world, &[]);
+                }
+                return true;
+            }
+            if self.lan_mod_quick_move(conn, p, Some(&menu)) {
+                return true;
+            }
+            // An unhandled override leaves this very menu at the start of quickMoveStack.
+            true
+        } else {
+            false
         };
         // The write-back to the block's storage and its effects: inside the click's decision, so
         // an outer abort restores them with the cursor and the slots.
@@ -677,7 +704,6 @@ impl Game<'_> {
                 }
             }
         };
-        let click = super::lan_pickup::click_of(p);
         if heard {
             let host = self.lan.as_ref().unwrap();
             let before: Vec<_> = (0..menu.slot_count())
@@ -730,10 +756,12 @@ impl Game<'_> {
                     |game, menu, stacked| {
                         let (mut previous, mut rest) =
                             game.guest_menu_edit(gi, menu, stacked, |menu, env| {
-                                prepare(menu, env);
+                                if !pickup_checked {
+                                    prepare(menu, env);
+                                }
                                 menu.track_takes(true);
                                 let before = menu.container_items();
-                                let rest = if pickup_checked && click.2 == Input::QuickMove {
+                                let rest = if pickup_checked {
                                     menu.start_checked_quick_move(env, click.0, click.1)
                                 } else {
                                     menu.start_click(env, click.0, click.1, click.2)
@@ -841,11 +869,13 @@ impl Game<'_> {
             Some(click),
             Some(&prepare),
             |menu, env| {
-                prepare(menu, env);
+                if !pickup_checked {
+                    prepare(menu, env);
+                }
                 let before: Vec<_> = (0..menu.slot_count())
                     .map(|s| menu.slot(s).cloned())
                     .collect();
-                if pickup_checked && click.2 == Input::QuickMove {
+                if pickup_checked {
                     let _ = menu.start_checked_quick_move(env, click.0, click.1);
                 } else {
                     let _ = menu.click(env, click.0, click.1, click.2);

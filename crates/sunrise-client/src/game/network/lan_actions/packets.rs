@@ -659,7 +659,7 @@ impl Game<'_> {
                 }
             }
             // AbstractContainerMenu.quickMoveStack of a mod container: the mods first.
-            S::ContainerClick(p) if self.lan_mod_quick_move(conn, &p) => {}
+            S::ContainerClick(p) if self.lan_mod_quick_move(conn, &p, None) => {}
             S::ContainerClick(p) if self.lan_merchant_click(conn, &p) => {}
             S::ContainerClick(p) if self.lan_inventory_click(conn, &p) => {}
             S::ContainerClick(p) if self.lan_crafting_click(conn, &p) => {}
