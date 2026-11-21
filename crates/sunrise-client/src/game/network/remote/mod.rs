@@ -1013,7 +1013,7 @@ impl Game<'_> {
             }
             // A mod menu type's opening context, just before its OpenScreen.
             C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::CHANNEL => {
-                self.receive_menu_extra(&p.data);
+                self.receive_menu_extra(&p.data)?;
             }
             C::CustomPayload(p) if sunrise_client::lan::recipes::viewer_channel(&p.channel) => {
                 self.remote_recipe_viewer(&p.channel, &p.data);
@@ -1284,7 +1284,7 @@ impl Game<'_> {
             C::ShowDialog(p) => self.show_play_dialog(&p.dialog),
             C::ClearDialog(_) => self.clear_dialog(),
             // ClientPacketListener.handleLowDiskSpaceWarning.
-            C::LowDiskSpaceWarning(_) => sunrise_client::chunk_io::report_low_disk_space(),
+            C::LowDiskSpaceWarning(_) => self.client_reports.report_low_disk_space(),
             C::ClearTitles(p) => self.apply_clear_titles_packet(p),
             _ => {}
         }

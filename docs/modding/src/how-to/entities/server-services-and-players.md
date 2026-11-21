@@ -265,7 +265,7 @@ refused on write with `Err(Stack(StackWriteError))`.
 
 Persistent data is for ports; new mods should use attachments. It is saved with the player, never sent to clients, and raises no notification. On death respawn and the first exit from the End, only the `PlayerPersisted` key is carried over, whatever its tag type; dimension changes, later End exits and teleports keep all keys.
 
-A key edit refuses without writing on `Stale`, `Client` or `Dead`, and returns `TooDeep` if the new value would nest a list or compound at file depth 512 or more (including mixed-list wrappers). `InvalidNbt` means the entry has an `End` value, a key or string that does not fit the save's modified UTF-8 field, or a collection too long for the save's count field.
+A key edit refuses without writing on `Stale` or `Client` (dead online players accept edits, matching NeoForge's `Entity.getPersistentData()` and `ServerPlayer.restoreFrom()`), and returns `TooDeep` if the new value would nest a list or compound at file depth 512 or more (including mixed-list wrappers). `InvalidNbt` means the entry has an `End` value, a key or string that does not fit the save's modified UTF-8 field, or a collection too long for the save's count field.
 
 Player inventory writes use vanilla numbers: 0 to 35 main (0 to 8 hotbar),
 36 to 39 armour feet to head, 40 offhand, 41 body, 42 saddle.

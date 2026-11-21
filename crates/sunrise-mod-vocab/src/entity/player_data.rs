@@ -37,6 +37,9 @@ impl crate::NoBackend for PlayerDataRefusal {
 }
 
 /// Why [`crate::PlayerRef::set_persistent_data_key`] wrote nothing.
+///
+/// Living and dead online players on the server both accept persistent data writes,
+/// matching NeoForge's `Entity.getPersistentData()` and `ServerPlayer.restoreFrom()`.
 // no wire: reports an in-process edit to the active player's saved data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -45,8 +48,6 @@ pub enum PlayerPersistentDataError {
     Stale,
     /// The call was made on a client; this edit is the server's.
     Client,
-    /// The player is dead; the new player a respawn makes is the one to edit.
-    Dead,
     /// The value would nest a list or compound at depth 512 or more in the player file.
     TooDeep,
     /// The entry contains an NBT `End` value, a string or key exceeding the file's modified

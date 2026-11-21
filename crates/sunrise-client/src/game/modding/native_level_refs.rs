@@ -2033,66 +2033,6 @@ mod tests {
         });
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn child_frame_merges_level_randoms_by_owner() {
-        use sunrise_core::random::{LegacyRandom, RandomSource};
-
-        with_game(|game| {
-            let here = game.dim;
-            let other = if here == Dim::Nether {
-                Dim::End
-            } else {
-                Dim::Nether
-            };
-            game.enter_level(other).unwrap();
-            let parked = game.level(other.id()).unwrap();
-            game.enter_level(here).unwrap();
-            let active = game.level(here.id()).unwrap();
-
-            let with_cached_gaussian = |seed| {
-                let mut random = LegacyRandom::new(seed);
-                random.next_gaussian();
-                random
-            };
-            let active_before = with_cached_gaussian(13);
-            let parked_before = with_cached_gaussian(17);
-            *game.world.random = active_before.clone();
-            *game.levels.parked_world_mut_of(other.id()).unwrap().random = parked_before.clone();
-
-            let outer = game.transaction_open();
-            parked
-                .with_random(game, |random| random.next_gaussian())
-                .unwrap();
-
-            // Simulate a nested operation with a different level temporarily in place.
-            game.enter_level(other).unwrap();
-            let child = game.transaction_open();
-            parked
-                .with_random(game, |random| random.next_long())
-                .unwrap();
-            active
-                .with_random(game, |random| random.next_gaussian())
-                .unwrap();
-            game.transaction_close(&child, true);
-            game.enter_level(here).unwrap();
-
-            active
-                .with_random(game, |random| random.next_long())
-                .unwrap();
-            game.transaction_close(&outer, false);
-            for (level, mut expected) in [(active, active_before), (parked, parked_before)] {
-                assert_eq!(
-                    level.with_random(game, |random| (
-                        random.next_long(),
-                        random.next_gaussian().to_bits()
-                    )),
-                    Some((expected.next_long(), expected.next_gaussian().to_bits())),
-                );
-            }
-        });
-    }
-
     fn level_random_state(random: &sunrise_core::random::LegacyRandom) -> (u64, Option<u64>) {
         let (seed, gaussian) = <(u64, Option<f64>)>::from(random);
         (seed, gaussian.map(f64::to_bits))
@@ -2100,39 +2040,11 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_level_rng_unwind_restores_seed_and_cached_gaussian() {
-        use std::panic::{AssertUnwindSafe, catch_unwind, panic_any};
-        use sunrise_core::random::{LegacyRandom, RandomSource};
-
-        with_game(|game| {
-            let level = game.level(game.dim.id()).unwrap();
-            let mut expected = LegacyRandom::new(29);
-            expected.next_gaussian();
-            let before = level_random_state(&expected);
-            *game.world.random = expected.clone();
-
-            let cached = expected.next_gaussian().to_bits();
-            let next = expected.next_long();
-            let payload = 0x16_u32;
-            let panic = catch_unwind(AssertUnwindSafe(|| {
-                let _ = level.with_random::<()>(game, |rng| {
-                    assert_eq!(rng.next_gaussian().to_bits(), cached);
-                    assert_eq!(rng.next_long(), next);
-                    panic_any(payload);
-                });
-            }))
-            .unwrap_err();
-
-            assert_eq!(panic.downcast_ref::<u32>(), Some(&payload));
-            assert_eq!(level_random_state(&game.world.random), before);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_level_rng_nested_transactions_restore_each_levels_stream() {
+    fn a_level_rng_draws_survive_transaction_abort_on_active_and_parked_levels() {
         use crate::game::journal_level_write::JournalLevelWrite;
-        use sunrise_core::random::{LegacyRandom, RandomSource};
+        use mod_api::ObjectiveRenderType;
+        use sunrise_client::text::Text;
+        use sunrise_core::random::{LegacyRandom, LevelRandom, RandomSource};
 
         with_game(|game| {
             let here = game.dim;
@@ -2150,12 +2062,9 @@ mod tests {
             let mut expected_parked = LegacyRandom::new(47);
             expected_active.next_gaussian();
             expected_parked.next_gaussian();
-            let initial = [
-                level_random_state(&expected_active),
-                level_random_state(&expected_parked),
-            ];
-            *game.world.random = expected_active.clone();
-            *game.levels.parked_world_mut_of(other.id()).unwrap().random = expected_parked.clone();
+            game.world.random = LevelRandom::for_level(expected_active.clone());
+            game.levels.parked_world_mut_of(other.id()).unwrap().random =
+                LevelRandom::for_level(expected_parked.clone());
             let states = |game: &super::Game<'_>| {
                 [
                     level_random_state(&game.world.random),
@@ -2167,6 +2076,13 @@ mod tests {
             };
 
             let outer = game.transaction_open();
+            game.add_objective(
+                "outer_discarded",
+                "dummy",
+                Text::literal("Outer"),
+                ObjectiveRenderType::Integer,
+            )
+            .unwrap();
             {
                 let mut writer = JournalLevelWrite::new(game, active).unwrap();
                 let host: &mut dyn mod_api::LevelWriteHost = &mut writer;
@@ -2178,20 +2094,15 @@ mod tests {
                     )),
                 );
             }
-            let after_outer = [level_random_state(&expected_active), initial[1]];
-            assert_eq!(states(game), after_outer, "outer draw");
 
             let child = game.transaction_open();
-            active.with_random(game, draw).unwrap();
-            parked.with_random(game, draw).unwrap();
-            let [child_active, child_parked] = states(game);
-            assert_ne!(child_active, after_outer[0]);
-            assert_ne!(child_parked, after_outer[1]);
-            game.transaction_close(&child, false);
-            assert_eq!(states(game), after_outer, "child abort");
-
-            // Only the committing child has a before-image for the parked stream.
-            let child = game.transaction_open();
+            game.add_objective(
+                "child_discarded",
+                "dummy",
+                Text::literal("Child"),
+                ObjectiveRenderType::Integer,
+            )
+            .unwrap();
             for (level, expected) in [
                 (active, &mut expected_active),
                 (parked, &mut expected_parked),
@@ -2201,18 +2112,37 @@ mod tests {
                     Some((expected.next_gaussian().to_bits(), expected.next_long())),
                 );
             }
-            game.transaction_close(&child, true);
+            let advanced = [
+                level_random_state(&expected_active),
+                level_random_state(&expected_parked),
+            ];
+            assert_eq!(states(game), advanced);
+
+            game.transaction_close(&child, false);
+            assert!(game.objective("child_discarded").is_none());
+            assert!(game.objective("outer_discarded").is_some());
             assert_eq!(
                 states(game),
-                [
-                    level_random_state(&expected_active),
-                    level_random_state(&expected_parked),
-                ],
-                "child commit",
+                advanced,
+                "child abort rolls back journaled state without rewinding active or parked RNG"
             );
 
             game.transaction_close(&outer, false);
-            assert_eq!(states(game), initial, "outer abort");
+            assert!(game.objective("outer_discarded").is_none());
+            assert_eq!(
+                states(game),
+                advanced,
+                "outer abort rolls back journaled state without rewinding active or parked RNG"
+            );
+            for (level, expected) in [
+                (active, &mut expected_active),
+                (parked, &mut expected_parked),
+            ] {
+                assert_eq!(
+                    level.with_random(game, draw),
+                    Some((expected.next_gaussian().to_bits(), expected.next_long())),
+                );
+            }
         });
     }
 

@@ -425,7 +425,7 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                         [("addon:hot".into(), vec!["addon:remote".into()])].into(),
                     )
                     .unwrap();
-                let server_set = mod_api::DatapackRegistrySet::first(candidate, 900);
+                let server_set = mod_api::DatapackRegistrySet::from_candidate(candidate);
                 // A same-process server snapshot is deliberately present on the client Game too.
                 game.mods.datapack_registries = Some(Arc::new(server_set.clone()));
                 sunrise_client::datapack_net::serve(Some(Arc::new(server_set)));

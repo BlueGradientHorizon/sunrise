@@ -11,7 +11,7 @@ use std::{
 use sunrise_client::{
     Result,
     confirm_screen::Confirm,
-    hud::{HudAtlas, HudBatch},
+    hud::{HudAtlas, HudBatch, rgba},
     multiplayer, packs,
     scoreboard::{comp_text, tag_to_json},
     server_packs::{Prompt, ServerPacks, action, download, parse_sha1, valid_url},
@@ -74,6 +74,7 @@ impl ServerPackState {
             .filter_map(|n| n.toast.as_ref())
             .chain(self.load_fail.as_ref())
             .chain(self.chunk_io.iter().flatten())
+            .chain(self.server_errors.iter().flatten())
             .chain(self.mod_audio_errors.iter().flatten())
             .filter_map(|t| t.slot)
     }
@@ -99,6 +100,8 @@ pub(super) struct ServerPackState {
     /// `SystemToastId.LOW_DISK_SPACE`, `CHUNK_LOAD_FAILURE` and `CHUNK_SAVE_FAILURE`:
     /// the toasts the integrated server's chunk IO reports add (`chunk_io`).
     pub(super) chunk_io: [Option<SystemToast>; 3],
+    /// Error reports the integrated server delivered to the window.
+    server_errors: Vec<Option<SystemToast>>,
     /// Pull callback failures to show, one toast per panic.
     mod_audio_errors: Vec<Option<SystemToast>>,
 }
@@ -504,11 +507,11 @@ impl Game<'_> {
         layout.declare_no();
         layout.draw(batch, atlas, self.cursor, [&yes, &no]);
     }
-    /// `IntegratedServer.reportChunkLoadFailure` and the like: what the server
-    /// thread reported since the last frame, each in `SystemToast.addOrUpdate`
-    /// (a toast still shown is reset, else a new one).
-    fn add_chunk_io_toasts(&mut self) {
-        let pending = sunrise_client::chunk_io::take();
+
+    /// Admit new server reports in the receiving window. `SystemToast.addOrUpdate`
+    /// resets an existing chunk toast instead of admitting a second one.
+    fn add_server_report_toasts(&mut self) {
+        let pending = self.client_reports.take();
         let toasts = [
             pending
                 .low_disk_space
@@ -528,6 +531,19 @@ impl Game<'_> {
                 self.server_packs.chunk_io[index] = self.add_system_toast(new);
             }
         }
+        for mod_id in pending.scheduled_task_failures {
+            let notice = SystemToast::new(
+                Text::tr("sunrise.mods.scheduled_task_error.title", &[]),
+                Some(Text::tr(
+                    "sunrise.mods.scheduled_task_error.message",
+                    &[&mod_id],
+                )),
+            )
+            .with_title_color(rgba(255, 85, 85, 255));
+            if let Some(toast) = self.add_system_toast(notice) {
+                self.server_packs.server_errors.push(Some(toast));
+            }
+        }
     }
 
     /// System toasts, each in a free 32-pixel slot of the `ToastManager`.
@@ -539,7 +555,7 @@ impl Game<'_> {
         gui_canceled: bool,
     ) {
         let multiplier = self.settings.notification_display_time;
-        self.add_chunk_io_toasts();
+        self.add_server_report_toasts();
         // A mod cannot veto the notice reporting its failed callback.
         self.server_packs
             .mod_audio_errors
@@ -558,6 +574,7 @@ impl Game<'_> {
             .map(|n| &mut n.toast)
             .chain(std::iter::once(&mut packs.load_fail))
             .chain(packs.chunk_io.iter_mut())
+            .chain(packs.server_errors.iter_mut())
             .map(|toast| (toast, hidden || gui_canceled))
             .chain(
                 packs
@@ -590,6 +607,7 @@ impl Game<'_> {
                 toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
             }
         }
+        packs.server_errors.retain(Option::is_some);
         packs.mod_audio_errors.retain(Option::is_some);
         self.draw_controller_notice(batch);
     }
@@ -706,6 +724,160 @@ mod tests {
                 });
             },
         );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn closing_save_reports_reach_the_title_in_the_owning_window() {
+        use crate::game::{
+            integrated::{Integrated, Serving},
+            native_entity_refs::tests::with_client_game,
+        };
+        use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
+
+        struct Listener;
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                use mod_api::text::TextContent::Translatable;
+
+                if let Translatable { key, .. } = &event.title.content
+                    && key == "chunk.toast.saveFailure"
+                {
+                    assert_eq!(event.kind, ToastKind::System);
+                    *event.description = Some(mod_api::Text::literal("Reported on title"));
+                }
+                Flow::Continue
+            }
+        }
+
+        let mods = vec![ModEntry::new("chunk_report_probe", Box::new(Listener))];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_client_game(|window| {
+                let serving = Serving::fixture_with_reports(0, window.client_reports.clone());
+                window.integrated = Some(Integrated::fixture_for(&serving));
+                window.begin_closing_save(false).unwrap();
+                assert!(window.pending_save.is_some());
+                let dir = tempfile::tempdir().unwrap();
+                serving
+                    .reports()
+                    .report_save_failure(dir.path(), 10, -7, &"region write failed");
+                drop(serving);
+
+                assert!(!window.poll_closing_save().unwrap());
+                assert!(window.integrated.is_none());
+                assert!(window.title.is_some());
+                assert!(window.server_packs.chunk_io[2].is_none());
+                let mut batch = HudBatch::scratch([640, 480]);
+                window.draw_pack_toasts(&mut batch, true, false);
+                let toast = window.server_packs.chunk_io[2].as_ref().unwrap();
+                assert_eq!(
+                    toast.title.translation_key(),
+                    Some("chunk.toast.saveFailure")
+                );
+                assert_eq!(toast.title.component()["with"][0]["text"], "[10, -7]");
+                assert_eq!(toast.message.as_ref().unwrap().plain(), "Reported on title");
+                assert!(toast.slot.is_some());
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn scheduled_task_error_toasts_are_admitted_by_the_owning_client() {
+        use crate::game::{
+            integrated::{Integrated, Serving},
+            native_entity_refs::tests::{with_client_game, with_game},
+        };
+        use mod_api::{ClientHost, Flow, Hooks, ModEntry, ServerHost, ToastAddEvent, ToastKind};
+        use std::sync::{Arc, Mutex};
+
+        const ACCEPTED: &str = "toast_accept";
+        const CANCELLED: &str = "toast_cancel";
+        struct Listener(Arc<Mutex<Vec<String>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                use mod_api::text::TextContent::{Literal, Translatable};
+
+                let Some(Translatable { key, arguments, .. }) =
+                    event.description.as_ref().map(|text| &text.content)
+                else {
+                    return Flow::Continue;
+                };
+                if key != "sunrise.mods.scheduled_task_error.message" {
+                    return Flow::Continue;
+                }
+                assert_eq!(event.kind, ToastKind::System);
+                let [argument] = arguments.as_slice() else {
+                    panic!("the notice must name one mod");
+                };
+                let Literal(id) = &argument.content else {
+                    panic!("the mod ID must be a literal component");
+                };
+                self.0.lock().unwrap().push(id.clone());
+                if id == CANCELLED {
+                    Flow::Cancel
+                } else {
+                    *event.title = mod_api::Text::literal("Edited task error");
+                    Flow::Continue
+                }
+            }
+        }
+        struct NoHooks;
+        #[mod_api::__subscriptions]
+        impl Hooks for NoHooks {}
+
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![
+            ModEntry::new(ACCEPTED, Box::new(Listener(observed.clone()))),
+            ModEntry::new(CANCELLED, Box::new(NoHooks)),
+        ];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_client_game(|window| {
+                let serving = Serving::fixture_with_reports(0, window.client_reports.clone());
+                window.integrated = Some(Integrated::fixture_for(&serving));
+                with_game(|server| {
+                    server.serving = Some(serving);
+                    server.native_lifecycle.world_open_ready().unwrap();
+                    for id in [ACCEPTED, CANCELLED] {
+                        let _owner = mod_api::__private::enter(id, "schedule fixture");
+                        let host: &mut dyn ServerHost = &mut *server;
+                        host.schedule_task(0, Box::new(|_| panic!("scheduled callback panicked")))
+                            .unwrap();
+                    }
+                    server.native_lifecycle_server_tick_start(true);
+                    server.native_lifecycle_server_tick_end(false);
+                });
+                assert!(
+                    observed.lock().unwrap().is_empty(),
+                    "not admitted on the server"
+                );
+
+                let mut batch = HudBatch::scratch([640, 480]);
+                with_client_game(|other| {
+                    other.draw_pack_toasts(&mut batch, true, false);
+                    assert!(other.server_packs.server_errors.is_empty());
+                    assert!(
+                        observed.lock().unwrap().is_empty(),
+                        "not sent to another window"
+                    );
+                });
+
+                window.draw_pack_toasts(&mut batch, true, false);
+                let [Some(toast)] = window.server_packs.server_errors.as_slice() else {
+                    panic!("only the accepted notice should reach the queue");
+                };
+                assert_eq!(toast.title.plain(), "Edited task error");
+                assert!(toast.slot.is_some());
+                assert_eq!(
+                    toast.message.as_ref().unwrap().component()["with"][0]["text"],
+                    ACCEPTED,
+                );
+                window.draw_pack_toasts(&mut batch, true, false);
+                assert_eq!(observed.lock().unwrap().as_slice(), [ACCEPTED, CANCELLED]);
+            });
+        });
     }
 
     fn notifier(total: usize, events: &[download::Progress]) -> PackNotifier {

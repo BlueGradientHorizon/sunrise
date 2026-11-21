@@ -33,6 +33,7 @@ use sunrise_client::spans::startup;
 use sunrise_client::{
     Result,
     audio::Audio,
+    chunk_io::Reports,
     lan::{Lan, MAX_PLAYERS, NetConfig, OwnerProfile, hub::HubConfig},
     settings::Settings,
     title::WorldOptions,
@@ -69,7 +70,7 @@ fn stack_for(min_stack: Option<&str>) -> usize {
 /// `LevelLoadProgressTracker.EXPECTED_PLAYER_CHUNKS`: the 7x7 chunks around the spawn.
 const PLAYER_CHUNKS: usize = 49;
 
-/// What the window tells its server thread.
+/// What the window and its server thread share.
 #[derive(Default)]
 struct Flags {
     #[cfg(test)]
@@ -79,6 +80,8 @@ struct Flags {
     stop: AtomicBool,
     finished: AtomicBool,
     failure: Mutex<Option<String>>,
+    /// The owning window's report inbox, shared with this server and its region workers.
+    reports: Arc<Reports>,
     /// `IntegratedServer.getPort`: the port it is open to the LAN on, 0
     /// while it is not.
     published: AtomicU16,
@@ -151,6 +154,21 @@ pub(super) struct Integrated {
     pub rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
 }
 impl Integrated {
+    /// The window's handle on a server fixture, with no server thread behind it.
+    #[cfg(test)]
+    pub(super) fn fixture_for(serving: &Serving) -> Self {
+        let (tasks, _receiver) = channel();
+        Self {
+            flags: serving.flags.clone(),
+            thread: None,
+            emergency_save: None,
+            tasks,
+            world_name: "test".into(),
+            save_folder: "test".into(),
+            rule_registry: Default::default(),
+        }
+    }
+
     /// Queue every change, even if the currently published tree still has the requested state:
     /// an earlier update may be waiting for a busy server thread.
     fn queue_pregen_option(&self, enabled: bool) {
@@ -334,7 +352,15 @@ impl Serving {
     /// A server thread's handle with no thread behind it, published on `port` (0: not).
     #[cfg(test)]
     pub(super) fn fixture(port: u16) -> Self {
-        let flags = Arc::new(Flags::default());
+        Self::fixture_with_reports(port, Arc::default())
+    }
+
+    #[cfg(test)]
+    pub(super) fn fixture_with_reports(port: u16, reports: Arc<Reports>) -> Self {
+        let flags = Arc::new(Flags {
+            reports,
+            ..Flags::default()
+        });
         flags.published.store(port, Ordering::Relaxed);
         let (_sender, tasks) = channel();
         Self {
@@ -345,6 +371,11 @@ impl Serving {
             load: LoadPhase::default(),
         }
     }
+    /// Send reports only to this server's owner, not to LAN clients.
+    pub(super) fn reports(&self) -> &Reports {
+        &self.flags.reports
+    }
+
     /// The window reads this as `MinecraftServer.isCurrentlySaving`.
     pub(super) fn set_saving(&self, saving: bool) {
         self.flags.saving.store(saving, Ordering::Relaxed);
@@ -508,7 +539,10 @@ impl Game<'_> {
         self.world_biomes_base = self.world_biomes.clone();
         let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
         sunrise_client::parallel::set_setting(settings.sunrise.parallel_tick);
-        let flags = Arc::new(Flags::default());
+        let flags = Arc::new(Flags {
+            reports: self.client_reports.clone(),
+            ..Flags::default()
+        });
         flags
             .render_distance
             .store(settings.render_distance, Ordering::Relaxed);
@@ -1362,10 +1396,10 @@ fn serve(
     )
     // `IntegratedServer.setSingleplayerProfile`: the account this world belongs to
     // (an older world's offline owner moves to it at open).
-    .map(|request| request.owned_by(&launch.player, launch.owner))
-    .and_then(|request| {
+    .and_then(|mut request| {
+        request.chunk_reports = flags.reports.clone();
         WorldLoader::start(
-            request,
+            request.owned_by(&launch.player, launch.owner),
             res.clone(),
             pack.clone(),
             options.clone(),
@@ -1628,7 +1662,7 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn block_state_weathering_reverts_after_integrated_session_stops() {
         use mod_api::HostBlockStates;
-        use sunrise_world::level::BlockMaps;
+        use sunrise_world::level::{BlockMapValue, BlockMaps};
 
         super::super::native_entity_refs::tests::with_client_game(|window| {
             window.join_world_rest().unwrap();
@@ -1655,14 +1689,10 @@ pub(super) mod tests {
                     *began = true;
                     // Model publication at open_world_tables, before later steps can fail.
                     let maps = BlockMaps::from_values(
-                        [],
                         [(
                             "minecraft:copper_block",
-                            &serde_json::json!({
-                                "next_oxidation_stage": "minecraft:oxidized_copper"
-                            }),
+                            BlockMapValue::Oxidizable("minecraft:oxidized_copper".into()),
                         )],
-                        [],
                         |_| 0,
                     );
                     server.res.behaviours().set_block_maps(Some(Arc::new(maps)));

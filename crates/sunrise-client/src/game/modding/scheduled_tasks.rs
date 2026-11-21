@@ -1,23 +1,26 @@
 //! The delayed tasks mods scheduled in the running world (`schedule_task`): a queue counted in
 //! server ticks, owned by the world's lifecycle and dropped with it.
 
-use mod_api::{MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId};
+use mod_api::{
+    __private::game::allocate_task_id, MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId,
+};
 use std::{
     collections::{BTreeMap, HashMap},
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
 };
 
 pub(super) type ServerTask = Box<dyn FnOnce(&mut dyn ServerHost)>;
-/// The owning mod's `[mod] id` and its callable, detached from the scheduler.
-pub(super) type PendingTask = (&'static str, ServerTask);
+/// The owning mod's `[mod] id` (when scheduled inside a mod call) and its callable, detached from
+/// the scheduler.
+pub(super) type PendingTask = (Option<&'static str>, ServerTask);
 
 /// Runs every item `next` yields through `run`, even when one run panics: the other items still
 /// run, and the first panic comes back for the caller to put back in flight once it has restored
 /// its own state. `state` is passed to both so each may borrow the whole of it in turn.
 pub(super) fn run_all<S, T>(
     state: &mut S,
-    next: fn(&mut S) -> Option<T>,
-    run: fn(&mut S, T),
+    mut next: impl FnMut(&mut S) -> Option<T>,
+    mut run: impl FnMut(&mut S, T),
 ) -> Option<Box<dyn std::any::Any + Send>> {
     let mut panic = None;
     while let Some(item) = next(state) {
@@ -38,56 +41,59 @@ pub(super) fn run_all<S, T>(
 pub(super) struct ScheduledTasks {
     /// Ticks advanced since the world opened.
     now: u64,
-    next_id: u64,
     /// Waiting tasks by due tick, then id (the order they were scheduled).
-    queue: BTreeMap<(u64, u64), PendingTask>,
+    queue: BTreeMap<(u64, TaskId), PendingTask>,
     /// Each waiting task's due tick, to find it again on cancel.
-    due: HashMap<u64, u64>,
-    /// How many tasks each mod has waiting.
+    due: HashMap<TaskId, u64>,
+    /// How many tasks each named mod has waiting.
     pending: HashMap<&'static str, usize>,
 }
 
 impl ScheduledTasks {
-    /// A task for `owner` due `delay_ticks` ticks from now (0 counts as 1: never this tick).
+    /// A task for `owner` due `delay_ticks` ticks from now (`0` is due in the current tick).
     pub(super) fn schedule(
         &mut self,
         owner: Option<&'static str>,
         delay_ticks: u32,
         task: ServerTask,
     ) -> Result<TaskId, ScheduleError> {
-        let owner = owner.ok_or(ScheduleError::NotInMod)?;
-        let waiting = self.pending.entry(owner).or_insert(0);
-        if *waiting >= MAX_PENDING_TASKS {
-            return Err(ScheduleError::TooMany);
+        let waiting = if let Some(mod_id) = owner {
+            let count = self.pending.entry(mod_id).or_insert(0);
+            if *count >= MAX_PENDING_TASKS {
+                log::warn!(
+                    "mod `{mod_id}` reached MAX_PENDING_TASKS ({MAX_PENDING_TASKS}) pending scheduled tasks"
+                );
+                return Err(ScheduleError::TooMany);
+            }
+            Some(count)
+        } else {
+            None
+        };
+        let id = allocate_task_id().ok_or(ScheduleError::Unavailable)?;
+        if let Some(count) = waiting {
+            *count += 1;
         }
-        *waiting += 1;
-        self.next_id += 1;
-        let id = self.next_id;
-        let due = self.now.saturating_add(u64::from(delay_ticks.max(1)));
+        let due = self.now.saturating_add(u64::from(delay_ticks));
         self.queue.insert((due, id), (owner, task));
         self.due.insert(id, due);
-        Ok(TaskId(id))
+        Ok(id)
     }
 
-    /// Withdraw `id` if `owner` scheduled it and it is still waiting. The caller gets the
-    /// callable back only once all bookkeeping is done, so dropping its captures is safe.
-    pub(super) fn cancel(&mut self, owner: &'static str, id: TaskId) -> Option<ServerTask> {
-        let &due = self.due.get(&id.0)?;
-        let &(waiting_owner, _) = self.queue.get(&(due, id.0))?;
-        if waiting_owner != owner {
-            return None;
-        }
-        self.remove(due, id.0).map(|(_, task)| task)
+    /// Withdraw `id` if it is still waiting. `TaskId` is an opaque capability, so holding it
+    /// suffices to cancel the task. The caller gets the detached owner and callable back only once
+    /// all bookkeeping is updated, so dropping captures under the scheduling owner's scope is safe.
+    pub(super) fn cancel(&mut self, id: TaskId) -> Option<PendingTask> {
+        let &due = self.due.get(&id)?;
+        self.remove(due, id)
     }
 
-    /// A server tick starts: "now" moves to it, before any hook of the tick runs, so a task
-    /// scheduled by one is measured from this tick and never fires in it.
+    /// A server tick starts: "now" moves to it before any hook of the tick runs, so tasks
+    /// scheduled during this tick are measured from it (`delay_ticks == 0` is due in this tick).
     pub(super) fn begin_tick(&mut self) {
         self.now += 1;
     }
 
-    /// The next task due by now, taken off the queue before any of its mod code runs. A task
-    /// scheduled while others run is due on a later tick.
+    /// The next task due by now, taken off the queue before any of its mod code runs.
     pub(super) fn pop_due(&mut self) -> Option<PendingTask> {
         let (&(due, id), _) = self.queue.first_key_value()?;
         if due > self.now {
@@ -97,10 +103,11 @@ impl ScheduledTasks {
     }
 
     /// The world closed or opened: detach the old queue before running any capture destructors.
+    /// Globally unique task ids are never reset, so retained ids cannot alias tasks in a new world.
     pub(super) fn clear(&mut self) {
         let mut retired = std::mem::take(self).queue.into_values();
         let panic = run_all(&mut retired, Iterator::next, |_, (owner, task)| {
-            let _call = mod_api::__private::enter(owner, "schedule_task");
+            let _call = owner.map(|mod_id| mod_api::__private::enter(mod_id, "schedule_task"));
             drop(task);
         });
         if let Some(payload) = panic {
@@ -108,10 +115,12 @@ impl ScheduledTasks {
         }
     }
 
-    fn remove(&mut self, due: u64, id: u64) -> Option<PendingTask> {
+    fn remove(&mut self, due: u64, id: TaskId) -> Option<PendingTask> {
         let task = self.queue.remove(&(due, id))?;
         self.due.remove(&id);
-        if let Some(waiting) = self.pending.get_mut(task.0) {
+        if let Some(mod_id) = task.0
+            && let Some(waiting) = self.pending.get_mut(mod_id)
+        {
             *waiting -= 1;
         }
         Some(task)
@@ -154,46 +163,55 @@ mod tests {
                 .unwrap();
         }
         let mut host = FakeHost::new();
+        // delay_ticks == 0 is due at self.now (the current tick) without advancing.
+        for (_, task) in std::iter::from_fn(|| tasks.pop_due()) {
+            task(&mut host);
+        }
+        assert_eq!(*heard.borrow(), [0]);
         for (_, task) in advance(&mut tasks) {
             task(&mut host);
         }
-        assert_eq!(*heard.borrow(), [10, 0]);
+        assert_eq!(*heard.borrow(), [0, 10]);
         for (_, task) in advance(&mut tasks) {
             task(&mut host);
         }
-        assert_eq!(*heard.borrow(), [10, 0, 20, 21]);
+        assert_eq!(*heard.borrow(), [0, 10, 20, 21]);
         assert!(advance(&mut tasks).is_empty());
     }
 
     #[test]
-    fn only_the_owner_cancels_a_waiting_task() {
+    fn cancelling_a_waiting_task_uses_only_its_opaque_id() {
         let mut tasks = ScheduledTasks::default();
         let capture = Rc::new(());
         let owned = Rc::clone(&capture);
         let id = tasks
             .schedule(A, 3, Box::new(move |_| drop(owned)))
             .unwrap();
-        assert!(tasks.cancel("b", id).is_none());
         assert_eq!(Rc::strong_count(&capture), 2);
-        assert!(tasks.cancel("a", id).is_some());
+        let unused_id = allocate_task_id().unwrap();
+        assert!(tasks.cancel(unused_id).is_none());
+        let (owner, detached) = tasks.cancel(id).unwrap();
+        assert_eq!(owner, A);
+        drop(detached);
         assert_eq!(Rc::strong_count(&capture), 1);
-        assert!(tasks.cancel("a", id).is_none());
-        assert!(tasks.cancel("a", TaskId(99)).is_none());
+        assert!(tasks.cancel(id).is_none());
         for _ in 0..3 {
             assert!(advance(&mut tasks).is_empty());
         }
         let fired = tasks.schedule(A, 1, Box::new(|_| {})).unwrap();
         assert_eq!(advance(&mut tasks).len(), 1);
-        assert!(tasks.cancel("a", fired).is_none());
+        assert!(tasks.cancel(fired).is_none());
     }
 
     #[test]
-    fn a_mod_outside_its_hooks_cannot_schedule_and_one_mod_is_capped() {
+    fn unattributed_tasks_are_uncapped_and_each_mod_is_capped_independently() {
         let mut tasks = ScheduledTasks::default();
-        assert_eq!(
-            tasks.schedule(None, 1, Box::new(|_| {})),
-            Err(ScheduleError::NotInMod)
-        );
+        let unattributed_first = tasks.schedule(None, 5, Box::new(|_| {})).unwrap();
+        for _ in 0..MAX_PENDING_TASKS {
+            tasks.schedule(None, 5, Box::new(|_| {})).unwrap();
+        }
+        assert!(tasks.cancel(unattributed_first).is_some());
+
         let first = tasks.schedule(A, 5, Box::new(|_| {})).unwrap();
         for _ in 1..MAX_PENDING_TASKS {
             tasks.schedule(A, 5, Box::new(|_| {})).unwrap();
@@ -203,12 +221,25 @@ mod tests {
             Err(ScheduleError::TooMany)
         );
         assert!(tasks.schedule(B, 5, Box::new(|_| {})).is_ok());
-        assert!(tasks.cancel("a", first).is_some());
+        assert!(tasks.cancel(first).is_some());
         assert!(tasks.schedule(A, 5, Box::new(|_| {})).is_ok());
         for _ in 0..5 {
             advance(&mut tasks);
         }
         assert!(tasks.schedule(A, 1, Box::new(|_| {})).is_ok());
+        assert!(tasks.schedule(None, 0, Box::new(|_| {})).is_ok());
+    }
+
+    #[test]
+    fn pop_due_drains_same_tick_delay_zero_chains_to_exhaustion() {
+        let mut tasks = ScheduledTasks::default();
+        tasks.begin_tick();
+        tasks.schedule(A, 0, Box::new(|_| {})).unwrap();
+        assert!(tasks.pop_due().is_some());
+        // A delay-0 task scheduled during the drain runs in the same drain without advancing now.
+        tasks.schedule(A, 0, Box::new(|_| {})).unwrap();
+        assert!(tasks.pop_due().is_some());
+        assert!(tasks.pop_due().is_none());
     }
 
     #[test]
@@ -219,22 +250,27 @@ mod tests {
     }
 
     #[test]
-    fn closing_the_world_detaches_all_tasks_before_dropping_captures() {
+    fn closing_the_world_detaches_all_tasks_and_does_not_reuse_ids() {
         let mut tasks = ScheduledTasks::default();
         let panics = PanicOnDrop;
-        tasks
+        let stale_first = tasks
             .schedule(A, 1, Box::new(move |_| drop(panics)))
             .unwrap();
         let capture = Rc::new(());
         let owned = Rc::clone(&capture);
-        tasks
-            .schedule(B, 1, Box::new(move |_| drop(owned)))
+        let stale_second = tasks
+            .schedule(None, 1, Box::new(move |_| drop(owned)))
             .unwrap();
         let panic = catch_unwind(AssertUnwindSafe(|| tasks.clear())).unwrap_err();
         assert_eq!(panic.downcast_ref::<&str>(), Some(&"destructor panicked"));
         assert_eq!(Rc::strong_count(&capture), 1);
         assert!(advance(&mut tasks).is_empty());
-        assert_eq!(tasks.schedule(A, 1, Box::new(|_| {})).unwrap(), TaskId(1));
+        let fresh = tasks.schedule(A, 1, Box::new(|_| {})).unwrap();
+        assert_ne!(fresh, stale_first);
+        assert_ne!(fresh, stale_second);
+        assert!(tasks.cancel(stale_first).is_none());
+        assert!(tasks.cancel(stale_second).is_none());
+        assert!(tasks.cancel(fresh).is_some());
     }
 
     #[test]

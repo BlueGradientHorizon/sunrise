@@ -2380,6 +2380,8 @@ pub struct SaveDir {
     pending: Arc<PendingWrites>,
     sequence: AtomicU64,
     disk: OnceLock<Arc<chunk_disk::DiskRuntime>>,
+    /// The server report destination shared by all dimensions and their I/O workers.
+    pub chunk_reports: Arc<crate::chunk_io::Reports>,
     writer: Mutex<Option<Writer>>,
     outstanding: Arc<Outstanding>,
     /// Set by `Persistent` before the first load.
@@ -2554,6 +2556,7 @@ impl SaveDir {
             pending: Default::default(),
             sequence: AtomicU64::new(0),
             disk: OnceLock::new(),
+            chunk_reports: crate::chunk_io::PROCESS_REPORTS.clone(),
             writer: Mutex::new(None),
             outstanding: Default::default(),
             tables: OnceLock::new(),
@@ -2810,7 +2813,7 @@ impl SaveDir {
     /// A record as saved: the pending write first, then the region file.
     fn read_record_raw(&self, folder: &str, x: i32, z: i32) -> Option<NamedTag> {
         self.try_read_record_raw(folder, x, z, Record::tag_for_metadata)
-            .inspect_err(|e| crate::chunk_io::report_load_failure(&self.root, x, z, e))
+            .inspect_err(|e| self.chunk_reports.report_load_failure(&self.root, x, z, e))
             .ok()
             .flatten()
     }
@@ -2862,7 +2865,7 @@ impl SaveDir {
     /// A record brought to the current version (`upgrade_record`).
     fn read_record(&self, folder: &str, x: i32, z: i32) -> Option<NamedTag> {
         self.try_read_record(folder, x, z, Record::tag_for_metadata)
-            .inspect_err(|e| crate::chunk_io::report_load_failure(&self.root, x, z, e))
+            .inspect_err(|e| self.chunk_reports.report_load_failure(&self.root, x, z, e))
             .ok()
             .flatten()
     }
@@ -2887,7 +2890,7 @@ impl SaveDir {
     ) -> std::result::Result<Option<Chunk>, ()> {
         let Some(root) = self
             .try_read_record("region", x, z, Record::tag)
-            .map_err(|e| crate::chunk_io::report_load_failure(&self.root, x, z, &e))?
+            .map_err(|e| self.chunk_reports.report_load_failure(&self.root, x, z, &e))?
         else {
             return Ok(None);
         };
@@ -2955,7 +2958,7 @@ impl SaveDir {
             .inspect_err(|e| {
                 self.failed_entity_reads.lock().unwrap().insert((x, z));
                 log::error!("Failed to load entity chunk {x},{z}: {e}");
-                crate::chunk_io::report_load_failure(&self.root, x, z, e);
+                self.chunk_reports.report_load_failure(&self.root, x, z, e);
             })?;
         let mut out = Vec::new();
         if let Some(root) = record

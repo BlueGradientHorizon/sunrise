@@ -296,8 +296,8 @@ pub struct PlayerSender {
     pub announced: Arc<super::announced_channels::AnnouncedChannels>,
     /// Its `sunrise:levels` answer: its revision and the levels besides its own it can view.
     pub viewed_levels: sunrise_protocol::viewed_levels::Answer,
-    /// The `sunrise:menu_extra` payload layout the client reads: its revision answer,
-    /// 0 for one that did not answer (the legacy layout, a menu of a block only).
+    /// The `sunrise:menu_extra` revision the client answered in configuration,
+    /// or 0 when the client did not answer (for example, a vanilla client).
     pub menu_extra_rev: u8,
 }
 #[derive(Clone)]

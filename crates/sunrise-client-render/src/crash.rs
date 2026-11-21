@@ -9,6 +9,9 @@ pub use mod_api::content::crash::{
 };
 // Tests run without the executable's startup: the platform's versions install the crash
 // backend on first use and keep details, as the started game's do.
+use mod_api::__private::game::{
+    contain_unwind, panic_payload_text as payload_text, record_contained_panic,
+};
 #[cfg(not(test))]
 use mod_api::content::crash::details;
 #[cfg(not(test))]
@@ -17,7 +20,6 @@ pub use mod_api::content::crash::{clear_detail, enter_native_mod, set_detail};
 use mod_platform::content::crash::details;
 #[cfg(test)]
 pub use mod_platform::content::crash::{clear_detail, enter_native_mod, set_detail};
-use std::cell::{Cell, RefCell};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -28,13 +30,6 @@ use chrono::{DateTime, Local};
 use sunrise_system::{command_output, machine_arch};
 
 static REPORTED: AtomicBool = AtomicBool::new(false);
-
-thread_local! {
-    /// How many `contain` calls this thread is inside.
-    static CONTAINED: Cell<u32> = const { Cell::new(0) };
-    /// The message of the last panic `contain` caught on this thread, from the hook.
-    static CAUGHT: RefCell<Option<String>> = const { RefCell::new(None) };
-}
 
 /// `message`, with the native mod hook this thread is inside, if any, and the converted package
 /// the hook's runtime is executing.
@@ -90,51 +85,35 @@ pub(crate) enum CallError {
 /// The same crash boundary for callers with different policies for panics and phase refusals.
 /// The crash hook logs panics; the caller decides how to report refusals and recover.
 pub(crate) fn contain_call<T>(f: impl FnOnce() -> T) -> Result<T, CallError> {
-    let outer = CAUGHT.with(|c| c.replace(None));
-    CONTAINED.with(|c| c.set(c.get() + 1));
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    contain_unwind(|| {
         mod_api::__private::contain_refusal(
             mod_api::content::crash::current_native_mod().unwrap_or("unknown"),
             f,
         )
-    }));
-    CONTAINED.with(|c| c.set(c.get() - 1));
-    let message = CAUGHT.with(|c| c.replace(outer));
-    match result {
-        Ok(result) => result.map_err(CallError::Refused),
-        Err(payload) => {
-            let message = message.unwrap_or_else(|| payload_text(&*payload));
-            // Opaque payloads can have mod-defined destructors. Don't run them outside the
-            // catch boundary (or risk another panic while disposing of that second payload).
-            if !payload.is::<String>() && !payload.is::<&str>() {
-                std::mem::forget(payload);
-            }
-            Err(CallError::Panicked(message))
-        }
-    }
+    })
+    .map_err(CallError::Panicked)?
+    .map_err(CallError::Refused)
 }
 
-/// For the hook: a panic inside `contain` is logged with its stack and kept for `contain` to
+/// For the hook: a contained panic is logged with its stack and kept for its boundary to
 /// return. False for any other panic.
 pub(crate) fn contained_panic(info: &std::panic::PanicHookInfo) -> bool {
-    if CONTAINED.with(Cell::get) == 0 {
-        return false;
-    }
-    let message = panic_message(info);
-    let stack = stack_lines(
-        &std::backtrace::Backtrace::force_capture().to_string(),
-        true,
-    );
-    log::error!(
-        "Recovered from an error: {message}\n{}",
-        stack
-            .lines()
-            .map(|l| format!("\tat {l}"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
-    CAUGHT.with(|c| *c.borrow_mut() = Some(message));
-    true
+    record_contained_panic(&|| {
+        let message = panic_message(info);
+        let stack = stack_lines(
+            &std::backtrace::Backtrace::force_capture().to_string(),
+            true,
+        );
+        log::error!(
+            "Recovered from an error: {message}\n{}",
+            stack
+                .lines()
+                .map(|l| format!("\tat {l}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        message
+    })
 }
 
 /// Vanilla picks a line from a list of jokes; these only say what happened.
@@ -637,14 +616,6 @@ pub fn report_watchdog(
             log: crate::logging::recent_lines(),
         },
     )
-}
-
-fn payload_text(payload: &(dyn std::any::Any + Send)) -> String {
-    payload
-        .downcast_ref::<&str>()
-        .map(|s| s.to_string())
-        .or_else(|| payload.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "Box<dyn Any>".into())
 }
 
 fn panic_message(info: &std::panic::PanicHookInfo) -> String {
@@ -1387,7 +1358,9 @@ pub(crate) mod tests {
         // Nested, and the thread is no longer inside one after.
         let outer = contain(|| contain(|| -> u8 { panic!("inner") }));
         assert!(outer.unwrap().unwrap_err().contains("inner"));
-        assert_eq!(CONTAINED.with(Cell::get), 0);
+        assert!(!record_contained_panic(&|| unreachable!(
+            "not inside a boundary"
+        )));
     }
 
     #[test]

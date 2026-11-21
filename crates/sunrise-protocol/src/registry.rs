@@ -167,8 +167,8 @@ pub struct Dynamic {
     pub tags: HashMap<String, HashMap<String, Vec<i32>>>,
     /// The peer confirmed the native component registry identity.
     pub custom_components: bool,
-    /// The `sunrise:menu_extra` payload layout the peer serves: the revision its
-    /// configuration query carried, 0 when it never asked (the legacy layout).
+    /// The `sunrise:menu_extra` revision negotiated during configuration, or 0 when the
+    /// peer never sent a query.
     pub menu_extra_revision: u8,
 }
 /// The most registries whose tags one connection keeps. Vanilla names well under a hundred; a

@@ -38,17 +38,17 @@ pub trait PlayerMenusBackendMut {
     /// Opens content mod menu type `menu` for a connected player from anywhere, with no
     /// block (`ServerPlayer.openMenu(provider, extraDataWriter)`): an item's use, an entity,
     /// a command. The menu replaces the one they had open. Its container slots show empty
-    /// and their clicks reach `menu_clicked`. `extra` (at most 32 KiB) is available only during
-    /// construction in [`crate::MenuScreenOpen::extra`]. `pos`, when given, is offered to the
-    /// factory and available later through `screen_pos`. `data` has exactly the menu type's
-    /// `data_slots` signed `i32` values. The negotiated blockless payload sends indices
-    /// `0..=u16::MAX` after opening; read the received values through
-    /// [`crate::MenuScreenFrame::data`]. The menu's owning mod can change the stored values with
-    /// [`MenuRef::set_data_slot`]. Pass `opening_hand` for an item opener regardless of slot
-    /// backing, or `None` for another opener. The server remembers that hand's stack for
-    /// `menu_still_valid`. A type declaring `owned_slots` uses ordinary clicks and accepts
-    /// writes through `ItemPlace::MenuSlot`; it may not declare results or crafting. The old
-    /// menu closes on the server as a close does (its
+    /// and their clicks reach `menu_clicked`. `extra` (at most 1,048,555 bytes, fitting within
+    /// vanilla's 1 MiB clientbound custom payload limit) is available only during construction in
+    /// [`crate::MenuScreenOpen::extra`]. `pos`, when given, is offered to the factory and
+    /// available later through `screen_pos`. `data` has exactly the menu type's `data_slots`
+    /// signed `i32` values. The negotiated blockless payload sends indices `0..=u16::MAX` after
+    /// opening; read the received values through [`crate::MenuScreenFrame::data`]. The menu's
+    /// owning mod can change the stored values with [`MenuRef::set_data_slot`]. Pass
+    /// `opening_hand` for an item opener regardless of slot backing, or `None` for another opener.
+    /// The server remembers that hand's stack for `menu_still_valid`. A type declaring
+    /// `owned_slots` uses ordinary clicks and accepts writes through `ItemPlace::MenuSlot`; it may
+    /// not declare results or crafting. The old menu closes on the server as a close does (its
     /// `removed`, `player_container_close`, the cursor stack and crafting grids back to the
     /// inventory) before the new one is built; `replace` says whether the client is first sent
     /// a close for it, as for `open_menu`. `MenuReplace::InPlace` sends none: the client keeps

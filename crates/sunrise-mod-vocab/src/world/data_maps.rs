@@ -20,8 +20,9 @@ use entry::EntryName;
 /// reads by name borrow raw NBT from the host.
 /// A value arrives as the NBT form of the JSON a file held: a whole number is an `Int`, or
 /// a `Long` past `i32`, a fraction a `Double`, a boolean a `Byte`, an object a `Compound`
-/// and an array a `List`. Integers outside signed 64-bit range and `null` at any nesting
-/// depth return [`DataMapError::Undecodable`] rather than changing the value.
+/// and an array a `List`. Files containing integers outside signed 64-bit range or `null`
+/// at any nesting depth cannot be converted to NBT and are skipped atomically at load time
+/// with an error log, preserving earlier layers.
 /// Fractional/exponent JSON tokens use the parser's
 /// `f64` value; empty and heterogeneous arrays retain their elements.
 ///
@@ -50,7 +51,7 @@ pub trait DataMap {
     type Entry: DataMapEntry;
     /// The owned result of decoding an entry's borrowed tag.
     type Value;
-    /// The map's id, `mod_id:name`, not in the `minecraft` namespace, as registered.
+    /// The map's namespaced id (`namespace:path`), as registered.
     fn id(&self) -> &str;
     /// Decode an entry's value, refusing one of another shape.
     fn decode(&self, value: &Tag) -> Option<Self::Value>;
@@ -217,8 +218,7 @@ pub enum DataMapError {
     /// Neither the engine nor a mod registered the map for this registry in the current load
     /// (`data_map_types`).
     UnknownType,
-    /// The value could not be represented as NBT, or a typed read's [`DataMap::decode`]
-    /// refused it.
+    /// A typed read's [`DataMap::decode`] refused the entry's NBT value.
     Undecodable,
     /// The key has no registry name in this host, or belongs to another world or generation.
     InvalidKey,
@@ -246,8 +246,8 @@ fn data<M: DataMap>(
 
 /// Entry `entry` of registry `registry`: its raw NBT value in data map `map`
 /// (`IRegistryExtension.getData`). A bare entry id uses the `minecraft` namespace.
-/// `Ok(None)` means the map has no value for this entry. A host without loaded maps, an
-/// unknown map type, or a value that cannot be represented as NBT returns a [`DataMapError`].
+/// `Ok(None)` means the map has no value for this entry. A host without loaded maps or an
+/// unknown map type returns a [`DataMapError`].
 ///
 /// The tag borrows from the host's published data, not the lookup IDs. Use `Option::cloned`
 /// only if you need the raw value after the host borrow ends.
@@ -263,8 +263,7 @@ pub fn data_map_value<'host>(
 
 /// The whole published data map `map` of `registry`, sorted by entry ID
 /// (`IRegistryExtension.getDataMap`). A known empty map yields an empty slice; unavailable
-/// maps or an unknown type return a [`DataMapError`], not an empty slice. If any value
-/// cannot be represented as NBT, the whole read returns [`DataMapError::Undecodable`].
+/// maps or an unknown type return a [`DataMapError`], not an empty slice.
 ///
 /// The slice borrows from the host's published data, not the lookup IDs. Iterate by
 /// reference, or call `to_vec` only if you need all the rows after that borrow ends.

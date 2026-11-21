@@ -1,6 +1,6 @@
 //! Scoped access to the compound mods keep on a server player (NeoForge's
 //! `Entity.getPersistentData`).
-use super::{Game, native_player_inventory::PlayerWriteRefusal, native_server::PlayerRead};
+use super::{Game, native_server::PlayerRead};
 use mod_api::{Compound, JavaString, PlayerPersistentDataError, PlayerRef, Tag};
 use sunrise_core::nbt::{Limits, clone_tag};
 
@@ -8,16 +8,6 @@ use sunrise_core::nbt::{Limits, clone_tag};
 const PERSISTENT_DATA: &str = "NeoForgeData";
 /// The entry a death respawn and the first End exit carry over.
 const PLAYER_PERSISTED: &str = "PlayerPersisted";
-
-impl From<PlayerWriteRefusal> for PlayerPersistentDataError {
-    fn from(error: PlayerWriteRefusal) -> Self {
-        match error {
-            PlayerWriteRefusal::Stale => Self::Stale,
-            PlayerWriteRefusal::Client => Self::Client,
-            PlayerWriteRefusal::Dead => Self::Dead,
-        }
-    }
-}
 
 /// Check one new subtree at its real depth in the player file, including the compound wrappers
 /// that NBT emits for mixed lists and single empty-key compounds inside compound lists.
@@ -86,15 +76,23 @@ impl Game<'_> {
         }
     }
 
-    /// Edits one checked key in the player's turn, so the write reaches the same record the
-    /// save and transaction journal use. Only the submitted value needs to be copied.
+    /// Edits one checked key directly on the acting player's or guest's saved compound, so
+    /// living and dead online players both accept edits (NeoForge's `Entity.getPersistentData`).
+    /// Only the submitted value needs to be copied.
     pub(super) fn player_set_persistent_data_key(
         &mut self,
         player: PlayerRef,
         key: &JavaString,
         value: Option<&Tag>,
     ) -> Result<(), PlayerPersistentDataError> {
-        self.player_write_gate(player)?;
+        if self.remote.is_some() {
+            return Err(PlayerPersistentDataError::Client);
+        }
+        let target = match self.player_handle_read(player) {
+            Some(PlayerRead::Acting { .. }) => None,
+            Some(PlayerRead::Guest(g)) => Some(g.conn),
+            None => return Err(PlayerPersistentDataError::Stale),
+        };
         if let Some(value) = value {
             if key.modified_utf8_len() > usize::from(u16::MAX) {
                 return Err(PlayerPersistentDataError::InvalidNbt);
@@ -102,16 +100,16 @@ impl Game<'_> {
             // The root is at depth 0, NeoForgeData at depth 1, and this entry at depth 2.
             check_saved_value(value, 2)?;
         }
-        let written = self.native_as_player_handle(player, |game| {
-            if value.is_none()
-                && !matches!(game.level.player_extra.as_ref().and_then(|saved| saved.get(PERSISTENT_DATA)),
-                    Some(Tag::Compound(data)) if data.contains_key(key))
+        let has_key = |saved: Option<&Tag>| {
+            matches!(
+                saved.and_then(|tag| tag.get(PERSISTENT_DATA)),
+                Some(Tag::Compound(data)) if data.contains_key(key)
+            )
+        };
+        let edit = |saved: &mut Option<Tag>| {
+            if let Some(Tag::Compound(data)) =
+                saved.as_mut().and_then(|tag| tag.get_mut(PERSISTENT_DATA))
             {
-                return;
-            }
-            game.journal_player(player.uuid());
-            let saved = &mut game.level.player_extra;
-            if let Some(Tag::Compound(data)) = saved.as_mut().and_then(|tag| tag.get_mut(PERSISTENT_DATA)) {
                 match value {
                     Some(value) => {
                         let value = clone_tag(value);
@@ -133,11 +131,42 @@ impl Game<'_> {
                     *saved = Some(Tag::compound([(PERSISTENT_DATA, data)]));
                 }
             }
-        });
-        if written {
-            Ok(())
-        } else {
-            Err(PlayerPersistentDataError::Stale)
+        };
+        match target {
+            None => {
+                if value.is_none() && !has_key(self.level.player_extra.as_ref()) {
+                    return Ok(());
+                }
+                self.journal_player_extra(player.uuid());
+                edit(&mut self.level.player_extra);
+                Ok(())
+            }
+            Some(conn) => {
+                let Some(index) = self
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guests.connection_index(conn))
+                else {
+                    return Err(PlayerPersistentDataError::Stale);
+                };
+                if value.is_none()
+                    && !has_key(
+                        self.lan.as_ref().expect("resolved guest").hub.guests[index]
+                            .saved
+                            .as_ref(),
+                    )
+                {
+                    return Ok(());
+                }
+                self.journal_parked_player_extra(index);
+                self.lan
+                    .as_mut()
+                    .expect("resolved guest")
+                    .hub
+                    .guests
+                    .update_connection(conn, |g| edit(&mut g.saved))
+                    .ok_or(PlayerPersistentDataError::Stale)
+            }
         }
     }
 

@@ -7,8 +7,11 @@ pub trait Hooks {
     /// Replace `title` and `description` to change the displayed components.
     /// For advancements the title is the frame label and the description is
     /// the advancement name. Existing recipe/system toasts updated in place
-    /// do not fire another add event. Client-lib and title producers prepare
-    /// candidates for the game to admit with a `ClientHost` before applying.
+    /// do not fire another add event. Integrated-server error notices are new
+    /// system toast candidates on the owning client, not on the server or its guests.
+    /// Pending chunk I/O reports stay with that window when the world closes.
+    /// Client-lib and title producers prepare candidates for the game to admit
+    /// with a `ClientHost` before applying.
     #[hook(
         receiver = "read",
         dispatch = "flat",

@@ -534,6 +534,11 @@ pub mod game {
         }
     }
 
+    /// Allocate a fresh delayed task id for `schedule_task`, without exposing its raw value.
+    pub fn allocate_task_id() -> Option<TaskId> {
+        TaskId::allocate()
+    }
+
     pub struct ModEntryFields<'a> {
         pub id: &'static str,
         pub hooks: &'a dyn Hooks,

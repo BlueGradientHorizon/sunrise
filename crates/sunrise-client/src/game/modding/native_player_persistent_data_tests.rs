@@ -1,7 +1,7 @@
 //! Scoped persistent-data reads and key edits against real LAN guests, through player handles.
 
 use super::native_guest_turn_tests::with_guests;
-use mod_api::{Compound, JavaString, PlayerPersistentDataError, Tag, prelude::*};
+use mod_api::{Compound, HostTransaction, JavaString, PlayerPersistentDataError, Tag, prelude::*};
 
 fn saved_data<'a>(game: &'a super::Game<'_>, conn: u32) -> Option<&'a Compound> {
     let hub = &game.lan.as_ref().unwrap().hub;
@@ -73,12 +73,14 @@ fn persistent_data_is_kept_in_the_players_record() {
 }
 
 /// The written entry is two levels below the root, so its last compound may be at 511,
-/// but not 512. A refusal, including for stale, dead or client players, writes nothing.
+/// but not 512. Dead online players still accept persistent data edits (rolling back on
+/// transaction abort and carrying `PlayerPersisted` across respawn); stale and client
+/// refusals write nothing.
 #[test]
 #[ignore = "daily"]
 fn each_persistent_data_refusal_has_its_own_name_and_writes_nothing() {
     with_guests(|game| {
-        use PlayerPersistentDataError::{Client, Dead, InvalidNbt, Stale, TooDeep};
+        use PlayerPersistentDataError::{Client, InvalidNbt, Stale, TooDeep};
         let b = game.players().server_players()[1];
         let key = JavaString::from("kept");
         b.set_persistent_data_key(game, &key, Some(&nested(510)))
@@ -112,12 +114,35 @@ fn each_persistent_data_refusal_has_its_own_name_and_writes_nothing() {
             .hub
             .guests
             .update_connection(13, |g| g.dead = true);
-        assert_eq!(b.set_persistent_data_key(game, &key, None), Err(Dead));
+        let persisted = JavaString::from("PlayerPersisted");
+        let persisted_value = Tag::compound([("dead_edit", Tag::Int(42))]);
+        let _: Result<(), ()> = game.transaction(|host, _| {
+            b.set_persistent_data_key(host, &key, None).unwrap();
+            b.set_persistent_data_key(host, &persisted, Some(&persisted_value))
+                .unwrap();
+            assert_eq!(
+                b.persistent_data(host).unwrap().get(&persisted),
+                Some(&persisted_value)
+            );
+            assert_eq!(b.persistent_data(host).unwrap().get(&key), None);
+            Err(())
+        });
         assert_eq!(
             b.persistent_data(game),
             Some(&kept),
-            "dead players are still readable"
+            "aborting a transaction restores a dead player's prior persistent data"
         );
+        b.set_persistent_data_key(game, &persisted, Some(&persisted_value))
+            .unwrap();
+        assert_eq!(
+            b.persistent_data(game).unwrap().get(&persisted),
+            Some(&persisted_value)
+        );
+        game.guest_respawn(13);
+        let after_respawn = b.persistent_data(game).unwrap();
+        assert_eq!(after_respawn.get(&persisted), Some(&persisted_value));
+        assert_eq!(after_respawn.get(&key), None);
+
         let index = game
             .lan
             .as_ref()

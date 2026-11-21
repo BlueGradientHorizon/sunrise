@@ -382,32 +382,35 @@ impl Hub {
             .get("minecraft:menu")
             .and_then(|m| m.id(menu_kind))?;
         let i = self.guests.iter().position(|g| g.conn == conn)?;
+        let encoded_extra = match extra {
+            Some(data) => {
+                let next_window = self.guests[i].next_window % 100 + 1;
+                let message = sunrise_protocol::menu_extra::Message {
+                    window: next_window,
+                    pos: pos.map(|p| [p.0, p.1, p.2]),
+                    data,
+                };
+                match sunrise_protocol::menu_extra::encode(&message) {
+                    Ok(bytes) => Some(bytes),
+                    Err(e) => {
+                        log::error!("Sunrise: {menu_kind}'s extra data refused: {e}");
+                        return None;
+                    }
+                }
+            }
+            None => None,
+        };
         self.close_container_at(i);
         let window = self.guests.update(i, |g| {
             let window = g.next_menu_window();
             if slots == Slots::Native {
                 g.native_menu = items.clone();
             }
-            if let Some(data) = extra {
-                let message = sunrise_protocol::menu_extra::Message {
-                    window,
-                    pos: pos.map(|p| [p.0, p.1, p.2]),
+            if let Some(data) = encoded_extra {
+                g.send(&C::CustomPayload(CustomPayload {
+                    channel: sunrise_protocol::menu_extra::CHANNEL.into(),
                     data,
-                };
-                // A client that answered no revision query (an older Sunrise build)
-                // reads the legacy layout, which has no way to say "no block".
-                let sent = if g.sender.menu_extra_rev >= 1 {
-                    sunrise_protocol::menu_extra::encode(&message)
-                } else {
-                    sunrise_protocol::menu_extra::encode_legacy(&message)
-                };
-                match sent {
-                    Ok(data) => g.send(&C::CustomPayload(CustomPayload {
-                        channel: sunrise_protocol::menu_extra::CHANNEL.into(),
-                        data,
-                    })),
-                    Err(e) => log::warn!("Sunrise: {menu_kind}'s extra data not sent: {e}"),
-                }
+                }));
             }
             g.send(&C::OpenScreen(play::OpenScreen {
                 container: window,

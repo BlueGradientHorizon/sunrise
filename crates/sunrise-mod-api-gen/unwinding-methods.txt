@@ -526,7 +526,6 @@ level_collision::level_collision_boxes
 level_collision::level_has_collisions
 level_collision::level_line_of_sight
 level_datapacks::level_datapack_entries
-level_datapacks::level_datapack_handle
 level_datapacks::level_datapack_read
 level_datapacks::level_recipe_for
 level_datapacks::level_roll_loot

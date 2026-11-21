@@ -642,8 +642,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
         with_guests(|game| {
             let (window, original) = placed(game);
             // Five XP splits into 3, 1, 1. The 3-XP piece merges into this resident orb.
-            *game.world.random = LegacyRandom::new(23);
-            let mut expected_random = (*game.world.random).clone();
+            let mut expected_random = LegacyRandom::new(23);
             let matching_id = 40 + expected_random.next_int_bound(40).unwrap() as u32;
             game.next_entity = matching_id - 1;
             game.add_orb([1.5, 64.5, 1.5], 3);
@@ -659,6 +658,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
             script(Script::default());
 
             for commit in [false, true] {
+                *game.world.random = LegacyRandom::new(23);
                 let outer = game.transaction_open();
                 click(game, window, 2, 0);
                 assert_eq!(slot(game, 0), None);
@@ -684,7 +684,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                     assert_eq!(game.orbs.len(), 1);
                     let orb = &game.orbs[game.orbs.locate(join).unwrap()];
                     assert_eq!((orb.count, orb.age), (1, 42));
-                    assert_eq!(
+                    assert_ne!(
                         (*game.world.random).clone().next_int(),
                         LegacyRandom::new(23).next_int()
                     );

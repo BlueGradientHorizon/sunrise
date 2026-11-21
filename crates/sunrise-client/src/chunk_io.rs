@@ -1,15 +1,15 @@
-//! `IntegratedServer.reportChunkLoadFailure` / `reportChunkSaveFailure` /
-//! `sendLowDiskSpaceWarning`: the region storage runs on the server thread and
-//! its writer thread, and the toasts are the window's. Each failure is logged,
-//! checked for low disk space (`MinecraftServer.warnOnLowDiskSpace`) and queued
-//! here; the window drains the queue every frame (`Minecraft.execute`).
-//! `SystemToast.addOrUpdate` makes a repeat reset the toast it already shows,
-//! so only the newest chunk of each kind is kept.
+//! Server reports for the window, as in `IntegratedServer.reportChunkLoadFailure`,
+//! `reportChunkSaveFailure` and `sendLowDiskSpaceWarning`. The server and its I/O
+//! workers report here; only the receiving client admits their toasts (`Minecraft.execute`).
+//! `SystemToast.addOrUpdate` keeps only the newest chunk failure of each kind.
 use crate::{save, text::Text, toasts::SystemToast};
-use std::{path::Path, sync::Mutex};
+use std::{
+    path::Path,
+    sync::{Arc, LazyLock, Mutex},
+};
 
-/// What the window has still to toast.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// What the receiver has yet to display.
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Pending {
     /// `SystemToast.onLowDiskSpace`.
     pub low_disk_space: bool,
@@ -17,13 +17,16 @@ pub struct Pending {
     pub load_failure: Option<(i32, i32)>,
     /// `SystemToast.onChunkSaveFailure`: the newest chunk.
     pub save_failure: Option<(i32, i32)>,
+    /// Mod IDs whose delayed callbacks panicked, in report order.
+    pub scheduled_task_failures: Vec<&'static str>,
 }
 
-static PENDING: Mutex<Pending> = Mutex::new(Pending {
-    low_disk_space: false,
-    load_failure: None,
-    save_failure: None,
-});
+/// The receiver's inbox, shared with the integrated server and its region workers.
+#[derive(Default)]
+pub struct Reports(Mutex<Pending>);
+
+/// Dedicated-server I/O reports; a client window has its own inbox.
+pub static PROCESS_REPORTS: LazyLock<Arc<Reports>> = LazyLock::new(Arc::default);
 
 impl Pending {
     /// `reportChunkLoadFailure` after `warnOnLowDiskSpace` found `low_disk_space`.
@@ -39,11 +42,6 @@ impl Pending {
     }
 }
 
-fn with(update: impl FnOnce(&mut Pending)) {
-    let mut pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
-    update(&mut pending);
-}
-
 /// `MinecraftServer.warnOnLowDiskSpace` for the world folder `dir`.
 fn warn_on_low_disk_space(dir: &Path) -> bool {
     let low = save::low_disk_space(dir);
@@ -54,30 +52,40 @@ fn warn_on_low_disk_space(dir: &Path) -> bool {
     low
 }
 
-/// `reportChunkLoadFailure` for the chunk at (`x`, `z`) of the dimension in `dir`.
-pub fn report_load_failure(dir: &Path, x: i32, z: i32, error: &dyn std::fmt::Display) {
-    log::error!("Failed to load chunk {x},{z}: {error}");
-    let low = warn_on_low_disk_space(dir);
-    with(|p| p.load_failed(x, z, low));
-}
+impl Reports {
+    fn pending(&self) -> std::sync::MutexGuard<'_, Pending> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
-/// `reportChunkSaveFailure`.
-pub fn report_save_failure(dir: &Path, x: i32, z: i32, error: &dyn std::fmt::Display) {
-    log::error!("Failed to save chunk {x},{z}: {error}");
-    let low = warn_on_low_disk_space(dir);
-    with(|p| p.save_failed(x, z, low));
-}
+    /// `reportChunkLoadFailure` for the chunk at (`x`, `z`) of the dimension in `dir`.
+    pub fn report_load_failure(&self, dir: &Path, x: i32, z: i32, error: &dyn std::fmt::Display) {
+        log::error!("Failed to load chunk {x},{z}: {error}");
+        let low = warn_on_low_disk_space(dir);
+        self.pending().load_failed(x, z, low);
+    }
 
-/// `Minecraft.sendLowDiskSpaceWarning`: a server's `ClientboundLowDiskSpaceWarningPacket`
-/// (`ClientPacketListener.handleLowDiskSpaceWarning`) toasts like the local report.
-pub fn report_low_disk_space() {
-    with(|p| p.low_disk_space = true);
-}
+    /// `reportChunkSaveFailure`.
+    pub fn report_save_failure(&self, dir: &Path, x: i32, z: i32, error: &dyn std::fmt::Display) {
+        log::error!("Failed to save chunk {x},{z}: {error}");
+        let low = warn_on_low_disk_space(dir);
+        self.pending().save_failed(x, z, low);
+    }
 
-/// The reports since the last call.
-pub fn take() -> Pending {
-    let mut pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
-    std::mem::take(&mut *pending)
+    /// `Minecraft.sendLowDiskSpaceWarning`: a server's `ClientboundLowDiskSpaceWarningPacket`
+    /// (`ClientPacketListener.handleLowDiskSpaceWarning`) toasts like the local report.
+    pub fn report_low_disk_space(&self) {
+        self.pending().low_disk_space = true;
+    }
+
+    /// Report a mod's failed callback to the integrated server owner's client.
+    pub fn report_scheduled_task_failure(&self, mod_id: &'static str) {
+        self.pending().scheduled_task_failures.push(mod_id);
+    }
+
+    /// The reports since the last call.
+    pub fn take(&self) -> Pending {
+        std::mem::take(&mut *self.pending())
+    }
 }
 
 /// `ChatFormatting.RED`.
@@ -118,8 +126,6 @@ pub fn save_failure_toast(x: i32, z: i32) -> SystemToast {
 mod tests {
     use super::*;
 
-    // These tests keep off `PENDING` where they can: the save tests run in
-    // the same process and report their own chunk failures into it (#4854).
     #[test]
     fn failures_keep_the_newest_chunk_of_each_kind() {
         let mut pending = Pending::default();
@@ -132,6 +138,7 @@ mod tests {
                 low_disk_space: false,
                 load_failure: Some((3, 4)),
                 save_failure: Some((5, 6)),
+                ..Pending::default()
             }
         );
         // A later failure on a full disk raises the warning, and one with
@@ -144,16 +151,16 @@ mod tests {
                 low_disk_space: true,
                 load_failure: Some((9, 10)),
                 save_failure: Some((7, 8)),
+                ..Pending::default()
             }
         );
     }
 
-    /// The only test that drains `PENDING`; other tests only add to it, so
-    /// the flag it raises is still there when it takes it.
     #[test]
     fn a_servers_warning_packet_toasts_low_disk_space() {
-        report_low_disk_space();
-        assert!(take().low_disk_space);
+        let reports = Reports::default();
+        reports.report_low_disk_space();
+        assert!(reports.take().low_disk_space);
     }
 
     #[test]

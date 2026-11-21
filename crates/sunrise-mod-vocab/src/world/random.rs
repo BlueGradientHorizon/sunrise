@@ -58,9 +58,9 @@ pub trait RandomSource {
 pub struct RandomDraw<'a>(&'a mut dyn FnMut(&mut dyn RandomSource));
 
 impl RandomDraw<'_> {
-    /// Consume this request, lending `random` only for the closure's duration. The host
-    /// that lends the stream is responsible for restoring the seed and cached Gaussian if
-    /// the closure unwinds and for journaling a completed draw if it is transactional.
+    /// Consume this request, lending `random` directly for the closure's duration. Draws
+    /// advance the live stream as vanilla `Level.getRandom()` does and are not rolled back
+    /// on panic/unwind or transaction abort.
     pub fn run(self, random: &mut dyn RandomSource) {
         (self.0)(random);
     }

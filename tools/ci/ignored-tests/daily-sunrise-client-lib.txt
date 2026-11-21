@@ -74,8 +74,6 @@ sunrise-client-lib lan::viewed_levels::tests::a_viewed_sound_reaches_a_viewer_ho
 sunrise-client-lib lan::viewed_levels::tests::with_no_viewer_no_copy_is_built lib daily network
 sunrise-client-lib lan::waypoints::tests::moves_by_receiver_match_the_loop lib daily slow
 sunrise-client-lib launch::tests::launch_refuses_a_socket_path_too_long bin:sunrise-ctl daily child-process
-sunrise-client-lib menu::equip_movement::tests::four_slot_menu_transfer_prepares_once_and_stale_placement_refuses lib daily resources
-sunrise-client-lib menu::equip_movement::tests::menus_without_actor_or_equipment_candidates_do_not_prepare lib daily resources
 sunrise-client-lib menu::equip_movement::tests::occupied_equipment_cursor_and_hotbar_swaps_ask_once_per_click lib daily resources
 sunrise-client-lib mobs::ai::age_up_tests::a_goat_that_grows_up_on_its_tick_gets_the_adult_attack_damage lib daily resources
 sunrise-client-lib mobs::ai::age_up_tests::age_clocks_tick_with_no_ai_and_respect_baby_age_lock lib daily resources

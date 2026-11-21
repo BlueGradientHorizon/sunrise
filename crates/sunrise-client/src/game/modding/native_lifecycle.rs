@@ -289,31 +289,44 @@ impl Game<'_> {
         self.clear_world_parts();
     }
 
+    fn drain_due_tasks(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
+        run_all(
+            self,
+            |game| game.native_lifecycle.tasks.pop_due(),
+            |game, (owner, task)| {
+                use mod_api::__private::game::CallbackOwner;
+
+                let Some(mod_id) = owner else {
+                    // Engine-owned work still follows the server's own failure policy.
+                    let _: Result<(), std::convert::Infallible> =
+                        mod_api::run_transaction(game, |game, _| {
+                            task(game);
+                            Ok(())
+                        });
+                    return;
+                };
+                if let Err(panic) =
+                    CallbackOwner::call_scheduled_task(mod_id, game, |game| task(game))
+                {
+                    log::error!(
+                        "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
+                    );
+                    if let Some(serving) = &game.serving {
+                        serving.reports().report_scheduled_task_failure(mod_id);
+                    }
+                }
+            },
+        )
+    }
+
     pub(super) fn native_lifecycle_server_tick_start(&mut self, world_running: bool) {
         if let Some((context, phase)) = self.native_lifecycle.server_tick_start(world_running) {
             self.native_console_lines();
             self.native_lifecycle.read_scope = true;
             self.native_server_tick(&context, phase);
-            // Tasks come due after the start phase, still inside the tick's read scope. One that
-            // panics does not drop the others; its panic goes on once the scope is restored.
-            let panic = run_all(
-                self,
-                |game| game.native_lifecycle.tasks.pop_due(),
-                |game, (owner, task)| {
-                    let _call = mod_api::__private::enter(owner, "schedule_task");
-                    if mod_api::__private::mod_index(owner)
-                        .is_some_and(mod_api::__private::mod_index_on)
-                    {
-                        let _: Result<(), std::convert::Infallible> =
-                            mod_api::run_transaction(game, |game, _| {
-                                task(game);
-                                Ok(())
-                            });
-                    } else {
-                        drop(task);
-                    }
-                },
-            );
+            // Tasks come due after the start phase, still inside the tick's read scope. Only
+            // an unattributed engine panic resumes once the scope is restored.
+            let panic = self.drain_due_tasks();
             self.native_lifecycle.read_scope = false;
             if let Some(payload) = panic {
                 std::panic::resume_unwind(payload);
@@ -321,7 +334,7 @@ impl Game<'_> {
         }
     }
 
-    /// `schedule_task`: a delayed callable owned by the current mod.
+    /// `schedule_task`: a delayed callable attributed to the current mod when called inside one.
     pub(in crate::game) fn schedule_task(
         &mut self,
         delay_ticks: u32,
@@ -338,11 +351,15 @@ impl Game<'_> {
             .schedule(owner, delay_ticks, task)
     }
 
-    /// `cancel_task`: withdraws a task the running mod scheduled.
+    /// `cancel_task`: withdraws a waiting task by its opaque `TaskId`, dropping its captures
+    /// under the scheduling owner's attribution when attributed.
     pub(in crate::game) fn cancel_task(&mut self, id: TaskId) -> bool {
-        mod_api::content::crash::current_native_mod()
-            .and_then(|owner| self.native_lifecycle.tasks.cancel(owner, id))
-            .is_some()
+        let Some((owner, task)) = self.native_lifecycle.tasks.cancel(id) else {
+            return false;
+        };
+        let _call = owner.map(|mod_id| mod_api::__private::enter(mod_id, "schedule_task"));
+        drop(task);
+        true
     }
 
     /// An errored tick returned at `result?` before this site.
@@ -350,7 +367,13 @@ impl Game<'_> {
         if let Some((context, phase)) = self.native_lifecycle.server_tick_end(paused) {
             self.native_lifecycle.read_scope = true;
             self.native_server_tick(&context, phase);
+            // Drain tasks due this tick (including delay 0 scheduled during the tick body or end
+            // hook), still inside the tick's read scope.
+            let panic = self.drain_due_tasks();
             self.native_lifecycle.read_scope = false;
+            if let Some(payload) = panic {
+                std::panic::resume_unwind(payload);
+            }
         }
     }
 }
@@ -420,8 +443,8 @@ mod tests {
     }
 
     /// A task a mod schedules from the tick's start hook (after `server_tick_start` moved "now")
-    /// fires on a later tick: delay 0 and 1 on the next, delay N on the Nth after this one. A
-    /// paused pass moves nothing, and closing the world drops what waits.
+    /// fires on the same tick for delay 0, on the next tick for delay 1, and on the Nth tick
+    /// after for delay N. A paused pass moves nothing, and closing the world drops what waits.
     #[test]
     fn tasks_scheduled_from_the_start_hook_fire_on_a_later_tick() {
         let owner = Some("mymod");
@@ -444,7 +467,7 @@ mod tests {
             }
             lifecycle.server_tick_end(false);
         }
-        assert_eq!(fired, [2, 2, 4]);
+        assert_eq!(fired, [1, 2, 4]);
 
         lifecycle
             .tasks
@@ -475,7 +498,7 @@ mod tests {
                 game.native_lifecycle.world_open_ready().unwrap();
                 let capture = Rc::new(());
                 let retained = Rc::clone(&capture);
-                let disabled_id = {
+                {
                     let host: &mut dyn ServerHost = game;
                     let _owner = api::enter("task_disabled", "schedule fixture");
                     host.schedule_task(
@@ -485,24 +508,63 @@ mod tests {
                             panic!("a disabled owner's callback must not run");
                         }),
                     )
+                    .unwrap();
+                }
+                // TaskId is an opaque capability: another caller can cancel a waiting task, and
+                // its captures still drop under the scheduling owner's identity.
+                struct DropObserver(Rc<Cell<Option<&'static str>>>);
+                impl Drop for DropObserver {
+                    fn drop(&mut self) {
+                        self.0.set(current_native_mod());
+                    }
+                }
+                let dropped_under = Rc::new(Cell::new(None));
+                let cancelled_id = {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = api::enter("task_disabled", "schedule fixture");
+                    let observer = DropObserver(Rc::clone(&dropped_under));
+                    host.schedule_task(
+                        1,
+                        Box::new(move |_| {
+                            let _keep = &observer;
+                            panic!("a cancelled task must not run");
+                        }),
+                    )
                     .unwrap()
                 };
                 let hit = Rc::new(Cell::new(0));
                 {
                     let host: &mut dyn ServerHost = game;
                     let _owner = api::enter("task_owner", "schedule fixture");
-                    assert!(!host.cancel_task(disabled_id));
+                    assert!(host.cancel_task(cancelled_id));
+                    assert_eq!(
+                        dropped_under.get(),
+                        Some("task_disabled"),
+                        "cancelled captures drop under the scheduling owner's attribution"
+                    );
+                    assert_eq!(current_native_mod(), Some("task_owner"));
+                    assert!(!host.cancel_task(cancelled_id));
                     let hit = Rc::clone(&hit);
                     host.schedule_task(
                         1,
                         Box::new(move |host| {
                             assert_eq!(current_native_mod(), Some("task_owner"));
                             hit.set(1);
+                            let same_tick = Rc::clone(&hit);
                             host.schedule_task(
                                 0,
                                 Box::new(move |_| {
                                     assert_eq!(current_native_mod(), Some("task_owner"));
-                                    hit.set(2);
+                                    same_tick.set(2);
+                                }),
+                            )
+                            .unwrap();
+                            let next_tick = Rc::clone(&hit);
+                            host.schedule_task(
+                                1,
+                                Box::new(move |_| {
+                                    assert_eq!(current_native_mod(), Some("task_owner"));
+                                    next_tick.set(3);
                                 }),
                             )
                             .unwrap();
@@ -513,14 +575,59 @@ mod tests {
 
                 assert!(api::set_mod_enabled("task_disabled", false));
                 game.native_lifecycle_server_tick_start(true);
-                assert_eq!(hit.get(), 1, "a nested task must not run this tick");
+                assert_eq!(
+                    hit.get(),
+                    2,
+                    "a nested delay-0 task completes in the active start drain"
+                );
                 assert_eq!(Rc::strong_count(&capture), 1, "disabled captures are gone");
                 assert_eq!(current_native_mod(), None);
+
+                // A finite delay-0 chain scheduled during the end drain completes without
+                // advancing the tick.
+                let chain = Rc::new(Cell::new(0));
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = api::enter("task_owner", "schedule fixture");
+                    let chain_a = Rc::clone(&chain);
+                    host.schedule_task(
+                        0,
+                        Box::new(move |host| {
+                            assert_eq!(chain_a.get(), 0);
+                            chain_a.set(1);
+                            let chain_b = Rc::clone(&chain_a);
+                            host.schedule_task(
+                                0,
+                                Box::new(move |host| {
+                                    assert_eq!(chain_b.get(), 1);
+                                    chain_b.set(2);
+                                    let chain_c = Rc::clone(&chain_b);
+                                    host.schedule_task(
+                                        0,
+                                        Box::new(move |_| {
+                                            assert_eq!(chain_c.get(), 2);
+                                            chain_c.set(3);
+                                        }),
+                                    )
+                                    .unwrap();
+                                }),
+                            )
+                            .unwrap();
+                        }),
+                    )
+                    .unwrap();
+                }
                 game.native_lifecycle_server_tick_end(false);
+                assert_eq!(
+                    chain.get(),
+                    3,
+                    "a finite delay-0 chain scheduled during the end drain completes in the same tick"
+                );
+                assert_eq!(current_native_mod(), None);
 
                 assert!(api::set_mod_enabled("task_disabled", true));
                 game.native_lifecycle_server_tick_start(true);
-                assert_eq!(hit.get(), 2);
+                assert_eq!(hit.get(), 3, "a delay-1 task runs on the next tick");
                 game.native_lifecycle_server_tick_end(false);
             });
         });
@@ -530,15 +637,23 @@ mod tests {
     #[ignore = "daily"]
     fn panicking_scheduled_write_rolls_back_before_the_next_task() {
         use mod_api::{ObjectiveRenderType, Text, TransactionLifecycle};
-        use std::panic::{AssertUnwindSafe, catch_unwind};
+        use std::{cell::Cell, rc::Rc};
 
-        let mods = vec![ModEntry::new("task_owner", Box::new(TaskOwner))];
+        const FAILING: &str = "task_owner";
+        const HEALTHY: &str = "other_task_owner";
+        let mods = vec![
+            ModEntry::new(FAILING, Box::new(TaskOwner)),
+            ModEntry::new(HEALTHY, Box::new(TaskOwner)),
+        ];
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
+                let skipped = Rc::new(Cell::new(false));
+                let after_reset = Rc::new(Cell::new(false));
+                let unrelated = Rc::new(Cell::new(false));
                 {
                     let host: &mut dyn ServerHost = game;
-                    let _owner = mod_api::__private::enter("task_owner", "schedule fixture");
+                    let _owner = mod_api::__private::enter(FAILING, "schedule fixture");
                     host.schedule_task(
                         1,
                         Box::new(|host| {
@@ -553,9 +668,17 @@ mod tests {
                         }),
                     )
                     .unwrap();
+                    let skipped = Rc::clone(&skipped);
+                    host.schedule_task(1, Box::new(move |_| skipped.set(true)))
+                        .unwrap();
+                }
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = mod_api::__private::enter(HEALTHY, "schedule fixture");
+                    let unrelated = Rc::clone(&unrelated);
                     host.schedule_task(
                         1,
-                        Box::new(|host| {
+                        Box::new(move |host| {
                             assert!(host.objective("discarded").is_none());
                             host.add_objective(
                                 "kept",
@@ -564,21 +687,129 @@ mod tests {
                                 ObjectiveRenderType::Integer,
                             )
                             .unwrap();
+                            unrelated.set(true);
                         }),
                     )
                     .unwrap();
                 }
-                let panic = catch_unwind(AssertUnwindSafe(|| {
-                    game.native_lifecycle_server_tick_start(true);
-                }))
-                .unwrap_err();
-                assert_eq!(
-                    panic.downcast_ref::<&str>(),
-                    Some(&"scheduled callback panicked")
-                );
+                game.native_lifecycle_server_tick_start(true);
+                game.native_lifecycle_server_tick_end(false);
+                assert!(!skipped.get(), "the failed owner's next task ran");
+                assert!(unrelated.get(), "the other owner's task did not finish");
                 assert!(game.objective("discarded").is_none());
                 assert!(game.objective("kept").is_some());
                 assert_eq!(game.transaction_lifecycle(), TransactionLifecycle::None);
+                // The poison outlives the world's queue without turning off the mod itself.
+                let index = mod_api::__private::mod_index(FAILING).unwrap();
+                assert!(mod_api::__private::mod_index_on(index));
+                game.native_lifecycle
+                    .begin_open(Authority::IntegratedServer);
+                game.native_lifecycle.world_open_ready().unwrap();
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = mod_api::__private::enter(FAILING, "schedule fixture");
+                    let after_reset = Rc::clone(&after_reset);
+                    host.schedule_task(0, Box::new(move |_| after_reset.set(true)))
+                        .unwrap();
+                }
+                game.native_lifecycle_server_tick_start(true);
+                game.native_lifecycle_server_tick_end(false);
+                assert!(!after_reset.get(), "reopening cleared the session poison");
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use mod_api::{
+            __private::{ModPhase, PhaseOwner, enter},
+            ObjectiveRenderType, Text,
+        };
+        use std::{
+            cell::Cell,
+            panic::{AssertUnwindSafe, catch_unwind},
+            rc::Rc,
+            sync::Mutex,
+        };
+
+        if run_fresh_cases(
+            "game::native_lifecycle::tests::a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks",
+            "SUNRISE_SCHEDULED_PHASE_REFUSAL_CHILD",
+            &["repeated"],
+        ) {
+            return;
+        }
+
+        const OWNER: &str = "task_owner";
+        struct RefusalLog(Mutex<Vec<String>>);
+        impl log::Log for RefusalLog {
+            fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+                metadata.level() == log::Level::Warn
+            }
+            fn log(&self, record: &log::Record<'_>) {
+                if !self.enabled(record.metadata()) {
+                    return;
+                }
+                let message = record.args().to_string();
+                if message.contains("mod API objective is unavailable during Setup") {
+                    self.0.lock().unwrap().push(message);
+                }
+            }
+            fn flush(&self) {}
+        }
+        static LOG: RefusalLog = RefusalLog(Mutex::new(Vec::new()));
+        log::set_logger(&LOG).unwrap();
+        log::set_max_level(log::LevelFilter::Warn);
+
+        let mods = vec![ModEntry::new(OWNER, Box::new(TaskOwner))];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_game(|game| {
+                game.native_lifecycle.world_open_ready().unwrap();
+                game.native_lifecycle_server_tick_start(true);
+                let refused = Rc::new(Cell::new(0));
+                let later = Rc::new(Cell::new(false));
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = enter(OWNER, "schedule fixture");
+                    for (name, swallows_refusal) in
+                        [("refused_first", false), ("refused_second", true)]
+                    {
+                        let refused = Rc::clone(&refused);
+                        host.schedule_task(
+                            0,
+                            Box::new(move |host| {
+                                host.add_objective(
+                                    name,
+                                    "dummy",
+                                    Text::literal("Refused"),
+                                    ObjectiveRenderType::Integer,
+                                )
+                                .unwrap();
+                                refused.set(refused.get() + 1);
+                                let _setup = PhaseOwner::scope(ModPhase::Setup);
+                                if swallows_refusal {
+                                    let _ = catch_unwind(AssertUnwindSafe(|| host.objective(name)));
+                                } else {
+                                    let _ = host.objective(name);
+                                }
+                            }),
+                        )
+                        .unwrap();
+                    }
+                    let later = Rc::clone(&later);
+                    host.schedule_task(0, Box::new(move |_| later.set(true)))
+                        .unwrap();
+                }
+                game.native_lifecycle_server_tick_end(false);
+                assert_eq!(refused.get(), 2, "both calls reached the refusal");
+                assert!(game.objective("refused_first").is_none());
+                assert!(game.objective("refused_second").is_none());
+                assert!(later.get(), "a refusal disabled the owner's next task");
+                let log = LOG.0.lock().unwrap();
+                assert_eq!(log.len(), 2, "each refusal must be reported: {log:?}");
+                assert!(log.iter().all(|line| line.contains(OWNER)), "{log:?}");
             });
         });
     }

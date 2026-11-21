@@ -359,9 +359,8 @@ the level's random sequence away from vanilla's order. A hook that may draw is g
 live stream for that closure only. With a mutable `ServerHost`, use
 `level.with_random(host, |rng| rng.next_int_bound(bound))` to select a resident server level,
 even a parked one. If the stream can't be lent, the call returns `None` without running the closure.
-Unwinding out of the closure restores both the seed and cached Gaussian; a later panic does not
-undo a completed, unjournaled draw. An abort rolls back journaled draws, including committed
-child draws ([Randomness](randomness.md#borrow-the-live-level-stream)).
+Draws advance the live stream directly and are not rolled back on panic/unwind or transaction
+abort, matching vanilla `Level.getRandom()` ([Randomness](randomness.md#borrow-the-live-level-stream)).
 
 `LevelTicksHost` adds scheduling through `schedule_block_tick` and `schedule_fluid_tick`, while
 `LevelWriteHost` adds random access, `set_block`, `set_block_property`, `play_sound` and

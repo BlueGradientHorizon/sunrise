@@ -45,35 +45,9 @@ impl mod_api::RandomSource for LiveLevelRandom<'_> {
     }
 }
 
-/// Lend the actual stream, restoring its state if the draw unwinds. The caller can journal
-/// the returned pre-draw state when the draw finishes normally.
-pub(super) fn with_live_level_random(
-    random: &mut LegacyRandom,
-    draw: mod_api::RandomDraw<'_>,
-) -> LegacyRandom {
-    struct RestoreOnUnwind<'a> {
-        random: &'a mut LegacyRandom,
-        before: Option<&'a LegacyRandom>,
-    }
-
-    impl Drop for RestoreOnUnwind<'_> {
-        fn drop(&mut self) {
-            if let Some(before) = self.before {
-                *self.random = before.clone();
-            }
-        }
-    }
-
-    let before = random.clone();
-    {
-        let mut guard = RestoreOnUnwind {
-            random,
-            before: Some(&before),
-        };
-        draw.run(&mut LiveLevelRandom(guard.random));
-        guard.before = None;
-    }
-    before
+/// Lend the actual stream directly without unwind restoration or transaction journaling.
+pub(super) fn with_live_level_random(random: &mut LegacyRandom, draw: mod_api::RandomDraw<'_>) {
+    draw.run(&mut LiveLevelRandom(random));
 }
 
 pub(crate) fn block_jump_factor(

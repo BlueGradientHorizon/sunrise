@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use sunrise_client::neoforge_mob_maps::{self as builtin, BuiltinMap, Kind, MAPS, NeoForgeMobMaps};
-use sunrise_core::nbt::Tag;
+use sunrise_core::{identifier::Identifier, nbt::Tag};
 
 type Tags = HashMap<String, HashSet<String>>;
 
@@ -14,6 +14,7 @@ pub(crate) struct Loaded {
 }
 struct Loader<'a, 'p> {
     definition: BuiltinMap,
+    id: Identifier,
     overlay: &'a sunrise_world::loot::PackOverlay<'p>,
     tags: &'a Tags,
     known: &'a dyn Fn(&str, &str) -> bool,
@@ -52,13 +53,14 @@ impl Loader<'_, '_> {
                     .map_err(|error| format!("{} vanilla seed: {error}", definition.id))
             })
             .collect::<Result<_, _>>()?;
+        let tags = self.tags;
         let (values, applied) = super::data_map_files::load(
-            definition.id,
-            definition.directory,
+            &self.id,
+            definition.registry,
             base,
             self.overlay,
-            self.tags,
-            |raw| codec(super::data_map_files::entry_value(raw)?).map(Some),
+            move |tag| tags.get(tag).into_iter().flatten(),
+            |raw| codec(super::data_map_files::entry_value(raw)?),
             |id| (self.known)(definition.registry, id),
         );
         Ok(self.install_and_encode(values, applied, install, encode))
@@ -81,12 +83,13 @@ impl Loader<'_, '_> {
                     .map_err(|error| format!("{} vanilla seed: {error}", definition.id))
             })
             .collect::<Result<_, _>>()?;
+        let tags = self.tags;
         let (values, applied) = super::data_map_files::load_numeric(
-            definition.id,
-            definition.directory,
+            &self.id,
+            definition.registry,
             base,
             self.overlay,
-            self.tags,
+            move |tag| tags.get(tag).into_iter().flatten(),
             super::data_map_files::NumberCodec {
                 field,
                 decode: codec,
@@ -107,6 +110,7 @@ pub(super) fn load<'a>(
     for definition in MAPS {
         let mut loader = Loader {
             definition,
+            id: Identifier::parse(definition.id).expect("built-in data map ID"),
             overlay,
             tags: tags(definition.directory).unwrap_or(&none),
             known: &known,

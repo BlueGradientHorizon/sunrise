@@ -1,6 +1,13 @@
 //! Entering a world without blocking the window: the deferred entry, world creation, the world
 //! resources' background load, and the world's own content tables.
 use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static BIOME_KEYS_SESSION: AtomicU64 = AtomicU64::new(1);
+
+fn next_biome_keys_session() -> u64 {
+    BIOME_KEYS_SESSION.fetch_add(1, Ordering::Relaxed)
+}
 
 impl Game<'_> {
     /// The server's data-pack enchantments, or the local world's registry.
@@ -387,25 +394,12 @@ impl Game<'_> {
         // The world's loaded datapack registries are a mod-declared registry's
         // authority for the data maps' id checks, as the command ids are for
         // the registries they list.
-        // Resolve membership against the very generation that will be published.
-        // In particular, generation exhaustion refuses preparation before any state changes.
         let mut datapack_candidate = datapack_candidate?;
         if let Some(candidate) = &mut datapack_candidate {
             native_registry_entries::bind_datapack_tags(root, &tag_files, candidate)?;
         }
-        let datapack_registries = datapack_candidate
-            .map(
-                |candidate| match self.mods.datapack_registries.as_ref().filter(|_| reload) {
-                    Some(old) => old
-                        .reload(candidate)
-                        .map_err(|error| format!("datapack registry reload: {error:?}")),
-                    None => Ok(mod_api::DatapackRegistrySet::first(
-                        candidate,
-                        sunrise_client::datapack_net::next_session(),
-                    )),
-                },
-            )
-            .transpose()?;
+        let datapack_registries =
+            datapack_candidate.map(mod_api::DatapackRegistrySet::from_candidate);
         let received = sunrise_client::datapack_net::received();
         let datapack_set = if self.is_logical_server() {
             datapack_registries.as_ref()
@@ -498,7 +492,7 @@ impl Game<'_> {
         let data_maps = native_data_maps::DataMaps::load(&data_map_types, &overlay, &registries)
             .with_builtins(builtin)
             .with_biome_keys(mod_api::__private::BiomeKeys::new(
-                sunrise_client::datapack_net::next_session(),
+                next_biome_keys_session(),
                 self.world_biomes
                     .as_ref()
                     .unwrap_or_else(|| self.res.biomes())

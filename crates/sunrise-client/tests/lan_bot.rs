@@ -1207,9 +1207,8 @@ fn guests_see_each_other_and_the_world_entities() {
 /// A menu opened with extra data (a mod menu type's, NeoForge's `openMenu`
 /// with an extra-data writer) reaches the client as a `sunrise:menu_extra`
 /// payload naming the window and the block, right before that window's
-/// `OpenScreen`; a menu without it sends no payload. The bot answers no
-/// revision query, so the server serves it the legacy layout — the bytes a
-/// Sunrise client has always read for a block's menu.
+/// `OpenScreen`; a menu without it sends no payload. The server always sends
+/// the current `sunrise:menu_extra` wire layout.
 #[test]
 fn menu_extra_data_comes_right_before_its_menu() {
     use sunrise_client::{items::ItemStack, lan::menu::Slots};
@@ -1243,7 +1242,7 @@ fn menu_extra_data_comes_right_before_its_menu() {
         loop {
             match bot.recv_play()? {
                 C::CustomPayload(p) if p.channel == menu_extra::CHANNEL => {
-                    let message = menu_extra::decode_legacy(&p.data).map_err(|e| e.to_string())?;
+                    let message = menu_extra::decode(&p.data).map_err(|e| e.to_string())?;
                     extras.push((message, true));
                 }
                 C::OpenScreen(p) => return Ok((bot, extras, p.container)),

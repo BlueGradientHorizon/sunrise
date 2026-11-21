@@ -58,11 +58,10 @@ as above; do not re-enter the provider or write inside the callback. Act on the 
 retried, and `StorageError::Overanswered` when a handler answers more than it was asked.
 It queries the source amount and destination space before extracting and inserting.
 A partial move can require additional calls. `transfer_matching(host, from, to, filter, max, tx)` moves up to `max`
-items accepted by the filter. It stops at the next matching entry and lets the read borrow end before the journaled
-`transfer` by kind, which is not limited to that entry's amount. If nothing moves, it resumes after that occurrence.
-After a successful move, it scans again from the first entry: a depleted entry can disappear and shift the rest.
-The filter can see the same kind again, including kinds that previously failed to move. It does not read the source
-when `max` is zero. Totals and entry counts that do not fit in 64 bits return `StorageError::Overflow` rather than
+items accepted by the filter. It does not read the source when `max` is zero. Otherwise it visits the source once
+in provider order to collect matching kinds (deduplicated by kind, since `transfer` moves across the whole storage
+by kind), lets the read borrow end, and transfers each collected kind once in first-seen order until `max` items
+have moved or the list ends. Totals that do not fit in 64 bits return `StorageError::Overflow` rather than
 wrapping.
 
 **Cost.** A bulk store can use a by-kind index to avoid scanning slots. The game's adapter answers in one pass over the slots

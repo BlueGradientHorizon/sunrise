@@ -8,44 +8,35 @@ use crate::*;
 pub trait LevelDatapacksBackend {
     /// Side: both.
     /// The owned entry IDs (`addon:fire`) of a datapack registry, sorted by ID, as this world
-    /// session last loaded them. On a client these are the entries the server sent at join and
-    /// after each reload; a declared registry omitted from the snapshot is empty. An empty
-    /// list means the registry has no entries. `None` means the level or registry is
+    /// last loaded them. On the logical server, both the active dimension and any loaded parked
+    /// server dimension are accepted (matching vanilla `Level.registryAccess()`); stale epochs
+    /// and unloaded dimensions return `None`. On a client these are the entries the server sent
+    /// at join and after each reload; a declared registry omitted from the snapshot is empty.
+    /// An empty list means the registry has no entries. `None` means the level or registry is
     /// unavailable. Reads nothing from disk.
     #[access(WorldOnly)]
     fn level_datapack_entries(&self, level: LevelRef, registry: &str) -> Option<Vec<String>>;
     /// Side: both.
-    /// A handle to `entry` of `registry` at the published generation (on a client, the one its
-    /// server last sent). A handle kept across a reload fails its next read with
-    /// [`DatapackReadError::StaleGeneration`]; one from another session fails with
-    /// [`DatapackReadError::WrongSession`]. An unknown registry, a stale or parked level, or no
-    /// published set returns [`DatapackReadError::UnknownRegistry`]; a missing entry in the
-    /// registry returns [`DatapackReadError::MissingEntry`].
-    #[access(WorldOnly)]
-    fn level_datapack_handle(
-        &self,
-        level: LevelRef,
-        registry: &str,
-        entry: &str,
-    ) -> Result<DatapackHandle, DatapackReadError>;
-    /// Side: both.
-    /// Borrow the published entry a handle names. The generation stays pinned for the duration
-    /// of `visit`, even if its publication is cleared or replaced. No registry lock is held
-    /// while `visit` runs.
+    /// Borrow the published entry `entry` of `registry` (on a client, from the snapshot its
+    /// server last sent). The active set stays pinned for the duration of `visit`, even if its
+    /// publication is cleared or replaced. No registry lock is held while `visit` runs.
     ///
     /// `visit` runs exactly once on `Ok(())`. Read `entry.values` in schema order or use
     /// [`DatapackEntry::get`] by field name. The borrow ends when `visit` returns; retain IDs
     /// and look them up again, or clone only the fields you need as an owned snapshot.
     ///
-    /// After finding the level's published set, the read checks the handle's session, then
-    /// generation, then the registry and entry. An unavailable set, unknown registry or
-    /// missing entry is refused as in [`LevelRef::datapack_handle`]. A host without a backend
-    /// returns [`DatapackReadError::Unavailable`]. No error calls `visit`.
+    /// On the logical server, both the active dimension and any loaded parked server dimension
+    /// are accepted, matching vanilla `Level.registryAccess()`; stale epochs and unloaded
+    /// dimensions are refused. An unavailable set, unknown or unavailable registry, or stale or
+    /// unloaded level returns [`DatapackReadError::UnknownRegistry`]; a missing entry in the
+    /// registry returns [`DatapackReadError::MissingEntry`]. A host without a backend returns
+    /// [`DatapackReadError::Unavailable`]. No error calls `visit`.
     #[access(WorldOnly)]
     fn level_datapack_read(
         &self,
         level: LevelRef,
-        handle: &DatapackHandle,
+        registry: &str,
+        entry: &str,
         visit: &mut dyn FnMut(&DatapackEntry),
     ) -> Result<(), DatapackReadError>;
     /// Side: server.
