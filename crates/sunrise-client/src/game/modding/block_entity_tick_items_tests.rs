@@ -168,7 +168,7 @@ impl Hooks for Fixture {
 #[ignore = "daily"]
 fn native_tick_publishes_or_rejects_item_proposals_with_writeback() {
     const NAME: &str = "game::block_entity_tick_items_tests::native_tick_publishes_or_rejects_item_proposals_with_writeback";
-    crate::game::native_entity_refs::tests::run_on_guest_stack(|| {
+    crate::game::native_entity_refs::tests::run_with_game_stack(|| {
         if super::native_entity_refs::tests::run_fresh_cases(
             NAME,
             "ROW4_NATIVE_CASE",

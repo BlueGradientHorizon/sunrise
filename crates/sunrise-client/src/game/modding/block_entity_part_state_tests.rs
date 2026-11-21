@@ -692,7 +692,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
     ) {
         return;
     }
-    sunrise_guest_stack::run_on_guest_stack(|| {
+    crate::game::native_entity_refs::tests::run_with_game_stack(|| {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "part_state_fixture",
             Box::new(NativeFixture),

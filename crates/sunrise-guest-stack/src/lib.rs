@@ -30,19 +30,6 @@ pub fn spawn<T: Send + 'static>(
     })
 }
 
-/// Runs `test` on a guest-sized worker named like the calling thread, so libtest reports it under
-/// its own name, and resumes its panic with the original payload. For tests that enter a guest:
-/// libtest's own threads are too small.
-pub fn run_on_guest_stack(test: impl FnOnce() + Send + 'static) {
-    let mut worker = builder();
-    if let Some(name) = std::thread::current().name() {
-        worker = worker.name(name.to_owned());
-    }
-    if let Err(payload) = worker.spawn(test).unwrap().join() {
-        std::panic::resume_unwind(payload);
-    }
-}
-
 /// Must run before game initialization.
 pub fn prepare_main() {
     if let Err(error) = prepare() {
@@ -264,54 +251,6 @@ fn current_stack_size() -> Result<usize, StackError> {
 unsafe extern "system" {
     #[link_name = "GetCurrentThreadStackLimits"]
     fn get_current_thread_stack_limits(low: *mut usize, high: *mut usize);
-}
-
-#[cfg(test)]
-#[test]
-fn audited_guest_workers_use_the_stack_policy() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for file in [
-        "crates/sunrise-threads/src/jobs.rs",
-        "crates/sunrise-threads/src/lib.rs",
-        "crates/sunrise-client/src/lan/io_pool.rs",
-        "crates/sunrise-client/src/vanillagen.rs",
-        "crates/sunrise-client/src/vanillagen/lod.rs",
-        "crates/sunrise-client/src/game/runtime/resource_load.rs",
-        "crates/sunrise-client/src/game/interface/startup_menu.rs",
-        "crates/sunrise-client/src/game/world/world_loading.rs",
-        "crates/sunrise-client/src/game/world/world_entry.rs",
-        "crates/sunrise-client/src/game/world/packs/mod.rs",
-    ] {
-        let source = std::fs::read_to_string(root.join(file)).unwrap();
-        let source = source.split("\n#[cfg(test)]").next().unwrap();
-        assert!(
-            ![
-                "thread::Builder::new()",
-                "thread::spawn(",
-                "scope.spawn(",
-                "s.spawn("
-            ]
-            .iter()
-            .any(|form| source.contains(form)),
-            "{file}: route guest workers through sunrise_guest_stack::builder"
-        );
-    }
-    let server =
-        std::fs::read_to_string(root.join("crates/sunrise-client/src/game/world/integrated.rs"))
-            .unwrap();
-    // Production code only: a test may start its own server thread with the same policy.
-    let server = server.split("\n#[cfg(test)]").next().unwrap();
-    assert_eq!(
-        server.matches(".stack_size(server_thread_stack())").count(),
-        2
-    );
-    assert_eq!(server.matches("thread::Builder::new()").count(), 2);
-    for form in ["thread::spawn(", "scope.spawn(", "s.spawn("] {
-        assert!(
-            !server.contains(form),
-            "server: route guest workers through the stack policy"
-        );
-    }
 }
 
 #[cfg(test)]

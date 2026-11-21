@@ -1037,8 +1037,16 @@ mod ray_tests {
 
 #[cfg(test)]
 pub(super) mod tests {
-    /// Keep guest setup and calls together, preserving libtest identity and panic payloads.
-    pub(in crate::game) use sunrise_guest_stack::run_on_guest_stack;
+    /// Run `test` on a game-sized stack, preserving libtest's thread name and panic payload.
+    pub(in crate::game) fn run_with_game_stack(test: impl FnOnce() + Send + 'static) {
+        let mut worker = std::thread::Builder::new().stack_size(136 * 1024 * 1024);
+        if let Some(name) = std::thread::current().name() {
+            worker = worker.name(name.to_owned());
+        }
+        if let Err(payload) = worker.spawn(test).unwrap().join() {
+            std::panic::resume_unwind(payload);
+        }
+    }
 
     /// Resolve a fixture after registration or a late Parts reinstall from its loaded table.
     pub(in crate::game) fn resolve_parts(game: &super::Game<'_>) -> Result<(), String> {

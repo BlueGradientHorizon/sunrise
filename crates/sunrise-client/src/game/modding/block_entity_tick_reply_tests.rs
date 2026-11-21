@@ -65,7 +65,7 @@ fn native_tick_reply_matrix() {
     ) {
         return;
     }
-    sunrise_guest_stack::run_on_guest_stack(|| {
+    crate::game::native_entity_refs::tests::run_with_game_stack(|| {
         let mut entries = vec![mod_api::ModEntry::new(
             "tick_reply_fixture",
             Box::new(Native),

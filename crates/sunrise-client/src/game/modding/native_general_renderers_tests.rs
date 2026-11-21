@@ -585,7 +585,7 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
     ) {
         return;
     }
-    sunrise_guest_stack::run_on_guest_stack(move || {
+    crate::game::native_entity_refs::tests::run_with_game_stack(move || {
         mod_platform::__private::initialize().unwrap();
         let mods = vec![mod_api::ModEntry::new(
             "general_render_fixture",

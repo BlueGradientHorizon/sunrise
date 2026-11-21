@@ -848,13 +848,16 @@ impl Lan {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let shared = self.shared.clone();
         // Mod configuration payload handlers run on this thread.
-        sunrise_guest_stack::spawn("sunrise-local-conn".into(), move || {
-            if let Err(e) = conn::serve_local(server, shared)
-                && std::env::var_os("SUNRISE_NET_DEBUG").is_some()
-            {
-                log::warn!("[lan] local: {e}");
-            }
-        })?;
+        std::thread::Builder::new()
+            .stack_size(136 * 1024 * 1024)
+            .name("sunrise-local-conn".into())
+            .spawn(move || {
+                if let Err(e) = conn::serve_local(server, shared)
+                    && std::env::var_os("SUNRISE_NET_DEBUG").is_some()
+                {
+                    log::warn!("[lan] local: {e}");
+                }
+            })?;
         Ok(client)
     }
     /// Everything the connection threads reported since the last call.
@@ -1069,10 +1072,13 @@ fn accept_loop(listener: TcpListener, shared: Arc<Shared>, stop: &AtomicBool) {
                 };
                 shared.wait(&counted, &stream);
                 // Mod configuration payload handlers run on this thread.
-                let _ = sunrise_guest_stack::spawn("sunrise-lan-conn".into(), move || {
-                    WAITING.set(Some(counted.2));
-                    handle(stream, addr, counted);
-                });
+                let _ = std::thread::Builder::new()
+                    .stack_size(136 * 1024 * 1024)
+                    .name("sunrise-lan-conn".into())
+                    .spawn(move || {
+                        WAITING.set(Some(counted.2));
+                        handle(stream, addr, counted);
+                    });
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(25));

@@ -50,10 +50,10 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const NO_ANSWER: &str =
     "the integrated server stopped or did not answer within 10 s (the game log says which)";
 
-/// The server thread holds its `Game` by value and runs every tick on it.
-/// It reserves what every guest-capable thread does under the engine's stack policy.
+/// The minimum stack for the integrated server, which holds its `Game` by value
+/// and runs every tick on it.
 fn server_thread_stack_floor() -> usize {
-    sunrise_guest_stack::reservation()
+    136 * 1024 * 1024
 }
 
 /// The server thread's stack size: [`server_thread_stack_floor`], or what `RUST_MIN_STACK` asks for
@@ -1556,16 +1556,16 @@ pub(super) mod tests {
         assert!(text.contains("in native mod example:posted, hook server_tick"));
     }
 
-    /// The server thread keeps guest headroom, and a larger `RUST_MIN_STACK` still
-    /// reaches it (#2430).
+    /// The integrated server keeps its stack floor and honors a larger
+    /// `RUST_MIN_STACK` override (#2430).
     #[test]
-    fn the_server_thread_stack_keeps_guest_headroom_and_larger_overrides() {
+    fn integrated_server_stack_honors_its_floor_and_larger_overrides() {
         let minimum = 136 * 1024 * 1024;
         assert_eq!(super::stack_for(None), minimum);
         assert_eq!(
             super::stack_for(Some("1048576")),
             minimum,
-            "smaller asks keep guest headroom"
+            "smaller values keep the integrated server floor"
         );
         assert_eq!(super::stack_for(Some("268435456")), 256 * 1024 * 1024);
         assert_eq!(super::stack_for(Some("16777216")), minimum);
