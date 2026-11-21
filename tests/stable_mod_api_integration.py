@@ -11,6 +11,9 @@ from unittest import mock
 from test_stable_mod_api import ADDITIVE, BREAKING, CONDITIONAL, HEAD, OLD, PREVIOUS, SURFACE, digest, sdk_assets
 from tools.ci import nightly
 
+# A record hash in the writer's form.
+LATER_HASH = "0123456789abcdef0123456789abcdef"
+
 PARENT = nightly.train.Release(PREVIOUS, OLD, nightly.train.github_time("2026-11-01T00:00:00Z"))
 
 CHANGES = Path("crates/sunrise-mod-vocab/changes")
@@ -107,15 +110,19 @@ class StableModApiIntegration(unittest.TestCase):
         unknown_field = {**ADDITIVE,
                          "behaviours": [{**record, "since": "26.3-0.2.0"} for record in ADDITIVE["behaviours"]]}
         bumped = {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0], {**ADDITIVE["behaviours"][1], "version": 2}]}
-        entries = [(record["id"], record["hash"]) for record in ADDITIVE["behaviours"]] + [("later:x", "h")]
-        counted = {**ADDITIVE, "later": [{"id": "later:x", "hash": "h"}],
+        entries = [(record["id"], record["hash"]) for record in ADDITIVE["behaviours"]] + [("later:x", LATER_HASH)]
+        counted = {**ADDITIVE, "later": [{"id": "later:x", "hash": LATER_HASH}],
                    "hash": digest("".join(f"{id} {hash}\n" for id, hash in sorted(entries)))}
         for fixture, signed, refused in (
                 ("as exported", ADDITIVE, False), ("unknown field", unknown_field, False),
                 ("empty unknown collection", {**ADDITIVE, "later": []}, False),
                 # A newer writer's list is records with an id and a hash, which join the document hash.
                 ("unknown collection without hashes", {**ADDITIVE, "later": [{"id": "later:x"}]}, True),
-                ("unknown collection outside the hash", {**ADDITIVE, "later": [{"id": "later:x", "hash": "h"}]}, True),
+                ("unknown collection outside the hash", {**ADDITIVE, "later": [{"id": "later:x", "hash": LATER_HASH}]},
+                 True),
+                ("positional unknown records", {**counted, "later": [["later:x", LATER_HASH]]}, True),
+                ("unknown record reusing a known id",
+                 {**counted, "later": [{"id": ADDITIVE["behaviours"][0]["id"], "hash": LATER_HASH}]}, True),
                 ("repeated id", repeated, True), ("no hash", hashless, True),
                 ("float schema", {**ADDITIVE, "schema": 3.0}, True),
                 ("native internals", {**ADDITIVE, "engine_items": [internal]}, True),

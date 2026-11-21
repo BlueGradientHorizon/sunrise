@@ -340,6 +340,15 @@ class StableModApiTests(unittest.TestCase):
                 else:
                     nightly.stable_mod_api(HEAD, tag, self.notes)
 
+    def test_a_signed_surface_naming_a_key_twice_or_nested_too_deep_is_refused(self):
+        self.assertEqual(nightly.signed_surface("26.3-0.2.0", b'{"later": {"a": 1}}'), {"later": {"a": 1}})
+        for data, reason in ((b'{"later": [], "later": "note"}', "names .'later'. twice"),
+                             (b'{"later": [{"id": "a", "id": "b"}]}', "names .'id'. twice"),
+                             (b'{"later": ' + b"[" * 100_000 + b"]" * 100_000 + b"}", "RecursionError"),
+                             (b"[]", "not a JSON object")):
+            with self.subTest(reason), self.assertRaisesRegex(SystemExit, f"26.3-0.2.0's signed .*{reason}"):
+                nightly.signed_surface("26.3-0.2.0", data)
+
     def test_the_parents_export_is_compared_whatever_the_order_of_its_lists(self):
         # The parent's tool may export its own tree's lists in another order than its signed file: the same
         # comparison as a patch's, so a surface that passed as a patch is the parent the next release reproduces.

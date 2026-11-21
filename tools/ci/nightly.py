@@ -934,6 +934,24 @@ def json_text(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
+def signed_surface(name: str, data: bytes) -> dict:
+    """A signed surface.json as a JSON object, refused when it is not one, names a key twice in any object (a later
+    value would hide the earlier one from one reader and not another) or nests deeper than this reader goes."""
+    def unique(pairs: list) -> dict:
+        keys = [key for key, _ in pairs]
+        if len(set(keys)) != len(keys):
+            raise ValueError(f"an object names {sorted(key for key in set(keys) if keys.count(key) > 1)} twice")
+        return dict(pairs)
+    try:
+        surface = json.loads(data, object_pairs_hook=unique)
+    except (ValueError, RecursionError) as error:
+        raise SystemExit(f"::error::refused: {name}'s signed {SDK_SURFACE} is not JSON this reader takes: "
+                         f"{type(error).__name__}: {error}")
+    if not isinstance(surface, dict):
+        raise SystemExit(f"::error::refused: {name}'s signed {SDK_SURFACE} is not a JSON object")
+    return surface
+
+
 # The member lists of each collection of a surface.json, by its schema: a member is a record of its own, under its
 # owner.
 SURFACE_MEMBERS = {"hooks": ("fields",), "traits": ("methods", "associated"), "types": ("fields", "variants")}
@@ -998,12 +1016,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
             report = work / "diff.json"
             published = {}
             for name, file in ((old_tag, before), (tag, after)):
-                try:
-                    published[name] = json.loads(file.read_bytes())
-                except ValueError as error:
-                    raise SystemExit(f"::error::refused: {name}'s signed {SDK_SURFACE} is not JSON: {error}")
-                if not isinstance(published[name], dict):
-                    raise SystemExit(f"::error::refused: {name}'s signed {SDK_SURFACE} is not a JSON object")
+                published[name] = signed_surface(name, file.read_bytes())
             if break_glass and json_text(published[old_tag]) != json_text(published[tag]):
                 raise SystemExit(f"::error::refused: {tag} changes surface.json from {old_tag}'s; a break-glass "
                                  "release never does")

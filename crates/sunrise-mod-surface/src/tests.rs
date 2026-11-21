@@ -620,6 +620,8 @@ fn a_stored_hash_its_contract_does_not_give_is_unsealed() {
     );
 }
 
+const LATER_HASH: &str = "0123456789abcdef0123456789abcdef";
+
 #[test]
 fn a_newer_writers_lists_join_the_document_hash() {
     let mut surface = sample();
@@ -634,10 +636,10 @@ fn a_newer_writers_lists_join_the_document_hash() {
     let mut lines: Vec<String> = surface
         .entries_with_engine()
         .map(|(id, hash)| format!("{id} {hash}\n"))
-        .chain(["later:x h\n".to_owned()])
+        .chain([format!("later:x {LATER_HASH}\n")])
         .collect();
     lines.sort();
-    value["later"] = serde_json::json!([{"id": "later:x", "hash": "h", "contract": "deep"}]);
+    value["later"] = serde_json::json!([{"id": "later:x", "hash": LATER_HASH, "contract": "deep"}]);
     value["hash"] = digest(&lines.concat()).into();
     let deep = format!("{}{}", "[".repeat(100_000), "]".repeat(100_000));
     let text = value.to_string().replace(r#""deep""#, &deep);
@@ -654,14 +656,43 @@ fn a_newer_writers_lists_join_the_document_hash() {
         value["hash"] = hash.into();
         assert_eq!(read(&value).unwrap().1, ["surface"]);
     }
-    // An unknown list of anything but records with a string id and hash is no surface.
+    // An unknown list of anything but objects with a plain id and a hash in the writer's form is
+    // no surface: positional pairs, a missing hash, an id or hash that could frame other entries.
     for list in [
         serde_json::json!([1]),
+        serde_json::json!([["later:x", LATER_HASH]]),
         serde_json::json!([{"id": "later:x"}]),
+        serde_json::json!([{"id": "later:x y", "hash": LATER_HASH}]),
+        serde_json::json!([{"id": "later:x\nfn:spawn", "hash": LATER_HASH}]),
+        serde_json::json!([{"id": "", "hash": LATER_HASH}]),
+        serde_json::json!([{"id": "later:x", "hash": "h"}]),
+        serde_json::json!([{"id": "later:x", "hash": LATER_HASH.to_uppercase()}]),
     ] {
         value["later"] = list;
-        assert!(matches!(read(&value), Err(ReadError::Json(_))));
+        assert!(
+            matches!(read(&value), Err(ReadError::Json(_))),
+            "{}",
+            value["later"]
+        );
     }
+    // Every id once in the whole document: an unknown record may not reuse a known id, or one of
+    // another unknown list.
+    for (key, id) in [("later", "fn:spawn"), ("other", "later:x")] {
+        value["later"] = serde_json::json!([{"id": "later:x", "hash": LATER_HASH}]);
+        value[key] = serde_json::json!([{"id": id, "hash": LATER_HASH}]);
+        assert_eq!(read(&value).unwrap_err(), ReadError::DuplicateId(id.into()));
+        value.as_object_mut().unwrap().remove("other");
+    }
+    // A key listed twice: the list would be hidden by the value after it.
+    let mut text = serde_json::to_string(&surface).unwrap();
+    text.pop();
+    text.push_str(&format!(
+        r#","later":[{{"id":"later:x","hash":"{LATER_HASH}"}}],"later":"note"}}"#
+    ));
+    assert!(matches!(
+        Surface::read_sealed(text.as_bytes()),
+        Err(ReadError::Json(_))
+    ));
     // An unknown value that is no list is outside the hash.
     value["later"] = serde_json::json!({"note": [1]});
     value["hash"] = surface.hash.clone().into();

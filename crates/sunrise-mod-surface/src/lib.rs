@@ -126,6 +126,36 @@ pub struct Surface {
     pub engine_items: Vec<EngineItem>,
 }
 
+/// A document's top-level values, unread, refusing a key listed twice: a later value would hide
+/// an earlier one.
+struct TopLevel<'a>(BTreeMap<String, &'a serde_json::value::RawValue>);
+
+impl<'de> Deserialize<'de> for TopLevel<'de> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Keys;
+        impl<'de> serde::de::Visitor<'de> for Keys {
+            type Value = TopLevel<'de>;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a JSON object")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut values = BTreeMap::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    let value = map.next_value()?;
+                    if values.insert(key.clone(), value).is_some() {
+                        return Err(serde::de::Error::custom(format!("{key} is listed twice")));
+                    }
+                }
+                Ok(TopLevel(values))
+            }
+        }
+        deserializer.deserialize_map(Keys)
+    }
+}
+
 /// A record of a list a newer writer added, as this reader knows it: its `id` and `hash` join the
 /// document hash.
 #[derive(Deserialize)]
@@ -748,13 +778,16 @@ impl Surface {
 
     /// [`Self::read`], and the ids it finds unsealed: [`Self::unsealed`]'s records, and `surface`
     /// when the document's own hash is not [`Self::document_hash`] with every list this reader
-    /// doesn't know counted in. Such a list is how a newer writer adds a collection: records with
-    /// a string `id` and `hash`, whose other fields this reader skips, and it refuses any other
-    /// unknown list. Other unknown values are outside the document hash.
+    /// doesn't know counted in. Such a list is how a newer writer adds a collection: JSON objects
+    /// with an `id` (no whitespace or control characters) and a `hash` (32 lowercase hex
+    /// digits), whose other fields this reader skips, and it refuses any other unknown list. Other
+    /// unknown values are outside the document hash. Every id, an extension tag's
+    /// `extension_tag:<registry>/<id>` included, is listed once in the whole document, and every
+    /// top-level key once.
     pub fn read_sealed(bytes: &[u8]) -> Result<(Self, Vec<String>), ReadError> {
         let surface = Self::read(bytes)?;
         let mut unsealed = surface.unsealed();
-        let raw: BTreeMap<String, &serde_json::value::RawValue> =
+        let TopLevel(raw) =
             serde_json::from_slice(bytes).map_err(|e| ReadError::Json(e.to_string()))?;
         let known = serde_json::to_value(&surface).expect("a surface serializes");
         let mut later = Vec::new();
@@ -762,9 +795,48 @@ impl Surface {
             if key == "engine_items" || known.get(&key).is_some() || !value.get().starts_with('[') {
                 continue;
             }
-            let records: Vec<LaterRecord> = serde_json::from_str(value.get())
-                .map_err(|e| ReadError::Json(format!("{key}: {e}")))?;
-            later.extend(records);
+            let refused = |why: String| ReadError::Json(format!("{key}: {why}"));
+            let records: Vec<&serde_json::value::RawValue> =
+                serde_json::from_str(value.get()).map_err(|e| refused(e.to_string()))?;
+            for record in records {
+                if !record.get().starts_with('{') {
+                    return Err(refused(format!("{} is no record", record.get())));
+                }
+                let record: LaterRecord =
+                    serde_json::from_str(record.get()).map_err(|e| refused(e.to_string()))?;
+                if record.id.is_empty()
+                    || record
+                        .id
+                        .chars()
+                        .any(|c| c.is_whitespace() || c.is_control())
+                {
+                    return Err(refused(format!("{:?} is no id", record.id)));
+                }
+                if record.hash.len() != 32
+                    || !record
+                        .hash
+                        .bytes()
+                        .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                {
+                    return Err(refused(format!("{:?} is no hash", record.hash)));
+                }
+                later.push(record);
+            }
+        }
+        let tags: Vec<String> = surface
+            .extension_tags
+            .iter()
+            .map(|tag| format!("extension_tag:{}/{}", tag.registry, tag.id))
+            .collect();
+        let mut seen = BTreeSet::new();
+        let ids = surface.entries_with_engine().map(|(id, _)| id);
+        for id in ids
+            .chain(tags.iter().map(String::as_str))
+            .chain(later.iter().map(|r| r.id.as_str()))
+        {
+            if !seen.insert(id) {
+                return Err(ReadError::DuplicateId(id.to_owned()));
+            }
         }
         if surface.hash != surface.document_hash_with(&later) {
             unsealed.push("surface".to_owned());
