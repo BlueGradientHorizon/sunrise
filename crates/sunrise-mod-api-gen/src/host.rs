@@ -281,6 +281,10 @@ fn area_tiers(camel: &str, file: syn::File) -> Result<BTreeMap<Tier, Vec<Entry>>
                         | "BlockEntityDrawContext"
                         | "WorldDrawContext"
                         | "CameraDrawContext"
+                        | "WorldPassDrawContext"
+                        | "WorldOitPassDrawContext"
+                        | "RenderLevelStageContext"
+                        | "PrepareRenderBuffersContext"
                 ) | (
                     "Services",
                     "ClientSession"

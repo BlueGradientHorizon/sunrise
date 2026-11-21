@@ -86,7 +86,10 @@ impl DrawContext for GameDrawContext<'_, '_> {
         lines: &[Text],
         at: [f32; 2],
     ) -> Result<(), mod_api::text::TextFormError> {
-        let lines = lines.try_into_engine(&())?;
+        let lines: Vec<_> = lines
+            .iter()
+            .map(sunrise_client::api_text::to_engine_for_render)
+            .collect();
         self.game.native_gui_tooltip(&mut *self.surface, &lines, at);
         Ok(())
     }
@@ -100,7 +103,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         align: TextAlign,
         scale: f32,
     ) -> Result<TextLines, TextLinesRefusal> {
-        let text: crate::text::Text = text.try_into_engine(&())?;
+        let text = sunrise_client::api_text::to_engine_for_render(text);
         label_layout(&self.game.gui.atlas.font, &text, max_width, align, scale)
     }
     fn fluid(&mut self, fluid: &str, at: [f32; 2], size: f32) {
@@ -156,7 +159,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         highlighted: bool,
         sprites: Option<&ButtonSprites>,
     ) -> Result<(), mod_api::text::TextFormError> {
-        let label = label.try_into_engine(&())?;
+        let label = sunrise_client::api_text::to_engine_for_render(label);
         self.game.native_widget_button(
             &mut *self.surface,
             rect,
@@ -344,7 +347,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         glowing: bool,
         outline: Option<u32>,
     ) -> Result<f32, mod_api::text::TextFormError> {
-        let text = text.try_into_engine(&())?;
+        let text = sunrise_client::api_text::to_engine_for_render(text);
         Ok(self
             .game
             .native_draw_text(&mut *self.surface, &text, at, color, glowing, outline))
@@ -358,7 +361,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
             .native_draw_terrain_model(&mut *self.surface, model, options)
     }
     fn text_width(&self, text: &Text) -> Result<f32, mod_api::text::TextFormError> {
-        let text = text.try_into_engine(&())?;
+        let text = sunrise_client::api_text::to_engine_for_render(text);
         Ok(self.game.native_draw_text_width(&*self.surface, &text))
     }
     fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {
@@ -438,9 +441,6 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
         self.game
             .native_world_name_tag(&mut *self.surface, at, text, options)
     }
-    fn usage(&self) -> WorldDrawUsage {
-        self.game.native_world_draw_usage(&*self.surface)
-    }
     fn draw_model_instances(
         &mut self,
         model: ModelRef,
@@ -448,6 +448,110 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
     ) -> Result<(), InstanceError> {
         self.game
             .native_world_draw_model_instances(&mut *self.surface, model, instances)
+    }
+}
+/// The only mod surface that appends CPU geometry for named passes.
+pub(crate) struct GamePrepareRenderBuffersContext<'a, 'g> {
+    game: &'a Game<'g>,
+    surface: &'a mut crate::world_geometry::WorldGeometry,
+}
+
+impl<'a, 'g> GamePrepareRenderBuffersContext<'a, 'g> {
+    pub(crate) fn new(
+        game: &'a Game<'g>,
+        surface: &'a mut crate::world_geometry::WorldGeometry,
+    ) -> Self {
+        Self { game, surface }
+    }
+}
+
+impl PrepareRenderBuffersContext for GamePrepareRenderBuffersContext<'_, '_> {
+    fn lines(
+        &mut self,
+        stage: RenderLevelStage,
+        lines: &[WorldLine],
+    ) -> Result<PreparedWorldDraw, DrawError> {
+        if !stage.has_render_pass() {
+            return Err(DrawError::NoRenderPass);
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game.native_world_draw_lines(surface, lines)
+        })
+    }
+
+    fn quads(
+        &mut self,
+        stage: RenderLevelStage,
+        quads: &[WorldQuad],
+    ) -> Result<PreparedWorldDraw, DrawError> {
+        if !stage.has_render_pass() {
+            return Err(DrawError::NoRenderPass);
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game.native_world_draw_quads(surface, quads)
+        })
+    }
+
+    fn pipeline_quads(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        quads: &[PipelineQuad],
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() || stage.oit_stage().is_some() {
+            return Err(PipelineDrawError::NoWorldPass);
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_pipeline_quads(surface, pipeline, quads)
+        })
+    }
+}
+
+/// A stage borrows only its prepared draw command surface, never the upload path.
+pub(crate) struct GameRenderLevelStageContext<'a, 's> {
+    surface: &'a mut crate::world_geometry::StageSurface<'s>,
+}
+
+impl<'a, 's> GameRenderLevelStageContext<'a, 's> {
+    pub(crate) fn new(
+        _: &Game<'_>,
+        surface: &'a mut crate::world_geometry::StageSurface<'s>,
+    ) -> Self {
+        Self { surface }
+    }
+}
+
+impl WorldPassDrawContext for GameRenderLevelStageContext<'_, '_> {
+    fn draw(&mut self, batch: PreparedWorldDraw) -> Result<(), PreparedWorldDrawError> {
+        self.surface.draw(batch)
+    }
+}
+
+impl WorldOitPassDrawContext for GameRenderLevelStageContext<'_, '_> {
+    fn oit_stage(&self) -> OitStage {
+        self.surface
+            .stage()
+            .oit_stage()
+            .expect("only lent in the OIT capability")
+    }
+
+    fn draw(&mut self, batch: PreparedWorldDraw) -> Result<(), PreparedWorldDrawError> {
+        self.surface.draw(batch)
+    }
+}
+
+impl RenderLevelStageContext for GameRenderLevelStageContext<'_, '_> {
+    fn pass(&mut self) -> StagePass<'_> {
+        match self.surface.stage() {
+            RenderLevelStage::AfterSky | RenderLevelStage::AfterLevel => StagePass::None,
+            RenderLevelStage::OitTranslucent(stage) => StagePass::Oit(stage, self),
+            _ => StagePass::World(self),
+        }
+    }
+
+    fn has_render_pass(&self) -> bool {
+        self.surface.stage().has_render_pass()
     }
 }
 

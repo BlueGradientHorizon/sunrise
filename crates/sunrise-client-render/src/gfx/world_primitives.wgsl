@@ -36,10 +36,14 @@ struct QuadOut {
     return out;
 }
 
-@fragment fn fs_quad(in: QuadOut) -> @location(0) vec4<f32> {
+fn quad_color(in: QuadOut) -> vec4<f32> {
     var uv = in.uv;
     if in.wrap.y > 0.0 { uv.y = in.wrap.x + fract(in.uv.y) * in.wrap.y; }
-    let color = textureSample(atlas, atlas_sampler, uv) * in.color;
+    return textureSample(atlas, atlas_sampler, uv) * in.color;
+}
+
+@fragment fn fs_quad(in: QuadOut) -> @location(0) vec4<f32> {
+    let color = quad_color(in);
     if color.a <= 0.0 { discard; }
     return frame_stored(color);
 }

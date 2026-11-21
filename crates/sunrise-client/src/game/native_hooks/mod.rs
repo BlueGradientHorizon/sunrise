@@ -430,6 +430,7 @@ mod portal_spawn;
 mod potion_brew_post;
 mod potion_brew_pre;
 mod pre_remove_side_effects;
+mod prepare_render_buffers;
 mod preset_title;
 mod rails;
 mod recipe_book_categories;

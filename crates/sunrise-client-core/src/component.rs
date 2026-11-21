@@ -157,6 +157,7 @@ fn object_style<'a>(
     child: &mut dyn FnMut(&'a Value) -> Text,
     origin: Origin,
     decoded_clicks: Option<&[crate::text::ClickEvent]>,
+    visual_only: bool,
 ) -> Style {
     let mut style = Style::default();
     if let Some(c) = o.get("color").and_then(Value::as_str) {
@@ -169,43 +170,45 @@ fn object_style<'a>(
     style.strikethrough = style_flag(o.get("strikethrough"));
     style.obfuscated = style_flag(o.get("obfuscated"));
     style.font = o.get("font").and_then(crate::text::font_id);
-    // ClickEvent.CODEC: the actions a chat line acts on here. A component
-    // from a server never opens a file.
-    if let Some(clicks) = decoded_clicks {
-        style.click = o
-            .get("click_event")
-            .and_then(Value::as_u64)
-            .and_then(|index| clicks.get(index as usize))
-            .cloned();
-    } else if let Some(e) = style_event_object(o, "click_event", "clickEvent") {
-        style.click = parse_click_event_origin(e, origin, true).ok().flatten();
-    }
-    // HoverEvent.ShowText, ShowItem and ShowEntity.
-    if let Some(e) = style_event_object(o, "hover_event", "hoverEvent") {
-        match e.get("action").and_then(Value::as_str) {
-            Some("show_text") => {
-                // Modern `value`, or the older `contents` / nested `text`.
-                let value = e
-                    .get("value")
-                    .or_else(|| e.get("contents"))
-                    .or_else(|| e.get("text"));
-                if let Some(value) = value {
-                    style.hover = Some(std::sync::Arc::new(child(value)));
-                }
-            }
-            Some("show_item") if e.get("id").is_some_and(Value::is_string) => {
-                style.hover_item = Some(std::sync::Arc::new(clone_object(e)));
-            }
-            Some("show_entity") if e.get("id").is_some_and(Value::is_string) => {
-                style.hover_entity = Some(std::sync::Arc::new(clone_object(e)));
-            }
-            _ => {}
+    if !visual_only {
+        // ClickEvent.CODEC: the actions a chat line acts on here. A component
+        // from a server never opens a file.
+        if let Some(clicks) = decoded_clicks {
+            style.click = o
+                .get("click_event")
+                .and_then(Value::as_u64)
+                .and_then(|index| clicks.get(index as usize))
+                .cloned();
+        } else if let Some(e) = style_event_object(o, "click_event", "clickEvent") {
+            style.click = parse_click_event_origin(e, origin, true).ok().flatten();
         }
+        // HoverEvent.ShowText, ShowItem and ShowEntity.
+        if let Some(e) = style_event_object(o, "hover_event", "hoverEvent") {
+            match e.get("action").and_then(Value::as_str) {
+                Some("show_text") => {
+                    // Modern `value`, or the older `contents` / nested `text`.
+                    let value = e
+                        .get("value")
+                        .or_else(|| e.get("contents"))
+                        .or_else(|| e.get("text"));
+                    if let Some(value) = value {
+                        style.hover = Some(std::sync::Arc::new(child(value)));
+                    }
+                }
+                Some("show_item") if e.get("id").is_some_and(Value::is_string) => {
+                    style.hover_item = Some(std::sync::Arc::new(clone_object(e)));
+                }
+                Some("show_entity") if e.get("id").is_some_and(Value::is_string) => {
+                    style.hover_entity = Some(std::sync::Arc::new(clone_object(e)));
+                }
+                _ => {}
+            }
+        }
+        style.insertion = o
+            .get("insertion")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
     }
-    style.insertion = o
-        .get("insertion")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
     style
 }
 
@@ -261,6 +264,7 @@ pub fn to_text_with(
         &|_| Origin::Remote,
         None,
         None,
+        false,
     )
     .unwrap_or_default()
 }
@@ -276,6 +280,7 @@ pub fn text_with_decoded_clicks(v: &Value, clicks: &[crate::text::ClickEvent]) -
         &|_| Origin::Remote,
         None,
         Some(clicks),
+        false,
     )
     .unwrap_or_default()
 }
@@ -286,6 +291,26 @@ pub fn text_with_decoded_clicks(v: &Value, clicks: &[crate::text::ClickEvent]) -
 pub(crate) fn spans_of(v: Value) -> Text {
     let mut text = render_source(&v, &|_| Origin::Remote);
     text.retain_source(v);
+    text
+}
+
+/// Render `v` into visual spans only (omitting interactive click/hover/insertion trees) and
+/// iteratively discard `v` without retaining the raw JSON tree, so arbitrarily deep in-memory
+/// component trees (including deep `show_text` or `show_entity` hover trees) can be rendered
+/// and dropped safely on constrained stacks.
+pub fn render_component(v: Value) -> Text {
+    let text = build(
+        &v,
+        &mut |s| Text::literal(s),
+        &mut |_| None,
+        Sourced(false, Origin::Remote),
+        &|_| Origin::Remote,
+        None,
+        None,
+        true,
+    )
+    .unwrap_or_default();
+    discard_component(v);
     text
 }
 
@@ -314,6 +339,7 @@ fn build_source(
         origin,
         language,
         None,
+        false,
     )
 }
 
@@ -616,6 +642,7 @@ fn build(
     origin: &dyn Fn(&Value) -> Origin,
     language: Option<&crate::lang::Language>,
     decoded_clicks: Option<&[crate::text::ClickEvent]>,
+    visual_only: bool,
 ) -> Option<Text> {
     enum Content<'a> {
         Decode(Option<Text>),
@@ -644,7 +671,8 @@ fn build(
             Work::Enter(value, hover) => match value {
                 Value::Object(o) => {
                     pending.push(Work::Styled(value, hover));
-                    if let Some(e) = style_event_object(o, "hover_event", "hoverEvent")
+                    if !visual_only
+                        && let Some(e) = style_event_object(o, "hover_event", "hoverEvent")
                         && e.get("action").and_then(Value::as_str) == Some("show_text")
                         && let Some(v) = e
                             .get("value")
@@ -676,8 +704,13 @@ fn build(
                 let Value::Object(o) = value else {
                     unreachable!()
                 };
-                let style =
-                    object_style(o, &mut |v| done.take_text(v), origin(value), decoded_clicks);
+                let style = object_style(
+                    o,
+                    &mut |v| done.take_text(v),
+                    origin(value),
+                    decoded_clicks,
+                    visual_only,
+                );
                 let overridden = if hover { None } else { contents(o) };
                 let needs_content = overridden.is_none();
                 let translation = o.get("translate").and_then(Value::as_str).filter(|_| {

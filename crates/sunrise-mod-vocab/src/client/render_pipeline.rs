@@ -215,9 +215,8 @@ pub enum PipelineDrawError {
     Pipeline(RenderPipelineError),
     /// A coordinate is not finite, or a camera-relative coordinate overflows f32.
     NonFinite,
-    /// The batch would exceed this view's quad capacity, which pipeline quads share with
-    /// [`crate::WorldDrawContext::quads`].
-    CapacityExceeded,
+    /// The selected stage has no standard world pass (it is a notice or an OIT sub-pass).
+    NoWorldPass,
 }
 
 /// What `owner` added to `pipelines` in `register_render_pipelines`, checked as it returns: a

@@ -3443,8 +3443,12 @@ struct Game<'a> {
     /// Prepared block-entity copies for this frame, in entity-stream order.
     prepared_model_draws: std::cell::RefCell<Vec<sunrise_client::gfx::PreparedModelDraw>>,
     /// Scratch for the copies a frame draws through the terrain materials.
-    model_copy_order: Vec<u32>,
+    model_copy_order: std::cell::RefCell<Vec<u32>>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
+    /// Read-only renderer snapshot cached while `self.renderer` is temporarily taken for
+    /// `Renderer::render` so `ClientHost` queries still see framebuffer size and
+    /// prepared-model limits.
+    render_snapshot: std::cell::Cell<Option<RenderSnapshot>>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     debug_renderers: Vec<mod_api::Answered<mod_api::DebugRenderer>>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
@@ -10436,8 +10440,8 @@ impl Game<'_> {
         Ok(rendered)
     }
     fn render_frame(&mut self) -> Result<bool> {
-        self.render_with(|renderer, frame| {
-            sunrise_client::spans::time("renderer", || renderer.render(frame))
+        self.render_with_hooks(|renderer, frame, hooks| {
+            sunrise_client::spans::time("renderer", || renderer.render(frame, hooks))
         })
     }
 
@@ -10446,6 +10450,17 @@ impl Game<'_> {
     fn render_with(
         &mut self,
         consume: impl FnOnce(&mut Renderer, &Frame<'_>) -> Result<bool>,
+    ) -> Result<bool> {
+        self.render_with_hooks(|renderer, frame, _| consume(renderer, frame))
+    }
+
+    fn render_with_hooks(
+        &mut self,
+        consume: impl FnOnce(
+            &mut Renderer,
+            &Frame<'_>,
+            Option<&mut dyn sunrise_client::gfx::world_primitives::FrameHooks>,
+        ) -> Result<bool>,
     ) -> Result<bool> {
         self.begin_frame_draws();
         let prepare = spans::guard("prepare");
@@ -10500,7 +10515,7 @@ impl Game<'_> {
                     );
                     pr.lap("pr_loading");
                     drop(prepare);
-                    return renderer.render(&loading_frame(&hud));
+                    return renderer.render(&loading_frame(&hud), None);
                 }
                 return Ok(false);
             }
@@ -10544,7 +10559,7 @@ impl Game<'_> {
                 );
                 pr.lap("pr_loading");
                 drop(prepare);
-                return renderer.render(&loading_frame(&hud));
+                return renderer.render(&loading_frame(&hud), None);
             }
             return Ok(false);
         }
@@ -10565,7 +10580,7 @@ impl Game<'_> {
                 );
                 pr.lap("pr_loading");
                 drop(prepare);
-                return renderer.render(&loading_frame(&hud));
+                return renderer.render(&loading_frame(&hud), None);
             }
             return Ok(false);
         }
@@ -10587,7 +10602,7 @@ impl Game<'_> {
                 );
                 pr.lap("pr_loading");
                 drop(prepare);
-                return renderer.render(&loading_frame(&hud));
+                return renderer.render(&loading_frame(&hud), None);
             }
             return Ok(false);
         }
@@ -10930,7 +10945,7 @@ impl Game<'_> {
             sunrise_client::camera::depth_far(terrain_distance, self.settings.cloud_range);
         let mods_read_camera = !mod_api::__private::mods().is_empty();
         self.screen_blur_requested.set(false);
-        self.native_camera_frame = (mods_read_camera && !title).then(|| {
+        let frame_camera = (!title).then(|| {
             let partial = camera_alpha as f32;
             mod_api::Camera {
                 position: camera.to_array(),
@@ -10954,6 +10969,11 @@ impl Game<'_> {
                 dimension: self.dim.id().to_string(),
             }
         });
+        self.native_camera_frame = if mods_read_camera {
+            frame_camera.clone()
+        } else {
+            None
+        };
         let _projection_frame = (!title).then(|| self.activate_projection_frame());
         pr.lap("pr_projection");
         let vanilla_skin = self.apply_player_skin_override(title);
@@ -11155,16 +11175,20 @@ impl Game<'_> {
             self.polytone_gpu_decide(camera);
             self.client_particle_geometry(camera, alpha, fov_degrees, &mut entities);
             self.polytone_gpu_particles(camera, alpha);
+            self.follow_debug_selection();
         }
         let mut world_geometry = self.world_geometry.take().expect("view storage");
-        self.fill_world_geometry(
-            title,
+        let white = self.gui.atlas.sprites["sunrise/white"];
+        world_geometry.reset(
             camera.to_array(),
             view,
-            alpha,
-            &mut world_geometry,
-            &mut entities,
+            [(white.u0 + white.u1) * 0.5, (white.v0 + white.v1) * 0.5],
         );
+        world_geometry.set_model_cut(entities.len() as u32);
+        // Seconds of game time, wrapping every hour (72,000 ticks) so f32 keeps sub-tick steps.
+        world_geometry
+            .set_time(((self.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32);
+        let run_world_hooks = !title && frame_camera.is_some() && self.has_world_render_hooks();
         if let Some((skin, slim)) = vanilla_skin
             && let Some(avatar) = self.player_model.as_mut()
         {
@@ -11285,7 +11309,7 @@ impl Game<'_> {
             },
             additive: &additive,
             see_through: &see_through,
-            world_primitives: world_geometry.batch_with(&self.pack.render.mod_pipelines),
+            world_primitives: Default::default(),
             shadow_only: &shadow_only,
             celestial: if self.settings.sunrise.sky || title {
                 &celestial
@@ -11350,7 +11374,8 @@ impl Game<'_> {
         let debug_passes = self.debug_lists_gpu_passes();
         let lightmap_chart = self.debug_shows_lightmap();
         let mut prepared_draws = std::mem::take(&mut *self.prepared_model_draws.borrow_mut());
-        let result = match self.renderer.as_mut() {
+        let mut renderer_slot = self.renderer.take();
+        let result = match renderer_slot.as_mut() {
             Some(renderer) => {
                 use sunrise_client::client_perf::request::GpuSwitch;
                 let capture_gpu = self.profile.gpu();
@@ -11366,10 +11391,33 @@ impl Game<'_> {
                     sunrise_client::debug_overlay::GPU_TIMING_GAP
                 });
                 renderer.stage_prepared_draws(&prepared_draws);
-                consume(renderer, &frame)
+                self.render_snapshot.set(Some(RenderSnapshot {
+                    framebuffer: [renderer.config.width, renderer.config.height],
+                    prepared_generation: renderer.prepared_generation(),
+                    max_buffer_size: renderer.max_buffer_size(),
+                    staged_prepared_draws: prepared_draws.len() as u64,
+                }));
+                let mut driver = run_world_hooks.then(|| {
+                    native_custom_geometry::GameWorldStageDriver::new(
+                        self,
+                        frame_camera.as_ref().expect("world frame camera"),
+                        alpha,
+                        &mut world_geometry,
+                    )
+                });
+                let rendered = consume(
+                    renderer,
+                    &frame,
+                    driver
+                        .as_mut()
+                        .map(|d| d as &mut dyn sunrise_client::gfx::world_primitives::FrameHooks),
+                );
+                self.render_snapshot.set(None);
+                rendered
             }
             None => Err("renderer".into()),
         };
+        self.renderer = renderer_slot;
         prepared_draws.clear();
         *self.prepared_model_draws.borrow_mut() = prepared_draws;
         let _cleanup = spans::guard("pr_cleanup");
@@ -11399,6 +11447,48 @@ impl Game<'_> {
         result
     }
 }
+/// Read-only renderer state cached while `Game::renderer` is temporarily taken for
+/// `Renderer::render` so `ClientHost` queries keep working inside stage callbacks.
+#[derive(Clone, Copy)]
+pub(super) struct RenderSnapshot {
+    pub(super) framebuffer: [u32; 2],
+    pub(super) prepared_generation: Option<u64>,
+    pub(super) max_buffer_size: u64,
+    pub(super) staged_prepared_draws: u64,
+}
+
+impl Game<'_> {
+    pub(super) fn has_renderer(&self) -> bool {
+        self.renderer.is_some() || self.render_snapshot.get().is_some()
+    }
+    pub(super) fn renderer_framebuffer(&self) -> Option<[u32; 2]> {
+        self.renderer
+            .as_ref()
+            .map(|r| [r.config.width, r.config.height])
+            .or_else(|| self.render_snapshot.get().map(|s| s.framebuffer))
+    }
+    pub(super) fn renderer_prepared_generation(&self) -> Option<u64> {
+        self.renderer.as_ref().map_or_else(
+            || {
+                self.render_snapshot
+                    .get()
+                    .and_then(|s| s.prepared_generation)
+            },
+            |r| r.prepared_generation(),
+        )
+    }
+    pub(super) fn renderer_prepared_room_info(&self) -> Option<(u64, u64)> {
+        self.renderer
+            .as_ref()
+            .map(|r| (r.max_buffer_size(), 0))
+            .or_else(|| {
+                self.render_snapshot
+                    .get()
+                    .map(|s| (s.max_buffer_size, s.staged_prepared_draws))
+            })
+    }
+}
+
 /// `computeNextAutosaveInterval`'s arithmetic: `Math.max(100, (int)(rate * 300.0F))`.
 fn autosave_interval(rate: f32) -> i64 {
     i64::from((rate * 300.0) as i32).max(100)
@@ -13277,8 +13367,9 @@ impl<'a> Game<'a> {
             dynamic_textures: Default::default(),
             text_patches: Default::default(),
             prepared_model_draws: Default::default(),
-            model_copy_order: Vec::new(),
+            model_copy_order: Default::default(),
             world_geometry: Some(Default::default()),
+            render_snapshot: std::cell::Cell::new(None),
             debug_renderers: Vec::new(),
             debug_renderers_version: None,
             hud_layer_next: None,

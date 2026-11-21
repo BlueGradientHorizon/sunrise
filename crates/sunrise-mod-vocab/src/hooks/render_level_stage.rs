@@ -1,43 +1,69 @@
 //! The `render_level_stage` hooks: declarations the mod API generator reads (see `hooks/mod.rs`).
 
+pub trait DrawContexts {
+    #[draw_context(
+        surface = "crate::world_geometry::StageSurface<'_>",
+        name = "RenderLevelStageContext"
+    )]
+    fn render_level_stage_context();
+}
+
 pub trait Hooks {
-    /// Draw world geometry at one stage of a world view (NeoForge 26.3's
-    /// `RenderLevelStageEvent`), asked for each `RenderLevelStage` in frame order. `draw` is
-    /// the view's `WorldDrawContext` and shares its limits with `submit_custom_geometry`; its
-    /// lines and quads draw at `stage`, its `name_tag` labels with the world's name tags.
-    /// Client-only, noncancellable.
+    /// Observe or draw world geometry at one stage of a world view (NeoForge 26.3's
+    /// `RenderLevelStageEvent`), asked for each stage of `RenderLevelStage::frame_order` in
+    /// frame order. `context` exposes the active stage capability: `StagePass::None` for
+    /// no-pass stages (`AfterSky`, `AfterLevel`), `StagePass::World` for standard pass stages,
+    /// and `StagePass::Oit` for `OitTranslucent` sub-passes. Client-only, noncancellable.
     #[notes = r#"## World render stages
 
 `Hooks::render_level_stage` is the client counterpart of NeoForge 26.3's
-`RenderLevelStageEvent` for the stages Sunrise draws, as one hook with a `RenderLevelStage`:
-`AfterSky` (behind everything else, for backdrops and atmosphere), `AfterOpaqueBlocks` (after
-solid and cutout terrain, before entities), `AfterTranslucentBlocks` (after water and stained
-glass, before translucent particles), `AfterWeather` (after rain and snow, before the world
-border) and `AfterLevel` (with `Hooks::submit_custom_geometry`, before the hand). It is asked
-for each stage in that order, every view of a world, and never on title or connect screens.
+`RenderLevelStageEvent`, covering all 9 stages as one hook with a `RenderLevelStage`:
+- `AfterSky` (no active render pass, before `prepare_render_buffers`)
+- `AfterOpaqueBlocks` (after solid and cutout chunk geometry, before opaque features)
+- `AfterOpaqueFeatures` (after opaque entities, block entities and particles)
+- When classic transparency is active (`!view.improved_transparency`):
+  - `AfterTranslucentFeatures` (after translucent entities and block entities)
+  - `AfterTranslucentBlocks` (after translucent chunk geometry)
+  - `AfterTranslucentParticles` (after translucent particles)
+  - `AfterWeather` (after rain and snow, before the world border)
+- When improved transparency / OIT is active (`view.improved_transparency`):
+  - `OitTranslucent(OitStage::DepthBounds)`
+  - `OitTranslucent(OitStage::Transmittance)`
+  - `OitTranslucent(OitStage::Accumulate)`
+- `AfterLevel` (no active render pass, after the level finishes rendering)
 
-Sunrise gathers a view's geometry before rendering it, so every stage is asked as the view is
-extracted, in stage order, with `Hooks::submit_custom_geometry` and the debug renderers asked
-just before `AfterLevel`. All take the same `WorldRenderView` and `WorldDrawContext`:
-[the custom geometry limits and rules](#custom-world-geometry) apply and are shared by all stages. Only where it is drawn differs. `draw_model_instances` copies
-are part of the world's model pass, so they draw with entities whatever the stage, and `name_tag`
-labels draw with the world's name tags, whatever the stage too.
+Each frame asks `Hooks::submit_custom_geometry` and registered debug renderers first (with
+`WorldDrawContext`, for `name_tag`, `draw_model_instances`, `draw_instance_group`, and custom
+world primitives drawn at the end of the world pass), then `AfterSky` (when the sky pass runs),
+then `Hooks::prepare_render_buffers` (before primitive, entity, prepared-instance, and glyph
+uploads so group updates apply to this frame), then each active pass-bearing stage in
+`RenderLevelStage::frame_order` at its real render-pass boundary, and finally `AfterLevel` after
+the world pass finishes and before the engine's first-person hand overlay. Never fires on title
+or connect screens.
 
-A route that does not draw a stage's part of the world in the world pass draws that stage's
-geometry at the next stage it reaches instead, depth tested as usual: a shader pack that draws
-the sky, terrain, water or weather itself, and improved transparency for the translucent and
-weather stages. Nothing is dropped, and the order between stages is kept."#]
+`event.context` is a `RenderLevelStageContext`: `AfterSky` and `AfterLevel` return
+`StagePass::None` (`has_render_pass() == false`); standard pass stages return
+`StagePass::World(&mut dyn WorldPassDrawContext)`, and `OitTranslucent(oit)` returns
+`StagePass::Oit(oit, &mut dyn WorldOitPassDrawContext)`. Call `pass.draw(batch)` with a
+`PreparedWorldDraw` returned by `event.context` in `prepare_render_buffers` for this view and
+stage. Draws follow call order. Both pass kinds take prepared lines and quads; pipeline quads
+are standard-only because mod pipelines write to the world colour format, not OIT float targets.
+
+Stages that do not run on the active route (for example, `AfterSky` when sky is skipped or
+shader-pack routes that take over terrain, water, or weather passes) do not fire rather than
+being synthesized or relocated to another stage."#]
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "client",
         contract = "listen",
         neoforge = "RenderLevelStageEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn render_level_stage(
         stage: mod_api::RenderLevelStage,
-        view: &mod_api::WorldRenderView,
-        draw: &mut dyn WorldDrawContext,
+        view: &mod_api::WorldRenderView<'_>,
+        context: &mut dyn RenderLevelStageContext,
     );
 }

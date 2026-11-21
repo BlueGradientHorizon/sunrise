@@ -81,8 +81,10 @@ while the entry is visible. Reduced debug info hides it, even if it is set to al
 
 Push `DebugEntry::renderer(id)` in `Hooks::register_debug_entries` at client startup to
 create the toggle. In `Hooks::register_debug_renderers`, push `DebugRenderer::new(id, draw)`
-with the same ID. Use the callback's `ClientHost`, `WorldRenderView` and `WorldDrawContext` to
-draw, and capture any state specific to this renderer instead of handling an ID in a draw hook.
+with the same ID. Use the callback's `ClientHost`, `WorldRenderView<'_>` (lending the frame's
+`Camera`, world `partial_tick`, `game_time`, `improved_transparency` state, and visible
+`RenderableSection` slice), and `WorldDrawContext` to draw, and capture any state specific to
+this renderer instead of handling an ID in a draw hook.
 
 ```rust,ignore
 use mod_api::{
@@ -108,7 +110,8 @@ The client collects a fresh list at startup, login, the first world view and the
 after a selection rebuild or respawn. Keep per-refresh state in the new callbacks. Push all
 renderers every time, even if their toggles are off; the first active registration for a switch
 wins. Only installed callbacks run in a world view, as their registering mods, after
-`submit_custom_geometry` and within its shared draw limits. Off or hidden toggles do not draw.
+`submit_custom_geometry`, sharing its deferred `WorldDrawContext` (which grows dynamically and
+draws at the end of the world pass). Off or hidden toggles do not draw.
 
 ## Block overlays
 

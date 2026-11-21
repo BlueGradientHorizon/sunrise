@@ -85,13 +85,40 @@ impl Hooks for Marker {
     }
 }
 
+fn test_camera(position: [f64; 3]) -> mod_api::Camera {
+    mod_api::Camera {
+        position,
+        eye_height: 1.62,
+        partial_tick: 0.0,
+        yaw: 0.0,
+        pitch: 0.0,
+        fov_degrees: 70.0,
+        near: 0.05,
+        far: 128.0,
+        view: Mat4::IDENTITY.to_cols_array(),
+        projection: Mat4::IDENTITY.to_cols_array(),
+        dimension: "minecraft:overworld".into(),
+    }
+}
+
 /// One frame's view: the lines it queued, camera relative, and the renderers that ran.
 fn frame(
     game: &mut super::Game<'_>,
     draw: &mut WorldGeometry,
 ) -> (Vec<[f32; 6]>, Vec<&'static str>) {
     let title = game.shows_panorama();
-    game.fill_world_geometry(title, CAMERA, Mat4::IDENTITY, 0.0, draw, &mut Vec::new());
+    let frame_camera = (!title).then(|| test_camera(CAMERA));
+    game.fill_world_geometry(
+        title,
+        frame_camera.as_ref(),
+        CAMERA,
+        Mat4::IDENTITY,
+        0.0,
+        false,
+        &[],
+        draw,
+        &mut Vec::new(),
+    );
     let lines = draw
         .batch()
         .lines
@@ -233,11 +260,15 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         game.connect_local(pipe, "Steve").unwrap();
         game.handle_packet(login()).unwrap();
         assert_eq!(refreshes(), 1);
+        let frame_camera = test_camera(CAMERA);
         game.fill_world_geometry(
             false,
+            Some(&frame_camera),
             CAMERA,
             Mat4::IDENTITY,
             0.0,
+            false,
+            &[],
             &mut draw,
             &mut Vec::new(),
         );
@@ -305,13 +336,17 @@ fn invalidation_refreshes(expected: &[&'static str], change: impl FnOnce(&mut su
         game.handle_packet(login()).unwrap();
         game.debug_entries.set_status(SHOWN, Status::AlwaysOn);
         game.debug_entries.set_status(OTHER, Status::AlwaysOn);
+        let frame_camera = test_camera(CAMERA);
         let mut draw = WorldGeometry::default();
         push(&[SHOWN]);
         game.fill_world_geometry(
             false,
+            Some(&frame_camera),
             CAMERA,
             Mat4::IDENTITY,
             0.0,
+            false,
+            &[],
             &mut draw,
             &mut Vec::new(),
         );
@@ -321,9 +356,12 @@ fn invalidation_refreshes(expected: &[&'static str], change: impl FnOnce(&mut su
         change(game);
         game.fill_world_geometry(
             false,
+            Some(&frame_camera),
             CAMERA,
             Mat4::IDENTITY,
             0.0,
+            false,
+            &[],
             &mut draw,
             &mut Vec::new(),
         );
@@ -334,9 +372,12 @@ fn invalidation_refreshes(expected: &[&'static str], change: impl FnOnce(&mut su
         );
         game.fill_world_geometry(
             false,
+            Some(&frame_camera),
             CAMERA,
             Mat4::IDENTITY,
             0.0,
+            false,
+            &[],
             &mut draw,
             &mut Vec::new(),
         );
@@ -368,12 +409,16 @@ fn same_value_event(event: i8, expected: &[&'static str]) {
         push(&[SHOWN]);
         game.handle_packet(C::EntityEvent(play::EntityEvent { id: 7, event }))
             .unwrap();
+        let frame_camera = test_camera(CAMERA);
         let mut draw = WorldGeometry::default();
         game.fill_world_geometry(
             false,
+            Some(&frame_camera),
             CAMERA,
             Mat4::IDENTITY,
             0.0,
+            false,
+            &[],
             &mut draw,
             &mut Vec::new(),
         );

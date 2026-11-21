@@ -55,6 +55,7 @@ impl Renderer {
         &mut self,
         mut encoder: wgpu::CommandEncoder,
         args: PostPassArgs<'_>,
+        hooks: Option<&mut dyn world_primitives::FrameHooks>,
     ) -> std::result::Result<(wgpu::CommandEncoder, PostPassResult), String> {
         let PostPassArgs {
             frame,
@@ -230,6 +231,10 @@ impl Renderer {
             self.pack_pages.clear();
             self.pack_post = Some((dimension, Some(post)));
             ran?;
+            // Pack world passes, including deferred translucent terrain, have completed.
+            if let Some(hooks) = hooks {
+                hooks.on_after_level(&self.visible_renderable_sections, false);
+            }
         } else if let Some((color, depth)) = &scaled
             && native_post
             && let Some(native) = &mut self.native

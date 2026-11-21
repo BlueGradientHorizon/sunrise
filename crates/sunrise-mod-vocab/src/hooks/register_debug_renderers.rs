@@ -26,10 +26,11 @@ first registered wins.
 
 For each world view, the client calls only the installed callbacks, in registration order,
 under their registering mods' identities, after `submit_custom_geometry`. It passes the current
-`ClientHost`, `WorldRenderView` and the same `WorldDrawContext`, so
-[its limits and rules](#custom-world-geometry) apply and are shared. The ID selects the switch;
-it isn't passed to the callback. Output clears every view, and callbacks don't run on the title
-or connect screens."#]
+`ClientHost`, `WorldRenderView` (lending the frame's `Camera`, world partial tick, game time,
+improved-transparency state, and visible `RenderableSection` slice) and the same
+`WorldDrawContext`, so [its submission rules](#custom-world-geometry) apply and are shared. The ID
+selects the switch; it isn't passed to the callback. Output clears every view, and callbacks don't
+run on the title or connect screens."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

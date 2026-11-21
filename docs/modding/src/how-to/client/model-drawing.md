@@ -1,10 +1,11 @@
 # Drawing resolved models
 
 Register standalone models during `standalone_models`, then resolve their `ModelRef`
-through `RenderAssets::model` after resources are published. World render hooks receive
-`WorldDrawContext`: submit transient copies with `draw_model_instances`, or retain
-copies in a group. GUI scenes, mobs and kept/spinning renderers use their
-CPU routes; groups are a world-drawing facility, not another renderer.
+through `RenderAssets::model` after resources are published. `submit_custom_geometry`
+(and registered debug renderers) receive `WorldDrawContext`: submit transient copies
+with `draw_model_instances`, or retain copies in a group. Update retained groups before
+render passes execute in `prepare_render_buffers`. GUI scenes, mobs and kept/spinning
+renderers use their CPU routes; groups are a world-drawing facility, not another renderer.
 
 ## Local player skins
 
@@ -205,7 +206,7 @@ retain them. The result is baked quads, not a mod-defined baked object.
 A copy whose colour alpha is below `0xFF` draws every quad in the translucent material described below.
 A model with translucent faces otherwise keeps its per-quad routing: only those faces take the translucent
 material. Copies with a colour other than white, hidden faces, a model with translucent faces or a block state model are baked on the CPU
-instead of drawn as GPU instances; the 16,384-copy budget bounds that cost.
+instead of drawn as GPU instances; GPU-routed copies past GPU buffer room also fall back to CPU baking.
 `overlay` (the hurt tint) has no effect on a copy on the translucent or block state model route, including any
 opaque faces it holds. `color` (the whole baked block model, multiplied at draw time) and `hidden_faces` (a
 cull mask the caller supplies) are Sunrise's options for mod copies.
@@ -259,7 +260,7 @@ draw.terrain_model(self.belt, options)?;
 
 ## Persistent groups
 
-- `host.create_group(model, capacity)` reserves up to 16,384 copies of a model.
+- `host.create_group(model, capacity)` reserves storage for `capacity` copies of a model.
   Initial drawn length is zero.
 - `group.write(host, first, copies)` atomically overwrites a range and extends drawn
   length if needed. Unwritten slots start as white, full-bright identity copies at
@@ -275,12 +276,19 @@ draw.terrain_model(self.belt, options)?;
   submissions in that view are ignored. Culling uses the composed pose.
 - `group.destroy(host)` retires the handle and releases capacity and CPU caches.
   Copies already accepted for a view remain drawn; subsequent calls return `Stale`.
+- `Hooks::prepare_render_buffers` runs once per world view, after `RenderLevelStage::AfterSky`
+  when that stage runs, and before any pass-bearing render stage. It lends `&WorldRenderView<'_>` (camera, world
+  partial tick, game time, improved-transparency state, and visible `RenderableSection`s) and
+  `&dyn ClientHost` so mods can update retained `InstanceGroups` before the render passes execute.
+  Its preparation context is also where to submit lines and quads that must draw at a
+  [specific stage](render-pipelines.md#what-a-pipeline-draws-and-when).
 
-Each mod may reserve 65,536 copies across all its groups; a zero-capacity group
-reserves one slot. Destroying a group releases that reservation immediately. A view
-accepts 16,384 visible copies shared across transient batches, groups and listeners,
-and at most 16,384 group submissions. Culled copies do not consume the visible-copy
-budget. Refusal is atomic: no prefix of a refused submission draws.
+Per-view draw storage grows dynamically without fixed per-view or per-mod copy caps,
+and copies past GPU instance buffer room fall back to CPU baking. Culled copies are
+omitted before staging. For transient `draw_model_instances` calls, copies are culled
+against the frustum first and any individual visible copy with non-finite coordinates
+or transforms, or light channels outside `0..=15`, is skipped without rolling back
+valid copies in the same slice.
 
 Groups cache converted records on the CPU. Unchanged groups avoid pose, normal and
 tint conversion, but cull and stage visible copies each frame. Every visible
