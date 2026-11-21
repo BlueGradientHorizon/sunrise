@@ -204,6 +204,58 @@ fn descriptors_must_be_in_the_projects_own_repository() {
 }
 
 #[test]
+fn an_owner_append_is_routine_only_when_unmixed_across_the_checkout() {
+    let release = Release::new("source.smod");
+    let r = &release.0;
+    r.add("another", "1.0.0", "26.3", "");
+    r.make_base();
+    let root = r.0.path();
+    let base = root.join("base");
+    let head = root.join("head");
+    for project in [ID, "another"] {
+        for asset in [
+            format!("icons/{project}.png"),
+            format!("screenshots/{project}/one.png"),
+        ] {
+            let destination = base.join(&asset);
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::copy(head.join(&asset), destination).unwrap();
+        }
+    }
+    release.use_descriptor("valid");
+    let before = registry::load(&base).unwrap();
+    let status = || {
+        let after = registry::load(&head).unwrap();
+        let review = registry::review_checkout(&before, &after, "author");
+        assert!(review.errors.is_empty(), "{:?}", review.errors);
+        review.build_reviews[0].status
+    };
+    use registry::ReviewStatus::{ReviewRequired, Routine};
+    assert_eq!(status(), Routine);
+    r.edit("another", |text| {
+        text.replace("A mod for registry validation.", "An updated summary.")
+    });
+    assert_eq!(status(), ReviewRequired);
+    fs::copy(
+        base.join("mods/another.toml"),
+        head.join("mods/another.toml"),
+    )
+    .unwrap();
+    assert_eq!(status(), Routine);
+    let collection = head.join("collections/set.toml");
+    fs::create_dir_all(collection.parent().unwrap()).unwrap();
+    fs::write(&collection, "id='set'\nname='Set'\nsummary='A fixture collection.'\nowners=['author']\nicon='icons/set.png'\nmembers=[{id='another'}]\n").unwrap();
+    assert_eq!(status(), ReviewRequired);
+    fs::remove_file(collection).unwrap();
+    fs::write(
+        head.join("revoked.toml"),
+        "[[revoked]]\nid='another'\nreason='Withdrawn.'\n",
+    )
+    .unwrap();
+    assert_eq!(status(), ReviewRequired);
+}
+
+#[test]
 fn taking_down_an_archive_does_not_require_it_or_hide_another_host() {
     let release = Release::new("source.smod");
     release.use_descriptor("valid");

@@ -128,8 +128,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
             let base = registry::load(Path::new(base)).map_err(lines)?;
             let checkout = Path::new(head);
             let head = registry::load(checkout).map_err(lines)?;
-            let mut review =
-                registry::review_with_revoked(&base.entries, &head.entries, &head.revoked, author);
+            let mut review = registry::review_checkout(&base, &head, author);
             let files = files.map(Path::new);
             let sources = Sources {
                 registry: checkout,
@@ -185,14 +184,13 @@ pub fn main(args: &[String]) -> Result<(), String> {
                     }
                 }
             }
-            let collections = registry::review_collections(&base, &head, author);
             if json {
                 let json = serde_json::json!({"errors": review.errors, "notes": review.notes,
-                    "collection_reviews": collections, "nightly_reviews": review.nightly_reviews, "build_reviews": review.build_reviews});
+                    "collection_reviews": review.collection_reviews, "nightly_reviews": review.nightly_reviews, "build_reviews": review.build_reviews});
                 println!("{json}");
             } else {
                 for (label, changes) in [
-                    ("collection", collections),
+                    ("collection", review.collection_reviews),
                     ("nightly", review.nightly_reviews),
                     ("builds", review.build_reviews),
                 ] {

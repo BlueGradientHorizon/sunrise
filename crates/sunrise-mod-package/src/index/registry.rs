@@ -1193,6 +1193,8 @@ pub struct Review {
     /// What reviewers should look at: new projects, new owners or keys, a
     /// change by someone who isn't an owner.
     pub notes: Vec<String>,
+    /// Changes to collection membership or presentation.
+    pub collection_reviews: Vec<ReviewChange>,
     /// Changes to a project's Nightly source declaration.
     pub nightly_reviews: Vec<ReviewChange>,
     /// New or changed binary build declarations. Routine is conditional on a passing check.
@@ -1295,6 +1297,45 @@ pub fn check_screenshot_rule(base: &[Entry], head: &[Entry], registry: &Path) ->
     errors
 }
 
+/// Review the registry state on both sides of a pull request. A routine build append must
+/// be the only change, including to collections, takedowns and other project data.
+pub fn review_checkout(base: &Checkout, head: &Checkout, author: &str) -> Review {
+    let mut review = review_with_revoked(&base.entries, &head.entries, &head.revoked, author);
+    review.collection_reviews = review_collections(base, head, author);
+    if review
+        .build_reviews
+        .iter()
+        .any(|change| change.status == ReviewStatus::Routine)
+        && (!review.collection_reviews.is_empty()
+            || base.revoked != head.revoked
+            || base.caches != head.caches
+            || base.entries.iter().any(|entry| {
+                entry
+                    .icon
+                    .iter()
+                    .map(|name| (name, MAX_ICON))
+                    .chain(
+                        entry
+                            .screenshots
+                            .iter()
+                            .map(|name| (name, rules::MAX_SCREENSHOT)),
+                    )
+                    .any(|(name, limit)| {
+                        read_regular(&base.directory, Path::new(name), limit).ok()
+                            != read_regular(&head.directory, Path::new(name), limit).ok()
+                    })
+            }))
+    {
+        for change in &mut review.build_reviews {
+            if change.status == ReviewStatus::Routine {
+                change.status = ReviewStatus::ReviewRequired;
+                change.reason = "the checkout also changes other registry data".into();
+            }
+        }
+    }
+    review
+}
+
 /// Compares the entries of a pull request (`head`) with `main`'s (`base`):
 /// a published file never changes and is never removed (take it down in
 /// `revoked.toml`), a project's kind never changes, and changes by someone who
@@ -1314,8 +1355,19 @@ pub fn review_with_revoked(
     author: &str,
 ) -> Review {
     let mut r = Review::default();
+    let proposed: BTreeMap<_, _> = head
+        .iter()
+        .map(|entry| (entry.id.as_str(), entry))
+        .collect();
+    let one_project_changed = base.len() == head.len()
+        && base
+            .iter()
+            .filter(|entry| proposed.get(entry.id.as_str()).copied() != Some(*entry))
+            .take(2)
+            .count()
+            == 1;
     for old in base {
-        let Some(new) = head.iter().find(|e| e.id == old.id) else {
+        let Some(&new) = proposed.get(old.id.as_str()) else {
             r.errors.push(format!(
                 "{}: removed; take its files down in {REVOKED} instead",
                 old.id
@@ -1407,10 +1459,17 @@ pub fn review_with_revoked(
         }
         if let Some(without_builds) = without_builds {
             let (status, reason) = if owner && only_appended && without_builds == *old {
-                (
-                    ReviewStatus::Routine,
-                    "an owner only appended builds to a published version",
-                )
+                if one_project_changed {
+                    (
+                        ReviewStatus::Routine,
+                        "an owner only appended builds to a published version",
+                    )
+                } else {
+                    (
+                        ReviewStatus::ReviewRequired,
+                        "the checkout also changes other projects",
+                    )
+                }
             } else {
                 (
                     ReviewStatus::ReviewRequired,

@@ -337,8 +337,9 @@ signature = """<descriptor .minisig text>"""
 The source version must be signed and pin a stable release of the same line. It must contain
 `Cargo.lock` and use the standalone `prebuilt-api` route: game edits, crates.io libraries and linked mod
 dependencies do not produce an independent release library. Builds are optional. Each stable release
-gets at most one row, and published rows are append-only. `registry review` reports an owner's append of
-only these rows as routine after validation; JSON reports these under `build_reviews`.
+gets at most one row, and published rows are append-only. `registry review` reports an owner's append as
+routine only after validation and only if the append is the submission's sole registry change. The JSON
+report lists these changes under `build_reviews`.
 
 The descriptor `<id>-<version>+<release>.binaries.json` names `id`, `version`, `build` (the SDK commit),
 `rust` (the SDK's Rust release), and `archives`. Every archive record has `target`, `name`, `size`,
