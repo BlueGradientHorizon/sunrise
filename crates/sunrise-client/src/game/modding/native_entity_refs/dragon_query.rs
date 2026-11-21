@@ -132,7 +132,10 @@ mod tests {
                     visits += 1;
                     assert_eq!(entity.id(), 90);
                     // This read consults residency again, which must not still be borrowed.
-                    assert_eq!(entity.position(host), Some([1.0e12, 64.0, 0.0]));
+                    assert_eq!(
+                        entity.with_view(host, |view| view.position()).flatten(),
+                        Some([1.0e12, 64.0, 0.0])
+                    );
                     ControlFlow::Break(())
                 }),
                 Ok(ControlFlow::Break(()))
@@ -231,7 +234,10 @@ mod tests {
                 level.visit_entities_in(host, min, max, &mut |entity| {
                     calls += 1;
                     assert_eq!(entity.id(), 12);
-                    assert_eq!(entity.position(host), Some([0.0; 3]));
+                    assert_eq!(
+                        entity.with_view(host, |view| view.position()).flatten(),
+                        Some([0.0; 3])
+                    );
                     ControlFlow::Break(())
                 }),
                 Ok(ControlFlow::Break(()))
@@ -279,7 +285,12 @@ mod tests {
             let mut seen = Vec::new();
             let nearest = level
                 .ray_trace_nearest_entity(host, from, to, 0.25, exclude, &mut |hit| {
-                    assert!(hit.entity.position(host).is_some());
+                    assert!(
+                        hit.entity
+                            .with_view(host, |view| view.position())
+                            .flatten()
+                            .is_some()
+                    );
                     seen.push(hit.entity.id());
                     hit.entity.id() != 60
                 })

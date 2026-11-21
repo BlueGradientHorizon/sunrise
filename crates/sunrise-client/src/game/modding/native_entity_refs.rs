@@ -3065,7 +3065,10 @@ pub(super) mod tests {
                 let player = game.player(12).unwrap();
                 let entity = game.entity(12).unwrap();
                 assert_eq!(player.fields().entity, entity);
-                assert_eq!(entity.position(game), Some([3.0, 64.0, 5.0]));
+                assert_eq!(
+                    entity.with_view(game, |view| view.position()).flatten(),
+                    Some([3.0, 64.0, 5.0])
+                );
                 assert_eq!(entity.uuid(game), Some(12));
                 let living = game.living(entity).unwrap();
                 assert_eq!(
@@ -3099,7 +3102,10 @@ pub(super) mod tests {
                     Some(a)
                 );
                 assert!(game.player.as_ref().unwrap().may_fly);
-                assert_eq!(other.position(game), Some([3.0, 64.0, 5.0]));
+                assert_eq!(
+                    other.with_view(game, |view| view.position()).flatten(),
+                    Some([3.0, 64.0, 5.0])
+                );
                 assert!(game.living(other).is_some());
             })
             .unwrap();
@@ -3146,10 +3152,17 @@ pub(super) mod tests {
             let swap = game.enter_guest(12).unwrap();
             assert!(game.entity(12).is_some());
             let other = game.entity(13).unwrap();
-            assert_eq!(other.position(game), Some([3.0, 64.0, 5.0]));
+            assert_eq!(
+                other.with_view(game, |view| view.position()).flatten(),
+                Some([3.0, 64.0, 5.0])
+            );
             assert_eq!(other.uuid(game), Some(13));
             assert_eq!(
-                other.kind(game).and_then(|kind| kind.id(game)).as_deref(),
+                other
+                    .with_view(game, |view| view.kind())
+                    .flatten()
+                    .and_then(|kind| kind.id(game))
+                    .as_deref(),
                 Some("minecraft:player")
             );
             let living = game.living(other).unwrap();
@@ -3270,9 +3283,14 @@ pub(super) mod tests {
             let found =
                 collect_game_entities_in(game, level, [0.0, 0.0, -1.0], [0.8, 1.0, 1.0]).unwrap();
             assert_eq!(found.len(), 1);
-            assert_eq!(game.entity_position(found[0]), Some([1.0, 0.0, 0.0]));
             assert_eq!(
-                game.entity_kind(found[0])
+                found[0].with_view(game, |view| view.position()).flatten(),
+                Some([1.0, 0.0, 0.0])
+            );
+            assert_eq!(
+                found[0]
+                    .with_view(game, |view| view.kind())
+                    .flatten()
                     .and_then(|kind| kind.id(game))
                     .as_deref(),
                 Some("minecraft:armor_stand")

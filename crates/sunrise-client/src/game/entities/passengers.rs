@@ -1757,7 +1757,12 @@ mod nested_vehicle_discard_tests {
                 // is notifying the old canceled edge.
                 let level = host.level("minecraft:overworld").unwrap();
                 let removed = mod_api::EntityRef::new(level.epoch(), 71);
-                assert!(removed.position(host).is_none());
+                assert!(
+                    removed
+                        .with_view(host, |view| view.position())
+                        .flatten()
+                        .is_none()
+                );
                 assert!(
                     host.entity(73)
                         .unwrap()
@@ -1860,7 +1865,12 @@ mod nested_vehicle_discard_tests {
                         }
                     }
                     assert_vehicle_queries_hidden(game, kind);
-                    assert!(game.entity_position(vehicle).is_none());
+                    assert!(
+                        vehicle
+                            .with_view(game, |view| view.position())
+                            .flatten()
+                            .is_none()
+                    );
                     assert!(game.entity_passengers(vehicle).is_none());
                     assert!(game.vehicle_by_uuid(uuid).is_none());
                     if !cart {

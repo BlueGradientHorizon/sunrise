@@ -90,7 +90,8 @@ impl Hooks for Observer {
         if let Some(entity) = pending {
             *KIND_OF_PENDING.lock().unwrap() = Some(
                 entity
-                    .kind(host)
+                    .with_view(host, |view| view.kind())
+                    .flatten()
                     .and_then(|key| key.id(host))
                     .map(|name| name.as_str().to_owned()),
             );
