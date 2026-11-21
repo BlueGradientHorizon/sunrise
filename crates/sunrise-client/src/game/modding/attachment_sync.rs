@@ -262,12 +262,8 @@ fn refused(error: &PayloadSendError) -> bool {
 }
 
 impl Game<'_> {
-    /// A `sunrise:attachment_sync` payload the server sent the window.
-    pub(super) fn remote_attachment_sync(&mut self, data: &[u8]) {
-        let message = match attachment_sync::decode(data) {
-            Ok(message) => message,
-            Err(e) => return log::debug!("Sunrise: a bad attachment sync: {e}"),
-        };
+    /// Apply an already decoded sync in play packet order, when its holder should exist.
+    pub(super) fn remote_attachment_sync(&mut self, message: Message) {
         let Some(remote) = self.remote.as_ref() else {
             return;
         };

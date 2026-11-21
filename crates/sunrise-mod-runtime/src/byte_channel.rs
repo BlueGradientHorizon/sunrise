@@ -63,6 +63,25 @@ pub struct ReceiveLease<T> {
     shared: Arc<Shared<T>>,
     charge: usize,
 }
+impl<T> ReceiveLease<T> {
+    /// Replace the charge of an inline delivery without refunding its retained buffers first.
+    /// On pressure the original lease stays intact.
+    pub fn resize(&mut self, owned_bytes: usize) -> Result<(), ReserveError> {
+        let charge = owned_bytes
+            .checked_add(message_overhead::<T>())
+            .ok_or(ReserveError::Full)?;
+        let mut state = self.shared.lock();
+        let other = state.stats.reserved_bytes - self.charge;
+        if charge > self.shared.capacity - other {
+            return Err(ReserveError::Full);
+        }
+        state.held_bytes = state.held_bytes - self.charge + charge;
+        state.stats.reserved_bytes = other + charge;
+        state.stats.peak_reserved_bytes = state.stats.peak_reserved_bytes.max(other + charge);
+        self.charge = charge;
+        Ok(())
+    }
+}
 impl<T> Drop for ReceiveLease<T> {
     fn drop(&mut self) {
         let mut state = self.shared.lock();

@@ -87,6 +87,61 @@ fn malformed_metadata_aborts_the_open_bundle_and_refunds_its_prefix() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn malformed_pairing_attachment_aborts_before_publishing_the_spawn() {
+    use sunrise_protocol::{attachment_sync, general_entity};
+
+    let (root, data) = empty_item_data("malformed-pairing-attachment");
+    let transport = Transport::capture(Side::Client).unwrap();
+    transport
+        .accept(transport.local.manifest.entries())
+        .unwrap();
+    transport.finish_configuration().unwrap();
+    let (client, server) = Pipe::pair();
+    let (reader, writer) = Connection::local(client).split();
+    let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+    let (send, events) = event_channel();
+    let mut server = Connection::local(server);
+    let delimiter = play::Clientbound::BundleDelimiter(Empty);
+    let spawn = play::Clientbound::CustomPayload(cfg::CustomPayload {
+        channel: general_entity::CHANNEL.into(),
+        data: general_entity::encode(&general_entity::Message::Spawn {
+            id: 37,
+            uuid: 37,
+            type_key: "test:general".into(),
+            position: [0.5, 64.0, 0.5],
+            rotation: [0.0; 2],
+            velocity: [0.0; 3],
+        })
+        .unwrap(),
+    });
+    let broken = play::Clientbound::CustomPayload(cfg::CustomPayload {
+        channel: attachment_sync::CHANNEL.into(),
+        data: vec![5, 0, 0], // Invalid holder kind, but a valid outer CustomPayload.
+    });
+    for packet in [delimiter.clone(), spawn, broken, delimiter] {
+        server.send(&packet.encode()).unwrap();
+    }
+    drop(server);
+    let reader = play_reader(reader, writer.clone(), send, data, transport);
+    assert!(
+        matches!(
+            events.recv_timeout_owned(Duration::from_secs(5)),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected)
+        ),
+        "the reader must close without publishing the spawn or its attachments"
+    );
+    let error = reader.join().unwrap().unwrap_err();
+    assert_eq!(
+        error.text,
+        "attachment sync in play bundle: attachment sync: holder kind 5"
+    );
+    assert_eq!(events.stats().reserved_bytes, 0);
+    assert!(events.stats().peak_reserved_bytes > 0);
+    writer.lock().unwrap().take().unwrap().shutdown();
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 const MAIN: &str = "bundle_order_probe:main";
 const NETWORK: &str = "bundle_order_probe:network";
 struct Probe(Arc<Mutex<Vec<(u8, std::thread::ThreadId)>>>);
@@ -213,7 +268,31 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
             let timeout = Duration::from_secs(5);
             server_reader.set_read_timeout(Some(timeout)).unwrap();
             let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
-            let (send, events) = event_channel();
+            let delimiter = play::Clientbound::BundleDelimiter(Empty);
+            let custom = |channel: &str, step, bytes| {
+                play::Clientbound::CustomPayload(cfg::CustomPayload {
+                    channel: channel.into(),
+                    data: vec![step; bytes],
+                })
+            };
+            let subpackets = [
+                play::Clientbound::Ping(cfg::Ping { id: 0 }),
+                custom(MAIN, 1, 8 * 1024),
+                play::Clientbound::Ping(cfg::Ping { id: 2 }),
+                custom(NETWORK, 3, 1),
+                custom(NETWORK, 4, 1),
+                play::Clientbound::Ping(cfg::Ping { id: 5 }),
+            ];
+            let budget = subpackets
+                .iter()
+                .map(|packet| Event::Packet(Box::new(packet.clone())).ingress_charge())
+                .sum::<usize>()
+                + Event::BundleStart(None).ingress_charge()
+                + Event::BundleEnd.ingress_charge()
+                + (subpackets.len() + 2)
+                    * sunrise_mod_runtime::byte_channel::message_overhead::<Event>()
+                + 1024; // Room for a different envelope, but not another 8 KiB payload.
+            let (send, events) = ingress::channel(budget, Event::ingress_charge).unwrap();
             let endpoint = Endpoint::client(
                 writer.clone(),
                 Arc::new(AtomicBool::new(false)),
@@ -223,25 +302,11 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
             let reader = play_reader(reader, writer.clone(), send, data, transport.clone());
             let network_thread = reader.thread().id();
             let main_thread = std::thread::current().id();
-            let delimiter = play::Clientbound::BundleDelimiter(Empty);
-            let custom = |channel: &str, step| {
-                play::Clientbound::CustomPayload(cfg::CustomPayload {
-                    channel: channel.into(),
-                    data: vec![step],
-                })
-            };
-            for packet in [
-                delimiter.clone(),
-                play::Clientbound::Ping(cfg::Ping { id: 0 }),
-                custom(MAIN, 1),
-                play::Clientbound::Ping(cfg::Ping { id: 2 }),
-                custom(NETWORK, 3),
-                custom(NETWORK, 4),
-                play::Clientbound::Ping(cfg::Ping { id: 5 }),
-                delimiter,
-            ] {
+            server_writer.send(&delimiter.encode()).unwrap();
+            for packet in subpackets {
                 server_writer.send(&packet.encode()).unwrap();
             }
+            server_writer.send(&delimiter.encode()).unwrap();
             let (start, _start_credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
             let Event::BundleStart(Some(dispatch)) = start else {
                 panic!("expected routed bundle");
@@ -252,7 +317,7 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
             );
             let mut stopped = false;
             for receipt in events.take_turn() {
-                let (event, _credit) = receipt.into_parts();
+                let (event, credit) = receipt.into_parts();
                 if matches!(event, Event::BundleEnd) {
                     break;
                 }
@@ -260,7 +325,7 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
                     continue;
                 }
                 let progress = dispatch
-                    .dispatch(event, |event| {
+                    .dispatch(event, credit, |event| {
                         match event {
                             Event::Packet(packet) => {
                                 let play::Clientbound::Ping(ping) = *packet else {
@@ -300,7 +365,7 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
                     (4, network_thread)
                 ]
             );
-            for (channel, marker) in [(MAIN, 1), (NETWORK, 3)] {
+            for (channel, marker, bytes) in [(MAIN, 1, 8 * 1024), (NETWORK, 3, 1)] {
                 let (id, payload) = server_reader.recv().unwrap();
                 let play::Serverbound::CustomPayload(reply) =
                     play::Serverbound::decode(id, &payload).unwrap()
@@ -308,7 +373,7 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
                     panic!("expected a reply");
                 };
                 assert_eq!(reply.channel, channel);
-                assert_eq!(reply.data, [marker]);
+                assert_eq!(reply.data, vec![marker; bytes]);
             }
             assert_eq!(
                 reader.join().unwrap().unwrap_err().text,

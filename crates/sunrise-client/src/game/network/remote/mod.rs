@@ -3438,10 +3438,6 @@ impl Game<'_> {
             {
                 self.remote_book_settings(&p.data);
             }
-            // The synced attachments of a holder the server shows the window.
-            C::CustomPayload(p) if p.channel == sunrise_protocol::attachment_sync::CHANNEL => {
-                self.remote_attachment_sync(&p.data);
-            }
             // A native mod's general row the server starts showing the window.
             C::CustomPayload(p) if p.channel == sunrise_protocol::general_entity::CHANNEL => {
                 self.remote_general_entity(&p.data);

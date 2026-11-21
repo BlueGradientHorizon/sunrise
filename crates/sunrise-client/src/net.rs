@@ -113,6 +113,11 @@ pub enum Event {
     BundleStart(Option<BundleDispatch>),
     /// Closing boundary of a `ClientboundBundlePacket`.
     BundleEnd,
+    /// Attachment sync decoded at ingress. Keep the original payload for `client_packet`.
+    AttachmentSync {
+        payload: cfg::CustomPayload,
+        message: Box<sunrise_protocol::attachment_sync::Message>,
+    },
     /// Registered application bytes, owned until the receiving root transaction ends.
     RawPayload(Box<crate::raw_payloads::Incoming>),
     /// A standalone play packet that failed to decode and was skipped.
@@ -162,6 +167,15 @@ fn event_channel() -> (ingress::Producer<Event>, ingress::Consumer<Event>) {
     ingress::channel(96 << 20, Event::ingress_charge).expect("positive incoming byte budget")
 }
 impl Event {
+    /// Decode the engine payload at the play ingress boundary, before applying it.
+    pub fn decode_attachment_sync(payload: cfg::CustomPayload) -> sunrise_protocol::Result<Self> {
+        let message = sunrise_protocol::attachment_sync::decode(&payload.data)?;
+        Ok(Self::AttachmentSync {
+            payload,
+            message: Box::new(message),
+        })
+    }
+
     fn ingress_charge(&self) -> usize {
         use std::mem::{align_of, size_of};
         use sunrise_protocol::retained::OwnedHeap;
@@ -198,6 +212,21 @@ impl Event {
             }
             Self::RawPayload(incoming) => size_of::<crate::raw_payloads::Incoming>()
                 .saturating_add(incoming.owned_heap_bytes()),
+            Self::AttachmentSync { payload, message } => {
+                let changes = &message.changes;
+                let fixed = size_of_val(&**message)
+                    .saturating_add(
+                        size_of::<sunrise_mod_runtime::attachments::AttachmentSync>()
+                            .saturating_mul(changes.capacity()),
+                    )
+                    .saturating_add(payload.owned_heap_bytes());
+                changes.iter().fold(fixed, |total, change| {
+                    total
+                        .saturating_add(change.namespace.owned_heap_bytes())
+                        .saturating_add(change.name.owned_heap_bytes())
+                        .saturating_add(change.value.owned_heap_bytes())
+                })
+            }
             Self::PackPush(packet) => packet.owned_heap_bytes(),
             Self::ShowDialog { dialog, registries } => dialog
                 .owned_heap_bytes()
@@ -1140,7 +1169,7 @@ fn send_event(send: &ingress::Producer<Event>, event: Event) -> Result<(), Resul
 /// The game owns the bundle's turn. When a step needs the physical reader, it
 /// lends that step to the reader and waits for its result before dispatching the next.
 pub struct BundleDispatch {
-    requests: SyncSender<Box<play::Clientbound>>,
+    requests: SyncSender<(Box<play::Clientbound>, ingress::ReceiveLease<Event>)>,
     responses: Receiver<BundleStep>,
 }
 
@@ -1148,6 +1177,7 @@ struct BundleStep {
     event: Option<Event>,
     inline: Vec<ingress::Prepared<Event>>,
     stop: bool,
+    _credit: ingress::ReceiveLease<Event>,
 }
 
 pub enum BundleProgress {
@@ -1160,6 +1190,7 @@ impl BundleDispatch {
     pub fn dispatch<E>(
         &self,
         event: Event,
+        credit: ingress::ReceiveLease<Event>,
         mut apply: impl FnMut(Event) -> Result<bool, E>,
     ) -> Result<BundleProgress, E> {
         let packet = match event {
@@ -1172,7 +1203,7 @@ impl BundleDispatch {
                 });
             }
         };
-        if self.requests.send(packet).is_err() {
+        if self.requests.send((packet, credit)).is_err() {
             return Ok(BundleProgress::Stop);
         }
         let Ok(step) = self.responses.recv() else {
@@ -1228,7 +1259,10 @@ impl PlayRouter<'_> {
     fn route(
         &mut self,
         packet: play::Clientbound,
-        inline: Option<&mut Vec<ingress::Prepared<Event>>>,
+        bundled: Option<(
+            &mut ingress::ReceiveLease<Event>,
+            &mut Vec<ingress::Prepared<Event>>,
+        )>,
     ) -> Result<(Option<Event>, Option<Reason>), Reason> {
         use crate::raw_payloads::{Classified, Incoming};
         use sunrise_protocol::payload_negotiation::Phase;
@@ -1284,7 +1318,7 @@ impl PlayRouter<'_> {
                 return Ok((None, Some(Reason::tag(&d.reason, self.lang))));
             }
             play::Clientbound::CustomPayload(p) if p.channel == "minecraft:brand" => {
-                if inline.is_some() {
+                if bundled.is_some() {
                     brand_event(&p)
                 } else {
                     receive_brand(&p, self.send);
@@ -1296,12 +1330,22 @@ impl PlayRouter<'_> {
                 None
             }
             play::Clientbound::CustomPayload(payload) => {
-                let payload = if let Some(inline) = inline {
+                let payload = if let Some((credit, inline)) = bundled {
                     // Classification can fail too: do not do it before the preceding game steps.
                     match Incoming::classify(self.endpoint.transport(), Phase::Play, payload)
                         .map_err(|error| Reason::plain(error.to_string()))?
                     {
                         Classified::Other(payload) => Some(payload),
+                        Classified::Application(incoming)
+                            if incoming.receiver.thread == mod_api::HandlerThread::Main =>
+                        {
+                            // Classification moved these buffers; only the envelope changed.
+                            let event = Event::RawPayload(Box::new(incoming));
+                            credit.resize(event.ingress_charge()).map_err(|_| {
+                                Reason::plain("incoming queue resource pressure for payload main")
+                            })?;
+                            return Ok((Some(event), None));
+                        }
                         Classified::Application(incoming) => {
                             if let Some(reason) = crate::raw_payloads::dispatch_in_bundle(
                                 incoming,
@@ -1364,9 +1408,9 @@ impl PlayRouter<'_> {
 
         let mut exit = None;
         if let Some((requests, responses)) = reader {
-            while let Ok(packet) = requests.recv() {
+            while let Ok((packet, mut credit)) = requests.recv() {
                 let mut inline = Vec::new();
-                let event = match self.route(*packet, Some(&mut inline)) {
+                let event = match self.route(*packet, Some((&mut credit, &mut inline))) {
                     Ok((event, end)) => {
                         exit = end.map(Ok);
                         event
@@ -1381,6 +1425,7 @@ impl PlayRouter<'_> {
                         event,
                         inline,
                         stop: exit.is_some(),
+                        _credit: credit,
                     })
                     .is_err()
                 {
@@ -1424,9 +1469,7 @@ fn receive_play(
         ),
         batch: Default::default(),
     };
-    // PacketBundlePacker + BundlerInfo.BUNDLE_SIZE_LIMIT: frame delimited play packets
-    // before routing and charge each retained subpacket against ingress credit immediately.
-    const MAX_BUNDLE_PACKETS: usize = 4096;
+    // PacketBundlePacker: frame delimited play packets before routing.
     let mut bundle: Option<Vec<ingress::Prepared<Event>>> = None;
     loop {
         let (id, payload) = reader
@@ -1475,17 +1518,47 @@ fn receive_play(
             }
             continue;
         }
+        let packet = match packet {
+            play::Clientbound::CustomPayload(payload)
+                if payload.channel == sunrise_protocol::attachment_sync::CHANNEL =>
+            {
+                use crate::raw_payloads::{Classified, Incoming};
+                use sunrise_protocol::payload_negotiation::Phase;
+                let Classified::Other(payload) = Incoming::classify(payloads, Phase::Play, payload)
+                    .map_err(|error| Reason::plain(error.to_string()))?
+                else {
+                    unreachable!("attachment sync is an engine declaration");
+                };
+                let event = match Event::decode_attachment_sync(payload) {
+                    Ok(event) => event,
+                    Err(error) if bundle.is_some() => {
+                        return Err(Reason::plain(format!(
+                            "attachment sync in play bundle: {error}"
+                        )));
+                    }
+                    Err(error) => {
+                        log::warn!("Sunrise: a bad attachment sync: {error}");
+                        continue;
+                    }
+                };
+                if let Some(open) = bundle.as_mut() {
+                    if let Err(exit) = stage_bundle_event(send, open, event) {
+                        return exit;
+                    }
+                } else if let Err(exit) = send_event(send, event) {
+                    return exit;
+                }
+                continue;
+            }
+            packet => packet,
+        };
         let reconfigure = matches!(packet, play::Clientbound::StartConfiguration(_));
         if let Some(open) = bundle.as_mut() {
             if reconfigure {
                 return Err(Reason::plain("Terminal message received in bundle"));
             }
-            if open.len() >= MAX_BUNDLE_PACKETS {
-                return Err(Reason::plain("Too many packets in a bundle"));
-            }
-            match prepare_event(send, Event::Packet(Box::new(packet))) {
-                Ok(prepared) => open.push(prepared),
-                Err(exit) => return exit,
+            if let Err(exit) = stage_bundle_event(send, open, Event::Packet(Box::new(packet))) {
+                return exit;
             }
             continue;
         }
@@ -1528,6 +1601,20 @@ fn receive_play(
             return Ok(why);
         }
     }
+}
+
+/// BundlerInfo.BUNDLE_SIZE_LIMIT and the connection's ingress credit apply to each subpacket.
+fn stage_bundle_event(
+    send: &ingress::Producer<Event>,
+    open: &mut Vec<ingress::Prepared<Event>>,
+    event: Event,
+) -> Result<(), Result<Reason, Reason>> {
+    const MAX_BUNDLE_PACKETS: usize = 4096;
+    if open.len() >= MAX_BUNDLE_PACKETS {
+        return Err(Err(Reason::plain("Too many packets in a bundle")));
+    }
+    open.push(prepare_event(send, event)?);
+    Ok(())
 }
 
 fn receive_application(
@@ -3180,16 +3267,24 @@ mod tests {
         let mut server = Connection::local(server);
         let delimiter = play::Clientbound::BundleDelimiter(Empty).encode();
         let ping1 = play::Clientbound::Ping(cfg::Ping { id: 1 });
-        let sync = play::Clientbound::CustomPayload(cfg::CustomPayload {
-            channel: sunrise_protocol::attachment_sync::CHANNEL.into(),
-            data: vec![1, 2, 3],
-        });
+        use sunrise_protocol::attachment_sync::{self, Message};
+        let message = Message {
+            holder: sunrise_mod_runtime::attachments::Holder::Entity(1),
+            replace: true,
+            changes: Vec::new(),
+        };
+        let sync = cfg::CustomPayload {
+            channel: attachment_sync::CHANNEL.into(),
+            data: attachment_sync::encode(&message).unwrap(),
+        };
         let ping2 = play::Clientbound::Ping(cfg::Ping { id: 2 });
         let ping3 = play::Clientbound::Ping(cfg::Ping { id: 3 });
 
         server.send(&delimiter).unwrap();
         server.send(&ping1.encode()).unwrap();
-        server.send(&sync.encode()).unwrap();
+        server
+            .send(&play::Clientbound::CustomPayload(sync.clone()).encode())
+            .unwrap();
         server.send(&delimiter).unwrap();
         server.send(&ping2.encode()).unwrap();
         // Empty bundle produces no event; the next packet arrives standalone.
@@ -3199,28 +3294,16 @@ mod tests {
 
         let timeout = Duration::from_secs(5);
         let (first, _c0) = events.recv_timeout_owned(timeout).unwrap().into_parts();
-        let Event::BundleStart(Some(dispatch)) = first else {
-            panic!("expected a routed bundle");
-        };
-        let mut bundled = Vec::new();
-        loop {
-            let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
-            if matches!(event, Event::BundleEnd) {
-                break;
-            }
-            let progress = dispatch
-                .dispatch(event, |event| {
-                    let Event::Packet(packet) = event else {
-                        panic!("expected bundled packet");
-                    };
-                    bundled.push(*packet);
-                    Ok::<_, std::convert::Infallible>(false)
-                })
-                .unwrap();
-            assert!(matches!(progress, BundleProgress::Continue));
-        }
-        drop(dispatch);
-        assert_eq!(bundled, [ping1, sync]);
+        assert!(matches!(first, Event::BundleStart(None)));
+        let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        assert!(matches!(event, Event::Packet(p) if *p == ping1));
+        let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        assert!(
+            matches!(event, Event::AttachmentSync { payload, message: decoded }
+            if payload == sync && *decoded == message)
+        );
+        let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        assert!(matches!(event, Event::BundleEnd));
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(matches!(event, Event::Packet(p) if *p == ping2));
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();

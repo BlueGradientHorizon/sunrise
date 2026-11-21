@@ -86,10 +86,11 @@ A row is eligible for extraction immediately upon spawn (starting with an empty 
 snapshot when the entity has no synced attachments). When the entity has synced attachments at
 pairing time, the server bundles the initial attachment sync atomically with the entity spawn
 packet (`ServerEntity.addPairing` / `ClientPacketListener.handleBundlePacket`, matching NeoForge
-`AttachmentSync`), so the first rendered frame already sees them. Sync for an unknown entity,
-including an untracked foreign player, is logged and ignored, not stored for a future spawn.
-The engine publishes a new
-generation at spawn and on each attachment sync, and a frame keeps that generation even if a
+`AttachmentSync`), so the first rendered frame already sees them. This includes negotiated
+clients held during a proxy handoff, which can see the level but are not yet visible to others.
+An attachment envelope that fails to decode discards the entire pairing bundle before any of it
+is applied. Sync for an unknown entity, including an untracked foreign player, is logged and
+ignored, not stored for a future spawn. The engine publishes a new generation at spawn and on each attachment sync, and a frame keeps that generation even if a
 later update replaces or removes values. Use a draw default when `get` returns `Ok(None)` for a
 missing key. The first typed read of an undecoded binding can allocate to decode the value;
 already-decoded bindings are shared directly without re-running the codec. Two snapshots compare

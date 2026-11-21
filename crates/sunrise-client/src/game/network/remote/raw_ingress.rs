@@ -34,7 +34,7 @@ impl Remote {
 impl Game<'_> {
     /// Dispatch one non-chunk remote event. Returns `Ok(true)` when the
     /// connection ended or transferred and `poll_remote_events` must return.
-    fn dispatch_remote_event(&mut self, event: Event) -> Result<bool> {
+    pub(in crate::game) fn dispatch_remote_event(&mut self, event: Event) -> Result<bool> {
         match event {
             Event::Status(s) => {
                 if let Some(r) = self.remote.as_mut() {
@@ -206,6 +206,10 @@ impl Game<'_> {
                 self.leave_server(Some(Text::literal(reason)))?;
                 return Ok(true);
             }
+            Event::AttachmentSync { payload, message } => {
+                self.observe_client_packet(&C::CustomPayload(payload));
+                self.remote_attachment_sync(*message);
+            }
             Event::RawPayload(incoming) => {
                 if let Some(remote) = self.remote.as_ref() {
                     self.run_payload(remote.session.payload_endpoint(), *incoming);
@@ -298,7 +302,7 @@ impl Game<'_> {
             if let Event::BundleStart(dispatch) = event {
                 let mut stopped = false;
                 while let Some(sub_item) = events.pop_front() {
-                    let Received::Event(sub, _sub_credit) = sub_item else {
+                    let Received::Event(sub, sub_credit) = sub_item else {
                         unreachable!("bundled chunks stay inline in receive_credited_backlog");
                     };
                     if matches!(sub, Event::BundleEnd) {
@@ -308,19 +312,20 @@ impl Game<'_> {
                         continue;
                     }
                     if let Some(dispatch) = &dispatch {
-                        let progress = dispatch.dispatch(sub, |event| -> Result<bool> {
-                            let epoch = match &event {
-                                Event::RawPayload(incoming) if incoming.epoch.active() => {
-                                    Some(incoming.epoch.clone())
-                                }
-                                _ => None,
-                            };
-                            let left = self.dispatch_remote_event(event)?;
-                            // A Main callback can disconnect on its own thread. Its
-                            // accepted predecessors are already complete.
-                            stopped |= epoch.is_some_and(|epoch| !epoch.active());
-                            Ok(left)
-                        })?;
+                        let progress =
+                            dispatch.dispatch(sub, sub_credit, |event| -> Result<bool> {
+                                let epoch = match &event {
+                                    Event::RawPayload(incoming) if incoming.epoch.active() => {
+                                        Some(incoming.epoch.clone())
+                                    }
+                                    _ => None,
+                                };
+                                let left = self.dispatch_remote_event(event)?;
+                                // A Main callback can disconnect on its own thread. Its
+                                // accepted predecessors are already complete.
+                                stopped |= epoch.is_some_and(|epoch| !epoch.active());
+                                Ok(left)
+                            })?;
                         match progress {
                             BundleProgress::Continue => {}
                             BundleProgress::Stop => stopped = true,

@@ -107,11 +107,11 @@ fn a_general_row_always_has_a_first_snapshot_holding_what_it_holds_now() {
 #[ignore = "daily"]
 fn remote_attachment_sync_ignores_unknown_entity() {
     use sunrise_mod_runtime::attachments::AttachmentSync;
-    use sunrise_protocol::attachment_sync::{Message, encode};
+    use sunrise_protocol::attachment_sync::Message;
 
     crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
         let holder = Holder::Entity(77);
-        let payload = encode(&Message {
+        let message = || Message {
             holder,
             replace: true,
             changes: vec![AttachmentSync {
@@ -119,9 +119,8 @@ fn remote_attachment_sync_ignores_unknown_entity() {
                 name: "value".into(),
                 value: Some([("n".into(), Tag::Int(99))].into()),
             }],
-        })
-        .unwrap();
-        game.remote_attachment_sync(&payload);
+        };
+        game.remote_attachment_sync(message());
         assert!(
             !game
                 .remote
@@ -133,7 +132,7 @@ fn remote_attachment_sync_ignores_unknown_entity() {
         );
         // Once the entity exists in the client level, attachment sync stores its values.
         game.spawn_entity(77, "minecraft:pig", [0.5, 64.0, 0.5], [0.0; 3]);
-        game.remote_attachment_sync(&payload);
+        game.remote_attachment_sync(message());
         assert!(
             game.remote
                 .as_ref()
@@ -150,7 +149,7 @@ fn remote_attachment_sync_ignores_unknown_entity() {
 fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
     use sunrise_mod_runtime::attachments::AttachmentSync;
     use sunrise_protocol::{
-        attachment_sync::{Message, encode},
+        attachment_sync::Message,
         packets::play::{AddEntity, Clientbound, RemoveEntities},
     };
 
@@ -166,7 +165,7 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
             .id("minecraft:player")
             .unwrap();
         let holder = Holder::Player(uuid);
-        let payload = encode(&Message {
+        let message = || Message {
             holder,
             replace: true,
             changes: vec![AttachmentSync {
@@ -174,8 +173,7 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
                 name: "value".into(),
                 value: Some([("n".into(), Tag::Int(99))].into()),
             }],
-        })
-        .unwrap();
+        };
         let mirrored = |game: &super::Game<'_>| {
             game.remote
                 .as_ref()
@@ -184,7 +182,7 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
                 .contains_key(&holder)
         };
 
-        game.remote_attachment_sync(&payload);
+        game.remote_attachment_sync(message());
         assert!(
             !mirrored(game),
             "sync before pairing must not create a mirror"
@@ -201,14 +199,14 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
             data: 0,
         }))
         .unwrap();
-        game.remote_attachment_sync(&payload);
+        game.remote_attachment_sync(message());
         assert!(mirrored(game), "the paired player receives attachment sync");
         game.handle_packet(Clientbound::RemoveEntities(RemoveEntities {
             ids: vec![id],
         }))
         .unwrap();
         assert!(!mirrored(game), "the departing player loses its mirror");
-        game.remote_attachment_sync(&payload);
+        game.remote_attachment_sync(message());
         assert!(
             !mirrored(game),
             "sync after removal must not recreate a mirror"

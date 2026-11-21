@@ -341,13 +341,11 @@ mod tests {
         })
     }
 
-    /// The server's whole snapshot of entity `id`'s synced attachments: `value` in
-    /// `mymod:fuel`, or nothing synced.
-    fn snapshot(id: u32, value: Option<i32>) -> C {
-        attachment_packet(id, true, value)
-    }
-
-    fn attachment_packet(id: u32, replace: bool, value: Option<i32>) -> C {
+    fn attachment_message(
+        id: u32,
+        replace: bool,
+        value: Option<i32>,
+    ) -> sunrise_protocol::attachment_sync::Message {
         use sunrise_core::nbt::Tag;
         use sunrise_mod_runtime::attachments::AttachmentSync;
         let changes = value.map_or_else(Vec::new, |n| {
@@ -357,17 +355,11 @@ mod tests {
                 value: Some([("n".into(), Tag::Int(n))].into()),
             }]
         });
-        C::CustomPayload(sunrise_protocol::packets::configuration::CustomPayload {
-            channel: sunrise_protocol::attachment_sync::CHANNEL.into(),
-            data: sunrise_protocol::attachment_sync::encode(
-                &sunrise_protocol::attachment_sync::Message {
-                    holder: Holder::Entity(id),
-                    replace,
-                    changes,
-                },
-            )
-            .unwrap(),
-        })
+        sunrise_protocol::attachment_sync::Message {
+            holder: Holder::Entity(id),
+            replace,
+            changes,
+        }
     }
 
     #[test]
@@ -755,8 +747,7 @@ mod tests {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
             crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
                 // An attachment sync for an unknown entity is ignored without storing anything.
-                game.handle_packet(attachment_packet(5, false, Some(99)))
-                    .unwrap();
+                game.remote_attachment_sync(attachment_message(5, false, Some(99)));
                 assert!(
                     !game
                         .remote
@@ -782,10 +773,9 @@ mod tests {
                 );
                 assert_eq!(held[&5].render_attachments.get(&FUEL), Ok(None));
                 // Both deltas and whole snapshots publish to render_attachments for a known row.
-                game.handle_packet(attachment_packet(5, false, Some(12)))
-                    .unwrap();
+                game.remote_attachment_sync(attachment_message(5, false, Some(12)));
                 assert_eq!(rows(game)[&5].render_attachments.get(&FUEL), Ok(Some(&12)));
-                game.handle_packet(snapshot(5, Some(9))).unwrap();
+                game.remote_attachment_sync(attachment_message(5, true, Some(9)));
                 assert_eq!(row_ids(game), [5]);
                 assert_eq!(rows(game)[&5].render_attachments.get(&FUEL), Ok(Some(&9)));
                 let fuel = |game: &Game<'_>, id: u32| {
@@ -863,7 +853,14 @@ mod tests {
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
             crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
+                use sunrise_client::net::Event;
+                use sunrise_protocol::{attachment_sync, packets::configuration::CustomPayload};
                 let (tx, rx) = sunrise_client::net::ingress::channel(4096, |_| 1).unwrap();
+                let sync = Event::decode_attachment_sync(CustomPayload {
+                    channel: attachment_sync::CHANNEL.into(),
+                    data: attachment_sync::encode(&attachment_message(15, true, Some(42))).unwrap(),
+                })
+                .unwrap();
                 sunrise_client::net::ingress::Prepared::publish_batch(vec![
                     tx.prepare(sunrise_client::net::Event::BundleStart(None))
                         .unwrap(),
@@ -873,11 +870,7 @@ mod tests {
                         [1.5, 70.0, 2.5],
                     ))))
                     .unwrap(),
-                    tx.prepare(sunrise_client::net::Event::Packet(Box::new(snapshot(
-                        15,
-                        Some(42),
-                    ))))
-                    .unwrap(),
+                    tx.prepare(sync).unwrap(),
                     tx.prepare(sunrise_client::net::Event::BundleEnd).unwrap(),
                 ])
                 .unwrap();

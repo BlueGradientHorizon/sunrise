@@ -2,7 +2,7 @@ use super::*;
 use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{AttachmentCodec, AttachmentType, Host};
 use sunrise_mod_runtime::attachments::AttachmentSync;
-use sunrise_protocol::attachment_sync::{Message, encode};
+use sunrise_protocol::attachment_sync::Message;
 
 static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "mirror",
@@ -32,18 +32,15 @@ fn client<'a>(game: &'a mut Game<'_>) -> &'a mut Remote {
     game.remote.as_mut().unwrap()
 }
 fn sync(game: &mut Game<'_>, holder: Holder, value: i32) {
-    game.remote_attachment_sync(
-        &encode(&Message {
-            holder,
-            replace: true,
-            changes: vec![AttachmentSync {
-                namespace: "mirror".into(),
-                name: "value".into(),
-                value: Some([("n".into(), Tag::Int(value))].into()),
-            }],
-        })
-        .unwrap(),
-    );
+    game.remote_attachment_sync(Message {
+        holder,
+        replace: true,
+        changes: vec![AttachmentSync {
+            namespace: "mirror".into(),
+            name: "value".into(),
+            value: Some([("n".into(), Tag::Int(value))].into()),
+        }],
+    });
 }
 #[test]
 #[ignore = "daily"]
