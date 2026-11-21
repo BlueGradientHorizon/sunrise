@@ -886,7 +886,7 @@ impl Game<'_> {
                                 sunrise_client::mobs::ai::brain_target(m).unwrap_or(m.ai.target)
                             }
                         })
-                        .map(|w| match w {
+                        .and_then(|w| match w {
                             sunrise_client::mobs::Who::Player => {
                                 // LivingEntity.getLastHurtByMob is the player
                                 // who hit it, not whichever client is reading it.
@@ -898,12 +898,13 @@ impl Game<'_> {
                                     Some(Some(conn))
                                         if attacker && self.lan_acting != Some(conn) =>
                                     {
-                                        Target::Guest(conn)
+                                        Some(Target::Guest(conn))
                                     }
-                                    _ => Target::Player,
+                                    _ => Some(Target::Player),
                                 }
                             }
-                            sunrise_client::mobs::Who::Mob(i) => Target::Mob(i),
+                            sunrise_client::mobs::Who::Mob(i) if attacker => Some(Target::Mob(i)),
+                            sunrise_client::mobs::Who::Mob(i) => self.level_entity(i as i32),
                         })
                         .into_iter()
                         .collect(),

@@ -385,7 +385,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
             );
             let (target, anger) = warden_state(game);
             assert_eq!(target, Some(Who::Mob(pig_id)), "{ty}");
-            assert!(anger >= 100, "{ty}: anger {anger}");
+            assert_eq!(anger, 100, "{ty}");
         }
 
         // A direct ArmorStand sets attack_target (any LivingEntity) while canTargetEntity skips anger.
@@ -403,7 +403,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         ));
         let (target, anger) = warden_state(game);
         assert_eq!(target, None);
-        assert!(anger >= 100);
+        assert_eq!(anger, 100);
 
         reset_warden(game);
         assert!(game.run_command(
@@ -423,7 +423,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         ));
         let (target, anger) = warden_state(game);
         assert_eq!(target, Some(Who::Mob(pig_id)));
-        assert!(anger >= 100);
+        assert_eq!(anger, 100);
 
         // Smaller hit during hurt cooldown returns false, yet still updates anger and target.
         reset_warden(game);
@@ -440,7 +440,19 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         );
         let (target, anger) = warden_state(game);
         assert_eq!(target, Some(Who::Mob(pig_id)));
-        assert!(anger >= 100);
+        assert_eq!(anger, 100);
+
+        // A refused player melee hit also updates anger and target before any tick.
+        reset_warden(game);
+        assert!(
+            game.run_command("damage 00000054-0000-0000-0000-000000000001 5 minecraft:generic")
+        );
+        let index = game.mobs.iter().position(|m| m.id == warden_id).unwrap();
+        let health_after_first = game.mobs[index].health;
+        let from = game.target_position(Target::Player).unwrap();
+        assert!(!game.hurt_by_player(index, 1.0, Damage::player(from)));
+        assert_eq!(game.mobs[index].health, health_after_first);
+        assert_eq!(warden_state(game), (Some(Who::Player), 100));
 
         // Live blasts: direct mob blast at 10 blocks targets the mob; unowned TNT stays sourceless.
         game.mobs
@@ -460,7 +472,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         .unwrap();
         let (target, anger) = warden_state(game);
         assert_eq!(target, Some(Who::Mob(pig_id)));
-        assert!(anger >= 100);
+        assert_eq!(anger, 100);
 
         reset_warden(game);
         game.add_primed_tnt(BlockPos::new(4, 64, 4), 0.0, 80, None, None);
