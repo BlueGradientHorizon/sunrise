@@ -1090,7 +1090,7 @@ mod tests {
                     velocity: Vec3::ZERO,
                     fuse: 80,
                     ticks: 0,
-                    on_ground: false,
+                    ground: Default::default(),
                     in_water: false,
                     stuck: Vec3::ZERO,
                     fall_distance: 0.0,

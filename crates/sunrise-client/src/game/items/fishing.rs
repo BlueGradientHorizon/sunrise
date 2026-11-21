@@ -97,7 +97,7 @@ pub(super) struct Hook {
     needs_sync: bool,
     tick_count: i32,
     life: i32,
-    on_ground: bool,
+    ground: sunrise_world::ground_support::GroundState,
     nibble: i32,
     time_until_lured: i32,
     time_until_hooked: i32,
@@ -458,7 +458,12 @@ impl Game<'_> {
         .into_iter()
         .enumerate()
         {
-            let mut state = (Vec3::new(x, 301.1, z), motion, State::Flying, false);
+            let mut state = (
+                Vec3::new(x, 301.1, z),
+                motion,
+                State::Flying,
+                Default::default(),
+            );
             let mut random = LegacyRandom::new(0);
             for tick in 0..5 {
                 state = self.client_hook_step(1, None, false, state, &mut random);
@@ -572,7 +577,7 @@ impl Game<'_> {
                 needs_sync: false,
                 tick_count: 0,
                 life: 0,
-                on_ground: false,
+                ground: Default::default(),
                 nibble: 0,
                 time_until_lured: 0,
                 time_until_hooked: 0,
@@ -731,7 +736,7 @@ impl Game<'_> {
                 })
                 .collect();
             // ItemFishedEvent may change the catch, rod damage, or cancel rewards.
-            let mut rod_damage = if hook.on_ground { 2 } else { 1 };
+            let mut rod_damage = if hook.ground.on_ground { 2 } else { 1 };
             if let Some(player) = self.lan_acting_uuid
                 && mod_api::__private::listened(mod_api::HookId::ItemFished)
             {
@@ -757,7 +762,7 @@ impl Game<'_> {
             let bobber = EntityView {
                 kind: "minecraft:fishing_bobber".into(),
                 position: [hook.position.x, hook.position.y, hook.position.z],
-                on_ground: hook.on_ground,
+                on_ground: hook.ground.on_ground,
                 fishing_open_water: Some(hook.open_water),
                 ..Default::default()
             };
@@ -795,7 +800,7 @@ impl Game<'_> {
             }
             return rod_damage.max(0) as u32;
         }
-        if hook.on_ground {
+        if hook.ground.on_ground {
             damage = 2;
         }
         damage
@@ -1042,7 +1047,7 @@ impl Game<'_> {
             self.refresh_hook_targets();
         }
         h.previous = h.position;
-        if h.on_ground {
+        if h.ground.on_ground {
             h.life += 1;
             if h.life >= 1200 {
                 return None;
@@ -1301,7 +1306,7 @@ impl Game<'_> {
                 }
             }
         }
-        if !in_water && !h.on_ground {
+        if !in_water && !h.ground.on_ground {
             h.velocity.y -= f64::from(0.03_f32);
         }
         let mut scene = SceneCollisions {
@@ -1325,11 +1330,8 @@ impl Game<'_> {
             bounds(h.position),
             wanted,
             0.0,
-            h.on_ground,
+            h.ground.on_ground,
         ) {
-            let differs = sunrise_world::entity_move::different;
-            let horizontal = differs(moved.x, wanted.x) || differs(moved.z, wanted.z);
-            h.on_ground = wanted.y < 0.0 && moved.y > wanted.y;
             h.position = Vec3::new(
                 h.position.x + moved.x,
                 h.position.y + moved.y,
@@ -1338,12 +1340,12 @@ impl Game<'_> {
             self.restitute_bobber(
                 h.id,
                 h.position,
-                h.on_ground,
+                &mut h.ground,
                 wanted,
                 moved,
                 &mut h.velocity,
             );
-            if h.state == State::Flying && (h.on_ground || horizontal) {
+            if h.state == State::Flying && (h.ground.on_ground || h.ground.horizontal_collision) {
                 h.velocity = Vec3::ZERO;
             }
         }
@@ -1359,21 +1361,26 @@ impl Game<'_> {
         &self,
         id: u32,
         position: Vec3,
-        on_ground: bool,
+        ground: &mut sunrise_world::ground_support::GroundState,
         wanted: Vec3,
         moved: Vec3,
         velocity: &mut Vec3,
     ) {
         let side = game_side!(self);
         let motion = self.body_motion(&side);
-        let effect = motion.effect_block(
+        let authoritative =
+            motion.context.side() == sunrise_world::native_load_context::LoopSide::Server;
+        motion.record_move(
             position,
             bounds(position),
-            on_ground,
+            wanted,
             moved,
+            authoritative,
             sunrise_world::collision_context::CollisionContext::empty(false),
             None,
+            ground,
         );
+        let effect = motion.legacy_contact(position, ground);
         motion.restitute(
             (id, "minecraft:fishing_bobber"),
             false,
@@ -1714,7 +1721,7 @@ pub(super) struct RemoteHook {
     pub(super) previous: Vec3,
     velocity: Vec3,
     state: State,
-    on_ground: bool,
+    ground: sunrise_world::ground_support::GroundState,
     lerp: HookLerp,
     pub(super) random: LegacyRandom,
 }
@@ -1739,7 +1746,7 @@ fn push_remote_hook(
         previous: at,
         velocity,
         state: State::Flying,
-        on_ground: false,
+        ground: Default::default(),
         lerp: HookLerp::default(),
         random: random_source::entity(),
     });
@@ -1826,7 +1833,7 @@ impl Hook {
     /// A server's update of this client's own hook (`handleMoveEntity` also
     /// sets `onGround`).
     pub(super) fn move_to(&mut self, target: [f64; 3], on_ground: bool) {
-        self.on_ground = resting(self.on_ground, self.position, target, on_ground);
+        self.ground.on_ground = resting(self.ground.on_ground, self.position, target, on_ground);
         self.lerp.start(target);
     }
 }
@@ -1836,7 +1843,7 @@ impl RemoteHook {
     }
     /// A server's update of another player's hook.
     pub(super) fn move_to(&mut self, target: [f64; 3], on_ground: bool) {
-        self.on_ground = resting(self.on_ground, self.position, target, on_ground);
+        self.ground.on_ground = resting(self.ground.on_ground, self.position, target, on_ground);
         self.lerp.start(target);
     }
 }
@@ -1863,7 +1870,7 @@ impl Hook {
             needs_sync: false,
             tick_count: 0,
             life: 0,
-            on_ground: false,
+            ground: Default::default(),
             nibble: 0,
             time_until_lured: 0,
             time_until_hooked: 0,
@@ -1889,7 +1896,7 @@ impl Hook {
         );
         e.position = [p.x, p.y, p.z];
         e.velocity = [self.velocity.x, self.velocity.y, self.velocity.z];
-        e.on_ground = self.on_ground;
+        e.on_ground = self.ground.on_ground;
         e.needs_sync = self.needs_sync;
         e.data = owner;
         if let State::Hooked(id) = self.state {
@@ -2005,11 +2012,11 @@ impl Game<'_> {
             h.position = h.lerp.step(h.position);
             let before = h.position;
             let owner = self.player.as_ref().map(|p| p.position);
-            (h.position, h.velocity, h.state, h.on_ground) = self.client_hook_step(
+            (h.position, h.velocity, h.state, h.ground) = self.client_hook_step(
                 h.id,
                 owner,
                 true,
-                (h.position, h.velocity, h.state, h.on_ground),
+                (h.position, h.velocity, h.state, h.ground),
                 &mut h.random,
             );
             h.lerp.moved(h.position.subtract(before));
@@ -2025,11 +2032,11 @@ impl Game<'_> {
                 .iter()
                 .find(|m| m.id == h.owner)
                 .map(|m| m.position);
-            (h.position, h.velocity, h.state, h.on_ground) = self.client_hook_step(
+            (h.position, h.velocity, h.state, h.ground) = self.client_hook_step(
                 h.id,
                 owner,
                 false,
-                (h.position, h.velocity, h.state, h.on_ground),
+                (h.position, h.velocity, h.state, h.ground),
                 &mut h.random,
             );
             h.lerp.moved(h.position.subtract(before));
@@ -2145,9 +2152,19 @@ impl Game<'_> {
         id: u32,
         owner: Option<Vec3>,
         own: bool,
-        (mut position, mut velocity, state, mut on_ground): (Vec3, Vec3, State, bool),
+        (mut position, mut velocity, state, mut ground): (
+            Vec3,
+            Vec3,
+            State,
+            sunrise_world::ground_support::GroundState,
+        ),
         random: &mut impl RandomSource,
-    ) -> (Vec3, Vec3, State, bool) {
+    ) -> (
+        Vec3,
+        Vec3,
+        State,
+        sunrise_world::ground_support::GroundState,
+    ) {
         let b = [
             position.x.floor() as i32,
             position.y.floor() as i32,
@@ -2166,12 +2183,12 @@ impl Game<'_> {
         match state {
             State::Flying if in_water => {
                 velocity = Vec3::new(velocity.x * 0.3, velocity.y * 0.2, velocity.z * 0.3);
-                return (position, velocity, State::Bobbing, on_ground);
+                return (position, velocity, State::Bobbing, ground);
             }
             // A landed hook: the server stopped it dead (zero motion) and sends no
             // more than the odd update; it does not fall on from here.
-            State::Flying if velocity == Vec3::ZERO && on_ground => {
-                return (position, velocity, state, on_ground);
+            State::Flying if velocity == Vec3::ZERO && ground.on_ground => {
+                return (position, velocity, state, ground);
             }
             State::Flying => {
                 if let Some(hit) = self.hook_block_hit(position, position.add_vector(velocity)) {
@@ -2211,9 +2228,9 @@ impl Game<'_> {
                         Vec3::new(at.x, at.y + height * 0.8, at.z),
                         Vec3::ZERO,
                         state,
-                        on_ground,
+                        ground,
                     ),
-                    None => (position, velocity, State::Flying, on_ground),
+                    None => (position, velocity, State::Flying, ground),
                 };
             }
             State::Bobbing => {
@@ -2232,7 +2249,7 @@ impl Game<'_> {
                 );
             }
         }
-        if !in_water && !on_ground {
+        if !in_water && !ground.on_ground {
             velocity.y -= f64::from(0.03_f32);
         }
         let mut scene = SceneCollisions {
@@ -2256,23 +2273,20 @@ impl Game<'_> {
             bounds(position),
             wanted,
             0.0,
-            on_ground,
+            ground.on_ground,
         ) {
-            let differs = sunrise_world::entity_move::different;
-            let horizontal = differs(moved.x, wanted.x) || differs(moved.z, wanted.z);
-            on_ground = wanted.y < 0.0 && moved.y > wanted.y;
             position = Vec3::new(
                 position.x + moved.x,
                 position.y + moved.y,
                 position.z + moved.z,
             );
-            self.restitute_bobber(id, position, on_ground, wanted, moved, &mut velocity);
-            if state == State::Flying && (on_ground || horizontal) {
+            self.restitute_bobber(id, position, &mut ground, wanted, moved, &mut velocity);
+            if state == State::Flying && (ground.on_ground || ground.horizontal_collision) {
                 velocity = Vec3::ZERO;
             }
         }
         velocity = Vec3::new(velocity.x * 0.92, velocity.y * 0.92, velocity.z * 0.92);
-        (position, velocity, state, on_ground)
+        (position, velocity, state, ground)
     }
 
     pub(super) fn remove_remote_hook(&mut self, id: u32) {
@@ -2627,9 +2641,8 @@ mod tests {
             position: Vec3::ZERO,
             previous: Vec3::ZERO,
             velocity: Vec3::new(0.2, 0.0, -0.1),
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,

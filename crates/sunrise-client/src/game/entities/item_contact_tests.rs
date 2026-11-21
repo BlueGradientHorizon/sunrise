@@ -312,3 +312,60 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
         },
     );
 }
+
+#[test]
+#[ignore = "daily"]
+fn item_support_survives_idle_then_clears_on_an_airborne_move() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::item_support_survives_idle_then_clears_on_an_airborne_move",
+        || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let air = game.res.facts().air;
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                let support = BlockPos::new(4, 63, 4);
+                game.world = World::new(air, 1);
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                game.world
+                    .set(support.x, support.y, support.z, stone)
+                    .unwrap();
+                game.spawn_item(
+                    ItemStack::new("minecraft:iron_ingot", 1),
+                    [4.5, 64.25, 4.5],
+                    [1.0, -0.96, 0.0],
+                    20,
+                );
+                let mut item = game.dropped[0].clone();
+                let tick = |game: &mut Game<'_>, item: &mut ItemEntity| {
+                    game.tick_item_with_block_contacts(item, None, &[], false, &mut |_| {})
+                };
+                assert_eq!(tick(game, &mut item), (true, false));
+                assert_eq!(item.position, Vec3::new(5.5, 64.0, 4.5));
+                // Only the old horizontal footprint had a supporting block.
+                assert!(item.ground.on_ground);
+                assert_eq!(item.ground.supporting_block, Some(support));
+
+                game.world
+                    .set(support.x, support.y, support.z, air)
+                    .unwrap();
+                item.velocity = Vec3::ZERO;
+                item.ticks = item.id.wrapping_neg();
+                assert_eq!(tick(game, &mut item), (true, false));
+                assert_eq!(item.position, Vec3::new(5.5, 64.0, 4.5));
+                assert_eq!(item.ground.supporting_block, Some(support));
+
+                item.velocity = Vec3::new(0.1, 0.2, 0.0);
+                assert_eq!(tick(game, &mut item), (true, false));
+                assert!(item.position.y > 64.0);
+                assert!(!item.ground.on_ground);
+                assert_eq!(item.ground.supporting_block, None);
+            });
+        },
+    );
+}

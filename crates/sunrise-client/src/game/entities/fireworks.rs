@@ -66,7 +66,7 @@ pub(super) struct Rocket {
     pub(super) random: sunrise_core::random::LegacyRandom,
     /// `Entity.onGround`: whether its last move was stopped going down (or
     /// the one it was loaded with, until it moves).
-    pub(super) on_ground: bool,
+    pub(super) ground: sunrise_world::ground_support::GroundState,
     /// `Projectile.hasBeenShot`: its first tick posts `projectile_shoot`.
     pub(super) has_been_shot: bool,
     /// `Entity.isSilent`: no launch sound.
@@ -106,7 +106,7 @@ impl Rocket {
             angled: false,
             item,
             random: sunrise_client::projectiles::unique_random(position),
-            on_ground: false,
+            ground: Default::default(),
             // The server posts the shot.
             has_been_shot: true,
             silent: false,
@@ -150,7 +150,7 @@ impl Rocket {
                     self.owner_uuid
                 },
                 left_owner: self.left_owner,
-                on_ground: self.on_ground,
+                on_ground: self.ground.on_ground,
                 has_been_shot: self.has_been_shot,
                 fall_distance: self.fall_distance,
             },
@@ -185,7 +185,7 @@ impl Rocket {
             angled: r.angled,
             item,
             random: sunrise_client::projectiles::unique_random(r.position),
-            on_ground: r.on_ground,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(r.on_ground),
             has_been_shot: r.has_been_shot,
             silent: r.silent,
             fall_distance: r.fall_distance,
@@ -211,7 +211,7 @@ impl Rocket {
         self.item = loaded.item;
         self.angled = loaded.angled;
         self.left_owner = loaded.left_owner;
-        self.on_ground = loaded.on_ground;
+        self.ground = loaded.ground;
         self.fall_distance = loaded.fall_distance;
     }
     /// One tick of a server's client: the rocket flies on by itself between
@@ -314,8 +314,6 @@ impl Rocket {
         else {
             return None;
         };
-        // Entity.move: on the ground when a move down was stopped.
-        self.on_ground = wanted.y < 0.0 && moved.y != wanted.y;
         self.position = Vec3::new(
             self.position.x + moved.x,
             self.position.y + moved.y,
@@ -330,14 +328,19 @@ impl Rocket {
         wanted: Vec3,
         moved: Vec3,
     ) {
-        let effect = motion.effect_block(
+        let authoritative =
+            motion.context.side() == sunrise_world::native_load_context::LoopSide::Server;
+        motion.record_move(
             self.position,
             self.bounds(),
-            self.on_ground,
+            wanted,
             moved,
+            authoritative,
             sunrise_world::collision_context::CollisionContext::empty(false),
             None,
+            &mut self.ground,
         );
+        let effect = motion.legacy_contact(self.position, &self.ground);
         // FireworkRocketEntity inherits Entity.getDefaultGravity (zero) and getAirDrag.
         motion.restitute(
             (self.id, "minecraft:firework_rocket"),
@@ -425,7 +428,7 @@ impl Game<'_> {
         if !water && moved.y < 0.0 {
             r.fall_distance -= f64::from(moved.y as f32);
         }
-        if r.on_ground {
+        if r.ground.on_ground {
             if r.fall_distance > 0.0 {
                 // Block.fallOn (farmland's random draw, honey's slide) is not
                 // run for a rocket yet, nor for the other entities that are
@@ -520,7 +523,7 @@ impl Game<'_> {
             angled: false,
             item: stack.clone(),
             random: own.clone(),
-            on_ground: false,
+            ground: Default::default(),
             has_been_shot: false,
             silent: false,
             fall_distance: 0.0,

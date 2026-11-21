@@ -118,7 +118,13 @@ pub(super) trait Entity: EntityRules {
     ) -> Result<(), Tag>;
 
     fn on_ground(&self) -> bool {
-        false
+        self.ground_state().is_some_and(|g| g.on_ground)
+    }
+    fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
+        None
+    }
+    fn ground_state_mut(&mut self) -> Option<&mut sunrise_world::ground_support::GroundState> {
+        None
     }
     /// `Entity.maxUpStep`.
     fn get_step_height(&self) -> f32 {
@@ -200,8 +206,9 @@ pub(super) trait Entity: EntityRules {
         *v = Vec3::new(v.x + push.x, v.y + push.y, v.z + push.z);
     }
     /// `Entity.isSupportedBy`.
-    fn is_supported_by(&self, _pos: BlockPos) -> bool {
-        false
+    fn is_supported_by(&self, pos: BlockPos) -> bool {
+        self.ground_state()
+            .is_some_and(|g| g.supporting_block == Some(pos))
     }
     /// `Entity.getEyeY`, where `updateFluidHeightAndDoFluidPushing` reads the
     /// eye's fluid; the top of the box unless a kind sets it.
@@ -728,6 +735,18 @@ mod render_bounds_tests {
         assert!(bounds.min_position().y <= 9.5);
         assert!(bounds.max_position().y >= 12.8);
     }
+}
+
+/// The common retained support owned by bodies that use `BodyMotion`.
+macro_rules! stored_ground {
+    () => {
+        fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
+            Some(&self.ground)
+        }
+        fn ground_state_mut(&mut self) -> Option<&mut sunrise_world::ground_support::GroundState> {
+            Some(&mut self.ground)
+        }
+    };
 }
 
 /// The fields every kind stores under the same names.
@@ -1963,6 +1982,7 @@ impl Entity for Mob {
 }
 
 impl Entity for ItemEntity {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -1974,9 +1994,6 @@ impl Entity for ItemEntity {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
@@ -2039,18 +2056,13 @@ impl Entity for ItemEntity {
     fn bounds(&self) -> Aabb {
         ItemEntity::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         ItemEntity::piston_slime_bounce(self, movement);
     }
 }
 
 impl Entity for ExperienceOrb {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // An orb keeps no fall distance here.
     }
@@ -2062,9 +2074,6 @@ impl Entity for ExperienceOrb {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
@@ -2117,19 +2126,15 @@ impl Entity for ExperienceOrb {
     fn bounds(&self) -> Aabb {
         ExperienceOrb::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = piston_push::bounce_velocity(movement, self.velocity);
-        self.on_ground = false;
+        self.ground.on_ground = false;
+        self.ground.clear_support();
     }
 }
 
 impl Entity for Boat {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A boat keeps no fall distance here.
     }
@@ -2141,12 +2146,6 @@ impl Entity for Boat {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         [self.yaw, self.pitch]
     }
@@ -2219,12 +2218,10 @@ impl Entity for Boat {
     fn bounds(&self) -> Aabb {
         Boat::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
 }
 
 impl Entity for Minecart {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2236,12 +2233,6 @@ impl Entity for Minecart {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         [self.yaw, self.pitch]
     }
@@ -2308,9 +2299,6 @@ impl Entity for Minecart {
     }
     fn bounds(&self) -> Aabb {
         Minecart::bounds(self)
-    }
-    fn on_ground(&self) -> bool {
-        self.on_ground
     }
     /// `tick_blocks` sweeps minecarts along with the players.
     fn sweeps_blocks_inside(&self) -> bool {
@@ -2481,6 +2469,7 @@ impl Entity for ArmorStand {
 }
 
 impl Entity for PrimedTnt {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // Primed TNT keeps no fall distance here.
     }
@@ -2492,9 +2481,6 @@ impl Entity for PrimedTnt {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
@@ -2557,21 +2543,17 @@ impl Entity for PrimedTnt {
     fn bounds(&self) -> Aabb {
         PrimedTnt::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = piston_push::bounce_velocity(movement, self.velocity);
         // Leave the ground so the next tick does not apply the on-ground
         // Y * -0.5 friction that cancels the launch.
-        self.on_ground = false;
+        self.ground.on_ground = false;
+        self.ground.clear_support();
     }
 }
 
 impl Entity for FallingBlock {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2590,16 +2572,6 @@ impl Entity for FallingBlock {
         let yaw = if yaw.is_finite() { yaw } else { previous[0] };
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
-    }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
     }
     fn ticks_after_projectiles(&self) -> bool {
         true
@@ -2825,6 +2797,7 @@ impl Entity for Projectile {
 }
 
 impl Entity for Rocket {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A firework rocket keeps no fall distance here.
     }
@@ -2843,16 +2816,6 @@ impl Entity for Rocket {
         let yaw = if yaw.is_finite() { yaw } else { previous[0] };
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
-    }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
     }
     fn native_type(&self) -> Cow<'_, str> {
         "minecraft:firework_rocket".into()
@@ -3398,7 +3361,7 @@ mod set_rotation_tests {
             velocity: sunrise_core::geometry::Vec3::ZERO,
             value: 1,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,

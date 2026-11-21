@@ -2498,7 +2498,7 @@ impl Game<'_> {
             f.drop_item,
             f.damage,
             f.fall_distance,
-            f.on_ground,
+            f.ground.on_ground,
             f.rotation,
             uuid,
         );

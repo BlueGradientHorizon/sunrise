@@ -96,7 +96,7 @@ impl ItemEntity {
         // horizontal speed. The idle branch still runs bubble-column push
         // (`applyEffectsFromBlocksForLastMovements`), so lift builds up and
         // the item moves on the next wake-up (#4558).
-        if !self.on_ground
+        if !self.ground.on_ground
             || horizontal > 1.0e-5
             || self.ticks.wrapping_add(self.id).is_multiple_of(4)
         {
@@ -145,7 +145,7 @@ impl ItemEntity {
                     self.bounds(),
                     wanted,
                     0.0,
-                    self.on_ground,
+                    self.ground.on_ground,
                     self.collision_context(),
                 )
                 .unwrap_or(Vec3::ZERO)
@@ -158,41 +158,55 @@ impl ItemEntity {
                     self.position.z + moved.z,
                 );
             }
-            self.vertical_collision = moved.y != wanted.y;
-            let differs = sunrise_world::entity_move::different;
-            self.horizontal_collision = differs(moved.x, wanted.x) || differs(moved.z, wanted.z);
-            if !no_physics {
-                self.on_ground = wanted.y < 0.0 && self.vertical_collision;
+            let physics = !no_physics && !gate.skipped();
+            if physics {
+                let authoritative =
+                    context.side() == sunrise_world::native_load_context::LoopSide::Server;
+                if authoritative || wanted.y.abs() > 0.0 {
+                    self.vertical_collision = moved.y != wanted.y;
+                }
+                BodyMotion {
+                    world,
+                    collision,
+                    facts,
+                    blocks,
+                    context,
+                    side: None,
+                }
+                .record_move(
+                    self.position,
+                    self.bounds(),
+                    wanted,
+                    moved,
+                    authoritative,
+                    self.collision_context(),
+                    None,
+                    &mut self.ground,
+                );
             }
-            let restitution = (!no_physics
-                && (self.vertical_collision || self.horizontal_collision))
+            let restitution = (physics
+                && ((wanted.y.abs() > 0.0 && self.vertical_collision)
+                    || self.ground.horizontal_collision))
                 .then(|| {
-                    let motion = BodyMotion {
+                    let effect = BodyMotion {
                         world,
                         collision,
                         facts,
                         blocks,
                         context,
                         side: None,
-                    };
-                    let effect = motion.effect_block(
-                        self.position,
-                        self.bounds(),
-                        self.on_ground,
-                        moved,
-                        self.collision_context(),
-                        None,
-                    );
+                    }
+                    .legacy_contact(self.position, &self.ground);
                     (wanted, moved, effect)
                 });
             let mut landed = None;
-            if !no_physics {
+            if physics {
                 // Entity.checkFallDamage: the move's drop counts out of water, and a landing
                 // hands the whole fall to the block below (`getOnPosLegacy`).
                 if water_height <= 0.0 && moved.y < 0.0 {
                     self.fall_distance -= f64::from(moved.y as f32);
                 }
-                if self.on_ground {
+                if self.ground.on_ground {
                     if self.fall_distance > 0.0 {
                         landed = restitution
                             .map(|(_, _, contact)| (contact.position, self.fall_distance));
@@ -201,7 +215,7 @@ impl ItemEntity {
                 }
             }
             let vertical_contact = restitution
-                .filter(|_| self.vertical_collision)
+                .filter(|(wanted, moved, _)| wanted.y != moved.y)
                 .map(|(_, _, contact)| contact.position);
             return ItemStep {
                 old_velocity,
@@ -210,7 +224,7 @@ impl ItemEntity {
                 movement: Some(moved),
                 landed,
                 prior_fall,
-                fall_move: (!no_physics).then_some((from, moved, applied)),
+                fall_move: physics.then_some((from, moved, applied)),
             };
         }
         // applyEffectsFromBlocksForLastMovements: still lift/drag while idle.

@@ -56,17 +56,56 @@ impl BodyMotion<'_> {
         context: CollisionContext<'_>,
         subject: Option<PowderSnowSubject<'_>>,
     ) -> BodyContact {
+        let mut ground = GroundState {
+            on_ground,
+            ..GroundState::default()
+        };
+        self.update_support(&mut ground, position, bounds, Some(moved), context, subject);
+        self.legacy_contact(position, &ground)
+    }
+
+    /// Record the collision flags and support selected at the end of `Entity.move`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_move(
+        self,
+        feet: Vec3,
+        bounds: Aabb,
+        wanted: Vec3,
+        moved: Vec3,
+        authoritative: bool,
+        context: CollisionContext<'_>,
+        subject: Option<PowderSnowSubject<'_>>,
+        ground: &mut GroundState,
+    ) {
+        ground.horizontal_collision = different(wanted.x, moved.x) || different(wanted.z, moved.z);
+        if authoritative || wanted.y.abs() > 0.0 {
+            ground.on_ground = wanted.y < 0.0 && wanted.y != moved.y;
+            self.update_support(ground, feet, bounds, Some(moved), context, subject);
+        }
+    }
+
+    /// Update the moving body's retained support using the same shapes as its move.
+    pub fn update_support(
+        self,
+        ground: &mut GroundState,
+        feet: Vec3,
+        bounds: Aabb,
+        movement: Option<Vec3>,
+        context: CollisionContext<'_>,
+        subject: Option<PowderSnowSubject<'_>>,
+    ) {
         let mut scene = SceneCollisions {
             world: self.world,
             binding: self.collision,
             subject,
         };
-        let mut ground = GroundState::default();
-        // This bounded entity-sized search uses the same collision scan as its move.
-        let _ = ground.check_support(on_ground, bounds, Some(moved), |bounds| {
-            find_supporting_block(&mut scene, context, position, bounds, 1_000_000)
+        let _ = ground.check_support(ground.on_ground, bounds, movement, |bounds| {
+            find_supporting_block(&mut scene, context, feet, bounds, 1_000_000)
         });
-        let feet = position;
+    }
+
+    /// Read the legacy effect pair from the retained support, with no new collision scan.
+    pub fn legacy_contact(self, feet: Vec3, ground: &GroundState) -> BodyContact {
         let support = ground.supporting_block;
         let position = block_support_at(
             self.world,

@@ -2041,7 +2041,8 @@ impl Game<'_> {
             .dropped
             .iter()
             .filter(|i| {
-                i.on_ground && ticking(i.position.x.floor() as i32, i.position.z.floor() as i32)
+                i.ground.on_ground
+                    && ticking(i.position.x.floor() as i32, i.position.z.floor() as i32)
             })
             .map(|i| [i.position.x, i.position.y, i.position.z])
             .collect();

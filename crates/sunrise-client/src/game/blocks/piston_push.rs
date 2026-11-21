@@ -591,10 +591,10 @@ impl Game<'_> {
         ) else {
             return;
         };
-        self.set_pushed_on_ground(target, movement, moved);
         if moved.length_squared() > 0.0 {
             self.apply_push(&mut gate, target, moved);
         }
+        self.set_pushed_on_ground(target, movement, moved, None);
     }
 
     /// A mod's `Entity.move(cause, movement)` for the listed entity `handle` (never the player
@@ -1244,7 +1244,6 @@ impl Game<'_> {
             )
             .unwrap_or(Vec3::ZERO)
         });
-        self.set_pushed_on_ground(target, limited, resolved);
 
         // shortcut: unoccupied server mobs only, expand when controller/passenger authority is bound.
         let mob = if let MoveWho::Entity(EntityHandle::Mob(i)) = target {
@@ -1281,6 +1280,7 @@ impl Game<'_> {
             // A move the collisions cut to nothing still ends in the check.
             self.release_after_block_move(target);
         }
+        self.set_pushed_on_ground(target, limited, resolved, tnt.map(|(_, _, s, c)| (s, c)));
         // Restitution reads the new landing block even when the push was blocked.
         if let Some(i) = mob {
             let mut mobs = self.mobs.lift();
@@ -1388,10 +1388,14 @@ impl Game<'_> {
                     || (None, sunrise_world::collision_context::CollisionContext::empty(false)),
                     |(subject, context)| (Some(subject), context),
                 );
-                let effect = motion.effect_block(
-                    entity.position(), entity.bounds(), limited.y < 0.0 && limited.y != resolved.y,
-                    resolved, context, subject,
-                );
+                let effect = if let Some(ground) = entity.ground_state() {
+                    motion.legacy_contact(entity.position(), ground)
+                } else {
+                    motion.effect_block(
+                        entity.position(), entity.bounds(), limited.y < 0.0 && limited.y != resolved.y,
+                        resolved, context, subject,
+                    )
+                };
                 let mut velocity = entity.velocity();
                 motion.restitute(
                     (entity.id(), &entity.native_type()), entity.is_living(), limited, resolved,
@@ -1402,14 +1406,41 @@ impl Game<'_> {
         });
     }
 
-    /// The end of a block's `Entity.move` push: a server entity's ground flag
-    /// is set after every push, a sideways one and one the collision turns
-    /// away included, on ground only when the push's downward part was blocked.
-    fn set_pushed_on_ground(&mut self, target: MoveWho, wanted: Vec3, moved: Vec3) {
-        if let MoveWho::Entity(handle) = target {
-            let on_ground = wanted.y < 0.0 && wanted.y != moved.y;
-            with_entity_mut!(self, handle, entity => entity.set_piston_on_ground(on_ground));
-        }
+    /// The ground recorded after placing the body during `Entity.move`.
+    fn set_pushed_on_ground(
+        &mut self,
+        target: MoveWho,
+        wanted: Vec3,
+        moved: Vec3,
+        tnt: Option<(
+            sunrise_client::collisions::PowderSnowSubject<'static>,
+            sunrise_world::collision_context::CollisionContext<'static>,
+        )>,
+    ) {
+        let MoveWho::Entity(handle) = target else {
+            return;
+        };
+        let authoritative = !self.options.execution_role.is_client() && self.remote.is_none();
+        let motion = sunrise_client::motion::BodyMotion {
+            world: &self.world,
+            collision: self.collision,
+            facts: self.res.facts(),
+            blocks: Some(&self.res.motion().blocks),
+            context: &self.loop_context,
+            side: None,
+        };
+        with_entity_mut!(self, handle, entity => {
+            let (at, bounds) = (entity.position(), entity.bounds());
+            if let Some(ground) = entity.ground_state_mut() {
+                let (subject, context) = tnt.map_or_else(
+                    || (None, sunrise_world::collision_context::CollisionContext::empty(false)),
+                    |(subject, context)| (Some(subject), context),
+                );
+                motion.record_move(at, bounds, wanted, moved, authoritative, context, subject, ground);
+            } else {
+                entity.set_piston_on_ground(wanted.y < 0.0 && wanted.y != moved.y);
+            }
+        });
     }
 
     /// `Entity.limitPistonMovement`: each axis may travel at most 0.51 blocks
@@ -2128,7 +2159,7 @@ mod order_tests {
             game.push_piston_entities(pushes);
             assert_eq!(game.tnts[0].position, Vec3::new(5.5, final_y, 5.5));
             assert_eq!(game.tnts[0].velocity.y.to_bits(), final_vy.to_bits());
-            assert!(game.tnts[0].on_ground);
+            assert!(game.tnts[0].ground.on_ground);
         }
     }
 }
@@ -2425,7 +2456,7 @@ mod h255_mob_piston_ground_tests {
                         tnt.bounds(),
                         [tnt.position.x, tnt.position.z],
                         0.0,
-                        tnt.on_ground,
+                        tnt.ground.on_ground,
                         movement,
                         Direction::Down,
                         budget,
