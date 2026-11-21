@@ -787,7 +787,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
                 )
             };
             let flashes = game.lan_entity_events.as_slice();
-            let is_flash = |event: &(i32, u8)| *event == (creaking_id as i32, 66);
+            let is_flash = |event: &(i32, i8)| *event == (creaking_id as i32, 66);
             let action = TEST_POSTED_EVENT_ORDER.with(|order| {
                 order
                     .borrow()
