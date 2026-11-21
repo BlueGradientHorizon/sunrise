@@ -65,10 +65,13 @@ and block-entity type reads use `BlockEntityTypeKey`.
 
 A `RegistryName` borrows resident text or keeps its registry snapshot alive; it
 holds no registry lock and does not borrow the host. Use `name.as_str()` to borrow
-its text or compare `key.id(host).as_deref() == Some("minecraft:zombie")` without a
-copy. The pinned text remains readable across reloads; it does not reflect a later
-registry publication. Bind the snapshot before borrowing it if the text is used beyond the
-current expression. For persistent storage, copy just the text with `name.as_str().to_owned()`.
+its text, compare an unwrapped name directly (`name == "minecraft:zombie"`), or compare
+`key.id(host).as_deref() == Some("minecraft:zombie")` without copying. Formatting,
+ordering and hashing use the full namespaced text, not the registry slot. Cloning
+shares the text, and maps keyed by `RegistryName` also support lookup by `&str`.
+The pinned text remains readable across reloads; it does not reflect a later registry
+publication. Bind the snapshot before borrowing it if the text is used beyond the current
+expression. For persistent storage, copy just the text with `name.as_str().to_owned()`.
 
 ## Block states
 

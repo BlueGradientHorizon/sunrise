@@ -52,7 +52,7 @@ impl Game<'_> {
         let merged = sunrise_client::data_cmd::merged(&old, &nbt);
         merged != old && self.apply_entity_nbt(t, merged).is_ok()
     }
-    /// Borrow the entity's scoreboard tags (`Entity.getTags`) without the
+    /// Borrow the entity's scoreboard tags (`Entity.entityTags()`) without the
     /// lossy conversion used by `/tag <entity> list`.
     pub(super) fn entity_tags(&self, entity: EntityRef) -> Option<EntityTags<'_>> {
         if self.remote.is_some() {

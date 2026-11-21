@@ -7,10 +7,10 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait EntityDataBackend {
     /// Side: server.
-    /// Borrow the entity's scoreboard tags (`Entity.getTags`) in saved order.
-    /// An entity without tags has an empty view. A stale handle or unavailable
-    /// context returns `None`. Use [`EntityTags::contains`] for an exact match,
-    /// or [`EntityTags::iter_utf16`] to choose how to convert each tag to UTF-8.
+    /// Borrow the entity's scoreboard tags (`Entity.entityTags()`) in saved order.
+    /// An entity without tags has an [`empty view`](EntityTags::is_empty). A stale handle
+    /// or unavailable context returns `None`. Use [`EntityTags::contains`] for an exact
+    /// match, or [`EntityTags::iter_utf16`] to choose how to convert tags to UTF-8.
     #[access(WorldOnly)]
     fn entity_tags(&self, entity: EntityRef) -> Option<EntityTags<'_>>;
 }

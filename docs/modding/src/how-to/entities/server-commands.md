@@ -101,7 +101,8 @@ the player's `GameProfile<'_>`: UUID, borrowed name and login properties such as
 `value` and `signature: Option<&str>`. For example, find the skin with
 `profile.properties().find(|p| p.name == "textures")`. An offline-mode player has an empty
 iterator; a stale player has no profile. Copy individual strings only to keep them after the
-host borrow.
+host borrow. A [custom test host](../../concepts/testing.md) can lend a profile from
+`testing::GameProfileFixture`.
 
 `host.advancement(&id)` returns a loaded
 `AdvancementInfo`: its parent, display (title, description, icon stack with its components, frame and

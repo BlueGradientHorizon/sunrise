@@ -6,15 +6,26 @@ use crate::{
     BlockEntityTypeKey, BlockKey, DimensionKey, EffectKey, EnchantmentKey, EntityTypeKey, FluidKey,
     ItemKey, MenuKey,
 };
-use std::{fmt, ops::Deref, sync::Arc};
+use std::{
+    borrow::Borrow,
+    cmp::Ordering,
+    fmt,
+    hash::{Hash, Hasher},
+    ops::Deref,
+    sync::Arc,
+};
 use sunrise_mod_runtime::registry_keys::Names;
 
 /// A canonical UTF-8 registry name. Keeps the text readable after the host borrow ends or the
 /// registry publishes a new table, without copying the text or holding a registry lock.
+/// Cloning shares the backing text. Display, equality, ordering and hashing use the full
+/// namespaced string, not its slot or its registry's iteration order.
 // no wire: pins a process-local registry table or borrows resident text.
 // exhaustive: the private field keeps the storage and validated index opaque.
+#[derive(Clone)]
 pub struct RegistryName(RegistryNameText);
 
+#[derive(Clone)]
 enum RegistryNameText {
     Resident(&'static str),
     Snapshot { names: Names, index: usize },
@@ -42,9 +53,77 @@ impl Deref for RegistryName {
     }
 }
 
+impl AsRef<str> for RegistryName {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Borrow<str> for RegistryName {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl fmt::Debug for RegistryName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.as_str(), f)
+    }
+}
+
+impl fmt::Display for RegistryName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.as_str(), f)
+    }
+}
+
+impl PartialEq for RegistryName {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for RegistryName {}
+
+impl PartialEq<str> for RegistryName {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for RegistryName {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<RegistryName> for str {
+    fn eq(&self, other: &RegistryName) -> bool {
+        self == other.as_str()
+    }
+}
+
+impl PartialEq<RegistryName> for &str {
+    fn eq(&self, other: &RegistryName) -> bool {
+        *self == other.as_str()
+    }
+}
+
+impl PartialOrd for RegistryName {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RegistryName {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
+impl Hash for RegistryName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
     }
 }
 

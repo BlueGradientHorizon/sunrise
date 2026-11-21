@@ -7,8 +7,9 @@ use crate::{
 };
 
 // no wire: borrows a name and values from the host's state definition.
-/// One property and its legal values in a state definition.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One property and its legal values in a state definition. Copying the view does not copy
+/// the name or values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct StateProperty<'a> {
     /// Property name as serialized.
@@ -468,6 +469,16 @@ impl BlockStates<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn state_property_can_be_copied_from_a_shared_reference() {
+        let table = [("powered".to_owned(), vec!["false".into(), "true".into()])];
+        let property = StateProperties::of(&table).iter().next().unwrap();
+        let borrowed = &property;
+        let copied = *borrowed;
+        assert_eq!(copied.name, "powered");
+        assert_eq!(copied.values, ["false", "true"]);
+    }
 
     /// A mod's test double: a host with no game behind it.
     struct Double;

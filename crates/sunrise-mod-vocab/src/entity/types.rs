@@ -1310,7 +1310,8 @@ pub struct PlayerFood {
 
 // no wire: borrows the connected player's profile from the host.
 /// A player's borrowed game profile (authlib's `GameProfile`): UUID, name and login
-/// properties, such as `textures` (the skin).
+/// properties, such as `textures` (the skin). A custom test host can lend one using
+/// `mod_api::testing::GameProfileFixture` with the `testing` feature enabled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct GameProfile<'a> {
