@@ -1,31 +1,22 @@
-//! The `movement_input` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
+//! The `movement_input_update` hook declaration (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// Local player movement input, after reading it and before applying it.
-    /// All seven keys are independent; opposing direction keys cancel. If any
-    /// direction key changes, its keyboard direction replaces axis edits and
-    /// controller input. Otherwise axis edits stand and update packet flags.
-    /// With enabled listeners, false sprint holds sprint off this tick (even a
-    /// passive listener's unchanged false); true requests vanilla eligibility.
-    /// Without enabled listeners, vanilla latch, double tap and input are unchanged.
+    /// Lends the local player's sampled [`MovementInput`] after sampling, before auto-jump
+    /// and sprint decisions. Every listener sees the preceding listeners' edits.
+    ///
+    /// Change `event.input.move_vector` for local movement or `event.input.key_presses` for
+    /// key handling and the flags sent to the server. Neither edit rewrites the other.
+    /// Auto-jump can set the final jump flag. The sprint flag is a key press, not a switch
+    /// for sprinting: vanilla eligibility, the sprint latch and double-tap still apply.
     #[hook(
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",
         contract = "listen",
         neoforge = "MovementInputUpdateEvent",
-        version = 2,
-        cancellable = false
+        version = 3,
+        cancellable = false,
+        event_per_listener = true
     )]
-    fn movement_input(
-        forward: &mut f32,
-        strafe: &mut f32,
-        jump: &mut bool,
-        sneak: &mut bool,
-        forward_key: &mut bool,
-        backward_key: &mut bool,
-        left_key: &mut bool,
-        right_key: &mut bool,
-        sprint: &mut bool,
-    );
+    fn movement_input_update(input: &mut MovementInput);
 }

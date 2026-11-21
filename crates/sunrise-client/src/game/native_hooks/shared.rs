@@ -3801,9 +3801,13 @@ mod tests {
                 self.1.lock().unwrap().push(self.0);
                 event.areas.push([self.0 as f32, 0.0, 0.0, 0.0]);
             }
-            fn movement_input(&self, _: &dyn ClientHost, event: &mut mod_api::MovementInputEvent) {
+            fn movement_input_update(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut mod_api::MovementInputUpdateEvent<'_>,
+            ) {
                 self.1.lock().unwrap().push(self.0);
-                event.forward += self.0 as f32;
+                event.input.move_vector[1] += self.0 as f32;
             }
         }
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

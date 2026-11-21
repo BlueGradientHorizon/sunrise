@@ -201,50 +201,62 @@ fn native_switch_skips_and_resumes_subscribed_hooks() {
 }
 
 #[test]
-fn movement_input_writes_back_all_fields() {
-    struct Movement;
+fn movement_input_listeners_share_edits_in_order() {
+    struct Scale;
     #[mod_api::__subscriptions]
-    impl Hooks for Movement {
-        fn movement_input(&self, _host: &dyn ClientHost, event: &mut MovementInputEvent) {
-            event.forward = -0.5;
-            event.strafe = 0.25;
-            event.jump = true;
-            event.sneak = true;
-            assert!(!event.forward_key);
-            assert!(event.backward_key);
-            assert!(!event.left_key);
-            assert!(event.right_key);
-            assert!(!event.sprint);
-            event.forward_key = true;
-            event.backward_key = false;
-            event.left_key = true;
-            event.right_key = false;
-            event.sprint = true;
+    impl Hooks for Scale {
+        fn movement_input_update(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut MovementInputUpdateEvent<'_>,
+        ) {
+            event.input.move_vector[1] *= 0.5;
         }
     }
-    let mods = [ModEntry::new("movement", Box::new(Movement))];
-    install(mods.into());
-    let (mut forward, mut strafe, mut jump, mut sneak) = (1.0, 0.0, false, false);
-    let (mut forward_key, mut backward_key, mut left_key, mut right_key, mut sprint) =
-        (false, true, false, true, false);
-    dispatch_movement_input(
-        &FakeHost::new(),
-        crate::__private::MovementInputCall {
-            forward: &mut forward,
-            strafe: &mut strafe,
-            jump: &mut jump,
-            sneak: &mut sneak,
-            forward_key: &mut forward_key,
-            backward_key: &mut backward_key,
-            left_key: &mut left_key,
-            right_key: &mut right_key,
-            sprint: &mut sprint,
+    struct Jump;
+    #[mod_api::__subscriptions]
+    impl Hooks for Jump {
+        fn movement_input_update(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut MovementInputUpdateEvent<'_>,
+        ) {
+            assert_eq!(event.input.move_vector, [-0.25, 0.5]);
+            assert!(event.input.key_presses.forward);
+            assert!(event.input.key_presses.right);
+            event.input.key_presses.jump = true;
+        }
+    }
+    let mut input = MovementInput {
+        move_vector: [-0.25, 1.0],
+        key_presses: MovementKeys {
+            forward: true,
+            right: true,
+            ..MovementKeys::default()
+        },
+    };
+    testing::with_dispatch(
+        vec![
+            ModEntry::new("scale", Box::new(Scale)),
+            ModEntry::new("jump", Box::new(Jump)),
+        ]
+        .into(),
+        || {
+            dispatch_movement_input_update(
+                &FakeHost::new(),
+                crate::__private::MovementInputUpdateCall { input: &mut input },
+            );
         },
     );
-    assert_eq!((forward, strafe, jump, sneak), (-0.5, 0.25, true, true));
+    assert_eq!(input.move_vector, [-0.25, 0.5]);
     assert_eq!(
-        (forward_key, backward_key, left_key, right_key, sprint),
-        (true, false, true, false, true),
+        input.key_presses,
+        MovementKeys {
+            forward: true,
+            right: true,
+            jump: true,
+            ..MovementKeys::default()
+        }
     );
 }
 

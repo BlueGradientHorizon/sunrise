@@ -49,6 +49,21 @@ checks any report, correcting a move its speed or collision check refuses. The s
 velocity or ground flag. A server's write of a player's motion reaches that player's client only through an explicit
 motion packet, which replaces the client's velocity outright.
 
-At `player_tick_pre` the player's input fields hold the previous tick's applied values, so to scale this tick's forward
-input (Create's boots multiply a slow one by 1.3) use the `movement_input` hook, which runs after the keys are read
-and before they are applied.
+At `player_tick_pre` the player's input fields still hold the previous tick's applied values. To read or edit this
+tick's input, use `movement_input_update`, which lends the sampled input before auto-jump and sprint decisions:
+
+```rust,ignore
+fn movement_input_update(
+    &self,
+    _host: &dyn mod_api::ClientHost,
+    event: &mut mod_api::MovementInputUpdateEvent<'_>,
+) {
+    event.input.move_vector[1] *= 1.3; // Scale forward movement without changing the keys.
+}
+```
+
+The vector is `[left, forward]`. `event.input.key_presses` holds `forward`, `backward`, `left`, `right`, `jump`,
+`sneak` and `sprint` separately. Editing a direction key does not recalculate the vector; scaling the vector does
+not change those keys. The server receives the final flags, including a jump press added by auto-jump, not the
+vector. Sprint is a key press, not a sprint-state switch: vanilla eligibility, latched sprint and double-tap still
+apply. A listener that only reads the input does not change sprinting.
